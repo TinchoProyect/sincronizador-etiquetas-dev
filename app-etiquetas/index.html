@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Impresión de Etiquetas</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <h1>Impresión de Etiquetas</h1>
+
+  <div>
+    <label for="search">Buscar artículo (número o nombre):</label>
+    <input type="text" id="search" placeholder="Buscar..." />
+  </div>
+
+  <div>
+    <label for="barcodeInput">Escanear código de barras:</label>
+    <input type="text" id="barcodeInput" placeholder="Escanear código de barras" />
+  </div>
+
+  <div class="tab-container">
+    <button class="tab-button active" data-tab="etiquetas-normales">Etiquetas Normales</button>
+    <button class="tab-button" data-tab="etiqueta-personalizada">Etiqueta Personalizada</button>
+  </div>
+
+  <div id="etiquetas-normales" class="tab-content active">
+    <div id="preview">
+    <h2>Vista previa</h2>
+    <p><strong>Número:</strong> <span id="previewNumero"></span></p>
+    <p><strong>Nombre:</strong> <span id="previewNombre"></span></p>
+    <p><strong>Código de Barras:</strong> <span id="previewCodigoBarras"></span></p>
+    
+    <div class="fecha-container">
+      <div class="checkbox-container">
+        <input type="checkbox" id="incluirFechas" />
+        <label for="incluirFechas">Agregar fecha de vencimiento</label>
+      </div>
+      
+      <div id="fechasGroup" style="display: none;">
+        <div class="fecha-field">
+          <label>Fecha de elaboración:</label>
+          <input type="text" id="fechaElaboracion" readonly />
+        </div>
+        <div class="fecha-field">
+          <label>Fecha de vencimiento:</label>
+          <input type="date" id="fechaVencimiento" />
+        </div>
+      </div>
+    </div>
+
+    <label for="cantidad">Cantidad de etiquetas:</label>
+    <input type="number" id="cantidad" value="2" min="2" step="2" />
+    <button id="printBtn">Imprimir</button>
+  </div>
+
+  <table id="articulosTable" border="1" cellspacing="0" cellpadding="5">
+    <thead>
+      <tr>
+        <th>Número</th>
+        <th>Nombre</th>
+        <th>Código de Barras</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Artículos cargados aquí -->
+    </tbody>
+  </table>
+
+  </div>
+
+  <div id="etiqueta-personalizada" class="tab-content">
+    <h2>Etiqueta Personalizada</h2>
+    <div class="form-group">
+      <label for="textoPrincipal">Texto Principal:</label>
+      <input type="text" id="textoPrincipal" placeholder="Ej: LAMDA" />
+    </div>
+    <div class="form-group">
+      <label for="textoSecundario">Texto Secundario:</label>
+      <input type="text" id="textoSecundario" placeholder="Ej: Teléfono" />
+    </div>
+    <div class="form-group">
+      <label for="textoAdicional">Texto Adicional (opcional):</label>
+      <input type="text" id="textoAdicional" placeholder="Texto adicional" />
+    </div>
+    <div class="form-group">
+      <label for="cantidadPersonalizada">Cantidad de etiquetas:</label>
+      <input type="number" id="cantidadPersonalizada" value="2" min="2" step="2" />
+    </div>
+    <button id="printBtnPersonalizado">Imprimir Etiqueta Personalizada</button>
+  </div>
+
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
