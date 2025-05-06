@@ -1,0 +1,109 @@
+/* Estilos generales */
+:root {
+  --primary-color: #2196F3;
+  --secondary-color: #4CAF50;
+  --text-color: #333;
+  --background-color: #f8f8f8;
+  --border-color: #ddd;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Header */
+header {
+  background-color: white;
+  padding: 20px 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+header h1 {
+  margin: 0;
+  text-align: center;
+  color: var(--primary-color);
+  font-size: 2.5em;
+}
+
+/* Menú principal */
+.main-menu {
+  margin: 40px 0;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.menu-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 30px;
+  background-color: var(--primary-color);
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 1.1em;
+  transition: background-color 0.3s ease;
+}
+
+.menu-button:hover {
+  background-color: #1976D2;
+}
+
+.menu-button .icon {
+  font-size: 1.5em;
+}
+
+/* Sección de bienvenida */
+.welcome-section {
+  text-align: center;
+  padding: 40px 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.welcome-section h2 {
+  color: var(--primary-color);
+  margin-bottom: 20px;
+}
+
+.welcome-section p {
+  color: #666;
+  font-size: 1.1em;
+}
+
+/* Footer */
+footer {
+  margin-top: 40px;
+  padding: 20px 0;
+  text-align: center;
+  color: #666;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 10px;
+  }
+
+  header h1 {
+    font-size: 2em;
+  }
+
+  .menu-button {
+    padding: 12px 20px;
+    font-size: 1em;
+  }
+}
