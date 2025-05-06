@@ -1,0 +1,19 @@
+# Dependencias de Node
+node_modules/
+app-etiquetas/node_modules/
+
+# Archivos de lock
+package-lock.json
+app-etiquetas/package-lock.json
+
+# Archivos temporales
+*.log
+*.bs
+*.bs.js
+
+# Configuración local de VSCode
+.vscode/
+
+# Archivos del sistema
+Thumbs.db
+.DS_Store
