@@ -1,3 +1,8 @@
+// Elementos del modal
+const openModalBtn = document.getElementById('openModalBtn');
+const printModal = document.getElementById('printModal');
+const closeModalBtn = document.querySelector('.close-modal');
+
 // Elementos de la interfaz principal
 const searchInput = document.getElementById('search');
 const barcodeInput = document.getElementById('barcodeInput');
@@ -26,6 +31,27 @@ const printBtnPersonalizado = document.getElementById('printBtnPersonalizado');
 
 let articulos = [];
 let articuloSeleccionado = null;
+
+// Funciones del modal
+function openModal() {
+  printModal.classList.add('show');
+  // Recargar artículos al abrir el modal
+  cargarArticulos();
+}
+
+function closeModal() {
+  printModal.classList.remove('show');
+  // Limpiar selección al cerrar
+  articuloSeleccionado = null;
+  preview.style.display = 'none';
+}
+
+// Cerrar modal al hacer clic fuera del contenido
+window.onclick = function(event) {
+  if (event.target === printModal) {
+    closeModal();
+  }
+}
 
 async function cargarArticulos() {
   try {
@@ -78,6 +104,8 @@ function manejarEscaneo() {
   if (encontrado) {
     seleccionarArticulo(encontrado);
     barcodeInput.value = '';
+    // Abrir el modal si se encuentra un artículo por escaneo
+    openModal();
   }
 }
 
@@ -152,6 +180,7 @@ async function imprimir() {
     const data = await res.json();
     if (res.ok) {
       alert(data.message);
+      closeModal(); // Cerrar el modal después de imprimir exitosamente
     } else {
       alert('Error al imprimir: ' + data.error);
     }
@@ -159,11 +188,6 @@ async function imprimir() {
     alert('Error al imprimir: ' + error.message);
   }
 }
-
-searchInput.addEventListener('input', filtrarArticulos);
-barcodeInput.addEventListener('change', manejarEscaneo);
-printBtn.addEventListener('click', imprimir);
-
 
 // Manejador de pestañas
 tabButtons.forEach(button => {
@@ -205,6 +229,7 @@ async function imprimirEtiquetaPersonalizada() {
     const data = await res.json();
     if (res.ok) {
       alert(data.message);
+      closeModal(); // Cerrar el modal después de imprimir exitosamente
     } else {
       alert('Error al imprimir: ' + data.error);
     }
@@ -214,5 +239,12 @@ async function imprimirEtiquetaPersonalizada() {
 }
 
 // Event listeners
+openModalBtn.addEventListener('click', openModal);
+closeModalBtn.addEventListener('click', closeModal);
+searchInput.addEventListener('input', filtrarArticulos);
+barcodeInput.addEventListener('change', manejarEscaneo);
+printBtn.addEventListener('click', imprimir);
 printBtnPersonalizado.addEventListener('click', imprimirEtiquetaPersonalizada);
+
+// Cargar artículos al inicio
 cargarArticulos();
