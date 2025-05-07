@@ -10,8 +10,10 @@ class PrintManager {
   }
 
   initializeElements() {
-    // Elementos de búsqueda
-    this.searchInput = document.getElementById('search');
+    // Elementos de filtros de texto
+    this.filtro1 = document.getElementById('filtro1');
+    this.filtro2 = document.getElementById('filtro2');
+    this.filtro3 = document.getElementById('filtro3');
     this.barcodeInput = document.getElementById('barcodeInput');
     
     // Elementos de la tabla
@@ -28,6 +30,7 @@ class PrintManager {
     this.printBtn = document.getElementById('printBtn');
     
     // Elementos de etiqueta personalizada
+    this.etLamdaBtn = document.getElementById('etLamdaBtn');
     this.textoPrincipalInput = document.getElementById('textoPrincipal');
     this.textoSecundarioInput = document.getElementById('textoSecundario');
     this.textoAdicionalInput = document.getElementById('textoAdicional');
@@ -40,13 +43,20 @@ class PrintManager {
   }
 
   setupEventListeners() {
-    // Eventos de búsqueda
-    this.searchInput.addEventListener('input', () => this.filtrarArticulos());
-    this.barcodeInput.addEventListener('change', () => this.manejarEscaneo());
+    // Eventos de filtros de texto
+    this.filtro1.addEventListener('input', () => this.manejarFiltro1());
+    this.filtro2.addEventListener('input', () => this.manejarFiltro2());
+    this.filtro3.addEventListener('input', () => this.manejarFiltro3());
+    
+    // Evento de código de barras
+    this.barcodeInput.addEventListener('input', () => this.manejarEscaneo());
     
     // Eventos de impresión
     this.printBtn.addEventListener('click', () => this.imprimir());
     this.printBtnPersonalizado.addEventListener('click', () => this.imprimirEtiquetaPersonalizada());
+    
+    // Evento de plantilla ET-LAMDA
+    this.etLamdaBtn.addEventListener('click', () => this.aplicarPlantillaLamda());
     
     // Evento de fechas
     this.incluirFechasCheck.addEventListener('change', () => {
@@ -86,13 +96,70 @@ class PrintManager {
     });
   }
 
-  filtrarArticulos() {
-    const texto = this.searchInput.value.toLowerCase();
-    const filtrados = this.articulos.filter(art =>
-      art.numero.toLowerCase().includes(texto) ||
-      art.nombre.toLowerCase().includes(texto)
+  // Funciones de filtrado
+  filtrarArticulos(texto, listaArticulos) {
+    return listaArticulos.filter(art =>
+      art.numero.toLowerCase().includes(texto.toLowerCase()) ||
+      art.nombre.toLowerCase().includes(texto.toLowerCase())
     );
-    this.mostrarArticulos(filtrados);
+  }
+
+  manejarFiltro1() {
+    // Resetear filtros 2 y 3
+    this.filtro2.value = '';
+    this.filtro3.value = '';
+    this.filtro2.disabled = true;
+    this.filtro3.disabled = true;
+    
+    // Resetear código de barras
+    this.barcodeInput.value = '';
+    
+    const texto = this.filtro1.value;
+    if (texto) {
+      const filtrados = this.filtrarArticulos(texto, this.articulos);
+      this.mostrarArticulos(filtrados);
+      // Habilitar filtro2 solo si hay resultados
+      this.filtro2.disabled = filtrados.length === 0;
+    } else {
+      this.mostrarArticulos(this.articulos);
+    }
+  }
+
+  manejarFiltro2() {
+    // Resetear filtro 3
+    this.filtro3.value = '';
+    this.filtro3.disabled = true;
+    
+    const texto1 = this.filtro1.value;
+    const texto2 = this.filtro2.value;
+    
+    if (texto2) {
+      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
+      const segundoFiltro = this.filtrarArticulos(texto2, primerFiltro);
+      this.mostrarArticulos(segundoFiltro);
+      // Habilitar filtro3 solo si hay resultados
+      this.filtro3.disabled = segundoFiltro.length === 0;
+    } else {
+      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
+      this.mostrarArticulos(primerFiltro);
+    }
+  }
+
+  manejarFiltro3() {
+    const texto1 = this.filtro1.value;
+    const texto2 = this.filtro2.value;
+    const texto3 = this.filtro3.value;
+    
+    if (texto3) {
+      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
+      const segundoFiltro = this.filtrarArticulos(texto2, primerFiltro);
+      const tercerFiltro = this.filtrarArticulos(texto3, segundoFiltro);
+      this.mostrarArticulos(tercerFiltro);
+    } else {
+      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
+      const segundoFiltro = this.filtrarArticulos(texto2, primerFiltro);
+      this.mostrarArticulos(segundoFiltro);
+    }
   }
 
   seleccionarArticulo(art) {
@@ -102,8 +169,18 @@ class PrintManager {
   }
 
   manejarEscaneo() {
+    // Resetear filtros de texto
+    this.filtro1.value = '';
+    this.filtro2.value = '';
+    this.filtro3.value = '';
+    this.filtro2.disabled = true;
+    this.filtro3.disabled = true;
+
     const codigo = this.barcodeInput.value.trim();
-    if (!codigo) return;
+    if (!codigo) {
+      this.mostrarArticulos(this.articulos);
+      return;
+    }
     
     const encontrado = this.articulos.find(art => art.codigo_barras === codigo);
     if (encontrado) {
@@ -179,14 +256,30 @@ class PrintManager {
       
       const data = await res.json();
       if (res.ok) {
-        alert(data.message);
-        modal.close();
+        // Mostrar mensaje de éxito
+        const successMessage = document.createElement('div');
+        successMessage.className = 'success-message';
+        successMessage.textContent = data.message;
+        document.body.appendChild(successMessage);
+        
+        // Cerrar mensaje y modal después de 2 segundos
+        setTimeout(() => {
+          successMessage.remove();
+          modal.close();
+        }, 2000);
       } else {
         alert('Error al imprimir: ' + data.error);
       }
     } catch (error) {
       alert('Error al imprimir: ' + error.message);
     }
+  }
+
+  // Función para aplicar la plantilla LAMDA
+  aplicarPlantillaLamda() {
+    this.textoPrincipalInput.value = 'LAMDA';
+    this.textoSecundarioInput.value = '221-6615746';
+    this.textoAdicionalInput.value = '';
   }
 
   async imprimirEtiquetaPersonalizada() {

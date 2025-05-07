@@ -42,24 +42,24 @@ const generarParEtiquetas = (datos) => {
   let lineaFechas = '';
   if (fechas) {
     lineaFechas = `\n^CF0,20
-^FO15,70^FDENV: ${fechas.elaboracion}  VTO: ${fechas.vencimiento}^FS
-^FO435,70^FDENV: ${fechas.elaboracion}  VTO: ${fechas.vencimiento}^FS`;
+^FO23,70^FDENV: ${fechas.elaboracion}  VTO: ${fechas.vencimiento}^FS
+^FO443,70^FDENV: ${fechas.elaboracion}  VTO: ${fechas.vencimiento}^FS`;
   }
 
   const etiqueta1 = `${fuenteDescripcion}
-^FO15,10^FD${nombre}^FS
+^FO23,10^FD${nombre}^FS
 ^CF0,20
-^FO15,45^FD${numero}^FS
+^FO23,45^FD${numero}^FS
 ^BY2,2,40
-^FO15,90^BCN,${alturaCodigoBarras},Y,N,N
+^FO23,90^BCN,${alturaCodigoBarras},Y,N,N
 ^FD${codigo_barras}^FS`;
 
   const etiqueta2 = `${fuenteDescripcion}
-^FO435,10^FD${nombre}^FS
+^FO443,10^FD${nombre}^FS
 ^CF0,20
-^FO435,45^FD${numero}^FS
+^FO443,45^FD${numero}^FS
 ^BY2,2,40
-^FO435,90^BCN,${alturaCodigoBarras},Y,N,N
+^FO443,90^BCN,${alturaCodigoBarras},Y,N,N
 ^FD${codigo_barras}^FS`;
 
   return `^XA

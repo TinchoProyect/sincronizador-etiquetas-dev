@@ -24,13 +24,34 @@
       <!-- Pestaña de Etiquetas Normales -->
       <div id="etiquetas-normales" class="tab-content active">
         <div class="search-container">
-          <div class="search-field">
-            <label for="search">Buscar artículo:</label>
-            <input type="text" id="search" placeholder="Buscar por número o nombre..." />
-          </div>
-          <div class="search-field">
-            <label for="barcodeInput">Escanear código de barras:</label>
-            <input type="text" id="barcodeInput" placeholder="Escanear código de barras" />
+          <div class="filters-row">
+            <!-- Filtros de texto encadenados -->
+            <div class="text-filters">
+              <div class="search-field">
+                <label for="filtro1">Filtro 1</label>
+                <input type="text" id="filtro1" placeholder="Buscar..." />
+              </div>
+              <div class="search-field">
+                <label for="filtro2">Filtro 2</label>
+                <input type="text" id="filtro2" placeholder="Refinar" disabled />
+              </div>
+              <div class="search-field">
+                <label for="filtro3">Filtro 3</label>
+                <input type="text" id="filtro3" placeholder="Más" disabled />
+              </div>
+            </div>
+            
+            <!-- Separador vertical -->
+            <div class="separator"></div>
+            
+            <!-- Búsqueda por código de barras -->
+            <div class="barcode-field">
+              <label for="barcodeInput">
+                <span class="barcode-icon">📷</span>
+                <span>Escáner</span>
+              </label>
+              <input type="text" id="barcodeInput" placeholder="Código de barras" />
+            </div>
           </div>
         </div>
 
@@ -53,6 +74,9 @@
       <!-- Pestaña de Etiqueta Personalizada -->
       <div id="etiqueta-personalizada" class="tab-content">
         <div class="custom-label-form">
+          <div class="template-actions">
+            <button id="etLamdaBtn" class="template-button">ET-LAMDA</button>
+          </div>
           <div class="form-group">
             <label for="textoPrincipal">Texto Principal:</label>
             <input type="text" id="textoPrincipal" placeholder="Ej: LAMDA" />
