@@ -21,7 +21,11 @@ try {
   process.exit(1);
 }
 
-const nombreArchivo = path.join('app-etiquetas', 'etiqueta.zpl');
+const tempDir = path.join('app-etiquetas', 'temp');
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir);
+}
+const nombreArchivo = path.join('app-etiquetas', 'temp', 'etiqueta.zpl');
 const nombreImpresora = 'Zebra';
 const cantidadPar = cantidad % 2 === 0 ? cantidad : cantidad + 1;
 

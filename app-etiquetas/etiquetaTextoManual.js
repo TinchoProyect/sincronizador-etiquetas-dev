@@ -68,7 +68,11 @@ for (let i = 0; i < paresDeEtiquetas; i++) {
 }
 
 // Escribir archivo ZPL
-const nombreArchivo = path.join('app-etiquetas', 'etiqueta_texto.zpl');
+const tempDir = path.join('app-etiquetas', 'temp');
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir);
+}
+const nombreArchivo = path.join('app-etiquetas', 'temp', 'etiqueta_texto.zpl');
 fs.writeFileSync(nombreArchivo, contenido);
 
 // Enviar a la impresora
