@@ -1,19 +1,48 @@
-# Dependencias de Node
+# -----------------------
+# ⛔ Ignorar dependencias
+# -----------------------
 node_modules/
-app-etiquetas/node_modules/
+*/node_modules/
 
-# Archivos de lock
-package-lock.json
-app-etiquetas/package-lock.json
-
-# Archivos temporales
+# -----------------------
+# ⛔ Archivos temporales
+# -----------------------
 *.log
-*.bs
-*.bs.js
+*.tmp
+*.bak
+*.backup
+*~
+*.zpl
+temp/
+*/temp/
+temp-*.json
+logs/
 
-# Configuración local de VSCode
-.vscode/
-
-# Archivos del sistema
-Thumbs.db
+# -----------------------
+# ⛔ Archivos del sistema
+# -----------------------
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# -----------------------
+# ⛔ Configuraciones de IDE
+# -----------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# -----------------------
+# ⛔ Archivos fuera del código fuente
+# -----------------------
+/sincronizar-etiquetas.bat
+/*.json
+!package.json
+!package-lock.json
+
+# -----------------------
+# ✅ Incluir solo src/
+# -----------------------
+!/src/
+!/src/**

@@ -1,17 +1,23 @@
 {
   "name": "sincronizador-etiquetas",
   "version": "1.0.0",
+  "description": "Sistema de sincronización e impresión de etiquetas",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "cd app-etiquetas && npm start"
+    "start": "node src/app-etiquetas/server.js",
+    "dev": "cd src/app-etiquetas && vite",
+    "sync": "node src/actualizaArticulos/syncEtiquetas.js",
+    "print": "node src/scripts/imprimirEtiqueta.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.15.6"
+  },
+  "devDependencies": {
+    "vite": "^4.0.0"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "node-fetch": "^3.3.2",
-    "pg": "^8.15.6"
-  }
+  "license": "ISC"
 }

@@ -74,7 +74,7 @@ class PrintManager {
 
   async cargarArticulos() {
     try {
-      const res = await fetch('/api/articulos');
+      const res = await fetch('../api/articulos');
       this.articulos = await res.json();
       this.mostrarArticulos(this.articulos);
     } catch (error) {
@@ -245,7 +245,7 @@ class PrintManager {
     }
 
     try {
-      const res = await fetch('/api/imprimir', {
+      const res = await fetch('../api/imprimir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -298,7 +298,7 @@ class PrintManager {
     const cantidad = parseInt(this.cantidadPersonalizadaInput.value, 10);
 
     try {
-      const res = await fetch('/api/imprimir-personalizada', {
+      const res = await fetch('../api/imprimir-personalizada', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ datos, cantidad }),
