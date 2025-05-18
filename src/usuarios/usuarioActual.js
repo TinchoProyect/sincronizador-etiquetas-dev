@@ -10,11 +10,11 @@ async function usuarioActual(req, res) {
     );
 
     const permisos = await pool.query(
-      `SELECT DISTINCT p.nombre FROM permisos p
-       LEFT JOIN usuarios_permisos up ON up.permiso_id = p.id AND up.usuario_id = $1 AND up.permitido = true
-       LEFT JOIN roles_permisos rp ON rp.permiso_id = p.id
-       LEFT JOIN usuarios u ON u.id = $1
-       WHERE up.permitido = true OR rp.rol_id = u.rol_id`,
+      `SELECT DISTINCT p.nombre 
+       FROM permisos p
+       INNER JOIN roles_permisos rp ON rp.permiso_id = p.id
+       INNER JOIN usuarios u ON u.rol_id = rp.rol_id
+       WHERE u.id = $1`,
       [userId]
     );
 
