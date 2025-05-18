@@ -78,11 +78,10 @@ async function cargarPermisosPorRol(rolId) {
       fila.innerHTML = `
         <td>${p.nombre}</td>
         <td>${p.descripcion || ''}</td>
-        <td>${estaAsignado ? '✅' : '—'}</td>
+        <td class="asignado-toggle" onclick="togglePermiso(${rolId}, ${p.id}, ${!estaAsignado})">${estaAsignado ? '✅' : '—'}</td>
         <td>
-          <button onclick="togglePermiso(${rolId}, ${p.id}, ${!estaAsignado})">
-            ${estaAsignado ? 'Quitar' : 'Asignar'}
-          </button>
+          <button type="button" class="btn-accion" onclick="abrirModalEditar(${p.id}, '${p.nombre}', '${p.descripcion || ''}')">✏️</button>
+          <button type="button" class="btn-accion" onclick="eliminarPermiso(${p.id})">🗑</button>
         </td>
       `;
 
@@ -111,6 +110,68 @@ async function togglePermiso(rolId, permisoId, permitir) {
     }
   } catch (error) {
     console.error('Error al actualizar permiso:', error);
+  }
+}
+
+// Funciones para el modal de edición
+function abrirModalEditar(id, nombre, descripcion) {
+  document.getElementById('editar_id').value = id;
+  document.getElementById('editar_nombre').value = nombre;
+  document.getElementById('editar_descripcion').value = descripcion || '';
+  document.getElementById('modal-editar-permiso').classList.add('active');
+}
+
+function cerrarModal() {
+  document.getElementById('modal-editar-permiso').classList.remove('active');
+}
+
+// Editar permiso
+document.getElementById('form-editar-permiso').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.getElementById('editar_id').value;
+  const nombre = document.getElementById('editar_nombre').value;
+  const descripcion = document.getElementById('editar_descripcion').value;
+
+  try {
+    const res = await fetch(`${API_BASE}/permisos/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, descripcion })
+    });
+
+    if (res.ok) {
+      cerrarModal();
+      const rolId = document.getElementById('rol_select').value;
+      cargarPermisosPorRol(rolId);
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Error al actualizar permiso');
+    }
+  } catch (error) {
+    console.error('Error al actualizar permiso:', error);
+  }
+});
+
+// Eliminar permiso
+async function eliminarPermiso(id) {
+  if (!confirm('¿Está seguro de que desea eliminar este permiso?')) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/permisos/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (res.ok) {
+      const rolId = document.getElementById('rol_select').value;
+      cargarPermisosPorRol(rolId);
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Error al eliminar permiso');
+    }
+  } catch (error) {
+    console.error('Error al eliminar permiso:', error);
   }
 }
 

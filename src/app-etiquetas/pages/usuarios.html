@@ -121,14 +121,32 @@
         <div class="dropdown-menu">
           <button class="dropdown-toggle">⚙️ Gestionar <span class="caret">▼</span></button>
           <div class="dropdown-content">
-            <a href="roles.html" target="_blank">🔧 Gestionar roles</a>
-            <a href="permisos.html" target="_blank">🔑 Gestionar permisos</a>
+            <a href="roles.html">🔧 Gestionar roles</a>
+            <a href="permisos.html">🔑 Gestionar permisos</a>
           </div>
         </div>
       </div>
     </header>
 
     <main>
+      <section class="table-section">
+        <h2>Usuarios existentes</h2>
+        <table class="tabla-usuarios">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre completo</th>
+              <th>Usuario</th>
+              <th>Rol</th>
+              <th>Activo</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-usuarios">
+            <!-- Se carga dinámicamente -->
+          </tbody>
+        </table>
+      </section>
+
       <section class="form-section">
         <h2>Nuevo Usuario</h2>
         <form id="form-nuevo-usuario">
@@ -153,25 +171,62 @@
           <button type="submit">Crear Usuario</button>
         </form>
       </section>
-
-      <section class="table-section">
-        <h2>Usuarios existentes</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Nombre completo</th>
-              <th>Usuario</th>
-              <th>Rol</th>
-              <th>Activo</th>
-            </tr>
-          </thead>
-          <tbody id="tabla-usuarios">
-            <!-- Se carga dinámicamente -->
-          </tbody>
-        </table>
-      </section>
     </main>
+  </div>
+
+  <!-- Modal de edición -->
+  <div class="modal-editar-usuario" id="modal-editar-usuario">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Editar Usuario</h2>
+        <button type="button" class="modal-close" onclick="cerrarModal()">&times;</button>
+      </div>
+      
+      <form id="form-editar-usuario">
+        <input type="hidden" id="editar_id">
+        
+        <div class="form-group">
+          <label for="editar_nombre_completo">Nombre completo:</label>
+          <input type="text" id="editar_nombre_completo" required>
+        </div>
+
+        <div class="form-group">
+          <label for="editar_usuario">Nombre de usuario:</label>
+          <input type="text" id="editar_usuario" required>
+        </div>
+
+        <div class="form-group password-group">
+          <label for="editar_contraseña">Contraseña: (dejar en blanco para mantener la actual)</label>
+          <input type="password" id="editar_contraseña" minlength="6">
+          <button type="button" class="password-toggle" onclick="togglePassword()">👁️</button>
+        </div>
+
+        <div class="form-group">
+          <label for="editar_rol_id">Rol:</label>
+          <select id="editar_rol_id" required>
+            <option value="">Seleccione un rol</option>
+            <!-- Se carga dinámicamente -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="editar_comentario">Comentario:</label>
+          <input type="text" id="editar_comentario">
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="editar_activo">
+            Usuario activo
+          </label>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancelar" onclick="cerrarModal()">Cancelar</button>
+          <button type="submit" class="btn-guardar">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="../js/usuarios.js"></script>
