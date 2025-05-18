@@ -1,5 +1,25 @@
 const API_BASE = '/api';
 
+// Manejo del menú desplegable
+document.addEventListener('DOMContentLoaded', () => {
+  const dropdownToggle = document.querySelector('.dropdown-toggle');
+  const dropdownMenu = document.querySelector('.dropdown-menu');
+
+  // Cerrar el menú al hacer clic fuera
+  document.addEventListener('click', (e) => {
+    if (!dropdownMenu.contains(e.target)) {
+      dropdownMenu.classList.remove('active');
+    }
+  });
+
+  // Toggle del menú
+  dropdownToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdownMenu.classList.toggle('active');
+  });
+});
+
+
 // Cargar roles en el select
 async function cargarRoles() {
   try {
