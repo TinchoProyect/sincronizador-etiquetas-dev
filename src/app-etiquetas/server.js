@@ -6,6 +6,9 @@ const fs = require('fs');
 const app = express();
 const port = 3000;
 
+// 🔐 Importar rutas del sistema de usuarios
+const rutasUsuarios = require('../usuarios/rutas');
+
 // Middleware para registrar todas las solicitudes
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
@@ -49,7 +52,7 @@ pool.query('SELECT NOW()', (err, res) => {
   }
 });
 
-// Configurar rutas API
+// Configurar rutas API existentes
 const router = express.Router();
 
 router.get('/articulos', async (req, res) => {
@@ -71,17 +74,13 @@ router.post('/imprimir', (req, res) => {
     return res.status(400).json({ error: 'Faltan datos para imprimir' });
   }
 
-  // Ejecutar script imprimirEtiqueta.js con parámetros
   const scriptPath = path.resolve(__dirname, '../scripts/imprimirEtiqueta.js');
-  
-  // Guardar datos en temp-data.json dentro del directorio temporal
   const tempDir = path.join(__dirname, 'temp');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
   const tempDataPath = path.join(tempDir, 'temp-data.json');
   fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
-  
   const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidad}`;
 
   exec(command, (error, stdout, stderr) => {
@@ -101,17 +100,13 @@ router.post('/imprimir-personalizada', (req, res) => {
     return res.status(400).json({ error: 'Faltan datos para imprimir' });
   }
 
-  // Ejecutar script etiquetaTextoManual.js con parámetros
   const scriptPath = path.resolve(__dirname, '../scripts/etiquetaTextoManual.js');
-  
-  // Guardar datos en temp-texto.json dentro del directorio temporal
   const tempDir = path.join(__dirname, 'temp');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
   const tempDataPath = path.join(tempDir, 'temp-texto.json');
   fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
-  
   const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidad}`;
 
   exec(command, (error, stdout, stderr) => {
@@ -124,8 +119,9 @@ router.post('/imprimir-personalizada', (req, res) => {
   });
 });
 
-// Montar las rutas API bajo /api
+// Montar las rutas API
 app.use('/api', router);
+app.use('/api', rutasUsuarios); // 🟩 NUEVAS rutas de usuarios
 
 // Middleware para manejar errores 404
 app.use((req, res, next) => {

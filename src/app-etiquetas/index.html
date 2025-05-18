@@ -5,11 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Gestiones Lamda</title>
   <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .admin-access {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+    }
+
+    .admin-access a {
+      font-size: 0.9em;
+      text-decoration: none;
+      color: var(--primary-color);
+      background-color: transparent;
+      border: 1px solid var(--primary-color);
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: background-color 0.3s ease;
+    }
+
+    .admin-access a:hover {
+      background-color: var(--primary-color);
+      color: white;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
-    <header>
+    <header style="position: relative;">
       <h1>Gestiones Lamda</h1>
+      <!-- 🔐 Acceso discreto al panel de administración -->
+      <div class="admin-access">
+        <a href="pages/usuarios.html">👤 Administración</a>
+      </div>
     </header>
 
     <nav class="main-menu">
@@ -17,7 +44,6 @@
         <span class="icon">🏷️</span>
         Impresión de etiquetas
       </a>
-      <!-- Aquí se pueden agregar más opciones de menú en el futuro -->
     </nav>
 
     <main>

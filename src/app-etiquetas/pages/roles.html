@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Administrar Roles</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <style>
+    .form-section, .table-section {
+      background-color: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 40px;
+    }
+
+    .form-section h2,
+    .table-section h2 {
+      color: var(--primary-color);
+      margin-bottom: 20px;
+    }
+
+    form label {
+      display: block;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+
+    form input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+    }
+
+    form button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: var(--secondary-color);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+
+    form button:hover {
+      background-color: #388E3C;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table thead {
+      background-color: var(--primary-color);
+      color: white;
+    }
+
+    table th, table td {
+      padding: 12px;
+      border: 1px solid var(--border-color);
+      text-align: left;
+    }
+
+    .volver {
+      position: absolute;
+      top: 20px;
+      left: 30px;
+    }
+
+    .volver a {
+      text-decoration: none;
+      font-size: 0.9em;
+      color: var(--primary-color);
+      border: 1px solid var(--primary-color);
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: background-color 0.3s ease;
+    }
+
+    .volver a:hover {
+      background-color: var(--primary-color);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header style="position: relative;">
+      <h1>Administración de Roles</h1>
+      <div class="volver">
+        <a href="../index.html">← Volver al inicio</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="form-section">
+        <h2>Nuevo Rol</h2>
+        <form id="form-nuevo-rol">
+          <label>Nombre del rol:
+            <input type="text" id="nombre" required />
+          </label>
+
+          <label>Descripción:
+            <input type="text" id="descripcion" />
+          </label>
+
+          <button type="submit">Crear Rol</button>
+        </form>
+      </section>
+
+      <section class="table-section">
+        <h2>Roles existentes</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>Descripción</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-roles">
+            <!-- Se carga dinámicamente -->
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <script src="../js/roles.js"></script>
+</body>
+</html>
