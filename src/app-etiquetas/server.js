@@ -19,10 +19,13 @@ app.use(express.json());
 
 // Configurar el middleware para servir archivos estáticos
 const staticPath = path.join(__dirname);
+const produccionPath = path.join(__dirname, '..', 'produccion');
 console.log('Serving static files from:', staticPath);
+console.log('Serving produccion files from:', produccionPath);
 
 // Servir archivos estáticos desde la raíz del proyecto
 app.use(express.static(staticPath));
+app.use('/produccion', express.static(produccionPath));
 
 // Servir archivos desde subdirectorios
 app.use('/css', express.static(path.join(staticPath, 'css')));

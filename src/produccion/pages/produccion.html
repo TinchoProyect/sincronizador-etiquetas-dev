@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Producción - Gestiones Lamda</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .lista-colaboradores {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .colaborador-card {
+            background-color: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        
+        .colaborador-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-color: var(--primary-color);
+        }
+
+        .colaborador-icon {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+        }
+
+        .colaborador-nombre {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        .mensaje-info {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+
+        .mensaje-error {
+            text-align: center;
+            color: #dc3545;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Producción - Abrir Instancia de Producción</h1>
+            <a href="/" class="back-button">← Volver al inicio</a>
+        </header>
+
+        <main>
+            <div class="welcome-section">
+                <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
+                <div id="lista-colaboradores" class="lista-colaboradores">
+                    <!-- Los colaboradores se cargarán dinámicamente aquí -->
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Gestiones Lamda</p>
+        </footer>
+    </div>
+
+    <script src="/produccion/js/produccion.js"></script>
+</body>
+</html>

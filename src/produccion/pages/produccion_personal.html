@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Espacio de Trabajo - Producción</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .colaborador-header {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .colaborador-icon {
+            font-size: 2em;
+            color: var(--primary-color);
+        }
+
+        .colaborador-info {
+            flex-grow: 1;
+        }
+
+        .colaborador-nombre {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin: 0;
+            color: var(--text-color);
+        }
+
+        .colaborador-subtitulo {
+            color: #666;
+            margin: 5px 0 0 0;
+            font-size: 0.9em;
+        }
+
+        .workspace-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Espacio de Trabajo - Producción</h1>
+        </header>
+
+        <main>
+            <div class="colaborador-header">
+                <span class="colaborador-icon">👤</span>
+                <div class="colaborador-info">
+                    <p class="colaborador-nombre" id="nombre-colaborador">Cargando...</p>
+                    <p class="colaborador-subtitulo">Espacio de trabajo personal</p>
+                </div>
+            </div>
+
+            <div class="workspace-content">
+                <h2>Área de Trabajo</h2>
+                <p>Esta sección está en desarrollo.</p>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Gestiones Lamda</p>
+        </footer>
+    </div>
+
+    <script>
+        // Actualizar el título de la página con el nombre del colaborador
+        try {
+            const colaboradorData = localStorage.getItem('colaboradorActivo');
+            if (colaboradorData) {
+                const colaborador = JSON.parse(colaboradorData);
+                document.title = `${colaborador.nombre} - Espacio de trabajo`;
+            }
+        } catch (error) {
+            console.error('Error al actualizar el título:', error);
+        }
+    </script>
+    <script src="/produccion/js/produccion_personal.js"></script>
+</body>
+</html>

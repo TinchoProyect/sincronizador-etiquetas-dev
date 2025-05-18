@@ -34,6 +34,28 @@ router.get('/usuarios/:id', async (req, res) => {
   }
 });
 
+// --- OBTENER USUARIOS CON PERMISO ESPECÍFICO ---
+router.get('/usuarios/con-permiso/:permiso', async (req, res) => {
+  const nombrePermiso = req.params.permiso;
+  
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT u.id, u.nombre_completo, u.usuario, u.activo
+      FROM usuarios u
+      INNER JOIN roles r ON u.rol_id = r.id
+      INNER JOIN roles_permisos rp ON r.id = rp.rol_id
+      INNER JOIN permisos p ON rp.permiso_id = p.id
+      WHERE p.nombre = $1 AND u.activo = true
+      ORDER BY u.nombre_completo
+    `, [nombrePermiso]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener usuarios con permiso:', error);
+    res.status(500).json({ error: 'Error interno al obtener usuarios con permiso' });
+  }
+});
+
 // --- LISTAR USUARIOS ---
 router.get('/usuarios', async (req, res) => {
   try {
