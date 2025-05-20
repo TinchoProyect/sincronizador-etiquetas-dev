@@ -45,6 +45,163 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+
+        .workspace-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn-secondary {
+            background-color: var(--secondary-color, #6c757d);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--secondary-color-dark, #5a6268);
+        }
+
+        .error-message {
+            background-color: #ff5252;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .carro-info {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .carro-info p {
+            margin: 0;
+            color: var(--text-color);
+            font-size: 1.1em;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Estilos del modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            position: relative;
+            background-color: white;
+            margin: 2% auto;
+            padding: 20px;
+            width: 90%;
+            max-width: 1200px;
+            border-radius: 8px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .close-modal {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        /* Estilos de los filtros */
+        .filtros-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filtro-grupo {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .filtro-grupo label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+        }
+
+        .filtro-grupo input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        /* Estilos de la tabla */
+        .tabla-articulos {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .tabla-articulos th,
+        .tabla-articulos td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .tabla-articulos th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .tabla-articulos tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .btn-agregar {
+            padding: 6px 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .btn-agregar:hover {
+            background-color: var(--primary-color-dark);
+        }
+
+        /* Estilos para el input de cantidad */
+        .cantidad-input {
+            width: 80px;
+            padding: 4px;
+            margin-right: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        /* Mensaje de éxito */
+        .success-message {
+            background-color: #28a745;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            animation: fadeIn 0.3s ease;
+        }
     </style>
 </head>
 <body>
@@ -64,13 +221,62 @@
 
             <div class="workspace-content">
                 <h2>Área de Trabajo</h2>
-                <p>Esta sección está en desarrollo.</p>
+                <div class="workspace-actions">
+                    <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
+                    <button id="agregar-articulo" class="btn btn-secondary">Agregar artículo al carro</button>
+                </div>
+                <div id="carro-actual" class="carro-info">
+                    <p>No hay carro activo</p>
+                </div>
             </div>
         </main>
 
         <footer>
             <p>&copy; 2024 Gestiones Lamda</p>
         </footer>
+    </div>
+
+    <!-- Modal de selección de artículos -->
+    <div id="modal-articulos" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Seleccionar Artículo</h2>
+            
+            <!-- Filtros -->
+            <div class="filtros-container">
+                <div class="filtro-grupo">
+                    <label for="codigo-barras">Código de Barras:</label>
+                    <input type="text" id="codigo-barras" placeholder="Escanear código...">
+                </div>
+                <div class="filtro-grupo">
+                    <label for="filtro1">Filtro 1:</label>
+                    <input type="text" id="filtro1" placeholder="Buscar...">
+                </div>
+                <div class="filtro-grupo">
+                    <label for="filtro2">Filtro 2:</label>
+                    <input type="text" id="filtro2" placeholder="Refinar búsqueda...">
+                </div>
+                <div class="filtro-grupo">
+                    <label for="filtro3">Filtro 3:</label>
+                    <input type="text" id="filtro3" placeholder="Refinar más...">
+                </div>
+            </div>
+
+            <!-- Tabla de artículos -->
+            <table class="tabla-articulos">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Descripción</th>
+                        <th>Código de Barras</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-articulos-body">
+                    <!-- Los artículos se cargarán dinámicamente aquí -->
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script>

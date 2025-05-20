@@ -1,3 +1,15 @@
+// Función para actualizar la información visual del carro activo
+function actualizarEstadoCarro() {
+    const carroId = localStorage.getItem('carroActivo');
+    const carroInfo = document.getElementById('carro-actual');
+    
+    if (carroId) {
+        carroInfo.innerHTML = `<p>Carro activo (ID: ${carroId})</p>`;
+    } else {
+        carroInfo.innerHTML = '<p>No hay carro activo</p>';
+    }
+}
+
 // Función para cargar y mostrar los datos del colaborador
 function cargarDatosColaborador() {
     try {
@@ -37,5 +49,342 @@ function cargarDatosColaborador() {
     }
 }
 
+// Función para crear un nuevo carro de producción
+async function crearNuevoCarro() {
+    try {
+        // Verificar si ya existe un carro activo
+        const carroActivo = localStorage.getItem('carroActivo');
+        if (carroActivo) {
+            throw new Error(`Ya hay un carro activo (ID: ${carroActivo})`);
+        }
+
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            throw new Error('No hay colaborador seleccionado');
+        }
+
+        const colaborador = JSON.parse(colaboradorData);
+        const response = await fetch('http://localhost:3002/api/produccion/carro', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                usuarioId: colaborador.id,
+                enAuditoria: true
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al crear el carro de producción');
+        }
+
+        const data = await response.json();
+        console.log('Carro de producción creado:', data.id);
+        
+        // Guardar el ID del carro en localStorage
+        localStorage.setItem('carroActivo', data.id);
+        
+        // Actualizar la información visual del carro
+        actualizarEstadoCarro();
+
+    } catch (error) {
+        console.error('Error:', error);
+        // Mostrar error visual
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = error.message;
+        document.querySelector('.workspace-content').appendChild(errorDiv);
+        
+        // Remover el mensaje de error después de 3 segundos
+        setTimeout(() => {
+            errorDiv.remove();
+        }, 3000);
+    }
+}
+
+
+// Variables globales para los artículos y filtros
+let todosLosArticulos = [];
+let articulosFiltrados = [];
+
+// Función para abrir el modal de artículos
+async function abrirModalArticulos() {
+    try {
+        const modal = document.getElementById('modal-articulos');
+        modal.style.display = 'block';
+
+        // Cargar artículos si aún no se han cargado
+        if (todosLosArticulos.length === 0) {
+            const response = await fetch('http://localhost:3002/api/produccion/articulos');
+            if (!response.ok) {
+                throw new Error('Error al obtener artículos');
+            }
+            todosLosArticulos = await response.json();
+            articulosFiltrados = [...todosLosArticulos];
+            actualizarTablaArticulos(articulosFiltrados);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+    }
+}
+
+// Función para cerrar el modal
+function cerrarModalArticulos() {
+    const modal = document.getElementById('modal-articulos');
+    modal.style.display = 'none';
+    // Limpiar filtros
+    document.getElementById('filtro1').value = '';
+    document.getElementById('filtro2').value = '';
+    document.getElementById('filtro3').value = '';
+    document.getElementById('codigo-barras').value = '';
+}
+
+// Función para actualizar la tabla de artículos
+function actualizarTablaArticulos(articulos) {
+    const tbody = document.getElementById('tabla-articulos-body');
+    tbody.innerHTML = '';
+
+    articulos.forEach(articulo => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${articulo.numero}</td>
+            <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+            <td>${articulo.codigo_barras || '-'}</td>
+            <td>
+                <input type="number" class="cantidad-input" min="1" value="1">
+                <button class="btn-agregar" onclick="agregarAlCarro('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', this)">
+                    Agregar al carro
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// Función para aplicar filtros en cascada
+function aplicarFiltros(filtroIndex) {
+    const filtro1 = document.getElementById('filtro1').value.toLowerCase();
+    const filtro2 = document.getElementById('filtro2').value.toLowerCase();
+    const filtro3 = document.getElementById('filtro3').value.toLowerCase();
+
+    // Resetear filtros posteriores
+    if (filtroIndex === 1) {
+        document.getElementById('filtro2').value = '';
+        document.getElementById('filtro3').value = '';
+    } else if (filtroIndex === 2) {
+        document.getElementById('filtro3').value = '';
+    }
+
+    // Aplicar filtros en cascada
+    let resultados = todosLosArticulos;
+
+    if (filtro1) {
+        resultados = resultados.filter(art => 
+            art.nombre.toLowerCase().includes(filtro1)
+        );
+    }
+
+    if (filtro2) {
+        resultados = resultados.filter(art => 
+            art.nombre.toLowerCase().includes(filtro2)
+        );
+    }
+
+    if (filtro3) {
+        resultados = resultados.filter(art => 
+            art.nombre.toLowerCase().includes(filtro3)
+        );
+    }
+
+    articulosFiltrados = resultados;
+    actualizarTablaArticulos(resultados);
+}
+
+// Función para buscar por código de barras
+function buscarPorCodigoBarras(codigo) {
+    const articulo = todosLosArticulos.find(art => art.codigo_barras === codigo);
+    if (articulo) {
+        articulosFiltrados = [articulo];
+        actualizarTablaArticulos(articulosFiltrados);
+    }
+}
+
+// Función para mostrar mensajes de error
+function mostrarError(mensaje) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.textContent = mensaje;
+    document.querySelector('.modal-content').appendChild(errorDiv);
+    
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 3000);
+}
+
+// Función para agregar artículo al carro
+async function agregarAlCarro(articuloNumero, descripcion, btnElement) {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        if (!carroId) {
+            throw new Error('No hay un carro de producción activo');
+        }
+
+        const cantidadInput = btnElement.previousElementSibling;
+        const cantidad = parseInt(cantidadInput.value);
+        
+        if (isNaN(cantidad) || cantidad <= 0) {
+            throw new Error('La cantidad debe ser un número positivo');
+        }
+
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                articuloNumero,
+                descripcion,
+                cantidad
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al agregar el artículo al carro');
+        }
+
+        // Mostrar mensaje de éxito
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-message';
+        successDiv.textContent = 'Artículo agregado correctamente';
+        document.querySelector('.modal-content').appendChild(successDiv);
+        
+        // Remover el mensaje después de 3 segundos
+        setTimeout(() => {
+            successDiv.remove();
+        }, 3000);
+
+        // Actualizar la lista de artículos en el carro
+        await mostrarArticulosDelCarro();
+
+        // Cerrar el modal después de agregar
+        cerrarModalArticulos();
+
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+    }
+}
+
+/**
+ * Muestra los artículos agregados al carro activo en el área de trabajo
+ */
+async function mostrarArticulosDelCarro() {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        if (!carroId) {
+            document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
+            return;
+        }
+
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos`);
+        if (!response.ok) {
+            throw new Error('Error al obtener artículos del carro');
+        }
+
+        const articulos = await response.json();
+
+        let html = `
+            <h3>Artículos en el carro</h3>
+            <table border="1" cellpadding="5" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Descripción</th>
+                        <th>Código de Barras</th>
+                        <th>Cantidad cargada</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        articulos.forEach(art => {
+            html += `
+                <tr>
+                    <td>${art.numero}</td>
+                    <td>${art.descripcion}</td>
+                    <td>${art.codigo_barras || '-'}</td>
+                    <td>${art.cantidad}</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        `;
+
+        let contenedor = document.getElementById('lista-articulos');
+        if (!contenedor) {
+            contenedor = document.createElement('div');
+            contenedor.id = 'lista-articulos';
+            const areaTrabajo = document.querySelector('.workspace-content');
+            areaTrabajo.appendChild(contenedor);
+        }
+        contenedor.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error al mostrar artículos del carro:', error);
+    }
+}
+
 // Inicializar cuando se carga la página
-document.addEventListener('DOMContentLoaded', cargarDatosColaborador);
+document.addEventListener('DOMContentLoaded', () => {
+    cargarDatosColaborador();
+    
+    // Mostrar artículos del carro si hay uno activo
+    mostrarArticulosDelCarro();
+
+    // Agregar evento al botón de crear carro
+    const btnCrearCarro = document.getElementById('crear-carro');
+    if (btnCrearCarro) {
+        btnCrearCarro.addEventListener('click', async () => {
+            await crearNuevoCarro();
+            mostrarArticulosDelCarro();
+        });
+    }
+
+    // Agregar evento al botón de agregar artículo
+    const btnAgregarArticulo = document.getElementById('agregar-articulo');
+    if (btnAgregarArticulo) {
+        btnAgregarArticulo.addEventListener('click', abrirModalArticulos);
+    }
+
+    // Agregar evento al botón de cerrar modal
+    const closeModal = document.querySelector('.close-modal');
+    if (closeModal) {
+        closeModal.addEventListener('click', cerrarModalArticulos);
+    }
+
+    // Agregar eventos a los filtros
+    document.getElementById('filtro1').addEventListener('input', () => aplicarFiltros(1));
+    document.getElementById('filtro2').addEventListener('input', () => aplicarFiltros(2));
+    document.getElementById('filtro3').addEventListener('input', () => aplicarFiltros(3));
+    
+    // Agregar evento al input de código de barras
+    document.getElementById('codigo-barras').addEventListener('change', (e) => {
+        buscarPorCodigoBarras(e.target.value);
+    });
+
+    // Cerrar modal al hacer clic fuera
+    window.addEventListener('click', (e) => {
+        const modal = document.getElementById('modal-articulos');
+        if (e.target === modal) {
+            cerrarModalArticulos();
+        }
+    });
+
+    // Mostrar estado inicial del carro
+    actualizarEstadoCarro();
+});
