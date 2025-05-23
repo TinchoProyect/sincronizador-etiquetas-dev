@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { crearCarro, agregarArticulo, obtenerArticulos, obtenerArticulosDeCarro, validarPropiedadCarro, obtenerCarrosDeUsuario, eliminarCarro } = require('./carro');
+const { obtenerEstadoRecetas } = require('./recetas');
 
 /**
  * POST /api/produccion/carro
@@ -154,6 +155,31 @@ router.delete('/carro/:id', async (req, res) => {
         console.error('Error al eliminar carro:', error);
         res.status(500).json({
             error: 'Error al eliminar el carro'
+        });
+    }
+});
+
+/**
+ * POST /api/produccion/articulos/estado-recetas
+ * Obtiene el estado de recetas para una lista de artículos
+ */
+router.post('/articulos/estado-recetas', async (req, res) => {
+    try {
+        const { articulos } = req.body;
+        
+        if (!Array.isArray(articulos) || articulos.length === 0) {
+            return res.status(400).json({
+                error: 'Se requiere un array de números de artículos'
+            });
+        }
+
+        const estado = await obtenerEstadoRecetas(articulos);
+        res.json(estado);
+
+    } catch (error) {
+        console.error('Error al obtener estado de recetas:', error);
+        res.status(500).json({
+            error: 'Error al obtener el estado de las recetas'
         });
     }
 });

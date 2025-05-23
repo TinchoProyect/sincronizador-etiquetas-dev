@@ -290,6 +290,27 @@ footer {
   background-color: #1976D2;
 }
 
+/* Botones de estado receta */
+.btn-verde {
+    background-color: #4CAF50 !important;
+    color: white !important;
+    border: none !important;
+}
+
+.btn-verde:hover {
+    background-color: #45a049 !important;
+}
+
+.btn-rojo {
+    background-color: #f44336 !important;
+    color: white !important;
+    border: none !important;
+}
+
+.btn-rojo:hover {
+    background-color: #da190b !important;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .container {

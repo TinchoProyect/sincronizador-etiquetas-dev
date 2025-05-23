@@ -302,25 +302,70 @@ function cerrarModalArticulos() {
 }
 
 // Función para actualizar la tabla de artículos
-function actualizarTablaArticulos(articulos) {
+async function actualizarTablaArticulos(articulos) {
     const tbody = document.getElementById('tabla-articulos-body');
     tbody.innerHTML = '';
 
-    articulos.forEach(articulo => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${articulo.numero}</td>
-            <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
-            <td>${articulo.codigo_barras || '-'}</td>
-            <td>
-                <input type="number" class="cantidad-input" min="1" value="1">
-                <button class="btn-agregar" onclick="agregarAlCarro('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', this)">
-                    Agregar al carro
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
+    try {
+        console.log('Consultando estado de recetas para artículos:', articulos.map(art => art.numero));
+        
+        // Obtener el estado de las recetas para todos los artículos
+        const response = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                articulos: articulos.map(art => art.numero)
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al obtener estado de recetas');
+        }
+
+        const estadoRecetas = await response.json();
+        console.log('Estado de recetas recibido:', estadoRecetas);
+
+        articulos.forEach(articulo => {
+            const tr = document.createElement('tr');
+            const tieneReceta = estadoRecetas[articulo.numero];
+            
+            tr.innerHTML = `
+                <td>${articulo.numero}</td>
+                <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+                <td>${articulo.codigo_barras || '-'}</td>
+                <td>
+                    <input type="number" class="cantidad-input" min="1" value="1">
+                    <button class="btn-agregar ${tieneReceta ? 'btn-verde' : 'btn-rojo'}" 
+                            onclick="agregarAlCarro('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', this)">
+                        Agregar al carro
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+    } catch (error) {
+        console.error('Error al actualizar tabla:', error);
+        // Si hay error, mostrar los botones en rojo por defecto
+        articulos.forEach(articulo => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${articulo.numero}</td>
+                <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+                <td>${articulo.codigo_barras || '-'}</td>
+                <td>
+                    <input type="number" class="cantidad-input" min="1" value="1">
+                    <button class="btn-agregar btn-rojo" 
+                            onclick="agregarAlCarro('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', this)">
+                        Agregar al carro
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
 }
 
 // Función para aplicar filtros en cascada
