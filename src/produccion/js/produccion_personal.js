@@ -544,14 +544,12 @@ async function mostrarArticulosDelCarro() {
             </table>
         `;
 
-        let contenedor = document.getElementById('lista-articulos');
-        if (!contenedor) {
-            contenedor = document.createElement('div');
-            contenedor.id = 'lista-articulos';
-            const areaTrabajo = document.querySelector('.workspace-content');
-            areaTrabajo.appendChild(contenedor);
+        const contenedor = document.getElementById('lista-articulos');
+        if (contenedor) {
+            contenedor.innerHTML = html;
+        } else {
+            console.error('No se encontró el contenedor lista-articulos');
         }
-        contenedor.innerHTML = html;
 
     } catch (error) {
         console.error('Error al mostrar artículos del carro:', error);
