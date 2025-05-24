@@ -40,10 +40,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Agregar evento al botón de agregar artículo
-    const btnAgregarArticulo = document.getElementById('agregar-articulo');
-    if (btnAgregarArticulo) {
-        btnAgregarArticulo.addEventListener('click', abrirModalArticulos);
+    // El event listener para el botón de agregar artículo se manejará 
+    // después de que se muestre en mostrarArticulosDelCarro()
+
+    // Observar cambios en el DOM para agregar el event listener al botón cuando aparezca
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.addedNodes.length) {
+                const btnAgregarArticulo = document.getElementById('agregar-articulo');
+                if (btnAgregarArticulo && !btnAgregarArticulo.hasEventListener) {
+                    btnAgregarArticulo.addEventListener('click', abrirModalArticulos);
+                    btnAgregarArticulo.hasEventListener = true;
+                }
+            }
+        });
+    });
+
+    // Observar el contenedor de artículos para detectar cuando se agrega el botón
+    const listaArticulos = document.getElementById('lista-articulos');
+    if (listaArticulos) {
+        observer.observe(listaArticulos, { childList: true, subtree: true });
     }
 
     // Agregar evento al botón de cerrar modal

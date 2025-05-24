@@ -58,7 +58,7 @@ export async function actualizarEstadoCarro() {
             const estaActivo = carro.id.toString() === carroId;
             
             html += `
-                <tr class="${estaActivo ? 'carro-activo' : ''}">
+                <tr class="${estaActivo ? 'carro-activo' : ''}" onclick="seleccionarCarro(${carro.id})">
                     <td>${carro.id}</td>
                     <td>${fecha}</td>
                     <td>${carro.total_articulos} artículos</td>
@@ -66,10 +66,10 @@ export async function actualizarEstadoCarro() {
                     <td>
                         <div class="btn-group">
                             ${estaActivo ? 
-                                '<button class="btn-deseleccionar" onclick="deseleccionarCarro()">Deseleccionar</button>' :
-                                `<button class="btn-seleccionar" onclick="seleccionarCarro(${carro.id})">Seleccionar</button>`
+                                '<button class="btn-deseleccionar" onclick="event.stopPropagation(); deseleccionarCarro()">Deseleccionar</button>' :
+                                ''
                             }
-                            <button class="btn-eliminar" onclick="eliminarCarro(${carro.id})">Eliminar</button>
+                            <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})">Eliminar</button>
                         </div>
                     </td>
                 </tr>
@@ -261,6 +261,11 @@ export async function mostrarArticulosDelCarro() {
         const articulos = await response.json();
 
         let html = `
+            <div class="agregar-articulo-container">
+                <button id="agregar-articulo" class="btn btn-secondary">
+                    Agregar artículo al carro
+                </button>
+            </div>
             <h3>Artículos en el carro</h3>
             <table border="1" cellpadding="5" cellspacing="0">
                 <thead>
