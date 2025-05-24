@@ -194,3 +194,48 @@
     margin-top: 10px;
     animation: fadeIn 0.3s ease;
 }
+
+/* Estilos del formulario de receta */
+.form-receta {
+    padding: 20px 0;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #333;
+}
+
+.form-group input[type="text"],
+.form-group textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-group input[readonly] {
+    background-color: #f8f9fa;
+    cursor: not-allowed;
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.form-actions {
+    margin-top: 30px;
+    text-align: right;
+}
+
+.form-actions .btn {
+    padding: 10px 20px;
+    font-size: 16px;
+}

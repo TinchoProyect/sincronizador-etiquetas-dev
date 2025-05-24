@@ -173,13 +173,18 @@ export function cerrarModalReceta() {
     const modal = document.getElementById('modal-receta');
     if (modal) {
         modal.style.display = 'none';
+        // Limpiar el formulario
+        document.getElementById('articulo_numero').value = '';
+        document.getElementById('descripcion_receta').value = '';
     }
 }
 
 // Función para mostrar el modal de receta
-function mostrarModalReceta() {
+function mostrarModalReceta(articuloNumero) {
     const modal = document.getElementById('modal-receta');
     if (modal) {
+        // Establecer el número de artículo en el campo
+        document.getElementById('articulo_numero').value = articuloNumero;
         modal.style.display = 'block';
     }
 }
@@ -188,7 +193,7 @@ function mostrarModalReceta() {
 export async function agregarAlCarro(articuloNumero, descripcion, btnElement) {
     // Si el botón es rojo, mostrar el modal de receta en lugar de agregar al carro
     if (btnElement.classList.contains('btn-rojo')) {
-        mostrarModalReceta();
+        mostrarModalReceta(articuloNumero);
         return;
     }
 

@@ -89,9 +89,22 @@
     <div id="modal-receta" class="modal">
         <div class="modal-content">
             <span class="close-modal" onclick="cerrarModalReceta()">&times;</span>
-            <h2>Receta no disponible</h2>
-            <p>Este artículo no tiene una receta asociada.</p>
-            <p>Por favor, contacta al supervisor para más información.</p>
+            <h2>Nueva Receta</h2>
+            <form id="form-receta" class="form-receta">
+                <div class="form-group">
+                    <label for="articulo_numero">Número de Artículo:</label>
+                    <input type="text" id="articulo_numero" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="descripcion_receta">Descripción de la Receta:</label>
+                    <textarea id="descripcion_receta" rows="4" placeholder="Ingrese una descripción opcional..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-primary" id="btn-cargar-ingredientes">
+                        Cargar ingredientes
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
