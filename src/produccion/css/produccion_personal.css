@@ -38,6 +38,34 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* Sección de artículos */
+.seccion-articulos {
+    margin-bottom: 30px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.seccion-articulos h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+    font-size: 1.3em;
+}
+
+.agregar-articulo-container {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Sección de carros */
+.seccion-carros {
+    margin-top: 30px;
+}
+
 .workspace-actions {
     display: flex;
     gap: 10px;
@@ -70,13 +98,20 @@
     margin-top: 20px;
 }
 
-.carro-info p {
-    margin: 0;
-    color: var(--text-color);
-    font-size: 1.1em;
+/* Estilos para la tabla de carros */
+.carros-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
 }
 
-/* Nuevos estilos para las filas de carros */
+.carros-table thead th {
+    background-color: #f8f9fa;
+    padding: 12px;
+    border-bottom: 2px solid #dee2e6;
+    text-align: left;
+}
+
 .carros-table tbody tr {
     cursor: pointer;
     transition: background-color 0.2s ease;
@@ -84,6 +119,11 @@
 
 .carros-table tbody tr:hover {
     background-color: #f0f0f0;
+}
+
+.carros-table tbody td {
+    padding: 12px;
+    border-bottom: 1px solid #dee2e6;
 }
 
 .carros-table tr.carro-activo {
@@ -95,13 +135,28 @@
     background-color: #d4e9fc;
 }
 
-/* Contenedor para el botón de agregar artículo */
-.agregar-articulo-container {
-    margin: 20px 0;
-    padding: 15px;
-    background-color: #f8f9fa;
+.btn-group {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-deseleccionar,
+.btn-eliminar {
+    padding: 4px 8px;
+    border: none;
     border-radius: 4px;
-    border: 1px solid #dee2e6;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.btn-deseleccionar {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-eliminar {
+    background-color: #dc3545;
+    color: white;
 }
 
 @keyframes fadeIn {
@@ -168,7 +223,7 @@
     border-radius: 4px;
 }
 
-/* Estilos de la tabla */
+/* Estilos de la tabla de artículos */
 .tabla-articulos {
     width: 100%;
     border-collapse: collapse;

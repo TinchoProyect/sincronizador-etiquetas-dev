@@ -24,14 +24,20 @@
 
             <div class="workspace-content">
                 <h2>Área de Trabajo</h2>
-                <div class="workspace-actions">
-                    <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
-                </div>
-                <div id="carro-actual" class="carro-info">
+                
+                <!-- Sección de artículos del carro activo -->
+                <div id="lista-articulos" class="seccion-articulos">
                     <p>No hay carro activo</p>
                 </div>
-                <div id="lista-articulos">
-                    <p>No hay artículos en el carro</p>
+
+                <!-- Sección de carros disponibles -->
+                <div class="seccion-carros">
+                    <div class="workspace-actions">
+                        <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
+                    </div>
+                    <div id="carro-actual" class="carro-info">
+                        <p>No hay carro activo</p>
+                    </div>
                 </div>
             </div>
         </main>

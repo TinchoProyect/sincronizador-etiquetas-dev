@@ -24,7 +24,10 @@ export async function actualizarEstadoCarro() {
             throw new Error(errorData.error || 'Error al obtener carros del usuario');
         }
         
-        const carros = await response.json();
+        let carros = await response.json();
+        
+        // Ordenar carros por fecha (más reciente primero)
+        carros = carros.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
         
         if (carros.length === 0) {
             carroInfo.innerHTML = `
