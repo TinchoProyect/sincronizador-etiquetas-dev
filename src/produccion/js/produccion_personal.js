@@ -14,7 +14,8 @@ import {
     aplicarFiltros,
     buscarPorCodigoBarras,
     agregarAlCarro,
-    actualizarTituloPagina
+    actualizarTituloPagina,
+    cerrarModalReceta
 } from './articulos.js';
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
@@ -22,6 +23,7 @@ window.seleccionarCarro = seleccionarCarro;
 window.deseleccionarCarro = deseleccionarCarro;
 window.eliminarCarro = eliminarCarro;
 window.agregarAlCarro = agregarAlCarro;
+window.cerrarModalReceta = cerrarModalReceta;
 
 // Inicializar cuando se carga la página
 document.addEventListener('DOMContentLoaded', () => {
@@ -60,11 +62,15 @@ document.addEventListener('DOMContentLoaded', () => {
         buscarPorCodigoBarras(e.target.value);
     });
 
-    // Cerrar modal al hacer clic fuera
+    // Cerrar modales al hacer clic fuera
     window.addEventListener('click', (e) => {
-        const modal = document.getElementById('modal-articulos');
-        if (e.target === modal) {
+        const modalArticulos = document.getElementById('modal-articulos');
+        const modalReceta = document.getElementById('modal-receta');
+        
+        if (e.target === modalArticulos) {
             cerrarModalArticulos();
+        } else if (e.target === modalReceta) {
+            cerrarModalReceta();
         }
     });
 

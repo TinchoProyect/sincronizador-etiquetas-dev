@@ -168,8 +168,30 @@ export function buscarPorCodigoBarras(codigo) {
     }
 }
 
+// Función para cerrar el modal de receta
+export function cerrarModalReceta() {
+    const modal = document.getElementById('modal-receta');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Función para mostrar el modal de receta
+function mostrarModalReceta() {
+    const modal = document.getElementById('modal-receta');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
+
 // Función para agregar artículo al carro
 export async function agregarAlCarro(articuloNumero, descripcion, btnElement) {
+    // Si el botón es rojo, mostrar el modal de receta en lugar de agregar al carro
+    if (btnElement.classList.contains('btn-rojo')) {
+        mostrarModalReceta();
+        return;
+    }
+
     try {
         const carroId = localStorage.getItem('carroActivo');
         if (!carroId) {
