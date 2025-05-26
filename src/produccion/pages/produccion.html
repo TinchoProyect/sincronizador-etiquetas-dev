@@ -58,6 +58,26 @@
             color: #dc3545;
             padding: 20px;
         }
+
+        .admin-buttons {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .admin-button {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+        }
+
+        .admin-button:hover {
+            background-color: var(--primary-dark);
+        }
     </style>
 </head>
 <body>
@@ -68,6 +88,12 @@
         </header>
 
         <main>
+            <div class="admin-buttons">
+                <a href="/produccion/pages/ingredientes.html" class="admin-button">
+                    Gestionar Ingredientes
+                </a>
+            </div>
+
             <div class="welcome-section">
                 <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
                 <div id="lista-colaboradores" class="lista-colaboradores">
