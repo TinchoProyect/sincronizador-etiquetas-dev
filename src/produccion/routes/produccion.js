@@ -9,6 +9,81 @@ const {
     obtenerCarrosDeUsuario,
     eliminarCarro 
 } = require('../controllers/carro');
+const { 
+    obtenerIngredientes,
+    obtenerIngrediente,
+    crearIngrediente,
+    actualizarIngrediente,
+    eliminarIngrediente
+} = require('../controllers/ingredientes');
+
+// Rutas para ingredientes
+router.get('/ingredientes', async (req, res) => {
+    try {
+        console.log('Recibida solicitud GET /ingredientes');
+        const ingredientes = await obtenerIngredientes();
+        console.log(`Enviando respuesta con ${ingredientes.length} ingredientes`);
+        res.json(ingredientes);
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/ingredientes/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        const ingrediente = await obtenerIngrediente(id);
+        res.json(ingrediente);
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/:id:', error);
+        res.status(error.message.includes('no encontrado') ? 404 : 500)
+           .json({ error: error.message });
+    }
+});
+
+router.post('/ingredientes', async (req, res) => {
+    try {
+        const nuevoIngrediente = await crearIngrediente(req.body);
+        res.status(201).json(nuevoIngrediente);
+    } catch (error) {
+        console.error('Error en ruta POST /ingredientes:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/ingredientes/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        const ingredienteActualizado = await actualizarIngrediente(id, req.body);
+        res.json(ingredienteActualizado);
+    } catch (error) {
+        console.error('Error en ruta PUT /ingredientes/:id:', error);
+        res.status(error.message.includes('no encontrado') ? 404 : 500)
+           .json({ error: error.message });
+    }
+});
+
+router.delete('/ingredientes/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        await eliminarIngrediente(id);
+        res.json({ message: 'Ingrediente eliminado correctamente' });
+    } catch (error) {
+        console.error('Error en ruta DELETE /ingredientes/:id:', error);
+        res.status(error.message.includes('no encontrado') ? 404 : 500)
+           .json({ error: error.message });
+    }
+});
 
 // Rutas para artículos
 router.get('/articulos', async (req, res) => {
@@ -19,10 +94,7 @@ router.get('/articulos', async (req, res) => {
         res.json(articulos);
     } catch (error) {
         console.error('Error en ruta GET /articulos:', error);
-        res.status(500).json({ 
-            error: error.message,
-            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
+        res.status(500).json({ error: error.message });
     }
 });
 
