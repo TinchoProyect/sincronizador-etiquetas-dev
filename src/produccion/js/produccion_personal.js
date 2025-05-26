@@ -25,18 +25,46 @@ window.eliminarCarro = eliminarCarro;
 window.agregarAlCarro = agregarAlCarro;
 window.cerrarModalReceta = cerrarModalReceta;
 
+// Función asíncrona para inicializar el espacio de trabajo
+async function inicializarEspacioTrabajo() {
+    try {
+        actualizarTituloPagina();
+        
+        // Cargar datos del colaborador y esperar la validación del carro
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            window.location.href = '/produccion/pages/produccion.html';
+            return;
+        }
+        
+        const colaborador = JSON.parse(colaboradorData);
+        await cargarDatosColaborador(async () => {
+            await validarCarroActivo(colaborador.id);
+        });
+        
+        // Solo después de validar el carro, mostrar los artículos
+        await mostrarArticulosDelCarro();
+        
+    } catch (error) {
+        console.error('Error al inicializar espacio de trabajo:', error);
+    }
+}
+
 // Inicializar cuando se carga la página
 document.addEventListener('DOMContentLoaded', () => {
-    actualizarTituloPagina();
-    cargarDatosColaborador(validarCarroActivo);
-    mostrarArticulosDelCarro();
+    // Iniciar el espacio de trabajo de forma asíncrona
+    inicializarEspacioTrabajo();
 
     // Agregar evento al botón de crear carro
     const btnCrearCarro = document.getElementById('crear-carro');
     if (btnCrearCarro) {
         btnCrearCarro.addEventListener('click', async () => {
+            // Primero deseleccionar el carro actual
+            await deseleccionarCarro();
+            // Luego crear el nuevo carro
             await crearNuevoCarro();
-            mostrarArticulosDelCarro();
+            // Finalmente mostrar los artículos
+            await mostrarArticulosDelCarro();
         });
     }
 
