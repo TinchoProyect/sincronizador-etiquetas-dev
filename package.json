@@ -4,15 +4,16 @@
   "description": "Sistema de sincronización e impresión de etiquetas",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"node src/app-etiquetas/server.js\" \"node src/produccion/server.js\"",
+    "start": "concurrently \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\"",
     "dev": "cd src/app-etiquetas && vite",
     "sync": "node src/actualizaArticulos/syncEtiquetas.js",
     "print": "node src/scripts/imprimirEtiqueta.js",
-    "produccion": "node src/produccion/server.js"
+    "produccion": "node src/produccion/app.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "http-proxy-middleware": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
     "pg": "^8.16.0"

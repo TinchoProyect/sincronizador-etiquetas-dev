@@ -4,7 +4,8 @@ import { mostrarArticulosDelCarro } from './carro.js';
 // Estado del módulo (privado)
 const state = {
     todosLosArticulos: [],
-    articulosFiltrados: []
+    articulosFiltrados: [],
+    ingredientesCargados: [] // Array temporal para almacenar ingredientes
 };
 
 // Función para actualizar el título de la página
@@ -28,17 +29,33 @@ export async function abrirModalArticulos() {
 
         // Cargar artículos si aún no se han cargado
         if (state.todosLosArticulos.length === 0) {
+            console.log('Solicitando artículos al servidor...');
             const response = await fetch('http://localhost:3002/api/produccion/articulos');
+            
             if (!response.ok) {
-                throw new Error('Error al obtener artículos');
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Error al obtener artículos');
             }
-            state.todosLosArticulos = await response.json();
-            state.articulosFiltrados = [...state.todosLosArticulos];
+
+            const articulos = await response.json();
+            console.log(`Recibidos ${articulos.length} artículos del servidor`);
+            
+            if (articulos.length === 0) {
+                console.warn('La lista de artículos está vacía');
+                mostrarError('No se encontraron artículos disponibles');
+                return;
+            }
+
+            state.todosLosArticulos = articulos;
+            state.articulosFiltrados = [...articulos];
             actualizarTablaArticulos(state.articulosFiltrados);
         }
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error al abrir modal de artículos:', error);
         mostrarError(error.message);
+        // Cerrar el modal si hay error
+        const modal = document.getElementById('modal-articulos');
+        modal.style.display = 'none';
     }
 }
 
@@ -58,6 +75,11 @@ export async function actualizarTablaArticulos(articulos) {
     const tbody = document.getElementById('tabla-articulos-body');
     tbody.innerHTML = '';
 
+    if (!articulos || articulos.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
+        return;
+    }
+
     try {
         console.log('Consultando estado de recetas para artículos:', articulos.map(art => art.numero));
         
@@ -73,7 +95,8 @@ export async function actualizarTablaArticulos(articulos) {
         });
 
         if (!response.ok) {
-            throw new Error('Error al obtener estado de recetas');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al obtener estado de recetas');
         }
 
         const estadoRecetas = await response.json();
@@ -173,11 +196,142 @@ export function cerrarModalReceta() {
     const modal = document.getElementById('modal-receta');
     if (modal) {
         modal.style.display = 'none';
-        // Limpiar el formulario
+        // Limpiar el formulario y los ingredientes
         document.getElementById('articulo_numero').value = '';
         document.getElementById('descripcion_receta').value = '';
+        state.ingredientesCargados = [];
+        const tbody = document.querySelector('#tabla-ingredientes tbody');
+        if (tbody) tbody.innerHTML = '';
     }
 }
+
+// Función para validar los datos del ingrediente
+function validarDatosIngrediente(nombre, unidad, cantidad) {
+    if (!nombre || !unidad || !cantidad) {
+        throw new Error('Todos los campos son obligatorios');
+    }
+    
+    const cantidadNum = parseFloat(cantidad);
+    if (isNaN(cantidadNum) || cantidadNum <= 0) {
+        throw new Error('La cantidad debe ser un número mayor a 0');
+    }
+    
+    return {
+        nombre_ingrediente: nombre.trim(),
+        unidad_medida: unidad.trim(),
+        cantidad: cantidadNum
+    };
+}
+
+// Función para agregar ingrediente a la tabla
+function agregarIngredienteATabla(ingrediente) {
+    const tbody = document.querySelector('#tabla-ingredientes tbody');
+    if (!tbody) return;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${ingrediente.nombre_ingrediente}</td>
+        <td>${ingrediente.unidad_medida}</td>
+        <td>${ingrediente.cantidad}</td>
+    `;
+    tbody.appendChild(tr);
+}
+
+// Función para manejar la carga de ingredientes
+function cargarIngrediente() {
+    try {
+        // Solicitar datos al usuario
+        const nombre = prompt('Ingrese el nombre del ingrediente:');
+        if (nombre === null) return; // Usuario canceló
+
+        const unidad = prompt('Ingrese la unidad de medida:');
+        if (unidad === null) return; // Usuario canceló
+
+        const cantidad = prompt('Ingrese la cantidad:');
+        if (cantidad === null) return; // Usuario canceló
+
+        // Validar y formatear datos
+        const ingrediente = validarDatosIngrediente(nombre, unidad, cantidad);
+        
+        // Agregar al array temporal
+        state.ingredientesCargados.push(ingrediente);
+        
+        // Agregar a la tabla
+        agregarIngredienteATabla(ingrediente);
+
+    } catch (error) {
+        mostrarError(error.message);
+    }
+}
+
+// Función para guardar la receta
+async function guardarReceta() {
+    try {
+        const articuloNumero = document.getElementById('articulo_numero').value;
+        const descripcion = document.getElementById('descripcion_receta').value;
+
+        // Validaciones
+        if (!articuloNumero) {
+            throw new Error('El número de artículo es requerido');
+        }
+
+        if (state.ingredientesCargados.length === 0) {
+            throw new Error('Debe agregar al menos un ingrediente a la receta');
+        }
+
+        // Preparar datos para enviar
+        const datos = {
+            articulo_numero: articuloNumero,
+            descripcion: descripcion,
+            ingredientes: state.ingredientesCargados
+        };
+
+        // Enviar al servidor
+        const response = await fetch('http://localhost:3002/api/produccion/recetas', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(datos)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al guardar la receta');
+        }
+
+        // Mostrar mensaje de éxito
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-message';
+        successDiv.textContent = 'Receta guardada correctamente';
+        document.querySelector('.modal-content').appendChild(successDiv);
+        
+        // Remover el mensaje después de 3 segundos
+        setTimeout(() => {
+            successDiv.remove();
+            // Cerrar el modal y actualizar la tabla de artículos
+            cerrarModalReceta();
+            actualizarTablaArticulos(state.articulosFiltrados);
+        }, 3000);
+
+    } catch (error) {
+        console.error('Error al guardar receta:', error);
+        mostrarError(error.message);
+    }
+}
+
+// Agregar event listeners cuando se carga el DOM
+document.addEventListener('DOMContentLoaded', () => {
+    const btnCargarIngredientes = document.getElementById('btn-cargar-ingredientes');
+    if (btnCargarIngredientes) {
+        btnCargarIngredientes.addEventListener('click', cargarIngrediente);
+    }
+
+    const btnGuardarReceta = document.getElementById('btn-guardar-receta');
+    if (btnGuardarReceta) {
+        btnGuardarReceta.addEventListener('click', guardarReceta);
+    }
+});
 
 // Función para mostrar el modal de receta
 function mostrarModalReceta(articuloNumero) {
@@ -230,7 +384,8 @@ export async function agregarAlCarro(articuloNumero, descripcion, btnElement) {
         });
 
         if (!response.ok) {
-            throw new Error('Error al agregar el artículo al carro');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al agregar el artículo al carro');
         }
 
         // Mostrar mensaje de éxito

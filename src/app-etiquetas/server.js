@@ -3,6 +3,7 @@ const { Pool } = require('pg');
 const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const app = express();
 const port = 3000;
 
@@ -36,6 +37,12 @@ app.use('/pages', express.static(path.join(staticPath, 'pages')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(staticPath, 'index.html'));
 });
+
+// Configurar proxy para el servidor de producción
+app.use('/api/produccion', createProxyMiddleware({
+  target: 'http://localhost:3002',
+  changeOrigin: true
+}));
 
 // Configurar conexión a la base de datos
 const pool = new Pool({

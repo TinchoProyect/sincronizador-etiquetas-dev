@@ -1,4 +1,4 @@
-const pool = require('../usuarios/pool');
+const pool = require('../../usuarios/pool');
 
 /**
  * Crea un nuevo carro de producción para el usuario especificado
@@ -71,20 +71,41 @@ async function agregarArticulo(carroId, articuloNumero, descripcion, cantidad) {
  */
 async function obtenerArticulos() {
     try {
+        console.log('Iniciando obtención de artículos...');
+        
         const query = `
             SELECT 
-                numero,
-                nombre,
-                codigo_barras
-            FROM articulos
-            ORDER BY nombre ASC
+                a.numero,
+                a.nombre,
+                a.codigo_barras
+            FROM public.articulos a
+            ORDER BY a.nombre ASC
         `;
         
+        console.log('Ejecutando query:', query);
         const result = await pool.query(query);
+        
+        console.log(`Se encontraron ${result.rows.length} artículos`);
+        if (result.rows.length === 0) {
+            console.log('La consulta no retornó resultados. Verificar la tabla articulos.');
+        } else {
+            console.log('Muestra del primer artículo:', result.rows[0]);
+        }
+        
         return result.rows;
     } catch (error) {
-        console.error('Error al obtener artículos:', error);
-        throw new Error('No se pudo obtener la lista de artículos');
+        console.error('Error detallado al obtener artículos:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            detail: error.detail
+        });
+        
+        if (error.code === '42P01') {
+            throw new Error('La tabla articulos no existe en la base de datos');
+        }
+        
+        throw new Error(`No se pudo obtener la lista de artículos: ${error.message}`);
     }
 }
 
@@ -109,7 +130,7 @@ async function obtenerArticulosDeCarro(carroId, usuarioId) {
                 a.codigo_barras,
                 ca.cantidad
             FROM carros_articulos ca
-            LEFT JOIN articulos a ON a.numero = ca.articulo_numero
+            LEFT JOIN public.articulos a ON a.numero = ca.articulo_numero
             WHERE ca.carro_id = $1
             ORDER BY ca.id DESC
         `;
@@ -166,7 +187,7 @@ async function eliminarCarro(carroId, usuarioId) {
         await pool.query('DELETE FROM carros_articulos WHERE carro_id = $1', [carroId]);
         
         // Luego eliminar el carro
-        await pool.query('DELETE FROM carros_produccion WHERE id = $1 AND usuario_id = $2', [carroId, usuarioId]);
+        await pool.query('DELETE FROM carros_produccion WHERE id = $1', [carroId]);
         
         return true;
     } catch (error) {
