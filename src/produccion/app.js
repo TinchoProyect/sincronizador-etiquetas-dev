@@ -7,6 +7,8 @@ const usuariosRoutes = require('../usuarios/rutas');
 const app = express();
 
 // Configuración de archivos estáticos y rutas base
+app.use(express.static(__dirname));
+
 app.use('/pages', express.static(path.join(__dirname, 'pages')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/css', express.static(path.join(__dirname, 'css')));
