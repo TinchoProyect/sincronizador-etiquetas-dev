@@ -1,4 +1,4 @@
-const pool = require('../../usuarios/pool');
+const pool = require('../config/database');
 
 /**
  * Obtiene el estado de las recetas para una lista de artículos

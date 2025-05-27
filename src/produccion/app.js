@@ -1,8 +1,20 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const produccionRoutes = require('./routes/produccion');
+const usuariosRoutes = require('../usuarios/rutas');
 
 const app = express();
+
+// Configuración de archivos estáticos y rutas base
+app.use('/pages', express.static(path.join(__dirname, 'pages')));
+app.use('/js', express.static(path.join(__dirname, 'js')));
+app.use('/css', express.static(path.join(__dirname, 'css')));
+
+// Redirigir la raíz a la página principal de producción
+app.get('/', (req, res) => {
+    res.redirect('/pages/produccion.html');
+});
 
 // Middleware para logging detallado
 app.use((req, res, next) => {
@@ -25,6 +37,7 @@ app.use(cors());
 app.use(express.json());
 
 // Rutas
+app.use('/api', usuariosRoutes); // Agregamos las rutas de usuarios
 app.use('/', produccionRoutes);
 
 // Manejo de errores global

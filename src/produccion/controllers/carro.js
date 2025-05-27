@@ -1,4 +1,4 @@
-const pool = require('../../usuarios/pool');
+const pool = require('../config/database');
 
 /**
  * Crea un nuevo carro de producción para el usuario especificado
@@ -31,7 +31,7 @@ async function crearCarro(usuarioId, enAuditoria = true) {
 async function validarPropiedadCarro(carroId, usuarioId) {
     try {
         const query = `
-            SELECT COUNT(*) as count 
+            SELECT COUNT(*)::integer AS count 
             FROM carros_produccion 
             WHERE id = $1 AND usuario_id = $2
         `;

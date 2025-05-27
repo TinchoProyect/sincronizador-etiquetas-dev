@@ -42,7 +42,7 @@ function seleccionarUsuario(usuario) {
     }));
     
     // Abrir la página personal en una nueva pestaña
-    window.open('/produccion/pages/produccion_personal.html', '_blank');
+    window.open('/pages/produccion_personal.html', '_blank');
 }
 
 // Inicializar cuando se carga la página

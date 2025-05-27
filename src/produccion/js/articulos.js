@@ -112,10 +112,12 @@ export async function actualizarTablaArticulos(articulos) {
                 <td>${articulo.codigo_barras || '-'}</td>
                 <td>
                     <input type="number" class="cantidad-input" min="1" value="1">
-                    <button class="btn-agregar ${tieneReceta ? 'btn-verde' : 'btn-rojo'}" 
-                            onclick="agregarAlCarro('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', this)">
-                        Agregar al carro
-                    </button>
+                      <button class="btn-agregar" 
+                      style="background-color: ${tieneReceta ? '#28a745' : '#6c757d'}; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                      data-numero="${articulo.numero}" 
+                      data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                       ${tieneReceta ? 'Agregar al carro' : 'Vincular receta'}
+                       </button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -132,9 +134,10 @@ export async function actualizarTablaArticulos(articulos) {
                 <td>${articulo.codigo_barras || '-'}</td>
                 <td>
                     <input type="number" class="cantidad-input" min="1" value="1">
-                    <button class="btn-agregar btn-rojo" 
-                            onclick="agregarAlCarro('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', this)">
-                        Agregar al carro
+                    <button class="btn-agregar btn-danger" 
+                            data-numero="${articulo.numero}" 
+                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                        Vincular receta
                     </button>
                 </td>
             `;
@@ -267,12 +270,12 @@ function cargarIngrediente() {
 // Función para guardar la receta
 async function guardarReceta() {
     try {
-        const articuloNumero = document.getElementById('articulo_numero').value;
+        const articulo_numero = document.getElementById('articulo_numero').value.trim();
         const descripcion = document.getElementById('descripcion_receta').value;
 
         // Validaciones
-        if (!articuloNumero) {
-            throw new Error('El número de artículo es requerido');
+        if (!articulo_numero) {
+            throw new Error('El código de artículo es requerido');
         }
 
         if (state.ingredientesCargados.length === 0) {
@@ -281,7 +284,7 @@ async function guardarReceta() {
 
         // Preparar datos para enviar
         const datos = {
-            articulo_numero: articuloNumero,
+            articulo_numero,
             descripcion: descripcion,
             ingredientes: state.ingredientesCargados
         };
@@ -300,6 +303,12 @@ async function guardarReceta() {
             throw new Error(errorData.error || 'Error al guardar la receta');
         }
 
+        // Actualizar tabla inmediatamente
+        await actualizarTablaArticulos(state.articulosFiltrados);
+        
+        // Cerrar el modal
+        cerrarModalReceta();
+
         // Mostrar mensaje de éxito
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
@@ -309,9 +318,6 @@ async function guardarReceta() {
         // Remover el mensaje después de 3 segundos
         setTimeout(() => {
             successDiv.remove();
-            // Cerrar el modal y actualizar la tabla de artículos
-            cerrarModalReceta();
-            actualizarTablaArticulos(state.articulosFiltrados);
         }, 3000);
 
     } catch (error) {
@@ -320,7 +326,6 @@ async function guardarReceta() {
     }
 }
 
-// Agregar event listeners cuando se carga el DOM
 document.addEventListener('DOMContentLoaded', () => {
     const btnCargarIngredientes = document.getElementById('btn-cargar-ingredientes');
     if (btnCargarIngredientes) {
@@ -331,23 +336,49 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnGuardarReceta) {
         btnGuardarReceta.addEventListener('click', guardarReceta);
     }
+
+    // Agregar event listener para el botón de cerrar del modal de receta
+    const modalReceta = document.getElementById('modal-receta');
+    if (modalReceta) {
+        // Cerrar al hacer clic en el botón X
+        const btnCerrar = modalReceta.querySelector('.close-modal');
+        if (btnCerrar) {
+            btnCerrar.addEventListener('click', cerrarModalReceta);
+        }
+
+        // Cerrar al hacer clic fuera del modal
+        modalReceta.addEventListener('click', (e) => {
+            if (e.target === modalReceta) {
+                cerrarModalReceta();
+            }
+        });
+    }
+
+    // Agregar event listener para los botones de agregar al carro
+    document.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('btn-agregar')) {
+            const articulo_numero = e.target.dataset.numero;
+            const descripcion = e.target.dataset.nombre;
+            await agregarAlCarro(articulo_numero, descripcion, e.target);
+        }
+    });
 });
 
 // Función para mostrar el modal de receta
-function mostrarModalReceta(articuloNumero) {
+export function mostrarModalReceta(articulo_numero) {
     const modal = document.getElementById('modal-receta');
     if (modal) {
-        // Establecer el número de artículo en el campo
-        document.getElementById('articulo_numero').value = articuloNumero;
+        // Establecer el código del artículo en el campo
+        document.getElementById('articulo_numero').value = articulo_numero;
         modal.style.display = 'block';
     }
 }
 
 // Función para agregar artículo al carro
-export async function agregarAlCarro(articuloNumero, descripcion, btnElement) {
+export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
     // Si el botón es rojo, mostrar el modal de receta en lugar de agregar al carro
-    if (btnElement.classList.contains('btn-rojo')) {
-        mostrarModalReceta(articuloNumero);
+    if (btnElement.classList.contains('btn-danger')) {
+        mostrarModalReceta(articulo_numero);
         return;
     }
 
@@ -376,7 +407,7 @@ export async function agregarAlCarro(articuloNumero, descripcion, btnElement) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                articuloNumero,
+                articulo_numero,
                 descripcion,
                 cantidad,
                 usuarioId: colaborador.id
