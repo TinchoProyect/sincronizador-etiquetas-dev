@@ -196,6 +196,60 @@ async function eliminarCarro(carroId, usuarioId) {
     }
 }
 
+async function eliminarArticuloDeCarro(carroId, articuloId, usuarioId) {
+    try {
+        // Validar que el carro pertenece al usuario
+        const esValido = await validarPropiedadCarro(carroId, usuarioId);
+        if (!esValido) {
+            throw new Error('El carro no pertenece al usuario especificado');
+        }
+
+        // Eliminar el artículo del carro
+        const query = `
+            DELETE FROM carros_articulos
+            WHERE carro_id = $1 AND articulo_numero = $2
+        `;
+        await pool.query(query, [carroId, articuloId]);
+    } catch (error) {
+        console.error('Error al eliminar artículo del carro:', error);
+        throw new Error('No se pudo eliminar el artículo del carro');
+    }
+}
+
+/**
+ * Modifica la cantidad de un artículo en un carro específico
+ * @param {number} carroId - ID del carro
+ * @param {string} articuloId - ID del artículo
+ * @param {number} usuarioId - ID del usuario
+ * @param {number} cantidad - Nueva cantidad del artículo
+ * @returns {Promise<void>}
+ */
+async function modificarCantidadDeArticulo(carroId, articuloId, usuarioId, cantidad) {
+    try {
+        // Validar que el carro pertenece al usuario
+        const esValido = await validarPropiedadCarro(carroId, usuarioId);
+        if (!esValido) {
+            throw new Error('El carro no pertenece al usuario especificado');
+        }
+
+        // Actualizar la cantidad del artículo
+        const query = `
+            UPDATE carros_articulos
+            SET cantidad = $1
+            WHERE carro_id = $2 AND articulo_numero = $3
+        `;
+        
+        const result = await pool.query(query, [cantidad, carroId, articuloId]);
+        
+        if (result.rowCount === 0) {
+            throw new Error('No se encontró el artículo en el carro');
+        }
+    } catch (error) {
+        console.error('Error al modificar cantidad del artículo:', error);
+        throw new Error('No se pudo modificar la cantidad del artículo');
+    }
+}
+
 module.exports = {
     crearCarro,
     agregarArticulo,
@@ -203,5 +257,7 @@ module.exports = {
     obtenerArticulosDeCarro,
     validarPropiedadCarro,
     obtenerCarrosDeUsuario,
-    eliminarCarro
+    eliminarCarro,
+    eliminarArticuloDeCarro,
+    modificarCantidadDeArticulo
 };
