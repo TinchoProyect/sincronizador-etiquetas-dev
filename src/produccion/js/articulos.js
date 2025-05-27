@@ -112,11 +112,12 @@ export async function actualizarTablaArticulos(articulos) {
                 <td>${articulo.codigo_barras || '-'}</td>
                 <td>
                     <input type="number" class="cantidad-input" min="1" value="1">
-                    <button class="btn-agregar ${tieneReceta ? 'btn-primary' : 'btn-danger'}" 
-                            data-numero="${articulo.numero}" 
-                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                        ${tieneReceta ? 'Agregar al carro' : 'Vincular receta'}
-                    </button>
+                      <button class="btn-agregar" 
+                      style="background-color: ${tieneReceta ? '#28a745' : '#6c757d'}; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                      data-numero="${articulo.numero}" 
+                      data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                       ${tieneReceta ? 'Agregar al carro' : 'Vincular receta'}
+                       </button>
                 </td>
             `;
             tbody.appendChild(tr);
