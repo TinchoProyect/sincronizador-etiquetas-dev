@@ -407,9 +407,11 @@ export async function mostrarArticulosDelCarro() {
         }
 
     } catch (error) {
-        console.error('Error al mostrar artículos del carro:', error);
         if (error.message.includes('No hay colaborador seleccionado')) {
             limpiarDatosSesion();
+        } else {
+            console.log('No se pueden cargar los artículos del carro porque no pertenece al usuario actual.');
+            document.getElementById('lista-articulos').innerHTML = '<p>No se pueden mostrar los artículos del carro</p>';
         }
     }
 }
