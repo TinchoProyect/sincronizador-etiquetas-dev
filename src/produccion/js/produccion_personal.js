@@ -33,7 +33,7 @@ async function inicializarEspacioTrabajo() {
         // Cargar datos del colaborador y esperar la validación del carro
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         if (!colaboradorData) {
-            window.location.href = '/produccion/pages/produccion.html';
+            window.location.href = '/pages/produccion.html';
             return;
         }
         

@@ -1,4 +1,4 @@
-const pool = require('../../usuarios/pool');
+const pool = require('../config/database');
 
 /**
  * Obtiene todos los ingredientes

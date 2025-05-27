@@ -243,17 +243,17 @@ router.get('/carro/:id/articulos', async (req, res) => {
 router.post('/carro/:id/articulo', async (req, res) => {
     try {
         const carroId = parseInt(req.params.id);
-        const { articuloNumero, descripcion, cantidad, usuarioId } = req.body;
+        const { articulo_numero, descripcion, cantidad, usuarioId } = req.body;
 
         if (!carroId || isNaN(carroId)) {
             return res.status(400).json({ error: 'ID de carro inválido' });
         }
 
-        if (!articuloNumero || !descripcion || !cantidad) {
+        if (!articulo_numero || !descripcion || !cantidad || !usuarioId) {
             return res.status(400).json({ error: 'Faltan datos requeridos del artículo' });
         }
 
-        await agregarArticulo(carroId, articuloNumero, descripcion, cantidad);
+        await agregarArticulo(carroId, articulo_numero, descripcion, cantidad, usuarioId);
         res.json({ message: 'Artículo agregado correctamente' });
     } catch (error) {
         console.error('Error al agregar artículo:', error);
