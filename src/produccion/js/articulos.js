@@ -1,3 +1,17 @@
+function toggleCantidadField() {
+    const selector = document.getElementById('selector-ingrediente');
+    const cantidadContainer = document.getElementById('cantidad-container');
+    if (!selector || !cantidadContainer) return;
+
+    if (selector.value) {
+        cantidadContainer.style.display = 'block';
+    } else {
+        cantidadContainer.style.display = 'none';
+        const inputCantidad = document.getElementById('input-cantidad-ingrediente');
+        if (inputCantidad) inputCantidad.value = '';
+    }
+}
+
 import { mostrarError } from './utils.js';
 import { mostrarArticulosDelCarro } from './carro.js';
 
@@ -394,6 +408,18 @@ export function mostrarModalReceta(articulo_numero) {
         if (btnAgregarIngrediente) {
             btnAgregarIngrediente.addEventListener('click', agregarIngredienteDesdeSelector);
         }
+
+        // Reconectar el event listener para el selector de ingredientes
+        const selectorIngrediente = document.getElementById('selector-ingrediente');
+        const cantidadContainer = document.getElementById('cantidad-container');
+        if (selectorIngrediente && cantidadContainer) {
+            // Remover listener anterior para evitar duplicados
+            selectorIngrediente.removeEventListener('change', toggleCantidadField);
+            // Reconectar listener
+            selectorIngrediente.addEventListener('change', toggleCantidadField);
+            // Establecer estado inicial
+            toggleCantidadField();
+        }
     }
 }
 
@@ -530,6 +556,8 @@ async function guardarNuevoIngrediente() {
         const selector = document.getElementById('selector-ingrediente');
         if (selector) {
             selector.value = nuevoIngrediente.id;
+            // Disparar el evento change para que se muestre el campo de cantidad automáticamente
+            selector.dispatchEvent(new Event('change'));
         }
 
         // Mostrar mensaje de éxito
@@ -553,6 +581,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnGuardarReceta = document.getElementById('btn-guardar-receta');
     if (btnGuardarReceta) {
         btnGuardarReceta.addEventListener('click', guardarReceta);
+    }
+
+    // Asignar el evento change y ejecutar la función inicialmente
+    const selectorIngrediente = document.getElementById('selector-ingrediente');
+    const cantidadContainer = document.getElementById('cantidad-container');
+    if (selectorIngrediente && cantidadContainer) {
+        selectorIngrediente.addEventListener('change', toggleCantidadField);
+        // Asegurar el estado inicial correcto
+        toggleCantidadField();
     }
 
     // Event listeners para el modal de nuevo ingrediente

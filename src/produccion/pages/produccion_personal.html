@@ -105,18 +105,24 @@
                     <label for="descripcion_receta">Descripción de la Receta:</label>
                     <textarea id="descripcion_receta" rows="4" placeholder="Ingrese una descripción opcional..."></textarea>
                 </div>
-                <div class="form-group">
-                    <label for="selector-ingrediente">Seleccionar Ingrediente:</label>
-                    <select id="selector-ingrediente" required>
-                        <option value="">Seleccione un ingrediente...</option>
-                    </select>
-                    <button type="button" class="btn btn-secondary" id="btn-nuevo-ingrediente" style="margin-top: 10px; width: 100%;">
-                        ➕ Crear nuevo ingrediente
-                    </button>
-                </div>
-                <div class="form-group">
-                    <label for="input-cantidad-ingrediente">Cantidad:</label>
-                    <input type="number" id="input-cantidad-ingrediente" min="0.01" step="0.01" required>
+                <div class="form-group ingredientes-container">
+                    <div class="selector-container">
+                        <div class="selector-wrapper">
+                            <label for="selector-ingrediente">Seleccionar Ingrediente:</label>
+                            <div class="selector-with-button">
+                                <select id="selector-ingrediente" required>
+                                    <option value="">Seleccione un ingrediente...</option>
+                                </select>
+                                <button type="button" class="btn btn-secondary" id="btn-nuevo-ingrediente">
+                                    ➕ Nuevo
+                                </button>
+                            </div>
+                        </div>
+                        <div id="cantidad-container" class="cantidad-wrapper" style="display: none;">
+                            <label for="input-cantidad-ingrediente">Cantidad:</label>
+                            <input type="number" id="input-cantidad-ingrediente" min="0.01" step="0.01" required>
+                        </div>
+                    </div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-primary" id="btn-agregar-ingrediente">
