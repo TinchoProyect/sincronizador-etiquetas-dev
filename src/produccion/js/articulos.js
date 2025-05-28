@@ -134,19 +134,26 @@ export async function actualizarTablaArticulos(articulos) {
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
                 <td>${articulo.codigo_barras || '-'}</td>
                 <td>
-                    <input type="number" class="cantidad-input" min="1" value="1">
-                    <button class="btn-agregar${!tieneReceta ? ' btn-danger' : ''}" 
-                            style="background-color: ${tieneReceta ? '#28a745' : '#6c757d'}; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                            data-numero="${articulo.numero}" 
-                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                        ${tieneReceta ? 'Agregar al carro' : 'Vincular receta'}
-                    </button>
                     ${tieneReceta ? `
-                    <button class="btn-editar-receta"
-                            style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
-                            data-numero="${articulo.numero}">
-                        Editar receta
-                    </button>` : ''}
+                        <input type="number" class="cantidad-input" min="1" value="1">
+                        <button class="btn-agregar" 
+                                style="background-color: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                data-numero="${articulo.numero}" 
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                            Agregar al carro
+                        </button>
+                        <button class="btn-editar-receta"
+                                style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                                data-numero="${articulo.numero}">
+                            Editar receta
+                        </button>
+                    ` : `
+                        <button class="btn-editar-receta"
+                                style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                data-numero="${articulo.numero}">
+                            Vincular receta
+                        </button>
+                    `}
                 </td>
             `;
             tbody.appendChild(tr);
@@ -240,12 +247,32 @@ export function cerrarModalReceta() {
         document.getElementById('input-cantidad-ingrediente').value = '';
         state.ingredientesCargados = [];
         const tbody = document.querySelector('#tabla-ingredientes tbody');
-        if (tbody) tbody.innerHTML = '';
+        if (tbody) {
+            // Remover event listener al cerrar
+            tbody.removeEventListener('click', handleEliminarIngrediente);
+            tbody.innerHTML = '';
+        }
+    }
+}
+
+// Función para manejar la eliminación de ingredientes
+function handleEliminarIngrediente(e) {
+    if (e.target.classList.contains('btn-eliminar-ingrediente')) {
+        const index = parseInt(e.target.dataset.index);
+        if (!isNaN(index) && index >= 0 && index < state.ingredientesCargados.length) {
+            state.ingredientesCargados.splice(index, 1);
+            e.target.closest('tr').remove();
+            // Actualizar índices de los botones restantes
+            const tbody = document.querySelector('#tabla-ingredientes tbody');
+            tbody.querySelectorAll('.btn-eliminar-ingrediente').forEach((btn, i) => {
+                btn.dataset.index = i;
+            });
+        }
     }
 }
 
 // Función para agregar ingrediente a la tabla
-function agregarIngredienteATabla(ingrediente) {
+function agregarIngredienteATabla(ingrediente, index) {
     const tbody = document.querySelector('#tabla-ingredientes tbody');
     if (!tbody) return;
 
@@ -254,6 +281,13 @@ function agregarIngredienteATabla(ingrediente) {
         <td>${ingrediente.nombre_ingrediente}</td>
         <td>${ingrediente.unidad_medida}</td>
         <td>${ingrediente.cantidad}</td>
+        <td>
+            <button class="btn-eliminar-ingrediente" data-index="${index ?? state.ingredientesCargados.length - 1}"
+                    style="background-color: #dc3545; color: white; border: none; 
+                           padding: 4px 8px; border-radius: 4px;">
+                Eliminar
+            </button>
+        </td>
     `;
     tbody.appendChild(tr);
 }
@@ -353,8 +387,13 @@ async function guardarReceta() {
         };
 
         // Enviar al servidor
-        const response = await fetch('http://localhost:3002/api/produccion/recetas', {
-            method: 'POST',
+        const url = state.existeReceta
+          ? `http://localhost:3002/api/produccion/recetas/${articulo_numero}`
+          : 'http://localhost:3002/api/produccion/recetas';
+        const method = state.existeReceta ? 'PUT' : 'POST';
+        const response = await fetch(url, {
+            method,
+
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -403,56 +442,79 @@ export async function mostrarModalReceta(articulo_numero) {
     const modal = document.getElementById('modal-receta');
     if (modal) {
         try {
-            // Obtener la receta existente
-            const response = await fetch(`http://localhost:3002/api/produccion/recetas/${articulo_numero}`);
-            
-            if (!response.ok) {
-                throw new Error('Error al obtener la receta');
-            }
-
-            const receta = await response.json();
-            
-            // Establecer el código del artículo y descripción
+            // Establecer el código del artículo
             document.getElementById('articulo_numero').value = articulo_numero;
-            document.getElementById('descripcion_receta').value = receta.descripcion || '';
             
-            // Cargar ingredientes disponibles
+            // Cargar ingredientes disponibles primero
             await cargarIngredientesDisponibles();
             
-            // Cargar los ingredientes de la receta existente
-            state.ingredientesCargados = receta.ingredientes || [];
+            // Intentar obtener la receta existente
+            try {
+                const response = await fetch(`http://localhost:3002/api/produccion/recetas/${articulo_numero}`);
+                
+                if (response.ok) {
+                    // Si la receta existe, cargar sus datos
+                    const receta = await response.json();
+                    document.getElementById('descripcion_receta').value = receta.descripcion || '';
+                    state.ingredientesCargados = receta.ingredientes || [];
+                    state.existeReceta = true;
+} else if (response.status === 404) {
+
+    // Si la receta no existe, inicializar vacía
+    document.getElementById('descripcion_receta').value = '';
+    state.ingredientesCargados = [];
+    state.existeReceta = false;
+} else {
+    // Si hay otro error, lanzarlo
+    throw new Error('Error al obtener la receta');
+}
+
+            } catch (error) {
+                if (error.message !== 'Error al obtener la receta') {
+                    console.error('Error al cargar la receta:', error);
+                }
+                // Si hay error que no sea 404, inicializar vacía
+                document.getElementById('descripcion_receta').value = '';
+                state.ingredientesCargados = [];
+            }
+
+            // Actualizar tabla de ingredientes
             const tbody = document.querySelector('#tabla-ingredientes tbody');
             if (tbody) {
                 tbody.innerHTML = '';
-                state.ingredientesCargados.forEach(ingrediente => {
-                    agregarIngredienteATabla(ingrediente);
+                // Remover listener anterior si existe
+                tbody.removeEventListener('click', handleEliminarIngrediente);
+                // Agregar nuevo listener
+                tbody.addEventListener('click', handleEliminarIngrediente);
+                // Renderizar ingredientes
+                state.ingredientesCargados.forEach((ingrediente, index) => {
+                    agregarIngredienteATabla(ingrediente, index);
                 });
             }
 
             // Mostrar el modal
             modal.style.display = 'block';
 
+
+
             // Registrar el event listener para el botón de agregar ingrediente
             const btnAgregarIngrediente = document.getElementById('btn-agregar-ingrediente');
             if (btnAgregarIngrediente) {
+                btnAgregarIngrediente.removeEventListener('click', agregarIngredienteDesdeSelector);
                 btnAgregarIngrediente.addEventListener('click', agregarIngredienteDesdeSelector);
             }
 
             // Reconectar el event listener para el selector de ingredientes
             const selectorIngrediente = document.getElementById('selector-ingrediente');
-            const cantidadContainer = document.getElementById('cantidad-container');
-            if (selectorIngrediente && cantidadContainer) {
-                // Remover listener anterior para evitar duplicados
+            if (selectorIngrediente) {
                 selectorIngrediente.removeEventListener('change', toggleCantidadField);
-                // Reconectar listener
                 selectorIngrediente.addEventListener('change', toggleCantidadField);
-                // Establecer estado inicial
                 toggleCantidadField();
             }
 
         } catch (error) {
-            console.error('Error al cargar la receta:', error);
-            mostrarError('No se pudo cargar la receta');
+            console.error('Error al preparar el modal de receta:', error);
+            mostrarError('Error al preparar el formulario de receta');
             modal.style.display = 'none';
         }
     }

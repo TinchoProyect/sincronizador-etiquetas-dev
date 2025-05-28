@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { crearReceta, obtenerEstadoRecetas, obtenerReceta } = require('../controllers/recetas');
+const { crearReceta, obtenerEstadoRecetas, obtenerReceta, actualizarReceta } = require('../controllers/recetas');
 const { 
     crearCarro, 
     agregarArticulo, 
@@ -125,11 +125,12 @@ const validarEstadoRecetas = (req, res, next) => {
     next();
 };
 
-// Middleware de validación para creación de recetas
+// Middleware de validación para recetas
 const validarReceta = (req, res, next) => {
-    const { articulo_numero, descripcion, ingredientes } = req.body;
+    const { descripcion, ingredientes } = req.body;
+    const articulo_numero = req.method === 'POST' ? req.body.articulo_numero : req.params.numero_articulo;
 
-    if (!articulo_numero || typeof articulo_numero !== 'string' || !articulo_numero.trim()) {
+    if (req.method === 'POST' && (!articulo_numero || typeof articulo_numero !== 'string' || !articulo_numero.trim())) {
         return res.status(400).json({ error: 'El número de artículo es requerido y debe ser un texto válido' });
     }
 
@@ -198,6 +199,16 @@ router.get('/recetas/:numero_articulo', async (req, res) => {
         console.error('Error al obtener receta:', error);
         res.status(error.message === 'Receta no encontrada' ? 404 : 500)
            .json({ error: error.message });
+    }
+});
+
+// Ruta para actualizar una receta existente
+router.put('/recetas/:numero_articulo', validarReceta, async (req, res) => {
+    try {
+        await actualizarReceta(req, res);
+    } catch (error) {
+        console.error('Error al actualizar receta:', error);
+        res.status(500).json({ error: 'Error al actualizar la receta' });
     }
 });
 
