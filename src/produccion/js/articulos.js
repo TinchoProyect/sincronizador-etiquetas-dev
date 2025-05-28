@@ -506,8 +506,8 @@ function cerrarModalNuevoIngrediente() {
         modal.style.display = 'none';
         // Limpiar el formulario
         document.getElementById('nombre-ingrediente').value = '';
-        document.getElementById('unidad-medida-ingrediente').value = 'kg';
-        document.getElementById('categoria-ingrediente').value = 'otros';
+        document.getElementById('unidad-medida-ingrediente').value = '';
+        document.getElementById('categoria-ingrediente').value = '';
         document.getElementById('stock-ingrediente').value = '';
     }
 }
