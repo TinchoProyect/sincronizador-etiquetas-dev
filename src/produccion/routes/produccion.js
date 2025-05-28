@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { crearReceta, obtenerEstadoRecetas } = require('../controllers/recetas');
+const { crearReceta, obtenerEstadoRecetas, obtenerReceta } = require('../controllers/recetas');
 const { 
     crearCarro, 
     agregarArticulo, 
@@ -185,6 +185,19 @@ router.post('/recetas', validarReceta, async (req, res) => {
     } catch (error) {
         console.error('Error al crear receta:', error);
         res.status(500).json({ error: 'Error al crear la receta' });
+    }
+});
+
+// Ruta para obtener una receta específica
+router.get('/recetas/:numero_articulo', async (req, res) => {
+    try {
+        const numero_articulo = req.params.numero_articulo;
+        const receta = await obtenerReceta(numero_articulo);
+        res.json(receta);
+    } catch (error) {
+        console.error('Error al obtener receta:', error);
+        res.status(error.message === 'Receta no encontrada' ? 404 : 500)
+           .json({ error: error.message });
     }
 });
 
