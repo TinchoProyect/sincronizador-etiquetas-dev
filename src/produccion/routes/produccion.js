@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { crearReceta, obtenerEstadoRecetas } = require('../controllers/recetas');
+const { crearReceta, obtenerEstadoRecetas, obtenerReceta } = require('../controllers/recetas');
 const { 
     crearCarro, 
     agregarArticulo, 
     obtenerArticulos,
     obtenerArticulosDeCarro,
     obtenerCarrosDeUsuario,
-    eliminarCarro 
+    eliminarCarro,
+    eliminarArticuloDeCarro,
+    modificarCantidadDeArticulo
 } = require('../controllers/carro');
 const { 
     obtenerIngredientes,
@@ -186,6 +188,19 @@ router.post('/recetas', validarReceta, async (req, res) => {
     }
 });
 
+// Ruta para obtener una receta específica
+router.get('/recetas/:numero_articulo', async (req, res) => {
+    try {
+        const numero_articulo = req.params.numero_articulo;
+        const receta = await obtenerReceta(numero_articulo);
+        res.json(receta);
+    } catch (error) {
+        console.error('Error al obtener receta:', error);
+        res.status(error.message === 'Receta no encontrada' ? 404 : 500)
+           .json({ error: error.message });
+    }
+});
+
 // Rutas para carros de producción
 router.post('/carro', async (req, res) => {
     try {
@@ -278,6 +293,52 @@ router.delete('/carro/:id', async (req, res) => {
         res.json({ message: 'Carro eliminado correctamente' });
     } catch (error) {
         console.error('Error al eliminar carro:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para eliminar un artículo específico de un carro
+router.delete('/carro/:carroId/articulo/:articuloId', async (req, res) => {
+    try {
+        const carroId = parseInt(req.params.carroId);
+        const articuloId = req.params.articuloId;
+        const usuarioId = parseInt(req.query.usuarioId);
+
+        if (!usuarioId) {
+            return res.status(400).json({ error: 'Se requiere el ID del usuario' });
+        }
+
+        if (isNaN(carroId) || !articuloId || isNaN(usuarioId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+
+        await eliminarArticuloDeCarro(carroId, articuloId, usuarioId);
+        res.json({ message: 'Artículo eliminado correctamente' });
+    } catch (error) {
+        console.error('Error al eliminar artículo del carro:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/carro/:carroId/articulo/:articuloId', async (req, res) => {
+    try {
+        const carroId = parseInt(req.params.carroId);
+        const articuloId = req.params.articuloId;
+        const usuarioId = parseInt(req.query.usuarioId);
+        const { cantidad } = req.body;
+
+        if (!usuarioId) {
+            return res.status(400).json({ error: 'Se requiere el ID del usuario' });
+        }
+
+        if (isNaN(carroId) || !articuloId || isNaN(usuarioId) || !cantidad || isNaN(cantidad)) {
+            return res.status(400).json({ error: 'Datos inválidos o faltantes' });
+        }
+
+        await modificarCantidadDeArticulo(carroId, articuloId, usuarioId, cantidad);
+        res.json({ message: 'Cantidad modificada correctamente' });
+    } catch (error) {
+        console.error('Error al modificar cantidad del artículo:', error);
         res.status(500).json({ error: error.message });
     }
 });

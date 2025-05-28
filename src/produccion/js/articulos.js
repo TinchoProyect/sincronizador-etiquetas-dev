@@ -1,3 +1,17 @@
+function toggleCantidadField() {
+    const selector = document.getElementById('selector-ingrediente');
+    const cantidadContainer = document.getElementById('cantidad-container');
+    if (!selector || !cantidadContainer) return;
+
+    if (selector.value) {
+        cantidadContainer.style.display = 'block';
+    } else {
+        cantidadContainer.style.display = 'none';
+        const inputCantidad = document.getElementById('input-cantidad-ingrediente');
+        if (inputCantidad) inputCantidad.value = '';
+    }
+}
+
 import { mostrarError } from './utils.js';
 import { mostrarArticulosDelCarro } from './carro.js';
 
@@ -5,8 +19,12 @@ import { mostrarArticulosDelCarro } from './carro.js';
 const state = {
     todosLosArticulos: [],
     articulosFiltrados: [],
-    ingredientesCargados: [] // Array temporal para almacenar ingredientes
+    ingredientesCargados: [], // Array temporal para almacenar ingredientes
+    ultimoArticuloEditado: null // Almacena el último artículo que se editó
 };
+
+// Variable para almacenar los ingredientes cargados del backend
+let ingredientesDisponibles = [];
 
 // Función para actualizar el título de la página
 export function actualizarTituloPagina() {
@@ -106,18 +124,29 @@ export async function actualizarTablaArticulos(articulos) {
             const tr = document.createElement('tr');
             const tieneReceta = estadoRecetas[articulo.numero];
             
+            tr.setAttribute('data-numero', articulo.numero);
+            const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
+            if (esArticuloEditado) {
+                tr.classList.add('resaltado-articulo');
+            }
             tr.innerHTML = `
                 <td>${articulo.numero}</td>
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
                 <td>${articulo.codigo_barras || '-'}</td>
                 <td>
                     <input type="number" class="cantidad-input" min="1" value="1">
-                      <button class="btn-agregar" 
-                      style="background-color: ${tieneReceta ? '#28a745' : '#6c757d'}; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                      data-numero="${articulo.numero}" 
-                      data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                       ${tieneReceta ? 'Agregar al carro' : 'Vincular receta'}
-                       </button>
+                    <button class="btn-agregar${!tieneReceta ? ' btn-danger' : ''}" 
+                            style="background-color: ${tieneReceta ? '#28a745' : '#6c757d'}; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                            data-numero="${articulo.numero}" 
+                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                        ${tieneReceta ? 'Agregar al carro' : 'Vincular receta'}
+                    </button>
+                    ${tieneReceta ? `
+                    <button class="btn-editar-receta"
+                            style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                            data-numero="${articulo.numero}">
+                        Editar receta
+                    </button>` : ''}
                 </td>
             `;
             tbody.appendChild(tr);
@@ -128,6 +157,11 @@ export async function actualizarTablaArticulos(articulos) {
         // Si hay error, mostrar los botones en rojo por defecto
         articulos.forEach(articulo => {
             const tr = document.createElement('tr');
+            tr.setAttribute('data-numero', articulo.numero);
+            const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
+            if (esArticuloEditado) {
+                tr.classList.add('resaltado-articulo');
+            }
             tr.innerHTML = `
                 <td>${articulo.numero}</td>
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
@@ -202,28 +236,12 @@ export function cerrarModalReceta() {
         // Limpiar el formulario y los ingredientes
         document.getElementById('articulo_numero').value = '';
         document.getElementById('descripcion_receta').value = '';
+        document.getElementById('selector-ingrediente').value = '';
+        document.getElementById('input-cantidad-ingrediente').value = '';
         state.ingredientesCargados = [];
         const tbody = document.querySelector('#tabla-ingredientes tbody');
         if (tbody) tbody.innerHTML = '';
     }
-}
-
-// Función para validar los datos del ingrediente
-function validarDatosIngrediente(nombre, unidad, cantidad) {
-    if (!nombre || !unidad || !cantidad) {
-        throw new Error('Todos los campos son obligatorios');
-    }
-    
-    const cantidadNum = parseFloat(cantidad);
-    if (isNaN(cantidadNum) || cantidadNum <= 0) {
-        throw new Error('La cantidad debe ser un número mayor a 0');
-    }
-    
-    return {
-        nombre_ingrediente: nombre.trim(),
-        unidad_medida: unidad.trim(),
-        cantidad: cantidadNum
-    };
 }
 
 // Función para agregar ingrediente a la tabla
@@ -240,28 +258,68 @@ function agregarIngredienteATabla(ingrediente) {
     tbody.appendChild(tr);
 }
 
-// Función para manejar la carga de ingredientes
-function cargarIngrediente() {
+// Función para cargar ingredientes desde el backend
+async function cargarIngredientesDisponibles() {
     try {
-        // Solicitar datos al usuario
-        const nombre = prompt('Ingrese el nombre del ingrediente:');
-        if (nombre === null) return; // Usuario canceló
+        const response = await fetch('/api/produccion/ingredientes');
+        if (!response.ok) {
+            throw new Error('Error al cargar ingredientes');
+        }
+        ingredientesDisponibles = await response.json();
+        actualizarSelectorIngredientes();
+    } catch (error) {
+        mostrarError('No se pudieron cargar los ingredientes');
+        console.error(error);
+    }
+}
 
-        const unidad = prompt('Ingrese la unidad de medida:');
-        if (unidad === null) return; // Usuario canceló
+// Función para actualizar el selector de ingredientes
+function actualizarSelectorIngredientes() {
+    const selector = document.getElementById('selector-ingrediente');
+    selector.innerHTML = '<option value="">Seleccione un ingrediente...</option>';
+    
+    ingredientesDisponibles.forEach(ing => {
+        selector.innerHTML += `
+            <option value="${ing.id}" 
+                    data-unidad="${ing.unidad_medida}">
+                ${ing.nombre}
+            </option>`;
+    });
+}
 
-        const cantidad = prompt('Ingrese la cantidad:');
-        if (cantidad === null) return; // Usuario canceló
-
-        // Validar y formatear datos
-        const ingrediente = validarDatosIngrediente(nombre, unidad, cantidad);
+// Función para agregar ingrediente desde el selector
+function agregarIngredienteDesdeSelector() {
+    try {
+        const selector = document.getElementById('selector-ingrediente');
+        const cantidadInput = document.getElementById('input-cantidad-ingrediente');
         
-        // Agregar al array temporal
+        const ingredienteId = selector.value;
+        const cantidad = parseFloat(cantidadInput.value);
+        
+        if (!ingredienteId) {
+            throw new Error('Debe seleccionar un ingrediente');
+        }
+        
+        if (isNaN(cantidad) || cantidad <= 0) {
+            throw new Error('La cantidad debe ser un número mayor a 0');
+        }
+        
+        const ingredienteSeleccionado = ingredientesDisponibles.find(i => i.id === parseInt(ingredienteId));
+        
+        const ingrediente = {
+            ingrediente_id: ingredienteSeleccionado.id,
+            nombre_ingrediente: ingredienteSeleccionado.nombre,
+            unidad_medida: ingredienteSeleccionado.unidad_medida,
+            cantidad: cantidad
+        };
+        
         state.ingredientesCargados.push(ingrediente);
-        
-        // Agregar a la tabla
         agregarIngredienteATabla(ingrediente);
-
+        
+        // Limpiar campos
+        selector.value = '';
+        cantidadInput.value = '';
+        
     } catch (error) {
         mostrarError(error.message);
     }
@@ -286,7 +344,12 @@ async function guardarReceta() {
         const datos = {
             articulo_numero,
             descripcion: descripcion,
-            ingredientes: state.ingredientesCargados
+            ingredientes: state.ingredientesCargados.map(ing => ({
+                ingrediente_id: ing.ingrediente_id,
+                nombre_ingrediente: ing.nombre_ingrediente,
+                unidad_medida: ing.unidad_medida,
+                cantidad: ing.cantidad
+            }))
         };
 
         // Enviar al servidor
@@ -303,11 +366,20 @@ async function guardarReceta() {
             throw new Error(errorData.error || 'Error al guardar la receta');
         }
 
+        // Guardar el artículo editado
+        state.ultimoArticuloEditado = articulo_numero;
+        
         // Actualizar tabla inmediatamente
         await actualizarTablaArticulos(state.articulosFiltrados);
         
         // Cerrar el modal
         cerrarModalReceta();
+
+        // Buscar y resaltar el artículo editado
+        const filaEditada = document.querySelector(`tr[data-numero="${articulo_numero}"]`);
+        if (filaEditada) {
+            filaEditada.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
 
         // Mostrar mensaje de éxito
         const successDiv = document.createElement('div');
@@ -326,51 +398,63 @@ async function guardarReceta() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const btnCargarIngredientes = document.getElementById('btn-cargar-ingredientes');
-    if (btnCargarIngredientes) {
-        btnCargarIngredientes.addEventListener('click', cargarIngrediente);
-    }
-
-    const btnGuardarReceta = document.getElementById('btn-guardar-receta');
-    if (btnGuardarReceta) {
-        btnGuardarReceta.addEventListener('click', guardarReceta);
-    }
-
-    // Agregar event listener para el botón de cerrar del modal de receta
-    const modalReceta = document.getElementById('modal-receta');
-    if (modalReceta) {
-        // Cerrar al hacer clic en el botón X
-        const btnCerrar = modalReceta.querySelector('.close-modal');
-        if (btnCerrar) {
-            btnCerrar.addEventListener('click', cerrarModalReceta);
-        }
-
-        // Cerrar al hacer clic fuera del modal
-        modalReceta.addEventListener('click', (e) => {
-            if (e.target === modalReceta) {
-                cerrarModalReceta();
-            }
-        });
-    }
-
-    // Agregar event listener para los botones de agregar al carro
-    document.addEventListener('click', async (e) => {
-        if (e.target.classList.contains('btn-agregar')) {
-            const articulo_numero = e.target.dataset.numero;
-            const descripcion = e.target.dataset.nombre;
-            await agregarAlCarro(articulo_numero, descripcion, e.target);
-        }
-    });
-});
-
 // Función para mostrar el modal de receta
-export function mostrarModalReceta(articulo_numero) {
+export async function mostrarModalReceta(articulo_numero) {
     const modal = document.getElementById('modal-receta');
     if (modal) {
-        // Establecer el código del artículo en el campo
-        document.getElementById('articulo_numero').value = articulo_numero;
-        modal.style.display = 'block';
+        try {
+            // Obtener la receta existente
+            const response = await fetch(`http://localhost:3002/api/produccion/recetas/${articulo_numero}`);
+            
+            if (!response.ok) {
+                throw new Error('Error al obtener la receta');
+            }
+
+            const receta = await response.json();
+            
+            // Establecer el código del artículo y descripción
+            document.getElementById('articulo_numero').value = articulo_numero;
+            document.getElementById('descripcion_receta').value = receta.descripcion || '';
+            
+            // Cargar ingredientes disponibles
+            await cargarIngredientesDisponibles();
+            
+            // Cargar los ingredientes de la receta existente
+            state.ingredientesCargados = receta.ingredientes || [];
+            const tbody = document.querySelector('#tabla-ingredientes tbody');
+            if (tbody) {
+                tbody.innerHTML = '';
+                state.ingredientesCargados.forEach(ingrediente => {
+                    agregarIngredienteATabla(ingrediente);
+                });
+            }
+
+            // Mostrar el modal
+            modal.style.display = 'block';
+
+            // Registrar el event listener para el botón de agregar ingrediente
+            const btnAgregarIngrediente = document.getElementById('btn-agregar-ingrediente');
+            if (btnAgregarIngrediente) {
+                btnAgregarIngrediente.addEventListener('click', agregarIngredienteDesdeSelector);
+            }
+
+            // Reconectar el event listener para el selector de ingredientes
+            const selectorIngrediente = document.getElementById('selector-ingrediente');
+            const cantidadContainer = document.getElementById('cantidad-container');
+            if (selectorIngrediente && cantidadContainer) {
+                // Remover listener anterior para evitar duplicados
+                selectorIngrediente.removeEventListener('change', toggleCantidadField);
+                // Reconectar listener
+                selectorIngrediente.addEventListener('change', toggleCantidadField);
+                // Establecer estado inicial
+                toggleCantidadField();
+            }
+
+        } catch (error) {
+            console.error('Error al cargar la receta:', error);
+            mostrarError('No se pudo cargar la receta');
+            modal.style.display = 'none';
+        }
     }
 }
 
@@ -441,3 +525,168 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         mostrarError(error.message);
     }
 }
+
+// Función para abrir el modal de nuevo ingrediente
+function abrirModalNuevoIngrediente() {
+    const modal = document.getElementById('modal-nuevo-ingrediente');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
+
+// Función para cerrar el modal de nuevo ingrediente
+function cerrarModalNuevoIngrediente() {
+    const modal = document.getElementById('modal-nuevo-ingrediente');
+    if (modal) {
+        modal.style.display = 'none';
+        // Limpiar el formulario
+        document.getElementById('nombre-ingrediente').value = '';
+        document.getElementById('unidad-medida-ingrediente').value = '';
+        document.getElementById('categoria-ingrediente').value = '';
+        document.getElementById('stock-ingrediente').value = '';
+    }
+}
+
+// Función para guardar el nuevo ingrediente
+async function guardarNuevoIngrediente() {
+    try {
+        const nombre = document.getElementById('nombre-ingrediente').value.trim();
+        const unidadMedida = document.getElementById('unidad-medida-ingrediente').value;
+        const categoria = document.getElementById('categoria-ingrediente').value;
+        const stock = document.getElementById('stock-ingrediente').value;
+
+        if (!nombre) {
+            throw new Error('El nombre del ingrediente es requerido');
+        }
+
+        const datos = {
+            nombre,
+            unidad_medida: unidadMedida,
+            categoria,
+            stock: stock || 0
+        };
+
+        const response = await fetch('http://localhost:3002/api/produccion/ingredientes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(datos)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al guardar el ingrediente');
+        }
+
+        const nuevoIngrediente = await response.json();
+        
+        // Cerrar el modal
+        cerrarModalNuevoIngrediente();
+        
+        // Actualizar la lista de ingredientes y preseleccionar el nuevo
+        await cargarIngredientesDisponibles();
+        
+        // Seleccionar el nuevo ingrediente
+        const selector = document.getElementById('selector-ingrediente');
+        if (selector) {
+            selector.value = nuevoIngrediente.id;
+            // Disparar el evento change para que se muestre el campo de cantidad automáticamente
+            selector.dispatchEvent(new Event('change'));
+        }
+
+        // Mostrar mensaje de éxito
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-message';
+        successDiv.textContent = 'Ingrediente creado correctamente';
+        document.querySelector('.modal-content').appendChild(successDiv);
+        
+        setTimeout(() => {
+            successDiv.remove();
+        }, 3000);
+
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+    }
+}
+
+// Event Listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const btnGuardarReceta = document.getElementById('btn-guardar-receta');
+    if (btnGuardarReceta) {
+        btnGuardarReceta.addEventListener('click', guardarReceta);
+    }
+
+    // Asignar el evento change y ejecutar la función inicialmente
+    const selectorIngrediente = document.getElementById('selector-ingrediente');
+    const cantidadContainer = document.getElementById('cantidad-container');
+    if (selectorIngrediente && cantidadContainer) {
+        selectorIngrediente.addEventListener('change', toggleCantidadField);
+        // Asegurar el estado inicial correcto
+        toggleCantidadField();
+    }
+
+    // Event listeners para el modal de nuevo ingrediente
+    const btnNuevoIngrediente = document.getElementById('btn-nuevo-ingrediente');
+    if (btnNuevoIngrediente) {
+        btnNuevoIngrediente.addEventListener('click', abrirModalNuevoIngrediente);
+    }
+
+    const modalNuevoIngrediente = document.getElementById('modal-nuevo-ingrediente');
+    if (modalNuevoIngrediente) {
+        // Cerrar al hacer clic en el botón X
+        const btnCerrar = modalNuevoIngrediente.querySelector('.close-modal');
+        if (btnCerrar) {
+            btnCerrar.addEventListener('click', cerrarModalNuevoIngrediente);
+        }
+
+        // Cerrar al hacer clic fuera del modal
+        modalNuevoIngrediente.addEventListener('click', (e) => {
+            if (e.target === modalNuevoIngrediente) {
+                cerrarModalNuevoIngrediente();
+            }
+        });
+
+        // Botón cancelar
+        const btnCancelar = document.getElementById('btn-cancelar-ingrediente');
+        if (btnCancelar) {
+            btnCancelar.addEventListener('click', cerrarModalNuevoIngrediente);
+        }
+
+        // Botón guardar
+        const btnGuardar = document.getElementById('btn-guardar-ingrediente');
+        if (btnGuardar) {
+            btnGuardar.addEventListener('click', guardarNuevoIngrediente);
+        }
+    }
+
+    // Agregar event listener para el botón de cerrar del modal de receta
+    const modalReceta = document.getElementById('modal-receta');
+    if (modalReceta) {
+        // Cerrar al hacer clic en el botón X
+        const btnCerrar = modalReceta.querySelector('.close-modal');
+        if (btnCerrar) {
+            btnCerrar.addEventListener('click', cerrarModalReceta);
+        }
+
+        // Cerrar al hacer clic fuera del modal
+        modalReceta.addEventListener('click', (e) => {
+            if (e.target === modalReceta) {
+                cerrarModalReceta();
+            }
+        });
+    }
+
+    // Agregar event listener para los botones de agregar al carro y editar receta
+    document.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('btn-agregar')) {
+            const articulo_numero = e.target.dataset.numero;
+            const descripcion = e.target.dataset.nombre;
+            await agregarAlCarro(articulo_numero, descripcion, e.target);
+        } else if (e.target.classList.contains('btn-editar-receta')) {
+            const articulo_numero = e.target.dataset.numero;
+            mostrarModalReceta(articulo_numero);
+        }
+    });
+});

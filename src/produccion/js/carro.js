@@ -98,6 +98,93 @@ export async function actualizarEstadoCarro() {
     }
 }
 
+// Event listeners para los botones de eliminar artículo y cambios en cantidad
+document.addEventListener('click', async (e) => {
+    if (e.target.classList.contains('btn-eliminar-articulo')) {
+        const numeroArticulo = e.target.dataset.numero;
+        await eliminarArticuloDelCarro(numeroArticulo);
+    }
+});
+
+document.addEventListener('change', async (e) => {
+    if (e.target.classList.contains('input-cantidad-articulo')) {
+        const numeroArticulo = e.target.dataset.numero;
+        const nuevaCantidad = parseInt(e.target.value);
+        if (nuevaCantidad > 0) {
+            await modificarCantidadArticulo(numeroArticulo, nuevaCantidad);
+        } else {
+            e.target.value = 1; // Reset to 1 if invalid value
+            mostrarError('La cantidad debe ser mayor a 0');
+        }
+    }
+});
+
+// Función para eliminar un artículo del carro
+async function eliminarArticuloDelCarro(numeroArticulo) {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        
+        if (!carroId || !colaboradorData) {
+            throw new Error('No hay carro activo o colaborador seleccionado');
+        }
+
+        const colaborador = JSON.parse(colaboradorData);
+        
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticulo}?usuarioId=${colaborador.id}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('No se pudo eliminar el artículo del carro');
+        }
+
+        // Actualizar la vista
+        await mostrarArticulosDelCarro();
+
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+    }
+}
+
+// Función para modificar la cantidad de un artículo
+async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        
+        if (!carroId || !colaboradorData) {
+            throw new Error('No hay carro activo o colaborador seleccionado');
+        }
+
+        const colaborador = JSON.parse(colaboradorData);
+        
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticulo}?usuarioId=${colaborador.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                cantidad: nuevaCantidad
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('No se pudo actualizar la cantidad del artículo');
+        }
+
+        // No necesitamos recargar toda la tabla aquí
+        // La cantidad ya se actualizó en el input
+
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+        // Recargar la tabla para mostrar el valor anterior en caso de error
+        await mostrarArticulosDelCarro();
+    }
+}
+
 // Función para validar el carro activo
 export async function validarCarroActivo(usuarioId) {
     const carroId = localStorage.getItem('carroActivo');
@@ -277,6 +364,7 @@ export async function mostrarArticulosDelCarro() {
                         <th>Descripción</th>
                         <th>Código de Barras</th>
                         <th>Cantidad cargada</th>
+                        <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -288,7 +376,20 @@ export async function mostrarArticulosDelCarro() {
                     <td>${art.numero}</td>
                     <td>${art.descripcion}</td>
                     <td>${art.codigo_barras || '-'}</td>
-                    <td>${art.cantidad}</td>
+                    <td>
+                        <input type="number" 
+                               class="input-cantidad-articulo" 
+                               value="${art.cantidad}" 
+                               min="1" 
+                               data-numero="${art.numero}">
+                    </td>
+                    <td>
+                        <button class="btn-eliminar-articulo" 
+                                data-numero="${art.numero}"
+                                style="background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+                            🗑️
+                        </button>
+                    </td>
                 </tr>
             `;
         });
@@ -306,9 +407,11 @@ export async function mostrarArticulosDelCarro() {
         }
 
     } catch (error) {
-        console.error('Error al mostrar artículos del carro:', error);
         if (error.message.includes('No hay colaborador seleccionado')) {
             limpiarDatosSesion();
+        } else {
+            console.log('No se pueden cargar los artículos del carro porque no pertenece al usuario actual.');
+            document.getElementById('lista-articulos').innerHTML = '<p>No se pueden mostrar los artículos del carro</p>';
         }
     }
 }

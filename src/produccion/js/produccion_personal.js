@@ -51,9 +51,30 @@ async function inicializarEspacioTrabajo() {
 }
 
 // Inicializar cuando se carga la página
+// Función para mostrar/ocultar el campo cantidad
+function toggleCantidadField() {
+    const selector = document.getElementById('selector-ingrediente');
+    const cantidadContainer = document.getElementById('cantidad-container');
+    if (!selector || !cantidadContainer) return;
+
+    if (selector.value) {
+        cantidadContainer.style.display = 'block';
+    } else {
+        cantidadContainer.style.display = 'none';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Iniciar el espacio de trabajo de forma asíncrona
     inicializarEspacioTrabajo();
+
+    // Configurar el evento change para el selector de ingredientes
+    const selectorIngrediente = document.getElementById('selector-ingrediente');
+    if (selectorIngrediente) {
+        selectorIngrediente.addEventListener('change', toggleCantidadField);
+        // Ejecutar una vez al inicio para establecer el estado correcto
+        toggleCantidadField();
+    }
 
     // Agregar evento al botón de crear carro
     const btnCrearCarro = document.getElementById('crear-carro');

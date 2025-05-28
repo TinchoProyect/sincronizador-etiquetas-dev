@@ -322,3 +322,54 @@
     padding: 10px 20px;
     font-size: 16px;
 }
+
+.resaltado-articulo {
+    background-color: #ffffcc;
+    transition: background-color 0.5s ease;
+}
+
+/* Estilos para el contenedor de ingredientes */
+.ingredientes-container {
+    margin-bottom: 20px;
+}
+
+.selector-container {
+    width: 100%;
+}
+
+.selector-wrapper {
+    margin-bottom: 15px;
+}
+
+.selector-with-button {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.selector-with-button select {
+    flex: 1;
+}
+
+.selector-with-button button {
+    white-space: nowrap;
+    padding: 8px 15px;
+    height: 38px; /* Mismo alto que el select */
+}
+
+.cantidad-wrapper {
+    margin-top: 10px;
+}
+
+#btn-nuevo-ingrediente {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#btn-nuevo-ingrediente:hover {
+    background-color: #5a6268;
+}

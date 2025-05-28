@@ -115,7 +115,50 @@ async function crearReceta(req, res) {
     }
 }
 
+/**
+ * Obtiene una receta específica por número de artículo
+ */
+async function obtenerReceta(numero_articulo) {
+    const client = await pool.connect();
+    
+    try {
+        // Obtener la receta
+        const recetaQuery = `
+            SELECT r.id, r.articulo_numero, r.descripcion, r.fecha_creacion,
+                   ri.nombre_ingrediente, ri.unidad_medida, ri.cantidad
+            FROM recetas r
+            LEFT JOIN receta_ingredientes ri ON r.id = ri.receta_id
+            WHERE r.articulo_numero = $1
+            ORDER BY ri.id
+        `;
+        
+        const result = await client.query(recetaQuery, [numero_articulo]);
+        
+        if (result.rows.length === 0) {
+            throw new Error('Receta no encontrada');
+        }
+
+        // Estructurar la respuesta
+        const receta = {
+            articulo_numero: result.rows[0].articulo_numero,
+            descripcion: result.rows[0].descripcion,
+            fecha_creacion: result.rows[0].fecha_creacion,
+            ingredientes: result.rows.map(row => ({
+                nombre_ingrediente: row.nombre_ingrediente,
+                unidad_medida: row.unidad_medida,
+                cantidad: row.cantidad
+            }))
+        };
+
+        return receta;
+
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     crearReceta,
-    obtenerEstadoRecetas
+    obtenerEstadoRecetas,
+    obtenerReceta
 };

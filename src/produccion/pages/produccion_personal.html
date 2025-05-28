@@ -11,7 +11,7 @@
     <div class="container">
         <header>
             <h1>Espacio de Trabajo - Producción</h1>
-            <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
+            <a href="#" class="back-button" onclick="window.close(); return false;">← Volver a producción</a>
         </header>
 
         <main>
@@ -105,9 +105,28 @@
                     <label for="descripcion_receta">Descripción de la Receta:</label>
                     <textarea id="descripcion_receta" rows="4" placeholder="Ingrese una descripción opcional..."></textarea>
                 </div>
+                <div class="form-group ingredientes-container">
+                    <div class="selector-container">
+                        <div class="selector-wrapper">
+                            <label for="selector-ingrediente">Seleccionar Ingrediente:</label>
+                            <div class="selector-with-button">
+                                <select id="selector-ingrediente" required>
+                                    <option value="">Seleccione un ingrediente...</option>
+                                </select>
+                                <button type="button" class="btn btn-secondary" id="btn-nuevo-ingrediente">
+                                    ➕ Nuevo
+                                </button>
+                            </div>
+                        </div>
+                        <div id="cantidad-container" class="cantidad-wrapper" style="display: none;">
+                            <label for="input-cantidad-ingrediente">Cantidad:</label>
+                            <input type="number" id="input-cantidad-ingrediente" min="0.01" step="0.01" required>
+                        </div>
+                    </div>
+                </div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-primary" id="btn-cargar-ingredientes">
-                        Cargar ingredientes
+                    <button type="button" class="btn btn-primary" id="btn-agregar-ingrediente">
+                        Agregar Ingrediente
                     </button>
                     <button type="button" class="btn btn-success" id="btn-guardar-receta">
                         Guardar Receta
@@ -127,6 +146,36 @@
                             <!-- Acá se van a insertar dinámicamente los ingredientes -->
                         </tbody>
                     </table>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para crear nuevo ingrediente -->
+    <div id="modal-nuevo-ingrediente" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Nuevo Ingrediente</h2>
+            <form id="form-nuevo-ingrediente">
+                <div class="form-group">
+                    <label for="nombre-ingrediente">Nombre del ingrediente:</label>
+                    <input type="text" id="nombre-ingrediente" required>
+                </div>
+                <div class="form-group">
+                    <label for="unidad-medida-ingrediente">Unidad de medida:</label>
+                    <input type="text" id="unidad-medida-ingrediente" placeholder="Ej: kilo, unidad, ml..." required>
+                </div>
+                <div class="form-group">
+                    <label for="categoria-ingrediente">Categoría:</label>
+                    <input type="text" id="categoria-ingrediente" placeholder="Ej: semillas, harinas, frutos secos..." required>
+                </div>
+                <div class="form-group">
+                    <label for="stock-ingrediente">Stock actual:</label>
+                    <input type="number" id="stock-ingrediente" step="0.01" min="0">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="btn-cancelar-ingrediente">Cancelar</button>
+                    <button type="button" class="btn btn-success" id="btn-guardar-ingrediente">Guardar ingrediente</button>
                 </div>
             </form>
         </div>
