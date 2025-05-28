@@ -5,7 +5,8 @@ import { mostrarArticulosDelCarro } from './carro.js';
 const state = {
     todosLosArticulos: [],
     articulosFiltrados: [],
-    ingredientesCargados: [] // Array temporal para almacenar ingredientes
+    ingredientesCargados: [], // Array temporal para almacenar ingredientes
+    ultimoArticuloEditado: null // Almacena el último artículo que se editó
 };
 
 // Función para actualizar el título de la página
@@ -106,6 +107,11 @@ export async function actualizarTablaArticulos(articulos) {
             const tr = document.createElement('tr');
             const tieneReceta = estadoRecetas[articulo.numero];
             
+            tr.setAttribute('data-numero', articulo.numero);
+            const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
+            if (esArticuloEditado) {
+                tr.classList.add('resaltado-articulo');
+            }
             tr.innerHTML = `
                 <td>${articulo.numero}</td>
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
@@ -128,6 +134,11 @@ export async function actualizarTablaArticulos(articulos) {
         // Si hay error, mostrar los botones en rojo por defecto
         articulos.forEach(articulo => {
             const tr = document.createElement('tr');
+            tr.setAttribute('data-numero', articulo.numero);
+            const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
+            if (esArticuloEditado) {
+                tr.classList.add('resaltado-articulo');
+            }
             tr.innerHTML = `
                 <td>${articulo.numero}</td>
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
@@ -303,11 +314,20 @@ async function guardarReceta() {
             throw new Error(errorData.error || 'Error al guardar la receta');
         }
 
+        // Guardar el artículo editado
+        state.ultimoArticuloEditado = articulo_numero;
+        
         // Actualizar tabla inmediatamente
         await actualizarTablaArticulos(state.articulosFiltrados);
         
         // Cerrar el modal
         cerrarModalReceta();
+
+        // Buscar y resaltar el artículo editado
+        const filaEditada = document.querySelector(`tr[data-numero="${articulo_numero}"]`);
+        if (filaEditada) {
+            filaEditada.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
 
         // Mostrar mensaje de éxito
         const successDiv = document.createElement('div');
