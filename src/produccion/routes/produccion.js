@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { crearReceta, obtenerEstadoRecetas, obtenerReceta, actualizarReceta } = require('../controllers/recetas');
-const { 
-    crearCarro, 
-    agregarArticulo, 
+const {
+    crearCarro,
+    agregarArticulo,
     obtenerArticulos,
     obtenerArticulosDeCarro,
     obtenerCarrosDeUsuario,
@@ -11,13 +11,16 @@ const {
     eliminarArticuloDeCarro,
     modificarCantidadDeArticulo
 } = require('../controllers/carro');
-const { 
+const {
     obtenerIngredientes,
     obtenerIngrediente,
     crearIngrediente,
     actualizarIngrediente,
     eliminarIngrediente
 } = require('../controllers/ingredientes');
+
+const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
+router.use('/mixes', mixesRouter);     // ← Montar rutas para mixes
 
 // Rutas para ingredientes
 router.get('/ingredientes', async (req, res) => {

@@ -113,24 +113,42 @@
             height: 100%;
             background-color: rgba(0,0,0,0.5);
             z-index: 1000;
+            overflow-y: auto;
         }
 
         .modal-content {
             background-color: white;
-            margin: 10% auto;
+            margin: 5% auto;
             padding: 20px;
             width: 90%;
             max-width: 500px;
             border-radius: 8px;
-            position: relative;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: move;
+            max-height: 80vh;
+            overflow-y: auto;
         }
 
         .close-modal {
-            position: absolute;
-            right: 20px;
+            position: sticky;
+            float: right;
             top: 10px;
             font-size: 24px;
             cursor: pointer;
+            z-index: 1;
+            background: white;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+
+        .modal-header {
+            position: sticky;
+            top: 0;
+            background: white;
+            padding: 10px 0;
+            z-index: 1;
         }
 
         .form-group {
@@ -180,6 +198,8 @@
                             <th>Categoría</th>
                             <th>Stock Actual</th>
                             <th>Descripción</th>
+                            <th>Tipo</th>
+                            <th>Composición</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -193,8 +213,10 @@
         <!-- Modal para agregar/editar ingrediente -->
         <div id="modal-ingrediente" class="modal">
             <div class="modal-content">
-                <span class="close-modal">&times;</span>
-                <h2 id="modal-titulo">Nuevo Ingrediente</h2>
+                <div class="modal-header">
+                    <span class="close-modal">&times;</span>
+                    <h2 id="modal-titulo">Nuevo Ingrediente</h2>
+                </div>
                 <form id="form-ingrediente">
                     <input type="hidden" id="ingrediente-id">
                     <div class="form-group">
@@ -224,11 +246,55 @@
             </div>
         </div>
 
+        <!-- Modal para composición del mix -->
+        <div id="modal-mix" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="close-modal">&times;</span>
+                    <h2>Composición del Mix</h2>
+                </div>
+                
+                <table class="tabla-ingredientes">
+                    <thead>
+                        <tr>
+                            <th>Ingrediente</th>
+                            <th>Cantidad (Kg)</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-mix-ingredientes-body">
+                        <!-- Los ingredientes del mix se cargarán dinámicamente aquí -->
+                    </tbody>
+                </table>
+
+                <div style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label for="selector-ingrediente-mix">Ingrediente:</label>
+                        <select id="selector-ingrediente-mix" required>
+                            <!-- Se llenará con el fetch de ingredientes disponibles -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cantidad-ingrediente-mix">Cantidad (Kg):</label>
+                        <input type="number" id="cantidad-ingrediente-mix" step="0.001" min="0.001" required style="width: 100px;">
+                    </div>
+    <div class="form-actions">
+        <button id="btn-agregar-a-mix" class="btn-agregar">Agregar</button>
+        <button id="btn-guardar-mix" class="btn-agregar" style="background-color: #28a745; margin-left: 10px;">
+          Guardar Receta
+        </button>
+    </div>
+
+                </div>
+            </div>
+        </div>
+
         <footer>
             <p>&copy; 2024 Gestiones Lamda</p>
         </footer>
     </div>
 
     <script type="module" src="/js/ingredientes.js"></script>
+    <script type="module" src="/js/mix.js"></script>
 </body>
 </html>

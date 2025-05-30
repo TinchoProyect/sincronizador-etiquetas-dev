@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Producción Personal</title>
+  <!-- Supongamos que ya existe un enlace a CSS global -->
+  <link rel="stylesheet" href="../css/estilos.css" />
+</head>
+<body>
+  <!-- Contenedor principal de la página de Producción -->
+  <div id="app-container">
+    <h1>Producción Personal</h1>
+    
+    <!-- Sección existente para manejo de artículos y recetas -->
+    <div id="seccion-recetas">
+      <!-- EJEMPLO: Lista de artículos, formulario de receta, etc. -->
+      <!-- Suponiendo que aquí ya existe un formulario o una tabla que muestra ingredientes -->
+      <div>
+        <label for="selector-ingrediente">Seleccionar ingrediente: </label>
+        <select id="selector-ingrediente">
+          <!-- Las opciones se cargan dinámicamente -->
+        </select>
+
+        <!-- Botón de ejemplo para "Editar composición" (se muestra solo si es_mix = true desde JS) -->
+        <button id="btn-editar-composicion" 
+                style="display: none; margin-left: 10px; background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px;">
+          Editar composición
+        </button>
+      </div>
+
+      <!-- Aquí tendría el resto del formulario para descripción de receta, cantidades, etc. -->
+      <!-- ... -->
+    </div>
+  </div>
+
+  <!-- Modal para editar la composición del mix -->
+  <!-- Se sugiere ubicarlo en un lugar central donde se definen los demás modals de la aplicación -->
+  <div id="modal-mix" class="modal" style="display: none;">
+    <div class="modal-content" style="position: relative;">
+      <span class="close-modal" style="position: absolute; top: 10px; right: 15px; cursor: pointer;">&times;</span>
+      
+      <h2>Editar Composición del Mix</h2>
+
+      <!-- Tabla para mostrar la composición actual -->
+      <table id="tabla-mix-ingredientes">
+        <thead>
+          <tr>
+            <th>Ingrediente</th>
+            <th>Cantidad (Kg)</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Se renderiza dinámicamente desde mix.js -->
+        </tbody>
+      </table>
+
+      <!-- Sección para agregar un nuevo ingrediente al mix -->
+      <hr />
+      <div style="margin-top: 10px;">
+        <label for="selector-ingrediente-mix">Ingrediente:</label>
+        <select id="selector-ingrediente-mix">
+          <!-- Cargar las opciones de ingredientes disponibles -->
+        </select>
+
+        <label for="cantidad-ingrediente-mix">Cantidad (Kg):</label>
+        <input type="number" step="0.001" min="0.001" id="cantidad-ingrediente-mix" style="width: 80px;" />
+
+        <button id="btn-agregar-a-mix"
+                style="background-color: #28a745; color: white; border: none; padding: 6px 12px; margin-left: 8px; border-radius: 4px;">
+          Agregar al Mix
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <!-- Suponiendo que ya existe la importación de 'utils.js', 'articulos.js', etc. -->
+  <!-- Importar mix.js al final para que pueda enlazarse con el DOM -->
+  <script src="../produccion/js/mix.js" type="module"></script>
+  <script type="module">
+    import { esMix, abrirEdicionMix } from '../produccion/js/mix.js';
+    import { mostrarError } from '../produccion/js/utils.js'; // Ajustar si utils.js está en otra ruta
+
+    // Ejemplo: Al cambiar la selección de ingrediente, si es_mix es true, mostrar botón
+    const selectorIngrediente = document.getElementById('selector-ingrediente');
+    const btnEditarComposicion = document.getElementById('btn-editar-composicion');
+
+    // EJEMPLO de array local. En el sistema real, se cargaría con fetch.
+    // Suponemos que cada objeto ingrediente trae { id, nombre, es_mix }.
+    let listaIngredientes = [];
+
+    async function cargarIngredientes() {
+      try {
+        const resp = await fetch('/api/produccion/ingredientes');
+        if (!resp.ok) {
+          throw new Error('Error al cargar ingredientes');
+        }
+        listaIngredientes = await resp.json();
+        // Rellenar select con listaIngredientes
+        selectorIngrediente.innerHTML = `<option value="">Seleccione un ingrediente...</option>`;
+        listaIngredientes.forEach(ing => {
+          const option = document.createElement('option');
+          option.value = ing.id;
+          option.textContent = ing.nombre;
+          // Se podría registrar un data-es_mix si se desea también
+          selectorIngrediente.appendChild(option);
+        });
+      } catch (error) {
+        mostrarError(error.message);
+      }
+    }
+
+    selectorIngrediente.addEventListener('change', () => {
+      const ingId = parseInt(selectorIngrediente.value);
+      if (isNaN(ingId)) {
+        // No se ha seleccionado nada
+        btnEditarComposicion.style.display = 'none';
+        return;
+      }
+      // Buscar ingrediente en la lista
+      const ingredienteSeleccionado = listaIngredientes.find(i => i.id === ingId);
+      if (ingredienteSeleccionado && esMix(ingredienteSeleccionado)) {
+        // Mostrar botón y setear listener
+        btnEditarComposicion.style.display = 'inline-block';
+        // Al hacer clic en "Editar composición"
+        btnEditarComposicion.onclick = () => abrirEdicionMix(ingId);
+      } else {
+        // No es mix
+        btnEditarComposicion.style.display = 'none';
+      }
+    });
+
+    // Llamamos la función para cargar los ingredientes cuando inicie la página
+    document.addEventListener('DOMContentLoaded', () => {
+      cargarIngredientes();
+    });
+  </script>
+</body>
+</html>

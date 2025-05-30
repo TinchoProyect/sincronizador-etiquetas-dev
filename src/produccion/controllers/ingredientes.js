@@ -65,7 +65,7 @@ async function obtenerIngrediente(id) {
  */
 async function crearIngrediente(datos) {
     try {
-        const { nombre, descripcion, unidad_medida, categoria, stock_actual } = datos;
+        const { nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id } = datos;
         
         const query = `
             INSERT INTO ingredientes (
@@ -73,12 +73,13 @@ async function crearIngrediente(datos) {
                 descripcion,
                 unidad_medida,
                 categoria,
-                stock_actual
-            ) VALUES ($1, $2, $3, $4, $5)
+                stock_actual,
+                padre_id
+            ) VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *;
         `;
         
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual];
+        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id];
         const result = await pool.query(query, values);
         
         return result.rows[0];
@@ -88,6 +89,7 @@ async function crearIngrediente(datos) {
     }
 }
 
+
 /**
  * Actualiza un ingrediente existente
  * @param {number} id - ID del ingrediente
@@ -96,7 +98,14 @@ async function crearIngrediente(datos) {
  */
 async function actualizarIngrediente(id, datos) {
     try {
-        const { nombre, descripcion, unidad_medida, categoria, stock_actual } = datos;
+        const existing = await obtenerIngrediente(id);
+        const nombre = (datos.nombre === undefined) ? existing.nombre : datos.nombre;
+        const descripcion = (datos.descripcion === undefined) ? existing.descripcion : datos.descripcion;
+        const unidad_medida = (datos.unidad_medida === undefined) ? existing.unidad_medida : datos.unidad_medida;
+        const categoria = (datos.categoria === undefined) ? existing.categoria : datos.categoria;
+        const stock_actual = (datos.stock_actual === undefined) ? existing.stock_actual : datos.stock_actual;
+        const padre_id = (datos.padre_id === undefined) ? existing.padre_id : datos.padre_id;
+
         
         const query = `
             UPDATE ingredientes
@@ -104,12 +113,13 @@ async function actualizarIngrediente(id, datos) {
                 descripcion = $2,
                 unidad_medida = $3,
                 categoria = $4,
-                stock_actual = $5
-            WHERE id = $6
+                stock_actual = $5,
+                padre_id = $6
+            WHERE id = $7
             RETURNING *;
         `;
         
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, id];
+        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, id];
         const result = await pool.query(query, values);
         
         if (result.rows.length === 0) {
@@ -122,6 +132,7 @@ async function actualizarIngrediente(id, datos) {
         throw new Error('No se pudo actualizar el ingrediente');
     }
 }
+
 
 /**
  * Elimina un ingrediente

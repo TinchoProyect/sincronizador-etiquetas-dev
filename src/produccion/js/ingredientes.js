@@ -1,3 +1,5 @@
+import { esMix } from './mix.js';
+
 // Variables globales
 let ingredienteEditando = null;
 
@@ -50,8 +52,10 @@ async function cargarIngredientes() {
         }
 
         const ingredientes = await response.json();
-        console.log('Ingredientes recibidos:', ingredientes);
+console.log('Ingredientes recibidos:', ingredientes);
+        window.actualizarListaIngredientes(ingredientes);
         actualizarTablaIngredientes(ingredientes);
+
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje(error.message || 'No se pudieron cargar los ingredientes');
@@ -72,18 +76,58 @@ function actualizarTablaIngredientes(ingredientes) {
 
     ingredientes.forEach(ingrediente => {
         const tr = document.createElement('tr');
+        tr.dataset.id = ingrediente.id;
         tr.innerHTML = `
             <td>${ingrediente.nombre}</td>
             <td>${ingrediente.unidad_medida}</td>
             <td>${ingrediente.categoria}</td>
             <td>${ingrediente.stock_actual}</td>
             <td>${ingrediente.descripcion || '-'}</td>
+<td class="tipo-col"></td>
+<td>-</td>
+
+
+
+
             <td>
                 <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
+
                 <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
+                <button class="btn-agregar" onclick="gestionarComposicionMix(${ingrediente.id})"
+                        style="display: none">
+                    Gestionar composición
+                </button>
             </td>
         `;
         tbody.appendChild(tr);
+
+        // Verificar estado de mix para cada ingrediente
+        (async () => {
+            try {
+                const tieneMix = await window.esMix(ingrediente.id);
+                const esMixStatus = tr.querySelector('.es-mix-status');
+                const btnGestionar = tr.querySelector('.btn-agregar');
+                
+const tipoCell = tr.querySelector('.tipo-col');
+tipoCell.textContent = tieneMix ? 'Ingrediente Mix' : 'Ingrediente Simple';
+
+if (esMixStatus) {
+    esMixStatus.textContent = tieneMix ? 'Sí' : 'No (aún)';
+}
+
+                
+                if (btnGestionar) {
+                    // Mostrar el botón si no tiene padre_id (puede ser mix)
+                    btnGestionar.style.display = !ingrediente.padre_id ? 'inline-block' : 'none';
+                }
+            } catch (error) {
+                console.error(`Error al verificar mix para ingrediente ${ingrediente.id}:`, error);
+                const esMixStatus = tr.querySelector('.es-mix-status');
+                if (esMixStatus) {
+                    esMixStatus.textContent = 'Error';
+                }
+            }
+        })();
     });
 }
 
@@ -204,15 +248,65 @@ document.addEventListener('DOMContentLoaded', () => {
         abrirModal();
     });
 
-    // Botón para cerrar modal
-    document.querySelector('.close-modal').addEventListener('click', cerrarModal);
-
-    // Cerrar modal al hacer clic fuera
-    window.addEventListener('click', (e) => {
-        const modal = document.getElementById('modal-ingrediente');
-        if (e.target === modal) {
-            cerrarModal();
+    // Hacer los modales arrastrables
+    const modales = document.querySelectorAll('.modal-content');
+    modales.forEach(modal => {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        const header = modal.querySelector('.modal-header');
+        
+        if (header) {
+            header.onmousedown = dragMouseDown;
         }
+
+        function dragMouseDown(e) {
+            e.preventDefault();
+            // Obtener la posición del cursor al inicio
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            // Llamar a función cada vez que el cursor se mueva
+            document.onmousemove = elementDrag;
+        }
+
+        function elementDrag(e) {
+            e.preventDefault();
+            // Calcular la nueva posición
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            // Establecer la nueva posición
+            modal.style.top = (modal.offsetTop - pos2) + "px";
+            modal.style.left = (modal.offsetLeft - pos1) + "px";
+            modal.style.transform = 'none'; // Remover transform para permitir el arrastre
+        }
+
+        function closeDragElement() {
+            // Detener el movimiento cuando se suelte el mouse
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+    });
+
+    // Configurar cerrado de modales
+    const modalesConfig = [
+        { id: 'modal-ingrediente', closeHandler: cerrarModal },
+        { id: 'modal-mix', closeHandler: (modal) => modal.style.display = 'none' }
+    ];
+
+    modalesConfig.forEach(({ id, closeHandler }) => {
+        const modal = document.getElementById(id);
+        const closeBtn = modal.querySelector('.close-modal');
+        
+        // Botón de cerrar
+        closeBtn.addEventListener('click', () => closeHandler(modal));
+        
+        // Cerrar al hacer clic fuera
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeHandler(modal);
+            }
+        });
     });
 
     // Manejar envío del formulario
@@ -225,7 +319,8 @@ document.addEventListener('DOMContentLoaded', () => {
             unidad_medida: document.getElementById('unidad-medida').value,
             categoria: document.getElementById('categoria').value,
             stock_actual: parseFloat(document.getElementById('stock').value),
-            descripcion: document.getElementById('descripcion').value
+            descripcion: document.getElementById('descripcion').value,
+            padre_id: ingredienteEditando ? ingredienteEditando.padre_id : null
         };
 
         if (ingredienteEditando) {
@@ -239,3 +334,15 @@ document.addEventListener('DOMContentLoaded', () => {
 // Hacer funciones disponibles globalmente
 window.editarIngrediente = editarIngrediente;
 window.eliminarIngrediente = eliminarIngrediente;
+
+// Funciones para gestionar el modal de mix
+function gestionarComposicionMix(id) {
+    const modalMix = document.getElementById('modal-mix');
+    modalMix.style.display = 'block';
+    
+    // Llamar a la función de mix.js para cargar la composición
+    window.abrirEdicionMix(id);
+}
+
+
+window.gestionarComposicionMix = gestionarComposicionMix;
