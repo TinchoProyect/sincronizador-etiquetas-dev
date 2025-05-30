@@ -71,26 +71,130 @@ export async function abrirEdicionMix(mixId) {
     if (!modal) return;
 
     try {
-        // Llenar el selector de ingredientes disponibles
-        const select = modal.querySelector('#selector-ingrediente-mix');
-        if (select) {
-            select.innerHTML = '';
-            for (const ing of ingredientesLista) {
-                if (ing.id !== parseInt(mixId)) {
-                    const isMixIngred = await esMix(ing.id);
-                    if (!isMixIngred) {
-                        const opt = document.createElement('option');
-                        opt.value = ing.id;
-                        opt.textContent = `${ing.nombre} - ${ing.categoria}`;
-                        select.appendChild(opt);
-                    }
-                }
-            }
+        // Preparar contenedor principal
+        let filtrosContainer = modal.querySelector('.filtros-categorias');
+        if (!filtrosContainer) {
+            filtrosContainer = document.createElement('div');
+            filtrosContainer.className = 'filtros-categorias';
+            const selectContainer = modal.querySelector('#selector-ingrediente-mix').parentElement;
+            selectContainer.insertBefore(filtrosContainer, selectContainer.firstChild);
         }
+        filtrosContainer.innerHTML = '';
 
+        // Crear contenedor para botones globales (fila superior)
+        const botonesGlobales = document.createElement('div');
+        botonesGlobales.className = 'botones-globales';
+        botonesGlobales.style.cssText = 'margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;';
+        
+        // Botón "Mostrar Todos"
+        const btnTodos = document.createElement('button');
+        btnTodos.textContent = 'Mostrar Todos';
+        btnTodos.className = 'btn-filtro';
+        btnTodos.style.cssText = 'margin: 0 5px 5px 0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; background-color: #fff;';
+        botonesGlobales.appendChild(btnTodos);
+
+        // Botón "Ocultar Todos"
+        const btnOcultar = document.createElement('button');
+        btnOcultar.textContent = 'Ocultar Todos';
+        btnOcultar.className = 'btn-filtro';
+        btnOcultar.style.cssText = 'margin: 0 5px 5px 0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; background-color: #fff;';
+        botonesGlobales.appendChild(btnOcultar);
+
+        // Insertar la fila de botones globales en filtrosContainer
+        filtrosContainer.appendChild(botonesGlobales);
+
+        // Contenedor para botones de categoría
+        const categoriasBotones = document.createElement('div');
+        categoriasBotones.className = 'categorias-botones';
+        categoriasBotones.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px;';
+        filtrosContainer.appendChild(categoriasBotones);
+
+        // Obtener y ordenar categorías
+        const categorias = [...new Set(ingredientesLista.map(ing => ing.categoria))]
+            .filter(Boolean)
+            .sort();
+
+        // Crear botones de categoría
+        const botonesCategorias = categorias.map(cat => {
+            const btn = document.createElement('button');
+            btn.textContent = cat;
+            btn.className = 'btn-filtro activo';
+            // Por defecto verde para indicar activo
+            btn.style.cssText = 'padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background-color: #5cb85c;';
+            categoriasBotones.appendChild(btn);
+            return btn;
+        });
+
+        // Estado de filtros activos
+        let filtrosActivos = new Set(categorias);
+
+        // Función para actualizar el select según filtros
+        const actualizarSelect = async () => {
+            const select = modal.querySelector('#selector-ingrediente-mix');
+            select.innerHTML = '';
+
+            for (const ing of ingredientesLista) {
+                // No incluir el mismo mix en su composición
+                if (ing.id === parseInt(mixId)) continue;
+
+                // Excluir ingredientes que sean "Mix"
+                const isMixIngred = await esMix(ing.id);
+                if (isMixIngred) continue;
+
+                // Agregar si coincide con filtros activos (o si no hay ninguno activo)
+                if (filtrosActivos.size > 0 && !filtrosActivos.has(ing.categoria)) {
+                    continue;
+                }
+                const opt = document.createElement('option');
+                opt.value = ing.id;
+                opt.textContent = `${ing.nombre} - ${ing.categoria}`;
+                select.appendChild(opt);
+            }
+
+            // No preseleccionar nada
+            select.selectedIndex = -1;
+        };
+
+        // Evento para "Mostrar Todos"
+        btnTodos.onclick = () => {
+            filtrosActivos = new Set(categorias);
+            botonesCategorias.forEach(btn => {
+                btn.classList.add('activo');
+                btn.style.backgroundColor = '#5cb85c';
+            });
+            actualizarSelect();
+        };
+
+        // Evento para "Ocultar Todos"
+        btnOcultar.onclick = () => {
+            filtrosActivos.clear();
+            botonesCategorias.forEach(btn => {
+                btn.classList.remove('activo');
+                btn.style.backgroundColor = '';
+            });
+            actualizarSelect();
+        };
+
+        // Eventos para cada botón de categoría
+        botonesCategorias.forEach(btn => {
+            btn.onclick = () => {
+                if (btn.classList.contains('activo')) {
+                    btn.classList.remove('activo');
+                    btn.style.backgroundColor = '';
+                    filtrosActivos.delete(btn.textContent);
+                } else {
+                    btn.classList.add('activo');
+                    btn.style.backgroundColor = '#5cb85c';
+                    filtrosActivos.add(btn.textContent);
+                }
+                actualizarSelect();
+            };
+        });
+
+        // Inicializar el select con todos los filtros activos
+        await actualizarSelect();
 
         // Cargar la composición actual
-
         const response = await fetch(`/api/produccion/mixes/${mixId}/ingredientes`);
         if (!response.ok) {
             throw new Error('Error al cargar la composición del mix');
@@ -99,7 +203,6 @@ export async function abrirEdicionMix(mixId) {
         const data = await response.json();
         const tbody = modal.querySelector('#tabla-mix-ingredientes-body');
         if (!tbody) return;
-
 
         // Limpiar tabla
         tbody.innerHTML = '';
@@ -280,7 +383,6 @@ export async function abrirEdicionMix(mixId) {
         console.error('Error al abrir edición de mix:', error);
         alert(error.message);
     }
-
 }
 
 // Cerrar modal al hacer clic en la X o fuera del modal
