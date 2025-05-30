@@ -208,7 +208,11 @@ export async function abrirEdicionMix(mixId) {
         tbody.innerHTML = '';
 
         // Mostrar ingredientes actuales
+        let totalKg = 0;
         data.composicion.forEach(item => {
+            // Acumular la cantidad
+            totalKg += parseFloat(item.cantidad || 0);
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${item.nombre_ingrediente}</td>
@@ -230,6 +234,47 @@ export async function abrirEdicionMix(mixId) {
             `;
             tbody.appendChild(tr);
         });
+
+        // Obtener receta_base_kg actual del mix
+        let recetaBaseActual = totalKg; 
+        try {
+            const mixResp = await fetch(`/api/produccion/ingredientes/${mixId}`);
+            if (mixResp.ok) {
+                const mixData = await mixResp.json();
+                // Si ya hay un valor en receta_base_kg, usarlo; en caso contrario, usar la suma
+                if (mixData.receta_base_kg !== null && mixData.receta_base_kg !== undefined) {
+                    recetaBaseActual = parseFloat(mixData.receta_base_kg);
+                }
+            }
+        } catch(e) {
+            console.error('No se pudo obtener receta_base_kg, se usa totalKg');
+        }
+
+        // Mostrar campo para la receta base
+        let recetaBaseContainer = modal.querySelector('.receta-base-container');
+        if (!recetaBaseContainer) {
+            recetaBaseContainer = document.createElement('div');
+            recetaBaseContainer.className = 'receta-base-container';
+            recetaBaseContainer.style.marginTop = '10px';
+            // Insertar antes de los botones finales
+            const subModalContent = modal.querySelector('.modal-content');
+            if (subModalContent) {
+                subModalContent.appendChild(recetaBaseContainer);
+            }
+        }
+        recetaBaseContainer.innerHTML = `
+            <label for="input-receta-base-kg" style="font-weight: bold;">Receta Base (Kg):</label>
+            <input type="number" step="0.001" min="0" id="input-receta-base-kg" style="width: 100px; margin-left: 5px;" />
+            <span id="lbl-suma-total" style="margin-left: 15px; color: #666;">
+              Suma actual: ${totalKg.toFixed(3)} Kg
+            </span>
+        `;
+
+        // Asignar valor inicial al input
+        const inputRecetaBase = modal.querySelector('#input-receta-base-kg');
+        if (inputRecetaBase) {
+            inputRecetaBase.value = recetaBaseActual.toFixed(3);
+        }
 
         // Configurar botón de agregar
         const btnAgregar = modal.querySelector('#btn-agregar-a-mix');
@@ -369,13 +414,38 @@ export async function abrirEdicionMix(mixId) {
         // Mostrar modal
         modal.style.display = 'block';
 
-        // Manejar el nuevo botón "Guardar Receta"
+        // Manejar el botón "Guardar Receta"
         const btnGuardarMix = modal.querySelector('#btn-guardar-mix');
         if (btnGuardarMix) {
-            btnGuardarMix.onclick = () => {
-                alert('Las cantidades y los ingredientes agregados han sido guardados correctamente.');
-                // Cierra modal Mix (opcional)
-                modal.style.display = 'none';
+            btnGuardarMix.onclick = async () => {
+                try {
+                    // Tomar el valor del input de receta base y enviarlo al servidor
+                    const valRecetaBase = parseFloat(
+                        document.getElementById('input-receta-base-kg').value
+                    ) || 0;
+
+                    const putResp = await fetch(`/api/produccion/ingredientes/${mixId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            receta_base_kg: valRecetaBase
+                        })
+                    });
+
+                    if (!putResp.ok) {
+                        const error = await putResp.json();
+                        throw new Error(error.error || 'Error al actualizar receta_base_kg');
+                    }
+
+                    // Mensaje de éxito
+                    alert('Las cantidades, la composición y la receta base fueron guardadas correctamente.');
+                    // Cierra modal Mix (opcional)
+                    modal.style.display = 'none';
+                } catch (error) {
+                    alert(error.message);
+                }
             };
         }
 
