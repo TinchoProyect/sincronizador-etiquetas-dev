@@ -174,14 +174,78 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
             throw new Error('No se pudo actualizar la cantidad del artículo');
         }
 
-        // No necesitamos recargar toda la tabla aquí
-        // La cantidad ya se actualizó en el input
+        // Actualizar solo los ingredientes del artículo modificado
+        await actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad);
 
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
         // Recargar la tabla para mostrar el valor anterior en caso de error
         await mostrarArticulosDelCarro();
+    }
+}
+
+// Función para actualizar solo los ingredientes de un artículo específico
+async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
+    try {
+        // Buscar el contenedor del artículo
+        const inputCantidad = document.querySelector(`input[data-numero="${numeroArticulo}"]`);
+        if (!inputCantidad) return;
+        
+        const articuloContainer = inputCantidad.closest('.articulo-container');
+        if (!articuloContainer) return;
+        
+        const ingredientesContainer = articuloContainer.nextElementSibling;
+        if (!ingredientesContainer || !ingredientesContainer.classList.contains('ingredientes-expandidos')) return;
+
+        // Obtener ingredientes actualizados
+        const ingredientes = await obtenerIngredientesExpandidos(numeroArticulo);
+        
+        if (ingredientes && ingredientes.length > 0) {
+            // Generar nuevo HTML para la tabla de ingredientes
+            let htmlIngredientes = `
+                <div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ingrediente</th>
+                                <th>Cantidad</th>
+                                <th>Unidad</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            ingredientes.forEach(ing => {
+                // Multiplicar la cantidad del ingrediente por la nueva cantidad del artículo
+                const cantidadTotal = ing.cantidad * nuevaCantidad;
+                htmlIngredientes += `
+                    <tr>
+                        <td>${ing.nombre}</td>
+                        <td>${cantidadTotal.toFixed(2)}</td>
+                        <td>${ing.unidad_medida}</td>
+                    </tr>
+                `;
+            });
+
+            htmlIngredientes += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            // Actualizar solo el contenido del contenedor de ingredientes
+            ingredientesContainer.innerHTML = htmlIngredientes;
+        } else {
+            ingredientesContainer.innerHTML = `
+                <div class="ingredientes-error">
+                    No se pudieron cargar los ingredientes para este artículo.
+                </div>
+            `;
+        }
+
+    } catch (error) {
+        console.error('Error al actualizar ingredientes:', error);
     }
 }
 
