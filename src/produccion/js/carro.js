@@ -328,7 +328,8 @@ export async function eliminarCarro(carroId) {
 // Función para obtener ingredientes expandidos de un artículo
 async function obtenerIngredientesExpandidos(numeroArticulo) {
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticulo}/ingredientes-expandido`);
+        const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
+        const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticuloEncoded}/ingredientes-expandido`);
         if (!response.ok) throw new Error('No se encontraron ingredientes');
         return await response.json();
     } catch (error) {
