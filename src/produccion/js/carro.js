@@ -131,7 +131,8 @@ async function eliminarArticuloDelCarro(numeroArticulo) {
 
         const colaborador = JSON.parse(colaboradorData);
         
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticulo}?usuarioId=${colaborador.id}`, {
+        const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticuloEncoded}?usuarioId=${colaborador.id}`, {
             method: 'DELETE'
         });
 
@@ -160,7 +161,8 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
 
         const colaborador = JSON.parse(colaboradorData);
         
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticulo}?usuarioId=${colaborador.id}`, {
+        const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticuloEncoded}?usuarioId=${colaborador.id}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
