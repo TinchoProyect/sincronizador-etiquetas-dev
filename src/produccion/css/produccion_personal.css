@@ -1,375 +1,152 @@
-.colaborador-header {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 30px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.colaborador-icon {
-    font-size: 2em;
-    color: var(--primary-color);
-}
-
-.colaborador-info {
-    flex-grow: 1;
-}
-
-.colaborador-nombre {
-    font-size: 1.2em;
-    font-weight: bold;
-    margin: 0;
-    color: var(--text-color);
-}
-
-.colaborador-subtitulo {
-    color: #666;
-    margin: 5px 0 0 0;
-    font-size: 0.9em;
-}
-
-.workspace-content {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-/* Sección de artículos */
+/* Estilos para el contenedor principal */
 .seccion-articulos {
-    margin-bottom: 30px;
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 20px;
-}
-
-.seccion-articulos h3 {
-    margin-top: 0;
-    color: var(--primary-color);
-    font-size: 1.3em;
-}
-
-.agregar-articulo-container {
-    margin-bottom: 20px;
-    padding: 15px;
-    background-color: white;
-    border-radius: 6px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-/* Sección de carros */
-.seccion-carros {
-    margin-top: 30px;
-}
-
-.workspace-actions {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-.btn-secondary {
-    background-color: var(--secondary-color, #6c757d);
-    color: white;
-}
-
-.btn-secondary:hover {
-    background-color: var(--secondary-color-dark, #5a6268);
-}
-
-.error-message {
-    background-color: #ff5252;
-    color: white;
-    padding: 10px;
+    margin: 10px 0;
+    padding: 8px;
+    background-color: #f9f9f9;
     border-radius: 4px;
-    margin-top: 10px;
-    animation: fadeIn 0.3s ease;
-}
-
-.carro-info {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 15px;
-    margin-top: 20px;
-}
-
-/* Estilos para la tabla de carros */
-.carros-table {
+    display: table;
     width: 100%;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
     border-collapse: collapse;
-    margin-top: 15px;
 }
 
-.carros-table thead th {
-    background-color: #f8f9fa;
-    padding: 12px;
-    border-bottom: 2px solid #dee2e6;
-    text-align: left;
+/* Estilos para el contenedor de artículos - estilo tabla */
+.articulo-container {
+    display: table-row;
+    border-bottom: 1px solid #eee;
 }
 
-.carros-table tbody tr {
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+/* Estilos para la información principal del artículo */
+.articulo-info {
+    display: table-cell;
+    vertical-align: middle;
+    padding: 4px 6px;
 }
 
-.carros-table tbody tr:hover {
-    background-color: #f0f0f0;
-}
-
-.carros-table tbody td {
-    padding: 12px;
-    border-bottom: 1px solid #dee2e6;
-}
-
-.carros-table tr.carro-activo {
-    background-color: #e3f2fd;
-    border-left: 4px solid var(--primary-color);
-}
-
-.carros-table tr.carro-activo:hover {
-    background-color: #d4e9fc;
-}
-
-.btn-group {
-    display: flex;
-    gap: 8px;
-}
-
-.btn-deseleccionar,
-.btn-eliminar {
-    padding: 4px 8px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+.articulo-codigo {
+    display: inline-block;
+    font-weight: bold;
+    min-width: 80px;
     font-size: 0.9em;
+    margin-right: 8px;
 }
 
-.btn-deseleccionar {
-    background-color: #6c757d;
-    color: white;
+.articulo-descripcion {
+    display: inline-block;
+    font-size: 0.9em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
 }
 
-.btn-eliminar {
+/* Contenedor de acciones */
+.articulo-actions {
+    display: table-cell;
+    vertical-align: middle;
+    text-align: right;
+    padding: 4px;
+    white-space: nowrap;
+    width: 140px;
+}
+
+/* Input de cantidad */
+.input-cantidad-articulo {
+    width: 50px;
+    padding: 2px 4px;
+    border: 1px solid #ddd;
+    border-radius: 2px;
+    font-size: 0.9em;
+    margin-right: 4px;
+}
+
+/* Botón eliminar */
+.btn-eliminar-articulo {
     background-color: #dc3545;
     color: white;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-/* Estilos del modal */
-.modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-    z-index: 1000;
-}
-
-.modal-content {
-    position: relative;
-    background-color: white;
-    margin: 2% auto;
-    padding: 20px;
-    width: 90%;
-    max-width: 1200px;
-    border-radius: 8px;
-    max-height: 90vh;
-    overflow-y: auto;
-}
-
-.close-modal {
-    position: absolute;
-    right: 20px;
-    top: 20px;
-    font-size: 24px;
+    border: none;
+    padding: 2px 6px;
+    border-radius: 2px;
     cursor: pointer;
-    color: #666;
+    font-size: 0.85em;
 }
 
-/* Estilos de los filtros */
-.filtros-container {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
+.btn-eliminar-articulo:hover {
+    background-color: #c82333;
 }
 
-.filtro-grupo {
-    flex: 1;
-    min-width: 200px;
+/* Botón toggle ingredientes */
+.toggle-ingredientes {
+    display: table-cell;
+    vertical-align: middle;
+    background: none;
+    border: none;
+    color: #0066cc;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 0.85em;
+    text-decoration: underline;
+    width: 100px;
+    text-align: left;
 }
 
-.filtro-grupo label {
-    display: block;
-    margin-bottom: 5px;
-    color: #666;
+.toggle-ingredientes:hover {
+    color: #004499;
 }
 
-.filtro-grupo input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+/* Sección de ingredientes */
+.ingredientes-expandidos {
+    display: table-row;
 }
 
-/* Estilos de la tabla de artículos */
-.tabla-articulos {
+.ingredientes-expandidos.hidden {
+    display: none;
+}
+
+.ingredientes-expandidos > div {
+    display: table-cell;
+    padding: 4px 6px;
+    background-color: #f8f9fa;
+    font-size: 0.85em;
+    border-bottom: 1px solid #eee;
+}
+
+.ingredientes-expandidos table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
 }
 
-.tabla-articulos th,
-.tabla-articulos td {
-    padding: 12px;
+.ingredientes-expandidos th,
+.ingredientes-expandidos td {
+    padding: 3px 6px;
     text-align: left;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #eee;
+    font-size: 0.85em;
 }
 
-.tabla-articulos th {
-    background-color: #f8f9fa;
+.ingredientes-expandidos th {
+    background-color: #f1f1f1;
     font-weight: 600;
 }
 
-.tabla-articulos tr:hover {
-    background-color: #f5f5f5;
-}
-
-.btn-agregar {
-    padding: 6px 12px;
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.btn-agregar:hover {
-    background-color: var(--primary-color-dark);
-}
-
-/* Estilos para el input de cantidad */
-.cantidad-input {
-    width: 80px;
+/* Mensaje de error */
+.ingredientes-error {
+    display: table-cell;
     padding: 4px;
-    margin-right: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    background-color: #fff3f3;
+    color: #d32f2f;
+    font-size: 0.85em;
 }
 
-/* Mensaje de éxito */
-.success-message {
-    background-color: #28a745;
-    color: white;
-    padding: 10px;
-    border-radius: 4px;
-    margin-top: 10px;
-    animation: fadeIn 0.3s ease;
-}
-
-/* Estilos del formulario de receta */
-.form-receta {
-    padding: 20px 0;
-}
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
+/* Contenedor de agregar artículo */
+.agregar-articulo-container {
     margin-bottom: 8px;
-    font-weight: 500;
-    color: #333;
 }
 
-.form-group input[type="text"],
-.form-group textarea {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
-.form-group input[readonly] {
-    background-color: #f8f9fa;
-    cursor: not-allowed;
-}
-
-.form-group textarea {
-    resize: vertical;
-    min-height: 100px;
-}
-
-.form-actions {
-    margin-top: 30px;
-    text-align: right;
-}
-
-.form-actions .btn {
-    padding: 10px 20px;
-    font-size: 16px;
-}
-
-.resaltado-articulo {
-    background-color: #ffffcc;
-    transition: background-color 0.5s ease;
-}
-
-/* Estilos para el contenedor de ingredientes */
-.ingredientes-container {
-    margin-bottom: 20px;
-}
-
-.selector-container {
-    width: 100%;
-}
-
-.selector-wrapper {
-    margin-bottom: 15px;
-}
-
-.selector-with-button {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-}
-
-.selector-with-button select {
-    flex: 1;
-}
-
-.selector-with-button button {
-    white-space: nowrap;
-    padding: 8px 15px;
-    height: 38px; /* Mismo alto que el select */
-}
-
-.cantidad-wrapper {
-    margin-top: 10px;
-}
-
-#btn-nuevo-ingrediente {
-    background-color: #6c757d;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-#btn-nuevo-ingrediente:hover {
-    background-color: #5a6268;
+/* Botón secundario */
+.btn.btn-secondary {
+    padding: 4px 8px;
+    font-size: 0.9em;
 }

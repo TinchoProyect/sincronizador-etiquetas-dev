@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { crearReceta, obtenerEstadoRecetas, obtenerReceta, actualizarReceta } = require('../controllers/recetas');
+const { 
+    crearReceta, 
+    obtenerEstadoRecetas, 
+    obtenerReceta, 
+    actualizarReceta,
+    obtenerIngredientesExpandidos 
+} = require('../controllers/recetas');
 const {
     crearCarro,
     agregarArticulo,
@@ -204,6 +210,9 @@ router.get('/recetas/:numero_articulo', async (req, res) => {
            .json({ error: error.message });
     }
 });
+
+// Ruta para obtener ingredientes expandidos de una receta
+router.get('/recetas/:numero_articulo/ingredientes-expandido', obtenerIngredientesExpandidos);
 
 // Ruta para actualizar una receta existente
 router.put('/recetas/:numero_articulo', validarReceta, async (req, res) => {

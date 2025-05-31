@@ -325,8 +325,21 @@ export async function eliminarCarro(carroId) {
     }
 }
 
+// Función para obtener ingredientes expandidos de un artículo
+async function obtenerIngredientesExpandidos(numeroArticulo) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticulo}/ingredientes-expandido`);
+        if (!response.ok) throw new Error('No se encontraron ingredientes');
+        return await response.json();
+    } catch (error) {
+        console.error(`Error al obtener ingredientes para ${numeroArticulo}:`, error);
+        return null;
+    }
+}
+
 /**
- * Muestra los artículos agregados al carro activo en el área de trabajo
+ * Muestra los artículos agregados al carro activo en el área de trabajo,
+ * incluyendo sus ingredientes expandidos
  */
 export async function mostrarArticulosDelCarro() {
     try {
@@ -343,7 +356,7 @@ export async function mostrarArticulosDelCarro() {
 
         const colaborador = JSON.parse(colaboradorData);
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
-        
+
         if (!response.ok) {
             throw new Error('Error al obtener artículos del carro');
         }
@@ -357,47 +370,79 @@ export async function mostrarArticulosDelCarro() {
                 </button>
             </div>
             <h3>Artículos en el carro</h3>
-            <table border="1" cellpadding="5" cellspacing="0">
-                <thead>
-                    <tr>
-                        <th>Código</th>
-                        <th>Descripción</th>
-                        <th>Código de Barras</th>
-                        <th>Cantidad cargada</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <div class="seccion-articulos">
         `;
 
-        articulos.forEach(art => {
+        for (const art of articulos) {
             html += `
-                <tr>
-                    <td>${art.numero}</td>
-                    <td>${art.descripcion}</td>
-                    <td>${art.codigo_barras || '-'}</td>
-                    <td>
-                        <input type="number" 
-                               class="input-cantidad-articulo" 
-                               value="${art.cantidad}" 
-                               min="1" 
+                <div class="articulo-container">
+                    <div class="articulo-info">
+                        <span class="articulo-codigo">${art.numero}</span>
+                        <span class="articulo-descripcion">${art.descripcion}</span>
+                    </div>
+                    <div class="articulo-actions">
+                        <input type="number"
+                               class="input-cantidad-articulo"
+                               value="${art.cantidad}"
+                               min="1"
                                data-numero="${art.numero}">
-                    </td>
-                    <td>
-                        <button class="btn-eliminar-articulo" 
-                                data-numero="${art.numero}"
-                                style="background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+                        <button class="btn-eliminar-articulo"
+                                data-numero="${art.numero}">
                             🗑️
                         </button>
-                    </td>
-                </tr>
+                    </div>
+                    <button class="toggle-ingredientes">Ver</button>
+                </div>
             `;
-        });
 
-        html += `
-                </tbody>
-            </table>
-        `;
+            // Obtener y mostrar ingredientes expandidos para este artículo
+            const ingredientes = await obtenerIngredientesExpandidos(art.numero);
+
+            if (ingredientes && ingredientes.length > 0) {
+                html += `
+                    <div class="ingredientes-expandidos hidden">
+                        <div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Ingrediente</th>
+                                        <th>Cantidad</th>
+                                        <th>Unidad</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+
+                ingredientes.forEach(ing => {
+                    // Multiplicar la cantidad del ingrediente por la cantidad del artículo en el carro
+                    const cantidadTotal = ing.cantidad * art.cantidad;
+                    html += `
+                        <tr>
+                            <td>${ing.nombre}</td>
+                            <td>${cantidadTotal.toFixed(2)}</td>
+                            <td>${ing.unidad_medida}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="ingredientes-expandidos hidden">
+                        <div class="ingredientes-error">
+                            No se pudieron cargar los ingredientes para este artículo.
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        html += `</div>`; // cerrar seccion-articulos
 
         const contenedor = document.getElementById('lista-articulos');
         if (contenedor) {
@@ -415,3 +460,14 @@ export async function mostrarArticulosDelCarro() {
         }
     }
 }
+
+// Agregar toggle para mostrar/ocultar ingredientes
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('toggle-ingredientes')) {
+        const articuloContainer = e.target.closest('.articulo-container');
+        const ingredientes = articuloContainer.nextElementSibling;
+        ingredientes.classList.toggle('hidden');
+        e.target.textContent = ingredientes.classList.contains('hidden') ?
+            'Ver' : 'Ocultar';
+    }
+});

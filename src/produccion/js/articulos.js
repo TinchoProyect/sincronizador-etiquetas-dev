@@ -44,6 +44,10 @@ export async function abrirModalArticulos() {
     try {
         const modal = document.getElementById('modal-articulos');
         modal.style.display = 'block';
+        // Agregar clase show después de un pequeño delay para activar la animación
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
 
         // Cargar artículos si aún no se han cargado
         if (state.todosLosArticulos.length === 0) {
@@ -80,7 +84,11 @@ export async function abrirModalArticulos() {
 // Función para cerrar el modal
 export function cerrarModalArticulos() {
     const modal = document.getElementById('modal-articulos');
-    modal.style.display = 'none';
+    modal.classList.remove('show');
+    // Esperar a que termine la animación antes de ocultar
+    setTimeout(() => {
+        modal.style.display = 'none';
+    }, 300);
     // Limpiar filtros
     document.getElementById('filtro1').value = '';
     document.getElementById('filtro2').value = '';
@@ -239,19 +247,22 @@ export function buscarPorCodigoBarras(codigo) {
 export function cerrarModalReceta() {
     const modal = document.getElementById('modal-receta');
     if (modal) {
-        modal.style.display = 'none';
-        // Limpiar el formulario y los ingredientes
-        document.getElementById('articulo_numero').value = '';
-        document.getElementById('descripcion_receta').value = '';
-        document.getElementById('selector-ingrediente').value = '';
-        document.getElementById('input-cantidad-ingrediente').value = '';
-        state.ingredientesCargados = [];
-        const tbody = document.querySelector('#tabla-ingredientes tbody');
-        if (tbody) {
-            // Remover event listener al cerrar
-            tbody.removeEventListener('click', handleEliminarIngrediente);
-            tbody.innerHTML = '';
-        }
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            // Limpiar el formulario y los ingredientes
+            document.getElementById('articulo_numero').value = '';
+            document.getElementById('descripcion_receta').value = '';
+            document.getElementById('selector-ingrediente').value = '';
+            document.getElementById('input-cantidad-ingrediente').value = '';
+            state.ingredientesCargados = [];
+            const tbody = document.querySelector('#tabla-ingredientes tbody');
+            if (tbody) {
+                // Remover event listener al cerrar
+                tbody.removeEventListener('click', handleEliminarIngrediente);
+                tbody.innerHTML = '';
+            }
+        }, 300);
     }
 }
 
@@ -492,8 +503,11 @@ export async function mostrarModalReceta(articulo_numero) {
                 });
             }
 
-            // Mostrar el modal
+            // Mostrar el modal con animación
             modal.style.display = 'block';
+            setTimeout(() => {
+                modal.classList.add('show');
+            }, 10);
 
 
 
@@ -593,6 +607,9 @@ function abrirModalNuevoIngrediente() {
     const modal = document.getElementById('modal-nuevo-ingrediente');
     if (modal) {
         modal.style.display = 'block';
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
     }
 }
 
@@ -600,12 +617,15 @@ function abrirModalNuevoIngrediente() {
 function cerrarModalNuevoIngrediente() {
     const modal = document.getElementById('modal-nuevo-ingrediente');
     if (modal) {
-        modal.style.display = 'none';
-        // Limpiar el formulario
-        document.getElementById('nombre-ingrediente').value = '';
-        document.getElementById('unidad-medida-ingrediente').value = '';
-        document.getElementById('categoria-ingrediente').value = '';
-        document.getElementById('stock-ingrediente').value = '';
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            // Limpiar el formulario
+            document.getElementById('nombre-ingrediente').value = '';
+            document.getElementById('unidad-medida-ingrediente').value = '';
+            document.getElementById('categoria-ingrediente').value = '';
+            document.getElementById('stock-ingrediente').value = '';
+        }, 300);
     }
 }
 
