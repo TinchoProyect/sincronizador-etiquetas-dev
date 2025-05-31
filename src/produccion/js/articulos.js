@@ -153,14 +153,16 @@ export async function actualizarTablaArticulos(articulos) {
                         <button class="btn-editar-receta"
                                 style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
                                 data-numero="${articulo.numero}"
-                                data-modo="editar">
+                                data-modo="editar"
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                             Editar receta
                         </button>
                     ` : `
                         <button class="btn-editar-receta"
                                 style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
                                 data-numero="${articulo.numero}"
-                                data-modo="crear">
+                                data-modo="crear"
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                             Vincular receta
                         </button>
                     `}
@@ -254,6 +256,7 @@ export function cerrarModalReceta() {
             modal.style.display = 'none';
             // Limpiar el formulario y los ingredientes
             document.getElementById('articulo_numero').value = '';
+            document.getElementById('articulo_descripcion').value = '';
             document.getElementById('descripcion_receta').value = '';
             document.getElementById('selector-ingrediente').value = '';
             document.getElementById('input-cantidad-ingrediente').value = '';
@@ -473,7 +476,7 @@ async function guardarReceta() {
 }
 
 // Función para mostrar el modal de receta
-export async function mostrarModalReceta(articulo_numero, modo = 'auto') {
+export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo = 'auto') {
     const modal = document.getElementById('modal-receta');
     if (modal) {
         try {
@@ -486,6 +489,7 @@ export async function mostrarModalReceta(articulo_numero, modo = 'auto') {
 
             // Establecer el código del artículo
             document.getElementById('articulo_numero').value = articulo_numero;
+            document.getElementById('articulo_descripcion').value = articulo_nombre;
             
             // Cargar ingredientes disponibles primero
             await cargarIngredientesDisponibles();
@@ -803,8 +807,9 @@ document.addEventListener('DOMContentLoaded', () => {
             await agregarAlCarro(articulo_numero, descripcion, e.target);
         } else if (e.target.classList.contains('btn-editar-receta')) {
             const articulo_numero = e.target.dataset.numero;
+            const articulo_nombre = e.target.dataset.nombre;
             const modo = e.target.dataset.modo;
-            mostrarModalReceta(articulo_numero, modo);
+            mostrarModalReceta(articulo_numero, articulo_nombre, modo);
         }
     });
 });
