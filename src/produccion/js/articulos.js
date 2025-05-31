@@ -152,13 +152,15 @@ export async function actualizarTablaArticulos(articulos) {
                         </button>
                         <button class="btn-editar-receta"
                                 style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
-                                data-numero="${articulo.numero}">
+                                data-numero="${articulo.numero}"
+                                data-modo="editar">
                             Editar receta
                         </button>
                     ` : `
                         <button class="btn-editar-receta"
                                 style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                data-numero="${articulo.numero}">
+                                data-numero="${articulo.numero}"
+                                data-modo="crear">
                             Vincular receta
                         </button>
                     `}
@@ -306,7 +308,7 @@ function agregarIngredienteATabla(ingrediente, index) {
 // Función para cargar ingredientes desde el backend
 async function cargarIngredientesDisponibles() {
     try {
-        const response = await fetch('/api/produccion/ingredientes');
+        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
         if (!response.ok) {
             throw new Error('Error al cargar ingredientes');
         }
@@ -399,12 +401,11 @@ async function guardarReceta() {
 
         // Enviar al servidor
         const url = state.existeReceta
-          ? `http://localhost:3002/api/produccion/recetas/${articulo_numero}`
+          ? `http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`
           : 'http://localhost:3002/api/produccion/recetas';
         const method = state.existeReceta ? 'PUT' : 'POST';
         const response = await fetch(url, {
             method,
-
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -413,6 +414,29 @@ async function guardarReceta() {
 
         if (!response.ok) {
             const errorData = await response.json();
+            
+            // Si es error 400 por receta existente, mostrar mensaje especial
+            if (response.status === 400 && errorData.error.includes('Ya existe una receta')) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.style.backgroundColor = '#f8d7da';
+                errorDiv.style.color = '#721c24';
+                errorDiv.style.padding = '10px';
+                errorDiv.style.marginBottom = '10px';
+                errorDiv.style.borderRadius = '4px';
+                errorDiv.textContent = errorData.error;
+                
+                // Insertar al inicio del contenido del modal
+                const modalContent = document.querySelector('.modal-content');
+                modalContent.insertBefore(errorDiv, modalContent.firstChild);
+                
+                // Remover después de 5 segundos
+                setTimeout(() => {
+                    errorDiv.remove();
+                }, 5000);
+                return;
+            }
+            
             throw new Error(errorData.error || 'Error al guardar la receta');
         }
 
@@ -449,42 +473,53 @@ async function guardarReceta() {
 }
 
 // Función para mostrar el modal de receta
-export async function mostrarModalReceta(articulo_numero) {
+export async function mostrarModalReceta(articulo_numero, modo = 'auto') {
     const modal = document.getElementById('modal-receta');
     if (modal) {
         try {
+            // Establecer el modo explícitamente
+            if (modo === 'crear') {
+                state.existeReceta = false;
+            } else if (modo === 'editar') {
+                state.existeReceta = true;
+            }
+
             // Establecer el código del artículo
             document.getElementById('articulo_numero').value = articulo_numero;
             
             // Cargar ingredientes disponibles primero
             await cargarIngredientesDisponibles();
             
-            // Intentar obtener la receta existente
-            try {
-                const response = await fetch(`http://localhost:3002/api/produccion/recetas/${articulo_numero}`);
-                
-                if (response.ok) {
-                    // Si la receta existe, cargar sus datos
-                    const receta = await response.json();
-                    document.getElementById('descripcion_receta').value = receta.descripcion || '';
-                    state.ingredientesCargados = receta.ingredientes || [];
-                    state.existeReceta = true;
-} else if (response.status === 404) {
-
-    // Si la receta no existe, inicializar vacía
-    document.getElementById('descripcion_receta').value = '';
-    state.ingredientesCargados = [];
-    state.existeReceta = false;
-} else {
-    // Si hay otro error, lanzarlo
-    throw new Error('Error al obtener la receta');
-}
-
-            } catch (error) {
-                if (error.message !== 'Error al obtener la receta') {
-                    console.error('Error al cargar la receta:', error);
+            // Intentar obtener la receta existente solo si no es modo crear
+            if (modo !== 'crear') {
+                try {
+                    const response = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`);
+                    
+                    if (response.ok) {
+                        // Si la receta existe, cargar sus datos
+                        const receta = await response.json();
+                        document.getElementById('descripcion_receta').value = receta.descripcion || '';
+                        state.ingredientesCargados = receta.ingredientes || [];
+                        state.existeReceta = true;
+                    } else if (response.status === 404) {
+                        // Si la receta no existe, inicializar vacía
+                        document.getElementById('descripcion_receta').value = '';
+                        state.ingredientesCargados = [];
+                        state.existeReceta = false;
+                    } else {
+                        // Si hay otro error, lanzarlo
+                        throw new Error('Error al obtener la receta');
+                    }
+                } catch (error) {
+                    if (error.message !== 'Error al obtener la receta') {
+                        console.error('Error al cargar la receta:', error);
+                    }
+                    // Si hay error que no sea 404, inicializar vacía
+                    document.getElementById('descripcion_receta').value = '';
+                    state.ingredientesCargados = [];
                 }
-                // Si hay error que no sea 404, inicializar vacía
+            } else {
+                // Si es modo crear, inicializar vacía directamente
                 document.getElementById('descripcion_receta').value = '';
                 state.ingredientesCargados = [];
             }
@@ -768,7 +803,8 @@ document.addEventListener('DOMContentLoaded', () => {
             await agregarAlCarro(articulo_numero, descripcion, e.target);
         } else if (e.target.classList.contains('btn-editar-receta')) {
             const articulo_numero = e.target.dataset.numero;
-            mostrarModalReceta(articulo_numero);
+            const modo = e.target.dataset.modo;
+            mostrarModalReceta(articulo_numero, modo);
         }
     });
 });
