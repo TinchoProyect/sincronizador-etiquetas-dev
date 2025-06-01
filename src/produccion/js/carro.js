@@ -106,21 +106,59 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-document.addEventListener('change', async (e) => {
+// Función de debounce para evitar múltiples llamadas
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Debounced version of the update function
+const debouncedUpdateCantidad = debounce(async (numeroArticulo, nuevaCantidad, inputElement) => {
+    try {
+        // Actualizar UI inmediatamente
+        const articuloContainer = inputElement.closest('.articulo-container');
+        const ingredientesContainer = articuloContainer.nextElementSibling;
+        if (ingredientesContainer && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
+            const rows = ingredientesContainer.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const cantidadCell = row.cells[1];
+                const cantidadBase = parseFloat(cantidadCell.dataset.base || cantidadCell.textContent);
+                cantidadCell.textContent = (cantidadBase * nuevaCantidad).toFixed(2);
+            });
+        }
+
+        // Hacer la llamada al servidor en segundo plano
+        await modificarCantidadArticulo(numeroArticulo, nuevaCantidad);
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+        inputElement.value = inputElement.dataset.lastValue || 1;
+    }
+}, 300);
+
+document.addEventListener('change', (e) => {
     if (e.target.classList.contains('input-cantidad-articulo')) {
         const numeroArticulo = e.target.dataset.numero;
         const nuevaCantidad = parseInt(e.target.value);
         if (nuevaCantidad > 0) {
-            await modificarCantidadArticulo(numeroArticulo, nuevaCantidad);
+            e.target.dataset.lastValue = e.target.value;
+            debouncedUpdateCantidad(numeroArticulo, nuevaCantidad, e.target);
         } else {
-            e.target.value = 1; // Reset to 1 if invalid value
+            e.target.value = e.target.dataset.lastValue || 1;
             mostrarError('La cantidad debe ser mayor a 0');
         }
     }
 });
 
-// Función para actualizar el resumen de ingredientes
-async function actualizarResumenIngredientes() {
+// Función para actualizar el resumen de ingredientes con debounce
+const debouncedActualizarResumen = debounce(async () => {
     const carroId = localStorage.getItem('carroActivo');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
     
@@ -133,9 +171,14 @@ async function actualizarResumenIngredientes() {
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
     }
+}, 500);
+
+// Función para actualizar el resumen de ingredientes
+async function actualizarResumenIngredientes() {
+    debouncedActualizarResumen();
 }
 
-// Función para eliminar un artículo del carro
+// Función para eliminar un artículo del carro (optimizada)
 async function eliminarArticuloDelCarro(numeroArticulo) {
     try {
         const carroId = localStorage.getItem('carroActivo');
@@ -147,25 +190,115 @@ async function eliminarArticuloDelCarro(numeroArticulo) {
 
         const colaborador = JSON.parse(colaboradorData);
         
+        // Buscar el elemento del artículo antes de hacer la llamada al servidor
+        const articulo = document.querySelector(`.articulo-container[data-numero="${numeroArticulo}"]`);
+        if (!articulo) {
+            console.warn(`No se encontró el artículo ${numeroArticulo} en el DOM`);
+            return;
+        }
+
+        // Deshabilitar el botón de eliminar para evitar clics múltiples
+        const btnEliminar = articulo.querySelector('.btn-eliminar-articulo');
+        if (btnEliminar) {
+            btnEliminar.disabled = true;
+            btnEliminar.textContent = '⏳';
+        }
+
         const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticuloEncoded}?usuarioId=${colaborador.id}`, {
             method: 'DELETE'
         });
 
         if (!response.ok) {
+            // Restaurar botón en caso de error
+            if (btnEliminar) {
+                btnEliminar.disabled = false;
+                btnEliminar.textContent = '🗑️';
+            }
             throw new Error('No se pudo eliminar el artículo del carro');
         }
 
-        // Actualizar la vista
-        await mostrarArticulosDelCarro();
+        // Eliminar elementos del DOM de forma segura
+        eliminarArticuloDelDOM(numeroArticulo);
         
-        // Actualizar resumen de ingredientes
-        await actualizarResumenIngredientes();
+        // Actualizar resumen de ingredientes en segundo plano
+        debouncedActualizarResumen();
+
+        // Mostrar feedback visual
+        mostrarNotificacionEliminacion(numeroArticulo);
 
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
     }
+}
+
+// Función para eliminar artículo del DOM de forma segura
+function eliminarArticuloDelDOM(numeroArticulo) {
+    try {
+        // Buscar el contenedor del artículo
+        const articulo = document.querySelector(`.articulo-container[data-numero="${numeroArticulo}"]`);
+        if (!articulo) {
+            console.warn(`Artículo ${numeroArticulo} no encontrado en el DOM`);
+            return;
+        }
+
+        // Buscar el contenedor de ingredientes (siguiente elemento hermano)
+        const ingredientesContainer = articulo.nextElementSibling;
+        
+        // Eliminar con animación suave
+        articulo.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+        articulo.style.opacity = '0';
+        articulo.style.transform = 'translateX(-100%)';
+        
+        if (ingredientesContainer && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
+            ingredientesContainer.style.transition = 'opacity 0.3s ease-out';
+            ingredientesContainer.style.opacity = '0';
+        }
+
+        // Remover elementos después de la animación
+        setTimeout(() => {
+            try {
+                if (articulo && articulo.parentNode) {
+                    articulo.parentNode.removeChild(articulo);
+                }
+                if (ingredientesContainer && ingredientesContainer.parentNode && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
+                    ingredientesContainer.parentNode.removeChild(ingredientesContainer);
+                }
+            } catch (removeError) {
+                console.error('Error al remover elementos del DOM:', removeError);
+            }
+        }, 300);
+
+    } catch (error) {
+        console.error('Error al eliminar artículo del DOM:', error);
+    }
+}
+
+// Función para mostrar notificación de eliminación
+function mostrarNotificacionEliminacion(numeroArticulo) {
+    const notification = document.createElement('div');
+    notification.textContent = `Artículo ${numeroArticulo} eliminado`;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background-color: #dc3545;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 4px;
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+        font-size: 14px;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 2000);
 }
 
 // Función para modificar la cantidad de un artículo
@@ -685,7 +818,7 @@ export async function mostrarArticulosDelCarro() {
                     html += `
                         <tr>
                             <td>${ing.nombre}</td>
-                            <td>${cantidadTotal.toFixed(2)}</td>
+                            <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
                             <td>${ing.unidad_medida}</td>
                         </tr>
                     `;

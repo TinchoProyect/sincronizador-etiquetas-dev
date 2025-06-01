@@ -23,15 +23,6 @@ async function verificarSiEsMix(ingredienteId) {
     }
 }
 
-/**
- * Extrae el peso unitario de un artículo a partir de su nombre
- * @param {string} nombreArticulo - Nombre del artículo (ej: "Mix Premium x 5")
- * @returns {number} Peso unitario extraído o 1 si no se encuentra
- */
-function extraerPesoUnitario(nombreArticulo) {
-    const match = nombreArticulo.match(/x\s*(\d+(\.\d+)?)/i);
-    return match ? parseFloat(match[1]) : 1;
-}
 
 /**
  * Busca un ingrediente por nombre y retorna su ID
@@ -269,8 +260,14 @@ async function obtenerMixesCarro(carroId, usuarioId) {
                     if (esMix) {
                         console.log(`✅ Ingrediente ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaVerificar}) es un MIX`);
                         
-                        // Calcular cantidad total considerando peso unitario
+                        // Calcular cantidad total
                         const cantidadTotal = ing.cantidad * articulo.cantidad;
+                        
+                        console.log(`\n📊 CÁLCULO DE CANTIDAD PARA MIX EN RECETA:`);
+                        console.log(`- Artículo: ${articulo.articulo_numero}`);
+                        console.log(`- Cantidad en receta: ${ing.cantidad}kg`);
+                        console.log(`- Unidades pedidas: ${articulo.cantidad}`);
+                        console.log(`- Cantidad total: ${cantidadTotal}kg`);
                         
                         todosLosMixes.push({
                             id: ingredienteIdParaVerificar,
@@ -298,11 +295,30 @@ async function obtenerMixesCarro(carroId, usuarioId) {
                     
                     if (esMix) {
                         console.log(`✅ Artículo ${articulo.articulo_numero} es un MIX`);
+                        
+                        // Obtener receta_base_kg del mix
+                        const queryRecetaBase = `
+                            SELECT receta_base_kg 
+                            FROM ingredientes 
+                            WHERE id = $1
+                        `;
+                        const recetaBaseResult = await pool.query(queryRecetaBase, [ingredienteId]);
+                        const recetaBaseKg = recetaBaseResult.rows[0]?.receta_base_kg || 10;
+                        
+                        // Calcular cantidad total usando la misma lógica de proporción
+                        const cantidadTotal = articulo.cantidad * 0.3; // 0.3kg por unidad
+                        
+                        console.log(`\n📊 CÁLCULO DE CANTIDAD PARA MIX DIRECTO:`);
+                        console.log(`- Nombre del mix: ${ingredienteResult.rows[0].nombre}`);
+                        console.log(`- Unidades pedidas: ${articulo.cantidad}`);
+                        console.log(`- Cantidad por unidad: 0.3kg`);
+                        console.log(`- Cantidad total: ${cantidadTotal}kg`);
+                        
                         todosLosMixes.push({
                             id: ingredienteId,
                             nombre: ingredienteResult.rows[0].nombre,
                             unidad_medida: ingredienteResult.rows[0].unidad_medida,
-                            cantidad: articulo.cantidad
+                            cantidad: cantidadTotal
                         });
                     }
                 }

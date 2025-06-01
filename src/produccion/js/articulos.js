@@ -573,7 +573,7 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
     }
 }
 
-// Función para agregar artículo al carro
+// Función para agregar artículo al carro (optimizada)
 export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
     // Si el botón es rojo, mostrar el modal de receta en lugar de agregar al carro
     if (btnElement.classList.contains('btn-danger')) {
@@ -600,6 +600,10 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             throw new Error('La cantidad debe ser un número positivo');
         }
 
+        // Mostrar feedback inmediato
+        btnElement.disabled = true;
+        btnElement.textContent = 'Agregando...';
+
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo`, {
             method: 'POST',
             headers: {
@@ -618,23 +622,37 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             throw new Error(errorData.error || 'Error al agregar el artículo al carro');
         }
 
+        // Restaurar botón
+        btnElement.disabled = false;
+        btnElement.textContent = 'Agregar al carro';
+
         // Mostrar mensaje de éxito
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
         successDiv.textContent = 'Artículo agregado correctamente';
-        document.querySelector('.modal-content').appendChild(successDiv);
+        successDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(successDiv);
         
         // Remover el mensaje después de 3 segundos
         setTimeout(() => {
             successDiv.remove();
         }, 3000);
 
-        // Actualizar la lista de artículos en el carro
-        await mostrarArticulosDelCarro();
+        // Agregar el nuevo artículo al DOM inmediatamente
+        await agregarArticuloAlDOM(articulo_numero, descripcion, cantidad);
         
-        // Actualizar resumen de ingredientes
-        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-        mostrarResumenIngredientes(ingredientes);
+        // Actualizar resumen en segundo plano
+        actualizarResumenEnSegundoPlano(carroId, colaborador.id);
 
         // Cerrar el modal después de agregar
         cerrarModalArticulos();
@@ -642,6 +660,127 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
+        // Restaurar botón en caso de error
+        btnElement.disabled = false;
+        btnElement.textContent = 'Agregar al carro';
+    }
+}
+
+// Función para agregar artículo al DOM inmediatamente
+async function agregarArticuloAlDOM(articulo_numero, descripcion, cantidad) {
+    try {
+        const contenedor = document.getElementById('lista-articulos');
+        if (!contenedor) return;
+
+        const seccionArticulos = contenedor.querySelector('.seccion-articulos');
+        if (!seccionArticulos) return;
+
+        // Obtener ingredientes del artículo
+        const ingredientes = await obtenerIngredientesExpandidos(articulo_numero);
+
+        // Crear HTML del nuevo artículo
+        let htmlArticulo = `
+            <div class="articulo-container" data-numero="${articulo_numero}">
+                <div class="articulo-info">
+                    <span class="articulo-codigo">${articulo_numero}</span>
+                    <span class="articulo-descripcion">${descripcion}</span>
+                </div>
+                <div class="articulo-actions">
+                    <input type="number"
+                           class="input-cantidad-articulo"
+                           value="${cantidad}"
+                           min="1"
+                           data-numero="${articulo_numero}">
+                    <button class="btn-eliminar-articulo"
+                            data-numero="${articulo_numero}">
+                        🗑️
+                    </button>
+                </div>
+                <button class="toggle-ingredientes">Ver</button>
+            </div>
+        `;
+
+        // Agregar ingredientes
+        if (ingredientes && ingredientes.length > 0) {
+            htmlArticulo += `
+                <div class="ingredientes-expandidos hidden">
+                    <div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ingrediente</th>
+                                    <th>Cantidad</th>
+                                    <th>Unidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            ingredientes.forEach(ing => {
+                const cantidadTotal = ing.cantidad * cantidad;
+                htmlArticulo += `
+                    <tr>
+                        <td>${ing.nombre}</td>
+                        <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
+                        <td>${ing.unidad_medida}</td>
+                    </tr>
+                `;
+            });
+
+            htmlArticulo += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        } else {
+            htmlArticulo += `
+                <div class="ingredientes-expandidos hidden">
+                    <div class="ingredientes-error">
+                        No se pudieron cargar los ingredientes para este artículo.
+                    </div>
+                </div>
+            `;
+        }
+
+        // Insertar el nuevo artículo al final
+        seccionArticulos.insertAdjacentHTML('beforeend', htmlArticulo);
+
+    } catch (error) {
+        console.error('Error al agregar artículo al DOM:', error);
+        // Si falla, recargar la vista completa
+        const { mostrarArticulosDelCarro } = await import('./carro.js');
+        await mostrarArticulosDelCarro();
+    }
+}
+
+// Función para actualizar resumen en segundo plano
+async function actualizarResumenEnSegundoPlano(carroId, colaboradorId) {
+    try {
+        const { obtenerResumenIngredientesCarro, mostrarResumenIngredientes, obtenerResumenMixesCarro, mostrarResumenMixes } = await import('./carro.js');
+        
+        // Actualizar ingredientes
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaboradorId);
+        mostrarResumenIngredientes(ingredientes);
+        
+        // Actualizar mixes
+        const mixes = await obtenerResumenMixesCarro(carroId, colaboradorId);
+        mostrarResumenMixes(mixes);
+    } catch (error) {
+        console.error('Error al actualizar resumen:', error);
+    }
+}
+
+// Función auxiliar para obtener ingredientes expandidos
+async function obtenerIngredientesExpandidos(numeroArticulo) {
+    try {
+        const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
+        const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticuloEncoded}/ingredientes-expandido`);
+        if (!response.ok) throw new Error('No se encontraron ingredientes');
+        return await response.json();
+    } catch (error) {
+        console.error(`Error al obtener ingredientes para ${numeroArticulo}:`, error);
+        return null;
     }
 }
 
