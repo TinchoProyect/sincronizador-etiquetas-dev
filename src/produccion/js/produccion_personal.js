@@ -8,7 +8,9 @@ import {
     deseleccionarCarro,
     eliminarCarro,
     obtenerResumenIngredientesCarro,
-    mostrarResumenIngredientes
+    mostrarResumenIngredientes,
+    obtenerResumenMixesCarro,
+    mostrarResumenMixes
 } from './carro.js';
 import {
     abrirModalArticulos,
@@ -47,7 +49,7 @@ async function inicializarEspacioTrabajo() {
         // Solo después de validar el carro, mostrar los artículos
         await mostrarArticulosDelCarro();
         
-        // Cargar y mostrar resumen de ingredientes
+        // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
         
     } catch (error) {
@@ -92,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Finalmente mostrar los artículos
             await mostrarArticulosDelCarro();
             
-            // Cargar y mostrar resumen de ingredientes
+            // Cargar y mostrar resumen de ingredientes y mixes
             await cargarResumenIngredientes();
         });
     }
@@ -161,6 +163,12 @@ async function cargarResumenIngredientes() {
             if (contenedor) {
                 contenedor.innerHTML = '<p>No hay carro activo</p>';
             }
+            
+            // También limpiar la sección de mixes
+            const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+            if (contenedorMixes) {
+                contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
+            }
             return;
         }
 
@@ -177,11 +185,20 @@ async function cargarResumenIngredientes() {
         // Mostrar el resumen en la UI
         mostrarResumenIngredientes(ingredientes);
         
+        // Obtener y mostrar el resumen de mixes
+        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+        mostrarResumenMixes(mixes);
+        
     } catch (error) {
         console.error('Error al cargar resumen de ingredientes:', error);
         const contenedor = document.getElementById('tabla-resumen-ingredientes');
         if (contenedor) {
             contenedor.innerHTML = '<p>Error al cargar el resumen de ingredientes</p>';
+        }
+        
+        const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+        if (contenedorMixes) {
+            contenedorMixes.innerHTML = '<p>Error al cargar el resumen de mixes</p>';
         }
     }
 }

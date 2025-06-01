@@ -128,6 +128,10 @@ async function actualizarResumenIngredientes() {
         const colaborador = JSON.parse(colaboradorData);
         const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
         mostrarResumenIngredientes(ingredientes);
+        
+        // También actualizar el resumen de mixes
+        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+        mostrarResumenMixes(mixes);
     }
 }
 
@@ -365,6 +369,10 @@ export async function seleccionarCarro(carroId) {
         // Cargar y mostrar resumen de ingredientes
         const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
         mostrarResumenIngredientes(ingredientes);
+        
+        // Cargar y mostrar resumen de mixes
+        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+        mostrarResumenMixes(mixes);
     } catch (error) {
         console.error('Error al seleccionar carro:', error);
         mostrarError(error.message);
@@ -381,6 +389,12 @@ export async function deseleccionarCarro() {
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (contenedor) {
         contenedor.innerHTML = '<p>No hay carro activo</p>';
+    }
+    
+    // Limpiar resumen de mixes
+    const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+    if (contenedorMixes) {
+        contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
     }
 }
 
@@ -439,6 +453,23 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
     }
 }
 
+// Función para obtener el resumen consolidado de mixes de un carro
+export async function obtenerResumenMixesCarro(carroId, usuarioId) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/mixes?usuarioId=${usuarioId}`);
+        
+        if (!response.ok) {
+            throw new Error('No se pudo obtener el resumen de mixes');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Error al obtener resumen de mixes:', error);
+        mostrarError(error.message);
+        return [];
+    }
+}
+
 // Función para mostrar el resumen de ingredientes en la UI
 export function mostrarResumenIngredientes(ingredientes) {
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
@@ -492,6 +523,61 @@ export function mostrarResumenIngredientes(ingredientes) {
                 <td>${ing.nombre}</td>
                 <td>${ing.cantidad.toFixed(2)}</td>
                 <td>${ing.unidad_medida}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    contenedor.innerHTML = html;
+}
+
+// Función para mostrar el resumen de mixes en la UI
+export function mostrarResumenMixes(mixes) {
+    const contenedor = document.getElementById('tabla-resumen-mixes');
+    if (!contenedor) return;
+
+    console.log('\n🧪 VERIFICACIÓN FINAL DEL INFORME DE MIXES');
+    console.log('==========================================');
+    console.log('Array final de mixes recibido para mostrar en la UI:');
+    console.log('Cantidad de mixes únicos:', mixes?.length || 0);
+    
+    if (mixes && mixes.length > 0) {
+        console.log('\n📋 MIXES FINALES PARA EL INFORME:');
+        mixes.forEach((mix, index) => {
+            console.log(`${index + 1}. ${mix.nombre} (${mix.unidad_medida}): ${mix.cantidad}`);
+        });
+        console.log('==========================================\n');
+    } else {
+        console.log('⚠️ No hay mixes para mostrar en el informe');
+    }
+
+    if (!mixes || mixes.length === 0) {
+        contenedor.innerHTML = '<p>No hay ingredientes compuestos para mostrar</p>';
+        return;
+    }
+
+    let html = `
+        <table class="tabla-resumen">
+            <thead>
+                <tr>
+                    <th>Ingrediente Compuesto</th>
+                    <th>Cantidad Total</th>
+                    <th>Unidad</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    mixes.forEach(mix => {
+        html += `
+            <tr>
+                <td>${mix.nombre}</td>
+                <td>${mix.cantidad.toFixed(2)}</td>
+                <td>${mix.unidad_medida}</td>
             </tr>
         `;
     });

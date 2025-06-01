@@ -377,9 +377,24 @@
 }
 
 /* Estilos para mensajes cuando no hay datos */
-#tabla-resumen-ingredientes p {
+#tabla-resumen-ingredientes p,
+#tabla-resumen-mixes p {
     text-align: center;
     color: #6c757d;
     padding: 20px;
     font-style: italic;
+}
+
+/* Estilos específicos para el resumen de mixes */
+#resumen-mixes {
+    border-top: 3px solid #007bff;
+    margin-top: 30px;
+}
+
+#resumen-mixes .tabla-resumen th {
+    background-color: #e7f1ff;
+}
+
+#resumen-mixes .tabla-resumen tr:hover {
+    background-color: #f0f7ff;
 }

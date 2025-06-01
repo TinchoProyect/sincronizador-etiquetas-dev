@@ -206,6 +206,136 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
     }
 }
 
+/**
+ * Obtiene todos los ingredientes compuestos (mixes) necesarios para un carro,
+ * consolidando cantidades sin expandir a ingredientes primarios
+ * @param {number} carroId - ID del carro
+ * @param {number} usuarioId - ID del usuario que solicita los ingredientes
+ * @returns {Promise<Array>} Lista de mixes consolidados
+ */
+async function obtenerMixesCarro(carroId, usuarioId) {
+    try {
+        console.log(`\n🧪 INICIANDO ANÁLISIS DE MIXES DEL CARRO ${carroId}`);
+        console.log(`===============================================`);
+        
+        // Validar que el carro pertenece al usuario
+        const esValido = await validarPropiedadCarro(carroId, usuarioId);
+        if (!esValido) {
+            throw new Error('El carro no pertenece al usuario especificado');
+        }
+
+        // 1. Obtener artículos del carro
+        const queryArticulos = `
+            SELECT 
+                ca.articulo_numero,
+                ca.cantidad
+            FROM carros_articulos ca
+            WHERE ca.carro_id = $1
+        `;
+        const articulosResult = await pool.query(queryArticulos, [carroId]);
+        console.log(`📦 ARTÍCULOS EN EL CARRO: ${articulosResult.rows.length}`);
+
+        // 2. Por cada artículo, obtener sus ingredientes que sean mixes
+        let todosLosMixes = [];
+        for (const articulo of articulosResult.rows) {
+            console.log(`\n🔍 PROCESANDO ARTÍCULO: ${articulo.articulo_numero}`);
+            
+            // Obtener la receta del artículo
+            const queryReceta = `
+                SELECT 
+                    ri.ingrediente_id,
+                    ri.cantidad,
+                    COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
+                    COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
+                FROM recetas r
+                JOIN receta_ingredientes ri ON r.id = ri.receta_id
+                LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id
+                WHERE r.articulo_numero = $1
+            `;
+            const recetaResult = await pool.query(queryReceta, [articulo.articulo_numero]);
+
+            // Por cada ingrediente en la receta, verificar si es un mix
+            for (const ing of recetaResult.rows) {
+                let ingredienteIdParaVerificar = ing.ingrediente_id;
+                
+                // Si ingrediente_id es null, buscar por nombre
+                if (!ingredienteIdParaVerificar) {
+                    ingredienteIdParaVerificar = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+                }
+                
+                if (ingredienteIdParaVerificar) {
+                    const esMix = await verificarSiEsMix(ingredienteIdParaVerificar);
+                    
+                    if (esMix) {
+                        console.log(`✅ Ingrediente ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaVerificar}) es un MIX`);
+                        
+                        // Calcular cantidad total considerando peso unitario
+                        const cantidadTotal = ing.cantidad * articulo.cantidad;
+                        
+                        todosLosMixes.push({
+                            id: ingredienteIdParaVerificar,
+                            nombre: ing.nombre_ingrediente,
+                            unidad_medida: ing.unidad_medida,
+                            cantidad: cantidadTotal
+                        });
+                    }
+                }
+            }
+
+            // Si el artículo no tiene receta, verificar si el artículo mismo es un mix
+            if (recetaResult.rows.length === 0) {
+                console.log(`📦 Artículo ${articulo.articulo_numero} sin receta - verificando si es mix`);
+                const queryIngrediente = `
+                    SELECT id, nombre, unidad_medida
+                    FROM ingredientes
+                    WHERE LOWER(nombre) = LOWER($1)
+                `;
+                const ingredienteResult = await pool.query(queryIngrediente, [articulo.articulo_numero]);
+
+                if (ingredienteResult.rows.length > 0) {
+                    const ingredienteId = ingredienteResult.rows[0].id;
+                    const esMix = await verificarSiEsMix(ingredienteId);
+                    
+                    if (esMix) {
+                        console.log(`✅ Artículo ${articulo.articulo_numero} es un MIX`);
+                        todosLosMixes.push({
+                            id: ingredienteId,
+                            nombre: ingredienteResult.rows[0].nombre,
+                            unidad_medida: ingredienteResult.rows[0].unidad_medida,
+                            cantidad: articulo.cantidad
+                        });
+                    }
+                }
+            }
+        }
+
+        // 3. Consolidar todos los mixes por ID
+        const mixesConsolidados = consolidarIngredientes(todosLosMixes);
+        
+        console.log(`\n✅ MIXES CONSOLIDADOS: ${mixesConsolidados.length}`);
+        if (mixesConsolidados.length > 0) {
+            mixesConsolidados.forEach((mix, index) => {
+                console.log(`  ${index + 1}. ${mix.nombre}: ${mix.cantidad} ${mix.unidad_medida}`);
+            });
+        } else {
+            console.log(`⚠️ No se encontraron mixes en el carro ${carroId}`);
+        }
+
+        console.log(`\n🔍 DIAGNÓSTICO FINAL - MIXES:`);
+        console.log(`- Total de artículos procesados: ${articulosResult.rows.length}`);
+        console.log(`- Total de mixes encontrados antes de consolidar: ${todosLosMixes.length}`);
+        console.log(`- Total de mixes después de consolidar: ${mixesConsolidados.length}`);
+        console.log(`===============================================\n`);
+
+        return mixesConsolidados;
+
+    } catch (error) {
+        console.error('Error al obtener mixes del carro:', error);
+        throw new Error('No se pudieron obtener los mixes del carro');
+    }
+}
+
 module.exports = {
-    obtenerIngredientesBaseCarro
+    obtenerIngredientesBaseCarro,
+    obtenerMixesCarro
 };
