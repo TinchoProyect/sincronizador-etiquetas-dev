@@ -178,58 +178,56 @@ async function actualizarResumenIngredientes() {
     debouncedActualizarResumen();
 }
 
-// Función para eliminar un artículo del carro (optimizada)
+// Función para eliminar un artículo del carro (optimizada y robusta)
 async function eliminarArticuloDelCarro(numeroArticulo) {
+    const carroId = localStorage.getItem('carroActivo');
+    const colaboradorData = localStorage.getItem('colaboradorActivo');
+
+    if (!carroId || !colaboradorData) {
+        mostrarError('No hay carro activo o colaborador seleccionado');
+        return;
+    }
+
+    const colaborador = JSON.parse(colaboradorData);
+    const articulo = document.querySelector(`.articulo-container[data-numero="${numeroArticulo}"]`);
+
+    if (!articulo) {
+        console.warn(`No se encontró el artículo ${numeroArticulo} en el DOM`);
+        return;
+    }
+
+    const btnEliminar = articulo.querySelector('.btn-eliminar-articulo');
+    if (btnEliminar) {
+        btnEliminar.disabled = true;
+        btnEliminar.textContent = '⏳';
+    }
+
     try {
-        const carroId = localStorage.getItem('carroActivo');
-        const colaboradorData = localStorage.getItem('colaboradorActivo');
-        
-        if (!carroId || !colaboradorData) {
-            throw new Error('No hay carro activo o colaborador seleccionado');
-        }
-
-        const colaborador = JSON.parse(colaboradorData);
-        
-        // Buscar el elemento del artículo antes de hacer la llamada al servidor
-        const articulo = document.querySelector(`.articulo-container[data-numero="${numeroArticulo}"]`);
-        if (!articulo) {
-            console.warn(`No se encontró el artículo ${numeroArticulo} en el DOM`);
-            return;
-        }
-
-        // Deshabilitar el botón de eliminar para evitar clics múltiples
-        const btnEliminar = articulo.querySelector('.btn-eliminar-articulo');
-        if (btnEliminar) {
-            btnEliminar.disabled = true;
-            btnEliminar.textContent = '⏳';
-        }
-
         const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticuloEncoded}?usuarioId=${colaborador.id}`, {
             method: 'DELETE'
         });
 
         if (!response.ok) {
-            // Restaurar botón en caso de error
-            if (btnEliminar) {
-                btnEliminar.disabled = false;
-                btnEliminar.textContent = '🗑️';
-            }
             throw new Error('No se pudo eliminar el artículo del carro');
         }
 
-        // Eliminar elementos del DOM de forma segura
         eliminarArticuloDelDOM(numeroArticulo);
-        
-        // Actualizar resumen de ingredientes en segundo plano
         debouncedActualizarResumen();
-
-        // Mostrar feedback visual
         mostrarNotificacionEliminacion(numeroArticulo);
 
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error al eliminar artículo:', error);
         mostrarError(error.message);
+
+        // Restaurar el botón si hubo un error
+        if (btnEliminar) {
+            btnEliminar.disabled = false;
+            btnEliminar.textContent = '🗑️';
+        }
+
+    } finally {
+        // Si todo salió bien, el DOM ya se limpió; si no, el botón ya se restauró
     }
 }
 
@@ -774,7 +772,7 @@ export async function mostrarArticulosDelCarro() {
 
         for (const art of articulos) {
             html += `
-                <div class="articulo-container">
+                <div class="articulo-container" data-numero="${art.numero}">
                     <div class="articulo-info">
                         <span class="articulo-codigo">${art.numero}</span>
                         <span class="articulo-descripcion">${art.descripcion}</span>
