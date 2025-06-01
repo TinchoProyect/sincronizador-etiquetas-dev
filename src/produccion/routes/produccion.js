@@ -26,7 +26,10 @@ const {
 } = require('../controllers/ingredientes');
 
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
+const carroIngredientesRouter = require('./carroIngredientes'); // ← Incorporación del router de ingredientes de carro
+
 router.use('/mixes', mixesRouter);     // ← Montar rutas para mixes
+router.use('/carro', carroIngredientesRouter); // ← Montar rutas para ingredientes de carro
 
 // Rutas para ingredientes
 router.get('/ingredientes', async (req, res) => {

@@ -42,7 +42,8 @@ async function obtenerIngrediente(id) {
                 descripcion,
                 unidad_medida,
                 categoria,
-                stock_actual
+                stock_actual,
+                receta_base_kg
             FROM ingredientes
             WHERE id = $1;
         `;
@@ -105,8 +106,8 @@ async function actualizarIngrediente(id, datos) {
         const categoria = (datos.categoria === undefined) ? existing.categoria : datos.categoria;
         const stock_actual = (datos.stock_actual === undefined) ? existing.stock_actual : datos.stock_actual;
         const padre_id = (datos.padre_id === undefined) ? existing.padre_id : datos.padre_id;
+        const receta_base_kg = (datos.receta_base_kg === undefined) ? existing.receta_base_kg : datos.receta_base_kg;
 
-        
         const query = `
             UPDATE ingredientes
             SET nombre = $1,
@@ -114,12 +115,13 @@ async function actualizarIngrediente(id, datos) {
                 unidad_medida = $3,
                 categoria = $4,
                 stock_actual = $5,
-                padre_id = $6
-            WHERE id = $7
+                padre_id = $6,
+                receta_base_kg = $7
+            WHERE id = $8
             RETURNING *;
         `;
         
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, id];
+        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, receta_base_kg, id];
         const result = await pool.query(query, values);
         
         if (result.rows.length === 0) {

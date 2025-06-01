@@ -25,20 +25,30 @@
             </div>
 
             <div class="workspace-content">
-                <h2>Área de Trabajo</h2>
-                
-                <!-- Sección de artículos del carro activo -->
-                <div id="lista-articulos" class="seccion-articulos">
-                    <p>No hay carro activo</p>
-                </div>
-
-                <!-- Sección de carros disponibles -->
-                <div class="seccion-carros">
-                    <div class="workspace-actions">
-                        <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
-                    </div>
-                    <div id="carro-actual" class="carro-info">
+                <div class="workspace-left">
+                    <h2>Área de Trabajo</h2>
+                    
+                    <!-- Sección de artículos del carro activo -->
+                    <div id="lista-articulos" class="seccion-articulos">
                         <p>No hay carro activo</p>
+                    </div>
+
+                    <!-- Sección de carros disponibles -->
+                    <div class="seccion-carros">
+                        <div class="workspace-actions">
+                            <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
+                        </div>
+                        <div id="carro-actual" class="carro-info">
+                            <p>No hay carro activo</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="workspace-right">
+                    <!-- Sección de resumen de ingredientes -->
+                    <div id="resumen-ingredientes" class="seccion-resumen">
+                        <h3>Resumen de Ingredientes Necesarios</h3>
+                        <div id="tabla-resumen-ingredientes"></div>
                     </div>
                 </div>
             </div>

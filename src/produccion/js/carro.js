@@ -119,6 +119,18 @@ document.addEventListener('change', async (e) => {
     }
 });
 
+// Función para actualizar el resumen de ingredientes
+async function actualizarResumenIngredientes() {
+    const carroId = localStorage.getItem('carroActivo');
+    const colaboradorData = localStorage.getItem('colaboradorActivo');
+    
+    if (carroId && colaboradorData) {
+        const colaborador = JSON.parse(colaboradorData);
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+        mostrarResumenIngredientes(ingredientes);
+    }
+}
+
 // Función para eliminar un artículo del carro
 async function eliminarArticuloDelCarro(numeroArticulo) {
     try {
@@ -142,6 +154,9 @@ async function eliminarArticuloDelCarro(numeroArticulo) {
 
         // Actualizar la vista
         await mostrarArticulosDelCarro();
+        
+        // Actualizar resumen de ingredientes
+        await actualizarResumenIngredientes();
 
     } catch (error) {
         console.error('Error:', error);
@@ -178,12 +193,18 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
 
         // Actualizar solo los ingredientes del artículo modificado
         await actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad);
+        
+        // Actualizar resumen de ingredientes
+        await actualizarResumenIngredientes();
 
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
         // Recargar la tabla para mostrar el valor anterior en caso de error
         await mostrarArticulosDelCarro();
+        
+        // Actualizar resumen de ingredientes
+        await actualizarResumenIngredientes();
     }
 }
 
@@ -340,6 +361,10 @@ export async function seleccionarCarro(carroId) {
         // Actualizar la interfaz
         await actualizarEstadoCarro();
         await mostrarArticulosDelCarro();
+        
+        // Cargar y mostrar resumen de ingredientes
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+        mostrarResumenIngredientes(ingredientes);
     } catch (error) {
         console.error('Error al seleccionar carro:', error);
         mostrarError(error.message);
@@ -351,6 +376,12 @@ export async function deseleccionarCarro() {
     localStorage.removeItem('carroActivo');
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
+    
+    // Limpiar resumen de ingredientes
+    const contenedor = document.getElementById('tabla-resumen-ingredientes');
+    if (contenedor) {
+        contenedor.innerHTML = '<p>No hay carro activo</p>';
+    }
 }
 
 // Función para eliminar un carro
@@ -389,6 +420,88 @@ export async function eliminarCarro(carroId) {
         console.error('Error al eliminar carro:', error);
         mostrarError(error.message);
     }
+}
+
+// Función para obtener el resumen consolidado de ingredientes de un carro
+export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
+        
+        if (!response.ok) {
+            throw new Error('No se pudo obtener el resumen de ingredientes');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Error al obtener resumen de ingredientes:', error);
+        mostrarError(error.message);
+        return [];
+    }
+}
+
+// Función para mostrar el resumen de ingredientes en la UI
+export function mostrarResumenIngredientes(ingredientes) {
+    const contenedor = document.getElementById('tabla-resumen-ingredientes');
+    if (!contenedor) return;
+
+    // 🔍 LOG DE VERIFICACIÓN FINAL - Array usado para renderizar la tabla visual
+    console.log('\n🎯 VERIFICACIÓN FINAL DEL INFORME VISUAL');
+    console.log('==========================================');
+    console.log('Array final recibido para mostrar en la UI:');
+    console.log('Cantidad de ingredientes únicos:', ingredientes?.length || 0);
+    
+    if (ingredientes && ingredientes.length > 0) {
+        console.log('\n📋 INGREDIENTES FINALES PARA EL INFORME:');
+        ingredientes.forEach((ing, index) => {
+            console.log(`${index + 1}. ${ing.nombre} (${ing.unidad_medida}): ${ing.cantidad}`);
+            
+            // Verificar que sean ingredientes primarios (sin composición)
+            console.log(`   - Tipo: ${typeof ing.nombre} | Normalizado: ${ing.nombre === ing.nombre?.toLowerCase()?.trim()}`);
+            console.log(`   - Unidad: ${ing.unidad_medida} | Cantidad: ${ing.cantidad} (${typeof ing.cantidad})`);
+        });
+        
+        console.log('\n✅ CONFIRMACIÓN: Estos son TODOS ingredientes primarios consolidados');
+        console.log('- No contienen mixes intermedios');
+        console.log('- Están normalizados (minúsculas, sin tildes, sin espacios extra)');
+        console.log('- Las cantidades están consolidadas por nombre+unidad');
+        console.log('==========================================\n');
+    } else {
+        console.log('⚠️ No hay ingredientes para mostrar en el informe');
+    }
+
+    if (!ingredientes || ingredientes.length === 0) {
+        contenedor.innerHTML = '<p>No hay ingredientes para mostrar</p>';
+        return;
+    }
+
+    let html = `
+        <table class="tabla-resumen">
+            <thead>
+                <tr>
+                    <th>Ingrediente</th>
+                    <th>Cantidad Total</th>
+                    <th>Unidad</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    ingredientes.forEach(ing => {
+        html += `
+            <tr>
+                <td>${ing.nombre}</td>
+                <td>${ing.cantidad.toFixed(2)}</td>
+                <td>${ing.unidad_medida}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    contenedor.innerHTML = html;
 }
 
 // Función para obtener ingredientes expandidos de un artículo

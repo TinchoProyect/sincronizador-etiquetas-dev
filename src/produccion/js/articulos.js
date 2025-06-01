@@ -13,7 +13,7 @@ function toggleCantidadField() {
 }
 
 import { mostrarError } from './utils.js';
-import { mostrarArticulosDelCarro } from './carro.js';
+import { mostrarArticulosDelCarro, obtenerResumenIngredientesCarro, mostrarResumenIngredientes } from './carro.js';
 
 // Estado del módulo (privado)
 const state = {
@@ -631,6 +631,10 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         // Actualizar la lista de artículos en el carro
         await mostrarArticulosDelCarro();
+        
+        // Actualizar resumen de ingredientes
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+        mostrarResumenIngredientes(ingredientes);
 
         // Cerrar el modal después de agregar
         cerrarModalArticulos();
