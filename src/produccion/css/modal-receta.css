@@ -9,6 +9,14 @@
     height: 100%;
     background-color: rgba(0,0,0,0.5);
     overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.modal.show {
+    opacity: 1;
+    visibility: visible;
 }
 
 .modal-content {
@@ -21,6 +29,12 @@
     border-radius: 8px;
     position: relative;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transform: translateY(-20px);
+    transition: transform 0.3s;
+}
+
+.modal.show .modal-content {
+    transform: translateY(0);
 }
 
 .close-modal {
@@ -135,23 +149,59 @@
     font-weight: 600;
 }
 
-/* Animaciones para los modales */
-.modal {
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s, visibility 0.3s;
+/* Estilos agregados para el modal de ingreso manual */
+#modalIngresoManual input[type="text"],
+#modalIngresoManual input[type="number"] {
+    width: 100%;
+    padding: 8px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
 }
 
-.modal.show {
-    opacity: 1;
-    visibility: visible;
+.lista-articulos {
+    list-style-type: none;
+    padding: 0;
+    margin: 10px 0;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
 }
 
-.modal-content {
-    transform: translateY(-20px);
-    transition: transform 0.3s;
+.lista-articulos li {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
 }
 
-.modal.show .modal-content {
-    transform: translateY(0);
+.lista-articulos li:hover {
+    background-color: #f0f0f0;
+}
+
+.botones-modal {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+/* Botones genéricos */
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-success {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.btn-secondary {
+    background-color: #ccc;
+    color: black;
 }

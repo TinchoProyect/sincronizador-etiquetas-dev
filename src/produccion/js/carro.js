@@ -490,9 +490,12 @@ export async function seleccionarCarro(carroId) {
             throw new Error('No se puede seleccionar este carro');
         }
 
-        // Si la validación es exitosa, establecer como carro activo
+        // Establecer como carro activo en localStorage
         localStorage.setItem('carroActivo', carroId);
-        
+
+        // Asignar también en variable global
+        window.carroIdGlobal = carroId;
+
         // Actualizar la interfaz
         await actualizarEstadoCarro();
         await mostrarArticulosDelCarro();
@@ -509,6 +512,7 @@ export async function seleccionarCarro(carroId) {
         mostrarError(error.message);
     }
 }
+
 
 // Función para deseleccionar el carro actual
 export async function deseleccionarCarro() {
@@ -602,26 +606,25 @@ export async function obtenerResumenMixesCarro(carroId, usuarioId) {
 }
 
 // Función para mostrar el resumen de ingredientes en la UI
+import { abrirModalIngresoManual } from './ingresoManual.js';
+
 export function mostrarResumenIngredientes(ingredientes) {
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (!contenedor) return;
 
-    // 🔍 LOG DE VERIFICACIÓN FINAL - Array usado para renderizar la tabla visual
     console.log('\n🎯 VERIFICACIÓN FINAL DEL INFORME VISUAL');
     console.log('==========================================');
     console.log('Array final recibido para mostrar en la UI:');
     console.log('Cantidad de ingredientes únicos:', ingredientes?.length || 0);
-    
+
     if (ingredientes && ingredientes.length > 0) {
         console.log('\n📋 INGREDIENTES FINALES PARA EL INFORME:');
         ingredientes.forEach((ing, index) => {
             console.log(`${index + 1}. ${ing.nombre} (${ing.unidad_medida}): ${ing.cantidad}`);
-            
-            // Verificar que sean ingredientes primarios (sin composición)
             console.log(`   - Tipo: ${typeof ing.nombre} | Normalizado: ${ing.nombre === ing.nombre?.toLowerCase()?.trim()}`);
             console.log(`   - Unidad: ${ing.unidad_medida} | Cantidad: ${ing.cantidad} (${typeof ing.cantidad})`);
         });
-        
+
         console.log('\n✅ CONFIRMACIÓN: Estos son TODOS ingredientes primarios consolidados');
         console.log('- No contienen mixes intermedios');
         console.log('- Están normalizados (minúsculas, sin tildes, sin espacios extra)');
@@ -643,20 +646,27 @@ export function mostrarResumenIngredientes(ingredientes) {
                     <th>Ingrediente</th>
                     <th>Cantidad Total</th>
                     <th>Unidad</th>
+                    <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
     `;
 
-    ingredientes.forEach(ing => {
+      ingredientes.forEach(ing => {
         html += `
-            <tr>
-                <td>${ing.nombre}</td>
-                <td>${ing.cantidad.toFixed(2)}</td>
-                <td>${ing.unidad_medida}</td>
-            </tr>
-        `;
-    });
+           <tr>
+             <td>${ing.nombre}</td>
+             <td>${ing.cantidad.toFixed(2)}</td>
+             <td>${ing.unidad_medida}</td>
+             <td>
+                <button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">
+                    Ingreso manual
+                </button>
+            </td>
+        </tr>
+    `;
+});
+
 
     html += `
             </tbody>
@@ -665,6 +675,7 @@ export function mostrarResumenIngredientes(ingredientes) {
 
     contenedor.innerHTML = html;
 }
+
 
 // Función para mostrar el resumen de mixes en la UI
 export function mostrarResumenMixes(mixes) {
