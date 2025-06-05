@@ -53,6 +53,7 @@ async function inicializarEspacioTrabajo() {
         // Solo después de validar el carro, mostrar los artículos
         await mostrarArticulosDelCarro();
         
+        window.carroIdGlobal = localStorage.getItem('carroActivo');
         // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
         
@@ -97,7 +98,8 @@ document.addEventListener('DOMContentLoaded', () => {
             await crearNuevoCarro();
             // Finalmente mostrar los artículos
             await mostrarArticulosDelCarro();
-            
+
+            window.carroIdGlobal = localStorage.getItem('carroActivo');
             // Cargar y mostrar resumen de ingredientes y mixes
             await cargarResumenIngredientes();
         });

@@ -6,9 +6,11 @@ const usuariosRoutes = require('../usuarios/rutas');
 
 const app = express();
 
+// ✅ Middleware para interpretar JSON en los requests
+app.use(express.json());
+
 // Configuración de archivos estáticos y rutas base
 app.use(express.static(__dirname));
-
 app.use('/pages', express.static(path.join(__dirname, 'pages')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/css', express.static(path.join(__dirname, 'css')));
@@ -24,23 +26,14 @@ app.use((req, res, next) => {
     next();
 });
 
-// Middleware para manejar las rutas con prefijo
-app.use((req, res, next) => {
-    // Si la ruta viene con /api/produccion, la ajustamos
-    if (req.originalUrl.startsWith('/api/produccion')) {
-        req.url = req.url.replace('/api/produccion', '');
-        console.log('URL ajustada:', req.url);
-    }
-    next();
-});
+// ✅ Middleware para ajustar solo si es necesario (solo si no se rompe)
+app.use('/api/produccion', produccionRoutes); // ← Registro completo sin manipular req.url
+
+// Otras rutas de usuarios
+app.use('/api', usuariosRoutes);
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-
-// Rutas
-app.use('/api', usuariosRoutes); // Agregamos las rutas de usuarios
-app.use('/', produccionRoutes);
 
 // Manejo de errores global
 app.use((err, req, res, next) => {

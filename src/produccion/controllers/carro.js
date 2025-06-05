@@ -80,7 +80,7 @@ async function obtenerArticulos() {
                 a.codigo_barras
             FROM public.articulos a
             ORDER BY a.nombre ASC
-        `;
+        `     ;
         
         console.log('Ejecutando query:', query);
         const result = await pool.query(query);

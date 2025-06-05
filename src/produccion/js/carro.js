@@ -607,7 +607,6 @@ export async function obtenerResumenMixesCarro(carroId, usuarioId) {
 
 // Función para mostrar el resumen de ingredientes en la UI
 import { abrirModalIngresoManual } from './ingresoManual.js';
-
 export function mostrarResumenIngredientes(ingredientes) {
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (!contenedor) return;
@@ -652,21 +651,21 @@ export function mostrarResumenIngredientes(ingredientes) {
             <tbody>
     `;
 
-      ingredientes.forEach(ing => {
-        html += `
-           <tr>
-             <td>${ing.nombre}</td>
-             <td>${ing.cantidad.toFixed(2)}</td>
-             <td>${ing.unidad_medida}</td>
-             <td>
-                <button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">
-                    Ingreso manual
-                </button>
-            </td>
-        </tr>
-    `;
-});
+    ingredientes.forEach(ing => {
+        const deshabilitado = (window.carroIdGlobal == null);
+        const boton = deshabilitado
+            ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+            : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
 
+        html += `
+            <tr>
+                <td>${ing.nombre}</td>
+                <td>${ing.cantidad.toFixed(2)}</td>
+                <td>${ing.unidad_medida}</td>
+                <td>${boton}</td>
+            </tr>
+        `;
+    });
 
     html += `
             </tbody>

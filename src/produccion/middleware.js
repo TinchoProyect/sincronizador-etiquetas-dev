@@ -1,3 +1,5 @@
+const pool = require('./config/database');
+
 /**
  * Middleware para validar que el carro pertenezca al usuario
  * Solo verifica el ID de usuario contra el usuario_id del carro
@@ -10,6 +12,16 @@ async function validarAccesoCarro(req, res, next) {
     next();
 }
 
+/**
+ * Middleware para inyectar la conexión a la base de datos
+ */
+function dbMiddleware(req, res, next) {
+    console.log('🔌 Aplicando middleware de base de datos');
+    req.db = pool;
+    next();
+}
+
 module.exports = {
-    validarAccesoCarro
+    validarAccesoCarro,
+    dbMiddleware
 };

@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { dbMiddleware } = require('../middleware');
+
+// Aplicar middleware de base de datos a todas las rutas
+router.use(dbMiddleware);
 const { 
     crearReceta, 
     obtenerEstadoRecetas, 
@@ -369,4 +373,56 @@ router.put('/carro/:carroId/articulo/:articuloId', async (req, res) => {
     }
 });
 
+// ✅ Ruta para registrar movimiento de stock de ventas
+const { registrarMovimientoStockVentas } = require('../controllers/stockVentasMovimientos');
+router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
+
+
+
+// =========================
+
+const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
+
+/**
+ * Ruta: POST /api/produccion/ingredientes_movimientos
+ * Descripción: Registra un movimiento manual de ingreso de stock
+ * en la tabla ingredientes_movimientos.
+ */
+router.post('/ingredientes_movimientos', async (req, res) => {
+  try {
+    console.log('📥 Solicitud POST /ingredientes_movimientos recibida');
+    const { ingrediente_id, kilos, carro_id, tipo, observaciones } = req.body;
+
+    console.log('🔍 Datos recibidos:', req.body);
+
+    if (
+      ingrediente_id == null ||
+      carro_id == null ||
+      kilos == null ||
+      isNaN(Number(kilos))
+    ) {
+      console.warn('⚠️ Validación fallida en POST /ingredientes_movimientos');
+      return res.status(400).json({ error: 'Faltan campos obligatorios o kilos inválidos' });
+    }
+
+    const movimiento = {
+      ingrediente_id,
+      kilos: Number(kilos),
+      tipo: tipo || 'manual',
+      carro_id,
+      observaciones: observaciones || null
+    };
+
+    console.log('📦 Movimiento armado para registrar:', movimiento);
+
+    await registrarMovimientoIngrediente(movimiento);
+
+    console.log('✅ Movimiento registrado correctamente');
+    return res.status(201).json({ message: 'Movimiento registrado correctamente' });
+
+  } catch (error) {
+    console.error('❌ Error en POST /ingredientes_movimientos:', error);
+    return res.status(500).json({ error: 'Error al registrar el movimiento' });
+  }
+});
 module.exports = router;

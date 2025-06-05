@@ -9,20 +9,32 @@ let listaResultados = null;
 let inputKilos = null;
 let btnConfirmar = null;
 let btnCancelar = null;
+let nombreIngredienteDisplay = null;
 
 let ingredienteSeleccionado = null;
 let articuloSeleccionado = null;
 let carroIdGlobal = null;
 
-// ⚠️ Asegurate que en el HTML el modal tenga id="modalIngresoManual"
 export function abrirModalIngresoManual(ingredienteId, carroId) {
   console.log('✔️ Función abrirModalIngresoManual ejecutada');
   ingredienteSeleccionado = ingredienteId;
   carroIdGlobal = carroId;
 
   if (!modal) inicializarModal();
-
   limpiarCamposModal();
+
+  obtenerIngrediente(ingredienteId)
+    .then(ingrediente => {
+      if (nombreIngredienteDisplay) {
+        nombreIngredienteDisplay.textContent = ingrediente.nombre || 'Ingrediente sin nombre';
+      }
+    })
+    .catch(err => {
+      console.error('❌ Error al obtener ingrediente:', err);
+      if (nombreIngredienteDisplay) {
+        nombreIngredienteDisplay.textContent = 'Error al cargar ingrediente';
+      }
+    });
 
   modal.classList.add('show');
 }
@@ -34,6 +46,7 @@ function inicializarModal() {
   inputKilos = document.getElementById('inputKilos');
   btnConfirmar = document.getElementById('btnConfirmarIngreso');
   btnCancelar = document.getElementById('btnCancelarIngreso');
+  nombreIngredienteDisplay = modal.querySelector('.nombre-ingrediente');
 
   if (!modal) {
     console.error('❌ No se encontró el modal con id "modalIngresoManual"');
@@ -54,6 +67,7 @@ function limpiarCamposModal() {
   inputKilos.value = '';
   listaResultados.innerHTML = '';
   articuloSeleccionado = null;
+  if (nombreIngredienteDisplay) nombreIngredienteDisplay.textContent = '';
 }
 
 function cerrarModal() {
@@ -116,17 +130,41 @@ function confirmarIngreso() {
     return;
   }
 
-  const movimiento = {
+  const usuarioData = localStorage.getItem('colaboradorActivo');
+  const usuarioId = usuarioData ? JSON.parse(usuarioData).id : null;
+
+  if (!carroIdGlobal || !usuarioId) {
+    alert('No hay carro o usuario válido disponible.');
+    return;
+  }
+
+  if (!articuloSeleccionado.numero) {
+    alert('Error interno: no se seleccionó un artículo válido.');
+    return;
+  }
+
+  console.log('🔍 artículoSeleccionado:', articuloSeleccionado);
+
+  const movimientoIngrediente = {
     ingredienteId: ingredienteSeleccionado,
-    articuloId: articuloSeleccionado.id,
+    articuloNumero: articuloSeleccionado.numero,
     kilos,
-    carroId: carroIdGlobal
+    carroId: parseInt(carroIdGlobal)
   };
 
-  console.log('📦 Guardando ingreso manual:', movimiento);
+  const movimientoStock = {
+    articuloNumero: articuloSeleccionado.numero,
+    codigoBarras: articuloSeleccionado.codigo_barras,
+    kilos: -kilos,
+    carroId: parseInt(carroIdGlobal),
+    usuarioId: parseInt(usuarioId)
+  };
 
-  registrarMovimientoIngrediente(movimiento)
-    .then(() => registrarMovimientoStockVentas(movimiento))
+  console.log('📦 Guardando ingreso manual:', movimientoIngrediente);
+  console.log('✅ movimientoIngrediente (detalle):', JSON.stringify(movimientoIngrediente, null, 2));
+
+  registrarMovimientoIngrediente(movimientoIngrediente)
+    .then(() => registrarMovimientoStockVentas(movimientoStock))
     .then(() => {
       alert('Ingreso registrado correctamente');
       cerrarModal();
@@ -137,5 +175,12 @@ function confirmarIngreso() {
     });
 }
 
-// ✅ Asegura disponibilidad global para el botón onclick
+function obtenerIngrediente(id) {
+  return fetch(`/api/produccion/ingredientes/${id}`)
+    .then(res => {
+      if (!res.ok) throw new Error('No se pudo obtener el ingrediente');
+      return res.json();
+    });
+}
+
 window.abrirModalIngresoManual = abrirModalIngresoManual;
