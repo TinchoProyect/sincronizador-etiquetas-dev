@@ -499,7 +499,7 @@ router.post('/ingredientes_movimientos', async (req, res) => {
 
     console.log('📦 Movimiento armado para registrar:', movimiento);
 
-    await registrarMovimientoIngrediente(movimiento);
+    await registrarMovimientoIngrediente(movimiento, req.db);
 
     console.log('✅ Movimiento registrado correctamente');
     return res.status(201).json({ message: 'Movimiento registrado correctamente' });

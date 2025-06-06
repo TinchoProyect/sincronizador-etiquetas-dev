@@ -44,22 +44,48 @@ async function marcarCarroPreparado(req, res) {
             throw new Error('No se encontraron ingredientes para los artículos del carro');
         }
 
+        // Filtrar ingredientes que tengan ID válido
+        const ingredientesValidos = ingredientesConsolidados.filter(ing => {
+            if (!ing.id) {
+                console.warn(`⚠️ Ingrediente sin ID omitido: ${ing.nombre}`);
+                return false;
+            }
+            return true;
+        });
+
+        if (ingredientesValidos.length === 0) {
+            throw new Error('No se encontraron ingredientes válidos con ID para registrar movimientos');
+        }
+
+        console.log(`📊 Ingredientes válidos para movimientos: ${ingredientesValidos.length} de ${ingredientesConsolidados.length}`);
+
         console.log('\n📦 REGISTRANDO MOVIMIENTOS DE INGREDIENTES');
         console.log('==========================================');
 
         // 4. Registrar movimientos de egreso para cada ingrediente primario
-        for (const ing of ingredientesConsolidados) {
+        for (const ing of ingredientesValidos) {
             console.log(`\n🔄 Procesando ${ing.nombre}:`);
             console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
             console.log(`- ID: ${ing.id}`);
             
-            await registrarMovimientoIngrediente({
+            // Validar datos antes de enviar
+            const movimientoData = {
                 ingrediente_id: ing.id,
                 kilos: -ing.cantidad, // Negativo porque es un egreso
                 tipo: 'egreso',
-                carro_id: carroId,
+                carro_id: parseInt(carroId),
                 observaciones: `Preparación de carro #${carroId}`
-            });
+            };
+            
+            console.log('🔍 Datos del movimiento a enviar:', movimientoData);
+            console.log('🔍 Validación previa:');
+            console.log(`- ingrediente_id: ${movimientoData.ingrediente_id} (${typeof movimientoData.ingrediente_id})`);
+            console.log(`- kilos: ${movimientoData.kilos} (${typeof movimientoData.kilos})`);
+            console.log(`- tipo: ${movimientoData.tipo} (${typeof movimientoData.tipo})`);
+            console.log(`- carro_id: ${movimientoData.carro_id} (${typeof movimientoData.carro_id})`);
+            console.log(`- observaciones: ${movimientoData.observaciones} (${typeof movimientoData.observaciones})`);
+            
+            await registrarMovimientoIngrediente(movimientoData, db);
             
             console.log('✅ Movimiento registrado correctamente');
         }
@@ -78,7 +104,8 @@ async function marcarCarroPreparado(req, res) {
 
         return res.json({
             mensaje: 'Carro marcado como preparado correctamente',
-            ingredientes: ingredientesConsolidados.length
+            ingredientes: ingredientesValidos.length,
+            ingredientes_totales: ingredientesConsolidados.length
         });
 
     } catch (error) {

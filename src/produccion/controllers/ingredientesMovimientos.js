@@ -1,6 +1,4 @@
-const pool = require('../config/database');
-
-async function registrarMovimientoIngrediente(movimiento) {
+async function registrarMovimientoIngrediente(movimiento, db) {
   try {
     const {
       ingrediente_id,
@@ -33,7 +31,7 @@ async function registrarMovimientoIngrediente(movimiento) {
     }
 
     // Verificar existencia del carro
-    const carroExiste = await pool.query(
+    const carroExiste = await db.query(
       'SELECT id FROM carros_produccion WHERE id = $1',
       [carro_id]
     );
@@ -66,7 +64,7 @@ async function registrarMovimientoIngrediente(movimiento) {
 
     console.log('📤 Insertando movimiento con:', values);
 
-    const result = await pool.query(query, values);
+    const result = await db.query(query, values);
 
     console.log('✅ Movimiento registrado correctamente:', result.rows[0]);
 
