@@ -9,8 +9,13 @@ const pool = require('../config/database');
 async function crearCarro(usuarioId, enAuditoria = true) {
     try {
         const query = `
-            INSERT INTO carros_produccion (usuario_id, fecha_inicio, en_auditoria)
-            VALUES ($1, CURRENT_TIMESTAMP, $2)
+            INSERT INTO carros_produccion (
+                usuario_id, 
+                fecha_inicio, 
+                en_auditoria,
+                fecha_preparado
+            )
+            VALUES ($1, CURRENT_TIMESTAMP, $2, NULL)
             RETURNING id
         `;
         

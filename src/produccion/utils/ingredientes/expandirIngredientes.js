@@ -1,4 +1,4 @@
-const pool = require('../../../usuarios/pool');
+const pool = require('../../config/database');
 
 /**
  * Extrae el peso unitario de un artículo a partir de su nombre
@@ -32,18 +32,43 @@ async function esMix(ingredienteId) {
  * @param {Set} procesados - Set de ingredientes ya procesados para evitar ciclos
  * @returns {Promise<Array>} Lista de ingredientes base con cantidades ajustadas
  */
-async function expandirIngrediente(ingredienteId, cantidadBase = 1, procesados = new Set()) {
-    // Evitar ciclos infinitos
-    if (procesados.has(ingredienteId)) {
-        console.log(`Ciclo detectado para ingrediente ${ingredienteId}, retornando array vacío`);
+async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = new Set()) {
+    // Primero verificar si es un número de artículo y obtener su ingrediente asociado
+    try {
+        const ingredienteQuery = `
+            SELECT i.id, i.nombre, i.unidad_medida
+            FROM ingredientes i
+            JOIN articulos a ON a.ingrediente_id = i.id
+            WHERE a.numero = $1
+        `;
+        const ingredienteResult = await pool.query(ingredienteQuery, [articuloId]);
+        
+        if (ingredienteResult.rows.length > 0) {
+            // Si es un artículo, usar su ingrediente asociado
+            const ingrediente = ingredienteResult.rows[0];
+            return [{
+                id: ingrediente.id,
+                nombre: ingrediente.nombre,
+                unidad_medida: ingrediente.unidad_medida,
+                cantidad: cantidadBase,
+                es_primario: true
+            }];
+        }
+    } catch (error) {
+        console.log('No es un número de artículo, tratando como ID de ingrediente');
+    }
+
+    // Si no es un artículo, proceder con la lógica de ingredientes
+    if (procesados.has(articuloId)) {
+        console.log(`Ciclo detectado para ingrediente ${articuloId}, retornando array vacío`);
         return [];
     }
-    procesados.add(ingredienteId);
+    procesados.add(articuloId);
 
     try {
         // Verificar si es un mix
-        const tieneMix = await esMix(ingredienteId);
-        console.log(`Ingrediente ${ingredienteId}: es mix = ${tieneMix}, cantidad = ${cantidadBase}`);
+        const tieneMix = await esMix(articuloId);
+        console.log(`Ingrediente ${articuloId}: es mix = ${tieneMix}, cantidad = ${cantidadBase}`);
         
         if (!tieneMix) {
             // Si no es mix, obtener datos del ingrediente base
@@ -52,24 +77,25 @@ async function expandirIngrediente(ingredienteId, cantidadBase = 1, procesados =
                 FROM ingredientes
                 WHERE id = $1
             `;
-            const result = await pool.query(query, [ingredienteId]);
+            const result = await pool.query(query, [articuloId]);
             if (result.rows.length === 0) {
-                console.log(`No se encontró ingrediente con ID ${ingredienteId}`);
+                console.log(`No se encontró ingrediente con ID ${articuloId}`);
                 return [];
             }
 
             const ingredienteBase = {
-                id: ingredienteId,  // Agregar ID para consolidación
+                id: articuloId,  // Agregar ID para consolidación
                 nombre: result.rows[0].nombre,
                 unidad_medida: result.rows[0].unidad_medida,
-                cantidad: cantidadBase
+                cantidad: cantidadBase,
+                es_primario: true  // Marcar como ingrediente primario
             };
             console.log(`Retornando ingrediente base:`, ingredienteBase);
             return [ingredienteBase];
         }
 
         // Si es mix, obtener su composición y receta_base_kg
-        console.log(`\n🔍 DIAGNÓSTICO DE MIX ${ingredienteId}:`);
+        console.log(`\n🔍 DIAGNÓSTICO DE MIX ${articuloId}:`);
         console.log(`===============================`);
         console.log(`Cantidad solicitada: ${cantidadBase}`);
 
@@ -85,7 +111,7 @@ async function expandirIngrediente(ingredienteId, cantidadBase = 1, procesados =
             JOIN ingredientes m ON m.id = ic.mix_id
             WHERE ic.mix_id = $1
         `;
-        const composicionResult = await pool.query(composicionQuery, [ingredienteId]);
+        const composicionResult = await pool.query(composicionQuery, [articuloId]);
 
         // Obtener y validar receta_base_kg
         const recetaBaseKg = composicionResult.rows[0]?.receta_base_kg;
@@ -93,7 +119,7 @@ async function expandirIngrediente(ingredienteId, cantidadBase = 1, procesados =
 
         const baseKg = (recetaBaseKg && recetaBaseKg > 0) ? recetaBaseKg : 1;
         if (recetaBaseKg === null || recetaBaseKg === 0) {
-            console.warn(`⚠️ Mix ${ingredienteId} tiene receta_base_kg nulo o 0. Usando base = 1 por defecto`);
+            console.warn(`⚠️ Mix ${articuloId} tiene receta_base_kg nulo o 0. Usando base = 1 por defecto`);
         }
 
         // Obtener el peso unitario del nombre del mix
@@ -102,7 +128,7 @@ async function expandirIngrediente(ingredienteId, cantidadBase = 1, procesados =
             FROM ingredientes
             WHERE id = $1
         `;
-        const nombreMixResult = await pool.query(nombreMixQuery, [ingredienteId]);
+        const nombreMixResult = await pool.query(nombreMixQuery, [articuloId]);
         const nombreMix = nombreMixResult.rows[0]?.nombre || '';
         const pesoUnitario = extraerPesoUnitario(nombreMix);
 
@@ -111,7 +137,7 @@ async function expandirIngrediente(ingredienteId, cantidadBase = 1, procesados =
         
         console.log(`\n🔍 EXPANSIÓN DE MIX - CANTIDADES`);
         console.log(`=======================================`);
-        console.log(`Mix: ${nombreMix} (ID: ${ingredienteId})`);
+        console.log(`Mix: ${nombreMix} (ID: ${articuloId})`);
         console.log(`1️⃣ DATOS:`);
         console.log(`- Cantidad base: ${cantidadBase}kg`);
         console.log(`- Peso unitario: ${pesoUnitario}kg`);
@@ -162,7 +188,7 @@ async function expandirIngrediente(ingredienteId, cantidadBase = 1, procesados =
 
         return ingredientesExpandidos;
     } catch (error) {
-        console.error(`Error expandiendo ingrediente ${ingredienteId}:`, error);
+        console.error(`Error expandiendo ingrediente ${articuloId}:`, error);
         return [];
     }
 }

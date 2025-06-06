@@ -381,7 +381,91 @@ router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
 
 // =========================
 
+const { marcarCarroPreparado } = require('../controllers/marcarCarroPreparado');
+const { finalizarProduccion } = require('../controllers/finalizarProduccion');
 const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
+
+/**
+ * Ruta: POST /api/produccion/carro/:id/preparado
+ * Descripción: Marca un carro como preparado y registra los movimientos de ingredientes
+ */
+router.post('/carro/:id/preparado', async (req, res, next) => {
+    try {
+        // Asegurarse de que req.db esté disponible
+        if (!req.db) {
+            throw new Error('No hay conexión a la base de datos disponible');
+        }
+        await marcarCarroPreparado(req, res);
+    } catch (error) {
+        console.error('Error en ruta /carro/:id/preparado:', error);
+        res.status(500).json({
+            error: 'Error al marcar el carro como preparado',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Ruta: POST /api/produccion/carro/:id/finalizar
+ * Descripción: Finaliza la producción de un carro y registra los movimientos de stock de ventas
+ */
+router.post('/carro/:id/finalizar', async (req, res, next) => {
+    try {
+        // Asegurarse de que req.db esté disponible
+        if (!req.db) {
+            throw new Error('No hay conexión a la base de datos disponible');
+        }
+        await finalizarProduccion(req, res);
+    } catch (error) {
+        console.error('Error en ruta /carro/:id/finalizar:', error);
+        res.status(500).json({
+            error: 'Error al finalizar la producción del carro',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para obtener el estado de un carro
+router.get('/carro/:id/estado', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const query = `
+            SELECT fecha_preparado, fecha_confirmacion, usuario_id, fecha_inicio
+            FROM carros_produccion 
+            WHERE id = $1
+        `;
+        
+        const result = await req.db.query(query, [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Carro no encontrado' });
+        }
+        
+        const carro = result.rows[0];
+        const preparado = carro.fecha_preparado !== null;
+        const confirmado = carro.fecha_confirmacion !== null;
+        
+        let estado = 'en_preparacion';
+        if (confirmado) {
+            estado = 'confirmado';
+        } else if (preparado) {
+            estado = 'preparado';
+        }
+        
+        res.json({
+            estado: estado,
+            fecha_preparado: carro.fecha_preparado,
+            fecha_confirmacion: carro.fecha_confirmacion,
+            preparado: preparado,
+            confirmado: confirmado
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener estado del carro:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
 
 /**
  * Ruta: POST /api/produccion/ingredientes_movimientos

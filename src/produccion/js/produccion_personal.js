@@ -23,11 +23,21 @@ import {
 } from './articulos.js';
 
 import { abrirModalIngresoManual } from './ingresoManual.js';
+import { actualizarVisibilidadBotones } from './carroPreparado.js';
 window.carroIdGlobal = null;
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
-window.seleccionarCarro = seleccionarCarro;
-window.deseleccionarCarro = deseleccionarCarro;
+// Envolver las funciones originales para agregar la actualización de botones
+window.seleccionarCarro = async (...args) => {
+    await seleccionarCarro(...args);
+    await actualizarVisibilidadBotones();
+};
+
+window.deseleccionarCarro = async (...args) => {
+    await deseleccionarCarro(...args);
+    await actualizarVisibilidadBotones();
+};
+
 window.eliminarCarro = eliminarCarro;
 window.agregarAlCarro = agregarAlCarro;
 window.cerrarModalReceta = cerrarModalReceta;
@@ -194,6 +204,9 @@ async function cargarResumenIngredientes() {
         // Obtener y mostrar el resumen de mixes
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
+        
+        // Actualizar visibilidad de los botones después de cargar ingredientes
+        await actualizarVisibilidadBotones();
         
     } catch (error) {
         console.error('Error al cargar resumen de ingredientes:', error);

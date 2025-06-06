@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="/css/produccion_personal.css">
     <link rel="stylesheet" href="/css/modal-receta.css">
+    <link rel="stylesheet" href="/css/carroPreparado.css">
 </head>
 <body>
     <div class="container">
@@ -37,6 +38,8 @@
                     <div class="seccion-carros">
                         <div class="workspace-actions">
                             <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
+                            <button id="carro-preparado" class="btn btn-success" style="display: none;" onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">Carro listo para producir</button>
+                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="finalizarProduccion(localStorage.getItem('carroActivo'))">Asentar producción</button>
                         </div>
                         <div id="carro-actual" class="carro-info">
                             <p>No hay carro activo</p>
@@ -223,5 +226,6 @@
 </div>
 
     <script type="module" src="/js/produccion_personal.js"></script>
+    <script type="module" src="/js/carroPreparado.js"></script>
 </body>
 </html>

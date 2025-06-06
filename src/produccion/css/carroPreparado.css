@@ -1,0 +1,92 @@
+/* Estilos para el botón de carro preparado */
+#carro-preparado {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 10px 5px;
+    transition: background-color 0.3s ease;
+}
+
+#carro-preparado:hover {
+    background-color: #45a049;
+}
+
+#carro-preparado:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#carro-preparado.procesando {
+    background-color: #ffa500;
+}
+
+/* Estilos para el botón de finalizar producción */
+#finalizar-produccion {
+    background-color: #ff9800;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 10px 5px;
+    transition: background-color 0.3s ease;
+}
+
+#finalizar-produccion:hover {
+    background-color: #e68900;
+}
+
+#finalizar-produccion:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#finalizar-produccion.procesando {
+    background-color: #ffa500;
+}
+
+/* Estilos para organizar los botones en línea */
+.workspace-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Estilos para las notificaciones */
+.preparado-success,
+.preparado-error {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    border-radius: 4px;
+    color: white;
+    font-size: 14px;
+    z-index: 1000;
+    animation: slideIn 0.3s ease-out;
+}
+
+.preparado-success {
+    background-color: #4CAF50;
+}
+
+.preparado-error {
+    background-color: #f44336;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
