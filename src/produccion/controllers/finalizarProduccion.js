@@ -71,17 +71,16 @@ async function finalizarProduccion(req, res) {
                 INSERT INTO stock_ventas_movimientos (
                     articulo_numero, 
                     codigo_barras, 
-                    kilos, 
-                    fecha, 
+                    kilos,
+                    cantidad,
                     carro_id, 
                     usuario_id, 
-                    tipo, 
-                    cantidad
-                ) VALUES ($1, $2, $3, NOW(), $4, $5, 'ingreso', 1)
+                    fecha
+                ) VALUES ($1, $2, 0, $3, $4, $5, NOW())
             `, [
                 articulo.articulo_numero,
                 articulo.codigo_barras || '',
-                articulo.cantidad,
+                articulo.cantidad,  // La cantidad va en la columna cantidad
                 carroId,
                 usuarioId
             ]);
