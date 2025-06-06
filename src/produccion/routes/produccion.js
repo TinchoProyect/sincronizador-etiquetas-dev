@@ -408,7 +408,7 @@ router.post('/ingredientes_movimientos', async (req, res) => {
     const movimiento = {
       ingrediente_id,
       kilos: Number(kilos),
-      tipo: tipo || 'manual',
+      tipo: tipo || 'ingreso',
       carro_id,
       observaciones: observaciones || null
     };

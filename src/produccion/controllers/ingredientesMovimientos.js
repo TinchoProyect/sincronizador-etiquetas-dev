@@ -45,7 +45,7 @@ async function registrarMovimientoIngrediente(movimiento) {
 
     // 📝 Construcción final de observaciones
     const textoObservacion = articuloNumero
-      ? `Ingreso desde artículo ${articuloNumero}`
+      ? articuloNumero
       : (observaciones || null);
 
     const query = `

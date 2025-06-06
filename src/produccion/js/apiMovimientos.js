@@ -6,9 +6,9 @@ export async function registrarMovimientoIngrediente({ ingredienteId, articuloNu
   const payload = {
     ingrediente_id: ingredienteId,
     kilos,
-    tipo: 'manual',
+    tipo: 'ingreso',
     carro_id: carroId,
-    observaciones: `Ingreso desde artículo ${articuloNumero}`
+    observaciones: articuloNumero
   };
 
   console.log('📤 Enviando payload a /api/produccion/ingredientes_movimientos:', payload);
