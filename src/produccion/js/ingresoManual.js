@@ -2,6 +2,7 @@ import {
   registrarMovimientoIngrediente,
   registrarMovimientoStockVentas
 } from './apiMovimientos.js';
+import { actualizarResumenIngredientes } from './carro.js';
 
 let modal = null;
 let inputBusqueda = null;
@@ -181,6 +182,8 @@ function confirmarIngreso() {
     .then(() => {
       alert('Ingreso registrado correctamente');
       cerrarModal();
+      // Actualizar el resumen de ingredientes para reflejar el nuevo stock
+      actualizarResumenIngredientes();
     })
     .catch(error => {
       console.error('❌ Error al registrar ingreso:', error);

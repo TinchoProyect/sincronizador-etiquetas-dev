@@ -174,7 +174,7 @@ const debouncedActualizarResumen = debounce(async () => {
 }, 500);
 
 // Función para actualizar el resumen de ingredientes
-async function actualizarResumenIngredientes() {
+export async function actualizarResumenIngredientes() {
     debouncedActualizarResumen();
 }
 
