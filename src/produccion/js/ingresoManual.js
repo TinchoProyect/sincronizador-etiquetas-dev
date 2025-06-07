@@ -7,6 +7,7 @@ let modal = null;
 let inputBusqueda = null;
 let listaResultados = null;
 let inputKilos = null;
+let inputCantidad = null;
 let btnConfirmar = null;
 let btnCancelar = null;
 let nombreIngredienteDisplay = null;
@@ -44,6 +45,7 @@ function inicializarModal() {
   inputBusqueda = document.getElementById('busquedaArticulo');
   listaResultados = document.getElementById('listaArticulos');
   inputKilos = document.getElementById('inputKilos');
+  inputCantidad = document.getElementById('inputCantidad');
   btnConfirmar = document.getElementById('btnConfirmarIngreso');
   btnCancelar = document.getElementById('btnCancelarIngreso');
   nombreIngredienteDisplay = modal.querySelector('.nombre-ingrediente');
@@ -65,6 +67,7 @@ function inicializarModal() {
 function limpiarCamposModal() {
   inputBusqueda.value = '';
   inputKilos.value = '';
+  inputCantidad.value = '1'; // Restablecer a valor por defecto
   listaResultados.innerHTML = '';
   articuloSeleccionado = null;
   if (nombreIngredienteDisplay) nombreIngredienteDisplay.textContent = '';
@@ -125,8 +128,15 @@ function confirmarIngreso() {
   }
 
   const kilos = parseFloat(inputKilos.value);
+  const cantidad = parseInt(inputCantidad.value) || 1;
+
   if (isNaN(kilos) || kilos <= 0) {
     alert('Ingresá una cantidad válida de kilos.');
+    return;
+  }
+
+  if (isNaN(cantidad) || cantidad < 1) {
+    alert('La cantidad de artículos debe ser al menos 1.');
     return;
   }
 
@@ -145,19 +155,22 @@ function confirmarIngreso() {
 
   console.log('🔍 artículoSeleccionado:', articuloSeleccionado);
 
+  // Para ingredientes_movimientos multiplicamos kilos × cantidad
   const movimientoIngrediente = {
     ingredienteId: ingredienteSeleccionado,
     articuloNumero: articuloSeleccionado.numero,
-    kilos,
+    kilos: kilos * cantidad, // Multiplicar por cantidad
     carroId: parseInt(carroIdGlobal)
   };
 
+  // Para stock_ventas_movimientos mantenemos kilos original y cantidad separada
   const movimientoStock = {
     articuloNumero: articuloSeleccionado.numero,
     codigoBarras: articuloSeleccionado.codigo_barras,
-    kilos: -kilos,
+    kilos: -kilos, // Kilos por unidad (sin multiplicar)
     carroId: parseInt(carroIdGlobal),
-    usuarioId: parseInt(usuarioId)
+    usuarioId: parseInt(usuarioId),
+    cantidad: cantidad // Cantidad de unidades
   };
 
   console.log('📦 Guardando ingreso manual:', movimientoIngrediente);

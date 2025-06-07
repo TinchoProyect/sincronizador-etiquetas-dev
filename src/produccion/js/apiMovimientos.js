@@ -32,13 +32,14 @@ export async function registrarMovimientoIngrediente({ ingredienteId, articuloNu
 /**
  * Registra un movimiento de stock vinculado a ventas.
  */
-export async function registrarMovimientoStockVentas({ articuloNumero, codigoBarras, kilos, carroId, usuarioId }) {
+export async function registrarMovimientoStockVentas({ articuloNumero, codigoBarras, kilos, carroId, usuarioId, cantidad }) {
   const payload = {
     articulo_numero: articuloNumero,
     codigo_barras: codigoBarras,
     kilos,
     carro_id: carroId,
     usuario_id: usuarioId,
+    cantidad: cantidad || 1, // Si no viene cantidad, usar 1 como valor por defecto
     fecha: new Date().toISOString()
   };
 
