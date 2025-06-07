@@ -1,4 +1,58 @@
 import { mostrarError, estilosTablaCarros } from './utils.js';
+import { abrirEdicionMix } from './mix.js';
+
+// Hacer la función disponible globalmente
+window.editarIngredienteCompuesto = async (mixId) => {
+    try {
+        console.log('🔧 editarIngredienteCompuesto llamado con:', mixId, typeof mixId);
+        
+        // Si mixId es un string (nombre), necesitamos obtener el ID
+        let actualMixId = mixId;
+        if (typeof mixId === 'string') {
+            console.log('🔍 Buscando ID para ingrediente:', mixId);
+            try {
+                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/buscar?nombre=${encodeURIComponent(mixId)}`);
+                if (!response.ok) {
+                    throw new Error(`No se encontró el ingrediente: ${mixId}`);
+                }
+                const data = await response.json();
+                actualMixId = data.id;
+                console.log('✅ ID encontrado:', actualMixId);
+            } catch (error) {
+                console.error('❌ Error buscando ID del ingrediente:', error);
+                throw error;
+            }
+        }
+        
+        console.log('🚀 Abriendo modal para mix ID:', actualMixId);
+        console.log('🔗 Llamando a abrirEdicionMix desde carro.js...');
+        // Mostrar el modal de edición de composición del mix
+        await abrirEdicionMix(actualMixId);
+        console.log('✅ abrirEdicionMix completado');
+        
+        // Hacer disponible la función de actualización para el modal
+        window.actualizarResumenIngredientes = async () => {
+            const carroId = localStorage.getItem('carroActivo');
+            const colaboradorData = localStorage.getItem('colaboradorActivo');
+            
+            if (carroId && colaboradorData) {
+                const colaborador = JSON.parse(colaboradorData);
+                
+                // Actualizar resumen de ingredientes
+                const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+                mostrarResumenIngredientes(ingredientes);
+                
+                // Actualizar resumen de mixes
+                const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+                mostrarResumenMixes(mixes);
+            }
+        };
+        
+    } catch (error) {
+        console.error('Error al editar ingrediente compuesto:', error);
+        mostrarError('No se pudo abrir el editor de ingrediente compuesto');
+    }
+};
 
 // Función para actualizar la información visual del carro activo
 export async function actualizarEstadoCarro() {
@@ -379,7 +433,13 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
                 const cantidadTotal = ing.cantidad * nuevaCantidad;
                 htmlIngredientes += `
                     <tr>
-                        <td>${ing.nombre}</td>
+                        <td>
+                            ${ing.es_mix ? 
+                                `<span class="mix-nombre" 
+                                       style="cursor: pointer; color: #0275d8; text-decoration: underline;"
+                                       onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
+                                ing.nombre}
+                        </td>
                         <td>${cantidadTotal.toFixed(2)}</td>
                         <td>${ing.unidad_medida}</td>
                     </tr>
@@ -736,7 +796,11 @@ export function mostrarResumenMixes(mixes) {
     mixes.forEach(mix => {
         html += `
             <tr>
-                <td>${mix.nombre}</td>
+                <td>
+                    <span class="mix-nombre" 
+                          style="cursor: pointer; color: #0275d8; text-decoration: underline;"
+                          onclick="editarIngredienteCompuesto(${mix.id})">${mix.nombre}</span>
+                </td>
                 <td>${mix.cantidad.toFixed(2)}</td>
                 <td>${mix.unidad_medida}</td>
             </tr>
@@ -757,7 +821,34 @@ async function obtenerIngredientesExpandidos(numeroArticulo) {
         const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
         const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticuloEncoded}/ingredientes-expandido`);
         if (!response.ok) throw new Error('No se encontraron ingredientes');
-        return await response.json();
+        const ingredientes = await response.json();
+
+        // Para cada ingrediente, verificar si es un mix
+        const ingredientesConMix = await Promise.all(ingredientes.map(async ing => {
+            try {
+                // Obtener el ID del ingrediente
+                const queryId = await fetch(`http://localhost:3002/api/produccion/ingredientes/buscar?nombre=${encodeURIComponent(ing.nombre)}`);
+                const { id } = await queryId.json();
+                
+                if (id) {
+                    // Verificar si es un mix
+                    const queryEsMix = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/es-mix`);
+                    const { es_mix } = await queryEsMix.json();
+                    
+                    return {
+                        ...ing,
+                        id,
+                        es_mix
+                    };
+                }
+                return ing;
+            } catch (error) {
+                console.error(`Error verificando si ${ing.nombre} es mix:`, error);
+                return ing;
+            }
+        }));
+
+        return ingredientesConMix;
     } catch (error) {
         console.error(`Error al obtener ingredientes para ${numeroArticulo}:`, error);
         return null;
@@ -843,9 +934,19 @@ export async function mostrarArticulosDelCarro() {
                 ingredientes.forEach(ing => {
                     // Multiplicar la cantidad del ingrediente por la cantidad del artículo en el carro
                     const cantidadTotal = ing.cantidad * art.cantidad;
+                    
+                    // Verificar si es un Mix por el nombre (contiene "Mix" al inicio)
+                    const esMix = ing.nombre && ing.nombre.toLowerCase().startsWith('mix');
+                    
                     html += `
                         <tr>
-                            <td>${ing.nombre}</td>
+                            <td>
+                                ${ing.es_mix ? 
+                                    `<span class="mix-nombre" 
+                                           style="cursor: pointer; color: #0275d8; text-decoration: underline;"
+                                           onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
+                                    ing.nombre}
+                            </td>
                             <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
                             <td>${ing.unidad_medida}</td>
                         </tr>

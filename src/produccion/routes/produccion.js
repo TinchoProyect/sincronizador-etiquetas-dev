@@ -49,6 +49,180 @@ router.get('/ingredientes', async (req, res) => {
     }
 });
 
+router.get('/ingredientes/buscar', async (req, res) => {
+    try {
+        const { nombre } = req.query;
+        if (!nombre) {
+            return res.status(400).json({ error: 'Se requiere el parámetro nombre' });
+        }
+        
+        const query = `
+            SELECT id 
+            FROM ingredientes 
+            WHERE LOWER(nombre) = LOWER($1)
+        `;
+        const result = await req.db.query(query, [nombre]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Ingrediente no encontrado' });
+        }
+        
+        res.json({ id: result.rows[0].id });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/buscar:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/ingredientes/:id/es-mix', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        
+        const query = `
+            SELECT COUNT(*)::integer as count 
+            FROM ingrediente_composicion 
+            WHERE mix_id = $1
+        `;
+        const result = await req.db.query(query, [id]);
+        const es_mix = result.rows[0].count > 0;
+        
+        res.json({ es_mix });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/:id/es-mix:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Rutas para composición de ingredientes (mixes)
+router.get('/ingredientes/:id/composicion', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.id);
+        if (isNaN(mixId)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        
+        // Obtener información del mix
+        const mixQuery = `
+            SELECT id, nombre, unidad_medida 
+            FROM ingredientes 
+            WHERE id = $1
+        `;
+        const mixResult = await req.db.query(mixQuery, [mixId]);
+        
+        if (mixResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Mix no encontrado' });
+        }
+        
+        // Obtener composición del mix
+        const composicionQuery = `
+            SELECT 
+                ic.ingrediente_id,
+                ic.cantidad,
+                i.nombre as nombre_ingrediente,
+                i.unidad_medida
+            FROM ingrediente_composicion ic
+            JOIN ingredientes i ON i.id = ic.ingrediente_id
+            WHERE ic.mix_id = $1
+            ORDER BY i.nombre
+        `;
+        const composicionResult = await req.db.query(composicionQuery, [mixId]);
+        
+        res.json({
+            mix: mixResult.rows[0],
+            composicion: composicionResult.rows
+        });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/:id/composicion:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/ingredientes/:id/composicion', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.id);
+        const { ingrediente_id, cantidad } = req.body;
+        
+        if (isNaN(mixId) || !ingrediente_id || !cantidad) {
+            return res.status(400).json({ error: 'Datos inválidos' });
+        }
+        
+        // Verificar que el ingrediente no sea el mismo mix (evitar ciclos)
+        if (parseInt(ingrediente_id) === mixId) {
+            return res.status(400).json({ error: 'Un mix no puede contenerse a sí mismo' });
+        }
+        
+        const query = `
+            INSERT INTO ingrediente_composicion (mix_id, ingrediente_id, cantidad)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (mix_id, ingrediente_id) 
+            DO UPDATE SET cantidad = $3
+        `;
+        await req.db.query(query, [mixId, ingrediente_id, cantidad]);
+        
+        res.json({ message: 'Ingrediente agregado a la composición' });
+    } catch (error) {
+        console.error('Error en ruta POST /ingredientes/:id/composicion:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.mixId);
+        const ingredienteId = parseInt(req.params.ingredienteId);
+        const { cantidad } = req.body;
+        
+        if (isNaN(mixId) || isNaN(ingredienteId) || !cantidad) {
+            return res.status(400).json({ error: 'Datos inválidos' });
+        }
+        
+        const query = `
+            UPDATE ingrediente_composicion 
+            SET cantidad = $1
+            WHERE mix_id = $2 AND ingrediente_id = $3
+        `;
+        const result = await req.db.query(query, [cantidad, mixId, ingredienteId]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Composición no encontrada' });
+        }
+        
+        res.json({ message: 'Cantidad actualizada' });
+    } catch (error) {
+        console.error('Error en ruta PUT /ingredientes/:mixId/composicion/:ingredienteId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.mixId);
+        const ingredienteId = parseInt(req.params.ingredienteId);
+        
+        if (isNaN(mixId) || isNaN(ingredienteId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+        
+        const query = `
+            DELETE FROM ingrediente_composicion 
+            WHERE mix_id = $1 AND ingrediente_id = $2
+        `;
+        const result = await req.db.query(query, [mixId, ingredienteId]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Composición no encontrada' });
+        }
+        
+        res.json({ message: 'Ingrediente eliminado de la composición' });
+    } catch (error) {
+        console.error('Error en ruta DELETE /ingredientes/:mixId/composicion/:ingredienteId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/ingredientes/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);

@@ -13,10 +13,13 @@ export function actualizarListaIngredientes(lista) {
 // Verifica si un ingrediente es un mix consultando si tiene composición
 export async function esMix(ingredienteId) {
     try {
+        console.log('🔍 Verificando si ingrediente es mix:', ingredienteId);
+        
         // Verificar si tiene composición
-        const response = await fetch(`/api/produccion/mixes/${ingredienteId}/ingredientes`);
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`);
         if (!response.ok) {
             if (response.status === 404) {
+                console.log('❌ No tiene composición (404)');
                 return false;
             }
             throw new Error('Error al verificar composición');
@@ -24,16 +27,18 @@ export async function esMix(ingredienteId) {
         const data = await response.json();
         
         // Verificar si tiene padre_id
-        const ingredienteResponse = await fetch(`/api/produccion/ingredientes/${ingredienteId}`);
+        const ingredienteResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
         if (!ingredienteResponse.ok) {
             throw new Error('Error al obtener ingrediente');
         }
         const ingrediente = await ingredienteResponse.json();
         
         // Es mix si tiene composición y no tiene padre_id
-        return (data.composicion && data.composicion.length > 0) && !ingrediente.padre_id;
+        const result = (data.composicion && data.composicion.length > 0) && !ingrediente.padre_id;
+        console.log('✅ Resultado esMix:', result);
+        return result;
     } catch (error) {
-        console.error('Error al verificar si es mix:', error);
+        console.error('❌ Error al verificar si es mix:', error);
         return false;
     }
 }
@@ -67,11 +72,36 @@ export async function actualizarEstadoMix(ingredienteId) {
 
 // Abre el modal de edición de mix
 export async function abrirEdicionMix(mixId) {
+    console.log('🔧 abrirEdicionMix llamado con mixId:', mixId, typeof mixId);
+    
     const modal = document.getElementById('modal-mix');
-    if (!modal) return;
+    console.log('🔍 Buscando modal:', modal ? 'Encontrado' : 'No encontrado');
+    if (!modal) {
+        console.error('❌ Modal no encontrado en el DOM');
+        return;
+    }
 
     try {
-        // Preparar contenedor principal
+        // Cargar ingredientes si no están disponibles
+        if (!ingredientesLista || ingredientesLista.length === 0) {
+            console.log('📋 Cargando lista de ingredientes...');
+            try {
+                const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+                if (response.ok) {
+                    ingredientesLista = await response.json();
+                    console.log('✅ Ingredientes cargados:', ingredientesLista.length);
+                } else {
+                    console.error('❌ Error al cargar ingredientes:', response.status);
+                    throw new Error('No se pudieron cargar los ingredientes');
+                }
+            } catch (error) {
+                console.error('❌ Error cargando ingredientes:', error);
+                alert('Error al cargar los ingredientes. Por favor, intente nuevamente.');
+                return;
+            }
+        }
+        
+        console.log('🎯 Preparando contenedor principal...');
         let filtrosContainer = modal.querySelector('.filtros-categorias');
         if (!filtrosContainer) {
             filtrosContainer = document.createElement('div');
@@ -195,8 +225,10 @@ export async function abrirEdicionMix(mixId) {
         await actualizarSelect();
 
         // Cargar la composición actual
-        const response = await fetch(`/api/produccion/mixes/${mixId}/ingredientes`);
+        console.log('🔄 Cargando composición para mix ID:', mixId);
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`);
         if (!response.ok) {
+            console.error('❌ Error al cargar composición:', response.status, response.statusText);
             throw new Error('Error al cargar la composición del mix');
         }
         
@@ -238,7 +270,7 @@ export async function abrirEdicionMix(mixId) {
         // Obtener receta_base_kg actual del mix
         let recetaBaseActual = totalKg; 
         try {
-            const mixResp = await fetch(`/api/produccion/ingredientes/${mixId}`);
+            const mixResp = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}`);
             if (mixResp.ok) {
                 const mixData = await mixResp.json();
                 // Si ya hay un valor en receta_base_kg, usarlo; en caso contrario, usar la suma
@@ -289,8 +321,10 @@ export async function abrirEdicionMix(mixId) {
                 }
 
                 try {
+                    console.log('➕ Agregando ingrediente al mix:', select.value, cantidad.value);
+                    
                     // Agregar ingrediente a la composición
-                    const response = await fetch(`/api/produccion/mixes/${mixId}/ingredientes`, {
+                    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -307,7 +341,7 @@ export async function abrirEdicionMix(mixId) {
                     }
 
                     // Actualizar padre_id del ingrediente
-                    const updateResponse = await fetch(`/api/produccion/ingredientes/${select.value}`, {
+                    const updateResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${select.value}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
@@ -342,8 +376,10 @@ export async function abrirEdicionMix(mixId) {
                 if (!nuevaCantidad) return;
 
                 try {
+                    console.log('✏️ Editando cantidad de ingrediente:', ingredienteId, nuevaCantidad);
+                    
                     const response = await fetch(
-                        `/api/produccion/mixes/${mixId}/ingredientes/${ingredienteId}`,
+                        `http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${ingredienteId}`,
                         {
                             method: 'PUT',
                             headers: {
@@ -374,9 +410,11 @@ export async function abrirEdicionMix(mixId) {
 
                 const ingredienteId = btn.dataset.id;
                 try {
+                    console.log('🗑️ Eliminando ingrediente del mix:', ingredienteId);
+                    
                     // Eliminar de la composición
                     const response = await fetch(
-                        `/api/produccion/mixes/${mixId}/ingredientes/${ingredienteId}`,
+                        `http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${ingredienteId}`,
                         {
                             method: 'DELETE'
                         }
@@ -388,7 +426,7 @@ export async function abrirEdicionMix(mixId) {
                     }
 
                     // Limpiar padre_id del ingrediente
-                    const updateResponse = await fetch(`/api/produccion/ingredientes/${ingredienteId}`, {
+                    const updateResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
@@ -412,7 +450,46 @@ export async function abrirEdicionMix(mixId) {
         });
 
         // Mostrar modal
+        console.log('🎭 Intentando mostrar modal...');
+        console.log('🔍 Estado del modal ANTES de mostrar:', {
+            display: modal.style.display,
+            computedDisplay: getComputedStyle(modal).display,
+            visibility: getComputedStyle(modal).visibility,
+            opacity: getComputedStyle(modal).opacity,
+            zIndex: getComputedStyle(modal).zIndex,
+            classList: Array.from(modal.classList),
+            offsetWidth: modal.offsetWidth,
+            offsetHeight: modal.offsetHeight,
+            parentElement: modal.parentElement ? modal.parentElement.tagName : 'null'
+        });
+        
         modal.style.display = 'block';
+        modal.classList.add('show');
+        
+        // Forzar un reflow
+        modal.offsetHeight;
+        
+        console.log('✅ Modal display establecido a block y clase show agregada');
+        console.log('🔍 Estado del modal DESPUÉS de mostrar:', {
+            display: modal.style.display,
+            computedDisplay: getComputedStyle(modal).display,
+            visibility: getComputedStyle(modal).visibility,
+            opacity: getComputedStyle(modal).opacity,
+            zIndex: getComputedStyle(modal).zIndex,
+            classList: Array.from(modal.classList),
+            offsetWidth: modal.offsetWidth,
+            offsetHeight: modal.offsetHeight,
+            isVisible: modal.offsetWidth > 0 && modal.offsetHeight > 0
+        });
+        
+        // Verificar si hay otros elementos que puedan estar ocultando el modal
+        console.log('🔍 Verificando elementos padre:', {
+            bodyOverflow: getComputedStyle(document.body).overflow,
+            htmlOverflow: getComputedStyle(document.documentElement).overflow,
+            modalPosition: getComputedStyle(modal).position,
+            modalTop: getComputedStyle(modal).top,
+            modalLeft: getComputedStyle(modal).left
+        });
 
         // Manejar el botón "Guardar Receta"
         const btnGuardarMix = modal.querySelector('#btn-guardar-mix');
@@ -424,7 +501,9 @@ export async function abrirEdicionMix(mixId) {
                         document.getElementById('input-receta-base-kg').value
                     ) || 0;
 
-                    const putResp = await fetch(`/api/produccion/ingredientes/${mixId}`, {
+                    console.log('💾 Guardando receta base:', valRecetaBase);
+                    
+                    const putResp = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
@@ -441,8 +520,17 @@ export async function abrirEdicionMix(mixId) {
 
                     // Mensaje de éxito
                     alert('Las cantidades, la composición y la receta base fueron guardadas correctamente.');
-                    // Cierra modal Mix (opcional)
+                    
+                    // Actualizar los informes del carro activo si existe
+                    if (window.actualizarResumenIngredientes) {
+                        console.log('🔄 Actualizando informes del carro activo...');
+                        await window.actualizarResumenIngredientes();
+                        console.log('✅ Informes del carro actualizados');
+                    }
+                    
+                    // Cierra modal Mix
                     modal.style.display = 'none';
+                    modal.classList.remove('show');
                 } catch (error) {
                     alert(error.message);
                 }
@@ -464,12 +552,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeBtn) {
         closeBtn.onclick = () => {
             modal.style.display = 'none';
+            modal.classList.remove('show');
         };
     }
 
     window.onclick = (event) => {
         if (event.target === modal) {
             modal.style.display = 'none';
+            modal.classList.remove('show');
         }
     };
 });
