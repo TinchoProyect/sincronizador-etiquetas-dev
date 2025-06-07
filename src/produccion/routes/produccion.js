@@ -27,7 +27,8 @@ const {
     obtenerIngrediente,
     crearIngrediente,
     actualizarIngrediente,
-    eliminarIngrediente
+    eliminarIngrediente,
+    obtenerNuevoCodigo
 } = require('../controllers/ingredientes');
 
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
@@ -45,6 +46,18 @@ router.get('/ingredientes', async (req, res) => {
         res.json(ingredientes);
     } catch (error) {
         console.error('Error en ruta GET /ingredientes:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/ingredientes/nuevo-codigo', async (req, res) => {
+    try {
+        console.log('Recibida solicitud GET /ingredientes/nuevo-codigo');
+        const codigo = await obtenerNuevoCodigo();
+        console.log(`Generado nuevo código: ${codigo}`);
+        res.json({ codigo });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/nuevo-codigo:', error);
         res.status(500).json({ error: error.message });
     }
 });

@@ -1,6 +1,38 @@
 const pool = require('../config/database');
 
 /**
+ * Obtiene un nuevo código único para un ingrediente
+ * @returns {Promise<string>} Código único de 8 dígitos
+ */
+async function obtenerNuevoCodigo() {
+    try {
+        // Obtener el último código generado
+        const query = `
+            SELECT codigo 
+            FROM ingredientes 
+            WHERE codigo IS NOT NULL 
+            ORDER BY codigo DESC 
+            LIMIT 1;
+        `;
+        const result = await pool.query(query);
+        
+        // Si no hay códigos, empezar desde 10000000
+        let ultimoCodigo = result.rows.length > 0 ? parseInt(result.rows[0].codigo) : 9999999;
+        let nuevoCodigo = (ultimoCodigo + 1).toString();
+        
+        // Asegurar que tenga 8 dígitos
+        while (nuevoCodigo.length < 8) {
+            nuevoCodigo = '0' + nuevoCodigo;
+        }
+        
+        return nuevoCodigo;
+    } catch (error) {
+        console.error('Error en obtenerNuevoCodigo:', error);
+        throw new Error('No se pudo generar un nuevo código');
+    }
+}
+
+/**
  * Obtiene todos los ingredientes
  * @returns {Promise<Array>} Lista de ingredientes
  */
@@ -10,6 +42,7 @@ async function obtenerIngredientes() {
         const query = `
             SELECT 
                 id,
+                codigo,
                 nombre,
                 descripcion,
                 unidad_medida,
@@ -38,6 +71,7 @@ async function obtenerIngrediente(id) {
         const query = `
             SELECT 
                 id,
+                codigo,
                 nombre,
                 descripcion,
                 unidad_medida,
@@ -68,19 +102,23 @@ async function crearIngrediente(datos) {
     try {
         const { nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id } = datos;
         
+        // Obtener nuevo código
+        const codigo = await obtenerNuevoCodigo();
+        
         const query = `
             INSERT INTO ingredientes (
+                codigo,
                 nombre,
                 descripcion,
                 unidad_medida,
                 categoria,
                 stock_actual,
                 padre_id
-            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *;
         `;
         
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id];
+        const values = [codigo, nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id];
         const result = await pool.query(query, values);
         
         return result.rows[0];
@@ -160,5 +198,6 @@ module.exports = {
     obtenerIngrediente,
     crearIngrediente,
     actualizarIngrediente,
-    eliminarIngrediente
+    eliminarIngrediente,
+    obtenerNuevoCodigo
 };

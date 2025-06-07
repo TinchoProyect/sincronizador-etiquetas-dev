@@ -4,11 +4,25 @@ import { esMix } from './mix.js';
 let ingredienteEditando = null;
 
 // Funciones para gestionar el modal
-function abrirModal(titulo = 'Nuevo Ingrediente') {
+async function abrirModal(titulo = 'Nuevo Ingrediente') {
     const modal = document.getElementById('modal-ingrediente');
     const modalTitulo = document.getElementById('modal-titulo');
     modalTitulo.textContent = titulo;
     modal.style.display = 'block';
+
+    // Si es un nuevo ingrediente, obtener el código automáticamente
+    if (titulo === 'Nuevo Ingrediente') {
+        try {
+            const response = await fetch('/api/produccion/ingredientes/nuevo-codigo');
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById('codigo').value = data.codigo;
+            }
+        } catch (error) {
+            console.error('Error al obtener nuevo código:', error);
+            // No mostrar error al usuario, el código se generará al guardar
+        }
+    }
 }
 
 function cerrarModal() {
@@ -223,6 +237,7 @@ async function editarIngrediente(id) {
 
         // Llenar el formulario con los datos del ingrediente
         document.getElementById('ingrediente-id').value = ingrediente.id;
+        document.getElementById('codigo').value = ingrediente.codigo || '';
         document.getElementById('nombre').value = ingrediente.nombre;
         document.getElementById('unidad-medida').value = ingrediente.unidad_medida;
         document.getElementById('categoria').value = ingrediente.categoria;
@@ -315,6 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Formulario enviado');
 
         const datos = {
+            codigo: document.getElementById('codigo').value,
             nombre: document.getElementById('nombre').value,
             unidad_medida: document.getElementById('unidad-medida').value,
             categoria: document.getElementById('categoria').value,
