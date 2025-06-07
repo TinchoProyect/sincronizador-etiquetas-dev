@@ -619,7 +619,8 @@ export function mostrarResumenIngredientes(ingredientes) {
     if (ingredientes && ingredientes.length > 0) {
         console.log('\n📋 INGREDIENTES FINALES PARA EL INFORME:');
         ingredientes.forEach((ing, index) => {
-            console.log(`${index + 1}. ${ing.nombre} (${ing.unidad_medida}): ${ing.cantidad}`);
+            const estado = ing.stock_actual >= ing.cantidad ? '✅' : '❌';
+            console.log(`${index + 1}. ${ing.nombre} (${ing.unidad_medida}): ${ing.cantidad} - Stock: ${ing.stock_actual} ${estado}`);
             console.log(`   - Tipo: ${typeof ing.nombre} | Normalizado: ${ing.nombre === ing.nombre?.toLowerCase()?.trim()}`);
             console.log(`   - Unidad: ${ing.unidad_medida} | Cantidad: ${ing.cantidad} (${typeof ing.cantidad})`);
         });
@@ -628,6 +629,7 @@ export function mostrarResumenIngredientes(ingredientes) {
         console.log('- No contienen mixes intermedios');
         console.log('- Están normalizados (minúsculas, sin tildes, sin espacios extra)');
         console.log('- Las cantidades están consolidadas por nombre+unidad');
+        console.log('- Incluyen información de stock actual');
         console.log('==========================================\n');
     } else {
         console.log('⚠️ No hay ingredientes para mostrar en el informe');
@@ -643,7 +645,9 @@ export function mostrarResumenIngredientes(ingredientes) {
             <thead>
                 <tr>
                     <th>Ingrediente</th>
-                    <th>Cantidad Total</th>
+                    <th>Cantidad Necesaria</th>
+                    <th>Stock Actual</th>
+                    <th>Estado</th>
                     <th>Unidad</th>
                     <th>Acciones</th>
                 </tr>
@@ -657,10 +661,26 @@ export function mostrarResumenIngredientes(ingredientes) {
             ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
             : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
 
+        // Calcular estado del stock
+        const stockActual = ing.stock_actual || 0;
+        const cantidadNecesaria = ing.cantidad;
+        const tieneStock = stockActual >= cantidadNecesaria;
+        const faltante = tieneStock ? 0 : cantidadNecesaria - stockActual;
+
+        // Generar indicador visual
+        let indicadorEstado = '';
+        if (tieneStock) {
+            indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
+        } else {
+            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida}</span>`;
+        }
+
         html += `
-            <tr>
+            <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'}">
                 <td>${ing.nombre}</td>
-                <td>${ing.cantidad.toFixed(2)}</td>
+                <td>${cantidadNecesaria.toFixed(2)}</td>
+                <td>${stockActual.toFixed(2)}</td>
+                <td>${indicadorEstado}</td>
                 <td>${ing.unidad_medida}</td>
                 <td>${boton}</td>
             </tr>

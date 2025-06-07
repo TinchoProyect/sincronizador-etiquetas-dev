@@ -189,7 +189,47 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
         // 3. Consolidar todos los ingredientes
         const ingredientesConsolidados = consolidarIngredientes(todosLosIngredientes);
 
-        return ingredientesConsolidados;
+        // 4. Agregar stock_actual a cada ingrediente consolidado
+        const ingredientesConStock = await Promise.all(
+            ingredientesConsolidados.map(async (ingrediente) => {
+                if (ingrediente.id) {
+                    try {
+                        const queryStock = `
+                            SELECT stock_actual 
+                            FROM ingredientes 
+                            WHERE id = $1
+                        `;
+                        const stockResult = await pool.query(queryStock, [ingrediente.id]);
+                        const stockActual = stockResult.rows[0]?.stock_actual || 0;
+                        
+                        return {
+                            ...ingrediente,
+                            stock_actual: parseFloat(stockActual)
+                        };
+                    } catch (error) {
+                        console.error(`Error obteniendo stock para ingrediente ${ingrediente.id}:`, error);
+                        return {
+                            ...ingrediente,
+                            stock_actual: 0
+                        };
+                    }
+                } else {
+                    // Si no tiene ID, no podemos obtener stock
+                    return {
+                        ...ingrediente,
+                        stock_actual: 0
+                    };
+                }
+            })
+        );
+
+        console.log(`\n📊 INGREDIENTES CON STOCK AGREGADO:`);
+        ingredientesConStock.forEach((ing, index) => {
+            const estado = ing.stock_actual >= ing.cantidad ? '✅' : '❌';
+            console.log(`  ${index + 1}. ${ing.nombre}: Necesario ${ing.cantidad}, Stock ${ing.stock_actual} ${estado}`);
+        });
+
+        return ingredientesConStock;
 
     } catch (error) {
         console.error('Error al obtener ingredientes base del carro:', error);
