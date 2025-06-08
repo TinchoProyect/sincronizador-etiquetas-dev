@@ -173,6 +173,23 @@
         .form-actions {
             text-align: right;
             margin-top: 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn-imprimir {
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: none; /* Oculto por defecto hasta que haya código */
+        }
+
+        .btn-imprimir:hover {
+            background-color: #138496;
         }
     </style>
 </head>
@@ -246,6 +263,9 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn-agregar">Guardar</button>
+                        <button type="button" id="btn-imprimir" class="btn-imprimir">
+                            Imprimir Etiqueta
+                        </button>
                     </div>
                 </form>
             </div>

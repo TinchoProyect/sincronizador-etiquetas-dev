@@ -162,9 +162,13 @@ async function crearIngrediente(datos) {
             throw new Error(errorData.error || 'Error al crear el ingrediente');
         }
 
+        const nuevoIngrediente = await response.json();
         await cargarIngredientes();
         mostrarMensaje('Ingrediente creado exitosamente', 'exito');
-        cerrarModal();
+        
+        // Mostrar botón de impresión después de crear
+        document.getElementById('codigo').value = nuevoIngrediente.codigo;
+        actualizarBotonImpresion();
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje(error.message || 'No se pudo crear el ingrediente');
@@ -245,15 +249,65 @@ async function editarIngrediente(id) {
         document.getElementById('descripcion').value = ingrediente.descripcion || '';
 
         abrirModal('Editar Ingrediente');
+        actualizarBotonImpresion();
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje(error.message || 'No se pudo cargar el ingrediente para editar');
     }
 }
 
+// Función para imprimir etiqueta
+async function imprimirEtiqueta(ingrediente) {
+    try {
+        // Llamar a App Etiquetas en puerto 3000
+        const response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                nombre: ingrediente.nombre,
+                codigo: ingrediente.codigo
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al imprimir etiqueta');
+        }
+
+        mostrarMensaje('Etiqueta enviada a imprimir', 'exito');
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarMensaje(error.message || 'No se pudo imprimir la etiqueta');
+    }
+}
+
+// Función para actualizar visibilidad del botón de impresión
+function actualizarBotonImpresion() {
+    const btnImprimir = document.getElementById('btn-imprimir');
+    const codigo = document.getElementById('codigo').value;
+    
+    if (btnImprimir) {
+        btnImprimir.style.display = codigo ? 'block' : 'none';
+    }
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Página cargada, inicializando...');
+
+    // Configurar botón de impresión
+    const btnImprimir = document.getElementById('btn-imprimir');
+    if (btnImprimir) {
+        btnImprimir.addEventListener('click', () => {
+            const codigo = document.getElementById('codigo').value;
+            const nombre = document.getElementById('nombre').value;
+            
+            if (codigo && nombre) {
+                imprimirEtiqueta({ codigo, nombre });
+            }
+        });
+    }
     
     // Cargar ingredientes al iniciar
     cargarIngredientes();
