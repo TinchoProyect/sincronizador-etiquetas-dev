@@ -4,12 +4,14 @@ export async function actualizarVisibilidadBotones() {
     const btnCarroPreparado = document.getElementById('carro-preparado');
     const btnFinalizarProduccion = document.getElementById('finalizar-produccion');
     const btnAgregarArticulo = document.getElementById('agregar-articulo');
+    const btnImprimirEtiquetas = document.getElementById('imprimir-etiquetas');
     
     if (!carroId) {
         // No hay carro activo - ocultar todos los botones de acción
         if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
         if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
+        if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'none';
         return;
     }
 
@@ -58,10 +60,11 @@ export async function actualizarVisibilidadBotones() {
                 break;
 
             case 'confirmado':
-                // Producción confirmada - ocultar todos los botones de acción
+                // Producción confirmada - mostrar solo el botón de imprimir etiquetas
                 if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
                 if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
                 if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
+                if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'inline-block';
                 break;
 
             default:
@@ -213,6 +216,82 @@ function mostrarNotificacion(mensaje, esError = false) {
 // Hacer disponibles las funciones globalmente
 window.marcarCarroPreparado = marcarCarroPreparado;
 window.finalizarProduccion = finalizarProduccion;
+
+// Función para imprimir etiquetas del carro
+export async function imprimirEtiquetasCarro(carroId) {
+    if (!carroId) {
+        console.error('No hay carro seleccionado');
+        return;
+    }
+
+    const btnImprimirEtiquetas = document.getElementById('imprimir-etiquetas');
+    if (!btnImprimirEtiquetas) return;
+
+    try {
+        // Deshabilitar el botón y mostrar estado de procesamiento
+        btnImprimirEtiquetas.disabled = true;
+        btnImprimirEtiquetas.classList.add('procesando');
+        btnImprimirEtiquetas.textContent = 'Imprimiendo...';
+
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
+        
+        if (!colaborador || !colaborador.id) {
+            throw new Error('No se encontró información del colaborador activo');
+        }
+
+        // Obtener los artículos del carro para imprimir etiquetas
+        const response = await fetch(`/api/produccion/carro/${carroId}/articulos-etiquetas`);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Error HTTP ${response.status}`);
+        }
+
+        const articulos = await response.json();
+
+        // Imprimir etiquetas para cada artículo según su cantidad
+        for (const articulo of articulos) {
+            const imprimirResponse = await fetch('http://localhost:3000/api/imprimir', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulo: {
+                        numero: articulo.articulo_numero,
+                        nombre: articulo.descripcion,
+                        codigo_barras: articulo.codigo_barras
+                    },
+                    cantidad: articulo.cantidad
+                })
+            });
+
+            if (!imprimirResponse.ok) {
+                throw new Error(`Error al imprimir etiqueta para ${articulo.descripcion}`);
+            }
+        }
+
+        // Mostrar notificación de éxito
+        mostrarNotificacion('Etiquetas impresas correctamente');
+
+    } catch (error) {
+        console.error('Error al imprimir etiquetas:', error);
+        mostrarNotificacion(`Error: ${error.message}`, true);
+    } finally {
+        // Restaurar el botón
+        if (btnImprimirEtiquetas) {
+            btnImprimirEtiquetas.disabled = false;
+            btnImprimirEtiquetas.classList.remove('procesando');
+            btnImprimirEtiquetas.textContent = 'Imprimir etiquetas';
+        }
+    }
+}
+
+// Hacer disponibles las funciones globalmente
+window.marcarCarroPreparado = marcarCarroPreparado;
+window.finalizarProduccion = finalizarProduccion;
+window.imprimirEtiquetasCarro = imprimirEtiquetasCarro;
 
 // Mantener compatibilidad con el nombre anterior
 export const actualizarVisibilidadBotonPreparado = actualizarVisibilidadBotones;

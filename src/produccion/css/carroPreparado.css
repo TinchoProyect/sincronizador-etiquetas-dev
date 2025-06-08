@@ -24,6 +24,33 @@
     background-color: #ffa500;
 }
 
+/* Estilos para el botón de imprimir etiquetas */
+#imprimir-etiquetas {
+    background-color: #17a2b8;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 10px 5px;
+    transition: background-color 0.3s ease;
+}
+
+#imprimir-etiquetas:hover {
+    background-color: #138496;
+}
+
+#imprimir-etiquetas:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#imprimir-etiquetas.procesando {
+    background-color: #17a2b8;
+    opacity: 0.7;
+}
+
 /* Estilos para el botón de finalizar producción */
 #finalizar-produccion {
     background-color: #ff9800;

@@ -1,6 +1,8 @@
 {
-  "numero": "APx2",
-  "nombre": "Avellanas Pel(Med). x 2",
-  "codigo_barras": "2563635537",
-  "cantidad": 2
+  "articulo": {
+    "numero": "TSEx3",
+    "nombre": "Tom/Sec/Esp x 3 kg",
+    "codigo_barras": "1568753151"
+  },
+  "cantidad": 5
 }

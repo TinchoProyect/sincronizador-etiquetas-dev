@@ -595,6 +595,7 @@ router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
 const { marcarCarroPreparado } = require('../controllers/marcarCarroPreparado');
 const { finalizarProduccion } = require('../controllers/finalizarProduccion');
 const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
+const { obtenerArticulosParaEtiquetas } = require('../controllers/obtenerArticulosParaEtiquetas');
 
 /**
  * Ruta: POST /api/produccion/carro/:id/preparado
@@ -637,6 +638,9 @@ router.post('/carro/:id/finalizar', async (req, res, next) => {
 });
 
 // Ruta para obtener el estado de un carro
+// Ruta para obtener artículos para impresión de etiquetas
+router.get('/carro/:id/articulos-etiquetas', obtenerArticulosParaEtiquetas);
+
 router.get('/carro/:id/estado', async (req, res) => {
     try {
         const { id } = req.params;
