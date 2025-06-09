@@ -13,7 +13,7 @@ function toggleCantidadField() {
 }
 
 import { mostrarError } from './utils.js';
-import { mostrarArticulosDelCarro } from './carro.js';
+import { mostrarArticulosDelCarro, obtenerResumenIngredientesCarro, mostrarResumenIngredientes } from './carro.js';
 
 // Estado del módulo (privado)
 const state = {
@@ -44,6 +44,10 @@ export async function abrirModalArticulos() {
     try {
         const modal = document.getElementById('modal-articulos');
         modal.style.display = 'block';
+        // Agregar clase show después de un pequeño delay para activar la animación
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
 
         // Cargar artículos si aún no se han cargado
         if (state.todosLosArticulos.length === 0) {
@@ -80,7 +84,11 @@ export async function abrirModalArticulos() {
 // Función para cerrar el modal
 export function cerrarModalArticulos() {
     const modal = document.getElementById('modal-articulos');
-    modal.style.display = 'none';
+    modal.classList.remove('show');
+    // Esperar a que termine la animación antes de ocultar
+    setTimeout(() => {
+        modal.style.display = 'none';
+    }, 300);
     // Limpiar filtros
     document.getElementById('filtro1').value = '';
     document.getElementById('filtro2').value = '';
@@ -134,19 +142,36 @@ export async function actualizarTablaArticulos(articulos) {
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
                 <td>${articulo.codigo_barras || '-'}</td>
                 <td>
-                    <input type="number" class="cantidad-input" min="1" value="1">
-                    <button class="btn-agregar${!tieneReceta ? ' btn-danger' : ''}" 
-                            style="background-color: ${tieneReceta ? '#28a745' : '#6c757d'}; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                            data-numero="${articulo.numero}" 
-                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                        ${tieneReceta ? 'Agregar al carro' : 'Vincular receta'}
-                    </button>
                     ${tieneReceta ? `
-                    <button class="btn-editar-receta"
-                            style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
-                            data-numero="${articulo.numero}">
-                        Editar receta
-                    </button>` : ''}
+                        <input type="number" class="cantidad-input" min="1" value="1">
+                        <button class="btn-agregar" 
+                                style="background-color: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                data-numero="${articulo.numero}" 
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                            Agregar al carro
+                        </button>
+                        <button class="btn-editar-receta"
+                                style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                                data-numero="${articulo.numero}"
+                                data-modo="editar"
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                            Editar receta
+                        </button>
+                        <button class="btn-desvincular-receta"
+                                style="background-color: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                                data-numero="${articulo.numero}"
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                            Desvincular receta
+                        </button>
+                    ` : `
+                        <button class="btn-editar-receta"
+                                style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                data-numero="${articulo.numero}"
+                                data-modo="crear"
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                            Vincular receta
+                        </button>
+                    `}
                 </td>
             `;
             tbody.appendChild(tr);
@@ -232,20 +257,44 @@ export function buscarPorCodigoBarras(codigo) {
 export function cerrarModalReceta() {
     const modal = document.getElementById('modal-receta');
     if (modal) {
-        modal.style.display = 'none';
-        // Limpiar el formulario y los ingredientes
-        document.getElementById('articulo_numero').value = '';
-        document.getElementById('descripcion_receta').value = '';
-        document.getElementById('selector-ingrediente').value = '';
-        document.getElementById('input-cantidad-ingrediente').value = '';
-        state.ingredientesCargados = [];
-        const tbody = document.querySelector('#tabla-ingredientes tbody');
-        if (tbody) tbody.innerHTML = '';
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            // Limpiar el formulario y los ingredientes
+            document.getElementById('articulo_numero').value = '';
+            document.getElementById('articulo_descripcion').value = '';
+            document.getElementById('descripcion_receta').value = '';
+            document.getElementById('selector-ingrediente').value = '';
+            document.getElementById('input-cantidad-ingrediente').value = '';
+            state.ingredientesCargados = [];
+            const tbody = document.querySelector('#tabla-ingredientes tbody');
+            if (tbody) {
+                // Remover event listener al cerrar
+                tbody.removeEventListener('click', handleEliminarIngrediente);
+                tbody.innerHTML = '';
+            }
+        }, 300);
+    }
+}
+
+// Función para manejar la eliminación de ingredientes
+function handleEliminarIngrediente(e) {
+    if (e.target.classList.contains('btn-eliminar-ingrediente')) {
+        const index = parseInt(e.target.dataset.index);
+        if (!isNaN(index) && index >= 0 && index < state.ingredientesCargados.length) {
+            state.ingredientesCargados.splice(index, 1);
+            e.target.closest('tr').remove();
+            // Actualizar índices de los botones restantes
+            const tbody = document.querySelector('#tabla-ingredientes tbody');
+            tbody.querySelectorAll('.btn-eliminar-ingrediente').forEach((btn, i) => {
+                btn.dataset.index = i;
+            });
+        }
     }
 }
 
 // Función para agregar ingrediente a la tabla
-function agregarIngredienteATabla(ingrediente) {
+function agregarIngredienteATabla(ingrediente, index) {
     const tbody = document.querySelector('#tabla-ingredientes tbody');
     if (!tbody) return;
 
@@ -254,6 +303,13 @@ function agregarIngredienteATabla(ingrediente) {
         <td>${ingrediente.nombre_ingrediente}</td>
         <td>${ingrediente.unidad_medida}</td>
         <td>${ingrediente.cantidad}</td>
+        <td>
+            <button class="btn-eliminar-ingrediente" data-index="${index ?? state.ingredientesCargados.length - 1}"
+                    style="background-color: #dc3545; color: white; border: none; 
+                           padding: 4px 8px; border-radius: 4px;">
+                Eliminar
+            </button>
+        </td>
     `;
     tbody.appendChild(tr);
 }
@@ -261,7 +317,7 @@ function agregarIngredienteATabla(ingrediente) {
 // Función para cargar ingredientes desde el backend
 async function cargarIngredientesDisponibles() {
     try {
-        const response = await fetch('/api/produccion/ingredientes');
+        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
         if (!response.ok) {
             throw new Error('Error al cargar ingredientes');
         }
@@ -353,8 +409,12 @@ async function guardarReceta() {
         };
 
         // Enviar al servidor
-        const response = await fetch('http://localhost:3002/api/produccion/recetas', {
-            method: 'POST',
+        const url = state.existeReceta
+          ? `http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`
+          : 'http://localhost:3002/api/produccion/recetas';
+        const method = state.existeReceta ? 'PUT' : 'POST';
+        const response = await fetch(url, {
+            method,
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -363,6 +423,29 @@ async function guardarReceta() {
 
         if (!response.ok) {
             const errorData = await response.json();
+            
+            // Si es error 400 por receta existente, mostrar mensaje especial
+            if (response.status === 400 && errorData.error.includes('Ya existe una receta')) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.style.backgroundColor = '#f8d7da';
+                errorDiv.style.color = '#721c24';
+                errorDiv.style.padding = '10px';
+                errorDiv.style.marginBottom = '10px';
+                errorDiv.style.borderRadius = '4px';
+                errorDiv.textContent = errorData.error;
+                
+                // Insertar al inicio del contenido del modal
+                const modalContent = document.querySelector('.modal-content');
+                modalContent.insertBefore(errorDiv, modalContent.firstChild);
+                
+                // Remover después de 5 segundos
+                setTimeout(() => {
+                    errorDiv.remove();
+                }, 5000);
+                return;
+            }
+            
             throw new Error(errorData.error || 'Error al guardar la receta');
         }
 
@@ -399,66 +482,104 @@ async function guardarReceta() {
 }
 
 // Función para mostrar el modal de receta
-export async function mostrarModalReceta(articulo_numero) {
+export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo = 'auto') {
     const modal = document.getElementById('modal-receta');
     if (modal) {
         try {
-            // Obtener la receta existente
-            const response = await fetch(`http://localhost:3002/api/produccion/recetas/${articulo_numero}`);
-            
-            if (!response.ok) {
-                throw new Error('Error al obtener la receta');
+            // Establecer el modo explícitamente
+            if (modo === 'crear') {
+                state.existeReceta = false;
+            } else if (modo === 'editar') {
+                state.existeReceta = true;
             }
 
-            const receta = await response.json();
-            
-            // Establecer el código del artículo y descripción
+            // Establecer el código del artículo
             document.getElementById('articulo_numero').value = articulo_numero;
-            document.getElementById('descripcion_receta').value = receta.descripcion || '';
+            document.getElementById('articulo_descripcion').value = articulo_nombre;
             
-            // Cargar ingredientes disponibles
+            // Cargar ingredientes disponibles primero
             await cargarIngredientesDisponibles();
             
-            // Cargar los ingredientes de la receta existente
-            state.ingredientesCargados = receta.ingredientes || [];
+            // Intentar obtener la receta existente solo si no es modo crear
+            if (modo !== 'crear') {
+                try {
+                    const response = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`);
+                    
+                    if (response.ok) {
+                        // Si la receta existe, cargar sus datos
+                        const receta = await response.json();
+                        document.getElementById('descripcion_receta').value = receta.descripcion || '';
+                        state.ingredientesCargados = receta.ingredientes || [];
+                        state.existeReceta = true;
+                    } else if (response.status === 404) {
+                        // Si la receta no existe, inicializar vacía
+                        document.getElementById('descripcion_receta').value = '';
+                        state.ingredientesCargados = [];
+                        state.existeReceta = false;
+                    } else {
+                        // Si hay otro error, lanzarlo
+                        throw new Error('Error al obtener la receta');
+                    }
+                } catch (error) {
+                    if (error.message !== 'Error al obtener la receta') {
+                        console.error('Error al cargar la receta:', error);
+                    }
+                    // Si hay error que no sea 404, inicializar vacía
+                    document.getElementById('descripcion_receta').value = '';
+                    state.ingredientesCargados = [];
+                }
+            } else {
+                // Si es modo crear, inicializar vacía directamente
+                document.getElementById('descripcion_receta').value = '';
+                state.ingredientesCargados = [];
+            }
+
+            // Actualizar tabla de ingredientes
             const tbody = document.querySelector('#tabla-ingredientes tbody');
             if (tbody) {
                 tbody.innerHTML = '';
-                state.ingredientesCargados.forEach(ingrediente => {
-                    agregarIngredienteATabla(ingrediente);
+                // Remover listener anterior si existe
+                tbody.removeEventListener('click', handleEliminarIngrediente);
+                // Agregar nuevo listener
+                tbody.addEventListener('click', handleEliminarIngrediente);
+                // Renderizar ingredientes
+                state.ingredientesCargados.forEach((ingrediente, index) => {
+                    agregarIngredienteATabla(ingrediente, index);
                 });
             }
 
-            // Mostrar el modal
+            // Mostrar el modal con animación
             modal.style.display = 'block';
+            setTimeout(() => {
+                modal.classList.add('show');
+            }, 10);
+
+
 
             // Registrar el event listener para el botón de agregar ingrediente
             const btnAgregarIngrediente = document.getElementById('btn-agregar-ingrediente');
             if (btnAgregarIngrediente) {
+                btnAgregarIngrediente.removeEventListener('click', agregarIngredienteDesdeSelector);
                 btnAgregarIngrediente.addEventListener('click', agregarIngredienteDesdeSelector);
             }
 
             // Reconectar el event listener para el selector de ingredientes
             const selectorIngrediente = document.getElementById('selector-ingrediente');
-            const cantidadContainer = document.getElementById('cantidad-container');
-            if (selectorIngrediente && cantidadContainer) {
-                // Remover listener anterior para evitar duplicados
+            if (selectorIngrediente) {
                 selectorIngrediente.removeEventListener('change', toggleCantidadField);
-                // Reconectar listener
                 selectorIngrediente.addEventListener('change', toggleCantidadField);
-                // Establecer estado inicial
                 toggleCantidadField();
             }
 
         } catch (error) {
-            console.error('Error al cargar la receta:', error);
-            mostrarError('No se pudo cargar la receta');
+            console.error('Error al preparar el modal de receta:', error);
+            mostrarError('Error al preparar el formulario de receta');
             modal.style.display = 'none';
         }
     }
 }
 
-// Función para agregar artículo al carro
+// Función para agregar artículo al carro (optimizada)
 export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
     // Si el botón es rojo, mostrar el modal de receta en lugar de agregar al carro
     if (btnElement.classList.contains('btn-danger')) {
@@ -485,6 +606,10 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             throw new Error('La cantidad debe ser un número positivo');
         }
 
+        // Mostrar feedback inmediato
+        btnElement.disabled = true;
+        btnElement.textContent = 'Agregando...';
+
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo`, {
             method: 'POST',
             headers: {
@@ -503,19 +628,37 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             throw new Error(errorData.error || 'Error al agregar el artículo al carro');
         }
 
+        // Restaurar botón
+        btnElement.disabled = false;
+        btnElement.textContent = 'Agregar al carro';
+
         // Mostrar mensaje de éxito
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
         successDiv.textContent = 'Artículo agregado correctamente';
-        document.querySelector('.modal-content').appendChild(successDiv);
+        successDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(successDiv);
         
         // Remover el mensaje después de 3 segundos
         setTimeout(() => {
             successDiv.remove();
         }, 3000);
 
-        // Actualizar la lista de artículos en el carro
-        await mostrarArticulosDelCarro();
+        // Agregar el nuevo artículo al DOM inmediatamente
+        await agregarArticuloAlDOM(articulo_numero, descripcion, cantidad);
+        
+        // Actualizar resumen en segundo plano
+        actualizarResumenEnSegundoPlano(carroId, colaborador.id);
 
         // Cerrar el modal después de agregar
         cerrarModalArticulos();
@@ -523,6 +666,127 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
+        // Restaurar botón en caso de error
+        btnElement.disabled = false;
+        btnElement.textContent = 'Agregar al carro';
+    }
+}
+
+// Función para agregar artículo al DOM inmediatamente
+async function agregarArticuloAlDOM(articulo_numero, descripcion, cantidad) {
+    try {
+        const contenedor = document.getElementById('lista-articulos');
+        if (!contenedor) return;
+
+        const seccionArticulos = contenedor.querySelector('.seccion-articulos');
+        if (!seccionArticulos) return;
+
+        // Obtener ingredientes del artículo
+        const ingredientes = await obtenerIngredientesExpandidos(articulo_numero);
+
+        // Crear HTML del nuevo artículo
+        let htmlArticulo = `
+            <div class="articulo-container" data-numero="${articulo_numero}">
+                <div class="articulo-info">
+                    <span class="articulo-codigo">${articulo_numero}</span>
+                    <span class="articulo-descripcion">${descripcion}</span>
+                </div>
+                <div class="articulo-actions">
+                    <input type="number"
+                           class="input-cantidad-articulo"
+                           value="${cantidad}"
+                           min="1"
+                           data-numero="${articulo_numero}">
+                    <button class="btn-eliminar-articulo"
+                            data-numero="${articulo_numero}">
+                        🗑️
+                    </button>
+                </div>
+                <button class="toggle-ingredientes">Ver</button>
+            </div>
+        `;
+
+        // Agregar ingredientes
+        if (ingredientes && ingredientes.length > 0) {
+            htmlArticulo += `
+                <div class="ingredientes-expandidos hidden">
+                    <div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ingrediente</th>
+                                    <th>Cantidad</th>
+                                    <th>Unidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            ingredientes.forEach(ing => {
+                const cantidadTotal = ing.cantidad * cantidad;
+                htmlArticulo += `
+                    <tr>
+                        <td>${ing.nombre}</td>
+                        <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
+                        <td>${ing.unidad_medida}</td>
+                    </tr>
+                `;
+            });
+
+            htmlArticulo += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        } else {
+            htmlArticulo += `
+                <div class="ingredientes-expandidos hidden">
+                    <div class="ingredientes-error">
+                        No se pudieron cargar los ingredientes para este artículo.
+                    </div>
+                </div>
+            `;
+        }
+
+        // Insertar el nuevo artículo al final
+        seccionArticulos.insertAdjacentHTML('beforeend', htmlArticulo);
+
+    } catch (error) {
+        console.error('Error al agregar artículo al DOM:', error);
+        // Si falla, recargar la vista completa
+        const { mostrarArticulosDelCarro } = await import('./carro.js');
+        await mostrarArticulosDelCarro();
+    }
+}
+
+// Función para actualizar resumen en segundo plano
+async function actualizarResumenEnSegundoPlano(carroId, colaboradorId) {
+    try {
+        const { obtenerResumenIngredientesCarro, mostrarResumenIngredientes, obtenerResumenMixesCarro, mostrarResumenMixes } = await import('./carro.js');
+        
+        // Actualizar ingredientes
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaboradorId);
+        mostrarResumenIngredientes(ingredientes);
+        
+        // Actualizar mixes
+        const mixes = await obtenerResumenMixesCarro(carroId, colaboradorId);
+        mostrarResumenMixes(mixes);
+    } catch (error) {
+        console.error('Error al actualizar resumen:', error);
+    }
+}
+
+// Función auxiliar para obtener ingredientes expandidos
+async function obtenerIngredientesExpandidos(numeroArticulo) {
+    try {
+        const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
+        const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticuloEncoded}/ingredientes-expandido`);
+        if (!response.ok) throw new Error('No se encontraron ingredientes');
+        return await response.json();
+    } catch (error) {
+        console.error(`Error al obtener ingredientes para ${numeroArticulo}:`, error);
+        return null;
     }
 }
 
@@ -531,6 +795,9 @@ function abrirModalNuevoIngrediente() {
     const modal = document.getElementById('modal-nuevo-ingrediente');
     if (modal) {
         modal.style.display = 'block';
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
     }
 }
 
@@ -538,12 +805,15 @@ function abrirModalNuevoIngrediente() {
 function cerrarModalNuevoIngrediente() {
     const modal = document.getElementById('modal-nuevo-ingrediente');
     if (modal) {
-        modal.style.display = 'none';
-        // Limpiar el formulario
-        document.getElementById('nombre-ingrediente').value = '';
-        document.getElementById('unidad-medida-ingrediente').value = '';
-        document.getElementById('categoria-ingrediente').value = '';
-        document.getElementById('stock-ingrediente').value = '';
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            // Limpiar el formulario
+            document.getElementById('nombre-ingrediente').value = '';
+            document.getElementById('unidad-medida-ingrediente').value = '';
+            document.getElementById('categoria-ingrediente').value = '';
+            document.getElementById('stock-ingrediente').value = '';
+        }, 300);
     }
 }
 
@@ -600,6 +870,74 @@ async function guardarNuevoIngrediente() {
         successDiv.className = 'success-message';
         successDiv.textContent = 'Ingrediente creado correctamente';
         document.querySelector('.modal-content').appendChild(successDiv);
+        
+        setTimeout(() => {
+            successDiv.remove();
+        }, 3000);
+
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+    }
+}
+
+// Función para desvincular receta
+async function desvincularReceta(articulo_numero, articulo_nombre) {
+    try {
+        if (!confirm(`¿Está seguro que desea desvincular la receta del artículo ${articulo_nombre}?`)) {
+            return;
+        }
+
+        // Limpiar el número de artículo de caracteres especiales
+        const numeroLimpio = articulo_numero.replace(/[^a-zA-Z0-9]/g, '');
+
+        // 1. Eliminar la receta
+        const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(numeroLimpio)}`, {
+            method: 'DELETE'
+        });
+
+        if (!deleteResponse.ok) {
+            const errorData = await deleteResponse.json();
+            throw new Error(errorData.error || 'Error al desvincular la receta');
+        }
+
+        // 2. Obtener el estado actualizado de todas las recetas
+        const estadoResponse = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                articulos: state.articulosFiltrados.map(art => art.numero.replace(/[^a-zA-Z0-9]/g, ''))
+            })
+        });
+
+        if (!estadoResponse.ok) {
+            throw new Error('Error al actualizar el estado de las recetas');
+        }
+
+        // 3. Actualizar el estado local
+        const estadoRecetas = await estadoResponse.json();
+        
+        // 4. Actualizar la tabla con el nuevo estado
+        await actualizarTablaArticulos(state.articulosFiltrados);
+
+        // Mostrar mensaje de éxito
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-message';
+        successDiv.textContent = 'Receta desvinculada correctamente';
+        successDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(successDiv);
         
         setTimeout(() => {
             successDiv.remove();
@@ -686,7 +1024,13 @@ document.addEventListener('DOMContentLoaded', () => {
             await agregarAlCarro(articulo_numero, descripcion, e.target);
         } else if (e.target.classList.contains('btn-editar-receta')) {
             const articulo_numero = e.target.dataset.numero;
-            mostrarModalReceta(articulo_numero);
+            const articulo_nombre = e.target.dataset.nombre;
+            const modo = e.target.dataset.modo;
+            mostrarModalReceta(articulo_numero, articulo_nombre, modo);
+        } else if (e.target.classList.contains('btn-desvincular-receta')) {
+            const articulo_numero = e.target.dataset.numero;
+            const articulo_nombre = e.target.dataset.nombre;
+            await desvincularReceta(articulo_numero, articulo_nombre);
         }
     });
 });

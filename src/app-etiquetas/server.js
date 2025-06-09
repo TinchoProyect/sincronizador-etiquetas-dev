@@ -4,8 +4,16 @@ const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const cors = require('cors');
 const app = express();
 const port = 3000;
+
+// Configuración CORS
+app.use(cors({
+    origin: 'http://localhost:3002',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type']
+}));
 
 // 🔐 Importar rutas del sistema de usuarios
 const rutasUsuarios = require('../usuarios/rutas');
@@ -123,6 +131,35 @@ router.post('/imprimir-personalizada', (req, res) => {
     }
     console.log('Impresión personalizada enviada correctamente.');
     res.json({ message: 'Impresión enviada correctamente' });
+  });
+});
+
+// Endpoint para imprimir etiquetas de ingredientes
+router.post('/etiquetas/ingrediente', (req, res) => {
+  const { nombre, codigo } = req.body;
+
+  if (!nombre || !codigo) {
+    return res.status(400).json({ error: 'Faltan datos del ingrediente' });
+  }
+
+  const datos = { nombre, codigo };
+
+  const scriptPath = path.resolve(__dirname, '../scripts/imprimirEtiquetaIngrediente.js');
+  const tempDir = path.join(__dirname, 'temp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  const tempDataPath = path.join(tempDir, 'temp-ingrediente.json');
+  fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
+  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" 1`;
+
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error('Error al imprimir etiqueta de ingrediente:', error);
+      return res.status(500).json({ error: 'Error al imprimir etiqueta' });
+    }
+    console.log('Etiqueta de ingrediente enviada a imprimir.');
+    res.json({ message: 'Etiqueta enviada a imprimir' });
   });
 });
 

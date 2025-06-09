@@ -109,6 +109,15 @@ async function crearReceta(req, res) {
         // Revertir transacción en caso de error
         await client.query('ROLLBACK');
         console.error('Error al crear receta:', error);
+        
+        // Manejar específicamente el error de clave duplicada
+        if (error.code === '23505' && error.constraint === 'recetas_articulo_numero_key') {
+            return res.status(400).json({ 
+                error: 'Ya existe una receta para este artículo. Por favor edítela en lugar de crear una nueva.'
+            });
+        }
+        
+        // Para cualquier otro error, mantener el status 500
         res.status(500).json({ error: 'Error interno del servidor' });
     } finally {
         client.release();
@@ -157,8 +166,230 @@ async function obtenerReceta(numero_articulo) {
     }
 }
 
+// Controlador para actualizar una receta existente
+async function actualizarReceta(req, res) {
+    const client = await pool.connect();
+    
+    try {
+        const { numero_articulo } = req.params;
+        const { descripcion, ingredientes } = req.body;
+
+        // Validaciones
+        if (!Array.isArray(ingredientes) || ingredientes.length === 0) {
+            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente' });
+        }
+
+        // Validar que cada ingrediente tenga los campos requeridos
+        const ingredientesValidos = ingredientes.every(ing => 
+            ing.nombre_ingrediente && 
+            ing.unidad_medida && 
+            typeof ing.cantidad === 'number' && 
+            ing.cantidad > 0
+        );
+
+        if (!ingredientesValidos) {
+            return res.status(400).json({ 
+                error: 'Todos los ingredientes deben tener nombre, unidad de medida y cantidad válida' 
+            });
+        }
+
+        // Iniciar transacción
+        await client.query('BEGIN');
+
+        // Verificar si la receta existe
+        const recetaQuery = `
+            SELECT id FROM recetas 
+            WHERE articulo_numero = $1
+        `;
+        const recetaResult = await client.query(recetaQuery, [numero_articulo]);
+        
+        if (recetaResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Receta no encontrada' });
+        }
+
+        const recetaId = recetaResult.rows[0].id;
+
+        // Eliminar ingredientes actuales
+        await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+
+        // Actualizar descripción
+        await client.query('UPDATE recetas SET descripcion = $1 WHERE id = $2', [descripcion, recetaId]);
+
+        // Insertar nuevos ingredientes
+        const ingredientesQuery = `
+            INSERT INTO receta_ingredientes 
+            (receta_id, nombre_ingrediente, unidad_medida, cantidad)
+            VALUES ($1, $2, $3, $4)
+        `;
+
+        for (const ing of ingredientes) {
+            await client.query(ingredientesQuery, [
+                recetaId,
+                ing.nombre_ingrediente,
+                ing.unidad_medida,
+                ing.cantidad
+            ]);
+        }
+
+        // Confirmar transacción
+        await client.query('COMMIT');
+
+        res.json({
+            message: 'Receta actualizada exitosamente'
+        });
+
+    } catch (error) {
+        // Revertir transacción en caso de error
+        await client.query('ROLLBACK');
+        console.error('Error al actualizar receta:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Expande recursivamente los ingredientes de un artículo, consolidando cantidades
+ * @param {string} numeroArticulo - Número del artículo a expandir
+ * @param {number} cantidadBase - Cantidad base para multiplicar (por defecto 1)
+ * @param {Set} procesados - Set de artículos ya procesados para evitar ciclos
+ * @returns {Promise<Array>} Lista de ingredientes expandidos con cantidades
+ */
+async function expandirIngredientes(numeroArticulo, cantidadBase = 1, procesados = new Set()) {
+    // Evitar ciclos infinitos
+    if (procesados.has(numeroArticulo)) {
+        return [];
+    }
+    procesados.add(numeroArticulo);
+
+    try {
+        const receta = await obtenerReceta(numeroArticulo);
+        let ingredientesExpandidos = [];
+
+        for (const ingrediente of receta.ingredientes) {
+            const cantidadTotal = ingrediente.cantidad * cantidadBase;
+
+            try {
+                // Verificar si el ingrediente es un mix (tiene su propia receta)
+                const subReceta = await obtenerReceta(ingrediente.nombre_ingrediente);
+                
+                // Si es un mix, expandir recursivamente
+                const subIngredientes = await expandirIngredientes(
+                    ingrediente.nombre_ingrediente,
+                    cantidadTotal,
+                    procesados
+                );
+                ingredientesExpandidos = ingredientesExpandidos.concat(subIngredientes);
+            } catch (error) {
+                // Si no es un mix, agregar como ingrediente base
+                ingredientesExpandidos.push({
+                    nombre: ingrediente.nombre_ingrediente,
+                    cantidad: cantidadTotal,
+                    unidad_medida: ingrediente.unidad_medida
+                });
+            }
+        }
+
+        // Consolidar ingredientes duplicados sumando cantidades
+        const consolidados = {};
+        ingredientesExpandidos.forEach(ing => {
+            const key = `${ing.nombre}-${ing.unidad_medida}`;
+            if (consolidados[key]) {
+                consolidados[key].cantidad += ing.cantidad;
+            } else {
+                consolidados[key] = { ...ing };
+            }
+        });
+
+        return Object.values(consolidados);
+    } catch (error) {
+        console.error(`Error expandiendo ingredientes para ${numeroArticulo}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Obtiene los ingredientes expandidos de un artículo
+ */
+async function obtenerIngredientesExpandidos(req, res) {
+    try {
+        const { numero_articulo } = req.params;
+        const ingredientes = await expandirIngredientes(numero_articulo);
+        
+        if (ingredientes.length === 0) {
+            return res.status(404).json({ 
+                error: 'No se encontraron ingredientes para este artículo' 
+            });
+        }
+
+        res.json(ingredientes);
+    } catch (error) {
+        console.error('Error al obtener ingredientes expandidos:', error);
+        res.status(500).json({ 
+            error: 'Error al procesar los ingredientes expandidos' 
+        });
+    }
+}
+
+/**
+ * Elimina una receta y todos sus ingredientes asociados
+ */
+async function eliminarReceta(req, res) {
+    const client = await pool.connect();
+    
+    try {
+        const { numero_articulo } = req.params;
+
+        if (!numero_articulo) {
+            return res.status(400).json({ error: 'El número de artículo es requerido' });
+        }
+
+        // Iniciar transacción
+        await client.query('BEGIN');
+
+        // Verificar si la receta existe
+        const recetaQuery = `
+            SELECT id FROM recetas 
+            WHERE articulo_numero = $1
+        `;
+        const recetaResult = await client.query(recetaQuery, [numero_articulo]);
+        
+        if (recetaResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Receta no encontrada' });
+        }
+
+        const recetaId = recetaResult.rows[0].id;
+
+        // Eliminar ingredientes de la receta
+        await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+
+        // Eliminar la receta
+        await client.query('DELETE FROM recetas WHERE id = $1', [recetaId]);
+
+        // Confirmar transacción
+        await client.query('COMMIT');
+
+        res.json({
+            message: 'Receta eliminada exitosamente'
+        });
+
+    } catch (error) {
+        // Revertir transacción en caso de error
+        await client.query('ROLLBACK');
+        console.error('Error al eliminar receta:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     crearReceta,
     obtenerEstadoRecetas,
-    obtenerReceta
+    obtenerReceta,
+    actualizarReceta,
+    obtenerIngredientesExpandidos,
+    eliminarReceta
 };

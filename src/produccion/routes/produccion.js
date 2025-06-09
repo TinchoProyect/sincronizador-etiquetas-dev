@@ -1,23 +1,42 @@
 const express = require('express');
 const router = express.Router();
-const { crearReceta, obtenerEstadoRecetas, obtenerReceta } = require('../controllers/recetas');
+const { dbMiddleware } = require('../middleware');
+
+// Aplicar middleware de base de datos a todas las rutas
+router.use(dbMiddleware);
 const { 
-    crearCarro, 
-    agregarArticulo, 
+    crearReceta, 
+    obtenerEstadoRecetas, 
+    obtenerReceta, 
+    actualizarReceta,
+    obtenerIngredientesExpandidos,
+    eliminarReceta
+} = require('../controllers/recetas');
+const {
+    crearCarro,
+    agregarArticulo,
     obtenerArticulos,
     obtenerArticulosDeCarro,
     obtenerCarrosDeUsuario,
     eliminarCarro,
     eliminarArticuloDeCarro,
-    modificarCantidadDeArticulo
+    modificarCantidadDeArticulo,
+    obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { 
+const {
     obtenerIngredientes,
     obtenerIngrediente,
     crearIngrediente,
     actualizarIngrediente,
-    eliminarIngrediente
+    eliminarIngrediente,
+    obtenerNuevoCodigo
 } = require('../controllers/ingredientes');
+
+const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
+const carroIngredientesRouter = require('./carroIngredientes'); // ← Incorporación del router de ingredientes de carro
+
+router.use('/mixes', mixesRouter);     // ← Montar rutas para mixes
+router.use('/carro', carroIngredientesRouter); // ← Montar rutas para ingredientes de carro
 
 // Rutas para ingredientes
 router.get('/ingredientes', async (req, res) => {
@@ -28,6 +47,192 @@ router.get('/ingredientes', async (req, res) => {
         res.json(ingredientes);
     } catch (error) {
         console.error('Error en ruta GET /ingredientes:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/ingredientes/nuevo-codigo', async (req, res) => {
+    try {
+        console.log('Recibida solicitud GET /ingredientes/nuevo-codigo');
+        const codigo = await obtenerNuevoCodigo();
+        console.log(`Generado nuevo código: ${codigo}`);
+        res.json({ codigo });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/nuevo-codigo:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/ingredientes/buscar', async (req, res) => {
+    try {
+        const { nombre } = req.query;
+        if (!nombre) {
+            return res.status(400).json({ error: 'Se requiere el parámetro nombre' });
+        }
+        
+        const query = `
+            SELECT id 
+            FROM ingredientes 
+            WHERE LOWER(nombre) = LOWER($1)
+        `;
+        const result = await req.db.query(query, [nombre]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Ingrediente no encontrado' });
+        }
+        
+        res.json({ id: result.rows[0].id });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/buscar:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/ingredientes/:id/es-mix', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        
+        const query = `
+            SELECT COUNT(*)::integer as count 
+            FROM ingrediente_composicion 
+            WHERE mix_id = $1
+        `;
+        const result = await req.db.query(query, [id]);
+        const es_mix = result.rows[0].count > 0;
+        
+        res.json({ es_mix });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/:id/es-mix:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Rutas para composición de ingredientes (mixes)
+router.get('/ingredientes/:id/composicion', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.id);
+        if (isNaN(mixId)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        
+        // Obtener información del mix
+        const mixQuery = `
+            SELECT id, nombre, unidad_medida 
+            FROM ingredientes 
+            WHERE id = $1
+        `;
+        const mixResult = await req.db.query(mixQuery, [mixId]);
+        
+        if (mixResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Mix no encontrado' });
+        }
+        
+        // Obtener composición del mix
+        const composicionQuery = `
+            SELECT 
+                ic.ingrediente_id,
+                ic.cantidad,
+                i.nombre as nombre_ingrediente,
+                i.unidad_medida
+            FROM ingrediente_composicion ic
+            JOIN ingredientes i ON i.id = ic.ingrediente_id
+            WHERE ic.mix_id = $1
+            ORDER BY i.nombre
+        `;
+        const composicionResult = await req.db.query(composicionQuery, [mixId]);
+        
+        res.json({
+            mix: mixResult.rows[0],
+            composicion: composicionResult.rows
+        });
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/:id/composicion:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/ingredientes/:id/composicion', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.id);
+        const { ingrediente_id, cantidad } = req.body;
+        
+        if (isNaN(mixId) || !ingrediente_id || !cantidad) {
+            return res.status(400).json({ error: 'Datos inválidos' });
+        }
+        
+        // Verificar que el ingrediente no sea el mismo mix (evitar ciclos)
+        if (parseInt(ingrediente_id) === mixId) {
+            return res.status(400).json({ error: 'Un mix no puede contenerse a sí mismo' });
+        }
+        
+        const query = `
+            INSERT INTO ingrediente_composicion (mix_id, ingrediente_id, cantidad)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (mix_id, ingrediente_id) 
+            DO UPDATE SET cantidad = $3
+        `;
+        await req.db.query(query, [mixId, ingrediente_id, cantidad]);
+        
+        res.json({ message: 'Ingrediente agregado a la composición' });
+    } catch (error) {
+        console.error('Error en ruta POST /ingredientes/:id/composicion:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.mixId);
+        const ingredienteId = parseInt(req.params.ingredienteId);
+        const { cantidad } = req.body;
+        
+        if (isNaN(mixId) || isNaN(ingredienteId) || !cantidad) {
+            return res.status(400).json({ error: 'Datos inválidos' });
+        }
+        
+        const query = `
+            UPDATE ingrediente_composicion 
+            SET cantidad = $1
+            WHERE mix_id = $2 AND ingrediente_id = $3
+        `;
+        const result = await req.db.query(query, [cantidad, mixId, ingredienteId]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Composición no encontrada' });
+        }
+        
+        res.json({ message: 'Cantidad actualizada' });
+    } catch (error) {
+        console.error('Error en ruta PUT /ingredientes/:mixId/composicion/:ingredienteId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.mixId);
+        const ingredienteId = parseInt(req.params.ingredienteId);
+        
+        if (isNaN(mixId) || isNaN(ingredienteId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+        
+        const query = `
+            DELETE FROM ingrediente_composicion 
+            WHERE mix_id = $1 AND ingrediente_id = $2
+        `;
+        const result = await req.db.query(query, [mixId, ingredienteId]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Composición no encontrada' });
+        }
+        
+        res.json({ message: 'Ingrediente eliminado de la composición' });
+    } catch (error) {
+        console.error('Error en ruta DELETE /ingredientes/:mixId/composicion/:ingredienteId:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -125,11 +330,12 @@ const validarEstadoRecetas = (req, res, next) => {
     next();
 };
 
-// Middleware de validación para creación de recetas
+// Middleware de validación para recetas
 const validarReceta = (req, res, next) => {
-    const { articulo_numero, descripcion, ingredientes } = req.body;
+    const { descripcion, ingredientes } = req.body;
+    const articulo_numero = req.method === 'POST' ? req.body.articulo_numero : req.params.numero_articulo;
 
-    if (!articulo_numero || typeof articulo_numero !== 'string' || !articulo_numero.trim()) {
+    if (req.method === 'POST' && (!articulo_numero || typeof articulo_numero !== 'string' || !articulo_numero.trim())) {
         return res.status(400).json({ error: 'El número de artículo es requerido y debe ser un texto válido' });
     }
 
@@ -198,6 +404,29 @@ router.get('/recetas/:numero_articulo', async (req, res) => {
         console.error('Error al obtener receta:', error);
         res.status(error.message === 'Receta no encontrada' ? 404 : 500)
            .json({ error: error.message });
+    }
+});
+
+// Ruta para obtener ingredientes expandidos de una receta
+router.get('/recetas/:numero_articulo/ingredientes-expandido', obtenerIngredientesExpandidos);
+
+// Ruta para actualizar una receta existente
+router.put('/recetas/:numero_articulo', validarReceta, async (req, res) => {
+    try {
+        await actualizarReceta(req, res);
+    } catch (error) {
+        console.error('Error al actualizar receta:', error);
+        res.status(500).json({ error: 'Error al actualizar la receta' });
+    }
+});
+
+// Ruta para eliminar una receta
+router.delete('/recetas/:numero_articulo', async (req, res) => {
+    try {
+        await eliminarReceta(req, res);
+    } catch (error) {
+        console.error('Error al eliminar receta:', error);
+        res.status(500).json({ error: 'Error al eliminar la receta' });
     }
 });
 
@@ -276,6 +505,29 @@ router.post('/carro/:id/articulo', async (req, res) => {
     }
 });
 
+// Ruta para obtener información antes de eliminar un carro
+router.get('/carro/:id/info-eliminacion', async (req, res) => {
+    try {
+        const carroId = parseInt(req.params.id);
+        const usuarioId = parseInt(req.query.usuarioId);
+
+        if (!usuarioId) {
+            return res.status(400).json({ error: 'Se requiere el ID del usuario' });
+        }
+
+        if (isNaN(carroId) || isNaN(usuarioId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+
+        const info = await obtenerInfoEliminacion(carroId, usuarioId);
+        res.json(info);
+    } catch (error) {
+        console.error('Error al obtener información de eliminación:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para eliminar un carro
 router.delete('/carro/:id', async (req, res) => {
     try {
         const carroId = parseInt(req.params.id);
@@ -289,8 +541,8 @@ router.delete('/carro/:id', async (req, res) => {
             return res.status(400).json({ error: 'IDs inválidos' });
         }
 
-        await eliminarCarro(carroId, usuarioId);
-        res.json({ message: 'Carro eliminado correctamente' });
+        const resultado = await eliminarCarro(carroId, usuarioId);
+        res.json(resultado);
     } catch (error) {
         console.error('Error al eliminar carro:', error);
         res.status(500).json({ error: error.message });
@@ -343,4 +595,144 @@ router.put('/carro/:carroId/articulo/:articuloId', async (req, res) => {
     }
 });
 
+// ✅ Ruta para registrar movimiento de stock de ventas
+const { registrarMovimientoStockVentas } = require('../controllers/stockVentasMovimientos');
+router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
+
+
+
+// =========================
+
+const { marcarCarroPreparado } = require('../controllers/marcarCarroPreparado');
+const { finalizarProduccion } = require('../controllers/finalizarProduccion');
+const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
+const { obtenerArticulosParaEtiquetas } = require('../controllers/obtenerArticulosParaEtiquetas');
+
+/**
+ * Ruta: POST /api/produccion/carro/:id/preparado
+ * Descripción: Marca un carro como preparado y registra los movimientos de ingredientes
+ */
+router.post('/carro/:id/preparado', async (req, res, next) => {
+    try {
+        // Asegurarse de que req.db esté disponible
+        if (!req.db) {
+            throw new Error('No hay conexión a la base de datos disponible');
+        }
+        await marcarCarroPreparado(req, res);
+    } catch (error) {
+        console.error('Error en ruta /carro/:id/preparado:', error);
+        res.status(500).json({
+            error: 'Error al marcar el carro como preparado',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Ruta: POST /api/produccion/carro/:id/finalizar
+ * Descripción: Finaliza la producción de un carro y registra los movimientos de stock de ventas
+ */
+router.post('/carro/:id/finalizar', async (req, res, next) => {
+    try {
+        // Asegurarse de que req.db esté disponible
+        if (!req.db) {
+            throw new Error('No hay conexión a la base de datos disponible');
+        }
+        await finalizarProduccion(req, res);
+    } catch (error) {
+        console.error('Error en ruta /carro/:id/finalizar:', error);
+        res.status(500).json({
+            error: 'Error al finalizar la producción del carro',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para obtener el estado de un carro
+// Ruta para obtener artículos para impresión de etiquetas
+router.get('/carro/:id/articulos-etiquetas', obtenerArticulosParaEtiquetas);
+
+router.get('/carro/:id/estado', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const query = `
+            SELECT fecha_preparado, fecha_confirmacion, usuario_id, fecha_inicio
+            FROM carros_produccion 
+            WHERE id = $1
+        `;
+        
+        const result = await req.db.query(query, [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Carro no encontrado' });
+        }
+        
+        const carro = result.rows[0];
+        const preparado = carro.fecha_preparado !== null;
+        const confirmado = carro.fecha_confirmacion !== null;
+        
+        let estado = 'en_preparacion';
+        if (confirmado) {
+            estado = 'confirmado';
+        } else if (preparado) {
+            estado = 'preparado';
+        }
+        
+        res.json({
+            estado: estado,
+            fecha_preparado: carro.fecha_preparado,
+            fecha_confirmacion: carro.fecha_confirmacion,
+            preparado: preparado,
+            confirmado: confirmado
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener estado del carro:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+/**
+ * Ruta: POST /api/produccion/ingredientes_movimientos
+ * Descripción: Registra un movimiento manual de ingreso de stock
+ * en la tabla ingredientes_movimientos.
+ */
+router.post('/ingredientes_movimientos', async (req, res) => {
+  try {
+    console.log('📥 Solicitud POST /ingredientes_movimientos recibida');
+    const { ingrediente_id, kilos, carro_id, tipo, observaciones } = req.body;
+
+    console.log('🔍 Datos recibidos:', req.body);
+
+    if (
+      ingrediente_id == null ||
+      carro_id == null ||
+      kilos == null ||
+      isNaN(Number(kilos))
+    ) {
+      console.warn('⚠️ Validación fallida en POST /ingredientes_movimientos');
+      return res.status(400).json({ error: 'Faltan campos obligatorios o kilos inválidos' });
+    }
+
+    const movimiento = {
+      ingrediente_id,
+      kilos: Number(kilos),
+      tipo: tipo || 'ingreso',
+      carro_id,
+      observaciones: observaciones || null
+    };
+
+    console.log('📦 Movimiento armado para registrar:', movimiento);
+
+    await registrarMovimientoIngrediente(movimiento, req.db);
+
+    console.log('✅ Movimiento registrado correctamente');
+    return res.status(201).json({ message: 'Movimiento registrado correctamente' });
+
+  } catch (error) {
+    console.error('❌ Error en POST /ingredientes_movimientos:', error);
+    return res.status(500).json({ error: 'Error al registrar el movimiento' });
+  }
+});
 module.exports = router;

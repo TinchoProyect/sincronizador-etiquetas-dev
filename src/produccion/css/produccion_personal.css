@@ -1,375 +1,429 @@
-.colaborador-header {
-    background-color: white;
-    padding: 20px;
+/* Layout del workspace */
+.workspace-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    margin: 20px 0;
+    padding: 0 20px;
+}
+
+/* Ajustes responsive */
+@media (max-width: 1024px) {
+    .workspace-content {
+        grid-template-columns: 1fr;
+        padding: 0 15px;
+    }
+
+    .workspace-left,
+    .workspace-right {
+        width: 100%;
+    }
+
+    .seccion-articulos,
+    .seccion-resumen,
+    .seccion-carros {
+        margin: 10px 0;
+    }
+
+    .articulo-container {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .articulo-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .toggle-ingredientes {
+        margin-left: 0;
+        width: 100%;
+        margin-top: 10px;
+    }
+
+    .ingredientes-expandidos table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+}
+
+/* Ajustes para pantallas muy pequeñas */
+@media (max-width: 480px) {
+    .workspace-content {
+        padding: 0 10px;
+    }
+
+    .articulo-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+
+    .articulo-codigo {
+        min-width: auto;
+    }
+
+    .input-cantidad-articulo {
+        width: 60px;
+    }
+
+    /* Ajustes para modales en móvil */
+    .modal-content {
+        width: 95%;
+        margin: 20px auto;
+        padding: 15px;
+    }
+
+    .filtros-container {
+        flex-direction: column;
+    }
+
+    .filtro-grupo {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+
+    /* Ajustes para tablas en móvil */
+    .tabla-resumen,
+    .tabla-articulos {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Ajustes para botones en móvil */
+    .btn {
+        padding: 6px 12px;
+        font-size: 14px;
+        width: 100%;
+        margin-bottom: 5px;
+    }
+
+    .articulo-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .articulo-actions button {
+        width: 100%;
+        margin: 5px 0;
+    }
+}
+
+/* Ajustes para tablets */
+@media (min-width: 481px) and (max-width: 768px) {
+    .workspace-content {
+        padding: 0 15px;
+    }
+
+    .btn {
+        padding: 8px 16px;
+    }
+
+    .articulo-actions {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+}
+
+.workspace-left {
+    min-width: 0; /* Evita desbordamiento en grid */
+}
+
+.workspace-right {
+    min-width: 0; /* Evita desbordamiento en grid */
+}
+
+/* Estilos para la sección de artículos */
+.seccion-articulos {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #fff;
     border-radius: 8px;
-    margin-bottom: 30px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow-x: auto; /* Permite scroll horizontal si es necesario */
+}
+
+.articulo-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.articulo-info {
+    flex: 1;
     display: flex;
     align-items: center;
     gap: 15px;
 }
 
-.colaborador-icon {
-    font-size: 2em;
-    color: var(--primary-color);
-}
-
-.colaborador-info {
-    flex-grow: 1;
-}
-
-.colaborador-nombre {
-    font-size: 1.2em;
+.articulo-codigo {
     font-weight: bold;
-    margin: 0;
-    color: var(--text-color);
+    color: #495057;
+    min-width: 80px;
 }
 
-.colaborador-subtitulo {
-    color: #666;
-    margin: 5px 0 0 0;
-    font-size: 0.9em;
+.articulo-descripcion {
+    color: #212529;
 }
 
-.workspace-content {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.articulo-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
-/* Sección de artículos */
-.seccion-articulos {
-    margin-bottom: 30px;
-    background-color: #f8f9fa;
+.input-cantidad-articulo {
+    width: 70px;
+    padding: 5px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.btn-eliminar-articulo {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    font-size: 1.2em;
+    padding: 5px;
+}
+
+.btn-eliminar-articulo:hover {
+    color: #c82333;
+}
+
+.toggle-ingredientes {
+    padding: 5px 10px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.toggle-ingredientes:hover {
+    background-color: #5a6268;
+}
+
+.ingredientes-expandidos {
+    margin: 10px 0;
+    padding: 15px;
+    background-color: #fff;
     border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 20px;
+    border-radius: 4px;
 }
 
-.seccion-articulos h3 {
-    margin-top: 0;
-    color: var(--primary-color);
-    font-size: 1.3em;
+.ingredientes-expandidos.hidden {
+    display: none;
+}
+
+.ingredientes-expandidos table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.ingredientes-expandidos th,
+.ingredientes-expandidos td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.ingredientes-expandidos th {
+    background-color: #e9ecef;
+    font-weight: 600;
+}
+
+.ingredientes-error {
+    color: #721c24;
+    background-color: #f8d7da;
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 10px;
 }
 
 .agregar-articulo-container {
     margin-bottom: 20px;
-    padding: 15px;
-    background-color: white;
-    border-radius: 6px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    text-align: right;
 }
 
-/* Sección de carros */
-.seccion-carros {
-    margin-top: 30px;
+/* Estilos para botones */
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    text-decoration: none;
+    display: inline-block;
+    transition: background-color 0.2s;
 }
 
-.workspace-actions {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
 }
 
 .btn-secondary {
-    background-color: var(--secondary-color, #6c757d);
+    background-color: #6c757d;
     color: white;
 }
 
 .btn-secondary:hover {
-    background-color: var(--secondary-color-dark, #5a6268);
+    background-color: #545b62;
 }
 
-.error-message {
-    background-color: #ff5252;
-    color: white;
-    padding: 10px;
-    border-radius: 4px;
-    margin-top: 10px;
-    animation: fadeIn 0.3s ease;
-}
-
-.carro-info {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 15px;
-    margin-top: 20px;
-}
-
-/* Estilos para la tabla de carros */
-.carros-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-}
-
-.carros-table thead th {
-    background-color: #f8f9fa;
-    padding: 12px;
-    border-bottom: 2px solid #dee2e6;
-    text-align: left;
-}
-
-.carros-table tbody tr {
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-.carros-table tbody tr:hover {
-    background-color: #f0f0f0;
-}
-
-.carros-table tbody td {
-    padding: 12px;
-    border-bottom: 1px solid #dee2e6;
-}
-
-.carros-table tr.carro-activo {
-    background-color: #e3f2fd;
-    border-left: 4px solid var(--primary-color);
-}
-
-.carros-table tr.carro-activo:hover {
-    background-color: #d4e9fc;
-}
-
-.btn-group {
-    display: flex;
-    gap: 8px;
-}
-
-.btn-deseleccionar,
-.btn-eliminar {
-    padding: 4px 8px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9em;
-}
-
-.btn-deseleccionar {
-    background-color: #6c757d;
+.btn-success {
+    background-color: #28a745;
     color: white;
 }
 
-.btn-eliminar {
+.btn-success:hover {
+    background-color: #1e7e34;
+}
+
+.btn-danger {
     background-color: #dc3545;
     color: white;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+.btn-danger:hover {
+    background-color: #c82333;
 }
 
-/* Estilos del modal */
-.modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-    z-index: 1000;
-}
-
-.modal-content {
-    position: relative;
-    background-color: white;
-    margin: 2% auto;
+/* Estilos para la sección de carros */
+.seccion-carros {
+    margin: 20px 0;
     padding: 20px;
-    width: 90%;
-    max-width: 1200px;
+    background-color: #fff;
     border-radius: 8px;
-    max-height: 90vh;
-    overflow-y: auto;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.close-modal {
-    position: absolute;
-    right: 20px;
-    top: 20px;
-    font-size: 24px;
-    cursor: pointer;
-    color: #666;
-}
-
-/* Estilos de los filtros */
-.filtros-container {
-    display: flex;
-    gap: 10px;
+.workspace-actions {
     margin-bottom: 20px;
-    flex-wrap: wrap;
+    text-align: center;
 }
 
-.filtro-grupo {
-    flex: 1;
-    min-width: 200px;
+.carro-info {
+    margin-top: 15px;
 }
 
-.filtro-grupo label {
-    display: block;
-    margin-bottom: 5px;
-    color: #666;
+/* Estilos para títulos de sección */
+.seccion-articulos h3,
+.workspace-content h2 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.3em;
 }
 
-.filtro-grupo input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+/* Estilos para el resumen de ingredientes */
+.seccion-resumen {
+    margin: 20px 0;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* Estilos de la tabla de artículos */
-.tabla-articulos {
+.seccion-resumen h3 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+}
+
+.tabla-resumen {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
+    background-color: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.tabla-articulos th,
-.tabla-articulos td {
+.tabla-resumen th,
+.tabla-resumen td {
     padding: 12px;
     text-align: left;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #dee2e6;
 }
 
-.tabla-articulos th {
-    background-color: #f8f9fa;
+.tabla-resumen th {
+    background-color: #f1f3f5;
     font-weight: 600;
+    color: #495057;
 }
 
-.tabla-articulos tr:hover {
-    background-color: #f5f5f5;
-}
-
-.btn-agregar {
-    padding: 6px 12px;
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.btn-agregar:hover {
-    background-color: var(--primary-color-dark);
-}
-
-/* Estilos para el input de cantidad */
-.cantidad-input {
-    width: 80px;
-    padding: 4px;
-    margin-right: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-/* Mensaje de éxito */
-.success-message {
-    background-color: #28a745;
-    color: white;
-    padding: 10px;
-    border-radius: 4px;
-    margin-top: 10px;
-    animation: fadeIn 0.3s ease;
-}
-
-/* Estilos del formulario de receta */
-.form-receta {
-    padding: 20px 0;
-}
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 500;
-    color: #333;
-}
-
-.form-group input[type="text"],
-.form-group textarea {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
-.form-group input[readonly] {
+.tabla-resumen tr:hover {
     background-color: #f8f9fa;
-    cursor: not-allowed;
 }
 
-.form-group textarea {
-    resize: vertical;
-    min-height: 100px;
-}
-
-.form-actions {
-    margin-top: 30px;
+.tabla-resumen td:nth-child(2) {
     text-align: right;
 }
 
-.form-actions .btn {
-    padding: 10px 20px;
-    font-size: 16px;
+/* Estilos para mensajes cuando no hay datos */
+#tabla-resumen-ingredientes p,
+#tabla-resumen-mixes p {
+    text-align: center;
+    color: #6c757d;
+    padding: 20px;
+    font-style: italic;
 }
 
-.resaltado-articulo {
-    background-color: #ffffcc;
-    transition: background-color 0.5s ease;
+/* Estilos específicos para el resumen de mixes */
+#resumen-mixes {
+    border-top: 3px solid #007bff;
+    margin-top: 30px;
 }
 
-/* Estilos para el contenedor de ingredientes */
-.ingredientes-container {
-    margin-bottom: 20px;
+#resumen-mixes .tabla-resumen th {
+    background-color: #e7f1ff;
 }
 
-.selector-container {
-    width: 100%;
+#resumen-mixes .tabla-resumen tr:hover {
+    background-color: #f0f7ff;
+}
+.modal {
+  display: block;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  overflow-y: auto;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
-.selector-wrapper {
-    margin-bottom: 15px;
+.modal.show {
+    display: block; /* ✅ esta es la línea que faltaba */
+    opacity: 1;
+    visibility: visible;
 }
 
-.selector-with-button {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-}
-
-.selector-with-button select {
-    flex: 1;
-}
-
-.selector-with-button button {
-    white-space: nowrap;
-    padding: 8px 15px;
-    height: 38px; /* Mismo alto que el select */
-}
-
-.cantidad-wrapper {
-    margin-top: 10px;
-}
-
-#btn-nuevo-ingrediente {
-    background-color: #6c757d;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-#btn-nuevo-ingrediente:hover {
-    background-color: #5a6268;
+.modal-content {
+  background-color: #fff;
+  margin: 10% auto;
+  padding: 20px;
+  border-radius: 8px;
+  width: 80%;
+  max-width: 600px;
 }

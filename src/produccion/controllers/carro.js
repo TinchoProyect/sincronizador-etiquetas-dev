@@ -9,8 +9,13 @@ const pool = require('../config/database');
 async function crearCarro(usuarioId, enAuditoria = true) {
     try {
         const query = `
-            INSERT INTO carros_produccion (usuario_id, fecha_inicio, en_auditoria)
-            VALUES ($1, CURRENT_TIMESTAMP, $2)
+            INSERT INTO carros_produccion (
+                usuario_id, 
+                fecha_inicio, 
+                en_auditoria,
+                fecha_preparado
+            )
+            VALUES ($1, CURRENT_TIMESTAMP, $2, NULL)
             RETURNING id
         `;
         
@@ -80,7 +85,7 @@ async function obtenerArticulos() {
                 a.codigo_barras
             FROM public.articulos a
             ORDER BY a.nombre ASC
-        `;
+        `     ;
         
         console.log('Ejecutando query:', query);
         const result = await pool.query(query);
@@ -170,30 +175,27 @@ async function obtenerCarrosDeUsuario(usuarioId) {
 }
 
 /**
- * Elimina un carro de producción y sus artículos asociados
+ * Elimina un carro de producción y todos sus registros relacionados
+ * Utiliza el módulo especializado para eliminación segura
  * @param {number} carroId - ID del carro a eliminar
  * @param {number} usuarioId - ID del usuario que intenta eliminar el carro
- * @returns {Promise<boolean>} true si se eliminó correctamente
+ * @returns {Promise<Object>} Resultado de la eliminación
  */
 async function eliminarCarro(carroId, usuarioId) {
-    try {
-        // Primero validar que el carro pertenezca al usuario
-        const esValido = await validarPropiedadCarro(carroId, usuarioId);
-        if (!esValido) {
-            throw new Error('El carro no pertenece al usuario especificado');
-        }
+    // Delegar la eliminación al módulo especializado
+    const { eliminarCarroCompleto } = require('./eliminarCarro');
+    return await eliminarCarroCompleto(carroId, usuarioId);
+}
 
-        // Eliminar primero los artículos del carro
-        await pool.query('DELETE FROM carros_articulos WHERE carro_id = $1', [carroId]);
-        
-        // Luego eliminar el carro
-        await pool.query('DELETE FROM carros_produccion WHERE id = $1', [carroId]);
-        
-        return true;
-    } catch (error) {
-        console.error('Error al eliminar carro:', error);
-        throw new Error('No se pudo eliminar el carro');
-    }
+/**
+ * Obtiene información sobre qué registros se eliminarán con un carro
+ * @param {number} carroId - ID del carro
+ * @param {number} usuarioId - ID del usuario
+ * @returns {Promise<Object>} Información detallada de eliminación
+ */
+async function obtenerInfoEliminacion(carroId, usuarioId) {
+    const { obtenerInformacionEliminacion } = require('./eliminarCarro');
+    return await obtenerInformacionEliminacion(carroId, usuarioId);
 }
 
 async function eliminarArticuloDeCarro(carroId, articuloId, usuarioId) {
@@ -259,5 +261,6 @@ module.exports = {
     obtenerCarrosDeUsuario,
     eliminarCarro,
     eliminarArticuloDeCarro,
-    modificarCantidadDeArticulo
+    modificarCantidadDeArticulo,
+    obtenerInfoEliminacion
 };

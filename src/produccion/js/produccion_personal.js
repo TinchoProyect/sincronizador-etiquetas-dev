@@ -6,7 +6,11 @@ import {
     validarCarroActivo,
     seleccionarCarro,
     deseleccionarCarro,
-    eliminarCarro
+    eliminarCarro,
+    obtenerResumenIngredientesCarro,
+    mostrarResumenIngredientes,
+    obtenerResumenMixesCarro,
+    mostrarResumenMixes
 } from './carro.js';
 import {
     abrirModalArticulos,
@@ -18,12 +22,26 @@ import {
     cerrarModalReceta
 } from './articulos.js';
 
+import { abrirModalIngresoManual } from './ingresoManual.js';
+import { actualizarVisibilidadBotones } from './carroPreparado.js';
+window.carroIdGlobal = null;
+
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
-window.seleccionarCarro = seleccionarCarro;
-window.deseleccionarCarro = deseleccionarCarro;
+// Envolver las funciones originales para agregar la actualización de botones
+window.seleccionarCarro = async (...args) => {
+    await seleccionarCarro(...args);
+    await actualizarVisibilidadBotones();
+};
+
+window.deseleccionarCarro = async (...args) => {
+    await deseleccionarCarro(...args);
+    await actualizarVisibilidadBotones();
+};
+
 window.eliminarCarro = eliminarCarro;
 window.agregarAlCarro = agregarAlCarro;
 window.cerrarModalReceta = cerrarModalReceta;
+window.abrirModalIngresoManual = abrirModalIngresoManual;
 
 // Función asíncrona para inicializar el espacio de trabajo
 async function inicializarEspacioTrabajo() {
@@ -44,6 +62,10 @@ async function inicializarEspacioTrabajo() {
         
         // Solo después de validar el carro, mostrar los artículos
         await mostrarArticulosDelCarro();
+        
+        window.carroIdGlobal = localStorage.getItem('carroActivo');
+        // Cargar y mostrar resumen de ingredientes y mixes
+        await cargarResumenIngredientes();
         
     } catch (error) {
         console.error('Error al inicializar espacio de trabajo:', error);
@@ -86,6 +108,10 @@ document.addEventListener('DOMContentLoaded', () => {
             await crearNuevoCarro();
             // Finalmente mostrar los artículos
             await mostrarArticulosDelCarro();
+
+            window.carroIdGlobal = localStorage.getItem('carroActivo');
+            // Cargar y mostrar resumen de ingredientes y mixes
+            await cargarResumenIngredientes();
         });
     }
 
@@ -142,3 +168,56 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mostrar estado inicial del carro
     actualizarEstadoCarro();
 });
+
+// Función para cargar y mostrar el resumen de ingredientes del carro activo
+async function cargarResumenIngredientes() {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        if (!carroId) {
+            // Limpiar la sección de resumen si no hay carro activo
+            const contenedor = document.getElementById('tabla-resumen-ingredientes');
+            if (contenedor) {
+                contenedor.innerHTML = '<p>No hay carro activo</p>';
+            }
+            
+            // También limpiar la sección de mixes
+            const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+            if (contenedorMixes) {
+                contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
+            }
+            return;
+        }
+
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            return;
+        }
+
+        const colaborador = JSON.parse(colaboradorData);
+        
+        // Obtener el resumen consolidado de ingredientes
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+        
+        // Mostrar el resumen en la UI
+        mostrarResumenIngredientes(ingredientes);
+        
+        // Obtener y mostrar el resumen de mixes
+        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+        mostrarResumenMixes(mixes);
+        
+        // Actualizar visibilidad de los botones después de cargar ingredientes
+        await actualizarVisibilidadBotones();
+        
+    } catch (error) {
+        console.error('Error al cargar resumen de ingredientes:', error);
+        const contenedor = document.getElementById('tabla-resumen-ingredientes');
+        if (contenedor) {
+            contenedor.innerHTML = '<p>Error al cargar el resumen de ingredientes</p>';
+        }
+        
+        const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+        if (contenedorMixes) {
+            contenedorMixes.innerHTML = '<p>Error al cargar el resumen de mixes</p>';
+        }
+    }
+}

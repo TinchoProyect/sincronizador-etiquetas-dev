@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gestión de Ingredientes</title>
+  <link rel="stylesheet" href="../css/estilos.css" />
+</head>
+<body>
+  <div id="app-container">
+    <h1>Gestión de Ingredientes</h1>
+
+    <!-- Sección para crear / editar un ingrediente -->
+    <div id="seccion-nuevo-ingrediente">
+      <h2>Nuevo / Editar Ingrediente</h2>
+      <form id="form-ingrediente">
+        <label for="nombreIngrediente">Nombre:</label>
+        <input type="text" id="nombreIngrediente" required />
+
+        <label for="unidadMedida">Unidad de Medida:</label>
+        <input type="text" id="unidadMedida" required />
+
+        <label for="categoriaIngrediente">Categoría:</label>
+        <input type="text" id="categoriaIngrediente" />
+
+        <label for="stockIngrediente">Stock (opcional):</label>
+        <input type="number" id="stockIngrediente" min="0" step="1" />
+
+        <br/><br/>
+        <!-- Botón para crear / actualizar ingrediente -->
+        <div style="margin-top: 10px;">
+          <button type="submit" id="btn-guardar-ingrediente"
+                  style="background-color: #28a745; color: white; border: none; 
+                         padding: 6px 12px; margin-right: 8px; border-radius: 4px;">
+            Guardar / Actualizar
+          </button>
+          <button type="button" id="btn-limpiar-ingrediente"
+                  style="background-color: #6c757d; color: white; border: none;
+                         padding: 6px 12px; border-radius: 4px;">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Tabla de ingredientes -->
+    <div id="seccion-lista-ingredientes" style="margin-top: 30px;">
+      <h2>Lista de Ingredientes</h2>
+      <table id="tabla-ingredientes" border="1" cellspacing="0" cellpadding="5">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Unidad</th>
+            <th>¿Es mix?</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Contenido dinámico con JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Submodal para composición del mix -->
+  <div id="modal-mix" class="modal" style="display: none;">
+    <div class="modal-content" style="position: relative;">
+      <span class="close-modal" style="position: absolute; top: 10px; right: 15px; cursor: pointer;">&times;</span>
+      
+      <h2>Composición del Mix</h2>
+
+      <!-- Tabla para mostrar la composición actual -->
+      <table id="tabla-mix-ingredientes">
+        <thead>
+          <tr>
+            <th>Ingrediente</th>
+            <th>Cantidad (Kg)</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <hr />
+      <div style="margin-top: 10px;">
+        <label for="selector-ingrediente-mix">Ingrediente:</label>
+        <select id="selector-ingrediente-mix">
+          <!-- Se llenará con el fetch de ingredientes disponibles -->
+        </select>
+
+        <label for="cantidad-ingrediente-mix">Cantidad (Kg):</label>
+        <input type="number" step="0.001" min="0.001" id="cantidad-ingrediente-mix" style="width: 80px;" />
+
+        <button id="btn-agregar-a-mix"
+                style="background-color: #28a745; color: white; border: none; padding: 6px 12px; margin-left: 8px; border-radius: 4px;">
+          Agregar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../produccion/js/utils.js" type="module"></script>
+  <script src="../produccion/js/mix.js" type="module"></script>
+  <script type="module">
+    import { mostrarError } from '../produccion/js/utils.js';
+    import { esMix, abrirEdicionMix, actualizarListaIngredientes } from '../produccion/js/mix.js';
+
+    let ingredientesLista = [];
+    let editandoIngredienteId = null; // Para saber si estamos en modo edición
+
+    // Cargar ingredientes existentes
+    async function cargarIngredientes() {
+      try {
+        const resp = await fetch('/api/produccion/ingredientes');
+        if (!resp.ok) {
+          throw new Error('Error al cargar ingredientes');
+        }
+        ingredientesLista = await resp.json();
+        actualizarListaIngredientes(ingredientesLista);
+        renderizarTablaIngredientes();
+        cargarSelectorIngredienteMix(); // Para combos en el submodal de mix
+      } catch (error) {
+        mostrarError(error.message);
+      }
+    }
+
+    function renderizarTablaIngredientes() {
+      const tbody = document.querySelector('#tabla-ingredientes tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      ingredientesLista.forEach(ing => {
+        const tr = document.createElement('tr');
+        tr.dataset.id = ing.id;
+        tr.innerHTML = `
+          <td>${ing.id}</td>
+          <td>${ing.nombre}</td>
+          <td>${ing.unidad_medida || ''}</td>
+          <td>
+            <span class="es-mix-status">Verificando...</span>
+          </td>
+          <td>
+            <button class="btn-editar-ingrediente"
+                    data-id="${ing.id}"
+                    style="background-color: #0275d8; color: white; border: none; 
+                           padding: 6px 12px; border-radius: 4px;">
+              Editar
+            </button>
+            <button class="btn-gestionar-composicion"
+                    data-id="${ing.id}"
+                    style="background-color: #5cb85c; color: white; border: none; 
+                           padding: 6px 12px; border-radius: 4px; margin-left: 5px; display: none;">
+              Gestionar composición
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Listeners de editar y gestionar composición
+      tbody.querySelectorAll('.btn-editar-ingrediente').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.dataset.id);
+          editarIngrediente(id);
+        });
+      });
+
+      tbody.querySelectorAll('.btn-gestionar-composicion').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.dataset.id);
+          abrirEdicionMix(id); 
+        });
+      });
+
+      // Verificar estado de mix para cada ingrediente
+      ingredientesLista.forEach(async ing => {
+        try {
+          const esMixResult = await esMix(ing.id);
+          const tr = tbody.querySelector(`tr[data-id="${ing.id}"]`);
+          if (tr) {
+            const statusSpan = tr.querySelector('.es-mix-status');
+            const btnGestionar = tr.querySelector('.btn-gestionar-composicion');
+            
+            if (statusSpan) {
+              if (esMixResult) {
+                statusSpan.textContent = 'Sí';
+              } else {
+                statusSpan.textContent = 'No (aún)';
+              }
+            }
+            
+            if (btnGestionar) {
+              // Mostrar el botón si es mix o si el ingrediente no tiene padre_id (posible mix nuevo)
+              if (esMixResult || !ing.padre_id) {
+                btnGestionar.style.display = 'inline-block';
+              } else {
+                btnGestionar.style.display = 'none';
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error al verificar mix para ingrediente ${ing.id}:`, error);
+        }
+      });
+    }
+
+    // Llenar el combo "selector-ingrediente-mix" para submodal, con todos los ingredientes
+    function cargarSelectorIngredienteMix() {
+      const sel = document.getElementById('selector-ingrediente-mix');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">Seleccione...</option>';
+      ingredientesLista.forEach(ing => {
+        sel.innerHTML += `<option value="${ing.id}">${ing.nombre}</option>`;
+      });
+    }
+
+    async function editarIngrediente(id) {
+      // Hallar el ingrediente
+      const ing = ingredientesLista.find(i => i.id === id);
+      if (!ing) return;
+      editandoIngredienteId = id;
+      // Cargar datos en el form
+      document.getElementById('nombreIngrediente').value = ing.nombre;
+      document.getElementById('unidadMedida').value = ing.unidad_medida || '';
+      document.getElementById('categoriaIngrediente').value = ing.categoria || '';
+      document.getElementById('stockIngrediente').value = ing.stock || '';
+    }
+
+    // Guardar / actualizar ingrediente
+    async function guardarIngrediente(e) {
+      e.preventDefault();
+      try {
+        const nombre = document.getElementById('nombreIngrediente').value.trim();
+        const unidadMedida = document.getElementById('unidadMedida').value.trim();
+        const categoria = document.getElementById('categoriaIngrediente').value.trim();
+        const stock = parseInt(document.getElementById('stockIngrediente').value) || 0;
+        if (!nombre) {
+          throw new Error('El nombre del ingrediente es requerido');
+        }
+
+        const data = {
+          nombre,
+          unidad_medida: unidadMedida,
+          categoria,
+          stock
+        };
+
+        if (editandoIngredienteId) {
+          // PUT
+          const resp = await fetch(`/api/produccion/ingredientes/${editandoIngredienteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          if (!resp.ok) {
+            const error = await resp.json();
+            throw new Error(error.error || 'Error al actualizar ingrediente');
+          }
+        } else {
+          // POST
+          const resp = await fetch(`/api/produccion/ingredientes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          if (!resp.ok) {
+            const error = await resp.json();
+            throw new Error(error.error || 'Error al crear ingrediente');
+          }
+        }
+
+        await cargarIngredientes();
+        limpiarFormulario();
+      } catch (error) {
+        mostrarError(error.message);
+      }
+    }
+
+    function limpiarFormulario() {
+      editandoIngredienteId = null;
+      document.getElementById('form-ingrediente').reset();
+    }
+
+    // Listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      cargarIngredientes();
+
+      const formIngrediente = document.getElementById('form-ingrediente');
+      formIngrediente.addEventListener('submit', guardarIngrediente);
+
+      const btnLimpiar = document.getElementById('btn-limpiar-ingrediente');
+      btnLimpiar.addEventListener('click', limpiarFormulario);
+    });
+  </script>
+</body>
+</html>

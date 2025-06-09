@@ -1,6 +1,38 @@
 const pool = require('../config/database');
 
 /**
+ * Obtiene un nuevo código único para un ingrediente
+ * @returns {Promise<string>} Código único de 8 dígitos
+ */
+async function obtenerNuevoCodigo() {
+    try {
+        // Obtener el último código generado
+        const query = `
+            SELECT codigo 
+            FROM ingredientes 
+            WHERE codigo IS NOT NULL 
+            ORDER BY codigo DESC 
+            LIMIT 1;
+        `;
+        const result = await pool.query(query);
+        
+        // Si no hay códigos, empezar desde 10000000
+        let ultimoCodigo = result.rows.length > 0 ? parseInt(result.rows[0].codigo) : 9999999;
+        let nuevoCodigo = (ultimoCodigo + 1).toString();
+        
+        // Asegurar que tenga 8 dígitos
+        while (nuevoCodigo.length < 8) {
+            nuevoCodigo = '0' + nuevoCodigo;
+        }
+        
+        return nuevoCodigo;
+    } catch (error) {
+        console.error('Error en obtenerNuevoCodigo:', error);
+        throw new Error('No se pudo generar un nuevo código');
+    }
+}
+
+/**
  * Obtiene todos los ingredientes
  * @returns {Promise<Array>} Lista de ingredientes
  */
@@ -10,6 +42,7 @@ async function obtenerIngredientes() {
         const query = `
             SELECT 
                 id,
+                codigo,
                 nombre,
                 descripcion,
                 unidad_medida,
@@ -38,11 +71,13 @@ async function obtenerIngrediente(id) {
         const query = `
             SELECT 
                 id,
+                codigo,
                 nombre,
                 descripcion,
                 unidad_medida,
                 categoria,
-                stock_actual
+                stock_actual,
+                receta_base_kg
             FROM ingredientes
             WHERE id = $1;
         `;
@@ -65,20 +100,25 @@ async function obtenerIngrediente(id) {
  */
 async function crearIngrediente(datos) {
     try {
-        const { nombre, descripcion, unidad_medida, categoria, stock_actual } = datos;
+        const { nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id } = datos;
+        
+        // Obtener nuevo código
+        const codigo = await obtenerNuevoCodigo();
         
         const query = `
             INSERT INTO ingredientes (
+                codigo,
                 nombre,
                 descripcion,
                 unidad_medida,
                 categoria,
-                stock_actual
-            ) VALUES ($1, $2, $3, $4, $5)
+                stock_actual,
+                padre_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *;
         `;
         
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual];
+        const values = [codigo, nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id];
         const result = await pool.query(query, values);
         
         return result.rows[0];
@@ -88,6 +128,7 @@ async function crearIngrediente(datos) {
     }
 }
 
+
 /**
  * Actualiza un ingrediente existente
  * @param {number} id - ID del ingrediente
@@ -96,20 +137,29 @@ async function crearIngrediente(datos) {
  */
 async function actualizarIngrediente(id, datos) {
     try {
-        const { nombre, descripcion, unidad_medida, categoria, stock_actual } = datos;
-        
+        const existing = await obtenerIngrediente(id);
+        const nombre = (datos.nombre === undefined) ? existing.nombre : datos.nombre;
+        const descripcion = (datos.descripcion === undefined) ? existing.descripcion : datos.descripcion;
+        const unidad_medida = (datos.unidad_medida === undefined) ? existing.unidad_medida : datos.unidad_medida;
+        const categoria = (datos.categoria === undefined) ? existing.categoria : datos.categoria;
+        const stock_actual = (datos.stock_actual === undefined) ? existing.stock_actual : datos.stock_actual;
+        const padre_id = (datos.padre_id === undefined) ? existing.padre_id : datos.padre_id;
+        const receta_base_kg = (datos.receta_base_kg === undefined) ? existing.receta_base_kg : datos.receta_base_kg;
+
         const query = `
             UPDATE ingredientes
             SET nombre = $1,
                 descripcion = $2,
                 unidad_medida = $3,
                 categoria = $4,
-                stock_actual = $5
-            WHERE id = $6
+                stock_actual = $5,
+                padre_id = $6,
+                receta_base_kg = $7
+            WHERE id = $8
             RETURNING *;
         `;
         
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, id];
+        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, receta_base_kg, id];
         const result = await pool.query(query, values);
         
         if (result.rows.length === 0) {
@@ -122,6 +172,7 @@ async function actualizarIngrediente(id, datos) {
         throw new Error('No se pudo actualizar el ingrediente');
     }
 }
+
 
 /**
  * Elimina un ingrediente
@@ -147,5 +198,6 @@ module.exports = {
     obtenerIngrediente,
     crearIngrediente,
     actualizarIngrediente,
-    eliminarIngrediente
+    eliminarIngrediente,
+    obtenerNuevoCodigo
 };

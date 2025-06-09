@@ -6,6 +6,10 @@
     <title>Espacio de Trabajo - Producción</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="/css/produccion_personal.css">
+    <link rel="stylesheet" href="/css/modal-receta.css">
+    <link rel="stylesheet" href="/css/carroPreparado.css">
+    <link rel="stylesheet" href="/css/stock-indicators.css">
+    <link rel="stylesheet" href="/css/modal-mix.css">
 </head>
 <body>
     <div class="container">
@@ -24,20 +28,39 @@
             </div>
 
             <div class="workspace-content">
-                <h2>Área de Trabajo</h2>
-                
-                <!-- Sección de artículos del carro activo -->
-                <div id="lista-articulos" class="seccion-articulos">
-                    <p>No hay carro activo</p>
-                </div>
-
-                <!-- Sección de carros disponibles -->
-                <div class="seccion-carros">
-                    <div class="workspace-actions">
-                        <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
-                    </div>
-                    <div id="carro-actual" class="carro-info">
+                <div class="workspace-left">
+                    <h2>Área de Trabajo</h2>
+                    
+                    <!-- Sección de artículos del carro activo -->
+                    <div id="lista-articulos" class="seccion-articulos">
                         <p>No hay carro activo</p>
+                    </div>
+
+                    <!-- Sección de carros disponibles -->
+                    <div class="seccion-carros">
+                        <div class="workspace-actions">
+                            <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
+                            <button id="carro-preparado" class="btn btn-success" style="display: none;" onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">Carro listo para producir</button>
+                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="finalizarProduccion(localStorage.getItem('carroActivo'))">Asentar producción</button>
+                            <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;" onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir etiquetas</button>
+                        </div>
+                        <div id="carro-actual" class="carro-info">
+                            <p>No hay carro activo</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="workspace-right">
+                    <!-- Sección de resumen de ingredientes -->
+                    <div id="resumen-ingredientes" class="seccion-resumen">
+                        <h3>Resumen de Ingredientes Necesarios</h3>
+                        <div id="tabla-resumen-ingredientes"></div>
+                    </div>
+
+                    <!-- Nueva sección de resumen de mixes -->
+                    <div id="resumen-mixes" class="seccion-resumen">
+                        <h3>Total de Ingredientes Compuestos Necesarios</h3>
+                        <div id="tabla-resumen-mixes"></div>
                     </div>
                 </div>
             </div>
@@ -100,6 +123,10 @@
                 <div class="form-group">
                     <label for="articulo_numero">Número de Artículo:</label>
                     <input type="text" id="articulo_numero" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="articulo_descripcion">Descripción del Artículo:</label>
+                    <input type="text" id="articulo_descripcion" readonly>
                 </div>
                 <div class="form-group">
                     <label for="descripcion_receta">Descripción de la Receta:</label>
@@ -180,7 +207,82 @@
             </form>
         </div>
     </div>
+    <!-- Modal para ingreso manual de stock -->
+<div id="modalIngresoManual" class="modal">
+  <div class="modal-content">
+    <h2>Ingreso manual de stock</h2>
+    <p class="nombre-ingrediente"></p>
+
+    <label for="busquedaArticulo">Buscar artículo:</label>
+    <input type="text" id="busquedaArticulo" placeholder="Nombre o código de barras" />
+
+    <ul id="listaArticulos" class="lista-articulos"></ul>
+
+    <label for="inputKilos">Kilos:</label>
+    <input type="number" id="inputKilos" min="0.01" step="0.01" placeholder="Cantidad en kilos" />
+
+    <label for="inputCantidad">Cantidad de artículos:</label>
+    <input type="number" id="inputCantidad" min="1" step="1" value="1" placeholder="Cantidad de unidades" />
+
+    <div class="botones-modal">
+      <button id="btnConfirmarIngreso" class="btn btn-success">Confirmar</button>
+      <button id="btnCancelarIngreso" class="btn btn-secondary">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+    <!-- Modal para editar composición de mix -->
+    <div id="modal-mix" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Editar Composición de Mix</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Filtros de categorías se insertarán aquí dinámicamente -->
+                
+                <div class="agregar-ingrediente-section">
+                    <h3>Agregar Ingrediente</h3>
+                    <div class="form-group">
+                        <label for="selector-ingrediente-mix">Ingrediente:</label>
+                        <select id="selector-ingrediente-mix">
+                            <option value="">Seleccionar ingrediente...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cantidad-ingrediente-mix">Cantidad:</label>
+                        <input type="number" id="cantidad-ingrediente-mix" min="0.01" step="0.01" placeholder="Cantidad">
+                    </div>
+                    <button id="btn-agregar-a-mix" class="btn btn-primary">Agregar</button>
+                </div>
+
+                <div class="composicion-actual-section">
+                    <h3>Composición Actual</h3>
+                    <table id="tabla-mix-ingredientes">
+                        <thead>
+                            <tr>
+                                <th>Ingrediente</th>
+                                <th>Cantidad</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-mix-ingredientes-body">
+                            <!-- Los ingredientes se cargarán dinámicamente aquí -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- El contenedor para receta base se insertará aquí dinámicamente -->
+                
+                <div class="modal-actions">
+                    <button id="btn-guardar-mix" class="btn btn-success">Guardar Receta</button>
+                    <button class="btn btn-secondary close-modal">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="/js/produccion_personal.js"></script>
+    <script type="module" src="/js/carroPreparado.js"></script>
 </body>
 </html>

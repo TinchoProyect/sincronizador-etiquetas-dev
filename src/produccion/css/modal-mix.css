@@ -1,0 +1,123 @@
+/* Estilos para el modal de edición de mix */
+#modal-mix .modal-content {
+    max-width: 800px;
+    padding: 20px;
+}
+
+#modal-mix .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+#modal-mix .modal-header h2 {
+    margin: 0;
+}
+
+#modal-mix .filtros-categorias {
+    margin-bottom: 20px;
+}
+
+#modal-mix .btn-filtro {
+    margin: 0 5px 5px 0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    cursor: pointer;
+}
+
+#modal-mix .btn-filtro.activo {
+    background-color: #5cb85c;
+    color: white;
+    border-color: #4cae4c;
+}
+
+#modal-mix .agregar-ingrediente-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+#modal-mix .form-group {
+    margin-bottom: 15px;
+}
+
+#modal-mix .form-group label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+#modal-mix .form-group select,
+#modal-mix .form-group input {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#modal-mix #tabla-mix-ingredientes {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+#modal-mix #tabla-mix-ingredientes th,
+#modal-mix #tabla-mix-ingredientes td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+#modal-mix #tabla-mix-ingredientes th {
+    background-color: #f8f9fa;
+}
+
+#modal-mix .receta-base-container {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+#modal-mix .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+#modal-mix .btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+#modal-mix .btn-primary {
+    background-color: #0275d8;
+    color: white;
+}
+
+#modal-mix .btn-success {
+    background-color: #5cb85c;
+    color: white;
+}
+
+#modal-mix .btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+#modal-mix .close-modal {
+    font-size: 24px;
+    font-weight: bold;
+    color: #666;
+    cursor: pointer;
+}
+
+#modal-mix .close-modal:hover {
+    color: #000;
+}
