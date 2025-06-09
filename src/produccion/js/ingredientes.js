@@ -2,6 +2,8 @@ import { esMix } from './mix.js';
 
 // Variables globales
 let ingredienteEditando = null;
+let ingredientesOriginales = []; // Para mantener la lista completa
+let filtrosActivos = new Set(); // Para rastrear filtros activos
 
 // Funciones para gestionar el modal
 async function abrirModal(titulo = 'Nuevo Ingrediente') {
@@ -53,6 +55,93 @@ function mostrarMensaje(mensaje, tipo = 'error') {
     }, 3000);
 }
 
+// Función para inicializar los filtros de categorías
+function inicializarFiltros(ingredientes) {
+    const filtrosContainer = document.getElementById('filtros-categorias');
+    if (!filtrosContainer) return;
+
+    // Crear contenedor para botones globales
+    const botonesGlobales = document.createElement('div');
+    botonesGlobales.className = 'botones-globales';
+
+    // Botón "Mostrar Todos"
+    const btnTodos = document.createElement('button');
+    btnTodos.textContent = 'Mostrar Todos';
+    btnTodos.className = 'btn-filtro';
+    botonesGlobales.appendChild(btnTodos);
+
+    // Botón "Ocultar Todos"
+    const btnOcultar = document.createElement('button');
+    btnOcultar.textContent = 'Ocultar Todos';
+    btnOcultar.className = 'btn-filtro';
+    botonesGlobales.appendChild(btnOcultar);
+
+    // Insertar botones globales
+    filtrosContainer.appendChild(botonesGlobales);
+
+    // Contenedor para botones de categoría
+    const categoriasBotones = document.createElement('div');
+    categoriasBotones.className = 'categorias-botones';
+    filtrosContainer.appendChild(categoriasBotones);
+
+    // Obtener categorías únicas y ordenadas
+    const categorias = [...new Set(ingredientes.map(ing => ing.categoria))]
+        .filter(Boolean)
+        .sort();
+
+    // Crear botones de categoría
+    const botonesCategorias = categorias.map(cat => {
+        const btn = document.createElement('button');
+        btn.textContent = cat;
+        btn.className = 'btn-filtro activo';
+        categoriasBotones.appendChild(btn);
+        return btn;
+    });
+
+    // Inicializar filtros activos con todas las categorías
+    filtrosActivos = new Set(categorias);
+
+    // Evento para "Mostrar Todos"
+    btnTodos.onclick = () => {
+        filtrosActivos = new Set(categorias);
+        botonesCategorias.forEach(btn => {
+            btn.classList.add('activo');
+        });
+        actualizarTablaFiltrada();
+    };
+
+    // Evento para "Ocultar Todos"
+    btnOcultar.onclick = () => {
+        filtrosActivos.clear();
+        botonesCategorias.forEach(btn => {
+            btn.classList.remove('activo');
+        });
+        actualizarTablaFiltrada();
+    };
+
+    // Eventos para cada botón de categoría
+    botonesCategorias.forEach(btn => {
+        btn.onclick = () => {
+            if (btn.classList.contains('activo')) {
+                btn.classList.remove('activo');
+                filtrosActivos.delete(btn.textContent);
+            } else {
+                btn.classList.add('activo');
+                filtrosActivos.add(btn.textContent);
+            }
+            actualizarTablaFiltrada();
+        };
+    });
+}
+
+// Función para actualizar la tabla según los filtros activos
+function actualizarTablaFiltrada() {
+    const ingredientesFiltrados = ingredientesOriginales.filter(ing => 
+        filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria)
+    );
+    actualizarTablaIngredientes(ingredientesFiltrados);
+}
+
 // Función para cargar los ingredientes
 async function cargarIngredientes() {
     try {
@@ -66,8 +155,18 @@ async function cargarIngredientes() {
         }
 
         const ingredientes = await response.json();
-console.log('Ingredientes recibidos:', ingredientes);
+        console.log('Ingredientes recibidos:', ingredientes);
+        
+        // Guardar lista completa
+        ingredientesOriginales = ingredientes;
+        
+        // Actualizar lista en mix.js
         window.actualizarListaIngredientes(ingredientes);
+        
+        // Inicializar filtros
+        inicializarFiltros(ingredientes);
+        
+        // Mostrar todos los ingredientes inicialmente
         actualizarTablaIngredientes(ingredientes);
 
     } catch (error) {

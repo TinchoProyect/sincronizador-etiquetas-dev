@@ -6,6 +6,41 @@
     <title>Gestión de Ingredientes - Gestiones Lamda</title>
     <link rel="stylesheet" href="/css/style.css">
     <style>
+        /* Estilos para los filtros por categoría */
+        .filtros-categorias {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .botones-globales {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .categorias-botones {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .btn-filtro {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-filtro.activo {
+            background-color: #5cb85c;
+            color: white;
+            border-color: #4cae4c;
+        }
+
         .page-title {
             margin-bottom: 30px;
             color: var(--text-color);
@@ -205,6 +240,11 @@
                 <div class="actions-bar">
                     <h2 class="page-title">Lista de Ingredientes</h2>
                     <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
+                </div>
+                
+                <!-- Filtros por categoría -->
+                <div id="filtros-categorias" class="filtros-categorias">
+                    <!-- Los filtros se generarán dinámicamente aquí -->
                 </div>
                 
                 <table class="tabla-ingredientes">
