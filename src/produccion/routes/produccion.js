@@ -9,7 +9,8 @@ const {
     obtenerEstadoRecetas, 
     obtenerReceta, 
     actualizarReceta,
-    obtenerIngredientesExpandidos 
+    obtenerIngredientesExpandidos,
+    eliminarReceta
 } = require('../controllers/recetas');
 const {
     crearCarro,
@@ -416,6 +417,16 @@ router.put('/recetas/:numero_articulo', validarReceta, async (req, res) => {
     } catch (error) {
         console.error('Error al actualizar receta:', error);
         res.status(500).json({ error: 'Error al actualizar la receta' });
+    }
+});
+
+// Ruta para eliminar una receta
+router.delete('/recetas/:numero_articulo', async (req, res) => {
+    try {
+        await eliminarReceta(req, res);
+    } catch (error) {
+        console.error('Error al eliminar receta:', error);
+        res.status(500).json({ error: 'Error al eliminar la receta' });
     }
 });
 

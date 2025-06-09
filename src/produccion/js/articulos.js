@@ -157,6 +157,12 @@ export async function actualizarTablaArticulos(articulos) {
                                 data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                             Editar receta
                         </button>
+                        <button class="btn-desvincular-receta"
+                                style="background-color: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                                data-numero="${articulo.numero}"
+                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                            Desvincular receta
+                        </button>
                     ` : `
                         <button class="btn-editar-receta"
                                 style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
@@ -875,6 +881,74 @@ async function guardarNuevoIngrediente() {
     }
 }
 
+// Función para desvincular receta
+async function desvincularReceta(articulo_numero, articulo_nombre) {
+    try {
+        if (!confirm(`¿Está seguro que desea desvincular la receta del artículo ${articulo_nombre}?`)) {
+            return;
+        }
+
+        // Limpiar el número de artículo de caracteres especiales
+        const numeroLimpio = articulo_numero.replace(/[^a-zA-Z0-9]/g, '');
+
+        // 1. Eliminar la receta
+        const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(numeroLimpio)}`, {
+            method: 'DELETE'
+        });
+
+        if (!deleteResponse.ok) {
+            const errorData = await deleteResponse.json();
+            throw new Error(errorData.error || 'Error al desvincular la receta');
+        }
+
+        // 2. Obtener el estado actualizado de todas las recetas
+        const estadoResponse = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                articulos: state.articulosFiltrados.map(art => art.numero.replace(/[^a-zA-Z0-9]/g, ''))
+            })
+        });
+
+        if (!estadoResponse.ok) {
+            throw new Error('Error al actualizar el estado de las recetas');
+        }
+
+        // 3. Actualizar el estado local
+        const estadoRecetas = await estadoResponse.json();
+        
+        // 4. Actualizar la tabla con el nuevo estado
+        await actualizarTablaArticulos(state.articulosFiltrados);
+
+        // Mostrar mensaje de éxito
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-message';
+        successDiv.textContent = 'Receta desvinculada correctamente';
+        successDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(successDiv);
+        
+        setTimeout(() => {
+            successDiv.remove();
+        }, 3000);
+
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+    }
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     const btnGuardarReceta = document.getElementById('btn-guardar-receta');
@@ -953,6 +1027,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const articulo_nombre = e.target.dataset.nombre;
             const modo = e.target.dataset.modo;
             mostrarModalReceta(articulo_numero, articulo_nombre, modo);
+        } else if (e.target.classList.contains('btn-desvincular-receta')) {
+            const articulo_numero = e.target.dataset.numero;
+            const articulo_nombre = e.target.dataset.nombre;
+            await desvincularReceta(articulo_numero, articulo_nombre);
         }
     });
 });

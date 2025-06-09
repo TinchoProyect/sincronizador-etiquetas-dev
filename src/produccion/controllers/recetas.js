@@ -332,10 +332,64 @@ async function obtenerIngredientesExpandidos(req, res) {
     }
 }
 
+/**
+ * Elimina una receta y todos sus ingredientes asociados
+ */
+async function eliminarReceta(req, res) {
+    const client = await pool.connect();
+    
+    try {
+        const { numero_articulo } = req.params;
+
+        if (!numero_articulo) {
+            return res.status(400).json({ error: 'El número de artículo es requerido' });
+        }
+
+        // Iniciar transacción
+        await client.query('BEGIN');
+
+        // Verificar si la receta existe
+        const recetaQuery = `
+            SELECT id FROM recetas 
+            WHERE articulo_numero = $1
+        `;
+        const recetaResult = await client.query(recetaQuery, [numero_articulo]);
+        
+        if (recetaResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Receta no encontrada' });
+        }
+
+        const recetaId = recetaResult.rows[0].id;
+
+        // Eliminar ingredientes de la receta
+        await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+
+        // Eliminar la receta
+        await client.query('DELETE FROM recetas WHERE id = $1', [recetaId]);
+
+        // Confirmar transacción
+        await client.query('COMMIT');
+
+        res.json({
+            message: 'Receta eliminada exitosamente'
+        });
+
+    } catch (error) {
+        // Revertir transacción en caso de error
+        await client.query('ROLLBACK');
+        console.error('Error al eliminar receta:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     crearReceta,
     obtenerEstadoRecetas,
     obtenerReceta,
     actualizarReceta,
-    obtenerIngredientesExpandidos
+    obtenerIngredientesExpandidos,
+    eliminarReceta
 };
