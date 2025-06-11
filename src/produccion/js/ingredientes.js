@@ -5,6 +5,8 @@ let ingredienteEditando = null;
 let ingredientesOriginales = []; // Para mantener la lista completa
 let filtrosActivos = new Set(); // Para rastrear filtros activos
 
+
+
 // Funciones para gestionar el modal
 async function abrirModal(titulo = 'Nuevo Ingrediente') {
     const modal = document.getElementById('modal-ingrediente');
@@ -59,6 +61,11 @@ function mostrarMensaje(mensaje, tipo = 'error') {
 function inicializarFiltros(ingredientes) {
     const filtrosContainer = document.getElementById('filtros-categorias');
     if (!filtrosContainer) return;
+
+    
+
+     // ✅ Evitar duplicados: limpiar el contenedor antes de agregar elementos
+    filtrosContainer.innerHTML = '';
 
     // Crear contenedor para botones globales
     const botonesGlobales = document.createElement('div');
@@ -258,6 +265,10 @@ async function crearIngrediente(datos) {
 
         if (!response.ok) {
             const errorData = await response.json();
+            if (errorData.error === 'El ingrediente ya existe') {
+                mostrarMensaje('El ingrediente ya existe', 'error');
+                return;
+            }
             throw new Error(errorData.error || 'Error al crear el ingrediente');
         }
 
