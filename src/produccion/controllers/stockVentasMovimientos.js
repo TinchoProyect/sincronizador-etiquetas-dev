@@ -20,7 +20,8 @@ async function registrarMovimientoStockVentas(req, res) {
       kilos,
       carro_id,
       usuario_id, // puede venir null si no hay usuario activo
-      cantidad = 1 // valor por defecto si no viene especificado
+      cantidad = 1, // valor por defecto si no viene especificado
+      tipo // campo para identificar el origen del movimiento
     } = req.body;
 
     console.log('🔍 Validando datos obligatorios...');
@@ -41,13 +42,14 @@ async function registrarMovimientoStockVentas(req, res) {
       kilos,
       carro_id,
       usuario_id,
-      cantidad
+      cantidad,
+      tipo
     });
 
     const query = `
       INSERT INTO stock_ventas_movimientos 
-        (articulo_numero, codigo_barras, kilos, carro_id, usuario_id, fecha, cantidad)
-      VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+        (articulo_numero, codigo_barras, kilos, carro_id, usuario_id, fecha, cantidad, tipo)
+      VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
     `;
 
     console.log('🔄 Ejecutando query SQL...');
@@ -57,7 +59,8 @@ async function registrarMovimientoStockVentas(req, res) {
       kilos, 
       carro_id, 
       usuario_id,
-      cantidad
+      cantidad,
+      tipo || null // Si viene tipo lo usa, sino null
     ]);
     
     console.log('✅ Query ejecutada exitosamente:', result.rowCount, 'filas afectadas');
