@@ -32,6 +32,10 @@ const {
     obtenerNuevoCodigo
 } = require('../controllers/ingredientes');
 
+const {
+    obtenerArticulosConStock
+} = require('../controllers/articulos');
+
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
 const carroIngredientesRouter = require('./carroIngredientes'); // ← Incorporación del router de ingredientes de carro
 
@@ -292,15 +296,26 @@ router.delete('/ingredientes/:id', async (req, res) => {
     }
 });
 
-// Rutas para artículos
+// Rutas para artículos (gestión de artículos)
 router.get('/articulos', async (req, res) => {
     try {
         console.log('Recibida solicitud GET /articulos');
+        await obtenerArticulosConStock(req, res);
+    } catch (error) {
+        console.error('Error en ruta GET /articulos:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Rutas para artículos del carro (funcionalidad existente)
+router.get('/articulos-carro', async (req, res) => {
+    try {
+        console.log('Recibida solicitud GET /articulos-carro');
         const articulos = await obtenerArticulos();
         console.log(`Enviando respuesta con ${articulos.length} artículos`);
         res.json(articulos);
     } catch (error) {
-        console.error('Error en ruta GET /articulos:', error);
+        console.error('Error en ruta GET /articulos-carro:', error);
         res.status(500).json({ error: error.message });
     }
 });
