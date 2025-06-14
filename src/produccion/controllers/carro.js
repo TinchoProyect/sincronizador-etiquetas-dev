@@ -82,10 +82,11 @@ async function obtenerArticulos() {
             SELECT 
                 a.numero,
                 a.nombre,
-                a.codigo_barras
+                a.codigo_barras,
+                a.stock_ventas
             FROM public.articulos a
             ORDER BY a.nombre ASC
-        `     ;
+        `;
         
         console.log('Ejecutando query:', query);
         const result = await pool.query(query);

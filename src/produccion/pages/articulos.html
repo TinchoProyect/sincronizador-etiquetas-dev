@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Artículos - Gestiones Lamda</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        .tabla-articulos {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background-color: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .tabla-articulos th,
+        .tabla-articulos td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tabla-articulos th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+        }
+
+        .tabla-articulos tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .tabla-articulos td {
+            color: var(--text-color);
+        }
+
+        .mensaje-info {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+
+        .mensaje-error {
+            text-align: center;
+            color: #dc3545;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Gestión de Artículos</h1>
+            <a href="produccion.html" class="back-button">← Volver a Producción</a>
+        </header>
+
+        <main>
+            <div class="content-section">
+                <table class="tabla-articulos">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th>Código de Barras</th>
+                            <th>Stock Ventas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-articulos-body">
+                        <!-- Los artículos se cargarán dinámicamente aquí -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Gestiones Lamda</p>
+        </footer>
+    </div>
+
+    <script src="/js/gestionArticulos.js"></script>
+</body>
+</html>
