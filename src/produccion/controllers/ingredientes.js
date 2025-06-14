@@ -101,6 +101,13 @@ async function obtenerIngrediente(id) {
 async function crearIngrediente(datos) {
     try {
         const { nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id } = datos;
+
+        // Verificar si ya existe un ingrediente con el mismo nombre (sin distinguir mayúsculas/minúsculas)
+        const checkQuery = 'SELECT id FROM ingredientes WHERE LOWER(TRIM(nombre)) = LOWER(TRIM($1))';
+        const checkResult = await pool.query(checkQuery, [nombre]);
+        if (checkResult.rows.length > 0) {
+            throw new Error('El ingrediente ya existe');
+        }
         
         // Obtener nuevo código
         const codigo = await obtenerNuevoCodigo();
@@ -124,7 +131,7 @@ async function crearIngrediente(datos) {
         return result.rows[0];
     } catch (error) {
         console.error('Error en crearIngrediente:', error);
-        throw new Error('No se pudo crear el ingrediente');
+        throw new Error(error.message || 'No se pudo crear el ingrediente');
     }
 }
 
