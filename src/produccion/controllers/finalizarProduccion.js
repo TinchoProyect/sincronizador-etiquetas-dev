@@ -75,8 +75,9 @@ async function finalizarProduccion(req, res) {
                     cantidad,
                     carro_id, 
                     usuario_id, 
-                    fecha
-                ) VALUES ($1, $2, 0, $3, $4, $5, NOW())
+                    fecha,
+                    tipo
+                ) VALUES ($1, $2, 0, $3, $4, $5, NOW(), 'salida a ventas')
             `, [
                 articulo.articulo_numero,
                 articulo.codigo_barras || '',
