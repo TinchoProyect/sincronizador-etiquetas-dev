@@ -187,7 +187,7 @@ async function finalizarInventario() {
                 usuario_id: usuarioSeleccionado,
                 tipo: 'registro de ajuste',
                 kilos: ajuste,
-                cantidad: 1
+                cantidad: ajuste // Usar cantidad para el ajuste real en unidades
             });
         }
     });

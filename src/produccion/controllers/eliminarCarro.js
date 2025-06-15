@@ -79,7 +79,27 @@ async function eliminarRegistrosRelacionados(carroId) {
         await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.ingredientes} movimientos de ingredientes`);
         
-        // 2. Eliminar movimientos de stock de ventas
+        // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos
+        const movimientosQuery = `
+            SELECT articulo_numero, cantidad, tipo
+            FROM stock_ventas_movimientos 
+            WHERE carro_id = $1 AND tipo = 'ingreso a producción'
+        `;
+        const movimientosResult = await pool.query(movimientosQuery, [carroId]);
+        
+        // Actualizar stock_real_consolidado para cada movimiento de ingreso a producción
+        for (const mov of movimientosResult.rows) {
+            await pool.query(`
+                UPDATE stock_real_consolidado 
+                SET 
+                    stock_consolidado = COALESCE(stock_consolidado, 0) + $1,
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `, [mov.cantidad, mov.articulo_numero]);
+            console.log(`Stock actualizado para artículo ${mov.articulo_numero}: +${mov.cantidad}`);
+        }
+
+        // Eliminar los movimientos
         await pool.query('DELETE FROM stock_ventas_movimientos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.stockVentas} movimientos de stock de ventas`);
         

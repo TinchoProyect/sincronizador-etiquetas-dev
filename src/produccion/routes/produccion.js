@@ -685,16 +685,16 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
                     ajuste.cantidad
                 ]);
 
-                // Actualizar stock_real_consolidado
+                // Actualizar stock_real_consolidado usando el campo cantidad para los ajustes
                 const updateQuery = `
                     UPDATE public.stock_real_consolidado 
                     SET 
                         stock_ajustes = COALESCE(stock_ajustes, 0) + $1,
-                        stock_consolidado = COALESCE(stock_lomasoft, 0) + COALESCE(stock_movimientos, 0) + COALESCE(stock_ajustes, 0) + $1,
+                        stock_consolidado = COALESCE(stock_consolidado, 0) + $1,
                         ultima_actualizacion = NOW()
                     WHERE articulo_numero = $2
                 `;
-                await req.db.query(updateQuery, [ajuste.kilos, ajuste.articulo_numero]);
+                await req.db.query(updateQuery, [ajuste.cantidad, ajuste.articulo_numero]);
             }
 
             await req.db.query('COMMIT');

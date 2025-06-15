@@ -14,6 +14,9 @@ async function registrarMovimientoStockVentas(req, res) {
   console.log('✅ Conexión a base de datos disponible');
 
   try {
+    // Iniciar transacción
+    await db.query('BEGIN');
+
     const {
       articulo_numero,
       codigo_barras,
@@ -64,9 +67,35 @@ async function registrarMovimientoStockVentas(req, res) {
     ]);
     
     console.log('✅ Query ejecutada exitosamente:', result.rowCount, 'filas afectadas');
+
+    // Si el tipo es "ingreso a producción", actualizar stock_real_consolidado
+    if (tipo === 'ingreso a producción') {
+      console.log('🔄 Actualizando stock_real_consolidado para ingreso a producción...');
+      
+      const updateQuery = `
+        UPDATE stock_real_consolidado 
+        SET 
+          stock_consolidado = COALESCE(stock_consolidado, 0) - $1,
+          ultima_actualizacion = NOW()
+        WHERE articulo_numero = $2
+      `;
+
+      await db.query(updateQuery, [
+        cantidad, // Usamos cantidad en lugar de kilos para actualizar el stock
+        articulo_numero
+      ]);
+      
+      console.log('✅ stock_real_consolidado actualizado correctamente');
+    }
+
+    // Confirmar transacción
+    await db.query('COMMIT');
+    
     return res.status(200).json({ mensaje: 'Movimiento de stock de ventas registrado' });
     
   } catch (error) {
+    // Rollback en caso de error
+    await db.query('ROLLBACK');
     console.error('❌ Error detallado al registrar movimiento en stock_ventas_movimientos:');
     console.error('   - Mensaje:', error.message);
     console.error('   - Código:', error.code);
