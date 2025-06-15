@@ -665,11 +665,22 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
             return res.status(400).json({ error: 'Se requiere una lista de ajustes' });
         }
 
+        console.log(`📥 Procesando inventario batch con ${ajustes.length} ajustes`);
+
         // Iniciar transacción
         await req.db.query('BEGIN');
 
         try {
-            for (const ajuste of ajustes) {
+            for (let i = 0; i < ajustes.length; i++) {
+                const ajuste = ajustes[i];
+                
+                console.log(`🔄 Procesando ajuste ${i + 1}/${ajustes.length}:`, ajuste);
+
+                // Validar datos requeridos para cada ajuste
+                if (!ajuste.articulo_numero || !ajuste.usuario_id || ajuste.cantidad === undefined) {
+                    throw new Error(`Ajuste ${i + 1}: Faltan datos requeridos (articulo_numero, usuario_id, cantidad)`);
+                }
+
                 // Insertar movimiento en stock_ventas_movimientos
                 const insertQuery = `
                     INSERT INTO public.stock_ventas_movimientos 
@@ -678,34 +689,45 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
                 `;
                 await req.db.query(insertQuery, [
                     ajuste.articulo_numero,
-                    ajuste.codigo_barras,
+                    ajuste.codigo_barras || null,
                     ajuste.usuario_id,
-                    ajuste.tipo,
-                    ajuste.kilos,
+                    ajuste.tipo || 'registro de ajuste',
+                    ajuste.kilos || ajuste.cantidad,
                     ajuste.cantidad
                 ]);
 
-                // Actualizar stock_real_consolidado usando el campo cantidad para los ajustes
-                const updateQuery = `
-                    UPDATE public.stock_real_consolidado 
-                    SET 
-                        stock_ajustes = COALESCE(stock_ajustes, 0) + $1,
-                        stock_consolidado = COALESCE(stock_consolidado, 0) + $1,
+                console.log(`✅ Movimiento insertado para artículo ${ajuste.articulo_numero}`);
+
+                // Usar UPSERT para stock_real_consolidado (INSERT con ON CONFLICT)
+                const upsertQuery = `
+                    INSERT INTO public.stock_real_consolidado 
+                    (articulo_numero, stock_ajustes, stock_consolidado, ultima_actualizacion)
+                    VALUES ($1, $2, $2, NOW())
+                    ON CONFLICT (articulo_numero) 
+                    DO UPDATE SET 
+                        stock_ajustes = COALESCE(stock_real_consolidado.stock_ajustes, 0) + $2,
+                        stock_consolidado = COALESCE(stock_real_consolidado.stock_consolidado, 0) + $2,
                         ultima_actualizacion = NOW()
-                    WHERE articulo_numero = $2
                 `;
-                await req.db.query(updateQuery, [ajuste.cantidad, ajuste.articulo_numero]);
+                await req.db.query(upsertQuery, [ajuste.articulo_numero, ajuste.cantidad]);
+
+                console.log(`✅ Stock consolidado actualizado para artículo ${ajuste.articulo_numero}`);
             }
 
             await req.db.query('COMMIT');
+            console.log('✅ Inventario batch completado exitosamente');
             res.json({ message: 'Inventario registrado correctamente' });
         } catch (error) {
             await req.db.query('ROLLBACK');
+            console.error('❌ Error en transacción, rollback ejecutado:', error.message);
             throw error;
         }
     } catch (error) {
-        console.error('Error en ruta POST /stock-ventas-movimientos/batch:', error);
-        res.status(500).json({ error: error.message });
+        console.error('❌ Error en ruta POST /stock-ventas-movimientos/batch:', error);
+        res.status(500).json({ 
+            error: 'Error al registrar el inventario',
+            detalle: error.message 
+        });
     }
 });
 

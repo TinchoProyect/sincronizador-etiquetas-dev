@@ -90,7 +90,7 @@
             padding: 20px;
             border-radius: 8px;
             width: 90%;
-            max-width: 600px;
+            max-width: 900px;
             max-height: 80vh;
             overflow-y: auto;
         }
@@ -144,27 +144,46 @@
             background-color: #f8f9fa;
             border: 1px solid #dee2e6;
             border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 10px;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
         }
 
         .inventario-item h4 {
-            margin: 0 0 10px 0;
+            margin: 0;
             color: var(--primary-color);
+            width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .inventario-item .info-row {
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
+            gap: 20px;
+            flex: 1;
         }
 
         .inventario-item .stock-input {
-            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
         }
 
         .inventario-item .stock-input input {
             width: 100px;
+        }
+
+        #acciones-inventario {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
         }
 
         .secondary-button {
@@ -282,13 +301,13 @@
                     <input type="text" id="input-codigo-barras" placeholder="Escanear o escribir código de barras">
                 </div>
                 
-                <div id="articulos-inventario">
-                    <!-- Los artículos del inventario se mostrarán aquí -->
-                </div>
-
-                <div class="modal-footer">
+                <div id="acciones-inventario">
                     <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
                     <button id="btn-cancelar-inventario" class="secondary-button">Cancelar</button>
+                </div>
+                
+                <div id="articulos-inventario">
+                    <!-- Los artículos del inventario se mostrarán aquí -->
                 </div>
             </div>
         </div>

@@ -150,8 +150,6 @@ function agregarArticuloAInventario(articulo) {
         <div class="info-row">
             <span>Código: ${articulo.numero}</span>
             <span>Código de Barras: ${articulo.codigo_barras || '-'}</span>
-        </div>
-        <div class="info-row">
             <span>Stock Actual: ${articulo.stock_consolidado || 0}</span>
         </div>
         <div class="stock-input">
@@ -161,7 +159,9 @@ function agregarArticuloAInventario(articulo) {
         </div>
     `;
 
-    document.getElementById('articulos-inventario').appendChild(div);
+    // Insertar al principio del contenedor para que aparezca arriba
+    const contenedor = document.getElementById('articulos-inventario');
+    contenedor.insertBefore(div, contenedor.firstChild);
     articulosInventario.set(articulo.numero, articulo);
 }
 
@@ -228,9 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Cerrar modal
     document.getElementById('close-modal').addEventListener('click', cerrarModal);
-    window.addEventListener('click', (e) => {
-        if (e.target.className === 'modal') cerrarModal();
-    });
 
     // Select de usuario
     document.getElementById('select-usuario').addEventListener('change', (e) => {
