@@ -15,40 +15,40 @@ async function sincronizarArticulos() {
   try {
     console.log('=== Sincronizador de Etiquetas ===');
     console.log('Iniciando sincronización de artículos...');
-    console.log('Conectando a la API...');
 
     const respuesta = await fetch('https://api.lamdaser.com/etiquetas/articulos');
     if (!respuesta.ok) throw new Error(`Error HTTP ${respuesta.status}`);
 
-    console.log('Descargando datos de artículos...');
     const articulos = await respuesta.json();
     if (!Array.isArray(articulos) || articulos.length === 0) {
       throw new Error('No se recibieron artículos válidos desde la API.');
     }
 
-    console.log(`Se encontraron ${articulos.length} artículos para sincronizar.`);
     client = await pool.connect();
     await client.query('BEGIN');
 
-    console.log('Limpiando tabla de artículos...');
     await client.query('DELETE FROM articulos');
 
-    console.log('Insertando nuevos artículos y evaluando snapshots...');
     let insertados = 0;
 
     for (const art of articulos) {
       const numero = art.numero;
       const nombre = art.nombre;
       const codigo_barras = art.codigo_barras;
-      const stock = parseFloat((art.stock_total ?? 0).toFixed(2)); // Asegura precisión razonable
+      const rawStock = art.stock_total;
+      let stock = 0;
 
-      // Insertar en tabla principal
+      if (typeof rawStock === 'number') {
+        stock = parseFloat(rawStock.toFixed(2));
+      } else if (typeof rawStock === 'string' && rawStock.trim().match(/^[-+]?\d+(\.\d+)?$/)) {
+        stock = parseFloat(parseFloat(rawStock.trim()).toFixed(2));
+      }
+
       await client.query(
         'INSERT INTO articulos (numero, nombre, codigo_barras, stock_ventas) VALUES ($1, $2, $3, $4)',
         [numero, nombre, codigo_barras, stock]
       );
 
-      // Buscar último snapshot
       const { rows } = await client.query(
         `SELECT stock_lomasoft
          FROM stock_lomasoft_snapshot
@@ -60,7 +60,6 @@ async function sincronizarArticulos() {
 
       const stockUltimo = rows[0]?.stock_lomasoft;
 
-      // Solo insertar si no existe o cambió significativamente el stock
       if (stockUltimo === undefined || Math.abs(stockUltimo - stock) >= 0.01) {
         await client.query(
           `INSERT INTO stock_lomasoft_snapshot 
@@ -68,29 +67,46 @@ async function sincronizarArticulos() {
            VALUES ($1, $2, $3, CURRENT_DATE, NOW(), $4)`,
           [numero, nombre, codigo_barras, stock]
         );
+
+        const { rows: datosConsolidado } = await client.query(
+          `SELECT stock_movimientos, stock_ajustes 
+           FROM stock_real_consolidado 
+           WHERE articulo_numero = $1`,
+          [numero]
+        );
+
+        let stock_movimientos = datosConsolidado[0]?.stock_movimientos ?? 0;
+        let stock_ajustes = datosConsolidado[0]?.stock_ajustes ?? 0;
+
+        stock_movimientos = parseFloat(stock_movimientos) || 0;
+        stock_ajustes = parseFloat(stock_ajustes) || 0;
+
+        const stock_consolidado = stock + stock_movimientos + stock_ajustes;
+
+        await client.query(
+          `UPDATE stock_real_consolidado
+           SET stock_lomasoft = $1,
+               stock_consolidado = $2,
+               ultima_actualizacion = NOW()
+           WHERE articulo_numero = $3`,
+          [stock, stock_consolidado, numero]
+        );
       }
 
       insertados++;
-      if (insertados % 100 === 0) {
-        console.log(`Progreso: ${insertados}/${articulos.length} artículos insertados`);
-      }
     }
 
     await client.query('COMMIT');
-    console.log(`¡Sincronización completada con éxito!`);
-    console.log(`Se actualizaron ${insertados} artículos en la base de datos local.`);
+    console.log(`✅ Sincronización completada. ${insertados} artículos actualizados.`);
 
   } catch (error) {
-    console.error('❌ Error durante la sincronización:');
-    console.error('Motivo:', error.message);
+    console.error('❌ Error durante la sincronización:', error.message);
     if (client) {
-      console.log('Revirtiendo cambios...');
       await client.query('ROLLBACK');
     }
     process.exit(1);
   } finally {
     if (client) {
-      console.log('Cerrando conexión con la base de datos...');
       client.release();
     }
   }
@@ -98,6 +114,7 @@ async function sincronizarArticulos() {
 
 sincronizarArticulos()
   .catch(error => {
-    console.error('Error fatal:', error);
+    console.error('💥 Error fatal:', error);
     process.exit(1);
   });
+
