@@ -66,7 +66,7 @@ async function finalizarProduccion(req, res) {
             console.log(`- Cantidad: ${articulo.cantidad}`);
             console.log(`- Código de barras: ${articulo.codigo_barras}`);
             
-            // Registrar movimiento en stock de ventas usando la función directamente
+            // Insertar movimiento en stock_ventas_movimientos
             await db.query(`
                 INSERT INTO stock_ventas_movimientos (
                     articulo_numero, 
@@ -86,7 +86,25 @@ async function finalizarProduccion(req, res) {
                 usuarioId
             ]);
             
-            console.log('✅ Movimiento de stock registrado correctamente');
+            // Actualizar stock_real_consolidado para salida a ventas
+            await db.query(`
+                INSERT INTO stock_real_consolidado (
+                    articulo_numero, 
+                    stock_consolidado, 
+                    stock_ajustes, 
+                    ultima_actualizacion
+                )
+                VALUES ($1, $2, 0, NOW())
+                ON CONFLICT (articulo_numero) 
+                DO UPDATE SET 
+                    stock_consolidado = COALESCE(stock_real_consolidado.stock_consolidado, 0) + $2,
+                    ultima_actualizacion = NOW()
+            `, [
+                articulo.articulo_numero,
+                articulo.cantidad // Sumar la cantidad al stock consolidado
+            ]);
+            
+            console.log('✅ Movimiento de stock registrado y stock_consolidado actualizado correctamente');
         }
 
         // 5. Actualizar fecha_confirmacion del carro

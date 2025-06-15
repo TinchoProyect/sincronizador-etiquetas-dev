@@ -68,7 +68,7 @@ async function registrarMovimientoStockVentas(req, res) {
     
     console.log('✅ Query ejecutada exitosamente:', result.rowCount, 'filas afectadas');
 
-    // Si el tipo es "ingreso a producción", actualizar stock_real_consolidado
+    // Actualizar stock_real_consolidado según el tipo de movimiento
     if (tipo === 'ingreso a producción') {
       console.log('🔄 Actualizando stock_real_consolidado para ingreso a producción...');
       
@@ -85,7 +85,31 @@ async function registrarMovimientoStockVentas(req, res) {
         articulo_numero
       ]);
       
-      console.log('✅ stock_real_consolidado actualizado correctamente');
+      console.log('✅ stock_real_consolidado actualizado correctamente para ingreso a producción');
+    } else if (tipo === 'salida a ventas') {
+      console.log('🔄 Actualizando stock_real_consolidado para salida a ventas...');
+      
+      // Para salida a ventas, SUMAR la cantidad al stock consolidado
+      const updateQuery = `
+        INSERT INTO stock_real_consolidado (
+          articulo_numero, 
+          stock_consolidado, 
+          stock_ajustes, 
+          ultima_actualizacion
+        )
+        VALUES ($1, $2, 0, NOW())
+        ON CONFLICT (articulo_numero) 
+        DO UPDATE SET 
+          stock_consolidado = COALESCE(stock_real_consolidado.stock_consolidado, 0) + $2,
+          ultima_actualizacion = NOW()
+      `;
+
+      await db.query(updateQuery, [
+        articulo_numero,
+        cantidad // Sumar la cantidad al stock consolidado
+      ]);
+      
+      console.log('✅ stock_real_consolidado actualizado correctamente para salida a ventas');
     }
 
     // Confirmar transacción
