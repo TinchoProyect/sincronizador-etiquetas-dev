@@ -15,7 +15,6 @@ const {
 const {
     crearCarro,
     agregarArticulo,
-    obtenerArticulos,
     obtenerArticulosDeCarro,
     obtenerCarrosDeUsuario,
     eliminarCarro,
@@ -23,6 +22,7 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
+const { obtenerArticulos } = require('../controllers/articulos');
 const {
     obtenerIngredientes,
     obtenerIngrediente,
