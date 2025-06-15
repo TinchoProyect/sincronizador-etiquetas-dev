@@ -1,0 +1,91 @@
+/* Estilos específicos para el modal de artículos */
+.modal-articulos .modal-content {
+    max-width: 1000px; /* Aumentamos el ancho máximo */
+    width: 90%;
+    margin: 5% auto;
+}
+
+/* Estilos para la tabla de artículos */
+.tabla-articulos {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.tabla-articulos th,
+.tabla-articulos td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.tabla-articulos th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+}
+
+/* Ajustar anchos de columnas */
+.tabla-articulos th:nth-child(1), /* Código */
+.tabla-articulos td:nth-child(1) {
+    width: 15%;
+}
+
+.tabla-articulos th:nth-child(2), /* Descripción */
+.tabla-articulos td:nth-child(2) {
+    width: 30%;
+}
+
+.tabla-articulos th:nth-child(3), /* Código de Barras */
+.tabla-articulos td:nth-child(3) {
+    width: 15%;
+}
+
+.tabla-articulos th:nth-child(4), /* Stock */
+.tabla-articulos td:nth-child(4) {
+    width: 10%;
+    text-align: center;
+}
+
+.tabla-articulos th:nth-child(5), /* Acciones */
+.tabla-articulos td:nth-child(5) {
+    width: 30%;
+}
+
+/* Estilos para los filtros */
+.filtros-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.filtro-grupo {
+    display: flex;
+    flex-direction: column;
+}
+
+.filtro-grupo label {
+    margin-bottom: 5px;
+    color: #495057;
+}
+
+.filtro-grupo input {
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .modal-articulos .modal-content {
+        width: 95%;
+        margin: 20px auto;
+    }
+
+    .tabla-articulos {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+}
