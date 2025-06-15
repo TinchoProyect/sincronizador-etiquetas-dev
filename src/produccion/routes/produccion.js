@@ -666,6 +666,7 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
         }
 
         console.log(`📥 Procesando inventario batch con ${ajustes.length} ajustes`);
+        console.log('📋 Datos completos recibidos:', JSON.stringify(req.body, null, 2));
 
         // Iniciar transacción
         await req.db.query('BEGIN');
@@ -674,12 +675,35 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
             for (let i = 0; i < ajustes.length; i++) {
                 const ajuste = ajustes[i];
                 
-                console.log(`🔄 Procesando ajuste ${i + 1}/${ajustes.length}:`, ajuste);
+                console.log(`🔄 Procesando ajuste ${i + 1}/${ajustes.length}:`, JSON.stringify(ajuste, null, 2));
 
-                // Validar datos requeridos para cada ajuste
-                if (!ajuste.articulo_numero || !ajuste.usuario_id || ajuste.cantidad === undefined) {
-                    throw new Error(`Ajuste ${i + 1}: Faltan datos requeridos (articulo_numero, usuario_id, cantidad)`);
+                // Validar y convertir datos requeridos para cada ajuste
+                if (!ajuste.articulo_numero || !ajuste.usuario_id || ajuste.cantidad === undefined || ajuste.cantidad === null) {
+                    const error = `Ajuste ${i + 1}: Faltan datos requeridos - articulo_numero: ${ajuste.articulo_numero}, usuario_id: ${ajuste.usuario_id}, cantidad: ${ajuste.cantidad}`;
+                    console.error('❌ Validación fallida:', error);
+                    throw new Error(error);
                 }
+
+                // Validar y convertir datos
+                const usuarioId = parseInt(ajuste.usuario_id);
+                if (isNaN(usuarioId)) {
+                    const error = `Ajuste ${i + 1}: ID de usuario inválido - usuario_id: ${ajuste.usuario_id}`;
+                    console.error('❌ Validación fallida:', error);
+                    throw new Error(error);
+                }
+
+                // Mantener cantidad como decimal
+                const cantidad = ajuste.cantidad;
+                if (cantidad === undefined || cantidad === null) {
+                    const error = `Ajuste ${i + 1}: Cantidad no especificada`;
+                    console.error('❌ Validación fallida:', error);
+                    throw new Error(error);
+                }
+
+                // Usar cantidad para kilos si no está definido
+                const kilos = ajuste.kilos ?? cantidad;
+
+                console.log(`📊 Datos procesados - Usuario: ${usuarioId}, Cantidad: ${cantidad}, Kilos: ${kilos}`);
 
                 // Insertar movimiento en stock_ventas_movimientos
                 const insertQuery = `
@@ -687,15 +711,18 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
                     (articulo_numero, codigo_barras, fecha, usuario_id, carro_id, tipo, kilos, cantidad)
                     VALUES ($1, $2, NOW(), $3, NULL, $4, $5, $6)
                 `;
-                await req.db.query(insertQuery, [
+                
+                const insertParams = [
                     ajuste.articulo_numero,
                     ajuste.codigo_barras || null,
-                    ajuste.usuario_id,
+                    usuarioId,
                     ajuste.tipo || 'registro de ajuste',
-                    ajuste.kilos || ajuste.cantidad,
-                    ajuste.cantidad
-                ]);
+                    kilos,
+                    cantidad
+                ];
 
+                console.log(`🔄 Ejecutando INSERT con parámetros:`, insertParams);
+                await req.db.query(insertQuery, insertParams);
                 console.log(`✅ Movimiento insertado para artículo ${ajuste.articulo_numero}`);
 
                 // Usar UPSERT para stock_real_consolidado (INSERT con ON CONFLICT)
@@ -709,8 +736,10 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
                         stock_consolidado = COALESCE(stock_real_consolidado.stock_consolidado, 0) + $2,
                         ultima_actualizacion = NOW()
                 `;
-                await req.db.query(upsertQuery, [ajuste.articulo_numero, ajuste.cantidad]);
-
+                
+                const upsertParams = [ajuste.articulo_numero, cantidad];
+                console.log(`🔄 Ejecutando UPSERT con parámetros:`, upsertParams);
+                await req.db.query(upsertQuery, upsertParams);
                 console.log(`✅ Stock consolidado actualizado para artículo ${ajuste.articulo_numero}`);
             }
 
@@ -719,11 +748,13 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
             res.json({ message: 'Inventario registrado correctamente' });
         } catch (error) {
             await req.db.query('ROLLBACK');
-            console.error('❌ Error en transacción, rollback ejecutado:', error.message);
+            console.error('❌ Error en transacción, rollback ejecutado:', error);
+            console.error('❌ Stack trace:', error.stack);
             throw error;
         }
     } catch (error) {
         console.error('❌ Error en ruta POST /stock-ventas-movimientos/batch:', error);
+        console.error('❌ Error completo:', error.stack);
         res.status(500).json({ 
             error: 'Error al registrar el inventario',
             detalle: error.message 
