@@ -292,6 +292,32 @@ router.delete('/ingredientes/:id', async (req, res) => {
     }
 });
 
+// Ruta para obtener usuarios colaboradores activos
+router.get('/usuarios', async (req, res) => {
+    try {
+        const { rol, activo } = req.query;
+        const rolId = parseInt(rol);
+        const esActivo = activo === 'true';
+
+        if (isNaN(rolId)) {
+            return res.status(400).json({ error: 'Se requiere un ID de rol válido' });
+        }
+
+        const query = `
+            SELECT id, nombre_completo
+            FROM public.usuarios
+            WHERE rol_id = $1 AND activo = $2
+            ORDER BY nombre_completo ASC
+        `;
+        
+        const result = await req.db.query(query, [rolId, esActivo]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error en ruta GET /usuarios:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Rutas para artículos
 router.get('/articulos', async (req, res) => {
     try {
@@ -598,6 +624,90 @@ router.put('/carro/:carroId/articulo/:articuloId', async (req, res) => {
 // ✅ Ruta para registrar movimiento de stock de ventas
 const { registrarMovimientoStockVentas } = require('../controllers/stockVentasMovimientos');
 router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
+
+// Ruta para buscar artículo por código de barras
+router.get('/articulos/buscar', async (req, res) => {
+    try {
+        const { codigo_barras } = req.query;
+        if (!codigo_barras) {
+            return res.status(400).json({ error: 'Se requiere el parámetro codigo_barras' });
+        }
+        
+        const query = `
+            SELECT 
+                a.numero,
+                a.nombre,
+                a.codigo_barras,
+                COALESCE(src.stock_consolidado, 0) as stock_consolidado
+            FROM public.articulos a
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            WHERE a.codigo_barras = $1
+        `;
+        const result = await req.db.query(query, [codigo_barras]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Artículo no encontrado' });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error en ruta GET /articulos/buscar:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para registrar múltiples movimientos de stock (inventario)
+router.post('/stock-ventas-movimientos/batch', async (req, res) => {
+    try {
+        const { ajustes } = req.body;
+        
+        if (!ajustes || !Array.isArray(ajustes) || ajustes.length === 0) {
+            return res.status(400).json({ error: 'Se requiere una lista de ajustes' });
+        }
+
+        // Iniciar transacción
+        await req.db.query('BEGIN');
+
+        try {
+            for (const ajuste of ajustes) {
+                // Insertar movimiento en stock_ventas_movimientos
+                const insertQuery = `
+                    INSERT INTO public.stock_ventas_movimientos 
+                    (articulo_numero, codigo_barras, fecha, usuario_id, carro_id, tipo, kilos, cantidad)
+                    VALUES ($1, $2, NOW(), $3, NULL, $4, $5, $6)
+                `;
+                await req.db.query(insertQuery, [
+                    ajuste.articulo_numero,
+                    ajuste.codigo_barras,
+                    ajuste.usuario_id,
+                    ajuste.tipo,
+                    ajuste.kilos,
+                    ajuste.cantidad
+                ]);
+
+                // Actualizar stock_real_consolidado
+                const updateQuery = `
+                    UPDATE public.stock_real_consolidado 
+                    SET 
+                        stock_ajustes = COALESCE(stock_ajustes, 0) + $1,
+                        stock_consolidado = COALESCE(stock_lomasoft, 0) + COALESCE(stock_movimientos, 0) + COALESCE(stock_ajustes, 0) + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `;
+                await req.db.query(updateQuery, [ajuste.kilos, ajuste.articulo_numero]);
+            }
+
+            await req.db.query('COMMIT');
+            res.json({ message: 'Inventario registrado correctamente' });
+        } catch (error) {
+            await req.db.query('ROLLBACK');
+            throw error;
+        }
+    } catch (error) {
+        console.error('Error en ruta POST /stock-ventas-movimientos/batch:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 
 
