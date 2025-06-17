@@ -1027,6 +1027,37 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.classList.contains('btn-agregar')) {
             const articulo_numero = e.target.dataset.numero;
             const descripcion = e.target.dataset.nombre;
+
+            // Obtener artículos ya agregados al carro para filtrar
+            const carroId = localStorage.getItem('carroActivo');
+            const colaboradorData = localStorage.getItem('colaboradorActivo');
+            if (!carroId || !colaboradorData) {
+                alert('No hay carro activo o colaborador seleccionado.');
+                return;
+            }
+            const colaborador = JSON.parse(colaboradorData);
+
+            let articulosEnCarro = [];
+            try {
+                const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
+                if (response.ok) {
+                    articulosEnCarro = await response.json();
+                } else {
+                    alert('No se pudo obtener la lista de artículos en el carro.');
+                    return;
+                }
+            } catch (error) {
+                console.error('Error al obtener artículos en el carro:', error);
+                alert('Error al obtener artículos en el carro.');
+                return;
+            }
+
+            // Verificar si el artículo ya está en el carro
+            if (articulosEnCarro.some(art => art.numero === articulo_numero)) {
+                alert('Este artículo ya está en el carro y no se puede agregar nuevamente.');
+                return;
+            }
+
             await agregarAlCarro(articulo_numero, descripcion, e.target);
         } else if (e.target.classList.contains('btn-editar-receta')) {
             const articulo_numero = e.target.dataset.numero;

@@ -58,15 +58,27 @@ async function validarPropiedadCarro(carroId, usuarioId) {
  */
 async function agregarArticulo(carroId, articuloNumero, descripcion, cantidad) {
     try {
-        const query = `
+        // Verificar si el artículo ya existe en el carro
+        const checkQuery = `
+            SELECT COUNT(*)::integer AS count
+            FROM carros_articulos
+            WHERE carro_id = $1 AND articulo_numero = $2
+        `;
+        const checkResult = await pool.query(checkQuery, [carroId, articuloNumero]);
+        if (checkResult.rows[0].count > 0) {
+            throw new Error('El artículo ya está agregado en el carro');
+        }
+
+        // Insertar el artículo si no existe
+        const insertQuery = `
             INSERT INTO carros_articulos (carro_id, articulo_numero, descripcion, cantidad)
             VALUES ($1, $2, $3, $4)
         `;
         
-        await pool.query(query, [carroId, articuloNumero, descripcion, cantidad]);
+        await pool.query(insertQuery, [carroId, articuloNumero, descripcion, cantidad]);
     } catch (error) {
         console.error('Error al agregar artículo al carro:', error);
-        throw new Error('No se pudo agregar el artículo al carro');
+        throw error;
     }
 }
 
