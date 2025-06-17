@@ -1,6 +1,8 @@
 {
-  "numero": "MFSPx5",
-  "nombre": "Mix/F/Secas/Premium x 5",
-  "codigo_barras": "6475845",
-  "cantidad": 2
+  "articulo": {
+    "numero": "SZAAX1",
+    "nombre": "Semilla/Zapallo AA x 1",
+    "codigo_barras": "7791885409493"
+  },
+  "cantidad": 5
 }

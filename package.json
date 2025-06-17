@@ -4,7 +4,7 @@
   "description": "Sistema de sincronización e impresión de etiquetas",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\"",
+    "start": "concurrently \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
     "dev": "cd src/app-etiquetas && vite",
     "sync": "node src/actualizaArticulos/syncEtiquetas.js",
     "print": "node src/scripts/imprimirEtiqueta.js",
@@ -16,7 +16,8 @@
     "http-proxy-middleware": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
-    "pg": "^8.16.0"
+    "pg": "^8.16.0",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

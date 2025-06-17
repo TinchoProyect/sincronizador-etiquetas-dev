@@ -238,6 +238,56 @@
             justify-content: flex-end;
             gap: 10px;
         }
+
+        /* Estilos para la sección del QR */
+        .qr-section {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .qr-section h3 {
+            color: var(--primary-color);
+            margin: 0 0 10px 0;
+            font-size: 1.2rem;
+        }
+
+        .qr-section p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .qr-container {
+            display: flex;
+            justify-content: center;
+            margin: 15px 0;
+        }
+
+        .qr-container img {
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            background-color: white;
+            border-radius: 4px;
+            margin: 0 auto;
+        }
+
+        .url-container {
+            background-color: white;
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+
+        .url-container p {
+            margin: 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
@@ -296,6 +346,18 @@
 
             <!-- Paso 2: Conteo de artículos -->
             <div id="paso-conteo" class="modal-step" style="display: none;">
+                <!-- Sección del código QR para acceso móvil -->
+                <div id="qr-section" class="qr-section">
+                    <h3>Acceso Móvil</h3>
+                    <p>Escanea el código QR desde tu celular para continuar el inventario:</p>
+                    <div class="qr-container">
+                        <div id="qr-canvas"></div>
+                    </div>
+                    <div class="url-container">
+                        <p><strong>URL:</strong> <span id="url-movil"></span></p>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="input-codigo-barras">Código de Barras:</label>
                     <input type="text" id="input-codigo-barras" placeholder="Escanear o escribir código de barras">
@@ -313,6 +375,10 @@
         </div>
     </div>
 
-    <script src="/js/gestionArticulos.js"></script>
+    <!-- Librería para generar códigos QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Socket.IO Client -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="../js/gestionArticulos.js"></script>
 </body>
 </html>
