@@ -79,7 +79,40 @@ async function eliminarRegistrosRelacionados(carroId) {
         await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.ingredientes} movimientos de ingredientes`);
         
-        // 2. Eliminar movimientos de stock de ventas
+        // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos
+        const movimientosQuery = `
+            SELECT articulo_numero, cantidad, tipo
+            FROM stock_ventas_movimientos 
+            WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas')
+        `;
+        const movimientosResult = await pool.query(movimientosQuery, [carroId]);
+        
+        // Actualizar stock_real_consolidado para cada movimiento según su tipo
+        for (const mov of movimientosResult.rows) {
+            if (mov.tipo === 'ingreso a producción') {
+                // Para ingreso a producción eliminado: SUMAR de vuelta la cantidad
+                await pool.query(`
+                    UPDATE stock_real_consolidado 
+                    SET 
+                        stock_consolidado = COALESCE(stock_consolidado, 0) + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [mov.cantidad, mov.articulo_numero]);
+                console.log(`Stock actualizado para artículo ${mov.articulo_numero}: +${mov.cantidad} (revertir ingreso a producción)`);
+            } else if (mov.tipo === 'salida a ventas') {
+                // Para salida a ventas eliminada: RESTAR la cantidad
+                await pool.query(`
+                    UPDATE stock_real_consolidado 
+                    SET 
+                        stock_consolidado = COALESCE(stock_consolidado, 0) - $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [mov.cantidad, mov.articulo_numero]);
+                console.log(`Stock actualizado para artículo ${mov.articulo_numero}: -${mov.cantidad} (revertir salida a ventas)`);
+            }
+        }
+
+        // Eliminar los movimientos
         await pool.query('DELETE FROM stock_ventas_movimientos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.stockVentas} movimientos de stock de ventas`);
         

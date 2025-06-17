@@ -171,7 +171,8 @@ function confirmarIngreso() {
     kilos: -kilos, // Kilos por unidad (sin multiplicar)
     carroId: parseInt(carroIdGlobal),
     usuarioId: parseInt(usuarioId),
-    cantidad: cantidad // Cantidad de unidades
+    cantidad: cantidad, // Cantidad de unidades
+    tipo: 'ingreso a producción'
   };
 
   console.log('📦 Guardando ingreso manual:', movimientoIngrediente);

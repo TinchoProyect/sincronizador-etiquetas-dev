@@ -102,7 +102,7 @@ export async function actualizarTablaArticulos(articulos) {
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos disponibles</td></tr>';
         return;
     }
 
@@ -141,6 +141,9 @@ export async function actualizarTablaArticulos(articulos) {
                 <td>${articulo.numero}</td>
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
                 <td>${articulo.codigo_barras || '-'}</td>
+                <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
+                    ${articulo.stock_ventas || 0}
+                </td>
                 <td>
                     ${tieneReceta ? `
                         <input type="number" class="cantidad-input" min="1" value="1">
@@ -191,6 +194,9 @@ export async function actualizarTablaArticulos(articulos) {
                 <td>${articulo.numero}</td>
                 <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
                 <td>${articulo.codigo_barras || '-'}</td>
+                <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
+                    ${articulo.stock_ventas || 0}
+                </td>
                 <td>
                     <input type="number" class="cantidad-input" min="1" value="1">
                     <button class="btn-agregar btn-danger" 

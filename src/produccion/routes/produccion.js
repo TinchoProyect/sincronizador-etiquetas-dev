@@ -15,7 +15,6 @@ const {
 const {
     crearCarro,
     agregarArticulo,
-    obtenerArticulos,
     obtenerArticulosDeCarro,
     obtenerCarrosDeUsuario,
     eliminarCarro,
@@ -23,6 +22,7 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
+const { obtenerArticulos } = require('../controllers/articulos');
 const {
     obtenerIngredientes,
     obtenerIngrediente,
@@ -289,6 +289,32 @@ router.delete('/ingredientes/:id', async (req, res) => {
         console.error('Error en ruta DELETE /ingredientes/:id:', error);
         res.status(error.message.includes('no encontrado') ? 404 : 500)
            .json({ error: error.message });
+    }
+});
+
+// Ruta para obtener usuarios colaboradores activos
+router.get('/usuarios', async (req, res) => {
+    try {
+        const { rol, activo } = req.query;
+        const rolId = parseInt(rol);
+        const esActivo = activo === 'true';
+
+        if (isNaN(rolId)) {
+            return res.status(400).json({ error: 'Se requiere un ID de rol válido' });
+        }
+
+        const query = `
+            SELECT id, nombre_completo
+            FROM public.usuarios
+            WHERE rol_id = $1 AND activo = $2
+            ORDER BY nombre_completo ASC
+        `;
+        
+        const result = await req.db.query(query, [rolId, esActivo]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error en ruta GET /usuarios:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -598,6 +624,143 @@ router.put('/carro/:carroId/articulo/:articuloId', async (req, res) => {
 // ✅ Ruta para registrar movimiento de stock de ventas
 const { registrarMovimientoStockVentas } = require('../controllers/stockVentasMovimientos');
 router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
+
+// Ruta para buscar artículo por código de barras
+router.get('/articulos/buscar', async (req, res) => {
+    try {
+        const { codigo_barras } = req.query;
+        if (!codigo_barras) {
+            return res.status(400).json({ error: 'Se requiere el parámetro codigo_barras' });
+        }
+        
+        const query = `
+            SELECT 
+                a.numero,
+                a.nombre,
+                a.codigo_barras,
+                COALESCE(src.stock_consolidado, 0) as stock_consolidado
+            FROM public.articulos a
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            WHERE a.codigo_barras = $1
+        `;
+        const result = await req.db.query(query, [codigo_barras]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Artículo no encontrado' });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error en ruta GET /articulos/buscar:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para registrar múltiples movimientos de stock (inventario)
+router.post('/stock-ventas-movimientos/batch', async (req, res) => {
+    try {
+        const { ajustes } = req.body;
+        
+        if (!ajustes || !Array.isArray(ajustes) || ajustes.length === 0) {
+            return res.status(400).json({ error: 'Se requiere una lista de ajustes' });
+        }
+
+        console.log(`📥 Procesando inventario batch con ${ajustes.length} ajustes`);
+        console.log('📋 Datos completos recibidos:', JSON.stringify(req.body, null, 2));
+
+        // Iniciar transacción
+        await req.db.query('BEGIN');
+
+        try {
+            for (let i = 0; i < ajustes.length; i++) {
+                const ajuste = ajustes[i];
+                
+                console.log(`🔄 Procesando ajuste ${i + 1}/${ajustes.length}:`, JSON.stringify(ajuste, null, 2));
+
+                // Validar y convertir datos requeridos para cada ajuste
+                if (!ajuste.articulo_numero || !ajuste.usuario_id || ajuste.cantidad === undefined || ajuste.cantidad === null) {
+                    const error = `Ajuste ${i + 1}: Faltan datos requeridos - articulo_numero: ${ajuste.articulo_numero}, usuario_id: ${ajuste.usuario_id}, cantidad: ${ajuste.cantidad}`;
+                    console.error('❌ Validación fallida:', error);
+                    throw new Error(error);
+                }
+
+                // Validar y convertir datos
+                const usuarioId = parseInt(ajuste.usuario_id);
+                if (isNaN(usuarioId)) {
+                    const error = `Ajuste ${i + 1}: ID de usuario inválido - usuario_id: ${ajuste.usuario_id}`;
+                    console.error('❌ Validación fallida:', error);
+                    throw new Error(error);
+                }
+
+                // Mantener cantidad como decimal
+                const cantidad = ajuste.cantidad;
+                if (cantidad === undefined || cantidad === null) {
+                    const error = `Ajuste ${i + 1}: Cantidad no especificada`;
+                    console.error('❌ Validación fallida:', error);
+                    throw new Error(error);
+                }
+
+                // Usar cantidad para kilos si no está definido
+                const kilos = ajuste.kilos ?? cantidad;
+
+                console.log(`📊 Datos procesados - Usuario: ${usuarioId}, Cantidad: ${cantidad}, Kilos: ${kilos}`);
+
+                // Insertar movimiento en stock_ventas_movimientos
+                const insertQuery = `
+                    INSERT INTO public.stock_ventas_movimientos 
+                    (articulo_numero, codigo_barras, fecha, usuario_id, carro_id, tipo, kilos, cantidad)
+                    VALUES ($1, $2, NOW(), $3, NULL, $4, $5, $6)
+                `;
+                
+                const insertParams = [
+                    ajuste.articulo_numero,
+                    ajuste.codigo_barras || null,
+                    usuarioId,
+                    ajuste.tipo || 'registro de ajuste',
+                    kilos,
+                    cantidad
+                ];
+
+                console.log(`🔄 Ejecutando INSERT con parámetros:`, insertParams);
+                await req.db.query(insertQuery, insertParams);
+                console.log(`✅ Movimiento insertado para artículo ${ajuste.articulo_numero}`);
+
+                // Usar UPSERT para stock_real_consolidado (INSERT con ON CONFLICT)
+                const upsertQuery = `
+                    INSERT INTO public.stock_real_consolidado 
+                    (articulo_numero, stock_ajustes, stock_consolidado, ultima_actualizacion)
+                    VALUES ($1, $2, $2, NOW())
+                    ON CONFLICT (articulo_numero) 
+                    DO UPDATE SET 
+                        stock_ajustes = COALESCE(stock_real_consolidado.stock_ajustes, 0) + $2,
+                        stock_consolidado = COALESCE(stock_real_consolidado.stock_consolidado, 0) + $2,
+                        ultima_actualizacion = NOW()
+                `;
+                
+                const upsertParams = [ajuste.articulo_numero, cantidad];
+                console.log(`🔄 Ejecutando UPSERT con parámetros:`, upsertParams);
+                await req.db.query(upsertQuery, upsertParams);
+                console.log(`✅ Stock consolidado actualizado para artículo ${ajuste.articulo_numero}`);
+            }
+
+            await req.db.query('COMMIT');
+            console.log('✅ Inventario batch completado exitosamente');
+            res.json({ message: 'Inventario registrado correctamente' });
+        } catch (error) {
+            await req.db.query('ROLLBACK');
+            console.error('❌ Error en transacción, rollback ejecutado:', error);
+            console.error('❌ Stack trace:', error.stack);
+            throw error;
+        }
+    } catch (error) {
+        console.error('❌ Error en ruta POST /stock-ventas-movimientos/batch:', error);
+        console.error('❌ Error completo:', error.stack);
+        res.status(500).json({ 
+            error: 'Error al registrar el inventario',
+            detalle: error.message 
+        });
+    }
+});
 
 
 

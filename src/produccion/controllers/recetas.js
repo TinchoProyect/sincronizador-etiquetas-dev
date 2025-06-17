@@ -1,6 +1,26 @@
 const pool = require('../config/database');
 
 /**
+ * Busca un ingrediente por nombre y retorna su ID
+ * @param {string} nombre - Nombre del ingrediente a buscar
+ * @returns {Promise<number|null>} ID del ingrediente o null si no se encuentra
+ */
+async function buscarIngredientePorNombre(nombre) {
+    try {
+        const query = `
+            SELECT id 
+            FROM ingredientes 
+            WHERE LOWER(nombre) = LOWER($1)
+        `;
+        const result = await pool.query(query, [nombre]);
+        return result.rows[0]?.id || null;
+    } catch (error) {
+        console.error(`Error buscando ingrediente por nombre ${nombre}:`, error);
+        return null;
+    }
+}
+
+/**
  * Obtiene el estado de las recetas para una lista de artículos
  * @param {Array<string>} articulos - Lista de números de artículos
  * @returns {Promise<Object>} Objeto con el estado de recetas por artículo
@@ -84,13 +104,18 @@ async function crearReceta(req, res) {
         // Insertar los ingredientes
         const ingredientesQuery = `
             INSERT INTO receta_ingredientes 
-            (receta_id, nombre_ingrediente, unidad_medida, cantidad)
-            VALUES ($1, $2, $3, $4)
+            (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
+            VALUES ($1, $2, $3, $4, $5)
         `;
 
         for (const ing of ingredientes) {
+            // Buscar el ID del ingrediente por nombre
+            const ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+            console.log(`Ingrediente encontrado para ${ing.nombre_ingrediente}:`, ingredienteId);
+
             await client.query(ingredientesQuery, [
                 recetaId,
+                ingredienteId,
                 ing.nombre_ingrediente,
                 ing.unidad_medida,
                 ing.cantidad
@@ -219,13 +244,18 @@ async function actualizarReceta(req, res) {
         // Insertar nuevos ingredientes
         const ingredientesQuery = `
             INSERT INTO receta_ingredientes 
-            (receta_id, nombre_ingrediente, unidad_medida, cantidad)
-            VALUES ($1, $2, $3, $4)
+            (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
+            VALUES ($1, $2, $3, $4, $5)
         `;
 
         for (const ing of ingredientes) {
+            // Buscar el ID del ingrediente por nombre
+            const ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+            console.log(`Ingrediente encontrado para ${ing.nombre_ingrediente}:`, ingredienteId);
+
             await client.query(ingredientesQuery, [
                 recetaId,
+                ingredienteId,
                 ing.nombre_ingrediente,
                 ing.unidad_medida,
                 ing.cantidad
