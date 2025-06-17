@@ -7,14 +7,14 @@
  */
 
 // Declaraciones de tipos para evitar errores de TypeScript/ESLint
-/* global io, Html5Qrcode */
+/* global io */
 
 // Variables globales para el inventario móvil
 let socket = null;
 let sessionId = null;
 let articuloActual = null;
-let html5QrcodeScanner = null;
 let conectado = false;
+let codeReader = null;
 
 /**
  * Inicializa la aplicación móvil
@@ -71,7 +71,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar WebSocket
     inicializarWebSocket();
     configurarEventListeners();
+    
+    // Cargar la librería @zxing/browser de forma dinámica
+    cargarLibreriaZXing();
 });
+
+/**
+ * Carga la librería @zxing/browser de forma dinámica
+ */
+async function cargarLibreriaZXing() {
+    try {
+        console.log('📱 [MÓVIL] Cargando librería @zxing/browser...');
+        
+        // Verificar si ya está cargada
+        if (window.ZXing) {
+            console.log('📱 [MÓVIL] Librería @zxing/browser ya está disponible');
+            return;
+        }
+        
+        // Cargar desde CDN
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@zxing/browser@latest/umd/index.min.js';
+        script.onload = () => {
+            console.log('✅ [MÓVIL] Librería @zxing/browser cargada exitosamente');
+        };
+        script.onerror = () => {
+            console.error('❌ [MÓVIL] Error al cargar librería @zxing/browser');
+        };
+        document.head.appendChild(script);
+        
+    } catch (error) {
+        console.error('❌ [MÓVIL] Error al cargar librería @zxing/browser:', error);
+    }
+}
 
 /**
  * Inicializa la conexión WebSocket
@@ -446,44 +478,123 @@ function limpiarFormulario() {
 }
 
 /**
- * Abre el escáner de códigos de barras
+ * Abre el escáner de códigos de barras usando @zxing/browser
  */
 function abrirEscaner() {
+    console.log('📱 [MÓVIL] ===== INICIANDO ESCÁNER @ZXING/BROWSER =====');
+    
     const modal = document.getElementById('modal-scanner');
     modal.style.display = 'block';
-    
-    // Verificar si la librería está disponible
-    if (typeof Html5Qrcode === 'undefined') {
+
+    // Verificar si la librería ZXing está disponible
+    if (!window.ZXing) {
+        console.error('❌ [MÓVIL] Librería @zxing/browser no está disponible');
         mostrarMensajeError('Error: Librería de escaneo no disponible');
         cerrarEscaner();
         return;
     }
 
     try {
-        // Configurar el escáner
-        html5QrcodeScanner = new Html5Qrcode("reader");
-        
-        // Configuración del escáner
-        const config = {
-            fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0
-        };
+        // Crear instancia del lector si no existe
+        if (!codeReader) {
+            codeReader = new window.ZXing.BrowserMultiFormatReader();
+            console.log('📱 [MÓVIL] Instancia de BrowserMultiFormatReader creada');
+        }
 
-        // Iniciar el escáner
-        html5QrcodeScanner.start(
-            { facingMode: "environment" }, // Cámara trasera
-            config,
-            onScanSuccess,
-            onScanFailure
-        ).catch(err => {
-            console.error('Error al iniciar escáner:', err);
-            mostrarMensajeError('No se pudo acceder a la cámara');
-            cerrarEscaner();
-        });
+        console.log('📱 [MÓVIL] Configurando formatos de códigos de barra 1D...');
+        
+        // Configurar hints para códigos de barra 1D
+        const hints = new Map();
+        const formats = [
+            window.ZXing.BarcodeFormat.EAN_13,
+            window.ZXing.BarcodeFormat.EAN_8,
+            window.ZXing.BarcodeFormat.UPC_A,
+            window.ZXing.BarcodeFormat.UPC_E,
+            window.ZXing.BarcodeFormat.CODE_39,
+            window.ZXing.BarcodeFormat.CODE_128,
+            window.ZXing.BarcodeFormat.ITF,
+            window.ZXing.BarcodeFormat.CODABAR
+        ];
+        
+        hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+        hints.set(window.ZXing.DecodeHintType.TRY_HARDER, true);
+        
+        console.log('📱 [MÓVIL] Formatos configurados:', formats.length);
+        console.log('📱 [MÓVIL] Obteniendo dispositivos de video...');
+
+        // Obtener dispositivos de video disponibles
+        codeReader.listVideoInputDevices()
+            .then(videoInputDevices => {
+                console.log('📱 [MÓVIL] Dispositivos de video encontrados:', videoInputDevices.length);
+                
+                if (videoInputDevices.length === 0) {
+                    console.error('❌ [MÓVIL] No se encontraron cámaras disponibles');
+                    mostrarMensajeError('No se encontraron cámaras disponibles');
+                    cerrarEscaner();
+                    return;
+                }
+
+                // Buscar cámara trasera preferentemente
+                let selectedDeviceId = videoInputDevices[0].deviceId;
+                for (const device of videoInputDevices) {
+                    if (device.label.toLowerCase().includes('back') || 
+                        device.label.toLowerCase().includes('rear') ||
+                        device.label.toLowerCase().includes('environment')) {
+                        selectedDeviceId = device.deviceId;
+                        break;
+                    }
+                }
+
+                const selectedDevice = videoInputDevices.find(d => d.deviceId === selectedDeviceId);
+                console.log('📱 [MÓVIL] Cámara seleccionada:', selectedDevice?.label || selectedDeviceId);
+
+                // Iniciar decodificación desde video
+                console.log('📱 [MÓVIL] Iniciando decodificación desde video...');
+                
+                codeReader.decodeFromVideoDevice(
+                    selectedDeviceId,
+                    'reader',
+                    (result, err) => {
+                        if (result) {
+                            console.log('🎉 [MÓVIL] ===== CÓDIGO ESCANEADO EXITOSAMENTE =====');
+                            console.log('🎉 [MÓVIL] Código:', result.getText());
+                            console.log('🎉 [MÓVIL] Formato:', result.getBarcodeFormat());
+                            console.log('🎉 [MÓVIL] Timestamp:', new Date().toISOString());
+                            
+                            // Cerrar escáner
+                            cerrarEscaner();
+                            
+                            // Colocar código en input y buscar artículo
+                            document.getElementById('codigo-barras').value = result.getText();
+                            buscarArticulo();
+                            
+                            // Mostrar mensaje de éxito
+                            mostrarMensaje(`Código escaneado: ${result.getText()}`, 'info');
+                        }
+                        
+                        if (err && !(err instanceof window.ZXing.NotFoundException)) {
+                            console.error('❌ [MÓVIL] Error en escaneo:', err);
+                            // No mostrar error por NotFoundException ya que es normal durante el escaneo
+                            if (!(err instanceof window.ZXing.ChecksumException) && 
+                                !(err instanceof window.ZXing.FormatException)) {
+                                mostrarMensajeError('Error al escanear el código');
+                            }
+                        }
+                    },
+                    hints
+                );
+                
+                console.log('✅ [MÓVIL] Escáner iniciado correctamente');
+                
+            })
+            .catch(err => {
+                console.error('❌ [MÓVIL] Error al listar dispositivos de video:', err);
+                mostrarMensajeError('No se pudo acceder a la cámara');
+                cerrarEscaner();
+            });
 
     } catch (error) {
-        console.error('Error al configurar escáner:', error);
+        console.error('❌ [MÓVIL] Error al configurar escáner:', error);
         mostrarMensajeError('Error al configurar el escáner');
         cerrarEscaner();
     }
@@ -493,42 +604,20 @@ function abrirEscaner() {
  * Cierra el escáner de códigos de barras
  */
 function cerrarEscaner() {
+    console.log('📱 [MÓVIL] ===== CERRANDO ESCÁNER =====');
+    
     const modal = document.getElementById('modal-scanner');
     modal.style.display = 'none';
-    
-    if (html5QrcodeScanner) {
-        html5QrcodeScanner.stop().then(() => {
-            html5QrcodeScanner.clear();
-            html5QrcodeScanner = null;
-        }).catch(err => {
-            console.error('Error al detener escáner:', err);
-            html5QrcodeScanner = null;
-        });
+
+    if (codeReader) {
+        try {
+            console.log('📱 [MÓVIL] Deteniendo lector de códigos...');
+            codeReader.reset();
+            console.log('✅ [MÓVIL] Lector detenido correctamente');
+        } catch (error) {
+            console.error('❌ [MÓVIL] Error al detener lector:', error);
+        }
     }
-}
-
-/**
- * Callback cuando se escanea exitosamente un código
- */
-function onScanSuccess(decodedText, decodedResult) {
-    console.log('Código escaneado:', decodedText);
-    
-    // Cerrar el escáner
-    cerrarEscaner();
-    
-    // Colocar el código en el input
-    document.getElementById('codigo-barras').value = decodedText;
-    
-    // Buscar el artículo automáticamente
-    buscarArticulo();
-}
-
-/**
- * Callback cuando falla el escaneo (se ejecuta continuamente)
- */
-function onScanFailure(error) {
-    // No hacer nada, es normal que falle mientras busca códigos
-    // console.log('Escaneando...', error);
 }
 
 /**
