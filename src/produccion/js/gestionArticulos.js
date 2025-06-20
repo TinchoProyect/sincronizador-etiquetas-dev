@@ -4,6 +4,10 @@ let articulosInventario = new Map(); // Mapa para almacenar los artículos escan
 let socket = null;
 let sessionId = null;
 
+// Variables globales para filtrado
+let todosLosArticulos = []; // Array para almacenar todos los artículos cargados
+let articulosFiltrados = []; // Array para almacenar los artículos filtrados
+
 // Función para mostrar mensajes
 function mostrarMensaje(mensaje, tipo = 'error') {
     const mensajeDiv = document.createElement('div');
@@ -53,6 +57,50 @@ function actualizarTablaArticulos(articulos) {
     });
 }
 
+// Funciones de filtrado
+function filtrarPorNombre(articulos, texto) {
+    if (!texto) return articulos;
+    const textoLower = texto.toLowerCase();
+    return articulos.filter(articulo => 
+        articulo.nombre.toLowerCase().includes(textoLower)
+    );
+}
+
+function filtrarPorStock(articulos, condicion) {
+    // Umbral para considerar un valor como "prácticamente cero"
+    const UMBRAL_CERO = 0.01;
+
+    switch (condicion) {
+        case 'igual-cero':
+            return articulos.filter(articulo => {
+                const stock = articulo.stock_ventas || 0;
+                return Math.abs(stock) <= UMBRAL_CERO;
+            });
+        case 'mayor-cero':
+            return articulos.filter(articulo => (articulo.stock_ventas || 0) > UMBRAL_CERO);
+        case 'menor-cero':
+            return articulos.filter(articulo => (articulo.stock_ventas || 0) < -UMBRAL_CERO);
+        default:
+            return articulos;
+    }
+}
+
+function aplicarFiltros() {
+    const textoFiltro = document.getElementById('filtro-nombre').value;
+    const stockFiltro = document.getElementById('filtro-stock').value;
+    
+    let articulosFiltrados = [...todosLosArticulos];
+    
+    // Aplicar filtro de nombre
+    articulosFiltrados = filtrarPorNombre(articulosFiltrados, textoFiltro);
+    
+    // Aplicar filtro de stock
+    articulosFiltrados = filtrarPorStock(articulosFiltrados, stockFiltro);
+    
+    // Actualizar la tabla con los resultados filtrados
+    actualizarTablaArticulos(articulosFiltrados);
+}
+
 // Función para cargar los artículos
 async function cargarArticulos() {
     try {
@@ -66,6 +114,9 @@ async function cargarArticulos() {
 
         const articulos = await response.json();
         console.log('Artículos cargados:', articulos.length);
+        
+        // Almacenar todos los artículos globalmente
+        todosLosArticulos = articulos;
         
         // Mostrar los artículos en la tabla
         actualizarTablaArticulos(articulos);
@@ -647,4 +698,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Botones de finalizar y cancelar
     document.getElementById('btn-finalizar-inventario').addEventListener('click', finalizarInventario);
     document.getElementById('btn-cancelar-inventario').addEventListener('click', cerrarModal);
+
+    // Event listeners para los filtros
+    const filtroNombre = document.getElementById('filtro-nombre');
+    const filtroStock = document.getElementById('filtro-stock');
+
+    // Filtro de nombre en tiempo real
+    filtroNombre.addEventListener('input', aplicarFiltros);
+
+    // Filtro de stock
+    filtroStock.addEventListener('change', aplicarFiltros);
 });

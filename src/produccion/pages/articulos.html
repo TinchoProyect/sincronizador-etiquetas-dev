@@ -53,7 +53,43 @@
         .actions-bar {
             margin-bottom: 20px;
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .filters-container {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
         }
 
         .primary-button {
@@ -300,6 +336,21 @@
         <main>
             <div class="content-section">
                 <div class="actions-bar">
+                    <div class="filters-container">
+                        <div class="filter-group">
+                            <label for="filtro-nombre">Filtrar por nombre:</label>
+                            <input type="text" id="filtro-nombre" placeholder="Escribir nombre del artículo...">
+                        </div>
+                        <div class="filter-group">
+                            <label for="filtro-stock">Filtrar por stock:</label>
+                            <select id="filtro-stock">
+                                <option value="todos">Mostrar todos</option>
+                                <option value="igual-cero">Stock = 0</option>
+                                <option value="mayor-cero">Stock > 0</option>
+                                <option value="menor-cero">Stock < 0</option>
+                            </select>
+                        </div>
+                    </div>
                     <button id="btn-iniciar-inventario" class="primary-button">Iniciar Inventario</button>
                 </div>
                 <table class="tabla-articulos">
