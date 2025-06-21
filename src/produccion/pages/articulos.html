@@ -324,6 +324,89 @@
             font-family: monospace;
             font-size: 0.9rem;
         }
+
+        /* Estilos para ajustes puntuales */
+        .buttons-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .checkbox-column {
+            width: 40px;
+            text-align: center;
+        }
+
+        .checkbox-header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .checkbox-cell {
+            text-align: center;
+        }
+
+        .checkbox-articulo {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        /* Estilos adicionales para ajustes puntuales */
+        #acciones-ajuste {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .ajuste-item {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .ajuste-item h4 {
+            margin: 0;
+            color: var(--primary-color);
+            width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ajuste-item .info-row {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+        }
+
+        .ajuste-item .stock-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .ajuste-item .stock-input input {
+            width: 100px;
+        }
+
+        .tabla-articulos.modo-seleccion .checkbox-column {
+            display: table-cell;
+        }
+
+        .tabla-articulos:not(.modo-seleccion) .checkbox-column {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -351,11 +434,20 @@
                             </select>
                         </div>
                     </div>
-                    <button id="btn-iniciar-inventario" class="primary-button">Iniciar Inventario</button>
+                    <div class="buttons-container">
+                        <button id="btn-ajustes-puntuales" class="secondary-button">Ajustes Puntuales</button>
+                        <button id="btn-confirmar-seleccion" class="success-button" style="display: none;">Confirmar Selección</button>
+                        <button id="btn-iniciar-inventario" class="primary-button">Iniciar Inventario</button>
+                    </div>
                 </div>
                 <table class="tabla-articulos">
                     <thead>
                         <tr>
+                            <th class="checkbox-column">
+                                <div class="checkbox-header">
+                                    <input type="checkbox" id="seleccionar-todos" class="checkbox-articulo">
+                                </div>
+                            </th>
                             <th>Código</th>
                             <th>Nombre</th>
                             <th>Código de Barras</th>
@@ -372,6 +464,41 @@
         <footer>
             <p>&copy; 2024 Gestiones Lamda</p>
         </footer>
+    </div>
+
+    <!-- Modal de Ajustes Puntuales -->
+    <div id="modal-ajustes" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Ajustes Puntuales de Stock</h2>
+                <span class="close" id="close-modal-ajustes">&times;</span>
+            </div>
+            
+            <!-- Paso 1: Selección de usuario -->
+            <div id="paso-usuario-ajustes" class="modal-step">
+                <div class="form-group">
+                    <label for="select-usuario-ajustes">Seleccionar Usuario:</label>
+                    <select id="select-usuario-ajustes">
+                        <option value="">-- Seleccionar usuario --</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button id="btn-continuar-ajustes" class="primary-button" disabled>Continuar</button>
+                </div>
+            </div>
+
+            <!-- Paso 2: Ajuste de artículos -->
+            <div id="paso-ajuste" class="modal-step" style="display: none;">
+                <div id="articulos-seleccionados">
+                    <!-- Los artículos seleccionados se mostrarán aquí -->
+                </div>
+                
+                <div id="acciones-ajuste">
+                    <button id="btn-finalizar-ajustes" class="success-button">Finalizar Ajustes</button>
+                    <button id="btn-cancelar-ajustes" class="secondary-button">Cancelar</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Modal de Inventario -->

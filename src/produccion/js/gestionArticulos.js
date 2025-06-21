@@ -1,8 +1,11 @@
-// Variables globales para el inventario
+// Variables globales para el inventario y ajustes
 let usuarioSeleccionado = null;
+let usuarioAjustes = null;
 let articulosInventario = new Map(); // Mapa para almacenar los artículos escaneados
+let articulosSeleccionados = new Map(); // Mapa para almacenar los artículos seleccionados para ajuste
 let socket = null;
 let sessionId = null;
+let modoSeleccion = false;
 
 // Variables globales para filtrado
 let todosLosArticulos = []; // Array para almacenar todos los artículos cargados
@@ -35,26 +38,61 @@ function mostrarMensaje(mensaje, tipo = 'error') {
 
 // Función para actualizar la tabla con los artículos
 function actualizarTablaArticulos(articulos) {
+    console.log('🔄 [DEBUG] actualizarTablaArticulos - Iniciando actualización de tabla');
+    console.log('🔄 [DEBUG] Cantidad de artículos recibidos:', articulos?.length || 0);
+    
     const tbody = document.getElementById('tabla-articulos-body');
     if (!tbody) return;
 
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="mensaje-info">No hay artículos registrados</td></tr>';
+        const colspan = modoSeleccion ? 5 : 4;
+        tbody.innerHTML = `<tr><td colspan="${colspan}" class="mensaje-info">No hay artículos registrados</td></tr>`;
         return;
     }
 
-    articulos.forEach(articulo => {
+    articulos.forEach((articulo, index) => {
+        const stockVentas = articulo.stock_ventas || 0;
+        console.log(`📊 [DEBUG] Artículo ${index + 1}: ${articulo.nombre} - Stock Ventas: ${stockVentas}`);
+        
         const tr = document.createElement('tr');
+        const checkboxHtml = modoSeleccion ? `
+            <td class="checkbox-cell">
+                <input type="checkbox" 
+                       class="checkbox-articulo" 
+                       data-articulo="${articulo.numero}"
+                       ${articulosSeleccionados.has(articulo.numero) ? 'checked' : ''}>
+            </td>` : '';
+        
         tr.innerHTML = `
+            ${checkboxHtml}
             <td>${articulo.numero}</td>
             <td>${articulo.nombre}</td>
             <td>${articulo.codigo_barras || '-'}</td>
-            <td>${articulo.stock_ventas || 0}</td>
+            <td>${stockVentas}</td>
         `;
         tbody.appendChild(tr);
     });
+    
+    console.log('✅ [DEBUG] actualizarTablaArticulos - Tabla actualizada correctamente');
+
+    // Actualizar eventos de los checkboxes si estamos en modo selección
+    if (modoSeleccion) {
+        const checkboxes = tbody.querySelectorAll('.checkbox-articulo');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const articuloNumero = this.dataset.articulo;
+                const articulo = todosLosArticulos.find(a => a.numero === articuloNumero);
+                
+                if (this.checked) {
+                    articulosSeleccionados.set(articuloNumero, articulo);
+                } else {
+                    articulosSeleccionados.delete(articuloNumero);
+                }
+            });
+        });
+    }
 }
 
 // Funciones de filtrado
@@ -67,35 +105,83 @@ function filtrarPorNombre(articulos, texto) {
 }
 
 function filtrarPorStock(articulos, condicion) {
+    console.log('🔍 [DEBUG] filtrarPorStock - Iniciando filtrado');
+    console.log('🔍 [DEBUG] Condición de filtro:', condicion);
+    console.log('🔍 [DEBUG] Cantidad de artículos a filtrar:', articulos.length);
+    
     // Umbral para considerar un valor como "prácticamente cero"
     const UMBRAL_CERO = 0.01;
 
+    let resultado;
     switch (condicion) {
         case 'igual-cero':
-            return articulos.filter(articulo => {
+            resultado = articulos.filter(articulo => {
                 const stock = articulo.stock_ventas || 0;
-                return Math.abs(stock) <= UMBRAL_CERO;
+                const esIgualCero = Math.abs(stock) <= UMBRAL_CERO;
+                if (esIgualCero) {
+                    console.log(`📊 [DEBUG] Artículo con stock = 0: ${articulo.nombre} (${stock})`);
+                }
+                return esIgualCero;
             });
+            break;
         case 'mayor-cero':
-            return articulos.filter(articulo => (articulo.stock_ventas || 0) > UMBRAL_CERO);
+            resultado = articulos.filter(articulo => {
+                const stock = articulo.stock_ventas || 0;
+                const esMayorCero = stock > UMBRAL_CERO;
+                if (esMayorCero) {
+                    console.log(`📊 [DEBUG] Artículo con stock > 0: ${articulo.nombre} (${stock})`);
+                }
+                return esMayorCero;
+            });
+            break;
         case 'menor-cero':
-            return articulos.filter(articulo => (articulo.stock_ventas || 0) < -UMBRAL_CERO);
+            resultado = articulos.filter(articulo => {
+                const stock = articulo.stock_ventas || 0;
+                const esMenorCero = stock < -UMBRAL_CERO;
+                if (esMenorCero) {
+                    console.log(`📊 [DEBUG] Artículo con stock < 0: ${articulo.nombre} (${stock})`);
+                }
+                return esMenorCero;
+            });
+            break;
         default:
-            return articulos;
+            resultado = articulos;
     }
+    
+    console.log('✅ [DEBUG] filtrarPorStock - Filtrado completado');
+    console.log('✅ [DEBUG] Artículos después del filtro:', resultado.length);
+    return resultado;
 }
 
 function aplicarFiltros() {
+    console.log('🔍 [DEBUG] aplicarFiltros - Iniciando aplicación de filtros');
+    
     const textoFiltro = document.getElementById('filtro-nombre').value;
     const stockFiltro = document.getElementById('filtro-stock').value;
+    
+    console.log('🔍 [DEBUG] Filtros actuales:');
+    console.log('- Texto:', textoFiltro);
+    console.log('- Stock:', stockFiltro);
+    console.log('- Total artículos antes de filtrar:', todosLosArticulos.length);
     
     let articulosFiltrados = [...todosLosArticulos];
     
     // Aplicar filtro de nombre
-    articulosFiltrados = filtrarPorNombre(articulosFiltrados, textoFiltro);
+    if (textoFiltro) {
+        console.log('📝 [DEBUG] Aplicando filtro por nombre:', textoFiltro);
+        articulosFiltrados = filtrarPorNombre(articulosFiltrados, textoFiltro);
+        console.log('📝 [DEBUG] Artículos después de filtrar por nombre:', articulosFiltrados.length);
+    }
     
     // Aplicar filtro de stock
-    articulosFiltrados = filtrarPorStock(articulosFiltrados, stockFiltro);
+    if (stockFiltro !== '') {
+        console.log('📊 [DEBUG] Aplicando filtro por stock:', stockFiltro);
+        articulosFiltrados = filtrarPorStock(articulosFiltrados, stockFiltro);
+        console.log('📊 [DEBUG] Artículos después de filtrar por stock:', articulosFiltrados.length);
+    }
+    
+    console.log('✅ [DEBUG] Filtrado completado');
+    console.log('✅ [DEBUG] Total artículos después de filtrar:', articulosFiltrados.length);
     
     // Actualizar la tabla con los resultados filtrados
     actualizarTablaArticulos(articulosFiltrados);
@@ -573,7 +659,7 @@ async function finalizarInventario() {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosInventario.get(articuloNumero);
         const stockFisico = parseInt(input.value) || 0;
-        const ajuste = stockFisico - (articulo.stock_consolidado || 0);
+        const ajuste = stockFisico - (articulo.stock_ventas || 0);
         
         if (ajuste !== 0) {
             ajustes.push({
@@ -613,6 +699,182 @@ async function finalizarInventario() {
     }
 }
 
+// Funciones para ajustes puntuales
+function iniciarAjustesPuntuales() {
+    mostrarModalAjustes();
+}
+
+function mostrarModalAjustes() {
+    const modal = document.getElementById('modal-ajustes');
+    modal.style.display = 'block';
+    document.getElementById('paso-usuario-ajustes').style.display = 'block';
+    document.getElementById('paso-ajuste').style.display = 'none';
+    cargarUsuariosAjustes();
+}
+
+function activarModoSeleccion() {
+    modoSeleccion = true;
+    articulosSeleccionados.clear();
+    document.querySelector('.tabla-articulos').classList.add('modo-seleccion');
+    document.getElementById('btn-ajustes-puntuales').style.display = 'none';
+    document.getElementById('btn-confirmar-seleccion').style.display = 'inline-block';
+    actualizarTablaArticulos(articulosFiltrados.length > 0 ? articulosFiltrados : todosLosArticulos);
+}
+
+function cerrarModalAjustes(reiniciarTodo = true) {
+    const modal = document.getElementById('modal-ajustes');
+    modal.style.display = 'none';
+    
+    if (reiniciarTodo) {
+        reiniciarAjustes();
+    }
+}
+
+function reiniciarAjustes() {
+    usuarioAjustes = null;
+    articulosSeleccionados.clear();
+    modoSeleccion = false;
+    document.querySelector('.tabla-articulos').classList.remove('modo-seleccion');
+    document.getElementById('select-usuario-ajustes').value = '';
+    document.getElementById('btn-continuar-ajustes').disabled = true;
+    document.getElementById('articulos-seleccionados').innerHTML = '';
+    document.getElementById('btn-ajustes-puntuales').style.display = 'inline-block';
+    document.getElementById('btn-confirmar-seleccion').style.display = 'none';
+    actualizarTablaArticulos(articulosFiltrados.length > 0 ? articulosFiltrados : todosLosArticulos);
+}
+
+async function cargarUsuariosAjustes() {
+    try {
+        const response = await fetch('/api/usuarios?rol=3&activo=true');
+        if (!response.ok) throw new Error('Error al cargar usuarios');
+        
+        const usuarios = await response.json();
+        const select = document.getElementById('select-usuario-ajustes');
+        select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
+        
+        usuarios.forEach(usuario => {
+            const option = document.createElement('option');
+            option.value = usuario.id;
+            option.textContent = usuario.nombre_completo;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error al cargar usuarios:', error);
+        mostrarMensaje('No se pudieron cargar los usuarios');
+    }
+}
+
+function mostrarPasoAjuste() {
+    document.getElementById('paso-usuario-ajustes').style.display = 'none';
+    document.getElementById('paso-ajuste').style.display = 'block';
+    mostrarArticulosSeleccionados();
+}
+
+function mostrarArticulosSeleccionados() {
+    const contenedor = document.getElementById('articulos-seleccionados');
+    contenedor.innerHTML = '';
+
+    articulosSeleccionados.forEach(articulo => {
+        const div = document.createElement('div');
+        div.className = 'ajuste-item';
+        const stockActual = articulo.stock_ventas || 0;
+        
+        div.innerHTML = `
+            <h4>${articulo.nombre}</h4>
+            <div class="info-row">
+                <span>Código: ${articulo.numero}</span>
+                <span>Código de Barras: ${articulo.codigo_barras || '-'}</span>
+                <span>Stock Actual: ${stockActual}</span>
+            </div>
+            <div class="stock-input">
+                <label>Stock Físico:</label>
+                <input type="number" 
+                       min="0" 
+                       step="1" 
+                       class="stock-nuevo" 
+                       data-articulo="${articulo.numero}"
+                       data-stock-actual="${stockActual}"
+                       value="${stockActual}">
+            </div>
+        `;
+        contenedor.appendChild(div);
+    });
+
+    // Agregar listeners para validación de inputs
+    const inputs = contenedor.querySelectorAll('.stock-nuevo');
+    inputs.forEach(input => {
+        input.addEventListener('change', function() {
+            const valor = parseInt(this.value) || 0;
+            if (valor < 0) {
+                this.value = 0;
+                mostrarMensaje('El stock no puede ser negativo', 'error');
+            }
+        });
+    });
+}
+
+async function finalizarAjustes() {
+    if (articulosSeleccionados.size === 0) {
+        mostrarMensaje('No hay artículos seleccionados para ajustar', 'error');
+        return;
+    }
+
+    // Usar el mismo formato de ajustes que el inventario
+    const ajustes = [];
+    const inputs = document.querySelectorAll('.stock-nuevo');
+    let hayAjustes = false;
+    
+    inputs.forEach(input => {
+        const articuloNumero = input.dataset.articulo;
+        const articulo = articulosSeleccionados.get(articuloNumero);
+        const stockNuevo = parseInt(input.value) || 0;
+        const stockActual = articulo.stock_ventas || 0;
+        const ajuste = stockNuevo - stockActual;
+        
+        // Solo registrar si hay diferencia, igual que en inventario
+        if (ajuste !== 0) {
+            hayAjustes = true;
+            ajustes.push({
+                articulo_numero: articuloNumero,
+                codigo_barras: articulo.codigo_barras,
+                usuario_id: usuarioAjustes,
+                tipo: 'registro de ajuste', // Usar el mismo tipo que inventario
+                kilos: ajuste,
+                cantidad: ajuste // Mantener consistencia con inventario
+            });
+        }
+    });
+
+    if (!hayAjustes) {
+        mostrarMensaje('No hay ajustes para registrar', 'info');
+        cerrarModalAjustes();
+        return;
+    }
+
+    try {
+        // Usar el mismo endpoint y estructura que inventario
+        const response = await fetch('/api/produccion/stock-ventas-movimientos/batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ajustes })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al registrar los ajustes');
+        }
+
+        mostrarMensaje('Ajustes registrados correctamente', 'info');
+        cerrarModalAjustes();
+        await cargarArticulos(); // Recargar artículos después de ajustes
+    } catch (error) {
+        console.error('Error al finalizar ajustes:', error);
+        mostrarMensaje(error.message || 'Error al registrar los ajustes');
+    }
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Página de gestión de artículos cargada');
@@ -621,67 +883,66 @@ document.addEventListener('DOMContentLoaded', () => {
     // Botón para iniciar inventario
     document.getElementById('btn-iniciar-inventario').addEventListener('click', mostrarModal);
 
-    // Cerrar modal
-    document.getElementById('close-modal').addEventListener('click', cerrarModal);
+    // Botones para ajustes puntuales
+    document.getElementById('btn-ajustes-puntuales').addEventListener('click', iniciarAjustesPuntuales);
+    document.getElementById('btn-confirmar-seleccion').addEventListener('click', () => {
+        if (articulosSeleccionados.size === 0) {
+            mostrarMensaje('Debe seleccionar al menos un artículo', 'error');
+            return;
+        }
+        document.getElementById('paso-ajuste').style.display = 'block';
+        mostrarArticulosSeleccionados();
+        document.getElementById('modal-ajustes').style.display = 'block';
+    });
 
-    // Select de usuario con múltiples eventos
+    // Cerrar modales
+    document.getElementById('close-modal').addEventListener('click', cerrarModal);
+    document.getElementById('close-modal-ajustes').addEventListener('click', () => cerrarModalAjustes(true));
+
+    // Selects de usuario
     const selectUsuario = document.getElementById('select-usuario');
+    const selectUsuarioAjustes = document.getElementById('select-usuario-ajustes');
     
-    function actualizarSeleccionUsuario() {
-        const valor = selectUsuario.value;
-        console.log('🔄 Actualizando selección de usuario:', valor);
-        usuarioSeleccionado = valor;
-        const btnContinuar = document.getElementById('btn-continuar-usuario');
-        btnContinuar.disabled = !usuarioSeleccionado;
-        console.log('🔄 Botón continuar habilitado:', !btnContinuar.disabled);
+    function actualizarSeleccionUsuario(select, variable, btnId) {
+        const valor = select.value;
+        if (variable === 'usuarioSeleccionado') {
+            usuarioSeleccionado = valor;
+        } else {
+            usuarioAjustes = valor;
+        }
+        const btnContinuar = document.getElementById(btnId);
+        btnContinuar.disabled = !valor;
     }
     
-    // Eventos del select
-    selectUsuario.addEventListener('change', function(e) {
-        console.log('🔄 Evento change del select usuario disparado');
-        console.log('🔄 Valor seleccionado:', e.target.value);
-        actualizarSeleccionUsuario();
-    });
+    // Eventos del select de inventario
+    selectUsuario.addEventListener('change', () => actualizarSeleccionUsuario(selectUsuario, 'usuarioSeleccionado', 'btn-continuar-usuario'));
+    selectUsuario.addEventListener('input', () => actualizarSeleccionUsuario(selectUsuario, 'usuarioSeleccionado', 'btn-continuar-usuario'));
+    selectUsuario.addEventListener('keydown', (e) => setTimeout(() => actualizarSeleccionUsuario(selectUsuario, 'usuarioSeleccionado', 'btn-continuar-usuario'), 10));
     
-    selectUsuario.addEventListener('input', function(e) {
-        console.log('🔄 Evento input del select usuario disparado');
-        console.log('🔄 Valor seleccionado:', e.target.value);
-        actualizarSeleccionUsuario();
-    });
-    
-    // Evento para detectar cambios con teclado
-    selectUsuario.addEventListener('keydown', function(e) {
-        console.log('⌨️ Tecla presionada en select:', e.key);
-        setTimeout(() => {
-            actualizarSeleccionUsuario();
-        }, 10);
-    });
+    // Eventos del select de ajustes
+    selectUsuarioAjustes.addEventListener('change', () => actualizarSeleccionUsuario(selectUsuarioAjustes, 'usuarioAjustes', 'btn-continuar-ajustes'));
+    selectUsuarioAjustes.addEventListener('input', () => actualizarSeleccionUsuario(selectUsuarioAjustes, 'usuarioAjustes', 'btn-continuar-ajustes'));
+    selectUsuarioAjustes.addEventListener('keydown', (e) => setTimeout(() => actualizarSeleccionUsuario(selectUsuarioAjustes, 'usuarioAjustes', 'btn-continuar-ajustes'), 10));
 
-    // Botón continuar después de seleccionar usuario
-    document.getElementById('btn-continuar-usuario').addEventListener('click', function() {
-        console.log('🚀 Botón continuar clickeado');
-        console.log('🚀 Usuario seleccionado actual:', usuarioSeleccionado);
-        console.log('🚀 Valor del select:', selectUsuario.value);
-        
-        // Verificación adicional
-        if (!usuarioSeleccionado) {
-            const valorSelect = selectUsuario.value;
-            if (valorSelect) {
-                console.log('🔧 Corrigiendo usuario seleccionado:', valorSelect);
-                usuarioSeleccionado = valorSelect;
-            }
-        }
-        
+    // Botones continuar
+    document.getElementById('btn-continuar-usuario').addEventListener('click', () => {
         if (usuarioSeleccionado) {
-            console.log('✅ Procediendo a mostrar paso de conteo');
             mostrarPasoConteo();
         } else {
-            console.log('❌ No hay usuario seleccionado');
             mostrarMensaje('Por favor selecciona un usuario', 'error');
         }
     });
 
-    // Input de código de barras
+    document.getElementById('btn-continuar-ajustes').addEventListener('click', () => {
+        if (usuarioAjustes) {
+            cerrarModalAjustes(false);
+            activarModoSeleccion();
+        } else {
+            mostrarMensaje('Por favor selecciona un usuario', 'error');
+        }
+    });
+
+    // Input de código de barras y botones de inventario
     document.getElementById('input-codigo-barras').addEventListener('keypress', async (e) => {
         if (e.key === 'Enter') {
             const codigo = e.target.value.trim();
@@ -695,17 +956,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Botones de finalizar y cancelar
+    // Botones de finalizar y cancelar inventario
     document.getElementById('btn-finalizar-inventario').addEventListener('click', finalizarInventario);
     document.getElementById('btn-cancelar-inventario').addEventListener('click', cerrarModal);
 
-    // Event listeners para los filtros
+    // Botones de finalizar y cancelar ajustes
+    document.getElementById('btn-finalizar-ajustes').addEventListener('click', finalizarAjustes);
+    document.getElementById('btn-cancelar-ajustes').addEventListener('click', cerrarModalAjustes);
+
+    // Checkbox seleccionar todos
+    document.getElementById('seleccionar-todos').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.checkbox-articulo');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+            const articuloNumero = checkbox.dataset.articulo;
+            const articulo = todosLosArticulos.find(a => a.numero === articuloNumero);
+            
+            if (this.checked) {
+                articulosSeleccionados.set(articuloNumero, articulo);
+            } else {
+                articulosSeleccionados.delete(articuloNumero);
+            }
+        });
+    });
+
+    // Filtros
     const filtroNombre = document.getElementById('filtro-nombre');
     const filtroStock = document.getElementById('filtro-stock');
-
-    // Filtro de nombre en tiempo real
     filtroNombre.addEventListener('input', aplicarFiltros);
-
-    // Filtro de stock
     filtroStock.addEventListener('change', aplicarFiltros);
 });
