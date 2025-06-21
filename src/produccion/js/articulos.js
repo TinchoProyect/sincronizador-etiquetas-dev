@@ -217,6 +217,10 @@ export function aplicarFiltros(filtroIndex) {
     const filtro2 = document.getElementById('filtro2').value.toLowerCase();
     const filtro3 = document.getElementById('filtro3').value.toLowerCase();
 
+    // Obtener valor del switch de filtro de producción
+    const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+    const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
+
     // Resetear filtros posteriores
     if (filtroIndex === 1) {
         document.getElementById('filtro2').value = '';
@@ -245,6 +249,21 @@ export function aplicarFiltros(filtroIndex) {
             art.nombre.toLowerCase().includes(filtro3)
         );
     }
+
+    // Aplicar filtro de producción si está activo
+    if (mostrarSoloProduccion) {
+        resultados = resultados.filter(art => art.no_producido_por_lambda === false);
+    }
+
+    // Ordenar resultados: primero producidos por LAMDA, luego no producidos
+    resultados.sort((a, b) => {
+        if (a.no_producido_por_lambda === b.no_producido_por_lambda) {
+            // Orden alfabético por nombre
+            return a.nombre.localeCompare(b.nombre);
+        }
+        // Los producidos (false) primero
+        return a.no_producido_por_lambda ? 1 : -1;
+    });
 
     state.articulosFiltrados = resultados;
     actualizarTablaArticulos(resultados);

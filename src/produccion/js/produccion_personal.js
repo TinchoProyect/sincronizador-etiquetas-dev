@@ -147,6 +147,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('filtro1').addEventListener('input', () => aplicarFiltros(1));
     document.getElementById('filtro2').addEventListener('input', () => aplicarFiltros(2));
     document.getElementById('filtro3').addEventListener('input', () => aplicarFiltros(3));
+
+    // Agregar evento al switch de filtro de producción
+    const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+    if (filtroProduccionSwitch) {
+        filtroProduccionSwitch.addEventListener('change', () => aplicarFiltros(0));
+    }
     
     // Agregar evento al input de código de barras
     document.getElementById('codigo-barras').addEventListener('change', (e) => {
