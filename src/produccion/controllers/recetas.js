@@ -109,14 +109,21 @@ async function crearReceta(req, res) {
         `;
 
         for (const ing of ingredientes) {
-            // Buscar el ID del ingrediente por nombre
-            const ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
-            console.log(`Ingrediente encontrado para ${ing.nombre_ingrediente}:`, ingredienteId);
+            // Usar el ingrediente_id que viene del frontend si está disponible
+            let ingredienteId = ing.ingrediente_id;
+            
+            // Si no viene el ID, buscar por nombre como fallback
+            if (!ingredienteId) {
+                ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+            }
 
+            // Normalizar el nombre del ingrediente eliminando espacios extras
+            const nombreNormalizado = ing.nombre_ingrediente.trim();
+            
             await client.query(ingredientesQuery, [
                 recetaId,
                 ingredienteId,
-                ing.nombre_ingrediente,
+                nombreNormalizado,
                 ing.unidad_medida,
                 ing.cantidad
             ]);
@@ -249,14 +256,21 @@ async function actualizarReceta(req, res) {
         `;
 
         for (const ing of ingredientes) {
-            // Buscar el ID del ingrediente por nombre
-            const ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
-            console.log(`Ingrediente encontrado para ${ing.nombre_ingrediente}:`, ingredienteId);
+            // Usar el ingrediente_id que viene del frontend si está disponible
+            let ingredienteId = ing.ingrediente_id;
+            
+            // Si no viene el ID, buscar por nombre como fallback
+            if (!ingredienteId) {
+                ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+            }
 
+            // Normalizar el nombre del ingrediente eliminando espacios extras
+            const nombreNormalizado = ing.nombre_ingrediente.trim();
+            
             await client.query(ingredientesQuery, [
                 recetaId,
                 ingredienteId,
-                ing.nombre_ingrediente,
+                nombreNormalizado,
                 ing.unidad_medida,
                 ing.cantidad
             ]);
