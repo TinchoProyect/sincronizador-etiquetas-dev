@@ -49,6 +49,12 @@ export async function abrirModalArticulos() {
             modal.classList.add('show');
         }, 10);
 
+        // Activar el filtro de producción por defecto
+        const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+        if (filtroProduccionSwitch) {
+            filtroProduccionSwitch.checked = true;
+        }
+
         // Cargar artículos si aún no se han cargado
         if (state.todosLosArticulos.length === 0) {
             console.log('Solicitando artículos al servidor...');
@@ -70,7 +76,11 @@ export async function abrirModalArticulos() {
 
             state.todosLosArticulos = articulos;
             state.articulosFiltrados = [...articulos];
-            actualizarTablaArticulos(state.articulosFiltrados);
+            // Aplicar filtro de producción por defecto
+            aplicarFiltros(0);
+        } else {
+            // Si ya hay artículos cargados, aplicar el filtro de producción
+            aplicarFiltros(0);
         }
     } catch (error) {
         console.error('Error al abrir modal de artículos:', error);
@@ -102,7 +112,7 @@ export async function actualizarTablaArticulos(articulos) {
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos disponibles</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
         return;
     }
 
@@ -138,10 +148,10 @@ export async function actualizarTablaArticulos(articulos) {
 
         // Función para renderizar un grupo con encabezado
         function renderGroup(title, group) {
-            // Crear fila de encabezado con colspan 5
+            // Crear fila de encabezado con colspan 4
             const headerRow = document.createElement('tr');
             const headerCell = document.createElement('td');
-            headerCell.colSpan = 5;
+            headerCell.colSpan = 4;
             headerCell.style.fontWeight = 'bold';
             headerCell.style.backgroundColor = '#f0f0f0';
             headerCell.style.padding = '8px';
@@ -162,31 +172,30 @@ export async function actualizarTablaArticulos(articulos) {
                 tr.innerHTML = `
                     <td>${articulo.numero}</td>
                     <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
-                    <td>${articulo.codigo_barras || '-'}</td>
                     <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
                         ${articulo.stock_ventas || 0}
                     </td>
                     <td>
                         ${tieneReceta ? `
-                            <input type="number" class="cantidad-input" min="1" value="1">
-                            <button class="btn-agregar" 
-                                    style="background-color: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                            <input type="number" class="cantidad-input" min="1" value="1" style="width: 50px; margin-right: 6px;">
+                            <button class="btn-agregar icon-cart" 
                                     data-numero="${articulo.numero}" 
-                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                                Agregar al carro
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                    title="Agregar al carro">
+                                Ag. carro
                             </button>
-                            <button class="btn-editar-receta"
-                                    style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                            <button class="btn-editar-receta icon-edit"
                                     data-numero="${articulo.numero}"
                                     data-modo="editar"
-                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                                Editar receta
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                    title="Editar receta">
+                                Editar
                             </button>
-                            <button class="btn-desvincular-receta"
-                                    style="background-color: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                            <button class="btn-desvincular-receta icon-trash"
                                     data-numero="${articulo.numero}"
-                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                                Desvincular receta
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                    title="Quitar receta">
+                                Quitar
                             </button>
                         ` : `
                             <button class="btn-editar-receta"
@@ -209,7 +218,7 @@ export async function actualizarTablaArticulos(articulos) {
 
         if (mostrarSoloProduccion) {
             if (produccion.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos de producción disponibles</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos de producción disponibles</td></tr>';
             } else {
                 renderGroup('Artículos de producción', produccion);
             }
@@ -222,7 +231,7 @@ export async function actualizarTablaArticulos(articulos) {
                 renderGroup('Resto de los artículos', resto);
             }
             if (produccion.length === 0 && resto.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos disponibles</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
             }
         }
 
@@ -959,11 +968,8 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             return;
         }
 
-        // Limpiar el número de artículo de caracteres especiales
-        const numeroLimpio = articulo_numero.replace(/[^a-zA-Z0-9]/g, '');
-
-        // 1. Eliminar la receta
-        const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(numeroLimpio)}`, {
+        // 1. Eliminar la receta - usar el número de artículo sin modificar
+        const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`, {
             method: 'DELETE'
         });
 

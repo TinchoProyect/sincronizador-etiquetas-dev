@@ -1,0 +1,142 @@
+/* Contenedor de filtros mejorado */
+.filtros-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+    align-items: start;
+}
+
+/* Grupo de filtros */
+.filtro-grupo {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* Checkbox de filtro de producción */
+.filtro-grupo:last-child {
+    grid-column: 1 / -1;
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+/* Tabla de artículos */
+.tabla-articulos {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+/* Encabezados de tabla */
+.tabla-articulos th {
+    background: #f8f9fa;
+    padding: 10px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+}
+
+/* Distribución de columnas */
+.tabla-articulos th:nth-child(1),
+.tabla-articulos td:nth-child(1) {
+    width: 15%;
+}
+
+.tabla-articulos th:nth-child(2),
+.tabla-articulos td:nth-child(2) {
+    width: 45%;
+}
+
+.tabla-articulos th:nth-child(3),
+.tabla-articulos td:nth-child(3) {
+    width: 10%;
+    text-align: center;
+}
+
+.tabla-articulos th:nth-child(4),
+.tabla-articulos td:nth-child(4) {
+    width: 30%;
+}
+
+/* Celdas de la tabla */
+.tabla-articulos td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: middle;
+}
+
+/* Contenedor de acciones */
+.tabla-articulos td:last-child {
+    display: flex;
+    gap: 8px;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: center;
+    padding-right: 10px;
+}
+
+/* Input de cantidad */
+.cantidad-input {
+    width: 60px !important;
+    padding: 4px !important;
+    text-align: center;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+/* Botones de acción */
+.btn-agregar,
+.btn-editar-receta,
+.btn-desvincular-receta {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: auto;
+    color: white;
+}
+
+/* Colores específicos de botones */
+.btn-agregar {
+    background-color: #28a745 !important; /* Verde para agregar al carro */
+}
+
+.btn-editar-receta {
+    background-color: #007bff !important; /* Azul para editar */
+}
+
+.btn-desvincular-receta {
+    background-color: #dc3545 !important; /* Rojo para quitar */
+}
+
+/* Botón vincular receta (gris) */
+button[style*="background-color: #6c757d"] {
+    background-color: #6c757d !important;
+    color: white !important;
+}
+
+/* Modal content */
+#modal-articulos .modal-content {
+    max-width: 1200px;
+    width: 95%;
+    margin: 20px auto;
+    padding: 20px;
+    border-radius: 8px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .filtros-container {
+        grid-template-columns: 1fr;
+    }
+}
