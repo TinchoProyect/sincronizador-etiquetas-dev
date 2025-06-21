@@ -22,7 +22,7 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { obtenerArticulos } = require('../controllers/articulos');
+const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda } = require('../controllers/articulos');
 const {
     obtenerIngredientes,
     obtenerIngrediente,
@@ -633,26 +633,67 @@ router.get('/articulos/buscar', async (req, res) => {
             return res.status(400).json({ error: 'Se requiere el parámetro codigo_barras' });
         }
         
-        const query = `
-            SELECT 
-                a.numero,
-                a.nombre,
-                a.codigo_barras,
-                COALESCE(src.stock_consolidado, 0) as stock_consolidado
-            FROM public.articulos a
-            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
-            WHERE a.codigo_barras = $1
-        `;
-        const result = await req.db.query(query, [codigo_barras]);
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Artículo no encontrado' });
-        }
-        
-        res.json(result.rows[0]);
+        const articulo = await buscarArticuloPorCodigo(codigo_barras);
+        res.json(articulo);
     } catch (error) {
         console.error('Error en ruta GET /articulos/buscar:', error);
-        res.status(500).json({ error: error.message });
+        if (error.message === 'Artículo no encontrado') {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Ruta para actualizar campo no_producido_por_lambda
+router.patch('/articulos/:articulo_numero/produccion', async (req, res) => {
+    try {
+        const { articulo_numero } = req.params;
+        const { no_producido_por_lambda } = req.body;
+        
+        if (!articulo_numero) {
+            return res.status(400).json({ error: 'Número de artículo requerido' });
+        }
+
+        if (typeof no_producido_por_lambda !== 'boolean') {
+            return res.status(400).json({ error: 'El valor no_producido_por_lambda debe ser booleano' });
+        }
+
+        const resultado = await actualizarProduccionLambda(articulo_numero, no_producido_por_lambda);
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error en ruta PATCH /articulos/:articulo_numero/produccion:', error);
+        if (error.message.includes('no encontrado')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Ruta para alternar estado de producción (toggle)
+router.put('/articulos/:articuloId/toggle-produccion', async (req, res) => {
+    try {
+        const { articuloId } = req.params;
+        const { no_producido_por_lambda } = req.body;
+        
+        if (!articuloId) {
+            return res.status(400).json({ error: 'ID de artículo requerido' });
+        }
+
+        if (typeof no_producido_por_lambda !== 'boolean') {
+            return res.status(400).json({ error: 'El campo no_producido_por_lambda debe ser un booleano' });
+        }
+
+        const resultado = await actualizarProduccionLambda(articuloId, no_producido_por_lambda);
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error en ruta PUT /articulos/:articuloId/toggle-produccion:', error);
+        if (error.message.includes('no encontrado')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
     }
 });
 

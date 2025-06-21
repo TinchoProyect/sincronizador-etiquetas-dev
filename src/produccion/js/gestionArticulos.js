@@ -47,7 +47,7 @@ function actualizarTablaArticulos(articulos) {
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        const colspan = modoSeleccion ? 5 : 4;
+        const colspan = modoSeleccion ? 6 : 5;
         tbody.innerHTML = `<tr><td colspan="${colspan}" class="mensaje-info">No hay artículos registrados</td></tr>`;
         return;
     }
@@ -71,6 +71,13 @@ function actualizarTablaArticulos(articulos) {
             <td>${articulo.nombre}</td>
             <td>${articulo.codigo_barras || '-'}</td>
             <td>${stockVentas}</td>
+            <td class="produccion-cell">
+                <label class="switch">
+                    <input type="checkbox" ${!articulo.no_producido_por_lambda ? 'checked' : ''} 
+                           onchange="toggleProduccion('${articulo.numero}', this.checked)">
+                    <span class="slider round"></span>
+                </label>
+            </td>
         `;
         tbody.appendChild(tr);
     });
@@ -153,15 +160,51 @@ function filtrarPorStock(articulos, condicion) {
     return resultado;
 }
 
+function filtrarPorProduccion(articulos, condicion) {
+    console.log('🏭 [DEBUG] filtrarPorProduccion - Iniciando filtrado');
+    console.log('🏭 [DEBUG] Condición de filtro:', condicion);
+    console.log('🏭 [DEBUG] Cantidad de artículos a filtrar:', articulos.length);
+    
+    let resultado;
+    switch (condicion) {
+        case 'producidos':
+            resultado = articulos.filter(articulo => {
+                const esProducidoPorLamda = !articulo.no_producido_por_lambda;
+                if (esProducidoPorLamda) {
+                    console.log(`🏭 [DEBUG] Artículo producido por LAMDA: ${articulo.nombre}`);
+                }
+                return esProducidoPorLamda;
+            });
+            break;
+        case 'no_producidos':
+            resultado = articulos.filter(articulo => {
+                const noEsProducidoPorLamda = articulo.no_producido_por_lambda === true;
+                if (noEsProducidoPorLamda) {
+                    console.log(`🏭 [DEBUG] Artículo NO producido por LAMDA: ${articulo.nombre}`);
+                }
+                return noEsProducidoPorLamda;
+            });
+            break;
+        default:
+            resultado = articulos;
+    }
+    
+    console.log('✅ [DEBUG] filtrarPorProduccion - Filtrado completado');
+    console.log('✅ [DEBUG] Artículos después del filtro:', resultado.length);
+    return resultado;
+}
+
 function aplicarFiltros() {
     console.log('🔍 [DEBUG] aplicarFiltros - Iniciando aplicación de filtros');
     
     const textoFiltro = document.getElementById('filtro-nombre').value;
     const stockFiltro = document.getElementById('filtro-stock').value;
+    const filtroProduccion = document.querySelector('input[name="filtroProduccion"]:checked').value;
     
     console.log('🔍 [DEBUG] Filtros actuales:');
     console.log('- Texto:', textoFiltro);
     console.log('- Stock:', stockFiltro);
+    console.log('- Filtro producción:', filtroProduccion);
     console.log('- Total artículos antes de filtrar:', todosLosArticulos.length);
     
     let articulosFiltrados = [...todosLosArticulos];
@@ -174,10 +217,17 @@ function aplicarFiltros() {
     }
     
     // Aplicar filtro de stock
-    if (stockFiltro !== '') {
+    if (stockFiltro !== 'todos') {
         console.log('📊 [DEBUG] Aplicando filtro por stock:', stockFiltro);
         articulosFiltrados = filtrarPorStock(articulosFiltrados, stockFiltro);
         console.log('📊 [DEBUG] Artículos después de filtrar por stock:', articulosFiltrados.length);
+    }
+    
+    // Aplicar filtro de producción
+    if (filtroProduccion !== 'todos') {
+        console.log('🏭 [DEBUG] Aplicando filtro de producción:', filtroProduccion);
+        articulosFiltrados = filtrarPorProduccion(articulosFiltrados, filtroProduccion);
+        console.log('🏭 [DEBUG] Artículos después de filtrar por producción:', articulosFiltrados.length);
     }
     
     console.log('✅ [DEBUG] Filtrado completado');
@@ -980,9 +1030,62 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Filtros
+// Filtros
     const filtroNombre = document.getElementById('filtro-nombre');
     const filtroStock = document.getElementById('filtro-stock');
+    const filtrosProduccion = document.querySelectorAll('input[name="filtroProduccion"]');
+    
     filtroNombre.addEventListener('input', aplicarFiltros);
     filtroStock.addEventListener('change', aplicarFiltros);
+    filtrosProduccion.forEach(radio => {
+        radio.addEventListener('change', aplicarFiltros);
+    });
 });
+
+// Función para alternar el estado de producción de un artículo
+async function toggleProduccion(articuloId, checked) {
+    const switchElement = document.querySelector(`input[type="checkbox"][onchange="toggleProduccion('${articuloId}', this.checked)"]`);
+    if (!switchElement) {
+        console.error('No se encontró el switch para el artículo:', articuloId);
+        return;
+    }
+    // Deshabilitar el switch para evitar múltiples clics
+    switchElement.disabled = true;
+    const previousChecked = !checked; // Estado anterior invertido
+
+    try {
+        const response = await fetch(`/api/produccion/articulos/${encodeURIComponent(articuloId)}/toggle-produccion`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                no_producido_por_lambda: !checked // Si está checked, es producido, por lo que no_producido_por_lambda es false
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al actualizar el estado de producción');
+        }
+
+        // Actualizar el estado en todosLosArticulos para reflejar el cambio
+        const articulo = todosLosArticulos.find(a => a.numero === articuloId);
+        if (articulo) {
+            articulo.no_producido_por_lambda = !checked;
+        }
+
+        // Actualizar la UI: aplicar filtros actuales para reflejar cambios sin perder filtrado
+        aplicarFiltros();
+        
+        mostrarMensaje(`Estado de producción actualizado correctamente`, 'info');
+        
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarMensaje('Error al actualizar el estado de producción');
+        // Revertir el estado del switch al anterior
+        switchElement.checked = previousChecked;
+    } finally {
+        // Habilitar el switch nuevamente
+        switchElement.disabled = false;
+    }
+}

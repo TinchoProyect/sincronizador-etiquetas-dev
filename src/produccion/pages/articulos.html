@@ -407,6 +407,136 @@
         .tabla-articulos:not(.modo-seleccion) .checkbox-column {
             display: none;
         }
+
+        /* Estilos para los botones de radio */
+        .btn-group {
+            display: inline-flex;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .btn-check {
+            display: none;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background-color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            background-color: #f8f9fa;
+        }
+
+        .btn-check:checked + .btn-outline-secondary {
+            background-color: #6c757d;
+            color: white;
+            border-color: #6c757d;
+        }
+
+        .btn-check:checked + .btn-outline-success {
+            background-color: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+
+        .btn-check:checked + .btn-outline-warning {
+            background-color: #ffc107;
+            color: #000;
+            border-color: #ffc107;
+        }
+
+        /* Estilos para la columna de producción */
+        .produccion-cell {
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .produccion-cell:hover {
+            background-color: #e9ecef;
+        }
+
+        .produccion-cell.producido {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .produccion-cell.no-producido {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        /* Toggle Switch Styles */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+        }
+
+        input:checked + .slider {
+            background-color: #28a745;
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #28a745;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        /* Rounded sliders */
+        .slider.round {
+            border-radius: 34px;
+        }
+
+        .slider.round:before {
+            border-radius: 50%;
+        }
+
+        /* Center the toggle switch in the cell */
+        .produccion-cell {
+            text-align: center;
+            vertical-align: middle;
+            padding: 8px;
+        }
     </style>
 </head>
 <body>
@@ -433,6 +563,19 @@
                                 <option value="menor-cero">Stock < 0</option>
                             </select>
                         </div>
+                        <div class="filter-group">
+                            <label>Filtro de producción:</label>
+                            <div class="btn-group" role="group" aria-label="Filtro de producción">
+                                <input type="radio" class="btn-check" name="filtroProduccion" id="filtroTodos" value="todos" checked>
+                                <label class="btn btn-outline-secondary" for="filtroTodos">Todos</label>
+                                
+                                <input type="radio" class="btn-check" name="filtroProduccion" id="filtroProducidos" value="producidos">
+                                <label class="btn btn-outline-success" for="filtroProducidos">Producidos por LAMDA</label>
+                                
+                                <input type="radio" class="btn-check" name="filtroProduccion" id="filtroNoProducidos" value="no_producidos">
+                                <label class="btn btn-outline-warning" for="filtroNoProducidos">NO producidos por LAMDA</label>
+                            </div>
+                        </div>
                     </div>
                     <div class="buttons-container">
                         <button id="btn-ajustes-puntuales" class="secondary-button">Ajustes Puntuales</button>
@@ -452,6 +595,7 @@
                             <th>Nombre</th>
                             <th>Código de Barras</th>
                             <th>Stock Ventas</th>
+                            <th>Producción LAMDA</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-articulos-body">
