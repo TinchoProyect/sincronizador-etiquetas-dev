@@ -96,7 +96,7 @@ export function cerrarModalArticulos() {
     document.getElementById('codigo-barras').value = '';
 }
 
-// Función para actualizar la tabla de artículos
+// Función para actualizar la tabla de artículos con agrupación visual
 export async function actualizarTablaArticulos(articulos) {
     const tbody = document.getElementById('tabla-articulos-body');
     tbody.innerHTML = '';
@@ -128,57 +128,103 @@ export async function actualizarTablaArticulos(articulos) {
         const estadoRecetas = await response.json();
         console.log('Estado de recetas recibido:', estadoRecetas);
 
-        articulos.forEach(articulo => {
-            const tr = document.createElement('tr');
-            const tieneReceta = estadoRecetas[articulo.numero];
-            
-            tr.setAttribute('data-numero', articulo.numero);
-            const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
-            if (esArticuloEditado) {
-                tr.classList.add('resaltado-articulo');
+        // Dividir artículos en dos grupos según no_producido_por_lambda
+        const produccion = articulos.filter(art => art.no_producido_por_lambda === false);
+        const resto = articulos.filter(art => art.no_producido_por_lambda === true);
+
+        // Ordenar cada grupo alfabéticamente por nombre
+        produccion.sort((a, b) => a.nombre.localeCompare(b.nombre));
+        resto.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+        // Función para renderizar un grupo con encabezado
+        function renderGroup(title, group) {
+            // Crear fila de encabezado con colspan 5
+            const headerRow = document.createElement('tr');
+            const headerCell = document.createElement('td');
+            headerCell.colSpan = 5;
+            headerCell.style.fontWeight = 'bold';
+            headerCell.style.backgroundColor = '#f0f0f0';
+            headerCell.style.padding = '8px';
+            headerCell.textContent = title;
+            headerRow.appendChild(headerCell);
+            tbody.appendChild(headerRow);
+
+            // Renderizar artículos del grupo
+            group.forEach(articulo => {
+                const tr = document.createElement('tr');
+                const tieneReceta = estadoRecetas[articulo.numero];
+                
+                tr.setAttribute('data-numero', articulo.numero);
+                const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
+                if (esArticuloEditado) {
+                    tr.classList.add('resaltado-articulo');
+                }
+                tr.innerHTML = `
+                    <td>${articulo.numero}</td>
+                    <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+                    <td>${articulo.codigo_barras || '-'}</td>
+                    <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
+                        ${articulo.stock_ventas || 0}
+                    </td>
+                    <td>
+                        ${tieneReceta ? `
+                            <input type="number" class="cantidad-input" min="1" value="1">
+                            <button class="btn-agregar" 
+                                    style="background-color: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                    data-numero="${articulo.numero}" 
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                Agregar al carro
+                            </button>
+                            <button class="btn-editar-receta"
+                                    style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                                    data-numero="${articulo.numero}"
+                                    data-modo="editar"
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                Editar receta
+                            </button>
+                            <button class="btn-desvincular-receta"
+                                    style="background-color: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
+                                    data-numero="${articulo.numero}"
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                Desvincular receta
+                            </button>
+                        ` : `
+                            <button class="btn-editar-receta"
+                                    style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                    data-numero="${articulo.numero}"
+                                    data-modo="crear"
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                Vincular receta
+                            </button>
+                        `}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Si el filtro "Mostrar solo artículos de producción" está activo, mostrar solo el grupo de producción
+        const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+        const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
+
+        if (mostrarSoloProduccion) {
+            if (produccion.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos de producción disponibles</td></tr>';
+            } else {
+                renderGroup('Artículos de producción', produccion);
             }
-            tr.innerHTML = `
-                <td>${articulo.numero}</td>
-                <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
-                <td>${articulo.codigo_barras || '-'}</td>
-                <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
-                    ${articulo.stock_ventas || 0}
-                </td>
-                <td>
-                    ${tieneReceta ? `
-                        <input type="number" class="cantidad-input" min="1" value="1">
-                        <button class="btn-agregar" 
-                                style="background-color: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                data-numero="${articulo.numero}" 
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Agregar al carro
-                        </button>
-                        <button class="btn-editar-receta"
-                                style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
-                                data-numero="${articulo.numero}"
-                                data-modo="editar"
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Editar receta
-                        </button>
-                        <button class="btn-desvincular-receta"
-                                style="background-color: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
-                                data-numero="${articulo.numero}"
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Desvincular receta
-                        </button>
-                    ` : `
-                        <button class="btn-editar-receta"
-                                style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                data-numero="${articulo.numero}"
-                                data-modo="crear"
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Vincular receta
-                        </button>
-                    `}
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+        } else {
+            // Mostrar ambos grupos con encabezados
+            if (produccion.length > 0) {
+                renderGroup('Artículos de producción', produccion);
+            }
+            if (resto.length > 0) {
+                renderGroup('Resto de los artículos', resto);
+            }
+            if (produccion.length === 0 && resto.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos disponibles</td></tr>';
+            }
+        }
 
     } catch (error) {
         console.error('Error al actualizar tabla:', error);
