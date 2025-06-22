@@ -535,8 +535,14 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         // Guardar el ID del carro en localStorage
         localStorage.setItem('carroActivo', data.id);
         
-        // Actualizar la información visual del carro
-        actualizarEstadoCarro();
+        // Actualizar la información visual del carro y mostrar el botón de agregar artículos
+        await actualizarEstadoCarro();
+        await mostrarArticulosDelCarro();
+        
+        // Importar y llamar a la función de actualización de visibilidad de botones
+        if (window.actualizarVisibilidadBotones) {
+            await window.actualizarVisibilidadBotones();
+        }
 
     } catch (error) {
         console.error('Error:', error);

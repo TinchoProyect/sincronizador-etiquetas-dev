@@ -292,6 +292,7 @@ export async function imprimirEtiquetasCarro(carroId) {
 window.marcarCarroPreparado = marcarCarroPreparado;
 window.finalizarProduccion = finalizarProduccion;
 window.imprimirEtiquetasCarro = imprimirEtiquetasCarro;
+window.actualizarVisibilidadBotones = actualizarVisibilidadBotones;
 
 // Mantener compatibilidad con el nombre anterior
 export const actualizarVisibilidadBotonPreparado = actualizarVisibilidadBotones;
