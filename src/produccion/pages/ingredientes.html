@@ -242,6 +242,14 @@
                     <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
                 </div>
                 
+                <!-- Contenedor de solapas -->
+                <div class="tabs-container" style="margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
+                    <ul class="tabs-list" id="tabs-ingredientes" style="display: flex; list-style: none; padding: 0; margin: 0;">
+                        <li class="tab tab-activa" data-tab="deposito" style="padding: 10px 20px; cursor: pointer; border: 1px solid #dee2e6; border-bottom: none; margin-bottom: -1px; background-color: #fff; color: #495057; font-weight: bold;">Depósito</li>
+                        <!-- Las demás solapas se agregarán dinámicamente -->
+                    </ul>
+                </div>
+                
                 <!-- Filtros por categoría -->
                 <div id="filtros-categorias" class="filtros-categorias">
                     <!-- Los filtros se generarán dinámicamente aquí -->
@@ -253,7 +261,7 @@
                             <th>Nombre</th>
                             <th>Unidad de Medida</th>
                             <th>Categoría</th>
-                            <th>Stock Actual</th>
+                            <th id="columna-dinamica">Stock Actual</th>
                             <th>Descripción</th>
                             <th>Tipo</th>
                             <th>Composición</th>
@@ -361,5 +369,218 @@
 
     <script type="module" src="/js/ingredientes.js"></script>
     <script type="module" src="/js/mix.js"></script>
+    <script type="module">
+        // Variables globales para el sistema de tabs
+        let usuariosConStock = [];
+        let tabActiva = 'deposito';
+        let ingredientesOriginales = [];
+
+        // Cargar usuarios con stock y crear sus tabs
+        async function cargarUsuariosConStock() {
+            try {
+                console.log('🔄 Cargando usuarios con stock...');
+                const resp = await fetch('/api/produccion/ingredientes/usuarios-con-stock');
+                if (!resp.ok) {
+                    throw new Error('Error al cargar usuarios con stock');
+                }
+                usuariosConStock = await resp.json();
+                console.log('✅ Usuarios con stock cargados:', usuariosConStock);
+                
+                // Crear tabs para cada usuario
+                const tabsList = document.getElementById('tabs-ingredientes');
+                
+                // Agregar listener al tab de Depósito
+                const tabDeposito = tabsList.querySelector('[data-tab="deposito"]');
+                if (tabDeposito) {
+                    tabDeposito.addEventListener('click', () => cambiarTab(tabDeposito));
+                }
+                
+                // Si no hay usuarios con stock, solo mostrar mensaje en consola
+                if (!usuariosConStock || usuariosConStock.length === 0) {
+                    console.log('ℹ️ No hay usuarios con stock registrado');
+                    return;
+                }
+                
+                // Crear tabs solo si hay usuarios con stock
+                usuariosConStock.forEach(usuario => {
+                    const tab = document.createElement('li');
+                    tab.className = 'tab tab-inactiva';
+                    tab.dataset.tab = `usuario-${usuario.id}`;
+                    tab.dataset.usuarioId = usuario.id;
+                    tab.textContent = usuario.nombre;
+                    tab.style.cssText = 'padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; background-color: #f8f9fa; color: #6c757d; transition: all 0.3s ease;';
+                    tab.addEventListener('click', () => cambiarTab(tab));
+                    tab.addEventListener('mouseenter', () => {
+                        if (!tab.classList.contains('tab-activa')) {
+                            tab.style.borderColor = '#e9ecef';
+                            tab.style.color = '#495057';
+                        }
+                    });
+                    tab.addEventListener('mouseleave', () => {
+                        if (!tab.classList.contains('tab-activa')) {
+                            tab.style.borderColor = 'transparent';
+                            tab.style.color = '#6c757d';
+                        }
+                    });
+                    tabsList.appendChild(tab);
+                });
+            } catch (error) {
+                console.error('❌ Error al cargar usuarios con stock:', error);
+                console.log('ℹ️ Continuando solo con la vista de depósito');
+                // No mostrar mensaje de error al usuario ya que es un estado válido
+            }
+        }
+
+        // Cambiar entre tabs
+        async function cambiarTab(tabElement) {
+            console.log('🔄 Cambiando a tab:', tabElement.dataset.tab);
+            
+            // Actualizar clases y estilos de las tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.className = 'tab tab-inactiva';
+                tab.style.cssText = 'padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; background-color: #f8f9fa; color: #6c757d; transition: all 0.3s ease;';
+            });
+            tabElement.className = 'tab tab-activa';
+            tabElement.style.cssText = 'padding: 10px 20px; cursor: pointer; border: 1px solid #dee2e6; border-bottom: none; margin-bottom: -1px; background-color: #fff; color: #495057; font-weight: bold; border-bottom-color: #fff;';
+            
+            // Actualizar tab activa
+            tabActiva = tabElement.dataset.tab;
+            
+            // Actualizar encabezado de la tabla según el tipo de vista
+            const columnaDinamica = document.getElementById('columna-dinamica');
+            if (tabActiva === 'deposito') {
+                columnaDinamica.textContent = 'Stock Actual';
+                await cargarIngredientesDeposito();
+            } else {
+                columnaDinamica.textContent = 'Stock (Kg)';
+                const usuarioId = tabElement.dataset.usuarioId;
+                await cargarIngredientesUsuario(usuarioId);
+            }
+        }
+
+        // Cargar ingredientes del depósito
+        async function cargarIngredientesDeposito() {
+            try {
+                console.log('🔄 Cargando ingredientes del depósito...');
+                const resp = await fetch('/api/produccion/ingredientes');
+                if (!resp.ok) {
+                    throw new Error('Error al cargar ingredientes del depósito');
+                }
+                const ingredientes = await resp.json();
+                console.log('✅ Ingredientes del depósito cargados');
+                ingredientesOriginales = ingredientes;
+                renderizarTablaIngredientes(ingredientes);
+            } catch (error) {
+                console.error('❌ Error al cargar ingredientes del depósito:', error);
+                mostrarMensaje(error.message, 'error');
+            }
+        }
+
+        // Cargar ingredientes de un usuario específico
+        async function cargarIngredientesUsuario(usuarioId) {
+            try {
+                console.log(`🔄 Cargando ingredientes del usuario ${usuarioId}...`);
+                const resp = await fetch(`/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
+                if (!resp.ok) {
+                    throw new Error('Error al cargar ingredientes del usuario');
+                }
+                const ingredientes = await resp.json();
+                console.log(`✅ Ingredientes del usuario ${usuarioId} cargados`);
+                renderizarTablaIngredientes(ingredientes);
+            } catch (error) {
+                console.error(`❌ Error al cargar ingredientes del usuario ${usuarioId}:`, error);
+                mostrarMensaje(error.message, 'error');
+            }
+        }
+
+        // Renderizar tabla de ingredientes según el contexto
+        function renderizarTablaIngredientes(ingredientes) {
+            const tbody = document.getElementById('tabla-ingredientes-body');
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            
+            if (!ingredientes || ingredientes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center">No hay ingredientes disponibles</td></tr>';
+                return;
+            }
+
+            ingredientes.forEach(ingrediente => {
+                const row = document.createElement('tr');
+                
+                if (tabActiva === 'deposito') {
+                    // Vista de depósito - funcionalidad completa
+                    row.innerHTML = `
+                        <td>${ingrediente.nombre}</td>
+                        <td>${ingrediente.unidad_medida || ''}</td>
+                        <td>${ingrediente.categoria || ''}</td>
+                        <td>${ingrediente.stock || 0}</td>
+                        <td>${ingrediente.descripcion || ''}</td>
+                        <td>${ingrediente.tipo || 'Ingrediente Simple'}</td>
+                        <td>
+                            ${ingrediente.tipo === 'Mix' ? 
+                                `<button class="btn-editar" onclick="gestionarComposicion(${ingrediente.id})">Gestionar composición</button>` : 
+                                '-'
+                            }
+                        </td>
+                        <td>
+                            <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
+                            <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
+                        </td>
+                    `;
+                } else {
+                    // Vista de usuario - solo lectura
+                    row.innerHTML = `
+                        <td>${ingrediente.nombre_ingrediente || ingrediente.nombre}</td>
+                        <td>${ingrediente.unidad_medida || ''}</td>
+                        <td>${ingrediente.categoria || ''}</td>
+                        <td>${ingrediente.stock_total || 0}</td>
+                        <td>${ingrediente.descripcion || ''}</td>
+                        <td>${ingrediente.tipo || 'Ingrediente Simple'}</td>
+                        <td>-</td>
+                        <td><span style="color: #6c757d;">Solo lectura</span></td>
+                    `;
+                }
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Función para mostrar mensajes
+        function mostrarMensaje(mensaje, tipo) {
+            // Buscar si ya existe un mensaje
+            let mensajeExistente = document.querySelector('.mensaje-error, .mensaje-exito');
+            if (mensajeExistente) {
+                mensajeExistente.remove();
+            }
+
+            const div = document.createElement('div');
+            div.className = tipo === 'error' ? 'mensaje-error' : 'mensaje-exito';
+            div.textContent = mensaje;
+            
+            const main = document.querySelector('main');
+            main.insertBefore(div, main.firstChild);
+            
+            // Remover el mensaje después de 5 segundos
+            setTimeout(() => {
+                if (div.parentNode) {
+                    div.remove();
+                }
+            }, 5000);
+        }
+
+        // Inicializar el sistema de tabs cuando se carga la página
+        document.addEventListener('DOMContentLoaded', async () => {
+            await cargarUsuariosConStock();
+            await cargarIngredientesDeposito();
+        });
+
+        // Hacer las funciones disponibles globalmente para que puedan ser llamadas desde otros scripts
+        window.cambiarTab = cambiarTab;
+        window.cargarIngredientesDeposito = cargarIngredientesDeposito;
+        window.cargarIngredientesUsuario = cargarIngredientesUsuario;
+        window.renderizarTablaIngredientes = renderizarTablaIngredientes;
+        window.tabActiva = () => tabActiva;
+    </script>
 </body>
 </html>

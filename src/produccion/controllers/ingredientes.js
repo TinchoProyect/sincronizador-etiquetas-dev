@@ -200,11 +200,80 @@ async function eliminarIngrediente(id) {
     }
 }
 
+/**
+ * Obtiene la lista de usuarios que tienen stock en ingredientes_stock_usuarios
+ * @returns {Promise<Array>} Lista de usuarios con stock
+ */
+async function obtenerUsuariosConStock() {
+    try {
+        console.log('🔍 Obteniendo usuarios con stock de ingredientes...');
+        const query = `
+            SELECT DISTINCT 
+                u.id,
+                u.nombre_completo
+            FROM public.usuarios u
+            INNER JOIN public.ingredientes_stock_usuarios isu ON u.id = isu.usuario_id
+            WHERE isu.cantidad > 0
+            ORDER BY u.nombre_completo ASC;
+        `;
+        
+        const result = await pool.query(query);
+        console.log(`✅ Encontrados ${result.rows.length} usuarios con stock de ingredientes`);
+        return result.rows;
+    } catch (error) {
+        console.error('❌ Error en obtenerUsuariosConStock:', error);
+        throw new Error('No se pudo obtener la lista de usuarios con stock');
+    }
+}
+
+/**
+ * Obtiene el stock consolidado de ingredientes para un usuario específico
+ * @param {number} usuarioId - ID del usuario
+ * @returns {Promise<Array>} Lista de ingredientes con stock del usuario
+ */
+async function obtenerStockPorUsuario(usuarioId) {
+    try {
+        console.log(`🔍 Obteniendo stock de ingredientes para usuario ${usuarioId}...`);
+        const query = `
+            SELECT 
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.descripcion,
+                i.unidad_medida,
+                i.categoria,
+                SUM(isu.cantidad) as stock_actual,
+                CASE 
+                    WHEN EXISTS (
+                        SELECT 1 FROM ingrediente_composicion ic 
+                        WHERE ic.mix_id = i.id
+                    ) THEN 'compuesto'
+                    ELSE 'simple'
+                END as tipo
+            FROM public.ingredientes i
+            INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
+            WHERE isu.usuario_id = $1 AND isu.cantidad > 0
+            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria
+            HAVING SUM(isu.cantidad) > 0
+            ORDER BY i.nombre ASC;
+        `;
+        
+        const result = await pool.query(query, [usuarioId]);
+        console.log(`✅ Encontrados ${result.rows.length} ingredientes con stock para usuario ${usuarioId}`);
+        return result.rows;
+    } catch (error) {
+        console.error(`❌ Error en obtenerStockPorUsuario para usuario ${usuarioId}:`, error);
+        throw new Error('No se pudo obtener el stock del usuario');
+    }
+}
+
 module.exports = {
     obtenerIngredientes,
     obtenerIngrediente,
     crearIngrediente,
     actualizarIngrediente,
     eliminarIngrediente,
-    obtenerNuevoCodigo
+    obtenerNuevoCodigo,
+    obtenerUsuariosConStock,
+    obtenerStockPorUsuario
 };

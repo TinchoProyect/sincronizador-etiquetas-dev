@@ -1,0 +1,45 @@
+/* Contenedor de las solapas */
+.tabs-container {
+  margin-bottom: 20px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+/* Lista de solapas */
+.tabs-list {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Estilo base para cada solapa */
+.tab {
+  padding: 10px 20px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: -1px;
+  transition: all 0.3s ease;
+}
+
+/* Solapa activa */
+.tab-activa {
+  background-color: #fff;
+  border-color: #dee2e6;
+  border-bottom-color: #fff;
+  color: #495057;
+  font-weight: bold;
+}
+
+/* Solapa inactiva */
+.tab-inactiva {
+  background-color: #f8f9fa;
+  border-color: transparent;
+  color: #6c757d;
+}
+
+/* Hover para solapas inactivas */
+.tab-inactiva:hover {
+  border-color: #e9ecef;
+  color: #495057;
+}
