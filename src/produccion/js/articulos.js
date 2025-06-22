@@ -119,24 +119,44 @@ export async function actualizarTablaArticulos(articulos) {
     try {
         console.log('Consultando estado de recetas para artículos:', articulos.map(art => art.numero));
         
+        const articulosNumeros = articulos.map(art => art.numero);
+        
         // Obtener el estado de las recetas para todos los artículos
-        const response = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                articulos: articulos.map(art => art.numero)
+        const [estadoResponse, integridadResponse] = await Promise.all([
+            fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulos: articulosNumeros
+                })
+            }),
+            fetch('http://localhost:3002/api/produccion/articulos/integridad-recetas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulos: articulosNumeros
+                })
             })
-        });
+        ]);
 
-        if (!response.ok) {
-            const errorData = await response.json();
+        if (!estadoResponse.ok) {
+            const errorData = await estadoResponse.json();
             throw new Error(errorData.error || 'Error al obtener estado de recetas');
         }
 
-        const estadoRecetas = await response.json();
+        if (!integridadResponse.ok) {
+            const errorData = await integridadResponse.json();
+            throw new Error(errorData.error || 'Error al obtener integridad de recetas');
+        }
+
+        const estadoRecetas = await estadoResponse.json();
+        const integridadRecetas = await integridadResponse.json();
         console.log('Estado de recetas recibido:', estadoRecetas);
+        console.log('Integridad de recetas recibida:', integridadRecetas);
 
         // Dividir artículos en dos grupos según no_producido_por_lambda
         const produccion = articulos.filter(art => art.no_producido_por_lambda === false);
@@ -163,12 +183,26 @@ export async function actualizarTablaArticulos(articulos) {
             group.forEach(articulo => {
                 const tr = document.createElement('tr');
                 const tieneReceta = estadoRecetas[articulo.numero];
+                const esIntegra = integridadRecetas[articulo.numero];
                 
                 tr.setAttribute('data-numero', articulo.numero);
                 const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
                 if (esArticuloEditado) {
                     tr.classList.add('resaltado-articulo');
                 }
+
+                // Determinar el estilo del botón "Agregar al carro" basado en la integridad
+                let btnAgregarEstilo = '';
+                let btnAgregarTitulo = 'Agregar al carro';
+                let btnAgregarClase = 'btn-agregar icon-cart';
+                
+                if (tieneReceta && !esIntegra) {
+                    // Receta con ingredientes faltantes - botón rojo con advertencia
+                    btnAgregarEstilo = 'background-color: #dc3545; color: white; border: 1px solid #dc3545;';
+                    btnAgregarTitulo = 'Advertencia: Esta receta tiene ingredientes que ya no existen en el sistema';
+                    btnAgregarClase = 'btn-agregar btn-warning-integridad icon-cart';
+                }
+                
                 tr.innerHTML = `
                     <td>${articulo.numero}</td>
                     <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
@@ -178,10 +212,12 @@ export async function actualizarTablaArticulos(articulos) {
                     <td>
                         ${tieneReceta ? `
                             <input type="number" class="cantidad-input" min="1" value="1" style="width: 50px; margin-right: 6px;">
-                            <button class="btn-agregar icon-cart" 
+                            <button class="${btnAgregarClase}" 
                                     data-numero="${articulo.numero}" 
                                     data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
-                                    title="Agregar al carro">
+                                    data-integra="${esIntegra}"
+                                    style="${btnAgregarEstilo}"
+                                    title="${btnAgregarTitulo}">
                                 Ag. carro
                             </button>
                             <button class="btn-editar-receta icon-edit"
@@ -667,6 +703,20 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         return;
     }
 
+    // Verificar si es una receta con problemas de integridad
+    const esIntegra = btnElement.dataset.integra === 'true';
+    if (btnElement.classList.contains('btn-warning-integridad') || !esIntegra) {
+        const confirmar = confirm(
+            `ADVERTENCIA: Esta receta contiene ingredientes que ya no existen en el sistema.\n\n` +
+            `Esto puede causar errores en el cálculo de ingredientes necesarios.\n\n` +
+            `¿Desea continuar agregando este artículo al carro?`
+        );
+        
+        if (!confirmar) {
+            return;
+        }
+    }
+
     try {
         const carroId = localStorage.getItem('carroActivo');
         if (!carroId) {
@@ -710,18 +760,26 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         // Restaurar botón
         btnElement.disabled = false;
-        btnElement.textContent = 'Agregar al carro';
+        btnElement.textContent = 'Ag. carro';
 
-        // Mostrar mensaje de éxito
+        // Mostrar mensaje de éxito (diferente si hay problemas de integridad)
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
-        successDiv.textContent = 'Artículo agregado correctamente';
-        successDiv.style.cssText = `
+        
+        if (!esIntegra) {
+            successDiv.textContent = 'Artículo agregado con advertencias de integridad';
+            successDiv.style.backgroundColor = '#ffc107'; // Color amarillo para advertencia
+            successDiv.style.color = '#212529';
+        } else {
+            successDiv.textContent = 'Artículo agregado correctamente';
+            successDiv.style.backgroundColor = '#28a745';
+            successDiv.style.color = 'white';
+        }
+        
+        successDiv.style.cssText += `
             position: fixed;
             top: 20px;
             right: 20px;
-            background-color: #28a745;
-            color: white;
             padding: 10px 20px;
             border-radius: 4px;
             z-index: 10000;
@@ -748,7 +806,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         mostrarError(error.message);
         // Restaurar botón en caso de error
         btnElement.disabled = false;
-        btnElement.textContent = 'Agregar al carro';
+        btnElement.textContent = 'Ag. carro';
     }
 }
 

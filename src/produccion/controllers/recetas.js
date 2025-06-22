@@ -59,6 +59,57 @@ async function obtenerEstadoRecetas(req, res) {
     }
 }
 
+/**
+ * Valida la integridad de las recetas para una lista de artículos
+ * Verifica que todos los ingredientes referenciados en las recetas existan en la tabla ingredientes
+ * @param {Array<string>} articulos - Lista de números de artículos
+ * @returns {Promise<Object>} Objeto con el estado de integridad por artículo
+ */
+async function validarIntegridadRecetas(req, res) {
+    try {
+        const { articulos } = req.body;
+
+        if (!Array.isArray(articulos) || articulos.length === 0) {
+            return res.status(400).json({ 
+                error: 'Debe proporcionar una lista de artículos' 
+            });
+        }
+
+        // Consulta para verificar la integridad de las recetas
+        const query = `
+            SELECT 
+                r.articulo_numero,
+                COUNT(ri.id) as total_ingredientes,
+                COUNT(i.id) as ingredientes_validos,
+                CASE 
+                    WHEN COUNT(ri.id) = COUNT(i.id) THEN true 
+                    ELSE false 
+                END as es_integra
+            FROM recetas r
+            LEFT JOIN receta_ingredientes ri ON r.id = ri.receta_id
+            LEFT JOIN ingredientes i ON ri.ingrediente_id = i.id
+            WHERE r.articulo_numero = ANY($1)
+            GROUP BY r.articulo_numero
+        `;
+        
+        const result = await pool.query(query, [articulos]);
+        
+        // Crear un objeto con el estado de integridad de cada artículo
+        const integridadRecetas = {};
+        articulos.forEach(articulo => {
+            const recetaData = result.rows.find(row => row.articulo_numero === articulo);
+            integridadRecetas[articulo] = recetaData ? recetaData.es_integra : true; // Si no tiene receta, se considera íntegra
+        });
+
+        console.log('Integridad de recetas:', integridadRecetas);
+        res.json(integridadRecetas);
+
+    } catch (error) {
+        console.error('Error al validar integridad de recetas:', error);
+        res.status(500).json({ error: 'Error al validar integridad de recetas' });
+    }
+}
+
 // Controlador para guardar una nueva receta
 async function crearReceta(req, res) {
     const client = await pool.connect();
@@ -432,6 +483,7 @@ async function eliminarReceta(req, res) {
 module.exports = {
     crearReceta,
     obtenerEstadoRecetas,
+    validarIntegridadRecetas,
     obtenerReceta,
     actualizarReceta,
     obtenerIngredientesExpandidos,

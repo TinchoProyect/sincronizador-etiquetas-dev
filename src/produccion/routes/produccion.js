@@ -7,6 +7,7 @@ router.use(dbMiddleware);
 const { 
     crearReceta, 
     obtenerEstadoRecetas, 
+    validarIntegridadRecetas,
     obtenerReceta, 
     actualizarReceta,
     obtenerIngredientesExpandidos,
@@ -407,6 +408,16 @@ router.post('/articulos/estado-recetas', validarEstadoRecetas, async (req, res) 
     } catch (error) {
         console.error('Error al obtener estado de recetas:', error);
         res.status(500).json({ error: 'Error al procesar la solicitud de estado de recetas' });
+    }
+});
+
+// Ruta para validar integridad de recetas
+router.post('/articulos/integridad-recetas', validarEstadoRecetas, async (req, res) => {
+    try {
+        await validarIntegridadRecetas(req, res);
+    } catch (error) {
+        console.error('Error al validar integridad de recetas:', error);
+        res.status(500).json({ error: 'Error al procesar la solicitud de integridad de recetas' });
     }
 });
 
