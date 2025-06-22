@@ -501,6 +501,8 @@ export async function validarCarroActivo(usuarioId) {
 // Función para crear un nuevo carro de producción
 export async function crearNuevoCarro(tipoCarro = 'interna') {
     try {
+        console.log(`Iniciando creación de carro tipo: ${tipoCarro}`);
+        
         // Verificar si ya existe un carro activo
         const carroActivo = localStorage.getItem('carroActivo');
         if (carroActivo) {
@@ -513,6 +515,8 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         }
 
         const colaborador = JSON.parse(colaboradorData);
+        console.log('Enviando solicitud para crear carro...');
+        
         const response = await fetch('http://localhost:3002/api/produccion/carro', {
             method: 'POST',
             headers: {
@@ -530,18 +534,26 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         }
 
         const data = await response.json();
-        console.log(`Carro de producción ${tipoCarro} creado:`, data.id);
+        console.log(`✅ Carro de producción ${tipoCarro} creado con ID:`, data.id);
         
-        // Guardar el ID del carro en localStorage
+        // Guardar el ID del carro en localStorage y variable global
         localStorage.setItem('carroActivo', data.id);
+        window.carroIdGlobal = data.id;
         
-        // Actualizar la información visual del carro y mostrar el botón de agregar artículos
+        console.log('Actualizando interfaz...');
+        
+        // Actualizar la información visual del carro
         await actualizarEstadoCarro();
+        
+        // Mostrar los artículos del carro (inicialmente vacío)
         await mostrarArticulosDelCarro();
         
-        // Importar y llamar a la función de actualización de visibilidad de botones
-        if (window.actualizarVisibilidadBotones) {
+        // Actualizar la visibilidad de los botones según el estado
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            console.log('Actualizando visibilidad de botones...');
             await window.actualizarVisibilidadBotones();
+        } else {
+            console.warn('⚠️ actualizarVisibilidadBotones no está disponible');
         }
 
     } catch (error) {
@@ -559,6 +571,8 @@ window.eliminarCarro = eliminarCarro;
 // Función para seleccionar un carro
 export async function seleccionarCarro(carroId) {
     try {
+        console.log(`Seleccionando carro ID: ${carroId}`);
+        
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         if (!colaboradorData) {
             throw new Error('No hay colaborador seleccionado');
@@ -578,6 +592,8 @@ export async function seleccionarCarro(carroId) {
         // Asignar también en variable global
         window.carroIdGlobal = carroId;
 
+        console.log('Actualizando interfaz después de seleccionar carro...');
+        
         // Actualizar la interfaz
         await actualizarEstadoCarro();
         await mostrarArticulosDelCarro();
@@ -589,6 +605,15 @@ export async function seleccionarCarro(carroId) {
         // Cargar y mostrar resumen de mixes
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
+        
+        // Actualizar la visibilidad de los botones según el estado del carro
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            console.log('Actualizando visibilidad de botones después de seleccionar carro...');
+            await window.actualizarVisibilidadBotones();
+        } else {
+            console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
+        }
+        
     } catch (error) {
         console.error('Error al seleccionar carro:', error);
         mostrarError(error.message);
@@ -598,7 +623,11 @@ export async function seleccionarCarro(carroId) {
 
 // Función para deseleccionar el carro actual
 export async function deseleccionarCarro() {
+    console.log('Deseleccionando carro activo...');
+    
     localStorage.removeItem('carroActivo');
+    window.carroIdGlobal = null;
+    
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
     
@@ -612,6 +641,14 @@ export async function deseleccionarCarro() {
     const contenedorMixes = document.getElementById('tabla-resumen-mixes');
     if (contenedorMixes) {
         contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
+    }
+    
+    // Actualizar la visibilidad de los botones (deben ocultarse al no haber carro)
+    if (typeof window.actualizarVisibilidadBotones === 'function') {
+        console.log('Actualizando visibilidad de botones después de deseleccionar carro...');
+        await window.actualizarVisibilidadBotones();
+    } else {
+        console.warn('⚠️ actualizarVisibilidadBotones no está disponible al deseleccionar carro');
     }
 }
 
