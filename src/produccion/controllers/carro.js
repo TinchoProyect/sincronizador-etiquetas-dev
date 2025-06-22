@@ -6,20 +6,21 @@ const pool = require('../config/database');
  * @param {boolean} enAuditoria - Indica si el carro está en auditoría
  * @returns {Promise<number>} ID del carro creado
  */
-async function crearCarro(usuarioId, enAuditoria = true) {
+async function crearCarro(usuarioId, enAuditoria = true, tipoCarro = 'interna') {
     try {
         const query = `
             INSERT INTO carros_produccion (
                 usuario_id, 
                 fecha_inicio, 
                 en_auditoria,
-                fecha_preparado
+                fecha_preparado,
+                tipo_carro
             )
-            VALUES ($1, CURRENT_TIMESTAMP, $2, NULL)
+            VALUES ($1, CURRENT_TIMESTAMP, $2, NULL, $3)
             RETURNING id
         `;
         
-        const result = await pool.query(query, [usuarioId, enAuditoria]);
+        const result = await pool.query(query, [usuarioId, enAuditoria, tipoCarro]);
         return result.rows[0].id;
     } catch (error) {
         console.error('Error al crear carro de producción:', error);
@@ -116,6 +117,7 @@ async function obtenerCarrosDeUsuario(usuarioId) {
                 cp.id,
                 cp.fecha_inicio,
                 cp.en_auditoria,
+                cp.tipo_carro,
                 (SELECT COUNT(*) FROM carros_articulos ca WHERE ca.carro_id = cp.id) as total_articulos
             FROM carros_produccion cp
             WHERE cp.usuario_id = $1

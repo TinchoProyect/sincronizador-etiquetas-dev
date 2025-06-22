@@ -470,13 +470,18 @@ router.delete('/recetas/:numero_articulo', async (req, res) => {
 // Rutas para carros de producción
 router.post('/carro', async (req, res) => {
     try {
-        const { usuarioId, enAuditoria } = req.body;
+        const { usuarioId, enAuditoria, tipoCarro } = req.body;
         
         if (!usuarioId || isNaN(parseInt(usuarioId))) {
             return res.status(400).json({ error: 'Se requiere un ID de usuario válido' });
         }
 
-        const carroId = await crearCarro(parseInt(usuarioId), enAuditoria);
+        // Validar tipo de carro
+        if (tipoCarro && !['interna', 'externa'].includes(tipoCarro)) {
+            return res.status(400).json({ error: 'El tipo de carro debe ser "interna" o "externa"' });
+        }
+
+        const carroId = await crearCarro(parseInt(usuarioId), enAuditoria, tipoCarro);
         res.json({ id: carroId });
     } catch (error) {
         console.error('Error al crear carro:', error);

@@ -97,13 +97,18 @@ export async function actualizarEstadoCarro() {
         let html = `
             <div class="carros-lista">
                 <h3>Tus carros de producción</h3>
+                <div class="botones-crear-carro" style="margin-bottom: 20px;">
+                    <button onclick="crearNuevoCarro('externa')" class="btn btn-secondary" style="margin-left: 10px;">
+                        🚚 Crear Carro de Producción Externa
+                    </button>
+                </div>
                 <table class="carros-table">
                     <thead>
                         <tr>
                             <th>ID</th>
                             <th>Fecha de inicio</th>
                             <th>Artículos</th>
-                            <th>Estado</th>
+                            <th>Tipo</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -119,6 +124,10 @@ export async function actualizarEstadoCarro() {
                     <td>${carro.id}</td>
                     <td>${fecha}</td>
                     <td>${carro.total_articulos} artículos</td>
+                    <td>
+                        ${carro.tipo_carro === 'interna' ? '🏭' : '🚚'} 
+                        ${carro.tipo_carro === 'interna' ? 'Producción Interna' : 'Producción Externa'}
+                    </td>
                     <td>${carro.en_auditoria ? 'En auditoría' : 'Completado'}</td>
                     <td>
                         <div class="btn-group">
@@ -490,7 +499,7 @@ export async function validarCarroActivo(usuarioId) {
 }
 
 // Función para crear un nuevo carro de producción
-export async function crearNuevoCarro() {
+export async function crearNuevoCarro(tipoCarro = 'interna') {
     try {
         // Verificar si ya existe un carro activo
         const carroActivo = localStorage.getItem('carroActivo');
@@ -511,7 +520,8 @@ export async function crearNuevoCarro() {
             },
             body: JSON.stringify({
                 usuarioId: colaborador.id,
-                enAuditoria: true
+                enAuditoria: true,
+                tipoCarro: tipoCarro
             })
         });
 
@@ -520,7 +530,7 @@ export async function crearNuevoCarro() {
         }
 
         const data = await response.json();
-        console.log('Carro de producción creado:', data.id);
+        console.log(`Carro de producción ${tipoCarro} creado:`, data.id);
         
         // Guardar el ID del carro en localStorage
         localStorage.setItem('carroActivo', data.id);
@@ -533,6 +543,12 @@ export async function crearNuevoCarro() {
         mostrarError(error.message);
     }
 }
+
+// Hacer funciones disponibles globalmente para los botones HTML
+window.crearNuevoCarro = crearNuevoCarro;
+window.seleccionarCarro = seleccionarCarro;
+window.deseleccionarCarro = deseleccionarCarro;
+window.eliminarCarro = eliminarCarro;
 
 // Función para seleccionar un carro
 export async function seleccionarCarro(carroId) {
