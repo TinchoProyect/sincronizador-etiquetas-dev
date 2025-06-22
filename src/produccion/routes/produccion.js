@@ -827,6 +827,20 @@ const { marcarCarroPreparado } = require('../controllers/marcarCarroPreparado');
 const { finalizarProduccion } = require('../controllers/finalizarProduccion');
 const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
 const { obtenerArticulosParaEtiquetas } = require('../controllers/obtenerArticulosParaEtiquetas');
+const { agregarStockUsuario } = require('../controllers/ingredientesStockUsuarios');
+
+// Ruta para agregar stock de ingrediente a un usuario
+router.post('/ingredientes-usuarios/agregar', async (req, res) => {
+    try {
+        await agregarStockUsuario(req, res);
+    } catch (error) {
+        console.error('Error en ruta /ingredientes-usuarios/agregar:', error);
+        res.status(500).json({
+            error: 'Error al agregar stock de usuario',
+            detalle: error.message
+        });
+    }
+});
 
 /**
  * Ruta: POST /api/produccion/carro/:id/preparado

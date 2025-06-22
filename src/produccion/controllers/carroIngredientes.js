@@ -189,18 +189,50 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
         // 3. Consolidar todos los ingredientes
         const ingredientesConsolidados = consolidarIngredientes(todosLosIngredientes);
 
-        // 4. Agregar stock_actual a cada ingrediente consolidado
+        // Obtener el tipo de carro
+        const queryTipoCarro = `
+            SELECT tipo_carro, usuario_id
+            FROM carros_produccion
+            WHERE id = $1
+        `;
+        const tipoCarroResult = await pool.query(queryTipoCarro, [carroId]);
+        const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro || 'interna';
+        const carroUsuarioId = tipoCarroResult.rows[0]?.usuario_id;
+
+        console.log(`\n🔍 TIPO DE CARRO: ${tipoCarro}`);
+        console.log(`Usuario del carro: ${carroUsuarioId}`);
+
+        // 4. Agregar stock_actual a cada ingrediente consolidado según el tipo de carro
         const ingredientesConStock = await Promise.all(
             ingredientesConsolidados.map(async (ingrediente) => {
                 if (ingrediente.id) {
                     try {
-                        const queryStock = `
-                            SELECT stock_actual 
-                            FROM ingredientes 
-                            WHERE id = $1
-                        `;
-                        const stockResult = await pool.query(queryStock, [ingrediente.id]);
-                        const stockActual = stockResult.rows[0]?.stock_actual || 0;
+                        let stockActual = 0;
+
+                        if (tipoCarro === 'externa') {
+                            console.log(`\n📦 Obteniendo stock de usuario para ingrediente ${ingrediente.id}`);
+                            // Consultar stock del usuario para carros externos
+                            const queryStockUsuario = `
+                                SELECT SUM(cantidad) as stock_usuario
+                                FROM ingredientes_stock_usuarios
+                                WHERE usuario_id = $1 AND ingrediente_id = $2
+                                GROUP BY ingrediente_id
+                            `;
+                            const stockUsuarioResult = await pool.query(queryStockUsuario, [carroUsuarioId, ingrediente.id]);
+                            stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
+                            console.log(`Stock usuario encontrado: ${stockActual}`);
+                        } else {
+                            console.log(`\n📦 Obteniendo stock central para ingrediente ${ingrediente.id}`);
+                            // Consultar stock central para carros internos
+                            const queryStock = `
+                                SELECT stock_actual 
+                                FROM ingredientes 
+                                WHERE id = $1
+                            `;
+                            const stockResult = await pool.query(queryStock, [ingrediente.id]);
+                            stockActual = stockResult.rows[0]?.stock_actual || 0;
+                            console.log(`Stock central encontrado: ${stockActual}`);
+                        }
                         
                         return {
                             ...ingrediente,
@@ -368,10 +400,69 @@ async function obtenerMixesCarro(carroId, usuarioId) {
         // 3. Consolidar todos los mixes por ID
         const mixesConsolidados = consolidarIngredientes(todosLosMixes);
         
-        console.log(`\n✅ MIXES CONSOLIDADOS: ${mixesConsolidados.length}`);
-        if (mixesConsolidados.length > 0) {
-            mixesConsolidados.forEach((mix, index) => {
-                console.log(`  ${index + 1}. ${mix.nombre}: ${mix.cantidad} ${mix.unidad_medida}`);
+        // Obtener el tipo de carro
+        const queryTipoCarro = `
+            SELECT tipo_carro, usuario_id
+            FROM carros_produccion
+            WHERE id = $1
+        `;
+        const tipoCarroResult = await pool.query(queryTipoCarro, [carroId]);
+        const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro || 'interna';
+        const carroUsuarioId = tipoCarroResult.rows[0]?.usuario_id;
+
+        console.log(`\n🔍 TIPO DE CARRO: ${tipoCarro}`);
+        console.log(`Usuario del carro: ${carroUsuarioId}`);
+
+        // Agregar stock a los mixes según el tipo de carro
+        const mixesConStock = await Promise.all(
+            mixesConsolidados.map(async (mix) => {
+                try {
+                    let stockActual = 0;
+
+                    if (tipoCarro === 'externa') {
+                        console.log(`\n📦 Obteniendo stock de usuario para mix ${mix.id}`);
+                        // Consultar stock del usuario para carros externos
+                        const queryStockUsuario = `
+                            SELECT SUM(cantidad) as stock_usuario
+                            FROM ingredientes_stock_usuarios
+                            WHERE usuario_id = $1 AND ingrediente_id = $2
+                            GROUP BY ingrediente_id
+                        `;
+                        const stockUsuarioResult = await pool.query(queryStockUsuario, [carroUsuarioId, mix.id]);
+                        stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
+                        console.log(`Stock usuario encontrado: ${stockActual}`);
+                    } else {
+                        console.log(`\n📦 Obteniendo stock central para mix ${mix.id}`);
+                        // Consultar stock central para carros internos
+                        const queryStock = `
+                            SELECT stock_actual 
+                            FROM ingredientes 
+                            WHERE id = $1
+                        `;
+                        const stockResult = await pool.query(queryStock, [mix.id]);
+                        stockActual = stockResult.rows[0]?.stock_actual || 0;
+                        console.log(`Stock central encontrado: ${stockActual}`);
+                    }
+
+                    return {
+                        ...mix,
+                        stock_actual: parseFloat(stockActual)
+                    };
+                } catch (error) {
+                    console.error(`Error obteniendo stock para mix ${mix.id}:`, error);
+                    return {
+                        ...mix,
+                        stock_actual: 0
+                    };
+                }
+            })
+        );
+        
+        console.log(`\n✅ MIXES CONSOLIDADOS CON STOCK: ${mixesConStock.length}`);
+        if (mixesConStock.length > 0) {
+            mixesConStock.forEach((mix, index) => {
+                const estado = mix.stock_actual >= mix.cantidad ? '✅' : '❌';
+                console.log(`  ${index + 1}. ${mix.nombre}: Necesario ${mix.cantidad}, Stock ${mix.stock_actual} ${estado}`);
             });
         } else {
             console.log(`⚠️ No se encontraron mixes en el carro ${carroId}`);
