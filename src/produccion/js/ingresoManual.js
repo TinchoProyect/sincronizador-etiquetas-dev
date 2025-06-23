@@ -4,6 +4,37 @@ import {
 } from './apiMovimientos.js';
 import { actualizarResumenIngredientes } from './carro.js';
 
+// Función para verificar si un ingrediente es compuesto (mix)
+async function verificarSiEsIngredienteCompuesto(ingredienteId) {
+  try {
+    const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/es-compuesto`);
+    if (!response.ok) {
+      throw new Error('Error al verificar el tipo de ingrediente');
+    }
+    const data = await response.json();
+    return data.esCompuesto;
+  } catch (error) {
+    console.error('❌ Error al verificar si es ingrediente compuesto:', error);
+    throw error;
+  }
+}
+
+// Función para obtener la composición de un ingrediente
+async function obtenerComposicionIngrediente(ingredienteId) {
+  try {
+    const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/composicion`);
+    if (!response.ok) {
+      throw new Error('Error al obtener la composición del ingrediente');
+    }
+    const data = await response.json();
+    // Retornar el objeto completo que incluye mix (con receta_base_kg) y composicion
+    return data;
+  } catch (error) {
+    console.error('❌ Error al obtener composición del ingrediente:', error);
+    throw error;
+  }
+}
+
 let modal = null;
 let inputBusqueda = null;
 let listaResultados = null;
@@ -17,8 +48,9 @@ let ingredienteSeleccionado = null;
 let articuloSeleccionado = null;
 let carroIdGlobal = null;
 
-export function abrirModalIngresoManual(ingredienteId, carroId) {
+export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
   console.log('✔️ Función abrirModalIngresoManual ejecutada');
+  console.log(`Tipo de ingrediente: ${esMix ? 'Mix' : 'Simple'}`);
   ingredienteSeleccionado = ingredienteId;
   carroIdGlobal = carroId;
 
@@ -28,7 +60,12 @@ export function abrirModalIngresoManual(ingredienteId, carroId) {
   obtenerIngrediente(ingredienteId)
     .then(ingrediente => {
       if (nombreIngredienteDisplay) {
-        nombreIngredienteDisplay.textContent = ingrediente.nombre || 'Ingrediente sin nombre';
+        nombreIngredienteDisplay.textContent = `${esMix ? '🧪 ' : ''}${ingrediente.nombre || 'Ingrediente sin nombre'}`;
+      }
+      // Actualizar el título del modal según el tipo
+      const modalTitle = modal.querySelector('.modal-title');
+      if (modalTitle) {
+        modalTitle.textContent = esMix ? 'Ingreso Manual de Mix' : 'Ingreso Manual de Ingrediente';
       }
     })
     .catch(err => {
@@ -168,28 +205,140 @@ async function confirmarIngreso() {
     console.log(`🔍 Tipo de carro detectado: ${tipoCarro || 'interna'}`);
 
     if (tipoCarro === 'externa') {
-      // Registrar directamente en stock de usuarios
-      const stockUsuarioPayload = {
-        usuario_id: parseInt(usuarioId),
-        ingrediente_id: ingredienteSeleccionado,
-        cantidad: kilos * cantidad,
-        origen_carro_id: parseInt(carroIdGlobal)
-      };
+      // Verificar si el ingrediente es un mix (ingrediente compuesto)
+      const esIngredienteCompuesto = await verificarSiEsIngredienteCompuesto(ingredienteSeleccionado);
+      
+      if (esIngredienteCompuesto) {
+        console.log('🧪 Procesando ingrediente compuesto - descomponiendo en ingredientes simples');
+        
+        // Obtener la composición del ingrediente compuesto
+        const data = await obtenerComposicionIngrediente(ingredienteSeleccionado);
+        
+        if (!data.mix || !data.mix.receta_base_kg) {
+          throw new Error('El ingrediente compuesto no tiene definida la receta base');
+        }
 
-      const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(stockUsuarioPayload)
-      });
+        if (!data.composicion || data.composicion.length === 0) {
+          throw new Error('El ingrediente compuesto no tiene composición definida');
+        }
 
-      if (!stockResponse.ok) {
-        const errorData = await stockResponse.json();
-        throw new Error(errorData.error || 'Error al registrar stock de usuario');
+        const totalKilos = kilos * cantidad;
+        const recetaBaseKg = data.mix.receta_base_kg;
+        console.log(`📊 Total de kilos a descomponer: ${totalKilos} (Receta base: ${recetaBaseKg}kg)`);
+        
+        // Registrar cada ingrediente simple por separado
+        for (const componente of data.composicion) {
+          // Calcular la proporción basada en la receta base
+          const proporcion = componente.cantidad / recetaBaseKg;
+          const cantidadIngredienteSimple = proporcion * totalKilos;
+          
+          console.log(`🔹 Ingrediente ${componente.ingrediente_id}:
+            Cantidad en receta: ${componente.cantidad}kg
+            Proporción: ${(proporcion * 100).toFixed(2)}%
+            Cantidad final: ${cantidadIngredienteSimple}kg`);
+            
+          const stockUsuarioPayload = {
+            usuario_id: parseInt(usuarioId),
+            ingrediente_id: componente.ingrediente_id,
+            cantidad: cantidadIngredienteSimple,
+            origen_carro_id: parseInt(carroIdGlobal),
+            origen_mix_id: ingredienteSeleccionado // El mix del que proviene este ingrediente
+          };
+
+          console.log('\n🔍 DEPURACIÓN DETALLADA - PAYLOAD COMPONENTE DE MIX:');
+          console.log('=======================================================');
+          console.log('📋 Payload completo que se enviará al backend:');
+          console.log('- usuario_id:', stockUsuarioPayload.usuario_id, '(tipo:', typeof stockUsuarioPayload.usuario_id, ')');
+          console.log('- ingrediente_id:', stockUsuarioPayload.ingrediente_id, '(tipo:', typeof stockUsuarioPayload.ingrediente_id, ')');
+          console.log('- cantidad:', stockUsuarioPayload.cantidad, '(tipo:', typeof stockUsuarioPayload.cantidad, ')');
+          console.log('- origen_carro_id:', stockUsuarioPayload.origen_carro_id, '(tipo:', typeof stockUsuarioPayload.origen_carro_id, ')');
+          console.log('- origen_mix_id:', stockUsuarioPayload.origen_mix_id, '(tipo:', typeof stockUsuarioPayload.origen_mix_id, ')');
+          console.log('📤 JSON que se enviará:', JSON.stringify(stockUsuarioPayload, null, 2));
+          console.log('=======================================================\n');
+
+          const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(stockUsuarioPayload)
+          });
+
+          if (!stockResponse.ok) {
+            const errorData = await stockResponse.json();
+            throw new Error(`Error al registrar ingrediente simple ${componente.ingrediente_id}: ${errorData.error || 'Error desconocido'}`);
+          }
+        }
+        
+        console.log('✅ Todos los ingredientes simples registrados correctamente');
+      } else {
+        // Ingrediente simple - verificar si proviene de un mix
+        console.log('🔸 Procesando ingrediente simple');
+        
+        // Buscar si este ingrediente proviene de algún mix en el carro
+        let origenMixId = null;
+        try {
+          const mixesResponse = await fetch(`/api/produccion/carro/${carroIdGlobal}/mixes?usuarioId=${usuarioId}`);
+          if (mixesResponse.ok) {
+            const mixes = await mixesResponse.json();
+            
+            // Por cada mix, verificar si contiene este ingrediente
+            for (const mix of mixes) {
+              const composicionResponse = await fetch(`/api/produccion/ingredientes/${mix.id}/composicion`);
+              if (composicionResponse.ok) {
+                const composicionData = await composicionResponse.json();
+                
+                // Verificar si el ingrediente está en la composición de este mix
+                const ingredienteEnMix = composicionData.composicion?.find(comp => 
+                  comp.ingrediente_id === ingredienteSeleccionado
+                );
+                
+                if (ingredienteEnMix) {
+                  origenMixId = mix.id;
+                  console.log(`🧪 Ingrediente ${ingredienteSeleccionado} proviene del mix ${mix.id} (${mix.nombre})`);
+                  break;
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ No se pudo determinar el origen del mix:', error);
+        }
+        
+        const stockUsuarioPayload = {
+          usuario_id: parseInt(usuarioId),
+          ingrediente_id: ingredienteSeleccionado,
+          cantidad: kilos * cantidad,
+          origen_carro_id: parseInt(carroIdGlobal),
+          origen_mix_id: origenMixId // Incluir el origen_mix_id si se encontró
+        };
+
+        console.log('\n🔍 DEPURACIÓN DETALLADA - PAYLOAD INGREDIENTE SIMPLE:');
+        console.log('=======================================================');
+        console.log('📋 Payload completo que se enviará al backend:');
+        console.log('- usuario_id:', stockUsuarioPayload.usuario_id, '(tipo:', typeof stockUsuarioPayload.usuario_id, ')');
+        console.log('- ingrediente_id:', stockUsuarioPayload.ingrediente_id, '(tipo:', typeof stockUsuarioPayload.ingrediente_id, ')');
+        console.log('- cantidad:', stockUsuarioPayload.cantidad, '(tipo:', typeof stockUsuarioPayload.cantidad, ')');
+        console.log('- origen_carro_id:', stockUsuarioPayload.origen_carro_id, '(tipo:', typeof stockUsuarioPayload.origen_carro_id, ')');
+        console.log('- origen_mix_id:', stockUsuarioPayload.origen_mix_id, '(tipo:', typeof stockUsuarioPayload.origen_mix_id, ')');
+        console.log('📤 JSON que se enviará:', JSON.stringify(stockUsuarioPayload, null, 2));
+        console.log('=======================================================\n');
+
+        const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(stockUsuarioPayload)
+        });
+
+        if (!stockResponse.ok) {
+          const errorData = await stockResponse.json();
+          throw new Error(errorData.error || 'Error al registrar stock de usuario');
+        }
       }
 
-      // Registrar el movimiento de stock de ventas para el artículo
+      // Registrar el movimiento de stock de ventas para el artículo (siempre se hace)
       const movimientoStock = {
         articuloNumero: articuloSeleccionado.numero,
         codigoBarras: articuloSeleccionado.codigo_barras,

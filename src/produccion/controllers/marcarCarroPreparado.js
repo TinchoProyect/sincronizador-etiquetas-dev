@@ -47,6 +47,24 @@ async function marcarCarroPreparado(req, res) {
             throw new Error('No se encontraron ingredientes para los artículos del carro');
         }
 
+        console.log('\n🔍 DEPURACIÓN - INGREDIENTES OBTENIDOS:');
+        console.log('=====================================');
+        ingredientesConsolidados.forEach((ing, index) => {
+            console.log(`${index + 1}. ${ing.nombre} (ID: ${ing.id})`);
+            console.log(`   - Cantidad: ${ing.cantidad}`);
+            console.log(`   - Stock actual: ${ing.stock_actual}`);
+            
+            // Verificar si es un mix
+            if (ing.id) {
+                db.query('SELECT COUNT(*)::integer as count FROM ingrediente_composicion WHERE mix_id = $1', [ing.id])
+                    .then(result => {
+                        const esMix = result.rows[0].count > 0;
+                        console.log(`   - Es mix: ${esMix ? 'SÍ' : 'NO'}`);
+                    })
+                    .catch(err => console.log(`   - Error verificando mix: ${err.message}`));
+            }
+        });
+
         // Filtrar ingredientes que tengan ID válido
         const ingredientesValidos = ingredientesConsolidados.filter(ing => {
             if (!ing.id) {
@@ -57,10 +75,13 @@ async function marcarCarroPreparado(req, res) {
         });
 
         if (ingredientesValidos.length === 0) {
-            throw new Error('No se encontraron ingredientes válidos con ID para registrar movimientos');
+            throw new Error('No se encontraron ingredientes válidos para registrar movimientos');
         }
 
-        console.log(`📊 Ingredientes válidos para movimientos: ${ingredientesValidos.length} de ${ingredientesConsolidados.length}`);
+        console.log(`\n📊 RESUMEN DE INGREDIENTES:`);
+        console.log(`- Total obtenidos: ${ingredientesConsolidados.length}`);
+        console.log(`- Válidos: ${ingredientesValidos.length}`);
+        console.log(`- Omitidos (sin ID): ${ingredientesConsolidados.length - ingredientesValidos.length}`);
 
         // 4. Registrar movimientos de egreso según tipo de carro
         if (carro.tipo_carro === 'externa') {

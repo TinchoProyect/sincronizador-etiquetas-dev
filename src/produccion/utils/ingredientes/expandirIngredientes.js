@@ -30,9 +30,10 @@ async function esMix(ingredienteId) {
  * @param {number} ingredienteId - ID del ingrediente a expandir
  * @param {number} cantidadBase - Cantidad base para multiplicar
  * @param {Set} procesados - Set de ingredientes ya procesados para evitar ciclos
+ * @param {number} origenMixId - ID del mix original del que proviene (para trazabilidad)
  * @returns {Promise<Array>} Lista de ingredientes base con cantidades ajustadas
  */
-async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = new Set()) {
+async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = new Set(), origenMixId = null) {
     // Primero verificar si es un número de artículo y obtener su ingrediente asociado
     try {
         const ingredienteQuery = `
@@ -88,9 +89,26 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
                 nombre: result.rows[0].nombre,
                 unidad_medida: result.rows[0].unidad_medida,
                 cantidad: cantidadBase,
-                es_primario: true  // Marcar como ingrediente primario
+                es_primario: true,  // Marcar como ingrediente primario
+                origen_mix_id: origenMixId  // Propagar origen del mix
             };
-            console.log(`Retornando ingrediente base:`, ingredienteBase);
+            
+            // Log detallado de trazabilidad
+            console.log(`\n📦 INGREDIENTE BASE GENERADO:`);
+            console.log(`===============================`);
+            console.log(`- ID: ${articuloId}`);
+            console.log(`- Nombre: ${result.rows[0].nombre}`);
+            console.log(`- Cantidad: ${cantidadBase}`);
+            console.log(`- Es primario: true`);
+            console.log(`- Origen Mix ID: ${origenMixId || 'NULL'}`);
+            
+            if (origenMixId) {
+                console.log(`🧪 Este ingrediente proviene del Mix ID=${origenMixId}`);
+            } else {
+                console.log(`ℹ️ Este es un ingrediente simple sin mix de origen`);
+            }
+            console.log(`===============================\n`);
+            
             return [ingredienteBase];
         }
 
@@ -179,10 +197,14 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
             console.log(`✅ Resultado final para ${ing.nombre}: ${cantidadAjustada} ${ing.unidad_medida}`);
             console.log(`----------------------------------------`);
             
+            // Propagar el ID del mix original o usar el ID actual si es el primer mix
+            const mixIdAPropagar = origenMixId || articuloId;
+            
             const subIngredientes = await expandirIngrediente(
                 ing.ingrediente_id,
                 cantidadAjustada,
-                procesados
+                procesados,
+                mixIdAPropagar
             );
             ingredientesExpandidos = ingredientesExpandidos.concat(subIngredientes);
         }

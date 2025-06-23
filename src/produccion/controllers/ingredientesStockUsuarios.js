@@ -1,12 +1,13 @@
 const pool = require('../../usuarios/pool');
 
 /**
- * Registra un movimiento de stock de usuario siguiendo lógica FIFO
+ * Registra un movimiento de stock de usuario siguiendo lógica FIFO inteligente
  * @param {Object} params - Parámetros del movimiento
  * @param {number} params.usuario_id - ID del usuario
  * @param {number} params.ingrediente_id - ID del ingrediente
  * @param {number} params.cantidad - Cantidad a descontar (debe ser negativa)
  * @param {number} params.carro_id - ID del carro que genera el movimiento
+ * @param {number} params.origen_mix_id - ID del mix de origen (opcional, para priorizar stock)
  * @param {Object} db - Conexión a la base de datos para transacciones
  */
 async function registrarMovimientoStockUsuarioFIFO(params, db) {
@@ -16,31 +17,75 @@ async function registrarMovimientoStockUsuarioFIFO(params, db) {
         throw new Error('La cantidad debe ser negativa para consumo FIFO');
     }
 
-    // Obtener registros ordenados por fecha (FIFO)
-    const queryStock = `
-        SELECT id, cantidad
-        FROM ingredientes_stock_usuarios
-        WHERE usuario_id = $1 
-        AND ingrediente_id = $2
-        AND cantidad > 0
-        ORDER BY fecha_registro ASC
-    `;
-    
-    const stockResult = await db.query(queryStock, [usuario_id, ingrediente_id]);
-    
     let cantidadRestante = Math.abs(cantidad); // Convertir a positivo para los cálculos
-    let stockDisponible = stockResult.rows.reduce((sum, row) => sum + row.cantidad, 0);
+    let registrosAProcesar = [];
 
-    if (stockDisponible < cantidadRestante) {
-        throw new Error(`Stock insuficiente para ingrediente ${ingrediente_id}. Disponible: ${stockDisponible}, Requerido: ${cantidadRestante}`);
+    // Si hay origen_mix_id, primero buscar stock con ese origen
+    if (params.origen_mix_id) {
+        console.log(`\n🔍 BUSCANDO STOCK CON ORIGEN MIX ID=${params.origen_mix_id}`);
+        
+        const queryStockMix = `
+            SELECT id, cantidad, origen_mix_id
+            FROM ingredientes_stock_usuarios
+            WHERE usuario_id = $1 
+            AND ingrediente_id = $2
+            AND cantidad > 0
+            AND origen_mix_id = $3
+            ORDER BY fecha_registro ASC
+        `;
+        
+        const stockMixResult = await db.query(queryStockMix, [usuario_id, ingrediente_id, params.origen_mix_id]);
+        const stockMixDisponible = stockMixResult.rows.reduce((sum, row) => sum + row.cantidad, 0);
+        
+        console.log(`- Stock encontrado con origen_mix_id=${params.origen_mix_id}: ${stockMixDisponible}`);
+        registrosAProcesar = registrosAProcesar.concat(stockMixResult.rows);
     }
 
-    // Procesar registros FIFO
-    for (const registro of stockResult.rows) {
+    // Si aún necesitamos más stock, buscar registros sin origen_mix_id
+    if (cantidadRestante > registrosAProcesar.reduce((sum, row) => sum + row.cantidad, 0)) {
+        console.log('\n🔍 BUSCANDO STOCK SIN ORIGEN MIX (INGREDIENTES SIMPLES)');
+        
+        const queryStockSimple = `
+            SELECT id, cantidad, origen_mix_id
+            FROM ingredientes_stock_usuarios
+            WHERE usuario_id = $1 
+            AND ingrediente_id = $2
+            AND cantidad > 0
+            AND origen_mix_id IS NULL
+            ORDER BY fecha_registro ASC
+        `;
+        
+        const stockSimpleResult = await db.query(queryStockSimple, [usuario_id, ingrediente_id]);
+        const stockSimpleDisponible = stockSimpleResult.rows.reduce((sum, row) => sum + row.cantidad, 0);
+        
+        console.log(`- Stock encontrado sin origen_mix_id: ${stockSimpleDisponible}`);
+        registrosAProcesar = registrosAProcesar.concat(stockSimpleResult.rows);
+    }
+
+    // Verificar stock total disponible
+    const stockTotalDisponible = registrosAProcesar.reduce((sum, row) => sum + row.cantidad, 0);
+    console.log(`\n📊 RESUMEN DE STOCK:`);
+    console.log(`- Cantidad requerida: ${cantidadRestante}`);
+    console.log(`- Stock total disponible: ${stockTotalDisponible}`);
+
+    if (stockTotalDisponible < cantidadRestante) {
+        throw new Error(`Stock insuficiente para ingrediente ${ingrediente_id}. Disponible: ${stockTotalDisponible}, Requerido: ${cantidadRestante}`);
+    }
+
+    // Procesar registros FIFO (primero los del mix, luego los simples)
+    console.log('\n🔄 PROCESANDO REGISTROS FIFO:');
+    for (const registro of registrosAProcesar) {
         if (cantidadRestante <= 0) break;
 
         const cantidadADescontar = Math.min(registro.cantidad, cantidadRestante);
         const nuevaCantidad = registro.cantidad - cantidadADescontar;
+        
+        // Log detallado del procesamiento
+        const tipoOrigen = registro.origen_mix_id ? `Mix ID=${registro.origen_mix_id}` : 'Ingrediente simple';
+        console.log(`📦 Procesando registro ID=${registro.id} (${tipoOrigen})`);
+        console.log(`   - Cantidad disponible: ${registro.cantidad}`);
+        console.log(`   - Cantidad a descontar: ${cantidadADescontar}`);
+        console.log(`   - Cantidad restante después: ${nuevaCantidad}`);
 
         // Actualizar o eliminar el registro según corresponda
         if (nuevaCantidad > 0) {
@@ -48,26 +93,32 @@ async function registrarMovimientoStockUsuarioFIFO(params, db) {
                 'UPDATE ingredientes_stock_usuarios SET cantidad = $1 WHERE id = $2',
                 [nuevaCantidad, registro.id]
             );
+            console.log(`   ✅ Registro actualizado con nueva cantidad: ${nuevaCantidad}`);
         } else {
             await db.query(
                 'DELETE FROM ingredientes_stock_usuarios WHERE id = $1',
                 [registro.id]
             );
+            console.log(`   ✅ Registro eliminado (cantidad agotada)`);
         }
 
-        // Registrar el movimiento negativo
+        // Registrar el movimiento negativo manteniendo origen_mix_id
         await db.query(`
             INSERT INTO ingredientes_stock_usuarios 
-            (ingrediente_id, usuario_id, cantidad, origen_carro_id, fecha_registro)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+            (ingrediente_id, usuario_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
+            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5)
         `, [
             ingrediente_id,
             usuario_id,
             -cantidadADescontar,
-            carro_id
+            carro_id,
+            registro.origen_mix_id // Mantener el mismo origen_mix_id del registro consumido
         ]);
+        
+        console.log(`   ✅ Movimiento negativo registrado: -${cantidadADescontar}`);
 
         cantidadRestante -= cantidadADescontar;
+        console.log(`   📊 Cantidad pendiente: ${cantidadRestante}`);
     }
 }
 
@@ -78,7 +129,7 @@ async function registrarMovimientoStockUsuarioFIFO(params, db) {
  */
 async function agregarStockUsuario(req, res) {
     try {
-        const { usuario_id, ingrediente_id, cantidad, origen_carro_id } = req.body;
+        const { usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id } = req.body;
 
         // Validar datos requeridos
         if (!usuario_id || !ingrediente_id || cantidad === undefined || cantidad === null) {
@@ -95,11 +146,11 @@ async function agregarStockUsuario(req, res) {
             });
         }
 
-        // Insertar en la tabla ingredientes_stock_usuarios
+        // Insertar en la tabla ingredientes_stock_usuarios incluyendo origen_mix_id
         const query = `
             INSERT INTO ingredientes_stock_usuarios 
-            (ingrediente_id, usuario_id, cantidad, origen_carro_id, fecha_registro)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+            (ingrediente_id, usuario_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
+            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5)
             RETURNING id
         `;
 
@@ -107,10 +158,12 @@ async function agregarStockUsuario(req, res) {
             ingrediente_id,
             usuario_id,
             cantidadNumerica,
-            origen_carro_id || null
+            origen_carro_id || null,
+            origen_mix_id || null
         ]);
 
-        console.log(`✅ Stock agregado: Usuario ${usuario_id}, Ingrediente ${ingrediente_id}, Cantidad ${cantidadNumerica}`);
+        // Log detallado con origen_mix_id
+        console.log(`🧾 Registro de stock agregado: ingrediente_id=${ingrediente_id}, cantidad=${cantidadNumerica}, origen_mix_id=${origen_mix_id || 'NULL'}`);
 
         res.status(201).json({
             message: 'Stock agregado correctamente',

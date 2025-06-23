@@ -782,11 +782,12 @@ export function mostrarResumenIngredientes(ingredientes) {
             ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
             : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
 
-        // Calcular estado del stock
+        // Calcular estado del stock con tolerancia para diferencias decimales
         const stockActual = ing.stock_actual || 0;
         const cantidadNecesaria = ing.cantidad;
-        const tieneStock = stockActual >= cantidadNecesaria;
-        const faltante = tieneStock ? 0 : cantidadNecesaria - stockActual;
+        const diferencia = stockActual - cantidadNecesaria;
+        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+        const faltante = tieneStock ? 0 : Math.abs(diferencia);
 
         // Generar indicador visual
         let indicadorEstado = '';
@@ -855,8 +856,19 @@ export function mostrarResumenMixes(mixes) {
     `;
 
     mixes.forEach(mix => {
+        const deshabilitado = (window.carroIdGlobal == null);
+        const boton = deshabilitado
+            ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+            : `<button onclick="abrirModalIngresoManual(${mix.id}, window.carroIdGlobal, true)">Ingreso manual</button>`;
+
+        // Calcular estado del stock con tolerancia para diferencias decimales
+        const stockActual = mix.stock_actual || 0;
+        const cantidadNecesaria = mix.cantidad;
+        const diferencia = stockActual - cantidadNecesaria;
+        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+
         html += `
-            <tr>
+            <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'}">
                 <td>
                     <span class="mix-nombre" 
                           style="cursor: pointer; color: #0275d8; text-decoration: underline;"
@@ -864,6 +876,8 @@ export function mostrarResumenMixes(mixes) {
                 </td>
                 <td>${mix.cantidad.toFixed(2)}</td>
                 <td>${mix.unidad_medida}</td>
+                <td>${stockActual.toFixed(2)}</td>
+                <td>${boton}</td>
             </tr>
         `;
     });

@@ -114,6 +114,28 @@ router.get('/ingredientes/:id/es-mix', async (req, res) => {
 });
 
 // Rutas para composición de ingredientes (mixes)
+// Verificar si un ingrediente es compuesto (mix)
+router.get('/ingredientes/:id/es-compuesto', async (req, res) => {
+    try {
+        const ingredienteId = req.params.id;
+        
+        // Consultar si el ingrediente es un mix verificando si tiene composición
+        const query = `
+            SELECT COUNT(*)::integer as count
+            FROM ingrediente_composicion
+            WHERE mix_id = $1
+        `;
+        
+        const result = await req.db.query(query, [ingredienteId]);
+        const esCompuesto = result.rows[0].count > 0;
+        
+        res.json({ esCompuesto });
+    } catch (error) {
+        console.error('Error al verificar si el ingrediente es compuesto:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/ingredientes/:id/composicion', async (req, res) => {
     try {
         const mixId = parseInt(req.params.id);
@@ -123,7 +145,7 @@ router.get('/ingredientes/:id/composicion', async (req, res) => {
         
         // Obtener información del mix
         const mixQuery = `
-            SELECT id, nombre, unidad_medida 
+            SELECT id, nombre, unidad_medida, receta_base_kg
             FROM ingredientes 
             WHERE id = $1
         `;
@@ -886,22 +908,40 @@ router.post('/ingredientes-usuarios/agregar', async (req, res) => {
 // Ruta para registrar movimientos en stock de usuarios (carros externos)
 router.post('/ingredientes-stock-usuarios', async (req, res) => {
     try {
-        const { usuario_id, ingrediente_id, cantidad, origen_carro_id, articulo_numero } = req.body;
+        console.log('\n🔍 DEPURACIÓN ENDPOINT /ingredientes-stock-usuarios:');
+        console.log('=======================================================');
+        console.log('📥 PAYLOAD RECIBIDO:', JSON.stringify(req.body, null, 2));
+        
+        const { usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id } = req.body;
+        
+        console.log('\n📋 VALIDACIÓN DE CAMPOS:');
+        console.log('- usuario_id:', usuario_id, typeof usuario_id);
+        console.log('- ingrediente_id:', ingrediente_id, typeof ingrediente_id);
+        console.log('- cantidad:', cantidad, typeof cantidad);
+        console.log('- origen_carro_id:', origen_carro_id, typeof origen_carro_id);
+        console.log('- origen_mix_id:', origen_mix_id, typeof origen_mix_id);
         
         if (!usuario_id || !ingrediente_id || cantidad === undefined || !origen_carro_id) {
+            console.log('❌ ERROR: Faltan datos requeridos');
             return res.status(400).json({ error: 'Faltan datos requeridos' });
         }
 
         const query = `
             INSERT INTO ingredientes_stock_usuarios 
-            (usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro)
-            VALUES ($1, $2, $3, $4, NOW())
+            (usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
+            VALUES ($1, $2, $3, $4, NOW(), $5)
             RETURNING id
         `;
         
-        const result = await req.db.query(query, [usuario_id, ingrediente_id, cantidad, origen_carro_id]);
+        const params = [usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id];
+        console.log('\n📝 QUERY A EJECUTAR:', query);
+        console.log('📊 PARÁMETROS:', params);
         
-        console.log(`✅ Movimiento registrado en ingredientes_stock_usuarios - ID: ${result.rows[0].id}`);
+        const result = await req.db.query(query, params);
+        
+        console.log(`\n✅ REGISTRO EXITOSO:`);
+        console.log(`- ID generado: ${result.rows[0].id}`);
+        console.log(`- origen_mix_id guardado: ${origen_mix_id || 'NULL'}`);
         
         res.json({ 
             message: 'Movimiento registrado correctamente',

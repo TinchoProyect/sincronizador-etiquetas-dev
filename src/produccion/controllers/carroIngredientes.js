@@ -162,9 +162,9 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                 }
             }
 
-            // Si el artículo no tiene receta, tratarlo como ingrediente primario
+            // Si el artículo no tiene receta, verificar si es un mix o ingrediente primario
             if (recetaResult.rows.length === 0) {
-                console.log(`📦 Artículo ${articulo.articulo_numero} sin receta - buscando como ingrediente primario`);
+                console.log(`📦 Artículo ${articulo.articulo_numero} sin receta - verificando tipo`);
                 const queryIngredientePrimario = `
                     SELECT id, nombre, unidad_medida
                     FROM ingredientes
@@ -173,15 +173,31 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                 const ingredientePrimario = await pool.query(queryIngredientePrimario, [articulo.articulo_numero]);
 
                 if (ingredientePrimario.rows.length > 0) {
-                    console.log(`✅ Ingrediente primario encontrado: ${ingredientePrimario.rows[0].nombre} para artículo ${articulo.articulo_numero}`);
-                    todosLosIngredientes.push({
-                        id: ingredientePrimario.rows[0].id,
-                        nombre: ingredientePrimario.rows[0].nombre,
-                        unidad_medida: ingredientePrimario.rows[0].unidad_medida,
-                        cantidad: articulo.cantidad
-                    });
+                    const ingredienteId = ingredientePrimario.rows[0].id;
+                    const esMix = await verificarSiEsMix(ingredienteId);
+
+                    if (esMix) {
+                        console.log(`✅ Artículo ${articulo.articulo_numero} es un MIX - expandiendo componentes`);
+                        const ingredientesExpandidos = await expandirIngrediente(
+                            ingredienteId,
+                            articulo.cantidad
+                        );
+                        if (ingredientesExpandidos.length > 0) {
+                            todosLosIngredientes = todosLosIngredientes.concat(ingredientesExpandidos);
+                        } else {
+                            console.log(`⚠️ Error: No se obtuvieron ingredientes expandidos para el mix ${articulo.articulo_numero}`);
+                        }
+                    } else {
+                        console.log(`✅ Artículo ${articulo.articulo_numero} es ingrediente primario - agregando directamente`);
+                        todosLosIngredientes.push({
+                            id: ingredienteId,
+                            nombre: ingredientePrimario.rows[0].nombre,
+                            unidad_medida: ingredientePrimario.rows[0].unidad_medida,
+                            cantidad: articulo.cantidad
+                        });
+                    }
                 } else {
-                    console.log(`⚠️ No se encontró ingrediente primario para artículo ${articulo.articulo_numero}`);
+                    console.log(`⚠️ No se encontró ingrediente para artículo ${articulo.articulo_numero}`);
                 }
             }
         }
