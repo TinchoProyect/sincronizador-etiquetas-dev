@@ -141,7 +141,7 @@ window.editarCantidadIngrediente = async (mixId, ingredienteId, nuevaCantidad) =
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ cantidad: parseFloat(nuevaCantidad) })
+            body: JSON.stringify({ cantidad: parseFloat(nuevaCantidad.replace(',', '.')) })
         });
 
         if (!response.ok) throw new Error('No se pudo actualizar la cantidad');
@@ -188,7 +188,7 @@ window.agregarIngredienteAMix = async (mixId) => {
     const input = document.getElementById('cantidad-ingrediente');
     
     const ingredienteId = select.value;
-    const cantidad = parseFloat(input.value);
+    const cantidad = parseFloat(input.value.replace(',', '.'));
 
     if (!ingredienteId) {
         mostrarError('Seleccioná un ingrediente');

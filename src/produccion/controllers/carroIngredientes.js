@@ -85,7 +85,7 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
             const queryReceta = `
                 SELECT 
                     ri.ingrediente_id,
-                    ri.cantidad,
+                    CAST(ri.cantidad AS DECIMAL(20,10)) as cantidad,
                     COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
                     COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
                 FROM recetas r
@@ -98,8 +98,8 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
 
             // Por cada ingrediente en la receta
             for (const ing of recetaResult.rows) {
-                // CORRECCIÓN: No multiplicar por pesoUnitario aquí - se manejará en expandirIngrediente
-                const cantidadTotal = ing.cantidad * articulo.cantidad;
+                // Mantener alta precisión en el cálculo de cantidad total
+                const cantidadTotal = Number((ing.cantidad * articulo.cantidad).toPrecision(10));
                 
                 console.log(`\n🔍 ANÁLISIS DE CANTIDADES - ${articulo.articulo_numero}`);
                 console.log(`=====================================================`);
@@ -236,14 +236,14 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                         
                         return {
                             ...ingrediente,
-                            stock_actual: parseFloat(stockActual)
+                            stock_actual: Number(parseFloat(stockActual).toPrecision(10))
                         };
                     } catch (error) {
                         console.error(`Error obteniendo stock para ingrediente ${ingrediente.id}:`, error);
-                        return {
-                            ...ingrediente,
-                            stock_actual: 0
-                        };
+                    return {
+                        ...ingrediente,
+                        stock_actual: 0
+                    };
                     }
                 } else {
                     // Si no tiene ID, no podemos obtener stock
@@ -307,7 +307,7 @@ async function obtenerMixesCarro(carroId, usuarioId) {
             const queryReceta = `
                 SELECT 
                     ri.ingrediente_id,
-                    ri.cantidad,
+                    CAST(ri.cantidad AS DECIMAL(20,10)) as cantidad,
                     COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
                     COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
                 FROM recetas r
@@ -332,8 +332,8 @@ async function obtenerMixesCarro(carroId, usuarioId) {
                     if (esMix) {
                         console.log(`✅ Ingrediente ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaVerificar}) es un MIX`);
                         
-                        // Calcular cantidad total
-                        const cantidadTotal = ing.cantidad * articulo.cantidad;
+                        // Mantener alta precisión en el cálculo de cantidad total para mixes
+                        const cantidadTotal = Number((ing.cantidad * articulo.cantidad).toPrecision(10));
                         
                         console.log(`\n📊 CÁLCULO DE CANTIDAD PARA MIX EN RECETA:`);
                         console.log(`- Artículo: ${articulo.articulo_numero}`);
@@ -377,8 +377,8 @@ async function obtenerMixesCarro(carroId, usuarioId) {
                         const recetaBaseResult = await pool.query(queryRecetaBase, [ingredienteId]);
                         const recetaBaseKg = recetaBaseResult.rows[0]?.receta_base_kg || 10;
                         
-                        // Calcular cantidad total usando la misma lógica de proporción
-                        const cantidadTotal = articulo.cantidad * 0.3; // 0.3kg por unidad
+                        // Mantener alta precisión en el cálculo de cantidad total para mixes directos
+                        const cantidadTotal = Number((articulo.cantidad * 0.3).toPrecision(10)); // 0.3kg por unidad
                         
                         console.log(`\n📊 CÁLCULO DE CANTIDAD PARA MIX DIRECTO:`);
                         console.log(`- Nombre del mix: ${ingredienteResult.rows[0].nombre}`);
@@ -446,7 +446,7 @@ async function obtenerMixesCarro(carroId, usuarioId) {
 
                     return {
                         ...mix,
-                        stock_actual: parseFloat(stockActual)
+                        stock_actual: Number(parseFloat(stockActual).toPrecision(10))
                     };
                 } catch (error) {
                     console.error(`Error obteniendo stock para mix ${mix.id}:`, error);

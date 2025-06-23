@@ -132,8 +132,8 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
         const nombreMix = nombreMixResult.rows[0]?.nombre || '';
         const pesoUnitario = extraerPesoUnitario(nombreMix);
 
-        // Calcular y validar factor de proporción
-        const factorProporcion = (cantidadBase * pesoUnitario) / baseKg;
+        // Calcular factor de proporción con alta precisión
+        const factorProporcion = Number(((cantidadBase * pesoUnitario) / baseKg).toPrecision(10));
         
         console.log(`\n🔍 EXPANSIÓN DE MIX - CANTIDADES`);
         console.log(`=======================================`);
@@ -159,14 +159,15 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
             console.log(`- Cantidad en composición: ${ing.cantidad}`);
             console.log(`- receta_base_kg del mix: ${baseKg}`);
             
-            const porcentaje = (ing.cantidad / baseKg) * 100;
-            console.log(`🧮 Porcentaje del ingrediente en el mix: ${porcentaje.toFixed(2)}%`);
+            // Usar números decimales de alta precisión para los cálculos
+            const porcentaje = Number((ing.cantidad / baseKg * 100).toPrecision(10));
+            console.log(`🧮 Porcentaje del ingrediente en el mix: ${porcentaje}%`);
             
             console.log(`🧪 Cantidad solicitada del mix: ${cantidadBase} kg`);
             console.log(`🧮 Cálculo: (${ing.cantidad} / ${baseKg}) * ${cantidadBase}`);
             
-            // Aplicar el factor de proporción a la cantidad del ingrediente
-            const cantidadAjustada = ing.cantidad * factorProporcion;
+            // Mantener alta precisión en los cálculos intermedios
+            const cantidadAjustada = Number((ing.cantidad * factorProporcion).toPrecision(10));
             
             console.log(`\n📊 CÁLCULO DETALLADO PARA ${ing.nombre}:`);
             console.log(`----------------------------------------`);

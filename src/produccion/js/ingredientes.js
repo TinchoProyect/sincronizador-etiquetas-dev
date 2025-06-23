@@ -498,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
             nombre: document.getElementById('nombre').value,
             unidad_medida: document.getElementById('unidad-medida').value,
             categoria: document.getElementById('categoria').value,
-            stock_actual: parseFloat(document.getElementById('stock').value),
+            stock_actual: Number(document.getElementById('stock').value.replace(',', '.')),
             descripcion: document.getElementById('descripcion').value,
             padre_id: ingredienteEditando ? ingredienteEditando.padre_id : null
         };

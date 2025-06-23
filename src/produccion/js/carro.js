@@ -193,7 +193,9 @@ const debouncedUpdateCantidad = debounce(async (numeroArticulo, nuevaCantidad, i
             rows.forEach(row => {
                 const cantidadCell = row.cells[1];
                 const cantidadBase = parseFloat(cantidadCell.dataset.base || cantidadCell.textContent);
-                cantidadCell.textContent = (cantidadBase * nuevaCantidad).toFixed(2);
+                const cantidadCalculada = Number((cantidadBase * nuevaCantidad).toPrecision(10));
+                cantidadCell.textContent = cantidadCalculada.toFixed(2);
+                cantidadCell.dataset.valor = cantidadCalculada;
             });
         }
 
@@ -449,7 +451,7 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
                                        onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
                                 ing.nombre}
                         </td>
-                        <td>${cantidadTotal.toFixed(2)}</td>
+                <td data-valor="${cantidadTotal}">${cantidadTotal.toFixed(2)}</td>
                         <td>${ing.unidad_medida}</td>
                     </tr>
                 `;
@@ -1006,7 +1008,7 @@ export async function mostrarArticulosDelCarro() {
                                            onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
                                     ing.nombre}
                             </td>
-                            <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
+                            <td data-base="${ing.cantidad}" data-valor="${cantidadTotal}">${parseFloat(cantidadTotal.toFixed(2))}</td>
                             <td>${ing.unidad_medida}</td>
                         </tr>
                     `;

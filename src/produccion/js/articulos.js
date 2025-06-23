@@ -418,7 +418,7 @@ function agregarIngredienteATabla(ingrediente, index) {
     tr.innerHTML = `
         <td>${ingrediente.nombre_ingrediente}</td>
         <td>${ingrediente.unidad_medida}</td>
-        <td>${ingrediente.cantidad}</td>
+        <td>${Number(ingrediente.cantidad).toFixed(10)}</td>
         <td>
             <button class="btn-eliminar-ingrediente" data-index="${index ?? state.ingredientesCargados.length - 1}"
                     style="background-color: #dc3545; color: white; border: none; 
@@ -466,7 +466,7 @@ function agregarIngredienteDesdeSelector() {
         const cantidadInput = document.getElementById('input-cantidad-ingrediente');
         
         const ingredienteId = selector.value;
-        const cantidad = parseFloat(cantidadInput.value);
+        const cantidad = Number(cantidadInput.value.replace(',', '.'));
         
         if (!ingredienteId) {
             throw new Error('Debe seleccionar un ingrediente');
@@ -482,7 +482,7 @@ function agregarIngredienteDesdeSelector() {
             ingrediente_id: ingredienteSeleccionado.id,
             nombre_ingrediente: ingredienteSeleccionado.nombre,
             unidad_medida: ingredienteSeleccionado.unidad_medida,
-            cantidad: cantidad
+            cantidad: Number(cantidadInput.value.replace(',', '.'))
         };
         
         state.ingredientesCargados.push(ingrediente);
@@ -520,7 +520,7 @@ async function guardarReceta() {
                 ingrediente_id: ing.ingrediente_id,
                 nombre_ingrediente: ing.nombre_ingrediente,
                 unidad_medida: ing.unidad_medida,
-                cantidad: ing.cantidad
+                cantidad: Number(ing.cantidad)
             }))
         };
 
@@ -861,11 +861,11 @@ async function agregarArticuloAlDOM(articulo_numero, descripcion, cantidad) {
             `;
 
             ingredientes.forEach(ing => {
-                const cantidadTotal = ing.cantidad * cantidad;
+                const cantidadTotal = Number(ing.cantidad) * Number(cantidad);
                 htmlArticulo += `
                     <tr>
                         <td>${ing.nombre}</td>
-                        <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
+                        <td data-base="${Number(ing.cantidad).toFixed(10)}">${Number(cantidadTotal).toFixed(10)}</td>
                         <td>${ing.unidad_medida}</td>
                     </tr>
                 `;
