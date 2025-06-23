@@ -1,6 +1,8 @@
 {
-  "numero": "MFDQX20",
-  "nombre": "Maiz/F/DQueso x 20",
-  "codigo_barras": "6464882744",
+  "articulo": {
+    "numero": "SBX5",
+    "nombre": "Sesamo Blanco x 5",
+    "codigo_barras": "256362258"
+  },
   "cantidad": 2
 }

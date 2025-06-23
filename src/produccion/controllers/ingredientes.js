@@ -209,11 +209,12 @@ async function obtenerUsuariosConStock() {
         console.log('🔍 Obteniendo usuarios con stock de ingredientes...');
         const query = `
             SELECT DISTINCT 
-                u.id,
+                u.id as usuario_id,
                 u.nombre_completo
-            FROM public.usuarios u
-            INNER JOIN public.ingredientes_stock_usuarios isu ON u.id = isu.usuario_id
-            WHERE isu.cantidad > 0
+            FROM usuarios u
+            INNER JOIN ingredientes_stock_usuarios isu ON u.id = isu.usuario_id
+            GROUP BY u.id, u.nombre_completo
+            HAVING SUM(isu.cantidad) != 0
             ORDER BY u.nombre_completo ASC;
         `;
         
@@ -228,6 +229,7 @@ async function obtenerUsuariosConStock() {
 
 /**
  * Obtiene el stock consolidado de ingredientes para un usuario específico
+ * Separa correctamente por origen_mix_id según los requisitos
  * @param {number} usuarioId - ID del usuario
  * @returns {Promise<Array>} Lista de ingredientes con stock del usuario
  */
@@ -236,30 +238,41 @@ async function obtenerStockPorUsuario(usuarioId) {
         console.log(`🔍 Obteniendo stock de ingredientes para usuario ${usuarioId}...`);
         const query = `
             SELECT 
-                i.id,
+                i.id as ingrediente_id,
                 i.codigo,
-                i.nombre,
+                i.nombre as nombre_ingrediente,
                 i.descripcion,
                 i.unidad_medida,
                 i.categoria,
-                SUM(isu.cantidad) as stock_actual,
+                SUM(isu.cantidad) as stock_total,
+                isu.origen_mix_id,
+                CASE 
+                    WHEN isu.origen_mix_id IS NULL THEN 'Simple'
+                    ELSE 'Sobrante de Mix'
+                END as tipo_origen,
                 CASE 
                     WHEN EXISTS (
                         SELECT 1 FROM ingrediente_composicion ic 
                         WHERE ic.mix_id = i.id
-                    ) THEN 'compuesto'
-                    ELSE 'simple'
+                    ) THEN 'Mix'
+                    ELSE 'Simple'
                 END as tipo
             FROM public.ingredientes i
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
-            WHERE isu.usuario_id = $1 AND isu.cantidad > 0
-            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria
+            WHERE isu.usuario_id = $1
+            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria, isu.origen_mix_id
             HAVING SUM(isu.cantidad) > 0
-            ORDER BY i.nombre ASC;
+            ORDER BY i.nombre ASC, isu.origen_mix_id ASC NULLS FIRST;
         `;
         
         const result = await pool.query(query, [usuarioId]);
-        console.log(`✅ Encontrados ${result.rows.length} ingredientes con stock para usuario ${usuarioId}`);
+        console.log(`✅ Encontrados ${result.rows.length} registros de stock para usuario ${usuarioId}`);
+        
+        // Log detallado para debugging
+        result.rows.forEach(row => {
+            console.log(`📦 ${row.nombre_ingrediente}: ${row.stock_total} (${row.tipo_origen})`);
+        });
+        
         return result.rows;
     } catch (error) {
         console.error(`❌ Error en obtenerStockPorUsuario para usuario ${usuarioId}:`, error);

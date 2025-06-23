@@ -7,7 +7,7 @@ import { actualizarResumenIngredientes } from './carro.js';
 // Función para verificar si un ingrediente es compuesto (mix)
 async function verificarSiEsIngredienteCompuesto(ingredienteId) {
   try {
-    const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/es-compuesto`);
+    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/es-compuesto`);
     if (!response.ok) {
       throw new Error('Error al verificar el tipo de ingrediente');
     }
@@ -22,7 +22,7 @@ async function verificarSiEsIngredienteCompuesto(ingredienteId) {
 // Función para obtener la composición de un ingrediente
 async function obtenerComposicionIngrediente(ingredienteId) {
   try {
-    const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/composicion`);
+    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`);
     if (!response.ok) {
       throw new Error('Error al obtener la composición del ingrediente');
     }
@@ -124,7 +124,7 @@ function manejarBusqueda() {
     return;
   }
 
-  fetch('/api/produccion/articulos')
+  fetch('http://localhost:3002/api/produccion/articulos')
     .then(response => {
       if (!response.ok) throw new Error('Error al buscar artículos');
       return response.json();
@@ -195,7 +195,7 @@ async function confirmarIngreso() {
 
   try {
     // Obtener información del carro para determinar su tipo
-    const carroResponse = await fetch(`/api/produccion/carro/${carroIdGlobal}/estado`);
+    const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/estado`);
     if (!carroResponse.ok) {
       throw new Error('Error al obtener información del carro');
     }
@@ -256,7 +256,7 @@ async function confirmarIngreso() {
           console.log('📤 JSON que se enviará:', JSON.stringify(stockUsuarioPayload, null, 2));
           console.log('=======================================================\n');
 
-          const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
+          const stockResponse = await fetch('http://localhost:3002/api/produccion/ingredientes-stock-usuarios', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -278,13 +278,13 @@ async function confirmarIngreso() {
         // Buscar si este ingrediente proviene de algún mix en el carro
         let origenMixId = null;
         try {
-          const mixesResponse = await fetch(`/api/produccion/carro/${carroIdGlobal}/mixes?usuarioId=${usuarioId}`);
+          const mixesResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/mixes?usuarioId=${usuarioId}`);
           if (mixesResponse.ok) {
             const mixes = await mixesResponse.json();
             
             // Por cada mix, verificar si contiene este ingrediente
             for (const mix of mixes) {
-              const composicionResponse = await fetch(`/api/produccion/ingredientes/${mix.id}/composicion`);
+              const composicionResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mix.id}/composicion`);
               if (composicionResponse.ok) {
                 const composicionData = await composicionResponse.json();
                 
@@ -324,7 +324,7 @@ async function confirmarIngreso() {
         console.log('📤 JSON que se enviará:', JSON.stringify(stockUsuarioPayload, null, 2));
         console.log('=======================================================\n');
 
-        const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
+        const stockResponse = await fetch('http://localhost:3002/api/produccion/ingredientes-stock-usuarios', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -391,7 +391,7 @@ async function confirmarIngreso() {
 }
 
 function obtenerIngrediente(id) {
-  return fetch(`/api/produccion/ingredientes/${id}`)
+  return fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`)
     .then(res => {
       if (!res.ok) throw new Error('No se pudo obtener el ingrediente');
       return res.json();

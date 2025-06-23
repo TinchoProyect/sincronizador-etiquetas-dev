@@ -54,6 +54,45 @@ router.get('/ingredientes', async (req, res) => {
     }
 });
 
+// Ruta para obtener usuarios con stock - DEBE IR ANTES DE /ingredientes/:id
+router.get('/ingredientes/usuarios-con-stock', async (req, res) => {
+    try {
+        console.log('🔄 Procesando solicitud GET /ingredientes/usuarios-con-stock');
+        const usuarios = await obtenerUsuariosConStock();
+        console.log('✅ Usuarios con stock obtenidos:', usuarios);
+        res.json(usuarios);
+    } catch (error) {
+        console.error('❌ Error al obtener usuarios con stock:', error);
+        res.status(500).json({ 
+            error: 'Error al obtener usuarios con stock',
+            detalle: error.message 
+        });
+    }
+});
+
+// Ruta para obtener stock por usuario - DEBE IR ANTES DE /ingredientes/:id
+router.get('/ingredientes/stock-usuario/:usuarioId', async (req, res) => {
+    try {
+        const usuarioId = parseInt(req.params.usuarioId);
+        console.log(`🔄 Procesando solicitud GET /ingredientes/stock-usuario/${usuarioId}`);
+        
+        if (isNaN(usuarioId)) {
+            console.warn('⚠️ ID de usuario inválido:', req.params.usuarioId);
+            return res.status(400).json({ error: 'ID de usuario inválido' });
+        }
+        
+        const stock = await obtenerStockPorUsuario(usuarioId);
+        console.log(`✅ Stock obtenido para usuario ${usuarioId}:`, stock);
+        res.json(stock);
+    } catch (error) {
+        console.error(`❌ Error al obtener stock para usuario ${req.params.usuarioId}:`, error);
+        res.status(500).json({ 
+            error: 'Error al obtener stock por usuario',
+            detalle: error.message 
+        });
+    }
+});
+
 router.get('/ingredientes/nuevo-codigo', async (req, res) => {
     try {
         console.log('Recibida solicitud GET /ingredientes/nuevo-codigo');
@@ -374,44 +413,6 @@ router.get('/usuarios', async (req, res) => {
     }
 });
 
-// Ruta para obtener usuarios con stock
-router.get('/ingredientes/usuarios-con-stock', async (req, res) => {
-    try {
-        console.log('🔄 Procesando solicitud GET /ingredientes/usuarios-con-stock');
-        const usuarios = await obtenerUsuariosConStock();
-        console.log('✅ Usuarios con stock obtenidos:', usuarios);
-        res.json(usuarios);
-    } catch (error) {
-        console.error('❌ Error al obtener usuarios con stock:', error);
-        res.status(500).json({ 
-            error: 'Error al obtener usuarios con stock',
-            detalle: error.message 
-        });
-    }
-});
-
-// Ruta para obtener stock por usuario
-router.get('/ingredientes/stock-usuario/:usuarioId', async (req, res) => {
-    try {
-        const usuarioId = parseInt(req.params.usuarioId);
-        console.log(`🔄 Procesando solicitud GET /ingredientes/stock-usuario/${usuarioId}`);
-        
-        if (isNaN(usuarioId)) {
-            console.warn('⚠️ ID de usuario inválido:', req.params.usuarioId);
-            return res.status(400).json({ error: 'ID de usuario inválido' });
-        }
-        
-        const stock = await obtenerStockPorUsuario(usuarioId);
-        console.log(`✅ Stock obtenido para usuario ${usuarioId}:`, stock);
-        res.json(stock);
-    } catch (error) {
-        console.error(`❌ Error al obtener stock para usuario ${req.params.usuarioId}:`, error);
-        res.status(500).json({ 
-            error: 'Error al obtener stock por usuario',
-            detalle: error.message 
-        });
-    }
-});
 
 // Rutas para artículos
 router.get('/articulos', async (req, res) => {
