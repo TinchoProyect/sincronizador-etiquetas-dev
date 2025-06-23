@@ -11,114 +11,139 @@ const pool = require('../../usuarios/pool');
  * @param {Object} db - Conexión a la base de datos para transacciones
  */
 async function registrarMovimientoStockUsuarioFIFO(params, db) {
-    const { usuario_id, ingrediente_id, cantidad, carro_id } = params;
-    
-    if (cantidad >= 0) {
-        throw new Error('La cantidad debe ser negativa para consumo FIFO');
-    }
-
-    let cantidadRestante = Math.abs(cantidad); // Convertir a positivo para los cálculos
-    let registrosAProcesar = [];
-
-    // Si hay origen_mix_id, primero buscar stock con ese origen
-    if (params.origen_mix_id) {
-        console.log(`\n🔍 BUSCANDO STOCK CON ORIGEN MIX ID=${params.origen_mix_id}`);
+    try {
+        console.log(`\n🚀 INICIANDO REGISTRO FIFO`);
+        console.log(`============================`);
+        console.log(`Parámetros recibidos:`, params);
         
-        const queryStockMix = `
-            SELECT id, cantidad, origen_mix_id
-            FROM ingredientes_stock_usuarios
-            WHERE usuario_id = $1 
-            AND ingrediente_id = $2
-            AND cantidad > 0
-            AND origen_mix_id = $3
-            ORDER BY fecha_registro ASC
-        `;
+        const { usuario_id, ingrediente_id, cantidad, carro_id } = params;
         
-        const stockMixResult = await db.query(queryStockMix, [usuario_id, ingrediente_id, params.origen_mix_id]);
-        const stockMixDisponible = stockMixResult.rows.reduce((sum, row) => sum + row.cantidad, 0);
-        
-        console.log(`- Stock encontrado con origen_mix_id=${params.origen_mix_id}: ${stockMixDisponible}`);
-        registrosAProcesar = registrosAProcesar.concat(stockMixResult.rows);
-    }
-
-    // Si aún necesitamos más stock, buscar registros sin origen_mix_id
-    if (cantidadRestante > registrosAProcesar.reduce((sum, row) => sum + row.cantidad, 0)) {
-        console.log('\n🔍 BUSCANDO STOCK SIN ORIGEN MIX (INGREDIENTES SIMPLES)');
-        
-        const queryStockSimple = `
-            SELECT id, cantidad, origen_mix_id
-            FROM ingredientes_stock_usuarios
-            WHERE usuario_id = $1 
-            AND ingrediente_id = $2
-            AND cantidad > 0
-            AND origen_mix_id IS NULL
-            ORDER BY fecha_registro ASC
-        `;
-        
-        const stockSimpleResult = await db.query(queryStockSimple, [usuario_id, ingrediente_id]);
-        const stockSimpleDisponible = stockSimpleResult.rows.reduce((sum, row) => sum + row.cantidad, 0);
-        
-        console.log(`- Stock encontrado sin origen_mix_id: ${stockSimpleDisponible}`);
-        registrosAProcesar = registrosAProcesar.concat(stockSimpleResult.rows);
-    }
-
-    // Verificar stock total disponible
-    const stockTotalDisponible = registrosAProcesar.reduce((sum, row) => sum + row.cantidad, 0);
-    console.log(`\n📊 RESUMEN DE STOCK:`);
-    console.log(`- Cantidad requerida: ${cantidadRestante}`);
-    console.log(`- Stock total disponible: ${stockTotalDisponible}`);
-
-    if (stockTotalDisponible < cantidadRestante) {
-        throw new Error(`Stock insuficiente para ingrediente ${ingrediente_id}. Disponible: ${stockTotalDisponible}, Requerido: ${cantidadRestante}`);
-    }
-
-    // Procesar registros FIFO (primero los del mix, luego los simples)
-    console.log('\n🔄 PROCESANDO REGISTROS FIFO:');
-    for (const registro of registrosAProcesar) {
-        if (cantidadRestante <= 0) break;
-
-        const cantidadADescontar = Math.min(registro.cantidad, cantidadRestante);
-        const nuevaCantidad = registro.cantidad - cantidadADescontar;
-        
-        // Log detallado del procesamiento
-        const tipoOrigen = registro.origen_mix_id ? `Mix ID=${registro.origen_mix_id}` : 'Ingrediente simple';
-        console.log(`📦 Procesando registro ID=${registro.id} (${tipoOrigen})`);
-        console.log(`   - Cantidad disponible: ${registro.cantidad}`);
-        console.log(`   - Cantidad a descontar: ${cantidadADescontar}`);
-        console.log(`   - Cantidad restante después: ${nuevaCantidad}`);
-
-        // Actualizar o eliminar el registro según corresponda
-        if (nuevaCantidad > 0) {
-            await db.query(
-                'UPDATE ingredientes_stock_usuarios SET cantidad = $1 WHERE id = $2',
-                [nuevaCantidad, registro.id]
-            );
-            console.log(`   ✅ Registro actualizado con nueva cantidad: ${nuevaCantidad}`);
-        } else {
-            await db.query(
-                'DELETE FROM ingredientes_stock_usuarios WHERE id = $1',
-                [registro.id]
-            );
-            console.log(`   ✅ Registro eliminado (cantidad agotada)`);
+        if (cantidad >= 0) {
+            throw new Error('La cantidad debe ser negativa para consumo FIFO');
         }
 
-        // Registrar el movimiento negativo manteniendo origen_mix_id
-        await db.query(`
-            INSERT INTO ingredientes_stock_usuarios 
-            (ingrediente_id, usuario_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5)
-        `, [
-            ingrediente_id,
-            usuario_id,
-            -cantidadADescontar,
-            carro_id,
-            registro.origen_mix_id // Mantener el mismo origen_mix_id del registro consumido
-        ]);
-        
-        console.log(`   ✅ Movimiento negativo registrado: -${cantidadADescontar}`);
+        // Redondear cantidad a 4 decimales para mantener consistencia
+        let cantidadRestante = Number(Math.abs(cantidad).toFixed(4)); 
+        let registrosAProcesar = [];
 
-        cantidadRestante -= cantidadADescontar;
-        console.log(`   📊 Cantidad pendiente: ${cantidadRestante}`);
+        // Si hay origen_mix_id, primero buscar stock con ese origen
+        if (params.origen_mix_id) {
+            console.log(`\n🔍 BUSCANDO STOCK CON ORIGEN MIX ID=${params.origen_mix_id}`);
+            
+            const queryStockMix = `
+                SELECT id, cantidad, origen_mix_id
+                FROM ingredientes_stock_usuarios
+                WHERE usuario_id = $1 
+                AND ingrediente_id = $2
+                AND cantidad > 0
+                AND origen_mix_id = $3
+                ORDER BY fecha_registro ASC
+            `;
+            
+            const stockMixResult = await db.query(queryStockMix, [usuario_id, ingrediente_id, params.origen_mix_id]);
+            const stockMixDisponible = stockMixResult.rows.reduce((sum, row) => sum + row.cantidad, 0);
+            
+            console.log(`- Stock encontrado con origen_mix_id=${params.origen_mix_id}: ${stockMixDisponible}`);
+            console.log(`- Registros encontrados:`, stockMixResult.rows);
+            registrosAProcesar = registrosAProcesar.concat(stockMixResult.rows);
+        }
+
+        // Si aún necesitamos más stock, buscar registros sin origen_mix_id
+        if (cantidadRestante > registrosAProcesar.reduce((sum, row) => sum + row.cantidad, 0)) {
+            console.log('\n🔍 BUSCANDO STOCK SIN ORIGEN MIX (INGREDIENTES SIMPLES)');
+            
+            const queryStockSimple = `
+                SELECT id, cantidad, origen_mix_id
+                FROM ingredientes_stock_usuarios
+                WHERE usuario_id = $1 
+                AND ingrediente_id = $2
+                AND cantidad > 0
+                AND origen_mix_id IS NULL
+                ORDER BY fecha_registro ASC
+            `;
+            
+            const stockSimpleResult = await db.query(queryStockSimple, [usuario_id, ingrediente_id]);
+            const stockSimpleDisponible = stockSimpleResult.rows.reduce((sum, row) => sum + row.cantidad, 0);
+            
+            console.log(`- Stock encontrado sin origen_mix_id: ${stockSimpleDisponible}`);
+            console.log(`- Registros encontrados:`, stockSimpleResult.rows);
+            registrosAProcesar = registrosAProcesar.concat(stockSimpleResult.rows);
+        }
+
+        // Verificar stock total disponible
+        const stockTotalDisponible = registrosAProcesar.reduce((sum, row) => sum + row.cantidad, 0);
+        console.log(`\n📊 RESUMEN DE STOCK:`);
+        console.log(`- Cantidad requerida: ${cantidadRestante}`);
+        console.log(`- Stock total disponible: ${stockTotalDisponible}`);
+        console.log(`- Registros a procesar: ${registrosAProcesar.length}`);
+
+        if (stockTotalDisponible < cantidadRestante) {
+            const error = `Stock insuficiente para ingrediente ${ingrediente_id}. Disponible: ${stockTotalDisponible}, Requerido: ${cantidadRestante}`;
+            console.error(`❌ ERROR: ${error}`);
+            throw new Error(error);
+        }
+
+        // Procesar registros FIFO (primero los del mix, luego los simples)
+        console.log('\n🔄 PROCESANDO REGISTROS FIFO:');
+        for (const registro of registrosAProcesar) {
+            if (cantidadRestante <= 0) break;
+
+            const cantidadADescontar = Math.min(registro.cantidad, cantidadRestante);
+            const nuevaCantidad = registro.cantidad - cantidadADescontar;
+            
+            // Log detallado del procesamiento
+            const tipoOrigen = registro.origen_mix_id ? `Mix ID=${registro.origen_mix_id}` : 'Ingrediente simple';
+            console.log(`📦 Procesando registro ID=${registro.id} (${tipoOrigen})`);
+            console.log(`   - Cantidad disponible: ${registro.cantidad}`);
+            console.log(`   - Cantidad a descontar: ${cantidadADescontar}`);
+            console.log(`   - Cantidad restante después: ${nuevaCantidad}`);
+
+            try {
+                // Actualizar o eliminar el registro según corresponda
+                if (nuevaCantidad > 0) {
+                    await db.query(
+                        'UPDATE ingredientes_stock_usuarios SET cantidad = $1 WHERE id = $2',
+                        [nuevaCantidad, registro.id]
+                    );
+                    console.log(`   ✅ Registro actualizado con nueva cantidad: ${nuevaCantidad}`);
+                } else {
+                    await db.query(
+                        'DELETE FROM ingredientes_stock_usuarios WHERE id = $1',
+                        [registro.id]
+                    );
+                    console.log(`   ✅ Registro eliminado (cantidad agotada)`);
+                }
+
+                // Registrar el movimiento negativo manteniendo origen_mix_id
+                await db.query(`
+                    INSERT INTO ingredientes_stock_usuarios 
+                    (ingrediente_id, usuario_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
+                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5)
+                `, [
+                    ingrediente_id,
+                    usuario_id,
+                    -cantidadADescontar,
+                    carro_id,
+                    registro.origen_mix_id // Mantener el mismo origen_mix_id del registro consumido
+                ]);
+                
+                console.log(`   ✅ Movimiento negativo registrado: -${cantidadADescontar} con origen_mix_id=${registro.origen_mix_id}`);
+
+                cantidadRestante -= cantidadADescontar;
+                console.log(`   📊 Cantidad pendiente: ${cantidadRestante}`);
+                
+            } catch (dbError) {
+                console.error(`❌ ERROR en operación de base de datos para registro ${registro.id}:`, dbError);
+                throw new Error(`Error en base de datos: ${dbError.message}`);
+            }
+        }
+        
+        console.log(`\n✅ REGISTRO FIFO COMPLETADO EXITOSAMENTE`);
+        console.log(`============================`);
+        
+    } catch (error) {
+        console.error(`❌ ERROR EN REGISTRO FIFO:`, error);
+        throw error;
     }
 }
 

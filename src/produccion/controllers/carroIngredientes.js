@@ -132,7 +132,9 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                         console.log(`✅ Ingrediente ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaExpandir}) es un MIX - procediendo a expandir`);
                         ingredientesExpandidos = await expandirIngrediente(
                             ingredienteIdParaExpandir,
-                            cantidadTotal
+                            cantidadTotal,
+                            new Set(),
+                            ingredienteIdParaExpandir // Pasar el ID del mix como origen_mix_id
                         );
                         
                         if (ingredientesExpandidos.length > 0) {
@@ -252,13 +254,15 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                         
                         return {
                             ...ingrediente,
-                            stock_actual: Number(parseFloat(stockActual).toPrecision(10))
+                            stock_actual: Number(parseFloat(stockActual).toPrecision(10)),
+                            origen_mix_id: ingrediente.origen_mix_id // Preservar origen_mix_id
                         };
                     } catch (error) {
                         console.error(`Error obteniendo stock para ingrediente ${ingrediente.id}:`, error);
                     return {
                         ...ingrediente,
-                        stock_actual: 0
+                        stock_actual: 0,
+                        origen_mix_id: ingrediente.origen_mix_id // Preservar origen_mix_id también en caso de error
                     };
                     }
                 } else {

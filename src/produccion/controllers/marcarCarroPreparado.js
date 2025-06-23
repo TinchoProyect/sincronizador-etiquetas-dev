@@ -53,6 +53,7 @@ async function marcarCarroPreparado(req, res) {
             console.log(`${index + 1}. ${ing.nombre} (ID: ${ing.id})`);
             console.log(`   - Cantidad: ${ing.cantidad}`);
             console.log(`   - Stock actual: ${ing.stock_actual}`);
+            console.log(`   - Origen Mix ID: ${ing.origen_mix_id || 'NULL'}`);
             
             // Verificar si es un mix
             if (ing.id) {
@@ -94,11 +95,16 @@ async function marcarCarroPreparado(req, res) {
                 console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
                 console.log(`- ID: ${ing.id}`);
                 
+                console.log(`\n🔍 ORIGEN MIX ID:`, ing.origen_mix_id);
+                // Redondear cantidad a 4 decimales para evitar problemas de precisión
+                const cantidadRedondeada = Number(ing.cantidad.toFixed(4));
+                
                 await registrarMovimientoStockUsuarioFIFO({
                     usuario_id: parseInt(usuarioId),
                     ingrediente_id: ing.id,
-                    cantidad: -ing.cantidad, // Negativo para consumo
-                    carro_id: parseInt(carroId)
+                    cantidad: -cantidadRedondeada, // Negativo para consumo
+                    carro_id: parseInt(carroId),
+                    origen_mix_id: ing.origen_mix_id // Pasar el origen_mix_id del ingrediente
                 }, db);
                 
                 console.log('✅ Movimiento FIFO registrado correctamente');
