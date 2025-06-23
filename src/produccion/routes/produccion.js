@@ -236,6 +236,37 @@ router.put('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) =
     }
 });
 
+// Ruta para eliminar toda la composición de un mix
+router.delete('/ingredientes/:mixId/composicion', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.mixId);
+        
+        if (isNaN(mixId)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        
+        // 1. Eliminar toda la composición
+        const deleteQuery = `
+            DELETE FROM ingrediente_composicion 
+            WHERE mix_id = $1
+        `;
+        await req.db.query(deleteQuery, [mixId]);
+        
+        // 2. Actualizar receta_base_kg a null
+        const updateQuery = `
+            UPDATE ingredientes 
+            SET receta_base_kg = NULL 
+            WHERE id = $1
+        `;
+        await req.db.query(updateQuery, [mixId]);
+        
+        res.json({ message: 'Composición eliminada completamente' });
+    } catch (error) {
+        console.error('Error en ruta DELETE /ingredientes/:mixId/composicion:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.delete('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) => {
     try {
         const mixId = parseInt(req.params.mixId);

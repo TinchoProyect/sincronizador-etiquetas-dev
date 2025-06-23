@@ -225,9 +225,12 @@ async function actualizarTablaIngredientes(ingredientes) {
             <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
             <td>
                 ${ingrediente.esMix 
-                    ? '<button class="btn-editar" onclick="gestionarComposicionMix(' + ingrediente.id + ')">Gestionar composición</button>' 
+                    ? `<div class="btn-group">
+                        <button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Gestionar composición</button>
+                        <button class="btn-eliminar" onclick="eliminarComposicionMix(${ingrediente.id})">Eliminar composición</button>
+                       </div>` 
                     : (!ingrediente.padre_id 
-                        ? '<button class="btn-editar" onclick="gestionarComposicionMix(' + ingrediente.id + ')">Crear composición</button>'
+                        ? `<button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Crear composición</button>`
                         : '-')}
             </td>
             <td>
@@ -500,9 +503,39 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Función para eliminar la composición de un mix
+async function eliminarComposicionMix(id) {
+    if (!confirm('¿Está seguro de eliminar la composición de este mix? Esta acción no se puede deshacer.')) {
+        return;
+    }
+
+    try {
+        console.log('🗑️ Eliminando composición del mix:', id);
+        
+        // Usar el nuevo endpoint que elimina toda la composición y actualiza receta_base_kg
+        const response = await fetch(`/api/produccion/ingredientes/${id}/composicion`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Error al eliminar la composición');
+        }
+
+        // Recargar la tabla
+        await cargarIngredientes();
+        mostrarMensaje('Composición eliminada exitosamente', 'exito');
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarMensaje(error.message || 'No se pudo eliminar la composición');
+    }
+}
+
 // Hacer funciones disponibles globalmente
 window.editarIngrediente = editarIngrediente;
 window.eliminarIngrediente = eliminarIngrediente;
+window.gestionarComposicionMix = gestionarComposicionMix;
+window.eliminarComposicionMix = eliminarComposicionMix;
 
 // Funciones para gestionar el modal de mix
 function gestionarComposicionMix(id) {
@@ -512,6 +545,3 @@ function gestionarComposicionMix(id) {
     // Llamar a la función de mix.js para cargar la composición
     window.abrirEdicionMix(id);
 }
-
-
-window.gestionarComposicionMix = gestionarComposicionMix;
