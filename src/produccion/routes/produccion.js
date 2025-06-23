@@ -883,6 +883,40 @@ router.post('/ingredientes-usuarios/agregar', async (req, res) => {
     }
 });
 
+// Ruta para registrar movimientos en stock de usuarios (carros externos)
+router.post('/ingredientes-stock-usuarios', async (req, res) => {
+    try {
+        const { usuario_id, ingrediente_id, cantidad, origen_carro_id, articulo_numero } = req.body;
+        
+        if (!usuario_id || !ingrediente_id || cantidad === undefined || !origen_carro_id) {
+            return res.status(400).json({ error: 'Faltan datos requeridos' });
+        }
+
+        const query = `
+            INSERT INTO ingredientes_stock_usuarios 
+            (usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro)
+            VALUES ($1, $2, $3, $4, NOW())
+            RETURNING id
+        `;
+        
+        const result = await req.db.query(query, [usuario_id, ingrediente_id, cantidad, origen_carro_id]);
+        
+        console.log(`✅ Movimiento registrado en ingredientes_stock_usuarios - ID: ${result.rows[0].id}`);
+        
+        res.json({ 
+            message: 'Movimiento registrado correctamente',
+            id: result.rows[0].id
+        });
+    } catch (error) {
+        console.error('❌ Error en ruta /ingredientes-stock-usuarios:', error);
+        console.error('❌ Error completo:', error.message);
+        res.status(500).json({
+            error: 'Error al registrar movimiento en stock de usuarios',
+            detalle: error.message
+        });
+    }
+});
+
 /**
  * Ruta: POST /api/produccion/carro/:id/preparado
  * Descripción: Marca un carro como preparado y registra los movimientos de ingredientes
@@ -932,7 +966,7 @@ router.get('/carro/:id/estado', async (req, res) => {
         const { id } = req.params;
         
         const query = `
-            SELECT fecha_preparado, fecha_confirmacion, usuario_id, fecha_inicio
+            SELECT fecha_preparado, fecha_confirmacion, usuario_id, fecha_inicio, tipo_carro
             FROM carros_produccion 
             WHERE id = $1
         `;
@@ -959,7 +993,8 @@ router.get('/carro/:id/estado', async (req, res) => {
             fecha_preparado: carro.fecha_preparado,
             fecha_confirmacion: carro.fecha_confirmacion,
             preparado: preparado,
-            confirmado: confirmado
+            confirmado: confirmado,
+            tipo_carro: carro.tipo_carro || 'interna' // Si no tiene tipo, asumir interna
         });
         
     } catch (error) {

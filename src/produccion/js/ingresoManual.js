@@ -122,7 +122,7 @@ function manejarBusqueda() {
     });
 }
 
-function confirmarIngreso() {
+async function confirmarIngreso() {
   if (!articuloSeleccionado || !inputKilos.value) {
     alert('Seleccioná un artículo y completá los kilos.');
     return;
@@ -154,42 +154,91 @@ function confirmarIngreso() {
     return;
   }
 
-  console.log('🔍 artículoSeleccionado:', articuloSeleccionado);
+  console.log('🔍 Artículo seleccionado:', articuloSeleccionado);
 
-  // Para ingredientes_movimientos multiplicamos kilos × cantidad
-  const movimientoIngrediente = {
-    ingredienteId: ingredienteSeleccionado,
-    articuloNumero: articuloSeleccionado.numero,
-    kilos: kilos * cantidad, // Multiplicar por cantidad
-    carroId: parseInt(carroIdGlobal)
-  };
+  try {
+    // Obtener información del carro para determinar su tipo
+    const carroResponse = await fetch(`/api/produccion/carro/${carroIdGlobal}/estado`);
+    if (!carroResponse.ok) {
+      throw new Error('Error al obtener información del carro');
+    }
+    const carroData = await carroResponse.json();
+    const tipoCarro = carroData.tipo_carro;
+    
+    console.log(`🔍 Tipo de carro detectado: ${tipoCarro || 'interna'}`);
 
-  // Para stock_ventas_movimientos mantenemos kilos original y cantidad separada
-  const movimientoStock = {
-    articuloNumero: articuloSeleccionado.numero,
-    codigoBarras: articuloSeleccionado.codigo_barras,
-    kilos: -kilos, // Kilos por unidad (sin multiplicar)
-    carroId: parseInt(carroIdGlobal),
-    usuarioId: parseInt(usuarioId),
-    cantidad: cantidad, // Cantidad de unidades
-    tipo: 'ingreso a producción'
-  };
+    if (tipoCarro === 'externa') {
+      // Registrar directamente en stock de usuarios
+      const stockUsuarioPayload = {
+        usuario_id: parseInt(usuarioId),
+        ingrediente_id: ingredienteSeleccionado,
+        cantidad: kilos * cantidad,
+        origen_carro_id: parseInt(carroIdGlobal)
+      };
 
-  console.log('📦 Guardando ingreso manual:', movimientoIngrediente);
-  console.log('✅ movimientoIngrediente (detalle):', JSON.stringify(movimientoIngrediente, null, 2));
+      const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(stockUsuarioPayload)
+      });
 
-  registrarMovimientoIngrediente(movimientoIngrediente)
-    .then(() => registrarMovimientoStockVentas(movimientoStock))
-    .then(() => {
-      alert('Ingreso registrado correctamente');
-      cerrarModal();
-      // Actualizar el resumen de ingredientes para reflejar el nuevo stock
-      actualizarResumenIngredientes();
-    })
-    .catch(error => {
-      console.error('❌ Error al registrar ingreso:', error);
-      alert('Hubo un error al registrar el ingreso');
-    });
+      if (!stockResponse.ok) {
+        const errorData = await stockResponse.json();
+        throw new Error(errorData.error || 'Error al registrar stock de usuario');
+      }
+
+      // Registrar el movimiento de stock de ventas para el artículo
+      const movimientoStock = {
+        articuloNumero: articuloSeleccionado.numero,
+        codigoBarras: articuloSeleccionado.codigo_barras,
+        kilos: -kilos,
+        carroId: parseInt(carroIdGlobal),
+        usuarioId: parseInt(usuarioId),
+        cantidad: cantidad,
+        tipo: 'ingreso a producción'
+      };
+
+      await registrarMovimientoStockVentas(movimientoStock);
+      
+    } else {
+      console.log('🏭 PROCESANDO INGRESO MANUAL EN CARRO INTERNO');
+      
+      // Para carros internos, usar el flujo original
+      const movimientoIngrediente = {
+        ingredienteId: ingredienteSeleccionado,
+        articuloNumero: articuloSeleccionado.numero,
+        kilos: kilos * cantidad, // Multiplicar por cantidad
+        carroId: parseInt(carroIdGlobal),
+        usuarioId: parseInt(usuarioId)
+      };
+
+      const movimientoStock = {
+        articuloNumero: articuloSeleccionado.numero,
+        codigoBarras: articuloSeleccionado.codigo_barras,
+        kilos: -kilos, // Kilos por unidad (sin multiplicar)
+        carroId: parseInt(carroIdGlobal),
+        usuarioId: parseInt(usuarioId),
+        cantidad: cantidad, // Cantidad de unidades
+        tipo: 'ingreso a producción'
+      };
+
+      console.log('📦 Guardando ingreso manual:', movimientoIngrediente);
+      
+      await registrarMovimientoIngrediente(movimientoIngrediente);
+      await registrarMovimientoStockVentas(movimientoStock);
+    }
+
+    alert('Ingreso registrado correctamente');
+    cerrarModal();
+    // Actualizar el resumen de ingredientes para reflejar el nuevo stock
+    actualizarResumenIngredientes();
+    
+  } catch (error) {
+    console.error('❌ Error al registrar ingreso:', error);
+    alert('Hubo un error al registrar el ingreso: ' + error.message);
+  }
 }
 
 function obtenerIngrediente(id) {

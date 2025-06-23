@@ -1,8 +1,11 @@
 const { obtenerIngredientesBaseCarro } = require('./carroIngredientes');
 const { registrarMovimientoIngrediente } = require('./ingredientesMovimientos');
+const { registrarMovimientoStockUsuarioFIFO } = require('./ingredientesStockUsuarios');
 
 /**
  * Marca un carro como preparado y registra los movimientos de ingredientes
+ * Para carros internos: usa ingredientes_movimientos
+ * Para carros externos: usa ingredientes_stock_usuarios con lógica FIFO
  */
 async function marcarCarroPreparado(req, res) {
     const db = req.db;
@@ -59,35 +62,48 @@ async function marcarCarroPreparado(req, res) {
 
         console.log(`📊 Ingredientes válidos para movimientos: ${ingredientesValidos.length} de ${ingredientesConsolidados.length}`);
 
-        console.log('\n📦 REGISTRANDO MOVIMIENTOS DE INGREDIENTES');
-        console.log('==========================================');
-
-        // 4. Registrar movimientos de egreso para cada ingrediente primario
-        for (const ing of ingredientesValidos) {
-            console.log(`\n🔄 Procesando ${ing.nombre}:`);
-            console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
-            console.log(`- ID: ${ing.id}`);
+        // 4. Registrar movimientos de egreso según tipo de carro
+        if (carro.tipo_carro === 'externa') {
+            console.log('\n🏠 PROCESANDO CARRO EXTERNO');
+            console.log('==========================================');
             
-            // Validar datos antes de enviar
-            const movimientoData = {
-                ingrediente_id: ing.id,
-                kilos: -ing.cantidad, // Negativo porque es un egreso
-                tipo: 'egreso',
-                carro_id: parseInt(carroId),
-                observaciones: `Preparación de carro #${carroId}`
-            };
+            // Para carros externos, usar ingredientes_stock_usuarios con FIFO
+            for (const ing of ingredientesValidos) {
+                console.log(`\n🔄 Procesando ${ing.nombre}:`);
+                console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
+                console.log(`- ID: ${ing.id}`);
+                
+                await registrarMovimientoStockUsuarioFIFO({
+                    usuario_id: parseInt(usuarioId),
+                    ingrediente_id: ing.id,
+                    cantidad: -ing.cantidad, // Negativo para consumo
+                    carro_id: parseInt(carroId)
+                }, db);
+                
+                console.log('✅ Movimiento FIFO registrado correctamente');
+            }
+        } else {
+            console.log('\n🏭 PROCESANDO CARRO INTERNO');
+            console.log('==========================================');
             
-            console.log('🔍 Datos del movimiento a enviar:', movimientoData);
-            console.log('🔍 Validación previa:');
-            console.log(`- ingrediente_id: ${movimientoData.ingrediente_id} (${typeof movimientoData.ingrediente_id})`);
-            console.log(`- kilos: ${movimientoData.kilos} (${typeof movimientoData.kilos})`);
-            console.log(`- tipo: ${movimientoData.tipo} (${typeof movimientoData.tipo})`);
-            console.log(`- carro_id: ${movimientoData.carro_id} (${typeof movimientoData.carro_id})`);
-            console.log(`- observaciones: ${movimientoData.observaciones} (${typeof movimientoData.observaciones})`);
-            
-            await registrarMovimientoIngrediente(movimientoData, db);
-            
-            console.log('✅ Movimiento registrado correctamente');
+            // Para carros internos, mantener el flujo original con ingredientes_movimientos
+            for (const ing of ingredientesValidos) {
+                console.log(`\n🔄 Procesando ${ing.nombre}:`);
+                console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
+                console.log(`- ID: ${ing.id}`);
+                
+                const movimientoData = {
+                    ingrediente_id: ing.id,
+                    kilos: -ing.cantidad, // Negativo porque es un egreso
+                    tipo: 'egreso',
+                    carro_id: parseInt(carroId),
+                    observaciones: `Preparación de carro #${carroId}`
+                };
+                
+                console.log('🔍 Datos del movimiento a enviar:', movimientoData);
+                await registrarMovimientoIngrediente(movimientoData, db);
+                console.log('✅ Movimiento registrado correctamente');
+            }
         }
 
         // 5. Actualizar fecha_preparado del carro

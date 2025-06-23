@@ -12,10 +12,14 @@ const pool = require('../config/database');
  */
 async function contarRegistrosRelacionados(carroId) {
     try {
-        const countIngredientesQuery = `
-            SELECT COUNT(*) as count FROM ingredientes_movimientos 
-            WHERE carro_id = $1
+        // Primero obtener el tipo de carro
+        const tipoCarroQuery = `
+            SELECT tipo_carro FROM carros_produccion WHERE id = $1
         `;
+        const tipoCarroResult = await pool.query(tipoCarroQuery, [carroId]);
+        const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro || 'interna';
+
+        // Queries base que siempre se ejecutan
         const countStockQuery = `
             SELECT COUNT(*) as count FROM stock_ventas_movimientos 
             WHERE carro_id = $1
@@ -25,14 +29,20 @@ async function contarRegistrosRelacionados(carroId) {
             WHERE carro_id = $1
         `;
 
-        const [ingredientesResult, stockResult, articulosResult] = await Promise.all([
-            pool.query(countIngredientesQuery, [carroId]),
+        // Query condicional según tipo de carro
+        const countMovimientosQuery = tipoCarro === 'externa' 
+            ? `SELECT COUNT(*) as count FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1`
+            : `SELECT COUNT(*) as count FROM ingredientes_movimientos WHERE carro_id = $1`;
+
+        const [movimientosResult, stockResult, articulosResult] = await Promise.all([
+            pool.query(countMovimientosQuery, [carroId]),
             pool.query(countStockQuery, [carroId]),
             pool.query(countArticulosQuery, [carroId])
         ]);
 
         return {
-            ingredientes: parseInt(ingredientesResult.rows[0].count),
+            tipoCarro,
+            ingredientes: parseInt(movimientosResult.rows[0].count),
             stockVentas: parseInt(stockResult.rows[0].count),
             articulos: parseInt(articulosResult.rows[0].count)
         };
@@ -75,9 +85,14 @@ async function eliminarRegistrosRelacionados(carroId) {
 
         // Eliminar en el orden correcto para mantener integridad referencial
         
-        // 1. Eliminar movimientos de ingredientes
-        await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
-        console.log(`Eliminados ${conteos.ingredientes} movimientos de ingredientes`);
+        // 1. Eliminar movimientos de ingredientes según tipo de carro
+        if (conteos.tipoCarro === 'externa') {
+            await pool.query('DELETE FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1', [carroId]);
+            console.log(`Eliminados ${conteos.ingredientes} movimientos de stock de usuarios`);
+        } else {
+            await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
+            console.log(`Eliminados ${conteos.ingredientes} movimientos de ingredientes`);
+        }
         
         // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos
         const movimientosQuery = `
@@ -161,10 +176,10 @@ async function eliminarCarroCompleto(carroId, usuarioId) {
             await pool.query('COMMIT');
 
             // Preparar mensaje de resultado
-            let mensaje = `Carro ${carroId} eliminado exitosamente`;
+            let mensaje = `Carro ${carroId} (${conteos.tipoCarro}) eliminado exitosamente`;
             if (tieneRegistrosRelacionados) {
                 mensaje += `\nRegistros eliminados:\n` +
-                          `- ${conteosEliminados.ingredientes} movimientos de ingredientes\n` +
+                          `- ${conteosEliminados.ingredientes} ${conteos.tipoCarro === 'externa' ? 'movimientos de stock de usuarios' : 'movimientos de ingredientes'}\n` +
                           `- ${conteosEliminados.stockVentas} movimientos de stock de ventas\n` +
                           `- ${conteosEliminados.articulos} artículos`;
             }
@@ -209,9 +224,9 @@ async function obtenerInformacionEliminacion(carroId, usuarioId) {
         // Preparar mensaje informativo
         const tieneRegistros = conteos.ingredientes > 0 || conteos.stockVentas > 0 || conteos.articulos > 0;
         
-        let mensaje = `Información sobre el carro ${carroId}:\n`;
+        let mensaje = `Información sobre el carro ${carroId} (${conteos.tipoCarro}):\n`;
         mensaje += `- ${conteos.articulos} artículos\n`;
-        mensaje += `- ${conteos.ingredientes} movimientos de ingredientes\n`;
+        mensaje += `- ${conteos.ingredientes} ${conteos.tipoCarro === 'externa' ? 'movimientos de stock de usuarios' : 'movimientos de ingredientes'}\n`;
         mensaje += `- ${conteos.stockVentas} movimientos de stock de ventas\n`;
         
         if (tieneRegistros) {
