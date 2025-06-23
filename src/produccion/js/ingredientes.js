@@ -164,16 +164,23 @@ async function cargarIngredientes() {
         const ingredientes = await response.json();
         console.log('Ingredientes recibidos:', ingredientes);
         
-        // Guardar lista completa
+        // Guardar lista completa y actualizar mix.js
         ingredientesOriginales = ingredientes;
-        
-        // Actualizar lista en mix.js
         window.actualizarListaIngredientes(ingredientes);
         
         // Inicializar filtros
         inicializarFiltros(ingredientes);
         
-        // Forzar una actualización completa de la tabla
+        // Verificar estado de mix para todos los ingredientes de una vez
+        const ingredientesConEstado = await Promise.all(ingredientes.map(async (ingrediente) => {
+            const tieneMix = await window.esMix(ingrediente.id);
+            return { ...ingrediente, esMix: tieneMix };
+        }));
+        
+        // Actualizar la lista original con el estado de mix
+        ingredientesOriginales = ingredientesConEstado;
+        
+        // Actualizar tabla con los estados ya verificados
         await actualizarTablaFiltrada();
 
     } catch (error) {
@@ -194,11 +201,17 @@ async function actualizarTablaIngredientes(ingredientes) {
         return;
     }
 
-    // Verificar el estado de mix para todos los ingredientes primero
-    const ingredientesConEstado = await Promise.all(ingredientes.map(async (ingrediente) => {
-        const tieneMix = await window.esMix(ingrediente.id);
-        return { ...ingrediente, esMix: tieneMix };
-    }));
+    // Si los ingredientes ya tienen el estado de mix, usarlos directamente
+    // Si no, verificar el estado de mix
+    let ingredientesConEstado;
+    if (ingredientes.length > 0 && ingredientes[0].hasOwnProperty('esMix')) {
+        ingredientesConEstado = ingredientes;
+    } else {
+        ingredientesConEstado = await Promise.all(ingredientes.map(async (ingrediente) => {
+            const tieneMix = await window.esMix(ingrediente.id);
+            return { ...ingrediente, esMix: tieneMix };
+        }));
+    }
 
     ingredientesConEstado.forEach(ingrediente => {
         const tr = document.createElement('tr');
@@ -210,7 +223,13 @@ async function actualizarTablaIngredientes(ingredientes) {
             <td>${ingrediente.stock_actual}</td>
             <td>${ingrediente.descripcion || '-'}</td>
             <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
-            <td>${ingrediente.esMix ? '<button class="btn-editar" onclick="gestionarComposicionMix(' + ingrediente.id + ')">Gestionar composición</button>' : '-'}</td>
+            <td>
+                ${ingrediente.esMix 
+                    ? '<button class="btn-editar" onclick="gestionarComposicionMix(' + ingrediente.id + ')">Gestionar composición</button>' 
+                    : (!ingrediente.padre_id 
+                        ? '<button class="btn-editar" onclick="gestionarComposicionMix(' + ingrediente.id + ')">Crear composición</button>'
+                        : '-')}
+            </td>
             <td>
                 <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
                 <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
