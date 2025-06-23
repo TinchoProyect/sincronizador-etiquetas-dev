@@ -87,6 +87,7 @@ async function eliminarRegistrosRelacionados(carroId) {
         
         // 1. Eliminar movimientos de ingredientes según tipo de carro
         if (conteos.tipoCarro === 'externa') {
+            // EXCEPCIÓN AL SISTEMA INMUTABLE: Solo para eliminación completa de carros
             await pool.query('DELETE FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1', [carroId]);
             console.log(`Eliminados ${conteos.ingredientes} movimientos de stock de usuarios`);
         } else {

@@ -1,7 +1,8 @@
 const pool = require('../../usuarios/pool');
 
 /**
- * Registra un movimiento de stock de usuario siguiendo lógica FIFO inteligente
+ * Registra movimientos de stock de usuario siguiendo lógica FIFO inteligente
+ * Sistema de movimientos inmutables: solo inserta registros negativos, preserva historial completo
  * @param {Object} params - Parámetros del movimiento
  * @param {number} params.usuario_id - ID del usuario
  * @param {number} params.ingrediente_id - ID del ingrediente
@@ -99,21 +100,6 @@ async function registrarMovimientoStockUsuarioFIFO(params, db) {
             console.log(`   - Cantidad restante después: ${nuevaCantidad}`);
 
             try {
-                // Actualizar o eliminar el registro según corresponda
-                if (nuevaCantidad > 0) {
-                    await db.query(
-                        'UPDATE ingredientes_stock_usuarios SET cantidad = $1 WHERE id = $2',
-                        [nuevaCantidad, registro.id]
-                    );
-                    console.log(`   ✅ Registro actualizado con nueva cantidad: ${nuevaCantidad}`);
-                } else {
-                    await db.query(
-                        'DELETE FROM ingredientes_stock_usuarios WHERE id = $1',
-                        [registro.id]
-                    );
-                    console.log(`   ✅ Registro eliminado (cantidad agotada)`);
-                }
-
                 // Registrar el movimiento negativo manteniendo origen_mix_id
                 await db.query(`
                     INSERT INTO ingredientes_stock_usuarios 
@@ -128,6 +114,7 @@ async function registrarMovimientoStockUsuarioFIFO(params, db) {
                 ]);
                 
                 console.log(`   ✅ Movimiento negativo registrado: -${cantidadADescontar} con origen_mix_id=${registro.origen_mix_id}`);
+                console.log(`   📊 Stock original preservado para trazabilidad`);
 
                 cantidadRestante -= cantidadADescontar;
                 console.log(`   📊 Cantidad pendiente: ${cantidadRestante}`);
