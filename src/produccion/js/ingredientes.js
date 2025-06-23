@@ -109,26 +109,26 @@ function inicializarFiltros(ingredientes) {
     filtrosActivos = new Set(categorias);
 
     // Evento para "Mostrar Todos"
-    btnTodos.onclick = () => {
+    btnTodos.onclick = async () => {
         filtrosActivos = new Set(categorias);
         botonesCategorias.forEach(btn => {
             btn.classList.add('activo');
         });
-        actualizarTablaFiltrada();
+        await actualizarTablaFiltrada();
     };
 
     // Evento para "Ocultar Todos"
-    btnOcultar.onclick = () => {
+    btnOcultar.onclick = async () => {
         filtrosActivos.clear();
         botonesCategorias.forEach(btn => {
             btn.classList.remove('activo');
         });
-        actualizarTablaFiltrada();
+        await actualizarTablaFiltrada();
     };
 
     // Eventos para cada botón de categoría
     botonesCategorias.forEach(btn => {
-        btn.onclick = () => {
+        btn.onclick = async () => {
             if (btn.classList.contains('activo')) {
                 btn.classList.remove('activo');
                 filtrosActivos.delete(btn.textContent);
@@ -136,17 +136,17 @@ function inicializarFiltros(ingredientes) {
                 btn.classList.add('activo');
                 filtrosActivos.add(btn.textContent);
             }
-            actualizarTablaFiltrada();
+            await actualizarTablaFiltrada();
         };
     });
 }
 
 // Función para actualizar la tabla según los filtros activos
-function actualizarTablaFiltrada() {
+async function actualizarTablaFiltrada() {
     const ingredientesFiltrados = ingredientesOriginales.filter(ing => 
         filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria)
     );
-    actualizarTablaIngredientes(ingredientesFiltrados);
+    await actualizarTablaIngredientes(ingredientesFiltrados);
 }
 
 // Función para cargar los ingredientes
@@ -173,8 +173,8 @@ async function cargarIngredientes() {
         // Inicializar filtros
         inicializarFiltros(ingredientes);
         
-        // Mostrar todos los ingredientes inicialmente
-        actualizarTablaIngredientes(ingredientes);
+        // Forzar una actualización completa de la tabla
+        await actualizarTablaFiltrada();
 
     } catch (error) {
         console.error('Error:', error);
@@ -183,7 +183,7 @@ async function cargarIngredientes() {
 }
 
 // Función para actualizar la tabla con los ingredientes
-function actualizarTablaIngredientes(ingredientes) {
+async function actualizarTablaIngredientes(ingredientes) {
     const tbody = document.getElementById('tabla-ingredientes-body');
     if (!tbody) return;
 
@@ -194,7 +194,13 @@ function actualizarTablaIngredientes(ingredientes) {
         return;
     }
 
-    ingredientes.forEach(ingrediente => {
+    // Verificar el estado de mix para todos los ingredientes primero
+    const ingredientesConEstado = await Promise.all(ingredientes.map(async (ingrediente) => {
+        const tieneMix = await window.esMix(ingrediente.id);
+        return { ...ingrediente, esMix: tieneMix };
+    }));
+
+    ingredientesConEstado.forEach(ingrediente => {
         const tr = document.createElement('tr');
         tr.dataset.id = ingrediente.id;
         tr.innerHTML = `
@@ -203,51 +209,15 @@ function actualizarTablaIngredientes(ingredientes) {
             <td>${ingrediente.categoria}</td>
             <td>${ingrediente.stock_actual}</td>
             <td>${ingrediente.descripcion || '-'}</td>
-<td class="tipo-col"></td>
-<td>-</td>
-
-
-
-
+            <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
+            <td>${ingrediente.esMix ? '<button class="btn-editar" onclick="gestionarComposicionMix(' + ingrediente.id + ')">Gestionar composición</button>' : '-'}</td>
             <td>
                 <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
-
                 <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
-                <button class="btn-agregar" onclick="gestionarComposicionMix(${ingrediente.id})"
-                        style="display: none">
-                    Gestionar composición
-                </button>
             </td>
         `;
         tbody.appendChild(tr);
 
-        // Verificar estado de mix para cada ingrediente
-        (async () => {
-            try {
-                const tieneMix = await window.esMix(ingrediente.id);
-                const esMixStatus = tr.querySelector('.es-mix-status');
-                const btnGestionar = tr.querySelector('.btn-agregar');
-                
-const tipoCell = tr.querySelector('.tipo-col');
-tipoCell.textContent = tieneMix ? 'Ingrediente Mix' : 'Ingrediente Simple';
-
-if (esMixStatus) {
-    esMixStatus.textContent = tieneMix ? 'Sí' : 'No (aún)';
-}
-
-                
-                if (btnGestionar) {
-                    // Mostrar el botón si no tiene padre_id (puede ser mix)
-                    btnGestionar.style.display = !ingrediente.padre_id ? 'inline-block' : 'none';
-                }
-            } catch (error) {
-                console.error(`Error al verificar mix para ingrediente ${ingrediente.id}:`, error);
-                const esMixStatus = tr.querySelector('.es-mix-status');
-                if (esMixStatus) {
-                    esMixStatus.textContent = 'Error';
-                }
-            }
-        })();
     });
 }
 
