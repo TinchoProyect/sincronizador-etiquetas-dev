@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Inventario Móvil - Gestiones Lamda</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/inventario-movil.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <!-- Librería para escaneo de códigos de barras -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- Socket.IO Client -->
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="mobile">
+    <div class="container mobile">
+        <header>
+            <h1>Inventario Móvil</h1>
+            <div id="usuario-activo" class="usuario-info">
+                <!-- El nombre del usuario activo se mostrará aquí -->
+            </div>
+        </header>
+
+        <main>
+            <div class="content-section">
+                <!-- Mensaje cuando no hay inventario activo -->
+                <div id="sin-inventario" class="mensaje-info" style="display: none;">
+                    No hay un inventario activo en este momento.
+                    <br>
+                    Debe iniciar el inventario desde una PC.
+                </div>
+
+                <!-- Formulario de carga -->
+                <div id="form-carga" class="form-carga" style="display: none;">
+                    <div class="form-group">
+                        <label for="codigo-barras">Código de Barras:</label>
+                        <div class="input-group">
+                            <input type="text" 
+                                   id="codigo-barras" 
+                                   class="input-large"
+                                   placeholder="Escanear o ingresar código"
+                                   autocomplete="off">
+                            <button id="btn-escanear" class="btn-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                                    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                                    <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                                    <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                                    <rect x="7" y="7" width="10" height="10"></rect>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="info-articulo" class="info-articulo" style="display: none;">
+                        <h3 id="nombre-articulo"></h3>
+                        <p id="codigo-articulo"></p>
+                        <p id="stock-actual"></p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cantidad">Cantidad:</label>
+                        <input type="number" 
+                               id="cantidad" 
+                               class="input-large"
+                               placeholder="Ingrese la cantidad"
+                               min="0"
+                               step="1">
+                    </div>
+
+                    <button id="btn-cargar" class="btn-primary btn-large" disabled>
+                        Cargar al Inventario
+                    </button>
+                </div>
+
+                <!-- Mensaje de confirmación -->
+                <div id="confirmacion" class="mensaje-confirmacion" style="display: none;">
+                    <div class="icon-success">✓</div>
+                    <p>¡Artículo cargado correctamente!</p>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer-mobile">
+            <p>&copy; 2024 Gestiones Lamda</p>
+        </footer>
+    </div>
+
+    <!-- Modal para el escáner -->
+    <div id="modal-scanner" class="modal-scanner" style="display: none;">
+        <div class="modal-scanner-content">
+            <div class="modal-scanner-header">
+                <h3>Escanear Código de Barras</h3>
+                <button id="btn-cerrar-scanner" class="btn-close">&times;</button>
+            </div>
+            <div id="reader"></div>
+        </div>
+    </div>
+
+    <script src="/js/inventarioMovil.js"></script>
+</body>
+</html>

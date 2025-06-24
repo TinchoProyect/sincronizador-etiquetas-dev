@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="/css/stock-indicators.css">
     <link rel="stylesheet" href="/css/modal-mix.css">
     <link rel="stylesheet" href="/css/modal-articulos.css">
+    <link rel="stylesheet" href="/css/modal-articulos-fix.css">
+    <link rel="stylesheet" href="/css/modal-ingreso-manual.css">
 </head>
 <body>
     <div class="container">
@@ -96,6 +98,12 @@
                     <label for="filtro3">Filtro 3:</label>
                     <input type="text" id="filtro3" placeholder="Refinar más...">
                 </div>
+                <div class="filtro-grupo">
+                    <label for="filtroProduccionSwitch" style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="filtroProduccionSwitch" style="margin-right: 8px;">
+                        Mostrar solo artículos de producción
+                    </label>
+                </div>
             </div>
 
             <!-- Tabla de artículos -->
@@ -104,7 +112,6 @@
                     <tr>
                         <th>Código</th>
                         <th>Descripción</th>
-                        <th>Código de Barras</th>
                         <th>Stock</th>
                         <th>Acciones</th>
                     </tr>
@@ -149,7 +156,7 @@
                         </div>
                         <div id="cantidad-container" class="cantidad-wrapper" style="display: none;">
                             <label for="input-cantidad-ingrediente">Cantidad:</label>
-                            <input type="number" id="input-cantidad-ingrediente" min="0.01" step="0.01" required>
+                            <input type="number" id="input-cantidad-ingrediente" min="0.0000000001" step="0.0000000001" required>
                         </div>
                     </div>
                 </div>
@@ -212,8 +219,9 @@
     <!-- Modal para ingreso manual de stock -->
 <div id="modalIngresoManual" class="modal">
   <div class="modal-content">
-    <h2>Ingreso manual de stock</h2>
+    <h2 class="modal-title">Ingreso manual de stock</h2>
     <p class="nombre-ingrediente"></p>
+    <div class="tipo-ingrediente-info"></div>
 
     <label for="busquedaArticulo">Buscar artículo:</label>
     <input type="text" id="busquedaArticulo" placeholder="Nombre o código de barras" />

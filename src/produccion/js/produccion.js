@@ -34,10 +34,11 @@ async function cargarUsuariosProduccion() {
 
 // Función para manejar la selección de un usuario
 function seleccionarUsuario(usuario) {
-    // Guardar el colaborador seleccionado en localStorage
+    // Guardar el colaborador seleccionado en localStorage incluyendo rol_id
     localStorage.setItem('colaboradorActivo', JSON.stringify({
         id: usuario.id,
         nombre: usuario.nombre_completo,
+        rol_id: usuario.rol_id,
         timestamp: new Date().toISOString()
     }));
     

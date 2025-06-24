@@ -7,6 +7,7 @@ router.use(dbMiddleware);
 const { 
     crearReceta, 
     obtenerEstadoRecetas, 
+    validarIntegridadRecetas,
     obtenerReceta, 
     actualizarReceta,
     obtenerIngredientesExpandidos,
@@ -22,14 +23,16 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { obtenerArticulos } = require('../controllers/articulos');
+const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda } = require('../controllers/articulos');
 const {
     obtenerIngredientes,
     obtenerIngrediente,
     crearIngrediente,
     actualizarIngrediente,
     eliminarIngrediente,
-    obtenerNuevoCodigo
+    obtenerNuevoCodigo,
+    obtenerUsuariosConStock,
+    obtenerStockPorUsuario
 } = require('../controllers/ingredientes');
 
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
@@ -48,6 +51,45 @@ router.get('/ingredientes', async (req, res) => {
     } catch (error) {
         console.error('Error en ruta GET /ingredientes:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para obtener usuarios con stock - DEBE IR ANTES DE /ingredientes/:id
+router.get('/ingredientes/usuarios-con-stock', async (req, res) => {
+    try {
+        console.log('🔄 Procesando solicitud GET /ingredientes/usuarios-con-stock');
+        const usuarios = await obtenerUsuariosConStock();
+        console.log('✅ Usuarios con stock obtenidos:', usuarios);
+        res.json(usuarios);
+    } catch (error) {
+        console.error('❌ Error al obtener usuarios con stock:', error);
+        res.status(500).json({ 
+            error: 'Error al obtener usuarios con stock',
+            detalle: error.message 
+        });
+    }
+});
+
+// Ruta para obtener stock por usuario - DEBE IR ANTES DE /ingredientes/:id
+router.get('/ingredientes/stock-usuario/:usuarioId', async (req, res) => {
+    try {
+        const usuarioId = parseInt(req.params.usuarioId);
+        console.log(`🔄 Procesando solicitud GET /ingredientes/stock-usuario/${usuarioId}`);
+        
+        if (isNaN(usuarioId)) {
+            console.warn('⚠️ ID de usuario inválido:', req.params.usuarioId);
+            return res.status(400).json({ error: 'ID de usuario inválido' });
+        }
+        
+        const stock = await obtenerStockPorUsuario(usuarioId);
+        console.log(`✅ Stock obtenido para usuario ${usuarioId}:`, stock);
+        res.json(stock);
+    } catch (error) {
+        console.error(`❌ Error al obtener stock para usuario ${req.params.usuarioId}:`, error);
+        res.status(500).json({ 
+            error: 'Error al obtener stock por usuario',
+            detalle: error.message 
+        });
     }
 });
 
@@ -111,6 +153,28 @@ router.get('/ingredientes/:id/es-mix', async (req, res) => {
 });
 
 // Rutas para composición de ingredientes (mixes)
+// Verificar si un ingrediente es compuesto (mix)
+router.get('/ingredientes/:id/es-compuesto', async (req, res) => {
+    try {
+        const ingredienteId = req.params.id;
+        
+        // Consultar si el ingrediente es un mix verificando si tiene composición
+        const query = `
+            SELECT COUNT(*)::integer as count
+            FROM ingrediente_composicion
+            WHERE mix_id = $1
+        `;
+        
+        const result = await req.db.query(query, [ingredienteId]);
+        const esCompuesto = result.rows[0].count > 0;
+        
+        res.json({ esCompuesto });
+    } catch (error) {
+        console.error('Error al verificar si el ingrediente es compuesto:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/ingredientes/:id/composicion', async (req, res) => {
     try {
         const mixId = parseInt(req.params.id);
@@ -120,7 +184,7 @@ router.get('/ingredientes/:id/composicion', async (req, res) => {
         
         // Obtener información del mix
         const mixQuery = `
-            SELECT id, nombre, unidad_medida 
+            SELECT id, nombre, unidad_medida, receta_base_kg
             FROM ingredientes 
             WHERE id = $1
         `;
@@ -207,6 +271,37 @@ router.put('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) =
         res.json({ message: 'Cantidad actualizada' });
     } catch (error) {
         console.error('Error en ruta PUT /ingredientes/:mixId/composicion/:ingredienteId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para eliminar toda la composición de un mix
+router.delete('/ingredientes/:mixId/composicion', async (req, res) => {
+    try {
+        const mixId = parseInt(req.params.mixId);
+        
+        if (isNaN(mixId)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        
+        // 1. Eliminar toda la composición
+        const deleteQuery = `
+            DELETE FROM ingrediente_composicion 
+            WHERE mix_id = $1
+        `;
+        await req.db.query(deleteQuery, [mixId]);
+        
+        // 2. Actualizar receta_base_kg a null
+        const updateQuery = `
+            UPDATE ingredientes 
+            SET receta_base_kg = NULL 
+            WHERE id = $1
+        `;
+        await req.db.query(updateQuery, [mixId]);
+        
+        res.json({ message: 'Composición eliminada completamente' });
+    } catch (error) {
+        console.error('Error en ruta DELETE /ingredientes/:mixId/composicion:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -318,6 +413,7 @@ router.get('/usuarios', async (req, res) => {
     }
 });
 
+
 // Rutas para artículos
 router.get('/articulos', async (req, res) => {
     try {
@@ -410,6 +506,16 @@ router.post('/articulos/estado-recetas', validarEstadoRecetas, async (req, res) 
     }
 });
 
+// Ruta para validar integridad de recetas
+router.post('/articulos/integridad-recetas', validarEstadoRecetas, async (req, res) => {
+    try {
+        await validarIntegridadRecetas(req, res);
+    } catch (error) {
+        console.error('Error al validar integridad de recetas:', error);
+        res.status(500).json({ error: 'Error al procesar la solicitud de integridad de recetas' });
+    }
+});
+
 // Ruta para crear recetas
 router.post('/recetas', validarReceta, async (req, res) => {
     try {
@@ -459,13 +565,18 @@ router.delete('/recetas/:numero_articulo', async (req, res) => {
 // Rutas para carros de producción
 router.post('/carro', async (req, res) => {
     try {
-        const { usuarioId, enAuditoria } = req.body;
+        const { usuarioId, enAuditoria, tipoCarro } = req.body;
         
         if (!usuarioId || isNaN(parseInt(usuarioId))) {
             return res.status(400).json({ error: 'Se requiere un ID de usuario válido' });
         }
 
-        const carroId = await crearCarro(parseInt(usuarioId), enAuditoria);
+        // Validar tipo de carro
+        if (tipoCarro && !['interna', 'externa'].includes(tipoCarro)) {
+            return res.status(400).json({ error: 'El tipo de carro debe ser "interna" o "externa"' });
+        }
+
+        const carroId = await crearCarro(parseInt(usuarioId), enAuditoria, tipoCarro);
         res.json({ id: carroId });
     } catch (error) {
         console.error('Error al crear carro:', error);
@@ -633,26 +744,67 @@ router.get('/articulos/buscar', async (req, res) => {
             return res.status(400).json({ error: 'Se requiere el parámetro codigo_barras' });
         }
         
-        const query = `
-            SELECT 
-                a.numero,
-                a.nombre,
-                a.codigo_barras,
-                COALESCE(src.stock_consolidado, 0) as stock_consolidado
-            FROM public.articulos a
-            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
-            WHERE a.codigo_barras = $1
-        `;
-        const result = await req.db.query(query, [codigo_barras]);
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Artículo no encontrado' });
-        }
-        
-        res.json(result.rows[0]);
+        const articulo = await buscarArticuloPorCodigo(codigo_barras);
+        res.json(articulo);
     } catch (error) {
         console.error('Error en ruta GET /articulos/buscar:', error);
-        res.status(500).json({ error: error.message });
+        if (error.message === 'Artículo no encontrado') {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Ruta para actualizar campo no_producido_por_lambda
+router.patch('/articulos/:articulo_numero/produccion', async (req, res) => {
+    try {
+        const { articulo_numero } = req.params;
+        const { no_producido_por_lambda } = req.body;
+        
+        if (!articulo_numero) {
+            return res.status(400).json({ error: 'Número de artículo requerido' });
+        }
+
+        if (typeof no_producido_por_lambda !== 'boolean') {
+            return res.status(400).json({ error: 'El valor no_producido_por_lambda debe ser booleano' });
+        }
+
+        const resultado = await actualizarProduccionLambda(articulo_numero, no_producido_por_lambda);
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error en ruta PATCH /articulos/:articulo_numero/produccion:', error);
+        if (error.message.includes('no encontrado')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Ruta para alternar estado de producción (toggle)
+router.put('/articulos/:articuloId/toggle-produccion', async (req, res) => {
+    try {
+        const { articuloId } = req.params;
+        const { no_producido_por_lambda } = req.body;
+        
+        if (!articuloId) {
+            return res.status(400).json({ error: 'ID de artículo requerido' });
+        }
+
+        if (typeof no_producido_por_lambda !== 'boolean') {
+            return res.status(400).json({ error: 'El campo no_producido_por_lambda debe ser un booleano' });
+        }
+
+        const resultado = await actualizarProduccionLambda(articuloId, no_producido_por_lambda);
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error en ruta PUT /articulos/:articuloId/toggle-produccion:', error);
+        if (error.message.includes('no encontrado')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
     }
 });
 
@@ -770,6 +922,72 @@ const { marcarCarroPreparado } = require('../controllers/marcarCarroPreparado');
 const { finalizarProduccion } = require('../controllers/finalizarProduccion');
 const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
 const { obtenerArticulosParaEtiquetas } = require('../controllers/obtenerArticulosParaEtiquetas');
+const { agregarStockUsuario } = require('../controllers/ingredientesStockUsuarios');
+
+// Ruta para agregar stock de ingrediente a un usuario
+router.post('/ingredientes-usuarios/agregar', async (req, res) => {
+    try {
+        await agregarStockUsuario(req, res);
+    } catch (error) {
+        console.error('Error en ruta /ingredientes-usuarios/agregar:', error);
+        res.status(500).json({
+            error: 'Error al agregar stock de usuario',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para registrar movimientos en stock de usuarios (carros externos)
+router.post('/ingredientes-stock-usuarios', async (req, res) => {
+    try {
+        console.log('\n🔍 DEPURACIÓN ENDPOINT /ingredientes-stock-usuarios:');
+        console.log('=======================================================');
+        console.log('📥 PAYLOAD RECIBIDO:', JSON.stringify(req.body, null, 2));
+        
+        const { usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id } = req.body;
+        
+        console.log('\n📋 VALIDACIÓN DE CAMPOS:');
+        console.log('- usuario_id:', usuario_id, typeof usuario_id);
+        console.log('- ingrediente_id:', ingrediente_id, typeof ingrediente_id);
+        console.log('- cantidad:', cantidad, typeof cantidad);
+        console.log('- origen_carro_id:', origen_carro_id, typeof origen_carro_id);
+        console.log('- origen_mix_id:', origen_mix_id, typeof origen_mix_id);
+        
+        if (!usuario_id || !ingrediente_id || cantidad === undefined || !origen_carro_id) {
+            console.log('❌ ERROR: Faltan datos requeridos');
+            return res.status(400).json({ error: 'Faltan datos requeridos' });
+        }
+
+        const query = `
+            INSERT INTO ingredientes_stock_usuarios 
+            (usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
+            VALUES ($1, $2, $3, $4, NOW(), $5)
+            RETURNING id
+        `;
+        
+        const params = [usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id];
+        console.log('\n📝 QUERY A EJECUTAR:', query);
+        console.log('📊 PARÁMETROS:', params);
+        
+        const result = await req.db.query(query, params);
+        
+        console.log(`\n✅ REGISTRO EXITOSO:`);
+        console.log(`- ID generado: ${result.rows[0].id}`);
+        console.log(`- origen_mix_id guardado: ${origen_mix_id || 'NULL'}`);
+        
+        res.json({ 
+            message: 'Movimiento registrado correctamente',
+            id: result.rows[0].id
+        });
+    } catch (error) {
+        console.error('❌ Error en ruta /ingredientes-stock-usuarios:', error);
+        console.error('❌ Error completo:', error.message);
+        res.status(500).json({
+            error: 'Error al registrar movimiento en stock de usuarios',
+            detalle: error.message
+        });
+    }
+});
 
 /**
  * Ruta: POST /api/produccion/carro/:id/preparado
@@ -820,7 +1038,7 @@ router.get('/carro/:id/estado', async (req, res) => {
         const { id } = req.params;
         
         const query = `
-            SELECT fecha_preparado, fecha_confirmacion, usuario_id, fecha_inicio
+            SELECT fecha_preparado, fecha_confirmacion, usuario_id, fecha_inicio, tipo_carro
             FROM carros_produccion 
             WHERE id = $1
         `;
@@ -847,7 +1065,8 @@ router.get('/carro/:id/estado', async (req, res) => {
             fecha_preparado: carro.fecha_preparado,
             fecha_confirmacion: carro.fecha_confirmacion,
             preparado: preparado,
-            confirmado: confirmado
+            confirmado: confirmado,
+            tipo_carro: carro.tipo_carro || 'interna' // Si no tiene tipo, asumir interna
         });
         
     } catch (error) {

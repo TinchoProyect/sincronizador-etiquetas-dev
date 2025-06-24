@@ -4,6 +4,7 @@ import { esMix } from './mix.js';
 let ingredienteEditando = null;
 let ingredientesOriginales = []; // Para mantener la lista completa
 let filtrosActivos = new Set(); // Para rastrear filtros activos
+let vistaActual = 'deposito'; // Para identificar la vista actual ('deposito' o 'usuario-X')
 
 
 
@@ -17,7 +18,7 @@ async function abrirModal(titulo = 'Nuevo Ingrediente') {
     // Si es un nuevo ingrediente, obtener el código automáticamente
     if (titulo === 'Nuevo Ingrediente') {
         try {
-            const response = await fetch('/api/produccion/ingredientes/nuevo-codigo');
+            const response = await fetch('http://localhost:3002/api/produccion/ingredientes/nuevo-codigo');
             if (response.ok) {
                 const data = await response.json();
                 document.getElementById('codigo').value = data.codigo;
@@ -109,26 +110,26 @@ function inicializarFiltros(ingredientes) {
     filtrosActivos = new Set(categorias);
 
     // Evento para "Mostrar Todos"
-    btnTodos.onclick = () => {
+    btnTodos.onclick = async () => {
         filtrosActivos = new Set(categorias);
         botonesCategorias.forEach(btn => {
             btn.classList.add('activo');
         });
-        actualizarTablaFiltrada();
+        await actualizarTablaFiltrada();
     };
 
     // Evento para "Ocultar Todos"
-    btnOcultar.onclick = () => {
+    btnOcultar.onclick = async () => {
         filtrosActivos.clear();
         botonesCategorias.forEach(btn => {
             btn.classList.remove('activo');
         });
-        actualizarTablaFiltrada();
+        await actualizarTablaFiltrada();
     };
 
     // Eventos para cada botón de categoría
     botonesCategorias.forEach(btn => {
-        btn.onclick = () => {
+        btn.onclick = async () => {
             if (btn.classList.contains('activo')) {
                 btn.classList.remove('activo');
                 filtrosActivos.delete(btn.textContent);
@@ -136,118 +137,126 @@ function inicializarFiltros(ingredientes) {
                 btn.classList.add('activo');
                 filtrosActivos.add(btn.textContent);
             }
-            actualizarTablaFiltrada();
+            await actualizarTablaFiltrada();
         };
     });
 }
 
 // Función para actualizar la tabla según los filtros activos
-function actualizarTablaFiltrada() {
-    const ingredientesFiltrados = ingredientesOriginales.filter(ing => 
-        filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria)
-    );
-    actualizarTablaIngredientes(ingredientesFiltrados);
+async function actualizarTablaFiltrada() {
+    // Solo aplicar filtros en la vista de depósito
+    if (vistaActual === 'deposito') {
+        const ingredientesFiltrados = ingredientesOriginales.filter(ing => 
+            filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria)
+        );
+        await actualizarTablaIngredientes(ingredientesFiltrados);
+    }
 }
 
-// Función para cargar los ingredientes
-async function cargarIngredientes() {
+// Función para cargar los ingredientes según la vista actual
+async function cargarIngredientes(usuarioId = null) {
     try {
-        console.log('Solicitando ingredientes...');
-        const response = await fetch('/api/produccion/ingredientes');
-        console.log('Respuesta recibida:', response.status);
+        let response;
+        console.log(`🔄 Cargando ${usuarioId ? 'stock de usuario' : 'ingredientes del depósito'}...`);
+        
+        if (usuarioId) {
+            vistaActual = `usuario-${usuarioId}`;
+            response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
+        } else {
+            vistaActual = 'deposito';
+            response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+        }
         
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al obtener los ingredientes');
+            throw new Error(errorData.error || 'Error al obtener los datos');
         }
 
-        const ingredientes = await response.json();
-        console.log('Ingredientes recibidos:', ingredientes);
+        const datos = await response.json();
+        console.log('✅ Datos recibidos:', datos);
         
-        // Guardar lista completa
-        ingredientesOriginales = ingredientes;
-        
-        // Actualizar lista en mix.js
-        window.actualizarListaIngredientes(ingredientes);
-        
-        // Inicializar filtros
-        inicializarFiltros(ingredientes);
-        
-        // Mostrar todos los ingredientes inicialmente
-        actualizarTablaIngredientes(ingredientes);
+        if (vistaActual === 'deposito') {
+            // Guardar lista completa y actualizar mix.js
+            ingredientesOriginales = datos;
+            window.actualizarListaIngredientes(datos);
+            
+            // Inicializar filtros
+            inicializarFiltros(datos);
+            
+            // Verificar estado de mix para todos los ingredientes
+            const ingredientesConEstado = await Promise.all(datos.map(async (ingrediente) => {
+                const tieneMix = await window.esMix(ingrediente.id);
+                return { ...ingrediente, esMix: tieneMix };
+            }));
+            
+            ingredientesOriginales = ingredientesConEstado;
+            await actualizarTablaFiltrada();
+        } else {
+            // Vista de usuario: mostrar directamente sin filtros
+            await actualizarTablaIngredientes(datos, true);
+        }
 
     } catch (error) {
-        console.error('Error:', error);
-        mostrarMensaje(error.message || 'No se pudieron cargar los ingredientes');
+        console.error('❌ Error:', error);
+        mostrarMensaje(error.message || 'No se pudieron cargar los datos');
     }
 }
 
 // Función para actualizar la tabla con los ingredientes
-function actualizarTablaIngredientes(ingredientes) {
+async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false) {
     const tbody = document.getElementById('tabla-ingredientes-body');
     if (!tbody) return;
 
     tbody.innerHTML = '';
 
     if (!ingredientes || ingredientes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay ingredientes registrados</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center">No hay ingredientes disponibles</td></tr>';
         return;
     }
 
     ingredientes.forEach(ingrediente => {
         const tr = document.createElement('tr');
         tr.dataset.id = ingrediente.id;
-        tr.innerHTML = `
-            <td>${ingrediente.nombre}</td>
-            <td>${ingrediente.unidad_medida}</td>
-            <td>${ingrediente.categoria}</td>
-            <td>${ingrediente.stock_actual}</td>
-            <td>${ingrediente.descripcion || '-'}</td>
-<td class="tipo-col"></td>
-<td>-</td>
-
-
-
-
-            <td>
-                <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
-
-                <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
-                <button class="btn-agregar" onclick="gestionarComposicionMix(${ingrediente.id})"
-                        style="display: none">
-                    Gestionar composición
-                </button>
-            </td>
-        `;
+        
+        if (esVistaUsuario) {
+            // Vista de usuario: mostrar stock personal
+            tr.innerHTML = `
+                <td>${ingrediente.nombre_ingrediente}</td>
+                <td>${ingrediente.unidad_medida || '-'}</td>
+                <td>${ingrediente.categoria || '-'}</td>
+                <td>${parseFloat(ingrediente.stock_total).toFixed(3)}</td>
+                <td>${ingrediente.descripcion || '-'}</td>
+                <td>${ingrediente.tipo_origen || 'Simple'}</td>
+                <td>-</td>
+                <td><span style="color: #6c757d; font-style: italic;">Solo lectura</span></td>
+            `;
+        } else {
+            // Vista de depósito: funcionalidad completa
+            tr.innerHTML = `
+                <td>${ingrediente.nombre}</td>
+                <td>${ingrediente.unidad_medida}</td>
+                <td>${ingrediente.categoria}</td>
+                <td>${ingrediente.stock_actual}</td>
+                <td>${ingrediente.descripcion || '-'}</td>
+                <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
+                <td>
+                    ${ingrediente.esMix 
+                        ? `<div class="btn-group">
+                            <button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Gestionar composición</button>
+                            <button class="btn-eliminar" onclick="eliminarComposicionMix(${ingrediente.id})">Eliminar composición</button>
+                           </div>` 
+                        : (!ingrediente.padre_id 
+                            ? `<button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Crear composición</button>`
+                            : '-')}
+                </td>
+                <td>
+                    <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
+                    <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
+                </td>
+            `;
+        }
+        
         tbody.appendChild(tr);
-
-        // Verificar estado de mix para cada ingrediente
-        (async () => {
-            try {
-                const tieneMix = await window.esMix(ingrediente.id);
-                const esMixStatus = tr.querySelector('.es-mix-status');
-                const btnGestionar = tr.querySelector('.btn-agregar');
-                
-const tipoCell = tr.querySelector('.tipo-col');
-tipoCell.textContent = tieneMix ? 'Ingrediente Mix' : 'Ingrediente Simple';
-
-if (esMixStatus) {
-    esMixStatus.textContent = tieneMix ? 'Sí' : 'No (aún)';
-}
-
-                
-                if (btnGestionar) {
-                    // Mostrar el botón si no tiene padre_id (puede ser mix)
-                    btnGestionar.style.display = !ingrediente.padre_id ? 'inline-block' : 'none';
-                }
-            } catch (error) {
-                console.error(`Error al verificar mix para ingrediente ${ingrediente.id}:`, error);
-                const esMixStatus = tr.querySelector('.es-mix-status');
-                if (esMixStatus) {
-                    esMixStatus.textContent = 'Error';
-                }
-            }
-        })();
     });
 }
 
@@ -255,7 +264,7 @@ if (esMixStatus) {
 async function crearIngrediente(datos) {
     try {
         console.log('Creando ingrediente:', datos);
-        const response = await fetch('/api/produccion/ingredientes', {
+        const response = await fetch('http://localhost:3002/api/produccion/ingredientes', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -289,7 +298,7 @@ async function crearIngrediente(datos) {
 async function actualizarIngrediente(id, datos) {
     try {
         console.log('Actualizando ingrediente:', id, datos);
-        const response = await fetch(`/api/produccion/ingredientes/${id}`, {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -319,7 +328,7 @@ async function eliminarIngrediente(id) {
 
     try {
         console.log('Eliminando ingrediente:', id);
-        const response = await fetch(`/api/produccion/ingredientes/${id}`, {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
             method: 'DELETE'
         });
 
@@ -340,7 +349,7 @@ async function eliminarIngrediente(id) {
 async function editarIngrediente(id) {
     try {
         console.log('Obteniendo ingrediente para editar:', id);
-        const response = await fetch(`/api/produccion/ingredientes/${id}`);
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`);
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Error al obtener el ingrediente');
@@ -498,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
             nombre: document.getElementById('nombre').value,
             unidad_medida: document.getElementById('unidad-medida').value,
             categoria: document.getElementById('categoria').value,
-            stock_actual: parseFloat(document.getElementById('stock').value),
+            stock_actual: Number(document.getElementById('stock').value.replace(',', '.')),
             descripcion: document.getElementById('descripcion').value,
             padre_id: ingredienteEditando ? ingredienteEditando.padre_id : null
         };
@@ -511,9 +520,40 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Función para eliminar la composición de un mix
+async function eliminarComposicionMix(id) {
+    if (!confirm('¿Está seguro de eliminar la composición de este mix? Esta acción no se puede deshacer.')) {
+        return;
+    }
+
+    try {
+        console.log('🗑️ Eliminando composición del mix:', id);
+        
+        // Usar el nuevo endpoint que elimina toda la composición y actualiza receta_base_kg
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/composicion`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Error al eliminar la composición');
+        }
+
+        // Recargar la tabla
+        await cargarIngredientes();
+        mostrarMensaje('Composición eliminada exitosamente', 'exito');
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarMensaje(error.message || 'No se pudo eliminar la composición');
+    }
+}
+
 // Hacer funciones disponibles globalmente
 window.editarIngrediente = editarIngrediente;
 window.eliminarIngrediente = eliminarIngrediente;
+window.gestionarComposicionMix = gestionarComposicionMix;
+window.eliminarComposicionMix = eliminarComposicionMix;
+window.cargarIngredientes = cargarIngredientes;
 
 // Funciones para gestionar el modal de mix
 function gestionarComposicionMix(id) {
@@ -523,6 +563,3 @@ function gestionarComposicionMix(id) {
     // Llamar a la función de mix.js para cargar la composición
     window.abrirEdicionMix(id);
 }
-
-
-window.gestionarComposicionMix = gestionarComposicionMix;

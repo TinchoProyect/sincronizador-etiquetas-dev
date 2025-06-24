@@ -13,7 +13,8 @@ async function obtenerArticulos() {
                 a.numero,
                 a.nombre,
                 a.codigo_barras,
-                COALESCE(src.stock_consolidado, 0) as stock_ventas
+                COALESCE(src.stock_consolidado, 0) as stock_ventas,
+                COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
             ORDER BY a.nombre ASC
@@ -46,6 +47,95 @@ async function obtenerArticulos() {
     }
 }
 
+/**
+ * Busca un artículo por código de barras
+ * @param {string} codigoBarras - Código de barras del artículo
+ * @returns {Promise<Object>} Artículo encontrado
+ */
+async function buscarArticuloPorCodigo(codigoBarras) {
+    try {
+        console.log('Buscando artículo por código de barras:', codigoBarras);
+        
+        const query = `
+            SELECT 
+                a.numero,
+                a.nombre,
+                a.codigo_barras,
+                COALESCE(src.stock_consolidado, 0) as stock_ventas,
+                COALESCE(src.stock_consolidado, 0) as stock_consolidado,
+                COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda
+            FROM public.articulos a
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            WHERE a.codigo_barras = $1
+        `;
+        
+        const result = await pool.query(query, [codigoBarras]);
+        
+        if (result.rows.length === 0) {
+            throw new Error('Artículo no encontrado');
+        }
+        
+        console.log('Artículo encontrado:', result.rows[0]);
+        return result.rows[0];
+    } catch (error) {
+        console.error('Error al buscar artículo por código:', error);
+        throw error;
+    }
+}
+
+/**
+ * Actualiza el campo no_producido_por_lambda de un artículo
+ * @param {string} articuloNumero - Número del artículo
+ * @param {boolean} noProducidoPorLambda - Nuevo valor del campo
+ * @returns {Promise<Object>} Resultado de la actualización
+ */
+async function actualizarProduccionLambda(articuloNumero, noProducidoPorLambda) {
+    try {
+        console.log('Actualizando producción LAMBDA para artículo:', articuloNumero, 'Valor:', noProducidoPorLambda);
+        
+        // Verificar que el artículo existe
+        const checkQuery = `
+            SELECT articulo_numero 
+            FROM public.stock_real_consolidado 
+            WHERE articulo_numero = $1
+        `;
+        const checkResult = await pool.query(checkQuery, [articuloNumero]);
+        
+        if (checkResult.rows.length === 0) {
+            // Si no existe en stock_real_consolidado, crear el registro
+            const insertQuery = `
+                INSERT INTO public.stock_real_consolidado (articulo_numero, no_producido_por_lambda)
+                VALUES ($1, $2)
+                ON CONFLICT (articulo_numero) 
+                DO UPDATE SET no_producido_por_lambda = $2
+            `;
+            await pool.query(insertQuery, [articuloNumero, noProducidoPorLambda]);
+        } else {
+            // Actualizar el campo existente
+            const updateQuery = `
+                UPDATE public.stock_real_consolidado 
+                SET no_producido_por_lambda = $1
+                WHERE articulo_numero = $2
+            `;
+            await pool.query(updateQuery, [noProducidoPorLambda, articuloNumero]);
+        }
+
+        console.log('Campo actualizado correctamente');
+        return { 
+            success: true, 
+            message: 'Campo actualizado correctamente',
+            articulo_numero: articuloNumero,
+            no_producido_por_lambda: noProducidoPorLambda
+        };
+
+    } catch (error) {
+        console.error('Error al actualizar campo de producción:', error);
+        throw new Error(`Error al actualizar campo de producción: ${error.message}`);
+    }
+}
+
 module.exports = {
-    obtenerArticulos
+    obtenerArticulos,
+    buscarArticuloPorCodigo,
+    actualizarProduccionLambda
 };

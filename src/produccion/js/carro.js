@@ -93,17 +93,40 @@ export async function actualizarEstadoCarro() {
             return;
         }
 
+        // Verificar permisos para mostrar botón de producción externa
+        let botonProduccionExterna = '';
+        try {
+            const response = await fetch(`/api/roles/${colaborador.rol_id}/permisos`);
+            if (response.ok) {
+                const permisos = await response.json();
+                const tienePermisoExterno = permisos.some(p => p.nombre === 'ProduccionesExternas');
+                
+                if (tienePermisoExterno) {
+                    botonProduccionExterna = `
+                        <button onclick="crearNuevoCarro('externa')" class="btn btn-primary" style="margin-left: 10px;">
+                            🚚 Crear Carro de Producción Externa
+                        </button>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('Error al verificar permisos:', error);
+        }
+
         // Construir la lista de carros
         let html = `
             <div class="carros-lista">
                 <h3>Tus carros de producción</h3>
+                <div class="botones-crear-carro" style="margin-bottom: 20px;">
+                    ${botonProduccionExterna}
+                </div>
                 <table class="carros-table">
                     <thead>
                         <tr>
                             <th>ID</th>
                             <th>Fecha de inicio</th>
                             <th>Artículos</th>
-                            <th>Estado</th>
+                            <th>Tipo</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -119,6 +142,10 @@ export async function actualizarEstadoCarro() {
                     <td>${carro.id}</td>
                     <td>${fecha}</td>
                     <td>${carro.total_articulos} artículos</td>
+                    <td>
+                        ${carro.tipo_carro === 'interna' ? '🏭' : '🚚'} 
+                        ${carro.tipo_carro === 'interna' ? 'Producción Interna' : 'Producción Externa'}
+                    </td>
                     <td>${carro.en_auditoria ? 'En auditoría' : 'Completado'}</td>
                     <td>
                         <div class="btn-group">
@@ -184,7 +211,9 @@ const debouncedUpdateCantidad = debounce(async (numeroArticulo, nuevaCantidad, i
             rows.forEach(row => {
                 const cantidadCell = row.cells[1];
                 const cantidadBase = parseFloat(cantidadCell.dataset.base || cantidadCell.textContent);
-                cantidadCell.textContent = (cantidadBase * nuevaCantidad).toFixed(2);
+                const cantidadCalculada = Number((cantidadBase * nuevaCantidad).toPrecision(10));
+                cantidadCell.textContent = cantidadCalculada.toFixed(2);
+                cantidadCell.dataset.valor = cantidadCalculada;
             });
         }
 
@@ -440,7 +469,7 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
                                        onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
                                 ing.nombre}
                         </td>
-                        <td>${cantidadTotal.toFixed(2)}</td>
+                <td data-valor="${cantidadTotal}">${cantidadTotal.toFixed(2)}</td>
                         <td>${ing.unidad_medida}</td>
                     </tr>
                 `;
@@ -490,8 +519,10 @@ export async function validarCarroActivo(usuarioId) {
 }
 
 // Función para crear un nuevo carro de producción
-export async function crearNuevoCarro() {
+export async function crearNuevoCarro(tipoCarro = 'interna') {
     try {
+        console.log(`Iniciando creación de carro tipo: ${tipoCarro}`);
+        
         // Verificar si ya existe un carro activo
         const carroActivo = localStorage.getItem('carroActivo');
         if (carroActivo) {
@@ -504,6 +535,8 @@ export async function crearNuevoCarro() {
         }
 
         const colaborador = JSON.parse(colaboradorData);
+        console.log('Enviando solicitud para crear carro...');
+        
         const response = await fetch('http://localhost:3002/api/produccion/carro', {
             method: 'POST',
             headers: {
@@ -511,7 +544,8 @@ export async function crearNuevoCarro() {
             },
             body: JSON.stringify({
                 usuarioId: colaborador.id,
-                enAuditoria: true
+                enAuditoria: true,
+                tipoCarro: tipoCarro
             })
         });
 
@@ -520,13 +554,27 @@ export async function crearNuevoCarro() {
         }
 
         const data = await response.json();
-        console.log('Carro de producción creado:', data.id);
+        console.log(`✅ Carro de producción ${tipoCarro} creado con ID:`, data.id);
         
-        // Guardar el ID del carro en localStorage
+        // Guardar el ID del carro en localStorage y variable global
         localStorage.setItem('carroActivo', data.id);
+        window.carroIdGlobal = data.id;
+        
+        console.log('Actualizando interfaz...');
         
         // Actualizar la información visual del carro
-        actualizarEstadoCarro();
+        await actualizarEstadoCarro();
+        
+        // Mostrar los artículos del carro (inicialmente vacío)
+        await mostrarArticulosDelCarro();
+        
+        // Actualizar la visibilidad de los botones según el estado
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            console.log('Actualizando visibilidad de botones...');
+            await window.actualizarVisibilidadBotones();
+        } else {
+            console.warn('⚠️ actualizarVisibilidadBotones no está disponible');
+        }
 
     } catch (error) {
         console.error('Error:', error);
@@ -534,9 +582,17 @@ export async function crearNuevoCarro() {
     }
 }
 
+// Hacer funciones disponibles globalmente para los botones HTML
+window.crearNuevoCarro = crearNuevoCarro;
+window.seleccionarCarro = seleccionarCarro;
+window.deseleccionarCarro = deseleccionarCarro;
+window.eliminarCarro = eliminarCarro;
+
 // Función para seleccionar un carro
 export async function seleccionarCarro(carroId) {
     try {
+        console.log(`Seleccionando carro ID: ${carroId}`);
+        
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         if (!colaboradorData) {
             throw new Error('No hay colaborador seleccionado');
@@ -556,6 +612,8 @@ export async function seleccionarCarro(carroId) {
         // Asignar también en variable global
         window.carroIdGlobal = carroId;
 
+        console.log('Actualizando interfaz después de seleccionar carro...');
+        
         // Actualizar la interfaz
         await actualizarEstadoCarro();
         await mostrarArticulosDelCarro();
@@ -567,6 +625,15 @@ export async function seleccionarCarro(carroId) {
         // Cargar y mostrar resumen de mixes
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
+        
+        // Actualizar la visibilidad de los botones según el estado del carro
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            console.log('Actualizando visibilidad de botones después de seleccionar carro...');
+            await window.actualizarVisibilidadBotones();
+        } else {
+            console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
+        }
+        
     } catch (error) {
         console.error('Error al seleccionar carro:', error);
         mostrarError(error.message);
@@ -576,7 +643,11 @@ export async function seleccionarCarro(carroId) {
 
 // Función para deseleccionar el carro actual
 export async function deseleccionarCarro() {
+    console.log('Deseleccionando carro activo...');
+    
     localStorage.removeItem('carroActivo');
+    window.carroIdGlobal = null;
+    
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
     
@@ -590,6 +661,14 @@ export async function deseleccionarCarro() {
     const contenedorMixes = document.getElementById('tabla-resumen-mixes');
     if (contenedorMixes) {
         contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
+    }
+    
+    // Actualizar la visibilidad de los botones (deben ocultarse al no haber carro)
+    if (typeof window.actualizarVisibilidadBotones === 'function') {
+        console.log('Actualizando visibilidad de botones después de deseleccionar carro...');
+        await window.actualizarVisibilidadBotones();
+    } else {
+        console.warn('⚠️ actualizarVisibilidadBotones no está disponible al deseleccionar carro');
     }
 }
 
@@ -721,11 +800,12 @@ export function mostrarResumenIngredientes(ingredientes) {
             ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
             : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
 
-        // Calcular estado del stock
+        // Calcular estado del stock con tolerancia para diferencias decimales
         const stockActual = ing.stock_actual || 0;
         const cantidadNecesaria = ing.cantidad;
-        const tieneStock = stockActual >= cantidadNecesaria;
-        const faltante = tieneStock ? 0 : cantidadNecesaria - stockActual;
+        const diferencia = stockActual - cantidadNecesaria;
+        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+        const faltante = tieneStock ? 0 : Math.abs(diferencia);
 
         // Generar indicador visual
         let indicadorEstado = '';
@@ -794,8 +874,19 @@ export function mostrarResumenMixes(mixes) {
     `;
 
     mixes.forEach(mix => {
+        const deshabilitado = (window.carroIdGlobal == null);
+        const boton = deshabilitado
+            ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+            : `<button onclick="abrirModalIngresoManual(${mix.id}, window.carroIdGlobal, true)">Ingreso manual</button>`;
+
+        // Calcular estado del stock con tolerancia para diferencias decimales
+        const stockActual = mix.stock_actual || 0;
+        const cantidadNecesaria = mix.cantidad;
+        const diferencia = stockActual - cantidadNecesaria;
+        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+
         html += `
-            <tr>
+            <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'}">
                 <td>
                     <span class="mix-nombre" 
                           style="cursor: pointer; color: #0275d8; text-decoration: underline;"
@@ -803,6 +894,8 @@ export function mostrarResumenMixes(mixes) {
                 </td>
                 <td>${mix.cantidad.toFixed(2)}</td>
                 <td>${mix.unidad_medida}</td>
+                <td>${stockActual.toFixed(2)}</td>
+                <td>${boton}</td>
             </tr>
         `;
     });
@@ -947,7 +1040,7 @@ export async function mostrarArticulosDelCarro() {
                                            onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
                                     ing.nombre}
                             </td>
-                            <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
+                            <td data-base="${ing.cantidad}" data-valor="${cantidadTotal}">${parseFloat(cantidadTotal.toFixed(2))}</td>
                             <td>${ing.unidad_medida}</td>
                         </tr>
                     `;

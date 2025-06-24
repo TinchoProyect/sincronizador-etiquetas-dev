@@ -57,7 +57,10 @@ async function inicializarEspacioTrabajo() {
         
         const colaborador = JSON.parse(colaboradorData);
         
-        // Los permisos se verifican automáticamente en actualizarEstadoCarro()
+        // Verificar permisos y configurar botones
+        if (colaborador && colaborador.rol_id) {
+            await configurarBotonesPorPermisos(colaborador.rol_id);
+        }
         
         await cargarDatosColaborador(async () => {
             await validarCarroActivo(colaborador.id);
@@ -75,6 +78,72 @@ async function inicializarEspacioTrabajo() {
     }
 }
 
+// Función para configurar botones según permisos del usuario
+async function configurarBotonesPorPermisos(rolId) {
+    console.log('Configurando botones para rol_id:', rolId);
+    
+    try {
+        // Primero, remover el botón si existe
+        const btnExistente = document.getElementById('crear-carro-externo');
+        if (btnExistente) {
+            console.log('Removiendo botón existente');
+            btnExistente.remove();
+        }
+
+        // Remover botón existente si existe
+        const btnExistente = document.getElementById('crear-carro-externo');
+        if (btnExistente) {
+            btnExistente.remove();
+        }
+
+        // Obtener los permisos del rol
+        const response = await fetch(`/api/roles/${rolId}/permisos`);
+        if (!response.ok) {
+            console.error('Error al obtener permisos:', response.statusText);
+            return;
+        }
+        
+        const permisos = await response.json();
+        if (!Array.isArray(permisos)) {
+            console.error('Formato de permisos inválido');
+            return;
+        }
+        
+        // Verificar si tiene el permiso de ProduccionesExternas
+        const tienePermisoExterno = permisos.some(p => p.nombre === 'ProduccionesExternas');
+        console.log('Permisos del rol:', permisos.map(p => p.nombre));
+        console.log('Tiene permiso externo:', tienePermisoExterno);
+        
+        if (tienePermisoExterno) {
+            // Crear botón de producción externa
+            const workspaceActions = document.querySelector('.workspace-actions');
+            if (!workspaceActions) {
+                console.error('No se encontró el contenedor de acciones');
+                return;
+            }
+            
+            const btnCrearCarro = document.getElementById('crear-carro');
+            if (!btnCrearCarro) {
+                console.error('No se encontró el botón de crear carro');
+                return;
+            }
+            
+            const btnProduccionExterna = document.createElement('button');
+            btnProduccionExterna.id = 'crear-carro-externo';
+            btnProduccionExterna.className = 'btn btn-primary';
+            btnProduccionExterna.textContent = 'Crear Carro de Producción Externa';
+            btnProduccionExterna.style.marginLeft = '10px';
+            
+            // Insertar después del botón de crear carro normal
+            btnCrearCarro.parentNode.insertBefore(btnProduccionExterna, btnCrearCarro.nextSibling);
+        }
+        
+    } catch (error) {
+        console.error('Error al configurar botones por permisos:', error);
+    }
+}
+
+// Inicializar cuando se carga la página
 // Función para mostrar/ocultar el campo cantidad
 function toggleCantidadField() {
     const selector = document.getElementById('selector-ingrediente');

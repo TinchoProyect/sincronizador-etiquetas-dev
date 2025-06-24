@@ -243,7 +243,7 @@ export async function abrirEdicionMix(mixId) {
         let totalKg = 0;
         data.composicion.forEach(item => {
             // Acumular la cantidad
-            totalKg += parseFloat(item.cantidad || 0);
+            totalKg += Number(item.cantidad || 0);
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -275,7 +275,7 @@ export async function abrirEdicionMix(mixId) {
                 const mixData = await mixResp.json();
                 // Si ya hay un valor en receta_base_kg, usarlo; en caso contrario, usar la suma
                 if (mixData.receta_base_kg !== null && mixData.receta_base_kg !== undefined) {
-                    recetaBaseActual = parseFloat(mixData.receta_base_kg);
+                    recetaBaseActual = Number(mixData.receta_base_kg);
                 }
             }
         } catch(e) {
@@ -331,7 +331,7 @@ export async function abrirEdicionMix(mixId) {
                         },
                         body: JSON.stringify({
                             ingrediente_id: parseInt(select.value),
-                            cantidad: parseFloat(cantidad.value)
+                            cantidad: Number(cantidad.value.replace(',', '.'))
                         })
                     });
 
@@ -386,7 +386,7 @@ export async function abrirEdicionMix(mixId) {
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                cantidad: parseFloat(nuevaCantidad)
+                                cantidad: Number(nuevaCantidad.replace(',', '.'))
                             })
                         }
                     );
@@ -497,7 +497,7 @@ export async function abrirEdicionMix(mixId) {
             btnGuardarMix.onclick = async () => {
                 try {
                     // Tomar el valor del input de receta base y enviarlo al servidor
-                    const valRecetaBase = parseFloat(
+                    const valRecetaBase = Number(
                         document.getElementById('input-receta-base-kg').value
                     ) || 0;
 

@@ -1,6 +1,8 @@
 {
-  "numero": "MFSPx5",
-  "nombre": "Mix/F/Secas/Premium x 5",
-  "codigo_barras": "6475845",
+  "articulo": {
+    "numero": "SBX5",
+    "nombre": "Sesamo Blanco x 5",
+    "codigo_barras": "256362258"
+  },
   "cantidad": 2
 }

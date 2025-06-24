@@ -49,6 +49,12 @@ export async function abrirModalArticulos() {
             modal.classList.add('show');
         }, 10);
 
+        // Activar el filtro de producción por defecto
+        const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+        if (filtroProduccionSwitch) {
+            filtroProduccionSwitch.checked = true;
+        }
+
         // Cargar artículos si aún no se han cargado
         if (state.todosLosArticulos.length === 0) {
             console.log('Solicitando artículos al servidor...');
@@ -70,7 +76,11 @@ export async function abrirModalArticulos() {
 
             state.todosLosArticulos = articulos;
             state.articulosFiltrados = [...articulos];
-            actualizarTablaArticulos(state.articulosFiltrados);
+            // Aplicar filtro de producción por defecto
+            aplicarFiltros(0);
+        } else {
+            // Si ya hay artículos cargados, aplicar el filtro de producción
+            aplicarFiltros(0);
         }
     } catch (error) {
         console.error('Error al abrir modal de artículos:', error);
@@ -96,89 +106,170 @@ export function cerrarModalArticulos() {
     document.getElementById('codigo-barras').value = '';
 }
 
-// Función para actualizar la tabla de artículos
+// Función para actualizar la tabla de artículos con agrupación visual
 export async function actualizarTablaArticulos(articulos) {
     const tbody = document.getElementById('tabla-articulos-body');
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos disponibles</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
         return;
     }
 
     try {
         console.log('Consultando estado de recetas para artículos:', articulos.map(art => art.numero));
         
+        const articulosNumeros = articulos.map(art => art.numero);
+        
         // Obtener el estado de las recetas para todos los artículos
-        const response = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                articulos: articulos.map(art => art.numero)
+        const [estadoResponse, integridadResponse] = await Promise.all([
+            fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulos: articulosNumeros
+                })
+            }),
+            fetch('http://localhost:3002/api/produccion/articulos/integridad-recetas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulos: articulosNumeros
+                })
             })
-        });
+        ]);
 
-        if (!response.ok) {
-            const errorData = await response.json();
+        if (!estadoResponse.ok) {
+            const errorData = await estadoResponse.json();
             throw new Error(errorData.error || 'Error al obtener estado de recetas');
         }
 
-        const estadoRecetas = await response.json();
-        console.log('Estado de recetas recibido:', estadoRecetas);
+        if (!integridadResponse.ok) {
+            const errorData = await integridadResponse.json();
+            throw new Error(errorData.error || 'Error al obtener integridad de recetas');
+        }
 
-        articulos.forEach(articulo => {
-            const tr = document.createElement('tr');
-            const tieneReceta = estadoRecetas[articulo.numero];
-            
-            tr.setAttribute('data-numero', articulo.numero);
-            const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
-            if (esArticuloEditado) {
-                tr.classList.add('resaltado-articulo');
+        const estadoRecetas = await estadoResponse.json();
+        const integridadRecetas = await integridadResponse.json();
+        console.log('Estado de recetas recibido:', estadoRecetas);
+        console.log('Integridad de recetas recibida:', integridadRecetas);
+
+        // Dividir artículos en dos grupos según no_producido_por_lambda
+        const produccion = articulos.filter(art => art.no_producido_por_lambda === false);
+        const resto = articulos.filter(art => art.no_producido_por_lambda === true);
+
+        // Ordenar cada grupo alfabéticamente por nombre
+        produccion.sort((a, b) => a.nombre.localeCompare(b.nombre));
+        resto.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+        // Función para renderizar un grupo con encabezado
+        function renderGroup(title, group) {
+            // Crear fila de encabezado con colspan 4
+            const headerRow = document.createElement('tr');
+            const headerCell = document.createElement('td');
+            headerCell.colSpan = 4;
+            headerCell.style.fontWeight = 'bold';
+            headerCell.style.backgroundColor = '#f0f0f0';
+            headerCell.style.padding = '8px';
+            headerCell.textContent = title;
+            headerRow.appendChild(headerCell);
+            tbody.appendChild(headerRow);
+
+            // Renderizar artículos del grupo
+            group.forEach(articulo => {
+                const tr = document.createElement('tr');
+                const tieneReceta = estadoRecetas[articulo.numero];
+                const esIntegra = integridadRecetas[articulo.numero];
+                
+                tr.setAttribute('data-numero', articulo.numero);
+                const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
+                if (esArticuloEditado) {
+                    tr.classList.add('resaltado-articulo');
+                }
+
+                // Determinar el estilo del botón "Agregar al carro" basado en la integridad
+                let btnAgregarEstilo = '';
+                let btnAgregarTitulo = 'Agregar al carro';
+                let btnAgregarClase = 'btn-agregar icon-cart';
+                
+                if (tieneReceta && !esIntegra) {
+                    // Receta con ingredientes faltantes - botón rojo con advertencia
+                    btnAgregarEstilo = 'background-color: #dc3545; color: white; border: 1px solid #dc3545;';
+                    btnAgregarTitulo = 'Advertencia: Esta receta tiene ingredientes que ya no existen en el sistema';
+                    btnAgregarClase = 'btn-agregar btn-warning-integridad icon-cart';
+                }
+                
+                tr.innerHTML = `
+                    <td>${articulo.numero}</td>
+                    <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+                    <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
+                        ${articulo.stock_ventas || 0}
+                    </td>
+                    <td>
+                        ${tieneReceta ? `
+                            <input type="number" class="cantidad-input" min="1" value="1" style="width: 50px; margin-right: 6px;">
+                            <button class="${btnAgregarClase}" 
+                                    data-numero="${articulo.numero}" 
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                    data-integra="${esIntegra}"
+                                    style="${btnAgregarEstilo}"
+                                    title="${btnAgregarTitulo}">
+                                Ag. carro
+                            </button>
+                            <button class="btn-editar-receta icon-edit"
+                                    data-numero="${articulo.numero}"
+                                    data-modo="editar"
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                    title="Editar receta">
+                                Editar
+                            </button>
+                            <button class="btn-desvincular-receta icon-trash"
+                                    data-numero="${articulo.numero}"
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                    title="Quitar receta">
+                                Quitar
+                            </button>
+                        ` : `
+                            <button class="btn-editar-receta"
+                                    style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                    data-numero="${articulo.numero}"
+                                    data-modo="crear"
+                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                Vincular receta
+                            </button>
+                        `}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Si el filtro "Mostrar solo artículos de producción" está activo, mostrar solo el grupo de producción
+        const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+        const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
+
+        if (mostrarSoloProduccion) {
+            if (produccion.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos de producción disponibles</td></tr>';
+            } else {
+                renderGroup('Artículos de producción', produccion);
             }
-            tr.innerHTML = `
-                <td>${articulo.numero}</td>
-                <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
-                <td>${articulo.codigo_barras || '-'}</td>
-                <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
-                    ${articulo.stock_ventas || 0}
-                </td>
-                <td>
-                    ${tieneReceta ? `
-                        <input type="number" class="cantidad-input" min="1" value="1">
-                        <button class="btn-agregar" 
-                                style="background-color: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                data-numero="${articulo.numero}" 
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Agregar al carro
-                        </button>
-                        <button class="btn-editar-receta"
-                                style="background-color: #0275d8; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
-                                data-numero="${articulo.numero}"
-                                data-modo="editar"
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Editar receta
-                        </button>
-                        <button class="btn-desvincular-receta"
-                                style="background-color: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 5px;"
-                                data-numero="${articulo.numero}"
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Desvincular receta
-                        </button>
-                    ` : `
-                        <button class="btn-editar-receta"
-                                style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                data-numero="${articulo.numero}"
-                                data-modo="crear"
-                                data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                            Vincular receta
-                        </button>
-                    `}
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+        } else {
+            // Mostrar ambos grupos con encabezados
+            if (produccion.length > 0) {
+                renderGroup('Artículos de producción', produccion);
+            }
+            if (resto.length > 0) {
+                renderGroup('Resto de los artículos', resto);
+            }
+            if (produccion.length === 0 && resto.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
+            }
+        }
 
     } catch (error) {
         console.error('Error al actualizar tabla:', error);
@@ -217,6 +308,10 @@ export function aplicarFiltros(filtroIndex) {
     const filtro2 = document.getElementById('filtro2').value.toLowerCase();
     const filtro3 = document.getElementById('filtro3').value.toLowerCase();
 
+    // Obtener valor del switch de filtro de producción
+    const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+    const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
+
     // Resetear filtros posteriores
     if (filtroIndex === 1) {
         document.getElementById('filtro2').value = '';
@@ -245,6 +340,21 @@ export function aplicarFiltros(filtroIndex) {
             art.nombre.toLowerCase().includes(filtro3)
         );
     }
+
+    // Aplicar filtro de producción si está activo
+    if (mostrarSoloProduccion) {
+        resultados = resultados.filter(art => art.no_producido_por_lambda === false);
+    }
+
+    // Ordenar resultados: primero producidos por LAMDA, luego no producidos
+    resultados.sort((a, b) => {
+        if (a.no_producido_por_lambda === b.no_producido_por_lambda) {
+            // Orden alfabético por nombre
+            return a.nombre.localeCompare(b.nombre);
+        }
+        // Los producidos (false) primero
+        return a.no_producido_por_lambda ? 1 : -1;
+    });
 
     state.articulosFiltrados = resultados;
     actualizarTablaArticulos(resultados);
@@ -308,7 +418,7 @@ function agregarIngredienteATabla(ingrediente, index) {
     tr.innerHTML = `
         <td>${ingrediente.nombre_ingrediente}</td>
         <td>${ingrediente.unidad_medida}</td>
-        <td>${ingrediente.cantidad}</td>
+        <td>${Number(ingrediente.cantidad).toFixed(10)}</td>
         <td>
             <button class="btn-eliminar-ingrediente" data-index="${index ?? state.ingredientesCargados.length - 1}"
                     style="background-color: #dc3545; color: white; border: none; 
@@ -356,7 +466,7 @@ function agregarIngredienteDesdeSelector() {
         const cantidadInput = document.getElementById('input-cantidad-ingrediente');
         
         const ingredienteId = selector.value;
-        const cantidad = parseFloat(cantidadInput.value);
+        const cantidad = Number(cantidadInput.value.replace(',', '.'));
         
         if (!ingredienteId) {
             throw new Error('Debe seleccionar un ingrediente');
@@ -372,7 +482,7 @@ function agregarIngredienteDesdeSelector() {
             ingrediente_id: ingredienteSeleccionado.id,
             nombre_ingrediente: ingredienteSeleccionado.nombre,
             unidad_medida: ingredienteSeleccionado.unidad_medida,
-            cantidad: cantidad
+            cantidad: Number(cantidadInput.value.replace(',', '.'))
         };
         
         state.ingredientesCargados.push(ingrediente);
@@ -410,7 +520,7 @@ async function guardarReceta() {
                 ingrediente_id: ing.ingrediente_id,
                 nombre_ingrediente: ing.nombre_ingrediente,
                 unidad_medida: ing.unidad_medida,
-                cantidad: ing.cantidad
+                cantidad: Number(ing.cantidad)
             }))
         };
 
@@ -593,6 +703,20 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         return;
     }
 
+    // Verificar si es una receta con problemas de integridad
+    const esIntegra = btnElement.dataset.integra === 'true';
+    if (btnElement.classList.contains('btn-warning-integridad') || !esIntegra) {
+        const confirmar = confirm(
+            `ADVERTENCIA: Esta receta contiene ingredientes que ya no existen en el sistema.\n\n` +
+            `Esto puede causar errores en el cálculo de ingredientes necesarios.\n\n` +
+            `¿Desea continuar agregando este artículo al carro?`
+        );
+        
+        if (!confirmar) {
+            return;
+        }
+    }
+
     try {
         const carroId = localStorage.getItem('carroActivo');
         if (!carroId) {
@@ -636,18 +760,26 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         // Restaurar botón
         btnElement.disabled = false;
-        btnElement.textContent = 'Agregar al carro';
+        btnElement.textContent = 'Ag. carro';
 
-        // Mostrar mensaje de éxito
+        // Mostrar mensaje de éxito (diferente si hay problemas de integridad)
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
-        successDiv.textContent = 'Artículo agregado correctamente';
-        successDiv.style.cssText = `
+        
+        if (!esIntegra) {
+            successDiv.textContent = 'Artículo agregado con advertencias de integridad';
+            successDiv.style.backgroundColor = '#ffc107'; // Color amarillo para advertencia
+            successDiv.style.color = '#212529';
+        } else {
+            successDiv.textContent = 'Artículo agregado correctamente';
+            successDiv.style.backgroundColor = '#28a745';
+            successDiv.style.color = 'white';
+        }
+        
+        successDiv.style.cssText += `
             position: fixed;
             top: 20px;
             right: 20px;
-            background-color: #28a745;
-            color: white;
             padding: 10px 20px;
             border-radius: 4px;
             z-index: 10000;
@@ -674,7 +806,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         mostrarError(error.message);
         // Restaurar botón en caso de error
         btnElement.disabled = false;
-        btnElement.textContent = 'Agregar al carro';
+        btnElement.textContent = 'Ag. carro';
     }
 }
 
@@ -729,11 +861,11 @@ async function agregarArticuloAlDOM(articulo_numero, descripcion, cantidad) {
             `;
 
             ingredientes.forEach(ing => {
-                const cantidadTotal = ing.cantidad * cantidad;
+                const cantidadTotal = Number(ing.cantidad) * Number(cantidad);
                 htmlArticulo += `
                     <tr>
                         <td>${ing.nombre}</td>
-                        <td data-base="${ing.cantidad}">${cantidadTotal.toFixed(2)}</td>
+                        <td data-base="${Number(ing.cantidad).toFixed(10)}">${Number(cantidadTotal).toFixed(10)}</td>
                         <td>${ing.unidad_medida}</td>
                     </tr>
                 `;
@@ -894,11 +1026,8 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             return;
         }
 
-        // Limpiar el número de artículo de caracteres especiales
-        const numeroLimpio = articulo_numero.replace(/[^a-zA-Z0-9]/g, '');
-
-        // 1. Eliminar la receta
-        const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(numeroLimpio)}`, {
+        // 1. Eliminar la receta - usar el número de artículo sin modificar
+        const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`, {
             method: 'DELETE'
         });
 

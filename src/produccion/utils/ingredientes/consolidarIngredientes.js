@@ -62,20 +62,26 @@ function consolidarIngredientes(ingredientes) {
 
         if (consolidados[key]) {
             const anterior = consolidados[key].cantidad;
-            consolidados[key].cantidad += ing.cantidad;
+            // Mantener alta precisión en las sumas
+            consolidados[key].cantidad = Number((consolidados[key].cantidad + ing.cantidad).toPrecision(10));
             // Mantener es_primario si alguno de los ingredientes es primario
             consolidados[key].es_primario = consolidados[key].es_primario || ing.es_primario || false;
+            // Preservar origen_mix_id (priorizar el existente, luego el nuevo)
+            consolidados[key].origen_mix_id = consolidados[key].origen_mix_id || ing.origen_mix_id || null;
             console.log(`➕ SUMANDO cantidades para ID ${key}:`);
             console.log(`   ${anterior} + ${ing.cantidad} = ${consolidados[key].cantidad}`);
             console.log(`   es_primario: ${consolidados[key].es_primario}`);
+            console.log(`   origen_mix_id: ${consolidados[key].origen_mix_id}`);
         } else {
             console.log(`🆕 NUEVO INGREDIENTE (ID: ${key})`);
+            // Asegurar que la cantidad inicial tenga alta precisión
             consolidados[key] = {
                 id: ing.id,
                 nombre: ing.nombre,
                 unidad_medida: ing.unidad_medida,
-                cantidad: ing.cantidad,
-                es_primario: ing.es_primario || false
+                cantidad: Number(ing.cantidad.toPrecision(10)),
+                es_primario: ing.es_primario || false,
+                origen_mix_id: ing.origen_mix_id || null // Preservar origen_mix_id
             };
         }
     });

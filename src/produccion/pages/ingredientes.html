@@ -242,6 +242,14 @@
                     <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
                 </div>
                 
+                <!-- Contenedor de solapas -->
+                <div class="tabs-container" style="margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
+                    <ul class="tabs-list" id="tabs-ingredientes" style="display: flex; list-style: none; padding: 0; margin: 0;">
+                        <li class="tab tab-activa" data-tab="deposito" style="padding: 10px 20px; cursor: pointer; border: 1px solid #dee2e6; border-bottom: none; margin-bottom: -1px; background-color: #fff; color: #495057; font-weight: bold;">Depósito</li>
+                        <!-- Las demás solapas se agregarán dinámicamente -->
+                    </ul>
+                </div>
+                
                 <!-- Filtros por categoría -->
                 <div id="filtros-categorias" class="filtros-categorias">
                     <!-- Los filtros se generarán dinámicamente aquí -->
@@ -253,7 +261,7 @@
                             <th>Nombre</th>
                             <th>Unidad de Medida</th>
                             <th>Categoría</th>
-                            <th>Stock Actual</th>
+                            <th id="columna-dinamica">Stock Actual</th>
                             <th>Descripción</th>
                             <th>Tipo</th>
                             <th>Composición</th>
@@ -361,5 +369,272 @@
 
     <script type="module" src="/js/ingredientes.js"></script>
     <script type="module" src="/js/mix.js"></script>
+    <script type="module">
+        // Sistema de solapas para stock por usuario - IMPLEMENTACIÓN DESDE CERO
+        let usuariosConStock = [];
+        let tabActiva = 'deposito';
+
+        // Inicializar sistema de solapas
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('🚀 Inicializando sistema de solapas...');
+            
+            // Configurar evento para tab de depósito
+            const tabDeposito = document.querySelector('[data-tab="deposito"]');
+            if (tabDeposito) {
+                tabDeposito.addEventListener('click', () => activarTabDeposito());
+            }
+            
+            // Cargar usuarios con stock y crear solapas
+            await inicializarSolapasUsuarios();
+            
+            // Activar tab de depósito por defecto
+            await activarTabDeposito();
+        });
+
+        // Función para cargar usuarios con stock y crear solapas
+        async function inicializarSolapasUsuarios() {
+            try {
+                console.log('🔍 Cargando usuarios con stock...');
+                const response = await fetch('http://localhost:3002/api/produccion/ingredientes/usuarios-con-stock');
+                
+                if (!response.ok) {
+                    console.warn('⚠️ No se pudieron cargar usuarios con stock');
+                    return;
+                }
+                
+                usuariosConStock = await response.json();
+                console.log(`✅ Encontrados ${usuariosConStock.length} usuarios con stock`);
+                
+                if (usuariosConStock.length === 0) {
+                    console.log('ℹ️ No hay usuarios con stock');
+                    return;
+                }
+                
+                // Limpiar solapas existentes (excepto depósito)
+                const tabsList = document.getElementById('tabs-ingredientes');
+                const tabsExistentes = tabsList.querySelectorAll('.tab:not([data-tab="deposito"])');
+                tabsExistentes.forEach(tab => tab.remove());
+                
+                // Crear solapas para cada usuario
+                usuariosConStock.forEach(usuario => {
+                    crearSolapaUsuario(tabsList, usuario);
+                });
+                
+            } catch (error) {
+                console.error('❌ Error al cargar usuarios con stock:', error);
+            }
+        }
+
+        // Función para crear solapa de usuario
+        function crearSolapaUsuario(tabsList, usuario) {
+            const tab = document.createElement('li');
+            tab.className = 'tab';
+            tab.dataset.tab = `usuario-${usuario.usuario_id}`;
+            tab.dataset.usuarioId = usuario.usuario_id;
+            tab.textContent = usuario.nombre_completo;
+            
+            // Estilos iniciales
+            tab.style.cssText = `
+                padding: 10px 20px; 
+                cursor: pointer; 
+                border: 1px solid transparent; 
+                border-bottom: none; 
+                margin-bottom: -1px; 
+                background-color: #f8f9fa; 
+                color: #6c757d; 
+                transition: all 0.3s ease;
+            `;
+            
+            // Evento click
+            tab.addEventListener('click', () => activarTabUsuario(usuario.usuario_id));
+            
+            // Eventos hover
+            tab.addEventListener('mouseenter', () => {
+                if (!tab.classList.contains('tab-activa')) {
+                    tab.style.borderColor = '#e9ecef';
+                    tab.style.color = '#495057';
+                }
+            });
+            tab.addEventListener('mouseleave', () => {
+                if (!tab.classList.contains('tab-activa')) {
+                    tab.style.borderColor = 'transparent';
+                    tab.style.color = '#6c757d';
+                }
+            });
+            
+            tabsList.appendChild(tab);
+            console.log(`📋 Solapa creada: ${usuario.nombre_completo}`);
+        }
+
+        // Función para activar tab de depósito
+        async function activarTabDeposito() {
+            console.log('🔄 Activando vista de depósito...');
+            
+            // Actualizar estado visual
+            actualizarEstadoTabs('deposito');
+            
+            // Actualizar variables
+            tabActiva = 'deposito';
+            
+            // Actualizar encabezado de columna
+            const columnaDinamica = document.getElementById('columna-dinamica');
+            if (columnaDinamica) {
+                columnaDinamica.textContent = 'Stock Actual';
+            }
+            
+            // Cargar ingredientes del depósito usando función existente
+            if (window.cargarIngredientes) {
+                await window.cargarIngredientes();
+            }
+        }
+
+        // Función para activar tab de usuario
+        async function activarTabUsuario(usuarioId) {
+            console.log(`🔄 Activando vista de usuario ${usuarioId}...`);
+            
+            // Actualizar estado visual
+            actualizarEstadoTabs(`usuario-${usuarioId}`);
+            
+            // Actualizar variables
+            tabActiva = `usuario-${usuarioId}`;
+            
+            // Actualizar encabezado de columna
+            const columnaDinamica = document.getElementById('columna-dinamica');
+            if (columnaDinamica) {
+                columnaDinamica.textContent = 'Stock Personal';
+            }
+            
+            // Cargar stock del usuario
+            await cargarStockUsuario(usuarioId);
+        }
+
+        // Función para actualizar estado visual de tabs
+        function actualizarEstadoTabs(tabActivaId) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                if (tab.dataset.tab === tabActivaId) {
+                    // Tab activa
+                    tab.classList.add('tab-activa');
+                    tab.style.cssText = `
+                        padding: 10px 20px; 
+                        cursor: pointer; 
+                        border: 1px solid #dee2e6; 
+                        border-bottom: none; 
+                        margin-bottom: -1px; 
+                        background-color: #fff; 
+                        color: #495057; 
+                        font-weight: bold;
+                    `;
+                } else {
+                    // Tab inactiva
+                    tab.classList.remove('tab-activa');
+                    tab.style.cssText = `
+                        padding: 10px 20px; 
+                        cursor: pointer; 
+                        border: 1px solid transparent; 
+                        border-bottom: none; 
+                        margin-bottom: -1px; 
+                        background-color: #f8f9fa; 
+                        color: #6c757d; 
+                        transition: all 0.3s ease;
+                    `;
+                }
+            });
+        }
+
+        // Función para cargar stock de usuario
+        async function cargarStockUsuario(usuarioId) {
+            try {
+                console.log(`🔍 Cargando stock para usuario ${usuarioId}...`);
+                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Error al cargar stock del usuario');
+                }
+                
+                const stockUsuario = await response.json();
+                console.log(`✅ Stock cargado:`, stockUsuario);
+                
+                // Renderizar tabla
+                renderizarTablaUsuario(stockUsuario);
+                
+                // Limpiar filtros
+                limpiarFiltros();
+                
+            } catch (error) {
+                console.error(`❌ Error al cargar stock del usuario ${usuarioId}:`, error);
+                mostrarError('No se pudo cargar el stock del usuario');
+            }
+        }
+
+        // Función para renderizar tabla de usuario
+        function renderizarTablaUsuario(stockUsuario) {
+            const tbody = document.getElementById('tabla-ingredientes-body');
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            
+            if (!stockUsuario || stockUsuario.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center">Este usuario no tiene stock de ingredientes</td></tr>';
+                return;
+            }
+            
+            stockUsuario.forEach(item => {
+                const row = document.createElement('tr');
+                
+                // Determinar tipo según origen_mix_id
+                let tipoOrigen = 'Simple';
+                if (item.origen_mix_id !== null && item.origen_mix_id !== undefined) {
+                    tipoOrigen = 'Sobrante de Mix';
+                }
+                
+                row.innerHTML = `
+                    <td>${item.nombre_ingrediente}</td>
+                    <td>${item.unidad_medida || '-'}</td>
+                    <td>${item.categoria || '-'}</td>
+                    <td>${parseFloat(item.stock_total).toFixed(3)}</td>
+                    <td>${item.descripcion || '-'}</td>
+                    <td>${tipoOrigen}</td>
+                    <td>-</td>
+                    <td><span style="color: #6c757d; font-style: italic;">Solo lectura</span></td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Función para limpiar filtros
+        function limpiarFiltros() {
+            const filtrosContainer = document.getElementById('filtros-categorias');
+            if (filtrosContainer) {
+                filtrosContainer.innerHTML = '<p style="color: #6c757d; font-style: italic;">Los filtros no están disponibles en la vista de usuario</p>';
+            }
+        }
+
+        // Función para mostrar errores
+        function mostrarError(mensaje) {
+            const contenedor = document.querySelector('.content-section');
+            const mensajeDiv = document.createElement('div');
+            mensajeDiv.className = 'mensaje-error';
+            mensajeDiv.textContent = mensaje;
+            
+            // Remover mensaje anterior
+            const mensajeAnterior = document.querySelector('.mensaje-error, .mensaje-exito');
+            if (mensajeAnterior) {
+                mensajeAnterior.remove();
+            }
+            
+            contenedor.insertBefore(mensajeDiv, contenedor.firstChild);
+            
+            // Remover después de 5 segundos
+            setTimeout(() => {
+                mensajeDiv.remove();
+            }, 5000);
+        }
+
+        // Hacer funciones disponibles globalmente
+        window.tabActiva = () => tabActiva;
+        window.activarTabDeposito = activarTabDeposito;
+        window.activarTabUsuario = activarTabUsuario;
+    </script>
 </body>
 </html>

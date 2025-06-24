@@ -85,7 +85,7 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
             const queryReceta = `
                 SELECT 
                     ri.ingrediente_id,
-                    ri.cantidad,
+                    CAST(ri.cantidad AS DECIMAL(20,10)) as cantidad,
                     COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
                     COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
                 FROM recetas r
@@ -98,8 +98,8 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
 
             // Por cada ingrediente en la receta
             for (const ing of recetaResult.rows) {
-                // CORRECCIÓN: No multiplicar por pesoUnitario aquí - se manejará en expandirIngrediente
-                const cantidadTotal = ing.cantidad * articulo.cantidad;
+                // Mantener alta precisión en el cálculo de cantidad total
+                const cantidadTotal = Number((ing.cantidad * articulo.cantidad).toPrecision(10));
                 
                 console.log(`\n🔍 ANÁLISIS DE CANTIDADES - ${articulo.articulo_numero}`);
                 console.log(`=====================================================`);
@@ -132,7 +132,9 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                         console.log(`✅ Ingrediente ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaExpandir}) es un MIX - procediendo a expandir`);
                         ingredientesExpandidos = await expandirIngrediente(
                             ingredienteIdParaExpandir,
-                            cantidadTotal
+                            cantidadTotal,
+                            new Set(),
+                            ingredienteIdParaExpandir // Pasar el ID del mix como origen_mix_id
                         );
                         
                         if (ingredientesExpandidos.length > 0) {
@@ -162,9 +164,9 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                 }
             }
 
-            // Si el artículo no tiene receta, tratarlo como ingrediente primario
+            // Si el artículo no tiene receta, verificar si es un mix o ingrediente primario
             if (recetaResult.rows.length === 0) {
-                console.log(`📦 Artículo ${articulo.articulo_numero} sin receta - buscando como ingrediente primario`);
+                console.log(`📦 Artículo ${articulo.articulo_numero} sin receta - verificando tipo`);
                 const queryIngredientePrimario = `
                     SELECT id, nombre, unidad_medida
                     FROM ingredientes
@@ -173,15 +175,31 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                 const ingredientePrimario = await pool.query(queryIngredientePrimario, [articulo.articulo_numero]);
 
                 if (ingredientePrimario.rows.length > 0) {
-                    console.log(`✅ Ingrediente primario encontrado: ${ingredientePrimario.rows[0].nombre} para artículo ${articulo.articulo_numero}`);
-                    todosLosIngredientes.push({
-                        id: ingredientePrimario.rows[0].id,
-                        nombre: ingredientePrimario.rows[0].nombre,
-                        unidad_medida: ingredientePrimario.rows[0].unidad_medida,
-                        cantidad: articulo.cantidad
-                    });
+                    const ingredienteId = ingredientePrimario.rows[0].id;
+                    const esMix = await verificarSiEsMix(ingredienteId);
+
+                    if (esMix) {
+                        console.log(`✅ Artículo ${articulo.articulo_numero} es un MIX - expandiendo componentes`);
+                        const ingredientesExpandidos = await expandirIngrediente(
+                            ingredienteId,
+                            articulo.cantidad
+                        );
+                        if (ingredientesExpandidos.length > 0) {
+                            todosLosIngredientes = todosLosIngredientes.concat(ingredientesExpandidos);
+                        } else {
+                            console.log(`⚠️ Error: No se obtuvieron ingredientes expandidos para el mix ${articulo.articulo_numero}`);
+                        }
+                    } else {
+                        console.log(`✅ Artículo ${articulo.articulo_numero} es ingrediente primario - agregando directamente`);
+                        todosLosIngredientes.push({
+                            id: ingredienteId,
+                            nombre: ingredientePrimario.rows[0].nombre,
+                            unidad_medida: ingredientePrimario.rows[0].unidad_medida,
+                            cantidad: articulo.cantidad
+                        });
+                    }
                 } else {
-                    console.log(`⚠️ No se encontró ingrediente primario para artículo ${articulo.articulo_numero}`);
+                    console.log(`⚠️ No se encontró ingrediente para artículo ${articulo.articulo_numero}`);
                 }
             }
         }
@@ -189,29 +207,63 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
         // 3. Consolidar todos los ingredientes
         const ingredientesConsolidados = consolidarIngredientes(todosLosIngredientes);
 
-        // 4. Agregar stock_actual a cada ingrediente consolidado
+        // Obtener el tipo de carro
+        const queryTipoCarro = `
+            SELECT tipo_carro, usuario_id
+            FROM carros_produccion
+            WHERE id = $1
+        `;
+        const tipoCarroResult = await pool.query(queryTipoCarro, [carroId]);
+        const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro || 'interna';
+        const carroUsuarioId = tipoCarroResult.rows[0]?.usuario_id;
+
+        console.log(`\n🔍 TIPO DE CARRO: ${tipoCarro}`);
+        console.log(`Usuario del carro: ${carroUsuarioId}`);
+
+        // 4. Agregar stock_actual a cada ingrediente consolidado según el tipo de carro
         const ingredientesConStock = await Promise.all(
             ingredientesConsolidados.map(async (ingrediente) => {
                 if (ingrediente.id) {
                     try {
-                        const queryStock = `
-                            SELECT stock_actual 
-                            FROM ingredientes 
-                            WHERE id = $1
-                        `;
-                        const stockResult = await pool.query(queryStock, [ingrediente.id]);
-                        const stockActual = stockResult.rows[0]?.stock_actual || 0;
+                        let stockActual = 0;
+
+                        if (tipoCarro === 'externa') {
+                            console.log(`\n📦 Obteniendo stock de usuario para ingrediente ${ingrediente.id}`);
+                            // Consultar stock del usuario para carros externos
+                            const queryStockUsuario = `
+                                SELECT SUM(cantidad) as stock_usuario
+                                FROM ingredientes_stock_usuarios
+                                WHERE usuario_id = $1 AND ingrediente_id = $2
+                                GROUP BY ingrediente_id
+                            `;
+                            const stockUsuarioResult = await pool.query(queryStockUsuario, [carroUsuarioId, ingrediente.id]);
+                            stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
+                            console.log(`Stock usuario encontrado: ${stockActual}`);
+                        } else {
+                            console.log(`\n📦 Obteniendo stock central para ingrediente ${ingrediente.id}`);
+                            // Consultar stock central para carros internos
+                            const queryStock = `
+                                SELECT stock_actual 
+                                FROM ingredientes 
+                                WHERE id = $1
+                            `;
+                            const stockResult = await pool.query(queryStock, [ingrediente.id]);
+                            stockActual = stockResult.rows[0]?.stock_actual || 0;
+                            console.log(`Stock central encontrado: ${stockActual}`);
+                        }
                         
                         return {
                             ...ingrediente,
-                            stock_actual: parseFloat(stockActual)
+                            stock_actual: Number(parseFloat(stockActual).toPrecision(10)),
+                            origen_mix_id: ingrediente.origen_mix_id // Preservar origen_mix_id
                         };
                     } catch (error) {
                         console.error(`Error obteniendo stock para ingrediente ${ingrediente.id}:`, error);
-                        return {
-                            ...ingrediente,
-                            stock_actual: 0
-                        };
+                    return {
+                        ...ingrediente,
+                        stock_actual: 0,
+                        origen_mix_id: ingrediente.origen_mix_id // Preservar origen_mix_id también en caso de error
+                    };
                     }
                 } else {
                     // Si no tiene ID, no podemos obtener stock
@@ -275,7 +327,7 @@ async function obtenerMixesCarro(carroId, usuarioId) {
             const queryReceta = `
                 SELECT 
                     ri.ingrediente_id,
-                    ri.cantidad,
+                    CAST(ri.cantidad AS DECIMAL(20,10)) as cantidad,
                     COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
                     COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
                 FROM recetas r
@@ -300,8 +352,8 @@ async function obtenerMixesCarro(carroId, usuarioId) {
                     if (esMix) {
                         console.log(`✅ Ingrediente ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaVerificar}) es un MIX`);
                         
-                        // Calcular cantidad total
-                        const cantidadTotal = ing.cantidad * articulo.cantidad;
+                        // Mantener alta precisión en el cálculo de cantidad total para mixes
+                        const cantidadTotal = Number((ing.cantidad * articulo.cantidad).toPrecision(10));
                         
                         console.log(`\n📊 CÁLCULO DE CANTIDAD PARA MIX EN RECETA:`);
                         console.log(`- Artículo: ${articulo.articulo_numero}`);
@@ -345,8 +397,8 @@ async function obtenerMixesCarro(carroId, usuarioId) {
                         const recetaBaseResult = await pool.query(queryRecetaBase, [ingredienteId]);
                         const recetaBaseKg = recetaBaseResult.rows[0]?.receta_base_kg || 10;
                         
-                        // Calcular cantidad total usando la misma lógica de proporción
-                        const cantidadTotal = articulo.cantidad * 0.3; // 0.3kg por unidad
+                        // Mantener alta precisión en el cálculo de cantidad total para mixes directos
+                        const cantidadTotal = Number((articulo.cantidad * 0.3).toPrecision(10)); // 0.3kg por unidad
                         
                         console.log(`\n📊 CÁLCULO DE CANTIDAD PARA MIX DIRECTO:`);
                         console.log(`- Nombre del mix: ${ingredienteResult.rows[0].nombre}`);
@@ -368,10 +420,69 @@ async function obtenerMixesCarro(carroId, usuarioId) {
         // 3. Consolidar todos los mixes por ID
         const mixesConsolidados = consolidarIngredientes(todosLosMixes);
         
-        console.log(`\n✅ MIXES CONSOLIDADOS: ${mixesConsolidados.length}`);
-        if (mixesConsolidados.length > 0) {
-            mixesConsolidados.forEach((mix, index) => {
-                console.log(`  ${index + 1}. ${mix.nombre}: ${mix.cantidad} ${mix.unidad_medida}`);
+        // Obtener el tipo de carro
+        const queryTipoCarro = `
+            SELECT tipo_carro, usuario_id
+            FROM carros_produccion
+            WHERE id = $1
+        `;
+        const tipoCarroResult = await pool.query(queryTipoCarro, [carroId]);
+        const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro || 'interna';
+        const carroUsuarioId = tipoCarroResult.rows[0]?.usuario_id;
+
+        console.log(`\n🔍 TIPO DE CARRO: ${tipoCarro}`);
+        console.log(`Usuario del carro: ${carroUsuarioId}`);
+
+        // Agregar stock a los mixes según el tipo de carro
+        const mixesConStock = await Promise.all(
+            mixesConsolidados.map(async (mix) => {
+                try {
+                    let stockActual = 0;
+
+                    if (tipoCarro === 'externa') {
+                        console.log(`\n📦 Obteniendo stock de usuario para mix ${mix.id}`);
+                        // Consultar stock del usuario para carros externos
+                        const queryStockUsuario = `
+                            SELECT SUM(cantidad) as stock_usuario
+                            FROM ingredientes_stock_usuarios
+                            WHERE usuario_id = $1 AND ingrediente_id = $2
+                            GROUP BY ingrediente_id
+                        `;
+                        const stockUsuarioResult = await pool.query(queryStockUsuario, [carroUsuarioId, mix.id]);
+                        stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
+                        console.log(`Stock usuario encontrado: ${stockActual}`);
+                    } else {
+                        console.log(`\n📦 Obteniendo stock central para mix ${mix.id}`);
+                        // Consultar stock central para carros internos
+                        const queryStock = `
+                            SELECT stock_actual 
+                            FROM ingredientes 
+                            WHERE id = $1
+                        `;
+                        const stockResult = await pool.query(queryStock, [mix.id]);
+                        stockActual = stockResult.rows[0]?.stock_actual || 0;
+                        console.log(`Stock central encontrado: ${stockActual}`);
+                    }
+
+                    return {
+                        ...mix,
+                        stock_actual: Number(parseFloat(stockActual).toPrecision(10))
+                    };
+                } catch (error) {
+                    console.error(`Error obteniendo stock para mix ${mix.id}:`, error);
+                    return {
+                        ...mix,
+                        stock_actual: 0
+                    };
+                }
+            })
+        );
+        
+        console.log(`\n✅ MIXES CONSOLIDADOS CON STOCK: ${mixesConStock.length}`);
+        if (mixesConStock.length > 0) {
+            mixesConStock.forEach((mix, index) => {
+                const estado = mix.stock_actual >= mix.cantidad ? '✅' : '❌';
+                console.log(`  ${index + 1}. ${mix.nombre}: Necesario ${mix.cantidad}, Stock ${mix.stock_actual} ${estado}`);
             });
         } else {
             console.log(`⚠️ No se encontraron mixes en el carro ${carroId}`);
