@@ -93,14 +93,32 @@ export async function actualizarEstadoCarro() {
             return;
         }
 
+        // Verificar permisos para mostrar botón de producción externa
+        let botonProduccionExterna = '';
+        try {
+            const response = await fetch(`/api/roles/${colaborador.rol_id}/permisos`);
+            if (response.ok) {
+                const permisos = await response.json();
+                const tienePermisoExterno = permisos.some(p => p.nombre === 'ProduccionesExternas');
+                
+                if (tienePermisoExterno) {
+                    botonProduccionExterna = `
+                        <button onclick="crearNuevoCarro('externa')" class="btn btn-primary" style="margin-left: 10px;">
+                            🚚 Crear Carro de Producción Externa
+                        </button>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('Error al verificar permisos:', error);
+        }
+
         // Construir la lista de carros
         let html = `
             <div class="carros-lista">
                 <h3>Tus carros de producción</h3>
                 <div class="botones-crear-carro" style="margin-bottom: 20px;">
-                    <button onclick="crearNuevoCarro('externa')" class="btn btn-secondary" style="margin-left: 10px;">
-                        🚚 Crear Carro de Producción Externa
-                    </button>
+                    ${botonProduccionExterna}
                 </div>
                 <table class="carros-table">
                     <thead>

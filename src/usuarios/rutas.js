@@ -40,7 +40,7 @@ router.get('/usuarios/con-permiso/:permiso', async (req, res) => {
   
   try {
     const result = await pool.query(`
-      SELECT DISTINCT u.id, u.nombre_completo, u.usuario, u.activo
+      SELECT DISTINCT u.id, u.nombre_completo, u.usuario, u.activo, u.rol_id
       FROM usuarios u
       INNER JOIN roles r ON u.rol_id = r.id
       INNER JOIN roles_permisos rp ON r.id = rp.rol_id
