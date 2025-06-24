@@ -32,6 +32,9 @@ async function cargarUsuariosProduccion() {
     }
 }
 
+// Objeto global para mantener referencias de ventanas abiertas por usuario
+const ventanasProduccionPersonal = {};
+
 // Función para manejar la selección de un usuario
 function seleccionarUsuario(usuario) {
     // Guardar el colaborador seleccionado en localStorage incluyendo rol_id
@@ -41,9 +44,24 @@ function seleccionarUsuario(usuario) {
         rol_id: usuario.rol_id,
         timestamp: new Date().toISOString()
     }));
-    
-    // Abrir la página personal en una nueva pestaña
-    window.open('/pages/produccion_personal.html', '_blank');
+
+    const userId = usuario.id;
+
+    // Verificar si ya existe una ventana abierta para este usuario y que no esté cerrada
+    if (ventanasProduccionPersonal[userId] && !ventanasProduccionPersonal[userId].closed) {
+        ventanasProduccionPersonal[userId].focus();
+        ventanasProduccionPersonal[userId].postMessage({
+            type: 'actualizarUsuario',
+            usuario: {
+                id: usuario.id,
+                nombre: usuario.nombre_completo,
+                rol_id: usuario.rol_id
+            }
+        }, window.location.origin);
+    } else {
+        // Abrir la página personal en una nueva pestaña y guardar la referencia
+        ventanasProduccionPersonal[userId] = window.open('/pages/produccion_personal.html', '_blank');
+    }
 }
 
 // Inicializar cuando se carga la página
