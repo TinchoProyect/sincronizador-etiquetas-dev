@@ -59,6 +59,9 @@ async function finalizarProduccion(req, res) {
         console.log('\n📦 REGISTRANDO MOVIMIENTOS DE STOCK DE VENTAS');
         console.log('==========================================');
 
+        const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+        const articulosAfectados = [];
+
         // 4. Registrar movimientos de ingreso en stock de ventas para cada artículo
         for (const articulo of articulosCarro) {
             console.log(`\n🔄 Procesando artículo ${articulo.articulo_numero}:`);
@@ -86,25 +89,36 @@ async function finalizarProduccion(req, res) {
                 usuarioId
             ]);
             
-            // Actualizar stock_real_consolidado para salida a ventas
+            // Actualizar stock_movimientos para salida a ventas
             await db.query(`
                 INSERT INTO stock_real_consolidado (
                     articulo_numero, 
-                    stock_consolidado, 
+                    stock_movimientos,
                     stock_ajustes, 
                     ultima_actualizacion
                 )
                 VALUES ($1, $2, 0, NOW())
                 ON CONFLICT (articulo_numero) 
                 DO UPDATE SET 
-                    stock_consolidado = COALESCE(stock_real_consolidado.stock_consolidado, 0) + $2,
+                    stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
                     ultima_actualizacion = NOW()
             `, [
                 articulo.articulo_numero,
-                articulo.cantidad // Sumar la cantidad al stock consolidado
+                articulo.cantidad // Sumar la cantidad a stock_movimientos
             ]);
             
-            console.log('✅ Movimiento de stock registrado y stock_consolidado actualizado correctamente');
+            // Agregar artículo a la lista para recalcular
+            if (!articulosAfectados.includes(articulo.articulo_numero)) {
+                articulosAfectados.push(articulo.articulo_numero);
+            }
+            
+            console.log('✅ Movimiento de stock registrado y stock_movimientos actualizado correctamente');
+        }
+
+        // Recalcular stock_consolidado para todos los artículos afectados
+        if (articulosAfectados.length > 0) {
+            await recalcularStockConsolidado(db, articulosAfectados);
+            console.log(`Stock consolidado recalculado para ${articulosAfectados.length} artículo(s)`);
         }
 
         // 5. Actualizar fecha_confirmacion del carro

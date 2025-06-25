@@ -103,29 +103,44 @@ async function eliminarRegistrosRelacionados(carroId) {
         `;
         const movimientosResult = await pool.query(movimientosQuery, [carroId]);
         
-        // Actualizar stock_real_consolidado para cada movimiento según su tipo
+        const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+        
+        // Actualizar stock_movimientos para cada movimiento según su tipo
+        const articulosAfectados = [];
+        
         for (const mov of movimientosResult.rows) {
             if (mov.tipo === 'ingreso a producción') {
-                // Para ingreso a producción eliminado: SUMAR de vuelta la cantidad
+                // Para ingreso a producción eliminado: SUMAR de vuelta la cantidad a stock_movimientos
                 await pool.query(`
                     UPDATE stock_real_consolidado 
                     SET 
-                        stock_consolidado = COALESCE(stock_consolidado, 0) + $1,
+                        stock_movimientos = COALESCE(stock_movimientos, 0) + $1,
                         ultima_actualizacion = NOW()
                     WHERE articulo_numero = $2
                 `, [mov.cantidad, mov.articulo_numero]);
-                console.log(`Stock actualizado para artículo ${mov.articulo_numero}: +${mov.cantidad} (revertir ingreso a producción)`);
+                console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: +${mov.cantidad} (revertir ingreso a producción)`);
             } else if (mov.tipo === 'salida a ventas') {
-                // Para salida a ventas eliminada: RESTAR la cantidad
+                // Para salida a ventas eliminada: RESTAR la cantidad de stock_movimientos
                 await pool.query(`
                     UPDATE stock_real_consolidado 
                     SET 
-                        stock_consolidado = COALESCE(stock_consolidado, 0) - $1,
+                        stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
                         ultima_actualizacion = NOW()
                     WHERE articulo_numero = $2
                 `, [mov.cantidad, mov.articulo_numero]);
-                console.log(`Stock actualizado para artículo ${mov.articulo_numero}: -${mov.cantidad} (revertir salida a ventas)`);
+                console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: -${mov.cantidad} (revertir salida a ventas)`);
             }
+            
+            // Agregar artículo a la lista para recalcular
+            if (!articulosAfectados.includes(mov.articulo_numero)) {
+                articulosAfectados.push(mov.articulo_numero);
+            }
+        }
+        
+        // Recalcular stock_consolidado para todos los artículos afectados
+        if (articulosAfectados.length > 0) {
+            await recalcularStockConsolidado(pool, articulosAfectados);
+            console.log(`Stock consolidado recalculado para ${articulosAfectados.length} artículo(s)`);
         }
 
         // Eliminar los movimientos

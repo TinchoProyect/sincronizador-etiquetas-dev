@@ -68,48 +68,56 @@ async function registrarMovimientoStockVentas(req, res) {
     
     console.log('✅ Query ejecutada exitosamente:', result.rowCount, 'filas afectadas');
 
-    // Actualizar stock_real_consolidado según el tipo de movimiento
+    const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+
+    // Actualizar stock_movimientos según el tipo de movimiento
     if (tipo === 'ingreso a producción') {
-      console.log('🔄 Actualizando stock_real_consolidado para ingreso a producción...');
+      console.log('🔄 Actualizando stock_movimientos para ingreso a producción...');
       
       const updateQuery = `
         UPDATE stock_real_consolidado 
         SET 
-          stock_consolidado = COALESCE(stock_consolidado, 0) - $1,
+          stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
           ultima_actualizacion = NOW()
         WHERE articulo_numero = $2
       `;
 
       await db.query(updateQuery, [
-        cantidad, // Usamos cantidad en lugar de kilos para actualizar el stock
+        cantidad,
         articulo_numero
       ]);
       
-      console.log('✅ stock_real_consolidado actualizado correctamente para ingreso a producción');
-    } else if (tipo === 'salida a ventas') {
-      console.log('🔄 Actualizando stock_real_consolidado para salida a ventas...');
+      // Recalcular stock_consolidado
+      await recalcularStockConsolidado(db, articulo_numero);
       
-      // Para salida a ventas, SUMAR la cantidad al stock consolidado
+      console.log('✅ stock_movimientos actualizado y stock_consolidado recalculado para ingreso a producción');
+    } else if (tipo === 'salida a ventas') {
+      console.log('🔄 Actualizando stock_movimientos para salida a ventas...');
+      
+      // Para salida a ventas, SUMAR la cantidad a stock_movimientos
       const updateQuery = `
         INSERT INTO stock_real_consolidado (
           articulo_numero, 
-          stock_consolidado, 
+          stock_movimientos,
           stock_ajustes, 
           ultima_actualizacion
         )
         VALUES ($1, $2, 0, NOW())
         ON CONFLICT (articulo_numero) 
         DO UPDATE SET 
-          stock_consolidado = COALESCE(stock_real_consolidado.stock_consolidado, 0) + $2,
+          stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
           ultima_actualizacion = NOW()
       `;
 
       await db.query(updateQuery, [
         articulo_numero,
-        cantidad // Sumar la cantidad al stock consolidado
+        cantidad
       ]);
       
-      console.log('✅ stock_real_consolidado actualizado correctamente para salida a ventas');
+      // Recalcular stock_consolidado
+      await recalcularStockConsolidado(db, articulo_numero);
+      
+      console.log('✅ stock_movimientos actualizado y stock_consolidado recalculado para salida a ventas');
     }
 
     // Confirmar transacción
