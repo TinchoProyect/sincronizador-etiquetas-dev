@@ -730,7 +730,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         const colaborador = JSON.parse(colaboradorData);
         const cantidadInput = btnElement.previousElementSibling;
-        const cantidad = parseInt(cantidadInput.value);
+        const cantidad = parseFloat(cantidadInput.value);
         
         if (isNaN(cantidad) || cantidad <= 0) {
             throw new Error('La cantidad debe ser un número positivo');

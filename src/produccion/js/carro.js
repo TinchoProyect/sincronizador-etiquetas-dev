@@ -229,7 +229,7 @@ const debouncedUpdateCantidad = debounce(async (numeroArticulo, nuevaCantidad, i
 document.addEventListener('change', (e) => {
     if (e.target.classList.contains('input-cantidad-articulo')) {
         const numeroArticulo = e.target.dataset.numero;
-        const nuevaCantidad = parseInt(e.target.value);
+        const nuevaCantidad = parseFloat(e.target.value);
         if (nuevaCantidad > 0) {
             e.target.dataset.lastValue = e.target.value;
             debouncedUpdateCantidad(numeroArticulo, nuevaCantidad, e.target);

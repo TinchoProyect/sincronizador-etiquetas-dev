@@ -166,7 +166,7 @@ async function confirmarIngreso() {
   }
 
   const kilos = Number(inputKilos.value.replace(',', '.'));
-  const cantidad = parseInt(inputCantidad.value) || 1;
+  const cantidad = parseFloat(inputCantidad.value) || 1;
 
   if (isNaN(kilos) || kilos <= 0) {
     alert('Ingresá una cantidad válida de kilos.');

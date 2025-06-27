@@ -409,7 +409,7 @@ function enviarArticuloAPC() {
         return;
     }
 
-    const cantidad = parseInt(document.getElementById('cantidad').value);
+    const cantidad = parseFloat(document.getElementById('cantidad').value);
     console.log('📦 [MÓVIL] Cantidad a enviar:', cantidad);
     
     if (isNaN(cantidad) || cantidad < 0) {
