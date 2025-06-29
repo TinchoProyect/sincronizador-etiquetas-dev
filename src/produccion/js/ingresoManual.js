@@ -144,7 +144,9 @@ function manejarBusqueda() {
 
       resultados.forEach(art => {
         const li = document.createElement('li');
-        li.textContent = `${art.nombre} - ${art.codigo_barras || ''}`;
+        // Mostrar nombre del artículo y stock disponible
+        const stockDisplay = art.stock_consolidado !== undefined ? art.stock_consolidado : 0;
+        li.textContent = `${art.nombre} — Stock: ${stockDisplay}`;
         li.addEventListener('click', () => {
           articuloSeleccionado = art;
           inputBusqueda.value = art.nombre;

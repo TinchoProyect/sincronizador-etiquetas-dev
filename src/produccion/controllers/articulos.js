@@ -13,7 +13,7 @@ async function obtenerArticulos() {
                 a.numero,
                 a.nombre,
                 a.codigo_barras,
-                COALESCE(src.stock_consolidado, 0) as stock_ventas,
+                COALESCE(src.stock_consolidado, 0) as stock_consolidado,
                 COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
