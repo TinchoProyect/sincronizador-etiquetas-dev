@@ -24,6 +24,7 @@ import {
 
 import { abrirModalIngresoManual } from './ingresoManual.js';
 import { actualizarVisibilidadBotones } from './carroPreparado.js';
+import { imprimirOrdenProduccion } from './ordenProduccion.js';
 window.carroIdGlobal = null;
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
@@ -42,6 +43,7 @@ window.eliminarCarro = eliminarCarro;
 window.agregarAlCarro = agregarAlCarro;
 window.cerrarModalReceta = cerrarModalReceta;
 window.abrirModalIngresoManual = abrirModalIngresoManual;
+window.imprimirOrdenProduccion = imprimirOrdenProduccion;
 
 // Función asíncrona para inicializar el espacio de trabajo
 async function inicializarEspacioTrabajo() {

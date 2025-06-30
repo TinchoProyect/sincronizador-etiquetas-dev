@@ -5,6 +5,7 @@ export async function actualizarVisibilidadBotones() {
     const btnFinalizarProduccion = document.getElementById('finalizar-produccion');
     const btnAgregarArticulo = document.getElementById('agregar-articulo');
     const btnImprimirEtiquetas = document.getElementById('imprimir-etiquetas');
+    const btnImprimirOrden = document.getElementById('imprimir-orden-produccion');
     
     if (!carroId) {
         // No hay carro activo - ocultar todos los botones de acción
@@ -12,6 +13,7 @@ export async function actualizarVisibilidadBotones() {
         if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
         if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'none';
+        if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
         return;
     }
 
@@ -41,10 +43,13 @@ export async function actualizarVisibilidadBotones() {
                 if (btnAgregarArticulo) {
                     btnAgregarArticulo.style.display = 'inline-block';
                 }
+                if (btnImprimirOrden) {
+                    btnImprimirOrden.style.display = 'none';
+                }
                 break;
 
             case 'preparado':
-                // Carro preparado - mostrar botón de finalizar, ocultar agregar artículos
+                // Carro preparado - mostrar botón de finalizar y orden de producción, ocultar agregar artículos
                 if (btnCarroPreparado) {
                     btnCarroPreparado.style.display = 'none';
                 }
@@ -53,6 +58,9 @@ export async function actualizarVisibilidadBotones() {
                     btnFinalizarProduccion.disabled = false;
                     btnFinalizarProduccion.textContent = 'Asentar producción';
                     btnFinalizarProduccion.classList.remove('procesando');
+                }
+                if (btnImprimirOrden) {
+                    btnImprimirOrden.style.display = 'inline-block';
                 }
                 if (btnAgregarArticulo) {
                     btnAgregarArticulo.style.display = 'none';
@@ -65,6 +73,7 @@ export async function actualizarVisibilidadBotones() {
                 if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
                 if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
                 if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'inline-block';
+                if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
                 break;
 
             default:
@@ -73,6 +82,7 @@ export async function actualizarVisibilidadBotones() {
                 if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
                 if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
                 if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
+                if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
         }
 
     } catch (error) {
@@ -81,6 +91,7 @@ export async function actualizarVisibilidadBotones() {
         if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
         if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
+        if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
     }
 }
 

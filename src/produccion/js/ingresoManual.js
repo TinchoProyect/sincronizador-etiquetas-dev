@@ -448,6 +448,14 @@ function obtenerIngrediente(id) {
 // Array para almacenar los ingresos manuales del carro actual
 let ingresosManualesDelCarro = [];
 
+// Hacer el array accesible globalmente para el informe de impresión
+window.ingresosManualesDelCarro = ingresosManualesDelCarro;
+
+// Función para sincronizar el array global
+function sincronizarArrayGlobal() {
+  window.ingresosManualesDelCarro = ingresosManualesDelCarro;
+}
+
 // Función para registrar un ingreso manual en el informe
 async function registrarIngresoManualEnInforme(datosIngreso) {
   try {
@@ -463,7 +471,10 @@ async function registrarIngresoManualEnInforme(datosIngreso) {
     // Agregar al array de ingresos del carro
     ingresosManualesDelCarro.push(ingresoConId);
     
-    console.log('✅ Ingreso registrado en informe local');
+    // Sincronizar con el array global
+    sincronizarArrayGlobal();
+    
+    console.log('✅ Ingreso registrado en informe local y sincronizado globalmente');
   } catch (error) {
     console.error('❌ Error al registrar ingreso en informe:', error);
   }
@@ -600,6 +611,10 @@ async function eliminarIngresoManual(ingresoId) {
 
     // Eliminar del array local
     ingresosManualesDelCarro.splice(ingresoIndex, 1);
+    
+    // Sincronizar con el array global
+    sincronizarArrayGlobal();
+    
     console.log('🔍 DEBUG - Array ingresosManualesDelCarro después de eliminar:', ingresosManualesDelCarro);
 
     // Actualizar el informe visual
