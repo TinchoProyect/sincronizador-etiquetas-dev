@@ -427,3 +427,48 @@
   width: 80%;
   max-width: 600px;
 }
+
+/* Estilos para la tabla de ingresos manuales */
+#tabla-ingresos-manuales table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+#tabla-ingresos-manuales th,
+#tabla-ingresos-manuales td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+#tabla-ingresos-manuales th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+}
+
+#tabla-ingresos-manuales tr:hover {
+    background-color: #f9f9f9;
+}
+
+#tabla-ingresos-manuales .btn-eliminar-ingreso {
+    padding: 4px 8px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#tabla-ingresos-manuales .btn-eliminar-ingreso:hover {
+    background-color: #c82333;
+}
+
+#tabla-ingresos-manuales .stock-anterior {
+    color: #6c757d;
+}
+
+#tabla-ingresos-manuales .stock-nuevo {
+    color: #28a745;
+    font-weight: bold;
+}

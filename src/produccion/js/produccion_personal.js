@@ -70,6 +70,11 @@ async function inicializarEspacioTrabajo() {
         // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
         
+        // Inicializar el informe de ingresos manuales
+        if (typeof window.actualizarInformeIngresosManuales === 'function') {
+            await window.actualizarInformeIngresosManuales();
+        }
+        
     } catch (error) {
         console.error('Error al inicializar espacio de trabajo:', error);
     }

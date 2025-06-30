@@ -2,7 +2,7 @@ import {
   registrarMovimientoIngrediente,
   registrarMovimientoStockVentas
 } from './apiMovimientos.js';
-import { actualizarResumenIngredientes } from './carro.js';
+import { actualizarResumenIngredientes, obtenerResumenIngredientesCarro } from './carro.js';
 
 // Función para verificar si un ingrediente es compuesto (mix)
 async function verificarSiEsIngredienteCompuesto(ingredienteId) {
@@ -182,6 +182,17 @@ async function confirmarIngreso() {
 
   const usuarioData = localStorage.getItem('colaboradorActivo');
   const usuarioId = usuarioData ? JSON.parse(usuarioData).id : null;
+
+  // Obtener el stock actual del ingrediente desde el resumen
+  let stockAnteriorIngrediente = 0;
+  try {
+    const resumenIngredientes = await obtenerResumenIngredientesCarro(carroIdGlobal, usuarioId);
+    const ingredienteEnResumen = resumenIngredientes.find(ing => ing.id === ingredienteSeleccionado);
+    stockAnteriorIngrediente = ingredienteEnResumen ? ingredienteEnResumen.stock_actual : 0;
+    console.log('🔍 DEBUG - Stock del ingrediente obtenido:', stockAnteriorIngrediente);
+  } catch (error) {
+    console.warn('⚠️ No se pudo obtener el stock del ingrediente, usando 0:', error);
+  }
 
   if (!carroIdGlobal || !usuarioId) {
     alert('No hay carro o usuario válido disponible.');
@@ -381,6 +392,40 @@ async function confirmarIngreso() {
       await registrarMovimientoStockVentas(movimientoStock);
     }
 
+    // Asegurar que los valores numéricos sean números
+    const stockAnteriorNum = parseFloat(stockAnteriorIngrediente) || 0;
+    const kilosTotales = kilos * cantidad;
+    const stockNuevoNum = stockAnteriorNum + kilosTotales;
+
+    console.log('🔍 DEBUG - Registrando ingreso manual:', {
+      articuloNombre: articuloSeleccionado.nombre,
+      cantidadUnidades: parseFloat(cantidad),
+      kilosTotales: kilosTotales,
+      stockAnterior: stockAnteriorNum,
+      stockNuevo: stockNuevoNum,
+      carroId: parseInt(carroIdGlobal),
+      usuarioId: parseInt(usuarioId),
+      articuloNumero: articuloSeleccionado.numero
+    });
+
+    await registrarIngresoManualEnInforme({
+      articuloNombre: articuloSeleccionado.nombre,
+      cantidadUnidades: parseFloat(cantidad),
+      kilosTotales: kilosTotales,
+      stockAnterior: stockAnteriorNum,
+      stockNuevo: stockNuevoNum,
+      carroId: parseInt(carroIdGlobal),
+      usuarioId: parseInt(usuarioId),
+      articuloNumero: articuloSeleccionado.numero,
+      codigoBarras: articuloSeleccionado.codigo_barras || '',
+      ingredienteId: ingredienteSeleccionado // Guardar el ID del ingrediente
+    });
+
+    console.log('🔍 DEBUG - ingresosManualesDelCarro después de registrar:', ingresosManualesDelCarro);
+
+    // Actualizar el informe de ingresos manuales
+    await actualizarInformeIngresosManuales();
+
     alert('Ingreso registrado correctamente');
     cerrarModal();
     // Actualizar el resumen de ingredientes para reflejar el nuevo stock
@@ -400,4 +445,194 @@ function obtenerIngrediente(id) {
     });
 }
 
+// Array para almacenar los ingresos manuales del carro actual
+let ingresosManualesDelCarro = [];
+
+// Función para registrar un ingreso manual en el informe
+async function registrarIngresoManualEnInforme(datosIngreso) {
+  try {
+    console.log('📝 Registrando ingreso manual en informe:', datosIngreso);
+    
+    // Agregar timestamp y ID único
+    const ingresoConId = {
+      ...datosIngreso,
+      id: Date.now() + Math.random(), // ID único temporal
+      fechaIngreso: new Date().toLocaleString()
+    };
+    
+    // Agregar al array de ingresos del carro
+    ingresosManualesDelCarro.push(ingresoConId);
+    
+    console.log('✅ Ingreso registrado en informe local');
+  } catch (error) {
+    console.error('❌ Error al registrar ingreso en informe:', error);
+  }
+}
+
+// Función para actualizar el informe visual de ingresos manuales
+async function actualizarInformeIngresosManuales() {
+  try {
+    const contenedor = document.getElementById('tabla-ingresos-manuales');
+    if (!contenedor) {
+      console.warn('⚠️ No se encontró el contenedor del informe de ingresos manuales');
+      return;
+    }
+
+    // Filtrar ingresos del carro actual
+    const carroId = localStorage.getItem('carroActivo');
+    console.log('🔍 DEBUG - Filtrando ingresos para carro:', carroId);
+    console.log('🔍 DEBUG - Ingresos totales:', ingresosManualesDelCarro);
+    
+    const ingresosDelCarroActual = ingresosManualesDelCarro.filter(ingreso => {
+      console.log('🔍 Comparando:', {
+        ingresoCarroId: ingreso.carroId,
+        carroActivo: carroId,
+        sonIguales: ingreso.carroId.toString() === carroId
+      });
+      return ingreso.carroId.toString() === carroId;
+    });
+    
+    console.log('🔍 DEBUG - Ingresos filtrados:', ingresosDelCarroActual);
+
+    if (ingresosDelCarroActual.length === 0) {
+      contenedor.innerHTML = '<p>No se han realizado ingresos manuales en este carro</p>';
+      return;
+    }
+
+    let html = `
+      <table>
+        <thead>
+          <tr>
+            <th>Artículo</th>
+            <th>Cantidad</th>
+            <th>Kilos Totales</th>
+            <th>Stock Anterior</th>
+            <th>Stock Nuevo</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    ingresosDelCarroActual.forEach(ingreso => {
+      html += `
+        <tr>
+          <td>${ingreso.articuloNombre}</td>
+          <td>${ingreso.cantidadUnidades}</td>
+          <td>${ingreso.kilosTotales.toFixed(2)}</td>
+          <td class="stock-anterior">${ingreso.stockAnterior.toFixed(2)}</td>
+          <td class="stock-nuevo">${ingreso.stockNuevo.toFixed(2)}</td>
+          <td>${ingreso.fechaIngreso}</td>
+          <td>
+            <button class="btn-eliminar-ingreso" onclick="eliminarIngresoManual('${ingreso.id}')">
+              Eliminar
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+        </tbody>
+      </table>
+    `;
+
+    contenedor.innerHTML = html;
+    console.log('✅ Informe de ingresos manuales actualizado');
+  } catch (error) {
+    console.error('❌ Error al actualizar informe de ingresos manuales:', error);
+  }
+}
+
+// Función para eliminar un ingreso manual
+async function eliminarIngresoManual(ingresoId) {
+  try {
+    if (!confirm('¿Estás seguro de que querés eliminar este ingreso manual? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    console.log('🗑️ Eliminando ingreso manual:', ingresoId);
+
+    // Encontrar el ingreso en el array
+    const ingresoIndex = ingresosManualesDelCarro.findIndex(ingreso => ingreso.id.toString() === ingresoId.toString());
+    
+    if (ingresoIndex === -1) {
+      throw new Error('Ingreso no encontrado');
+    }
+
+    const ingreso = ingresosManualesDelCarro[ingresoIndex];
+    const carroId = ingreso.carroId;
+    const articuloNumero = ingreso.articuloNumero;
+    const kilos = ingreso.kilosTotales;
+    const cantidad = ingreso.cantidadUnidades;
+
+    // Revertir movimientos en las tablas
+    try {
+      // Obtener datos del usuario actual
+      const usuarioData = localStorage.getItem('colaboradorActivo');
+      const usuarioId = usuarioData ? JSON.parse(usuarioData).id : null;
+
+      if (!usuarioId) {
+        throw new Error('No hay usuario activo para revertir el movimiento');
+      }
+
+      // 1. Revertir movimiento en stock_ventas_movimientos
+      const movimientoStock = {
+        articuloNumero: articuloNumero,
+        codigoBarras: ingreso.codigoBarras || '', // Usar el código de barras guardado en el registro
+        kilos: kilos, // Kilos positivos para revertir
+        carroId: parseInt(carroId),
+        usuarioId: parseInt(usuarioId),
+        cantidad: cantidad,
+        tipo: 'reversion_ingreso_manual'
+      };
+      await registrarMovimientoStockVentas(movimientoStock);
+
+      // 2. Revertir movimiento en ingredientes_movimientos
+      const movimientoIngrediente = {
+        ingredienteId: ingreso.ingredienteId, // Usar el ID guardado en el registro
+        articuloNumero: articuloNumero,
+        kilos: -kilos, // Kilos negativos para revertir
+        carroId: parseInt(carroId)
+      };
+      await registrarMovimientoIngrediente(movimientoIngrediente);
+
+    // Eliminar del array local
+    ingresosManualesDelCarro.splice(ingresoIndex, 1);
+    console.log('🔍 DEBUG - Array ingresosManualesDelCarro después de eliminar:', ingresosManualesDelCarro);
+
+    // Actualizar el informe visual
+    await actualizarInformeIngresosManuales();
+    
+    // Actualizar el resumen de ingredientes
+    await actualizarResumenIngredientes();
+
+    console.log('✅ Ingreso manual y movimientos relacionados eliminados correctamente');
+    alert('Ingreso eliminado correctamente');
+    } catch (dbError) {
+      console.error('❌ Error al revertir movimientos:', dbError);
+      throw new Error('No se pudieron revertir los movimientos de stock');
+    }
+
+  } catch (error) {
+    console.error('❌ Error al eliminar ingreso manual:', error);
+    alert('Error al eliminar el ingreso: ' + error.message);
+  }
+}
+
+// Función para limpiar ingresos manuales al cambiar de carro
+export function limpiarIngresosManualesDelCarro() {
+  const carroId = localStorage.getItem('carroActivo');
+  if (!carroId) {
+    // Si no hay carro activo, limpiar todo
+    ingresosManualesDelCarro = [];
+  }
+  // Si hay carro activo, mantener solo los ingresos de otros carros
+  // (esto permite cambiar entre carros sin perder los datos)
+}
+
+// Hacer funciones disponibles globalmente
+window.eliminarIngresoManual = eliminarIngresoManual;
+window.actualizarInformeIngresosManuales = actualizarInformeIngresosManuales;
 window.abrirModalIngresoManual = abrirModalIngresoManual;

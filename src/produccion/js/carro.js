@@ -1,5 +1,6 @@
 import { mostrarError, estilosTablaCarros } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
+import { limpiarIngresosManualesDelCarro } from './ingresoManual.js';
 
 // Hacer la función disponible globalmente
 window.editarIngredienteCompuesto = async (mixId) => {
