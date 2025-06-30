@@ -206,8 +206,8 @@ export async function actualizarTablaArticulos(articulos) {
                 tr.innerHTML = `
                     <td>${articulo.numero}</td>
                     <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
-                    <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
-                        ${articulo.stock_ventas || 0}
+                    <td style="text-align: center; font-weight: bold; color: ${articulo.stock_consolidado > 0 ? '#28a745' : '#dc3545'};">
+                        ${articulo.stock_consolidado || 0}
                     </td>
                     <td>
                         ${tieneReceta ? `

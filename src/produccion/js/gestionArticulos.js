@@ -53,8 +53,8 @@ function actualizarTablaArticulos(articulos) {
     }
 
     articulos.forEach((articulo, index) => {
-        const stockVentas = articulo.stock_ventas || 0;
-        console.log(`📊 [DEBUG] Artículo ${index + 1}: ${articulo.nombre} - Stock Ventas: ${stockVentas}`);
+        const stockConsolidado = articulo.stock_consolidado || 0;
+        console.log(`📊 [DEBUG] Artículo ${index + 1}: ${articulo.nombre} - Stock Consolidado: ${stockConsolidado}`);
         
         const tr = document.createElement('tr');
         const checkboxHtml = modoSeleccion ? `
@@ -70,7 +70,7 @@ function actualizarTablaArticulos(articulos) {
             <td>${articulo.numero}</td>
             <td>${articulo.nombre}</td>
             <td>${articulo.codigo_barras || '-'}</td>
-            <td>${stockVentas}</td>
+            <td>${stockConsolidado}</td>
             <td class="produccion-cell">
                 <label class="switch">
                     <input type="checkbox" ${!articulo.no_producido_por_lambda ? 'checked' : ''} 
@@ -123,7 +123,7 @@ function filtrarPorStock(articulos, condicion) {
     switch (condicion) {
         case 'igual-cero':
             resultado = articulos.filter(articulo => {
-                const stock = articulo.stock_ventas || 0;
+                const stock = articulo.stock_consolidado || 0;
                 const esIgualCero = Math.abs(stock) <= UMBRAL_CERO;
                 if (esIgualCero) {
                     console.log(`📊 [DEBUG] Artículo con stock = 0: ${articulo.nombre} (${stock})`);
@@ -133,7 +133,7 @@ function filtrarPorStock(articulos, condicion) {
             break;
         case 'mayor-cero':
             resultado = articulos.filter(articulo => {
-                const stock = articulo.stock_ventas || 0;
+                const stock = articulo.stock_consolidado || 0;
                 const esMayorCero = stock > UMBRAL_CERO;
                 if (esMayorCero) {
                     console.log(`📊 [DEBUG] Artículo con stock > 0: ${articulo.nombre} (${stock})`);
@@ -143,7 +143,7 @@ function filtrarPorStock(articulos, condicion) {
             break;
         case 'menor-cero':
             resultado = articulos.filter(articulo => {
-                const stock = articulo.stock_ventas || 0;
+                const stock = articulo.stock_consolidado || 0;
                 const esMenorCero = stock < -UMBRAL_CERO;
                 if (esMenorCero) {
                     console.log(`📊 [DEBUG] Artículo con stock < 0: ${articulo.nombre} (${stock})`);
