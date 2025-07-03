@@ -827,7 +827,7 @@ function mostrarArticulosSeleccionados() {
     articulosSeleccionados.forEach(articulo => {
         const div = document.createElement('div');
         div.className = 'ajuste-item';
-        const stockActual = articulo.stock_ventas || 0;
+        const stockActual = articulo.stock_consolidado || 0;
         
         div.innerHTML = `
             <h4>${articulo.nombre}</h4>
@@ -878,7 +878,7 @@ async function finalizarAjustes() {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosSeleccionados.get(articuloNumero);
         const stockNuevo = parseInt(input.value) || 0;
-        const stockActual = articulo.stock_ventas || 0;
+        const stockActual = articulo.stock_consolidado || 0;
         const ajuste = stockNuevo - stockActual;
         
         // Solo registrar si hay diferencia, igual que en inventario
