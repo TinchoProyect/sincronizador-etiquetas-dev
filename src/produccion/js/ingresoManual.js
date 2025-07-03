@@ -499,9 +499,17 @@ async function actualizarInformeIngresosManuales() {
     // Obtener ingresos manuales desde el backend
     let ingresosDelBackend = [];
     try {
-      const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`);
+      console.log('🔄 Obteniendo ingresos manuales actualizados del backend...');
+      const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       if (response.ok) {
         ingresosDelBackend = await response.json();
+        console.log('✅ Ingresos obtenidos del backend:', ingresosDelBackend);
       }
     } catch (error) {
       console.warn('⚠️ Error al obtener ingresos del backend:', error);
@@ -667,11 +675,11 @@ async function eliminarIngresoManual(ingresoId) {
       return;
     }
 
-    // Actualizar la UI
-    await actualizarInformeIngresosManuales();
-    await actualizarResumenIngredientes();
-
-    alert('Ingreso eliminado correctamente');
+    // Actualizar la UI inmediatamente después de la eliminación exitosa
+    console.log('🔄 Actualizando UI después de eliminación exitosa...');
+    
+    // Forzar actualización completa
+    window.location.reload();
   } catch (error) {
     console.error('❌ Error al eliminar ingreso manual:', error);
     
