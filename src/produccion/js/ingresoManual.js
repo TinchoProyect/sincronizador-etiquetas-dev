@@ -144,8 +144,8 @@ function manejarBusqueda() {
 
       resultados.forEach(art => {
         const li = document.createElement('li');
-        // Mostrar nombre del artículo y stock disponible
-        const stockDisplay = art.stock_consolidado !== undefined ? art.stock_consolidado : 0;
+        // Mostrar nombre del artículo y stock disponible con 2 decimales
+        const stockDisplay = art.stock_consolidado !== undefined ? Number(art.stock_consolidado).toFixed(2) : '0.00';
         li.textContent = `${art.nombre} — Stock: ${stockDisplay}`;
         li.addEventListener('click', () => {
           articuloSeleccionado = art;
@@ -489,23 +489,47 @@ async function actualizarInformeIngresosManuales() {
       return;
     }
 
-    // Filtrar ingresos del carro actual
+    // Obtener el carro activo
     const carroId = localStorage.getItem('carroActivo');
-    console.log('🔍 DEBUG - Filtrando ingresos para carro:', carroId);
-    console.log('🔍 DEBUG - Ingresos totales:', ingresosManualesDelCarro);
-    
-    const ingresosDelCarroActual = ingresosManualesDelCarro.filter(ingreso => {
-      console.log('🔍 Comparando:', {
-        ingresoCarroId: ingreso.carroId,
-        carroActivo: carroId,
-        sonIguales: ingreso.carroId.toString() === carroId
-      });
-      return ingreso.carroId.toString() === carroId;
-    });
-    
-    console.log('🔍 DEBUG - Ingresos filtrados:', ingresosDelCarroActual);
+    if (!carroId) {
+      contenedor.innerHTML = '<p>No hay carro activo</p>';
+      return;
+    }
 
-    if (ingresosDelCarroActual.length === 0) {
+    // Obtener ingresos manuales desde el backend
+    let ingresosDelBackend = [];
+    try {
+      const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`);
+      if (response.ok) {
+        ingresosDelBackend = await response.json();
+      }
+    } catch (error) {
+      console.warn('⚠️ Error al obtener ingresos del backend:', error);
+    }
+
+    // Filtrar ingresos en memoria del carro actual que NO estén ya persistidos
+    const ingresosEnMemoria = ingresosManualesDelCarro.filter(ingreso => {
+      // Solo incluir si es del carro actual
+      if (ingreso.carroId.toString() !== carroId) return false;
+      
+      // Verificar si ya existe en el backend (por artículo y fecha aproximada)
+      const existeEnBackend = ingresosDelBackend.some(backendIngreso => {
+        const mismoArticulo = backendIngreso.articulo_numero === ingreso.articuloNumero;
+        const kilosSimilares = Math.abs((parseFloat(backendIngreso.kilos) || 0) - (parseFloat(ingreso.kilosTotales) || 0)) < 0.01;
+        return mismoArticulo && kilosSimilares;
+      });
+      
+      return !existeEnBackend; // Solo incluir si NO existe en backend
+    });
+
+    // Combinar: priorizar backend, luego memoria sin duplicados
+    const todosLosIngresos = [...ingresosDelBackend, ...ingresosEnMemoria];
+    
+    console.log('🔍 DEBUG - Ingresos del backend:', ingresosDelBackend.length);
+    console.log('🔍 DEBUG - Ingresos únicos en memoria:', ingresosEnMemoria.length);
+    console.log('🔍 DEBUG - Total ingresos sin duplicados:', todosLosIngresos.length);
+
+    if (todosLosIngresos.length === 0) {
       contenedor.innerHTML = '<p>No se han realizado ingresos manuales en este carro</p>';
       return;
     }
@@ -526,22 +550,51 @@ async function actualizarInformeIngresosManuales() {
         <tbody>
     `;
 
-    ingresosDelCarroActual.forEach(ingreso => {
-      html += `
-        <tr>
-          <td>${ingreso.articuloNombre}</td>
-          <td>${ingreso.cantidadUnidades}</td>
-          <td>${ingreso.kilosTotales.toFixed(2)}</td>
-          <td class="stock-anterior">${ingreso.stockAnterior.toFixed(2)}</td>
-          <td class="stock-nuevo">${ingreso.stockNuevo.toFixed(2)}</td>
-          <td>${ingreso.fechaIngreso}</td>
-          <td>
-            <button class="btn-eliminar-ingreso" onclick="eliminarIngresoManual('${ingreso.id}')">
-              Eliminar
-            </button>
-          </td>
-        </tr>
-      `;
+    todosLosIngresos.forEach(ingreso => {
+      try {
+        // Determinar si es un ingreso del backend o en memoria
+        const esIngresoBackend = ingreso.hasOwnProperty('articulo_nombre') || ingreso.hasOwnProperty('ingrediente_nombre');
+        
+        let kilos, nombreArticulo, fecha, ingresoId, tipoIngreso;
+        
+        if (esIngresoBackend) {
+          // Ingreso del backend
+          kilos = parseFloat(ingreso.kilos) || 0;
+          nombreArticulo = ingreso.articulo_nombre || ingreso.ingrediente_nombre || 'Sin nombre';
+          try {
+            fecha = ingreso.fecha ? new Date(ingreso.fecha).toLocaleString() : '-';
+          } catch (e) {
+            fecha = '-';
+          }
+          ingresoId = `db_${ingreso.id || 0}`;
+          tipoIngreso = 'backend';
+        } else {
+          // Ingreso en memoria
+          kilos = parseFloat(ingreso.kilosTotales) || 0;
+          nombreArticulo = ingreso.articuloNombre || 'Sin nombre';
+          fecha = ingreso.fechaIngreso || '-';
+          ingresoId = `mem_${ingreso.id || 0}`;
+          tipoIngreso = 'memoria';
+        }
+
+        html += `
+          <tr data-tipo="${tipoIngreso}">
+            <td>${nombreArticulo}</td>
+            <td>1</td>
+            <td>${kilos.toFixed(2)}</td>
+            <td class="stock-anterior">-</td>
+            <td class="stock-nuevo">-</td>
+            <td>${fecha}</td>
+            <td>
+              <button class="btn-eliminar-ingreso" onclick="eliminarIngresoManual('${ingresoId}')">
+                Eliminar
+              </button>
+            </td>
+          </tr>
+        `;
+      } catch (err) {
+        console.warn('Error al procesar ingreso:', err, ingreso);
+      }
     });
 
     html += `
@@ -565,73 +618,70 @@ async function eliminarIngresoManual(ingresoId) {
 
     console.log('🗑️ Eliminando ingreso manual:', ingresoId);
 
-    // Encontrar el ingreso en el array
-    const ingresoIndex = ingresosManualesDelCarro.findIndex(ingreso => ingreso.id.toString() === ingresoId.toString());
-    
-    if (ingresoIndex === -1) {
-      throw new Error('Ingreso no encontrado');
-    }
+    // Determinar si es un ingreso del backend o en memoria
+    const [tipo, id] = ingresoId.split('_');
+    console.log('🔍 Tipo de ingreso:', tipo, 'ID:', id);
 
-    const ingreso = ingresosManualesDelCarro[ingresoIndex];
-    const carroId = ingreso.carroId;
-    const articuloNumero = ingreso.articuloNumero;
-    const kilos = ingreso.kilosTotales;
-    const cantidad = ingreso.cantidadUnidades;
+    if (tipo === 'mem') {
+      // Ingreso en memoria - solo eliminar del array local
+      const ingresoIndex = ingresosManualesDelCarro.findIndex(ingreso => 
+        ingreso.id.toString() === id
+      );
 
-    // Revertir movimientos en las tablas
-    try {
-      // Obtener datos del usuario actual
-      const usuarioData = localStorage.getItem('colaboradorActivo');
-      const usuarioId = usuarioData ? JSON.parse(usuarioData).id : null;
-
-      if (!usuarioId) {
-        throw new Error('No hay usuario activo para revertir el movimiento');
+      if (ingresoIndex === -1) {
+        console.warn('⚠️ Ingreso en memoria ya no existe, actualizando UI');
+        await actualizarInformeIngresosManuales();
+        return;
       }
 
-      // 1. Revertir movimiento en stock_ventas_movimientos
-      const movimientoStock = {
-        articuloNumero: articuloNumero,
-        codigoBarras: ingreso.codigoBarras || '', // Usar el código de barras guardado en el registro
-        kilos: kilos, // Kilos positivos para revertir
-        carroId: parseInt(carroId),
-        usuarioId: parseInt(usuarioId),
-        cantidad: cantidad,
-        tipo: 'reversion_ingreso_manual'
-      };
-      await registrarMovimientoStockVentas(movimientoStock);
+      ingresosManualesDelCarro.splice(ingresoIndex, 1);
+      sincronizarArrayGlobal();
+      
+      console.log('✅ Ingreso en memoria eliminado correctamente');
+    } else if (tipo === 'db') {
+      console.log('🗑️ Eliminando ingreso de base de datos físicamente');
+      
+      // Extraer el ID real del ingreso (sin el prefijo 'db_')
+      const ingresoIdReal = id;
+      const carroId = localStorage.getItem('carroActivo');
 
-      // 2. Revertir movimiento en ingredientes_movimientos
-      const movimientoIngrediente = {
-        ingredienteId: ingreso.ingredienteId, // Usar el ID guardado en el registro
-        articuloNumero: articuloNumero,
-        kilos: -kilos, // Kilos negativos para revertir
-        carroId: parseInt(carroId)
-      };
-      await registrarMovimientoIngrediente(movimientoIngrediente);
+      console.log(`📤 Llamando al endpoint DELETE /carro/${carroId}/ingreso-manual/${ingresoIdReal}`);
 
-    // Eliminar del array local
-    ingresosManualesDelCarro.splice(ingresoIndex, 1);
-    
-    // Sincronizar con el array global
-    sincronizarArrayGlobal();
-    
-    console.log('🔍 DEBUG - Array ingresosManualesDelCarro después de eliminar:', ingresosManualesDelCarro);
+      const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
 
-    // Actualizar el informe visual
-    await actualizarInformeIngresosManuales();
-    
-    // Actualizar el resumen de ingredientes
-    await actualizarResumenIngredientes();
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Error al eliminar ingreso: ${errorData.error || 'Error desconocido'}`);
+      }
 
-    console.log('✅ Ingreso manual y movimientos relacionados eliminados correctamente');
-    alert('Ingreso eliminado correctamente');
-    } catch (dbError) {
-      console.error('❌ Error al revertir movimientos:', dbError);
-      throw new Error('No se pudieron revertir los movimientos de stock');
+      const result = await response.json();
+      console.log('✅ Respuesta del servidor:', result);
+    } else {
+      console.warn('⚠️ Tipo de ingreso inválido:', tipo);
+      await actualizarInformeIngresosManuales();
+      return;
     }
 
+    // Actualizar la UI
+    await actualizarInformeIngresosManuales();
+    await actualizarResumenIngredientes();
+
+    alert('Ingreso eliminado correctamente');
   } catch (error) {
     console.error('❌ Error al eliminar ingreso manual:', error);
+    
+    // Si hay error, al menos actualizar la UI para reflejar el estado real
+    try {
+      await actualizarInformeIngresosManuales();
+    } catch (updateError) {
+      console.error('❌ Error adicional al actualizar UI:', updateError);
+    }
+    
     alert('Error al eliminar el ingreso: ' + error.message);
   }
 }

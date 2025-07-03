@@ -808,6 +808,12 @@ router.put('/articulos/:articuloId/toggle-produccion', async (req, res) => {
     }
 });
 
+// Importar el controlador de eliminación de ingresos manuales
+const { eliminarIngresoManual } = require('../controllers/eliminarIngresoManual');
+
+// Ruta para eliminar físicamente un ingreso manual
+router.delete('/carro/:carroId/ingreso-manual/:ingresoId', eliminarIngresoManual);
+
 // Ruta para registrar múltiples movimientos de stock (inventario)
 router.post('/stock-ventas-movimientos/batch', async (req, res) => {
     try {
@@ -1032,6 +1038,39 @@ router.post('/carro/:id/finalizar', async (req, res, next) => {
 // Ruta para obtener el estado de un carro
 // Ruta para obtener artículos para impresión de etiquetas
 router.get('/carro/:id/articulos-etiquetas', obtenerArticulosParaEtiquetas);
+
+// Ruta para obtener ingresos manuales de un carro
+router.get('/carro/:id/ingresos-manuales', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const query = `
+            SELECT 
+                im.id,
+                im.fecha,
+                im.kilos,
+                im.carro_id,
+                im.ingrediente_id,
+                im.observaciones as articulo_numero,
+                a.nombre as articulo_nombre,
+                a.codigo_barras,
+                i.nombre as ingrediente_nombre
+            FROM ingredientes_movimientos im
+            JOIN ingredientes i ON i.id = im.ingrediente_id
+            LEFT JOIN articulos a ON a.numero = im.observaciones
+            WHERE im.carro_id = $1 
+            AND im.tipo = 'ingreso'
+            ORDER BY im.fecha DESC
+        `;
+        
+        const result = await req.db.query(query, [id]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error al obtener ingresos manuales:', error);
+        res.status(500).json({ error: 'Error al obtener ingresos manuales' });
+    }
+});
+
 
 router.get('/carro/:id/estado', async (req, res) => {
     try {
