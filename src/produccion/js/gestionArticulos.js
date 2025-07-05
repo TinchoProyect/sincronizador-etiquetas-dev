@@ -687,6 +687,11 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
     
     console.log('✅ Artículo agregado al Map. Total artículos:', articulosInventario.size);
     
+    // Mostrar el botón "Mostrar Diferencias" si hay artículos
+    if (articulosInventario.size > 0) {
+        document.getElementById('btn-mostrar-diferencias').style.display = 'inline-block';
+    }
+    
     // Si viene del móvil, mostrar mensaje
     if (cantidadInicial > 0) {
         mostrarMensaje(`Artículo agregado desde móvil: ${articulo.nombre}`, 'info');
@@ -925,6 +930,238 @@ async function finalizarAjustes() {
     }
 }
 
+/**
+ * Compara el stock contado vs el stock del sistema
+ */
+async function compararStock() {
+    console.log('🔍 [DIFERENCIAS] Iniciando comparación de stock...');
+    
+    if (articulosInventario.size === 0) {
+        mostrarMensaje('No hay artículos contados para comparar', 'error');
+        return;
+    }
+
+    try {
+        // Obtener todos los artículos del sistema
+        console.log('📊 [DIFERENCIAS] Obteniendo artículos del sistema...');
+        const response = await fetch('/api/produccion/articulos');
+        if (!response.ok) throw new Error('Error al obtener artículos del sistema');
+        
+        const articulosDelSistema = await response.json();
+        console.log(`📊 [DIFERENCIAS] Artículos del sistema obtenidos: ${articulosDelSistema.length}`);
+        
+        // Generar lista de diferencias
+        const diferencias = [];
+        
+        // Procesar artículos contados
+        console.log('🔄 [DIFERENCIAS] Procesando artículos contados...');
+        articulosInventario.forEach((articulo, numeroArticulo) => {
+            const input = document.querySelector(`input[data-articulo="${numeroArticulo}"]`);
+            const stockContado = parseInt(input?.value || 0);
+            const stockSistema = articulo.stock_consolidado || 0;
+            const diferencia = stockContado - stockSistema;
+            
+            console.log(`📝 [DIFERENCIAS] ${articulo.nombre}: Sistema=${stockSistema}, Contado=${stockContado}, Diferencia=${diferencia}`);
+            
+            diferencias.push({
+                codigo: numeroArticulo,
+                descripcion: articulo.nombre,
+                stockSistema: stockSistema,
+                stockContado: stockContado,
+                diferencia: diferencia,
+                estado: diferencia === 0 ? 'sin-diferencia' : 'con-diferencia',
+                esContado: true
+            });
+        });
+        
+        // Procesar artículos no contados (solo los que tienen stock en el sistema)
+        console.log('🔄 [DIFERENCIAS] Procesando artículos no contados...');
+        articulosDelSistema.forEach(articulo => {
+            if (!articulosInventario.has(articulo.numero)) {
+                const stockSistema = articulo.stock_consolidado || 0;
+                if (stockSistema !== 0) { // Solo mostrar artículos con stock diferente de 0
+                    console.log(`📝 [DIFERENCIAS] No contado: ${articulo.nombre}, Stock Sistema=${stockSistema}`);
+                    
+                    diferencias.push({
+                        codigo: articulo.numero,
+                        descripcion: articulo.nombre,
+                        stockSistema: stockSistema,
+                        stockContado: 0,
+                        diferencia: -stockSistema,
+                        estado: 'no-contado',
+                        esContado: false
+                    });
+                }
+            }
+        });
+        
+        console.log(`✅ [DIFERENCIAS] Comparación completada. Total diferencias: ${diferencias.length}`);
+        
+        // Mostrar modal con diferencias
+        mostrarModalDiferencias(diferencias);
+        
+    } catch (error) {
+        console.error('❌ [DIFERENCIAS] Error al comparar stock:', error);
+        mostrarMensaje('Error al comparar stock: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Muestra el modal con las diferencias de stock
+ */
+function mostrarModalDiferencias(diferencias) {
+    console.log('🎯 [DIFERENCIAS] Mostrando modal de diferencias...');
+    
+    const modal = document.getElementById('modal-diferencias');
+    const tbody = document.getElementById('tabla-diferencias-body');
+    
+    // Limpiar tabla
+    tbody.innerHTML = '';
+    
+    if (diferencias.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="mensaje-info">No hay diferencias de stock</td></tr>';
+    } else {
+        diferencias.forEach(diferencia => {
+            const tr = document.createElement('tr');
+            tr.className = `diferencia-row ${diferencia.estado}`;
+            tr.dataset.codigo = diferencia.codigo;
+            tr.dataset.esContado = diferencia.esContado;
+            
+            // Determinar clase de diferencia
+            let claseDiferencia = 'diferencia-cero';
+            if (diferencia.diferencia > 0) claseDiferencia = 'diferencia-positiva';
+            if (diferencia.diferencia < 0) claseDiferencia = 'diferencia-negativa';
+            
+            // Determinar estado badge
+            let estadoBadge = '';
+            if (diferencia.estado === 'sin-diferencia') {
+                estadoBadge = '<span class="estado-badge estado-contado">Contado</span>';
+            } else if (diferencia.estado === 'no-contado') {
+                estadoBadge = '<span class="estado-badge estado-no-contado">No Contado</span>';
+            } else {
+                estadoBadge = '<span class="estado-badge estado-diferencia">Diferencia</span>';
+            }
+            
+            tr.innerHTML = `
+                <td>${diferencia.codigo}</td>
+                <td>${diferencia.descripcion}</td>
+                <td>${diferencia.stockSistema}</td>
+                <td>
+                    <input type="number" 
+                           class="stock-contado-input" 
+                           value="${diferencia.stockContado}" 
+                           min="0" 
+                           data-codigo="${diferencia.codigo}"
+                           data-stock-sistema="${diferencia.stockSistema}">
+                </td>
+                <td class="${claseDiferencia}">${diferencia.diferencia > 0 ? '+' : ''}${diferencia.diferencia}</td>
+                <td>${estadoBadge}</td>
+            `;
+            
+            tbody.appendChild(tr);
+        });
+        
+        // Agregar eventos a los inputs
+        const inputs = tbody.querySelectorAll('.stock-contado-input');
+        inputs.forEach(input => {
+            input.addEventListener('input', actualizarDiferencia);
+        });
+    }
+    
+    // Mostrar modal
+    modal.style.display = 'block';
+    console.log('✅ [DIFERENCIAS] Modal de diferencias mostrado');
+}
+
+/**
+ * Actualiza la diferencia cuando se cambia el stock contado
+ */
+function actualizarDiferencia(event) {
+    const input = event.target;
+    const stockContado = parseInt(input.value) || 0;
+    const stockSistema = parseInt(input.dataset.stockSistema) || 0;
+    const diferencia = stockContado - stockSistema;
+    
+    // Actualizar celda de diferencia
+    const tr = input.closest('tr');
+    const celdaDiferencia = tr.querySelector('td:nth-child(5)');
+    
+    // Actualizar clase y contenido
+    celdaDiferencia.className = '';
+    if (diferencia > 0) {
+        celdaDiferencia.className = 'diferencia-positiva';
+        celdaDiferencia.textContent = '+' + diferencia;
+    } else if (diferencia < 0) {
+        celdaDiferencia.className = 'diferencia-negativa';
+        celdaDiferencia.textContent = diferencia;
+    } else {
+        celdaDiferencia.className = 'diferencia-cero';
+        celdaDiferencia.textContent = '0';
+    }
+    
+    // Actualizar clase de fila
+    tr.className = 'diferencia-row';
+    if (diferencia === 0) {
+        tr.classList.add('sin-diferencia');
+    } else if (tr.dataset.esContado === 'true') {
+        tr.classList.add('con-diferencia');
+    } else {
+        tr.classList.add('no-contado');
+    }
+    
+    console.log(`🔄 [DIFERENCIAS] Actualizada diferencia para ${input.dataset.codigo}: ${diferencia}`);
+}
+
+/**
+ * Guarda las correcciones realizadas en el modal de diferencias
+ */
+async function guardarCorrecciones() {
+    console.log('💾 [CORRECCIONES] Iniciando guardado de correcciones...');
+    
+    const inputs = document.querySelectorAll('.stock-contado-input');
+    let articulosAgregados = 0;
+    let articulosModificados = 0;
+    
+    inputs.forEach(input => {
+        const codigo = input.dataset.codigo;
+        const stockContado = parseInt(input.value) || 0;
+        const tr = input.closest('tr');
+        const esContado = tr.dataset.esContado === 'true';
+        
+        if (esContado) {
+            // Artículo ya contado - actualizar si fue modificado
+            const inputOriginal = document.querySelector(`input[data-articulo="${codigo}"]`);
+            if (inputOriginal && parseInt(inputOriginal.value) !== stockContado) {
+                inputOriginal.value = stockContado;
+                articulosModificados++;
+                console.log(`✏️ [CORRECCIONES] Modificado: ${codigo} -> ${stockContado}`);
+            }
+        } else {
+            // Artículo no contado - agregar al inventario
+            const articulo = todosLosArticulos.find(a => a.numero === codigo);
+            if (articulo) {
+                agregarArticuloAInventario(articulo, stockContado);
+                articulosAgregados++;
+                console.log(`➕ [CORRECCIONES] Agregado: ${codigo} -> ${stockContado}`);
+            }
+        }
+    });
+    
+    // Mostrar el botón "Mostrar Diferencias" si hay artículos
+    if (articulosInventario.size > 0) {
+        document.getElementById('btn-mostrar-diferencias').style.display = 'inline-block';
+    }
+    
+    // Cerrar modal
+    document.getElementById('modal-diferencias').style.display = 'none';
+    
+    // Mostrar resumen
+    const mensaje = `Correcciones aplicadas: ${articulosAgregados} artículos agregados, ${articulosModificados} artículos modificados`;
+    mostrarMensaje(mensaje, 'info');
+    
+    console.log(`✅ [CORRECCIONES] Guardado completado: +${articulosAgregados} agregados, ~${articulosModificados} modificados`);
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Página de gestión de artículos cargada');
@@ -1013,6 +1250,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Botones de finalizar y cancelar ajustes
     document.getElementById('btn-finalizar-ajustes').addEventListener('click', finalizarAjustes);
     document.getElementById('btn-cancelar-ajustes').addEventListener('click', cerrarModalAjustes);
+
+    // Botones del modal de diferencias
+    document.getElementById('btn-mostrar-diferencias').addEventListener('click', compararStock);
+    document.getElementById('btn-guardar-correcciones').addEventListener('click', guardarCorrecciones);
+    document.getElementById('btn-cerrar-diferencias').addEventListener('click', () => {
+        document.getElementById('modal-diferencias').style.display = 'none';
+    });
+    document.getElementById('close-modal-diferencias').addEventListener('click', () => {
+        document.getElementById('modal-diferencias').style.display = 'none';
+    });
 
     // Checkbox seleccionar todos
     document.getElementById('seleccionar-todos').addEventListener('change', function() {

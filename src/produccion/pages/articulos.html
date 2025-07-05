@@ -537,6 +537,67 @@
             vertical-align: middle;
             padding: 8px;
         }
+
+        /* Estilos específicos para el modal de diferencias */
+        .diferencia-row {
+            transition: background-color 0.3s;
+        }
+
+        .diferencia-row.sin-diferencia {
+            background-color: #d4edda;
+        }
+
+        .diferencia-row.con-diferencia {
+            background-color: #f8d7da;
+        }
+
+        .diferencia-row.no-contado {
+            background-color: #fff3cd;
+        }
+
+        .stock-contado-input {
+            width: 80px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            text-align: center;
+        }
+
+        .diferencia-positiva {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .diferencia-negativa {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .diferencia-cero {
+            color: #6c757d;
+        }
+
+        .estado-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .estado-contado {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .estado-no-contado {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .estado-diferencia {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
     </style>
 </head>
 <body>
@@ -686,6 +747,7 @@
                 </div>
                 
                 <div id="acciones-inventario">
+                    <button id="btn-mostrar-diferencias" class="secondary-button" style="display: none;">Mostrar Diferencias</button>
                     <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
                     <button id="btn-cancelar-inventario" class="secondary-button">Cancelar</button>
                 </div>
@@ -693,6 +755,39 @@
                 <div id="articulos-inventario">
                     <!-- Los artículos del inventario se mostrarán aquí -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Diferencias -->
+    <div id="modal-diferencias" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Diferencias de Stock</h2>
+                <span class="close" id="close-modal-diferencias">&times;</span>
+            </div>
+            
+            <div class="modal-body">
+                <table class="tabla-articulos">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Stock Sistema</th>
+                            <th>Stock Contado</th>
+                            <th>Diferencia</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-diferencias-body">
+                        <!-- Las diferencias se cargarán dinámicamente aquí -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btn-guardar-correcciones" class="success-button">Guardar Correcciones</button>
+                <button id="btn-cerrar-diferencias" class="secondary-button">Cerrar</button>
             </div>
         </div>
     </div>
