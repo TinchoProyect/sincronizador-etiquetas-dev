@@ -997,8 +997,46 @@ async function compararStock() {
         
         console.log(`✅ [DIFERENCIAS] Comparación completada. Total diferencias: ${diferencias.length}`);
         
-        // Mostrar modal con diferencias
-        mostrarModalDiferencias(diferencias);
+        // Ordenar diferencias según criterio de prioridad visual para el operario
+        console.log('🎯 [DIFERENCIAS] Aplicando ordenamiento visual...');
+        const diferenciasOrdenadas = diferencias.sort((a, b) => {
+            // Determinar prioridad de cada artículo
+            const getPrioridad = (item) => {
+                const stockSistema = Number(item.stockSistema) || 0;
+                const stockContado = Number(item.stockContado) || 0;
+                const MARGEN_TOLERANCIA = 0.001;
+                const esSinDiferencia = Math.abs(stockContado - stockSistema) <= MARGEN_TOLERANCIA;
+                
+                if (item.esContado) {
+                    if (esSinDiferencia) {
+                        return 1; // 🟩 Contados sin diferencia
+                    } else {
+                        return 2; // 🟥 Contados con diferencia
+                    }
+                } else {
+                    if (Math.abs(stockSistema) <= MARGEN_TOLERANCIA && Math.abs(stockContado) <= MARGEN_TOLERANCIA) {
+                        return 3; // 🟨 No contados sin diferencia (ambos cero)
+                    } else {
+                        return 4; // 🟥 No contados con diferencia
+                    }
+                }
+            };
+            
+            const prioridadA = getPrioridad(a);
+            const prioridadB = getPrioridad(b);
+            
+            // Ordenar por prioridad, y dentro de cada grupo por código de artículo
+            if (prioridadA !== prioridadB) {
+                return prioridadA - prioridadB;
+            } else {
+                return a.codigo.localeCompare(b.codigo);
+            }
+        });
+        
+        console.log(`🎯 [DIFERENCIAS] Ordenamiento aplicado. Mostrando ${diferenciasOrdenadas.length} diferencias ordenadas`);
+        
+        // Mostrar modal con diferencias ordenadas
+        mostrarModalDiferencias(diferenciasOrdenadas);
         
     } catch (error) {
         console.error('❌ [DIFERENCIAS] Error al comparar stock:', error);
@@ -1023,42 +1061,87 @@ function mostrarModalDiferencias(diferencias) {
     } else {
         diferencias.forEach(diferencia => {
             const tr = document.createElement('tr');
-            tr.className = `diferencia-row ${diferencia.estado}`;
             tr.dataset.codigo = diferencia.codigo;
             tr.dataset.esContado = diferencia.esContado;
             
-            // Determinar clase de diferencia
+            // Asegurar que los valores sean números para comparación correcta
+            const stockSistema = Number(diferencia.stockSistema) || 0;
+            const stockContado = Number(diferencia.stockContado) || 0;
+            const diferenciaCalculada = stockContado - stockSistema;
+            
+            // Margen de tolerancia para comparaciones de punto flotante
+            const MARGEN_TOLERANCIA = 0.001;
+            const esSinDiferencia = Math.abs(diferenciaCalculada) <= MARGEN_TOLERANCIA;
+            
+            // Log detallado para debugging
+            console.log(`🔍 [DIFERENCIAS] Procesando artículo: ${diferencia.codigo}`);
+            console.log(`   - Stock Sistema: ${stockSistema} (tipo: ${typeof stockSistema})`);
+            console.log(`   - Stock Contado: ${stockContado} (tipo: ${typeof stockContado})`);
+            console.log(`   - Diferencia Calculada: ${diferenciaCalculada}`);
+            console.log(`   - Es Contado: ${diferencia.esContado}`);
+            console.log(`   - Es Sin Diferencia: ${esSinDiferencia}`);
+            
+            // Nueva lógica para asignar clase de fila según colores deseados
+            let claseFila = '';
+            if (diferencia.esContado) {
+                if (esSinDiferencia) {
+                    claseFila = 'sin-diferencia'; // Verde
+                    console.log(`🟩 [DIFERENCIAS] Artículo contado sin diferencia: ${diferencia.codigo}`);
+                } else {
+                    claseFila = 'con-diferencia'; // Rojo
+                    console.log(`🟥 [DIFERENCIAS] Artículo contado con diferencia: ${diferencia.codigo}`);
+                }
+            } else {
+                // Para artículos no contados, verificar si ambos valores son cero
+                if (Math.abs(stockSistema) <= MARGEN_TOLERANCIA && Math.abs(stockContado) <= MARGEN_TOLERANCIA) {
+                    claseFila = 'sin-diferencia'; // Amarillo (neutral) - ambos son cero
+                    console.log(`🟨 [DIFERENCIAS] Artículo no contado sin stock (ambos cero): ${diferencia.codigo}`);
+                } else {
+                    claseFila = 'con-diferencia'; // Rojo (diferencia real)
+                    console.log(`🟥 [DIFERENCIAS] Artículo no contado con diferencia real: ${diferencia.codigo}`);
+                }
+            }
+            tr.className = `diferencia-row ${claseFila}`;
+            
+            // Determinar clase de diferencia para celda
             let claseDiferencia = 'diferencia-cero';
-            if (diferencia.diferencia > 0) claseDiferencia = 'diferencia-positiva';
-            if (diferencia.diferencia < 0) claseDiferencia = 'diferencia-negativa';
+            if (diferenciaCalculada > MARGEN_TOLERANCIA) claseDiferencia = 'diferencia-positiva';
+            if (diferenciaCalculada < -MARGEN_TOLERANCIA) claseDiferencia = 'diferencia-negativa';
             
             // Determinar estado badge
             let estadoBadge = '';
-            if (diferencia.estado === 'sin-diferencia') {
+            if (claseFila === 'sin-diferencia' && diferencia.esContado) {
                 estadoBadge = '<span class="estado-badge estado-contado">Contado</span>';
-            } else if (diferencia.estado === 'no-contado') {
+            } else if (claseFila === 'sin-diferencia' && !diferencia.esContado) {
                 estadoBadge = '<span class="estado-badge estado-no-contado">No Contado</span>';
             } else {
                 estadoBadge = '<span class="estado-badge estado-diferencia">Diferencia</span>';
             }
             
+            // Formatear diferencia para mostrar
+            const diferenciaFormateada = Math.abs(diferenciaCalculada) <= MARGEN_TOLERANCIA ? 
+                '0' : 
+                (diferenciaCalculada > 0 ? '+' : '') + diferenciaCalculada.toFixed(2).replace(/\.?0+$/, '');
+            
             tr.innerHTML = `
                 <td>${diferencia.codigo}</td>
                 <td>${diferencia.descripcion}</td>
-                <td>${diferencia.stockSistema}</td>
+                <td>${stockSistema}</td>
                 <td>
                     <input type="number" 
                            class="stock-contado-input" 
-                           value="${diferencia.stockContado}" 
+                           value="${stockContado}" 
                            min="0" 
                            data-codigo="${diferencia.codigo}"
-                           data-stock-sistema="${diferencia.stockSistema}">
+                           data-stock-sistema="${stockSistema}">
                 </td>
-                <td class="${claseDiferencia}">${diferencia.diferencia > 0 ? '+' : ''}${diferencia.diferencia}</td>
+                <td class="${claseDiferencia}">${diferenciaFormateada}</td>
                 <td>${estadoBadge}</td>
             `;
             
             tbody.appendChild(tr);
+            
+            console.log(`✅ [DIFERENCIAS] Fila creada para ${diferencia.codigo} con clase: ${claseFila}`);
         });
         
         // Agregar eventos a los inputs
@@ -1078,38 +1161,66 @@ function mostrarModalDiferencias(diferencias) {
  */
 function actualizarDiferencia(event) {
     const input = event.target;
-    const stockContado = parseInt(input.value) || 0;
-    const stockSistema = parseInt(input.dataset.stockSistema) || 0;
+    
+    // Asegurar que los valores sean números para comparación correcta
+    const stockContado = Number(input.value) || 0;
+    const stockSistema = Number(input.dataset.stockSistema) || 0;
     const diferencia = stockContado - stockSistema;
+    
+    // Margen de tolerancia para comparaciones de punto flotante
+    const MARGEN_TOLERANCIA = 0.001;
+    const esSinDiferencia = Math.abs(diferencia) <= MARGEN_TOLERANCIA;
+    
+    // Log detallado para debugging
+    console.log(`🔄 [DIFERENCIAS] Actualizando diferencia para ${input.dataset.codigo}:`);
+    console.log(`   - Stock Sistema: ${stockSistema} (tipo: ${typeof stockSistema})`);
+    console.log(`   - Stock Contado: ${stockContado} (tipo: ${typeof stockContado})`);
+    console.log(`   - Diferencia Calculada: ${diferencia}`);
+    console.log(`   - Es Sin Diferencia: ${esSinDiferencia}`);
     
     // Actualizar celda de diferencia
     const tr = input.closest('tr');
     const celdaDiferencia = tr.querySelector('td:nth-child(5)');
     
-    // Actualizar clase y contenido
+    // Actualizar clase y contenido con margen de tolerancia
     celdaDiferencia.className = '';
-    if (diferencia > 0) {
+    if (diferencia > MARGEN_TOLERANCIA) {
         celdaDiferencia.className = 'diferencia-positiva';
-        celdaDiferencia.textContent = '+' + diferencia;
-    } else if (diferencia < 0) {
+        celdaDiferencia.textContent = '+' + diferencia.toFixed(2).replace(/\.?0+$/, '');
+    } else if (diferencia < -MARGEN_TOLERANCIA) {
         celdaDiferencia.className = 'diferencia-negativa';
-        celdaDiferencia.textContent = diferencia;
+        celdaDiferencia.textContent = diferencia.toFixed(2).replace(/\.?0+$/, '');
     } else {
         celdaDiferencia.className = 'diferencia-cero';
         celdaDiferencia.textContent = '0';
     }
     
-    // Actualizar clase de fila
-    tr.className = 'diferencia-row';
-    if (diferencia === 0) {
-        tr.classList.add('sin-diferencia');
-    } else if (tr.dataset.esContado === 'true') {
-        tr.classList.add('con-diferencia');
+    // Aplicar la misma lógica de colores robusta que en mostrarModalDiferencias
+    const esContado = tr.dataset.esContado === 'true';
+    let claseFila = '';
+    
+    if (esContado) {
+        if (esSinDiferencia) {
+            claseFila = 'sin-diferencia'; // Verde
+            console.log(`🟩 [DIFERENCIAS] Artículo contado actualizado sin diferencia: ${input.dataset.codigo}`);
+        } else {
+            claseFila = 'con-diferencia'; // Rojo
+            console.log(`🟥 [DIFERENCIAS] Artículo contado actualizado con diferencia: ${input.dataset.codigo}`);
+        }
     } else {
-        tr.classList.add('no-contado');
+        // Para artículos no contados, verificar si ambos valores son cero con tolerancia
+        if (Math.abs(stockSistema) <= MARGEN_TOLERANCIA && Math.abs(stockContado) <= MARGEN_TOLERANCIA) {
+            claseFila = 'sin-diferencia'; // Amarillo (neutral) - ambos son cero
+            console.log(`🟨 [DIFERENCIAS] Artículo no contado actualizado sin stock (ambos cero): ${input.dataset.codigo}`);
+        } else {
+            claseFila = 'con-diferencia'; // Rojo (diferencia real)
+            console.log(`🟥 [DIFERENCIAS] Artículo no contado actualizado con diferencia real: ${input.dataset.codigo}`);
+        }
     }
     
-    console.log(`🔄 [DIFERENCIAS] Actualizada diferencia para ${input.dataset.codigo}: ${diferencia}`);
+    tr.className = `diferencia-row ${claseFila}`;
+    
+    console.log(`✅ [DIFERENCIAS] Actualizada diferencia para ${input.dataset.codigo}: ${diferencia} (clase: ${claseFila})`);
 }
 
 /**
