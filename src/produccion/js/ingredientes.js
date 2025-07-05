@@ -63,9 +63,9 @@ function inicializarFiltros(ingredientes) {
     const filtrosContainer = document.getElementById('filtros-categorias');
     if (!filtrosContainer) return;
 
-    
+    console.log('🔧 Inicializando filtros con nuevo comportamiento: filtros desactivados por defecto');
 
-     // ✅ Evitar duplicados: limpiar el contenedor antes de agregar elementos
+    // ✅ Evitar duplicados: limpiar el contenedor antes de agregar elementos
     filtrosContainer.innerHTML = '';
 
     // Crear contenedor para botones globales
@@ -97,20 +97,22 @@ function inicializarFiltros(ingredientes) {
         .filter(Boolean)
         .sort();
 
-    // Crear botones de categoría
+    // Crear botones de categoría - INICIALMENTE DESACTIVADOS
     const botonesCategorias = categorias.map(cat => {
         const btn = document.createElement('button');
         btn.textContent = cat;
-        btn.className = 'btn-filtro activo';
+        btn.className = 'btn-filtro'; // Sin 'activo' - inician desactivados
         categoriasBotones.appendChild(btn);
         return btn;
     });
 
-    // Inicializar filtros activos con todas las categorías
-    filtrosActivos = new Set(categorias);
+    // ✅ CAMBIO PRINCIPAL: Inicializar filtros activos VACÍO (sin categorías activas)
+    filtrosActivos = new Set();
+    console.log('✅ Filtros inicializados vacíos - tabla se mostrará sin ingredientes');
 
     // Evento para "Mostrar Todos"
     btnTodos.onclick = async () => {
+        console.log('🔄 Activando todos los filtros');
         filtrosActivos = new Set(categorias);
         botonesCategorias.forEach(btn => {
             btn.classList.add('activo');
@@ -120,6 +122,7 @@ function inicializarFiltros(ingredientes) {
 
     // Evento para "Ocultar Todos"
     btnOcultar.onclick = async () => {
+        console.log('🔄 Desactivando todos los filtros');
         filtrosActivos.clear();
         botonesCategorias.forEach(btn => {
             btn.classList.remove('activo');
@@ -131,9 +134,13 @@ function inicializarFiltros(ingredientes) {
     botonesCategorias.forEach(btn => {
         btn.onclick = async () => {
             if (btn.classList.contains('activo')) {
+                // Desactivar filtro
+                console.log(`🔄 Desactivando filtro: ${btn.textContent}`);
                 btn.classList.remove('activo');
                 filtrosActivos.delete(btn.textContent);
             } else {
+                // Activar filtro
+                console.log(`🔄 Activando filtro: ${btn.textContent}`);
                 btn.classList.add('activo');
                 filtrosActivos.add(btn.textContent);
             }
@@ -146,10 +153,18 @@ function inicializarFiltros(ingredientes) {
 async function actualizarTablaFiltrada() {
     // Solo aplicar filtros en la vista de depósito
     if (vistaActual === 'deposito') {
-        const ingredientesFiltrados = ingredientesOriginales.filter(ing => 
-            filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria)
-        );
-        await actualizarTablaIngredientes(ingredientesFiltrados);
+        // ✅ CAMBIO PRINCIPAL: Si no hay filtros activos, mostrar tabla vacía
+        if (filtrosActivos.size === 0) {
+            console.log('🔄 No hay filtros activos - mostrando tabla vacía');
+            await actualizarTablaIngredientes([]);
+        } else {
+            // Si hay filtros activos, mostrar solo ingredientes de esas categorías
+            const ingredientesFiltrados = ingredientesOriginales.filter(ing => 
+                filtrosActivos.has(ing.categoria)
+            );
+            console.log(`🔄 Filtros activos: ${Array.from(filtrosActivos).join(', ')} - mostrando ${ingredientesFiltrados.length} ingredientes`);
+            await actualizarTablaIngredientes(ingredientesFiltrados);
+        }
     }
 }
 
