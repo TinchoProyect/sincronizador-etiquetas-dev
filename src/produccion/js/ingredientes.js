@@ -8,7 +8,115 @@ let filtrosTipoActivos = new Set(); // Para rastrear filtros activos por tipo (S
 let filtrosStockActivos = new Set(); // Para rastrear filtros activos por stock (Con Stock/Sin Stock)
 let vistaActual = 'deposito'; // Para identificar la vista actual ('deposito' o 'usuario-X')
 
+// ✅ NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
+let estadoFiltrosGuardado = null; // Para guardar temporalmente el estado de filtros
 
+// ✅ FUNCIONES PARA MANTENER ESTADO DE FILTROS
+function guardarEstadoFiltros() {
+    console.log('💾 Guardando estado actual de filtros antes de la acción');
+    estadoFiltrosGuardado = {
+        categorias: new Set(filtrosActivos),
+        tipos: new Set(filtrosTipoActivos),
+        stocks: new Set(filtrosStockActivos)
+    };
+    console.log('✅ Estado guardado:', {
+        categorias: Array.from(estadoFiltrosGuardado.categorias),
+        tipos: Array.from(estadoFiltrosGuardado.tipos),
+        stocks: Array.from(estadoFiltrosGuardado.stocks)
+    });
+}
+
+function restaurarEstadoFiltros() {
+    if (!estadoFiltrosGuardado) {
+        console.log('⚠️ No hay estado de filtros guardado para restaurar');
+        return;
+    }
+    
+    console.log('🔄 Restaurando estado de filtros después de la acción');
+    
+    // Restaurar los Sets de filtros
+    filtrosActivos = new Set(estadoFiltrosGuardado.categorias);
+    filtrosTipoActivos = new Set(estadoFiltrosGuardado.tipos);
+    filtrosStockActivos = new Set(estadoFiltrosGuardado.stocks);
+    
+    // Restaurar estado visual de los botones
+    restaurarEstadoVisualFiltros();
+    
+    console.log('✅ Estado de filtros restaurado:', {
+        categorias: Array.from(filtrosActivos),
+        tipos: Array.from(filtrosTipoActivos),
+        stocks: Array.from(filtrosStockActivos)
+    });
+}
+
+function restaurarEstadoVisualFiltros() {
+    // Restaurar botones de categoría
+    document.querySelectorAll('.categorias-botones .btn-filtro').forEach(btn => {
+        if (filtrosActivos.has(btn.textContent)) {
+            btn.classList.add('activo');
+        } else {
+            btn.classList.remove('activo');
+        }
+    });
+    
+    // Restaurar botones de tipo
+    document.querySelectorAll('.tipos-botones .btn-filtro').forEach(btn => {
+        const tipo = btn.dataset.tipo;
+        if (filtrosTipoActivos.has(tipo)) {
+            btn.classList.add('activo');
+        } else {
+            btn.classList.remove('activo');
+        }
+    });
+    
+    // Restaurar botones de stock
+    document.querySelectorAll('.stock-botones .btn-filtro').forEach(btn => {
+        const stock = btn.dataset.stock;
+        if (filtrosStockActivos.has(stock)) {
+            btn.classList.add('activo');
+        } else {
+            btn.classList.remove('activo');
+        }
+    });
+}
+
+// ✅ NUEVA FUNCIÓN PARA RECARGAR DATOS SIN PERDER FILTROS
+async function recargarDatosMantenendoFiltros() {
+    try {
+        console.log('🔄 Recargando datos y manteniendo filtros activos...');
+        
+        // Cargar datos frescos del servidor
+        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al obtener los datos');
+        }
+
+        const datos = await response.json();
+        console.log('✅ Datos frescos recibidos:', datos.length, 'ingredientes');
+        
+        // Actualizar lista completa y mix.js
+        ingredientesOriginales = datos;
+        window.actualizarListaIngredientes(datos);
+        
+        // Verificar estado de mix para todos los ingredientes
+        const ingredientesConEstado = await Promise.all(datos.map(async (ingrediente) => {
+            const tieneMix = await window.esMix(ingrediente.id);
+            return { ...ingrediente, esMix: tieneMix };
+        }));
+        
+        ingredientesOriginales = ingredientesConEstado;
+        
+        // Aplicar filtros existentes sin reinicializar
+        await actualizarTablaFiltrada();
+        
+        console.log('✅ Datos recargados manteniendo filtros activos');
+        
+    } catch (error) {
+        console.error('❌ Error al recargar datos:', error);
+        mostrarMensaje(error.message || 'No se pudieron recargar los datos');
+    }
+}
 
 // Funciones para gestionar el modal
 async function abrirModal(titulo = 'Nuevo Ingrediente') {
@@ -464,6 +572,7 @@ async function crearIngrediente(datos) {
 async function actualizarIngrediente(id, datos) {
     try {
         console.log('Actualizando ingrediente:', id, datos);
+        guardarEstadoFiltros();
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
             method: 'PUT',
             headers: {
@@ -477,9 +586,10 @@ async function actualizarIngrediente(id, datos) {
             throw new Error(errorData.error || 'Error al actualizar el ingrediente');
         }
 
-        await cargarIngredientes();
+        await recargarDatosMantenendoFiltros();
         mostrarMensaje('Ingrediente actualizado exitosamente', 'exito');
         cerrarModal();
+        restaurarEstadoFiltros();
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje(error.message || 'No se pudo actualizar el ingrediente');
@@ -494,6 +604,7 @@ async function eliminarIngrediente(id) {
 
     try {
         console.log('Eliminando ingrediente:', id);
+        guardarEstadoFiltros();
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
             method: 'DELETE'
         });
@@ -503,8 +614,9 @@ async function eliminarIngrediente(id) {
             throw new Error(errorData.error || 'Error al eliminar el ingrediente');
         }
 
-        await cargarIngredientes();
+        await recargarDatosMantenendoFiltros();
         mostrarMensaje('Ingrediente eliminado exitosamente', 'exito');
+        restaurarEstadoFiltros();
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje(error.message || 'No se pudo eliminar el ingrediente');
@@ -694,6 +806,7 @@ async function eliminarComposicionMix(id) {
 
     try {
         console.log('🗑️ Eliminando composición del mix:', id);
+        guardarEstadoFiltros();
         
         // Usar el nuevo endpoint que elimina toda la composición y actualiza receta_base_kg
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/composicion`, {
@@ -705,9 +818,10 @@ async function eliminarComposicionMix(id) {
             throw new Error(error.error || 'Error al eliminar la composición');
         }
 
-        // Recargar la tabla
-        await cargarIngredientes();
+        // Recargar la tabla manteniendo filtros
+        await recargarDatosMantenendoFiltros();
         mostrarMensaje('Composición eliminada exitosamente', 'exito');
+        restaurarEstadoFiltros();
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje(error.message || 'No se pudo eliminar la composición');
