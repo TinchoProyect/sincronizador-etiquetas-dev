@@ -3,7 +3,9 @@ import { esMix } from './mix.js';
 // Variables globales
 let ingredienteEditando = null;
 let ingredientesOriginales = []; // Para mantener la lista completa
-let filtrosActivos = new Set(); // Para rastrear filtros activos
+let filtrosActivos = new Set(); // Para rastrear filtros activos por categoría
+let filtrosTipoActivos = new Set(); // Para rastrear filtros activos por tipo (Simple/Mix)
+let filtrosStockActivos = new Set(); // Para rastrear filtros activos por stock (Con Stock/Sin Stock)
 let vistaActual = 'deposito'; // Para identificar la vista actual ('deposito' o 'usuario-X')
 
 
@@ -58,7 +60,7 @@ function mostrarMensaje(mensaje, tipo = 'error') {
     }, 3000);
 }
 
-// Función para inicializar los filtros de categorías
+// Función para inicializar los filtros de categorías, tipo y stock
 function inicializarFiltros(ingredientes) {
     const filtrosContainer = document.getElementById('filtros-categorias');
     if (!filtrosContainer) return;
@@ -87,6 +89,12 @@ function inicializarFiltros(ingredientes) {
     // Insertar botones globales
     filtrosContainer.appendChild(botonesGlobales);
 
+    // ===== FILTROS POR CATEGORÍA =====
+    const categoriasTitulo = document.createElement('h4');
+    categoriasTitulo.textContent = 'Filtrar por Categoría:';
+    categoriasTitulo.style.cssText = 'margin: 15px 0 5px 0; font-size: 14px; color: #495057;';
+    filtrosContainer.appendChild(categoriasTitulo);
+
     // Contenedor para botones de categoría
     const categoriasBotones = document.createElement('div');
     categoriasBotones.className = 'categorias-botones';
@@ -106,65 +114,208 @@ function inicializarFiltros(ingredientes) {
         return btn;
     });
 
-    // ✅ CAMBIO PRINCIPAL: Inicializar filtros activos VACÍO (sin categorías activas)
-    filtrosActivos = new Set();
-    console.log('✅ Filtros inicializados vacíos - tabla se mostrará sin ingredientes');
+    // ===== FILTROS POR TIPO DE INGREDIENTE =====
+    const tipoTitulo = document.createElement('h4');
+    tipoTitulo.textContent = 'Filtrar por Tipo:';
+    tipoTitulo.style.cssText = 'margin: 15px 0 5px 0; font-size: 14px; color: #495057;';
+    filtrosContainer.appendChild(tipoTitulo);
 
-    // Evento para "Mostrar Todos"
+    const tiposBotones = document.createElement('div');
+    tiposBotones.className = 'tipos-botones';
+    tiposBotones.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;';
+    filtrosContainer.appendChild(tiposBotones);
+
+    // Crear botones de tipo
+    const btnTipoSimple = document.createElement('button');
+    btnTipoSimple.textContent = 'Ingrediente Simple';
+    btnTipoSimple.className = 'btn-filtro';
+    btnTipoSimple.dataset.tipo = 'simple';
+    tiposBotones.appendChild(btnTipoSimple);
+
+    const btnTipoMix = document.createElement('button');
+    btnTipoMix.textContent = 'Ingrediente Mix';
+    btnTipoMix.className = 'btn-filtro';
+    btnTipoMix.dataset.tipo = 'mix';
+    tiposBotones.appendChild(btnTipoMix);
+
+    const botonesTipo = [btnTipoSimple, btnTipoMix];
+
+    // ===== FILTROS POR STOCK =====
+    const stockTitulo = document.createElement('h4');
+    stockTitulo.textContent = 'Filtrar por Stock:';
+    stockTitulo.style.cssText = 'margin: 15px 0 5px 0; font-size: 14px; color: #495057;';
+    filtrosContainer.appendChild(stockTitulo);
+
+    const stockBotones = document.createElement('div');
+    stockBotones.className = 'stock-botones';
+    stockBotones.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;';
+    filtrosContainer.appendChild(stockBotones);
+
+    // Crear botones de stock
+    const btnConStock = document.createElement('button');
+    btnConStock.textContent = 'Con Stock';
+    btnConStock.className = 'btn-filtro';
+    btnConStock.dataset.stock = 'con-stock';
+    stockBotones.appendChild(btnConStock);
+
+    const btnSinStock = document.createElement('button');
+    btnSinStock.textContent = 'Sin Stock';
+    btnSinStock.className = 'btn-filtro';
+    btnSinStock.dataset.stock = 'sin-stock';
+    stockBotones.appendChild(btnSinStock);
+
+    const botonesStock = [btnConStock, btnSinStock];
+
+    // ✅ INICIALIZAR TODOS LOS FILTROS VACÍOS
+    filtrosActivos = new Set();
+    filtrosTipoActivos = new Set();
+    filtrosStockActivos = new Set();
+    console.log('✅ Todos los filtros inicializados vacíos - tabla se mostrará sin ingredientes');
+
+    // ===== EVENTOS PARA BOTONES GLOBALES =====
     btnTodos.onclick = async () => {
         console.log('🔄 Activando todos los filtros');
+        // Activar todas las categorías
         filtrosActivos = new Set(categorias);
-        botonesCategorias.forEach(btn => {
-            btn.classList.add('activo');
-        });
+        botonesCategorias.forEach(btn => btn.classList.add('activo'));
+        
+        // Activar todos los tipos
+        filtrosTipoActivos = new Set(['simple', 'mix']);
+        botonesTipo.forEach(btn => btn.classList.add('activo'));
+        
+        // Activar todos los stocks
+        filtrosStockActivos = new Set(['con-stock', 'sin-stock']);
+        botonesStock.forEach(btn => btn.classList.add('activo'));
+        
         await actualizarTablaFiltrada();
     };
 
-    // Evento para "Ocultar Todos"
     btnOcultar.onclick = async () => {
         console.log('🔄 Desactivando todos los filtros');
+        // Limpiar todos los filtros
         filtrosActivos.clear();
-        botonesCategorias.forEach(btn => {
-            btn.classList.remove('activo');
-        });
+        filtrosTipoActivos.clear();
+        filtrosStockActivos.clear();
+        
+        // Remover clases activas
+        botonesCategorias.forEach(btn => btn.classList.remove('activo'));
+        botonesTipo.forEach(btn => btn.classList.remove('activo'));
+        botonesStock.forEach(btn => btn.classList.remove('activo'));
+        
         await actualizarTablaFiltrada();
     };
 
-    // Eventos para cada botón de categoría
+    // ===== EVENTOS PARA FILTROS POR CATEGORÍA =====
     botonesCategorias.forEach(btn => {
         btn.onclick = async () => {
             if (btn.classList.contains('activo')) {
-                // Desactivar filtro
-                console.log(`🔄 Desactivando filtro: ${btn.textContent}`);
+                console.log(`🔄 Desactivando filtro categoría: ${btn.textContent}`);
                 btn.classList.remove('activo');
                 filtrosActivos.delete(btn.textContent);
             } else {
-                // Activar filtro
-                console.log(`🔄 Activando filtro: ${btn.textContent}`);
+                console.log(`🔄 Activando filtro categoría: ${btn.textContent}`);
                 btn.classList.add('activo');
                 filtrosActivos.add(btn.textContent);
             }
             await actualizarTablaFiltrada();
         };
     });
+
+    // ===== EVENTOS PARA FILTROS POR TIPO =====
+    botonesTipo.forEach(btn => {
+        btn.onclick = async () => {
+            const tipo = btn.dataset.tipo;
+            if (btn.classList.contains('activo')) {
+                console.log(`🔄 Desactivando filtro tipo: ${btn.textContent}`);
+                btn.classList.remove('activo');
+                filtrosTipoActivos.delete(tipo);
+            } else {
+                console.log(`🔄 Activando filtro tipo: ${btn.textContent}`);
+                btn.classList.add('activo');
+                filtrosTipoActivos.add(tipo);
+            }
+            await actualizarTablaFiltrada();
+        };
+    });
+
+    // ===== EVENTOS PARA FILTROS POR STOCK =====
+    botonesStock.forEach(btn => {
+        btn.onclick = async () => {
+            const stock = btn.dataset.stock;
+            if (btn.classList.contains('activo')) {
+                console.log(`🔄 Desactivando filtro stock: ${btn.textContent}`);
+                btn.classList.remove('activo');
+                filtrosStockActivos.delete(stock);
+            } else {
+                console.log(`🔄 Activando filtro stock: ${btn.textContent}`);
+                btn.classList.add('activo');
+                filtrosStockActivos.add(stock);
+            }
+            await actualizarTablaFiltrada();
+        };
+    });
 }
 
-// Función para actualizar la tabla según los filtros activos
+// Función para actualizar la tabla según los filtros activos combinados
 async function actualizarTablaFiltrada() {
     // Solo aplicar filtros en la vista de depósito
     if (vistaActual === 'deposito') {
-        // ✅ CAMBIO PRINCIPAL: Si no hay filtros activos, mostrar tabla vacía
-        if (filtrosActivos.size === 0) {
-            console.log('🔄 No hay filtros activos - mostrando tabla vacía');
+        // ✅ Si NO hay ningún filtro activo en ninguna categoría, mostrar tabla vacía
+        if (filtrosActivos.size === 0 && filtrosTipoActivos.size === 0 && filtrosStockActivos.size === 0) {
+            console.log('🔄 No hay filtros activos en ninguna categoría - mostrando tabla vacía');
             await actualizarTablaIngredientes([]);
-        } else {
-            // Si hay filtros activos, mostrar solo ingredientes de esas categorías
-            const ingredientesFiltrados = ingredientesOriginales.filter(ing => 
-                filtrosActivos.has(ing.categoria)
-            );
-            console.log(`🔄 Filtros activos: ${Array.from(filtrosActivos).join(', ')} - mostrando ${ingredientesFiltrados.length} ingredientes`);
-            await actualizarTablaIngredientes(ingredientesFiltrados);
+            return;
         }
+
+        // Aplicar filtros combinados (AND lógico entre tipos de filtros, OR dentro de cada tipo)
+        const ingredientesFiltrados = ingredientesOriginales.filter(ing => {
+            // Filtro por categoría (si hay filtros de categoría activos)
+            const pasaCategoria = filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria);
+            
+            // Filtro por tipo (si hay filtros de tipo activos)
+            let pasaTipo = filtrosTipoActivos.size === 0;
+            if (filtrosTipoActivos.size > 0) {
+                const esMixIngrediente = ing.esMix;
+                if (filtrosTipoActivos.has('simple') && !esMixIngrediente) {
+                    pasaTipo = true;
+                }
+                if (filtrosTipoActivos.has('mix') && esMixIngrediente) {
+                    pasaTipo = true;
+                }
+            }
+            
+            // Filtro por stock (si hay filtros de stock activos)
+            let pasaStock = filtrosStockActivos.size === 0;
+            if (filtrosStockActivos.size > 0) {
+                const stockActual = parseFloat(ing.stock_actual) || 0;
+                const tolerancia = 0.001;
+                
+                if (filtrosStockActivos.has('con-stock') && stockActual > tolerancia) {
+                    pasaStock = true;
+                }
+                if (filtrosStockActivos.has('sin-stock') && stockActual <= tolerancia) {
+                    pasaStock = true;
+                }
+            }
+            
+            // El ingrediente pasa si cumple TODOS los tipos de filtros activos
+            return pasaCategoria && pasaTipo && pasaStock;
+        });
+
+        // Log detallado de filtros activos
+        const filtrosInfo = [];
+        if (filtrosActivos.size > 0) {
+            filtrosInfo.push(`Categorías: ${Array.from(filtrosActivos).join(', ')}`);
+        }
+        if (filtrosTipoActivos.size > 0) {
+            filtrosInfo.push(`Tipos: ${Array.from(filtrosTipoActivos).join(', ')}`);
+        }
+        if (filtrosStockActivos.size > 0) {
+            filtrosInfo.push(`Stock: ${Array.from(filtrosStockActivos).join(', ')}`);
+        }
+        
+        console.log(`🔄 Filtros combinados activos: ${filtrosInfo.join(' | ')} - mostrando ${ingredientesFiltrados.length} ingredientes`);
+        await actualizarTablaIngredientes(ingredientesFiltrados);
     }
 }
 
