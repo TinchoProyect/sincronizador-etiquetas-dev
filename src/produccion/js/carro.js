@@ -607,6 +607,9 @@ export async function seleccionarCarro(carroId) {
             throw new Error('No se puede seleccionar este carro');
         }
 
+        // Limpiar datos del carro anterior
+        limpiarIngresosManualesDelCarro();
+
         // Establecer como carro activo en localStorage
         localStorage.setItem('carroActivo', carroId);
 
@@ -626,6 +629,12 @@ export async function seleccionarCarro(carroId) {
         // Cargar y mostrar resumen de mixes
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
+        
+        // Actualizar ingresos manuales realizados para el carro seleccionado
+        if (typeof window.actualizarInformeIngresosManuales === 'function') {
+            console.log('Actualizando ingresos manuales después de seleccionar carro...');
+            await window.actualizarInformeIngresosManuales();
+        }
         
         // Actualizar la visibilidad de los botones según el estado del carro
         if (typeof window.actualizarVisibilidadBotones === 'function') {
