@@ -117,61 +117,88 @@ async function obtenerOperario(usuarioId) {
     }
 }
 
-// Función para obtener ingresos manuales realizados (usando los datos del formulario)
+// Función para obtener ingresos manuales realizados (usando la misma fuente que la pantalla)
 async function obtenerIngresosManuales(carroId) {
     try {
-        console.log(`\n🔍 DEPURACIÓN DETALLADA - INGRESOS MANUALES DEL FORMULARIO`);
+        console.log(`\n🔍 OBTENIENDO INGRESOS MANUALES PARA IMPRESIÓN`);
         console.log(`=======================================================`);
-        console.log(`📦 Obteniendo ingresos manuales para carro: ${carroId}`);
+        console.log(`📦 Carro: ${carroId}`);
         
-        // Acceder al array global de ingresos manuales del formulario
-        let ingresosManuales = [];
-        
-        // Verificar si existe el array global de ingresos manuales
-        if (typeof window.ingresosManualesDelCarro !== 'undefined') {
-            console.log(`📦 Array global encontrado:`, window.ingresosManualesDelCarro);
-            
-            // Filtrar por carro actual
-            const ingresosDelCarro = window.ingresosManualesDelCarro.filter(ingreso => 
-                ingreso.carroId && ingreso.carroId.toString() === carroId.toString()
-            );
-            
-            console.log(`📦 Ingresos filtrados por carro: ${ingresosDelCarro.length}`);
-            console.log(`📦 Datos filtrados:`, ingresosDelCarro);
-            
-            // Convertir al formato esperado por el informe
-            ingresosManuales = ingresosDelCarro.map(ingreso => ({
-                articulo_descripcion: ingreso.articuloNombre || 'Artículo',
-                articulo_numero: ingreso.articuloNumero || '',
-                codigo_barras: ingreso.codigoBarras || '',
-                kilos_totales: parseFloat(ingreso.kilosTotales || 0),
-                cantidad_total: parseFloat(ingreso.cantidadUnidades || 0),
-                stock_anterior: parseFloat(ingreso.stockAnterior || 0),
-                stock_nuevo: parseFloat(ingreso.stockNuevo || 0),
-                fecha: ingreso.fechaIngreso || new Date().toISOString()
-            }));
-            
-        } else {
-            console.log(`⚠️ Array global ingresosManualesDelCarro no encontrado`);
-            console.log(`📦 Intentando acceder desde el módulo ingresoManual...`);
-            
-            // Intentar obtener desde el DOM si hay una tabla visible
-            const contenedorTabla = document.getElementById('tabla-ingresos-manuales');
-            if (contenedorTabla) {
-                console.log(`📦 Contenedor de tabla encontrado, pero no hay datos en memoria`);
-                console.log(`📦 Contenido del contenedor:`, contenedorTabla.innerHTML.substring(0, 200));
+        // 🎯 USAR LA MISMA FUENTE QUE LA PANTALLA: endpoint del backend
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
             }
+        });
+        
+        if (!response.ok) {
+            console.warn(`⚠️ Error al obtener ingresos manuales del backend: ${response.status}`);
+            return [];
         }
         
-        console.log(`\n📊 RESULTADO FINAL:`);
-        console.log(`- Total de ingresos manuales encontrados: ${ingresosManuales.length}`);
-        console.log(`- Datos de ingresos:`, ingresosManuales);
+        const ingresosDelBackend = await response.json();
+        console.log(`📦 Ingresos obtenidos del backend: ${ingresosDelBackend.length}`);
+        console.log(`📦 Datos del backend:`, ingresosDelBackend);
+        
+        // 🔄 APLICAR EL MISMO FILTRO DE DUPLICADOS QUE LA PANTALLA
+        const ingresosUnicosMap = new Map();
+        ingresosDelBackend.forEach(ing => {
+            const key = `${ing.articulo_numero || ing.articuloNumero}-${ing.kilos || ing.kilosTotales}-${ing.fecha || ing.fechaIngreso}-${ing.fuente_datos || ing.fuenteDatos}`;
+            if (!ingresosUnicosMap.has(key)) {
+                ingresosUnicosMap.set(key, ing);
+            }
+        });
+        const ingresosUnicos = Array.from(ingresosUnicosMap.values());
+        
+        console.log(`🔍 Ingresos después de filtrar duplicados: ${ingresosUnicos.length}`);
+        
+        // 📋 CONVERTIR AL FORMATO ESPERADO POR EL INFORME IMPRESO
+        const ingresosManuales = ingresosUnicos.map(ingreso => ({
+            articulo_descripcion: ingreso.articulo_nombre || ingreso.articuloNombre || 'Artículo sin nombre',
+            articulo_numero: ingreso.articulo_numero || ingreso.articuloNumero || '',
+            codigo_barras: ingreso.codigo_barras || ingreso.codigoBarras || '',
+            kilos_totales: parseFloat(ingreso.kilos || ingreso.kilosTotales || 0),
+            cantidad_total: parseFloat(ingreso.cantidad || ingreso.cantidadUnidades || 0),
+            tipo_articulo: ingreso.tipo_articulo || 'simple',
+            fuente_datos: ingreso.fuente_datos || 'backend',
+            fecha: ingreso.fecha || ingreso.fechaIngreso || new Date().toISOString()
+        }));
+        
+        console.log(`\n📊 RESULTADO FINAL PARA IMPRESIÓN:`);
+        console.log(`- Total de ingresos manuales: ${ingresosManuales.length}`);
+        console.log(`- Datos para impresión:`, ingresosManuales);
         console.log(`=======================================================\n`);
         
         return ingresosManuales;
         
     } catch (error) {
-        console.error('❌ Error al obtener ingresos manuales del formulario:', error);
+        console.error('❌ Error al obtener ingresos manuales para impresión:', error);
+        console.error('❌ Stack trace:', error.stack);
+        
+        // 🔄 FALLBACK: Intentar usar datos del array global si el backend falla
+        console.log('🔄 Intentando fallback con array global...');
+        try {
+            if (typeof window.ingresosManualesDelCarro !== 'undefined') {
+                const ingresosDelCarro = window.ingresosManualesDelCarro.filter(ingreso => 
+                    ingreso.carroId && ingreso.carroId.toString() === carroId.toString()
+                );
+                
+                return ingresosDelCarro.map(ingreso => ({
+                    articulo_descripcion: ingreso.articuloNombre || 'Artículo',
+                    articulo_numero: ingreso.articuloNumero || '',
+                    codigo_barras: ingreso.codigoBarras || '',
+                    kilos_totales: parseFloat(ingreso.kilosTotales || 0),
+                    cantidad_total: parseFloat(ingreso.cantidadUnidades || 0),
+                    tipo_articulo: 'simple',
+                    fuente_datos: 'memoria',
+                    fecha: ingreso.fechaIngreso || new Date().toISOString()
+                }));
+            }
+        } catch (fallbackError) {
+            console.error('❌ Error en fallback:', fallbackError);
+        }
+        
         return [];
     }
 }
