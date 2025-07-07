@@ -1042,46 +1042,89 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
     try {
         const { id } = req.params;
         
-        const query = `
-            SELECT 
-                im.id,
-                im.fecha,
-                im.kilos,
-                im.carro_id,
-                im.ingrediente_id,
-                im.observaciones as articulo_numero,
-                a.nombre as articulo_nombre,
-                a.codigo_barras,
-                i.nombre as ingrediente_nombre,
-                'simple' as tipo_articulo,
-                'ingredientes_movimientos' as fuente_datos
-            FROM ingredientes_movimientos im
-            JOIN ingredientes i ON i.id = im.ingrediente_id
-            LEFT JOIN articulos a ON a.numero = im.observaciones
-            WHERE im.carro_id = $1 AND im.tipo = 'ingreso'
-
-            UNION ALL
-
-            SELECT
-                svm.id,
-                svm.fecha,
-                ABS(svm.kilos) as kilos,
-                svm.carro_id,
-                NULL as ingrediente_id,
-                svm.articulo_numero,
-                a.nombre as articulo_nombre,
-                svm.codigo_barras,
-                a.nombre as ingrediente_nombre,
-                COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
-                'stock_ventas_movimientos' as fuente_datos
-            FROM stock_ventas_movimientos svm
-            LEFT JOIN articulos a ON a.numero = svm.articulo_numero
-            WHERE svm.carro_id = $1 
-              AND svm.tipo = 'ingreso a producción'
-              AND COALESCE(svm.origen_ingreso, 'simple') = 'mix'
-
-            ORDER BY fecha DESC
+        // 🔍 PASO 1: Obtener el tipo de carro para determinar qué consulta usar
+        const carroQuery = `
+            SELECT tipo_carro 
+            FROM carros_produccion 
+            WHERE id = $1
         `;
+        const carroResult = await req.db.query(carroQuery, [id]);
+        
+        if (carroResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Carro no encontrado' });
+        }
+        
+        const tipoCarro = carroResult.rows[0].tipo_carro || 'interna';
+        console.log(`🔍 Tipo de carro detectado: ${tipoCarro}`);
+        
+        let query;
+        
+        if (tipoCarro === 'interna') {
+            // 🏭 CARROS INTERNOS: Solo movimientos de artículos (stock_ventas_movimientos)
+            query = `
+                SELECT
+                    svm.id,
+                    svm.fecha,
+                    ABS(svm.kilos) as kilos,
+                    svm.carro_id,
+                    NULL as ingrediente_id,
+                    svm.articulo_numero,
+                    a.nombre as articulo_nombre,
+                    svm.codigo_barras,
+                    a.nombre as ingrediente_nombre,
+                    COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
+                    'stock_ventas_movimientos' as fuente_datos
+                FROM stock_ventas_movimientos svm
+                LEFT JOIN articulos a ON a.numero = svm.articulo_numero
+                WHERE svm.carro_id = $1 
+                  AND svm.tipo = 'ingreso a producción'
+                ORDER BY svm.fecha DESC
+            `;
+            console.log('🏭 Usando consulta para CARRO INTERNO (solo stock_ventas_movimientos)');
+        } else {
+            // 🌐 CARROS EXTERNOS: Ambas fuentes (ingredientes_movimientos + stock_ventas_movimientos)
+            query = `
+                SELECT 
+                    im.id,
+                    im.fecha,
+                    im.kilos,
+                    im.carro_id,
+                    im.ingrediente_id,
+                    im.observaciones as articulo_numero,
+                    a.nombre as articulo_nombre,
+                    a.codigo_barras,
+                    i.nombre as ingrediente_nombre,
+                    'simple' as tipo_articulo,
+                    'ingredientes_movimientos' as fuente_datos
+                FROM ingredientes_movimientos im
+                JOIN ingredientes i ON i.id = im.ingrediente_id
+                LEFT JOIN articulos a ON a.numero = im.observaciones
+                WHERE im.carro_id = $1 AND im.tipo = 'ingreso'
+
+                UNION ALL
+
+                SELECT
+                    svm.id,
+                    svm.fecha,
+                    ABS(svm.kilos) as kilos,
+                    svm.carro_id,
+                    NULL as ingrediente_id,
+                    svm.articulo_numero,
+                    a.nombre as articulo_nombre,
+                    svm.codigo_barras,
+                    a.nombre as ingrediente_nombre,
+                    COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
+                    'stock_ventas_movimientos' as fuente_datos
+                FROM stock_ventas_movimientos svm
+                LEFT JOIN articulos a ON a.numero = svm.articulo_numero
+                WHERE svm.carro_id = $1 
+                  AND svm.tipo = 'ingreso a producción'
+                  AND svm.origen_ingreso IS NOT NULL
+
+                ORDER BY fecha DESC
+            `;
+            console.log('🌐 Usando consulta para CARRO EXTERNO (ambas fuentes)');
+        }
         
         try {
             console.log('📋 Consulta SQL para ingresos manuales:', query);
@@ -1089,7 +1132,7 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
             const result = await req.db.query(query, [id]);
             
             // Log de depuración para ingresos manuales
-            console.log(`\n📋 INGRESOS MANUALES - Carro ${id}:`);
+            console.log(`\n📋 INGRESOS MANUALES - Carro ${id} (${tipoCarro}):`);
             console.log(`Total de registros encontrados: ${result.rows.length}`);
             
             // Logs específicos para depuración de MIX

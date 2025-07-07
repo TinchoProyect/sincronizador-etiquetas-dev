@@ -553,10 +553,20 @@ async function actualizarInformeIngresosManuales() {
 
     // Combinar: priorizar backend, luego memoria sin duplicados
     const todosLosIngresos = [...ingresosDelBackend, ...ingresosEnMemoria];
-    
-    // Log de depuración: mostrar combinación final
-    console.log('\n🔄 COMBINACIÓN FINAL:');
-    console.table(todosLosIngresos.map(ing => ({
+
+    // Filtrar duplicados basados en combinación de campos clave
+    const ingresosUnicosMap = new Map();
+    todosLosIngresos.forEach(ing => {
+      const key = `${ing.articulo_numero || ing.articuloNumero}-${ing.kilos || ing.kilosTotales}-${ing.fecha || ing.fechaIngreso}-${ing.fuente_datos || ing.fuenteDatos}`;
+      if (!ingresosUnicosMap.has(key)) {
+        ingresosUnicosMap.set(key, ing);
+      }
+    });
+    const ingresosUnicos = Array.from(ingresosUnicosMap.values());
+
+    // Log de depuración: mostrar combinación final sin duplicados
+    console.log('\n🔄 COMBINACIÓN FINAL SIN DUPLICADOS:');
+    console.table(ingresosUnicos.map(ing => ({
       articulo_nombre: ing.articulo_nombre || ing.articuloNombre || 'Sin nombre',
       tipo_articulo: ing.tipo_articulo || 'simple',
       fuente_datos: ing.fuente_datos || 'memoria',
@@ -564,7 +574,7 @@ async function actualizarInformeIngresosManuales() {
       carro_id: ing.carro_id || ing.carroId
     })));
 
-    if (todosLosIngresos.length === 0) {
+    if (ingresosUnicos.length === 0) {
       contenedor.innerHTML = '<p>No se han realizado ingresos manuales en este carro</p>';
       return;
     }
@@ -585,7 +595,7 @@ async function actualizarInformeIngresosManuales() {
         <tbody>
     `;
 
-    todosLosIngresos.forEach(ingreso => {
+    ingresosUnicos.forEach(ingreso => {
       try {
         // Determinar si es un ingreso del backend o en memoria
         const esIngresoBackend = ingreso.hasOwnProperty('articulo_nombre') || ingreso.hasOwnProperty('ingrediente_nombre');
