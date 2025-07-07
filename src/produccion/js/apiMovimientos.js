@@ -32,7 +32,7 @@ export async function registrarMovimientoIngrediente({ ingredienteId, articuloNu
 /**
  * Registra un movimiento de stock vinculado a ventas.
  */
-export async function registrarMovimientoStockVentas({ articuloNumero, codigoBarras, kilos, carroId, usuarioId, cantidad, tipo }) {
+export async function registrarMovimientoStockVentas({ articuloNumero, codigoBarras, kilos, carroId, usuarioId, cantidad, tipo, origenIngreso }) {
   const payload = {
     articulo_numero: articuloNumero,
     codigo_barras: codigoBarras,
@@ -41,10 +41,12 @@ export async function registrarMovimientoStockVentas({ articuloNumero, codigoBar
     usuario_id: usuarioId,
     cantidad: cantidad || 1, // Si no viene cantidad, usar 1 como valor por defecto
     tipo, // Campo para identificar el origen del movimiento
+    origen_ingreso: origenIngreso || 'simple', // Fallback a 'simple' si no se especifica
     fecha: new Date().toISOString()
   };
 
   console.log('📤 Enviando payload a /api/produccion/stock_ventas_movimientos:', payload);
+  console.log('🏷️ ORIGEN_INGRESO enviado:', origenIngreso || 'simple (fallback)');
 
  const response = await fetch('/api/produccion/stock-ventas-movimientos', {
     method: 'POST',

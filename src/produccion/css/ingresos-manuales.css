@@ -1,0 +1,61 @@
+/* Estilos para la sección de ingresos manuales */
+.tipo-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.75em;
+    font-weight: bold;
+    margin-left: 8px;
+    text-transform: uppercase;
+}
+
+.tipo-simple {
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border: 1px solid #bbdefb;
+}
+
+.tipo-mix {
+    background-color: #fff3e0;
+    color: #f57c00;
+    border: 1px solid #ffcc02;
+}
+
+.mix-info {
+    font-style: italic;
+    color: #666;
+    text-align: center;
+}
+
+/* Estilos para las filas según el tipo de artículo */
+tr[data-articulo-tipo="mix"] {
+    background-color: #fffbf0;
+}
+
+tr[data-articulo-tipo="simple"] {
+    background-color: #f8f9fa;
+}
+
+/* Hover effects */
+tr[data-articulo-tipo="mix"]:hover {
+    background-color: #fff8e1;
+}
+
+tr[data-articulo-tipo="simple"]:hover {
+    background-color: #e9ecef;
+}
+
+/* Botón eliminar */
+.btn-eliminar-ingreso {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.8em;
+}
+
+.btn-eliminar-ingreso:hover {
+    background-color: #c82333;
+}

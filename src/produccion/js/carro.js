@@ -1,6 +1,6 @@
 import { mostrarError, estilosTablaCarros } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
-import { limpiarIngresosManualesDelCarro } from './ingresoManual.js';
+import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
 
 // Hacer la función disponible globalmente
 window.editarIngredienteCompuesto = async (mixId) => {
@@ -672,6 +672,10 @@ export async function deseleccionarCarro() {
     if (contenedorMixes) {
         contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
     }
+    
+    // Limpiar informe de ingresos manuales
+    console.log('🧹 Limpiando informe de ingresos manuales al deseleccionar carro...');
+    limpiarInformeIngresosManuales();
     
     // Actualizar la visibilidad de los botones (deben ocultarse al no haber carro)
     if (typeof window.actualizarVisibilidadBotones === 'function') {

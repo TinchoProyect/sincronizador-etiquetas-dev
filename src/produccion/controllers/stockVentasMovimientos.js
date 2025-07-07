@@ -24,7 +24,8 @@ async function registrarMovimientoStockVentas(req, res) {
       carro_id,
       usuario_id, // puede venir null si no hay usuario activo
       cantidad = 1, // valor por defecto si no viene especificado
-      tipo // campo para identificar el origen del movimiento
+      tipo, // campo para identificar el origen del movimiento
+      origen_ingreso = 'simple' // fallback a 'simple' si no se especifica
     } = req.body;
 
     console.log('🔍 Validando datos obligatorios...');
@@ -46,13 +47,16 @@ async function registrarMovimientoStockVentas(req, res) {
       carro_id,
       usuario_id,
       cantidad,
-      tipo
+      tipo,
+      origen_ingreso
     });
+
+    console.log('🏷️ ORIGEN_INGRESO recibido en backend:', origen_ingreso);
 
     const query = `
       INSERT INTO stock_ventas_movimientos 
-        (articulo_numero, codigo_barras, kilos, carro_id, usuario_id, fecha, cantidad, tipo)
-      VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
+        (articulo_numero, codigo_barras, kilos, carro_id, usuario_id, fecha, cantidad, tipo, origen_ingreso)
+      VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7, $8)
     `;
 
     console.log('🔄 Ejecutando query SQL...');
@@ -63,10 +67,12 @@ async function registrarMovimientoStockVentas(req, res) {
       carro_id, 
       usuario_id,
       cantidad,
-      tipo || null // Si viene tipo lo usa, sino null
+      tipo || null, // Si viene tipo lo usa, sino null
+      origen_ingreso // Incluir origen_ingreso en la inserción
     ]);
     
     console.log('✅ Query ejecutada exitosamente:', result.rowCount, 'filas afectadas');
+    console.log('✅ ORIGEN_INGRESO guardado en BD:', origen_ingreso);
 
     const { recalcularStockConsolidado } = require('../utils/recalcularStock');
 

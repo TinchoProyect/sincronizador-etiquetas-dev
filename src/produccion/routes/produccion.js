@@ -920,8 +920,6 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
     }
 });
 
-
-
 // =========================
 
 const { marcarCarroPreparado } = require('../controllers/marcarCarroPreparado');
@@ -1054,23 +1052,81 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                 im.observaciones as articulo_numero,
                 a.nombre as articulo_nombre,
                 a.codigo_barras,
-                i.nombre as ingrediente_nombre
+                i.nombre as ingrediente_nombre,
+                'simple' as tipo_articulo,
+                'ingredientes_movimientos' as fuente_datos
             FROM ingredientes_movimientos im
             JOIN ingredientes i ON i.id = im.ingrediente_id
             LEFT JOIN articulos a ON a.numero = im.observaciones
-            WHERE im.carro_id = $1 
-            AND im.tipo = 'ingreso'
-            ORDER BY im.fecha DESC
+            WHERE im.carro_id = $1 AND im.tipo = 'ingreso'
+
+            UNION ALL
+
+            SELECT
+                svm.id,
+                svm.fecha,
+                ABS(svm.kilos) as kilos,
+                svm.carro_id,
+                NULL as ingrediente_id,
+                svm.articulo_numero,
+                a.nombre as articulo_nombre,
+                svm.codigo_barras,
+                a.nombre as ingrediente_nombre,
+                COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
+                'stock_ventas_movimientos' as fuente_datos
+            FROM stock_ventas_movimientos svm
+            LEFT JOIN articulos a ON a.numero = svm.articulo_numero
+            WHERE svm.carro_id = $1 
+              AND svm.tipo = 'ingreso a producción'
+              AND COALESCE(svm.origen_ingreso, 'simple') = 'mix'
+
+            ORDER BY fecha DESC
         `;
         
-        const result = await req.db.query(query, [id]);
-        res.json(result.rows);
+        try {
+            console.log('📋 Consulta SQL para ingresos manuales:', query);
+            console.log('📋 Parámetros:', [id]);
+            const result = await req.db.query(query, [id]);
+            
+            // Log de depuración para ingresos manuales
+            console.log(`\n📋 INGRESOS MANUALES - Carro ${id}:`);
+            console.log(`Total de registros encontrados: ${result.rows.length}`);
+            
+            // Logs específicos para depuración de MIX
+            const registrosMix = result.rows.filter(row => row.tipo_articulo === 'mix');
+            const registrosSimple = result.rows.filter(row => row.tipo_articulo === 'simple');
+            console.log(`🔍 MIX - Registros encontrados: ${registrosMix.length}`);
+            console.log(`🔍 SIMPLE - Registros encontrados: ${registrosSimple.length}`);
+            
+            if (registrosMix.length > 0) {
+                console.log(`🧪 Detalle de registros MIX:`);
+                registrosMix.forEach((mix, index) => {
+                    console.log(`  ${index + 1}. ${mix.articulo_nombre} - ${mix.kilos}kg - Fuente: ${mix.fuente_datos}`);
+                });
+            }
+            
+            if (result.rows.length > 0) {
+                console.table(result.rows.map(row => ({
+                    id: row.id,
+                    articulo_nombre: row.articulo_nombre || 'Sin nombre',
+                    tipo_articulo: row.tipo_articulo,
+                    fuente_datos: row.fuente_datos,
+                    kilos: parseFloat(row.kilos).toFixed(2),
+                    fecha: new Date(row.fecha).toLocaleString('es-AR')
+                })));
+            }
+            
+            res.json(result.rows);
+        } catch (error) {
+            console.error('❌ Error al obtener ingresos manuales:', error);
+            console.error('❌ Stack trace:', error.stack);
+            res.status(500).json({ error: 'Error al obtener ingresos manuales' });
+        }
     } catch (error) {
-        console.error('Error al obtener ingresos manuales:', error);
+        console.error('❌ Error general en endpoint ingresos-manuales:', error);
         res.status(500).json({ error: 'Error al obtener ingresos manuales' });
     }
 });
-
 
 router.get('/carro/:id/estado', async (req, res) => {
     try {
@@ -1156,4 +1212,5 @@ router.post('/ingredientes_movimientos', async (req, res) => {
     return res.status(500).json({ error: 'Error al registrar el movimiento' });
   }
 });
+
 module.exports = router;
