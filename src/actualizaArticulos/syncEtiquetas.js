@@ -13,9 +13,6 @@ async function sincronizarArticulos() {
   let client;
 
   try {
-    console.log('=== Sincronizador de Etiquetas ===');
-    console.log('Iniciando sincronización de artículos...');
-
     const respuesta = await fetch('https://api.lamdaser.com/etiquetas/articulos');
     if (!respuesta.ok) throw new Error(`Error HTTP ${respuesta.status}`);
 
@@ -83,14 +80,38 @@ async function sincronizarArticulos() {
 
         const stock_consolidado = stock + stock_movimientos + stock_ajustes;
 
-        await client.query(
+        const { rowCount } = await client.query(
           `UPDATE stock_real_consolidado
            SET stock_lomasoft = $1,
                stock_consolidado = $2,
-               ultima_actualizacion = NOW()
-           WHERE articulo_numero = $3`,
-          [stock, stock_consolidado, numero]
+               ultima_actualizacion = NOW(),
+               descripcion = $3,
+               codigo_barras = $4
+           WHERE articulo_numero = $5`,
+          [stock, stock_consolidado, nombre, codigo_barras, numero]
         );
+
+        if (rowCount === 0) {
+          const existe = await client.query(
+            `SELECT COUNT(*) AS total FROM stock_real_consolidado WHERE articulo_numero = $1`,
+            [numero]
+          );
+
+          const yaExiste = parseInt(existe.rows[0].total) > 0;
+
+          if (!yaExiste) {
+            await client.query(
+              `INSERT INTO stock_real_consolidado (
+                articulo_numero, descripcion, codigo_barras,
+                stock_lomasoft, stock_movimientos, stock_ajustes,
+                stock_consolidado, ultima_actualizacion,
+                no_producido_por_lambda, solo_produccion_externa
+              )
+              VALUES ($1, $2, $3, $4, 0, 0, $5, NOW(), false, false)`,
+              [numero, nombre, codigo_barras, stock, stock]
+            );
+          }
+        }
       }
 
       insertados++;
@@ -98,7 +119,6 @@ async function sincronizarArticulos() {
 
     await client.query('COMMIT');
     console.log(`✅ Sincronización completada. ${insertados} artículos actualizados.`);
-
   } catch (error) {
     console.error('❌ Error durante la sincronización:', error.message);
     if (client) {
@@ -117,4 +137,3 @@ sincronizarArticulos()
     console.error('💥 Error fatal:', error);
     process.exit(1);
   });
-
