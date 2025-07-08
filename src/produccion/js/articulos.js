@@ -1,29 +1,17 @@
-function toggleCantidadField() {
-    const selector = document.getElementById('selector-ingrediente');
-    const cantidadContainer = document.getElementById('cantidad-container');
-    if (!selector || !cantidadContainer) return;
-
-    if (selector.value) {
-        cantidadContainer.style.display = 'block';
-    } else {
-        cantidadContainer.style.display = 'none';
-        const inputCantidad = document.getElementById('input-cantidad-ingrediente');
-        if (inputCantidad) inputCantidad.value = '';
-    }
-}
-
 import { mostrarError } from './utils.js';
-import { mostrarArticulosDelCarro, obtenerResumenIngredientesCarro, mostrarResumenIngredientes } from './carro.js';
+import { mostrarArticulosDelCarro, obtenerResumenIngredientesCarro, mostrarResumenIngredientes, obtenerResumenMixesCarro, mostrarResumenMixes, obtenerResumenArticulosCarro, mostrarResumenArticulos } from './carro.js';
 
-// Estado del módulo (privado)
+// Estado del módulo
 const state = {
     todosLosArticulos: [],
     articulosFiltrados: [],
-    ingredientesCargados: [], // Array temporal para almacenar ingredientes
-    ultimoArticuloEditado: null // Almacena el último artículo que se editó
+    ingredientesCargados: [],
+    articulosReceta: [],
+    ultimoArticuloEditado: null,
+    existeReceta: false,
+    tipoCarro: 'interna'
 };
 
-// Variable para almacenar los ingredientes cargados del backend
 let ingredientesDisponibles = [];
 
 // Función para actualizar el título de la página
@@ -44,50 +32,36 @@ export async function abrirModalArticulos() {
     try {
         const modal = document.getElementById('modal-articulos');
         modal.style.display = 'block';
-        // Agregar clase show después de un pequeño delay para activar la animación
         setTimeout(() => {
             modal.classList.add('show');
         }, 10);
 
-        // Activar el filtro de producción por defecto
         const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
         if (filtroProduccionSwitch) {
             filtroProduccionSwitch.checked = true;
         }
 
-        // NUEVO: Detectar tipo de carro activo
-        let tipoCarro = 'interna'; // default
+        let tipoCarro = 'interna';
         const carroId = localStorage.getItem('carroActivo');
         
         if (carroId) {
             try {
-                console.log('Detectando tipo de carro para ID:', carroId);
                 const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
                 if (carroResponse.ok) {
                     const carroData = await carroResponse.json();
                     tipoCarro = carroData.tipo_carro || 'interna';
-                    console.log('Tipo de carro detectado:', tipoCarro);
-                } else {
-                    console.warn('No se pudo obtener el estado del carro, usando tipo interna por defecto');
                 }
             } catch (error) {
-                console.warn('Error al obtener tipo de carro, usando interna por defecto:', error);
+                console.warn('Error al obtener tipo de carro:', error);
             }
-        } else {
-            console.log('No hay carro activo, usando tipo interna por defecto');
         }
 
-        // Cargar artículos si aún no se han cargado o si el tipo de carro cambió
         const cacheKey = `articulos_${tipoCarro}`;
         if (!state[cacheKey] || state[cacheKey].length === 0) {
-            console.log('Solicitando artículos al servidor para tipo de carro:', tipoCarro);
-            
-            // Construir URL con parámetro de filtro según tipo de carro
             const url = tipoCarro === 'externa' 
                 ? 'http://localhost:3002/api/produccion/articulos?tipo_carro=externa'
                 : 'http://localhost:3002/api/produccion/articulos';
                 
-            console.log('URL de solicitud:', url);
             const response = await fetch(url);
             
             if (!response.ok) {
@@ -96,33 +70,25 @@ export async function abrirModalArticulos() {
             }
 
             const articulos = await response.json();
-            console.log(`Recibidos ${articulos.length} artículos del servidor para tipo ${tipoCarro}`);
             
             if (articulos.length === 0) {
                 const mensaje = tipoCarro === 'externa' 
                     ? 'No se encontraron artículos de producción externa disponibles'
                     : 'No se encontraron artículos disponibles';
-                console.warn(mensaje);
                 mostrarError(mensaje);
                 return;
             }
 
-            // Guardar en cache específico por tipo de carro
             state[cacheKey] = articulos;
             state.todosLosArticulos = articulos;
             state.articulosFiltrados = [...articulos];
-            
-            // Aplicar filtro de producción por defecto
             aplicarFiltros(0);
         } else {
-            // Si ya hay artículos cargados para este tipo, usarlos
-            console.log('Usando artículos en cache para tipo:', tipoCarro);
             state.todosLosArticulos = state[cacheKey];
             state.articulosFiltrados = [...state[cacheKey]];
             aplicarFiltros(0);
         }
 
-        // Mostrar indicador visual del tipo de carro en el modal
         const modalTitle = modal.querySelector('h2');
         if (modalTitle) {
             const tipoTexto = tipoCarro === 'externa' ? 'Producción Externa' : 'Producción Interna';
@@ -133,7 +99,6 @@ export async function abrirModalArticulos() {
     } catch (error) {
         console.error('Error al abrir modal de artículos:', error);
         mostrarError(error.message);
-        // Cerrar el modal si hay error
         const modal = document.getElementById('modal-articulos');
         modal.style.display = 'none';
     }
@@ -143,18 +108,16 @@ export async function abrirModalArticulos() {
 export function cerrarModalArticulos() {
     const modal = document.getElementById('modal-articulos');
     modal.classList.remove('show');
-    // Esperar a que termine la animación antes de ocultar
     setTimeout(() => {
         modal.style.display = 'none';
     }, 300);
-    // Limpiar filtros
     document.getElementById('filtro1').value = '';
     document.getElementById('filtro2').value = '';
     document.getElementById('filtro3').value = '';
     document.getElementById('codigo-barras').value = '';
 }
 
-// Función para actualizar la tabla de artículos con agrupación visual
+// Función para actualizar la tabla de artículos
 export async function actualizarTablaArticulos(articulos) {
     const tbody = document.getElementById('tabla-articulos-body');
     tbody.innerHTML = '';
@@ -165,58 +128,35 @@ export async function actualizarTablaArticulos(articulos) {
     }
 
     try {
-        console.log('Consultando estado de recetas para artículos:', articulos.map(art => art.numero));
-        
         const articulosNumeros = articulos.map(art => art.numero);
         
-        // Obtener el estado de las recetas para todos los artículos
         const [estadoResponse, integridadResponse] = await Promise.all([
             fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    articulos: articulosNumeros
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articulos: articulosNumeros })
             }),
             fetch('http://localhost:3002/api/produccion/articulos/integridad-recetas', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    articulos: articulosNumeros
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articulos: articulosNumeros })
             })
         ]);
 
-        if (!estadoResponse.ok) {
-            const errorData = await estadoResponse.json();
-            throw new Error(errorData.error || 'Error al obtener estado de recetas');
-        }
-
-        if (!integridadResponse.ok) {
-            const errorData = await integridadResponse.json();
-            throw new Error(errorData.error || 'Error al obtener integridad de recetas');
+        if (!estadoResponse.ok || !integridadResponse.ok) {
+            throw new Error('Error al obtener estado de recetas');
         }
 
         const estadoRecetas = await estadoResponse.json();
         const integridadRecetas = await integridadResponse.json();
-        console.log('Estado de recetas recibido:', estadoRecetas);
-        console.log('Integridad de recetas recibida:', integridadRecetas);
 
-        // Dividir artículos en dos grupos según no_producido_por_lambda
         const produccion = articulos.filter(art => art.no_producido_por_lambda === false);
         const resto = articulos.filter(art => art.no_producido_por_lambda === true);
 
-        // Ordenar cada grupo alfabéticamente por nombre
         produccion.sort((a, b) => a.nombre.localeCompare(b.nombre));
         resto.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-        // Función para renderizar un grupo con encabezado
         function renderGroup(title, group) {
-            // Crear fila de encabezado con colspan 4
             const headerRow = document.createElement('tr');
             const headerCell = document.createElement('td');
             headerCell.colSpan = 4;
@@ -227,25 +167,21 @@ export async function actualizarTablaArticulos(articulos) {
             headerRow.appendChild(headerCell);
             tbody.appendChild(headerRow);
 
-            // Renderizar artículos del grupo
             group.forEach(articulo => {
                 const tr = document.createElement('tr');
                 const tieneReceta = estadoRecetas[articulo.numero];
                 const esIntegra = integridadRecetas[articulo.numero];
                 
                 tr.setAttribute('data-numero', articulo.numero);
-                const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
-                if (esArticuloEditado) {
+                if (articulo.numero === state.ultimoArticuloEditado) {
                     tr.classList.add('resaltado-articulo');
                 }
 
-                // Determinar el estilo del botón "Agregar al carro" basado en la integridad
                 let btnAgregarEstilo = '';
                 let btnAgregarTitulo = 'Agregar al carro';
                 let btnAgregarClase = 'btn-agregar icon-cart';
                 
                 if (tieneReceta && !esIntegra) {
-                    // Receta con ingredientes faltantes - botón rojo con advertencia
                     btnAgregarEstilo = 'background-color: #dc3545; color: white; border: 1px solid #dc3545;';
                     btnAgregarTitulo = 'Advertencia: Esta receta tiene ingredientes que ya no existen en el sistema';
                     btnAgregarClase = 'btn-agregar btn-warning-integridad icon-cart';
@@ -296,7 +232,6 @@ export async function actualizarTablaArticulos(articulos) {
             });
         }
 
-        // Si el filtro "Mostrar solo artículos de producción" está activo, mostrar solo el grupo de producción
         const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
         const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
 
@@ -307,7 +242,6 @@ export async function actualizarTablaArticulos(articulos) {
                 renderGroup('Artículos de producción', produccion);
             }
         } else {
-            // Mostrar ambos grupos con encabezados
             if (produccion.length > 0) {
                 renderGroup('Artículos de producción', produccion);
             }
@@ -321,46 +255,19 @@ export async function actualizarTablaArticulos(articulos) {
 
     } catch (error) {
         console.error('Error al actualizar tabla:', error);
-        // Si hay error, mostrar los botones en rojo por defecto
-        articulos.forEach(articulo => {
-            const tr = document.createElement('tr');
-            tr.setAttribute('data-numero', articulo.numero);
-            const esArticuloEditado = articulo.numero === state.ultimoArticuloEditado;
-            if (esArticuloEditado) {
-                tr.classList.add('resaltado-articulo');
-            }
-            tr.innerHTML = `
-                <td>${articulo.numero}</td>
-                <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
-                <td>${articulo.codigo_barras || '-'}</td>
-                <td style="text-align: center; font-weight: bold; color: ${articulo.stock_ventas > 0 ? '#28a745' : '#dc3545'};">
-                    ${articulo.stock_ventas || 0}
-                </td>
-                <td>
-                    <input type="number" class="cantidad-input" min="1" value="1">
-                    <button class="btn-agregar btn-danger" 
-                            data-numero="${articulo.numero}" 
-                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                        Vincular receta
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Error al cargar artículos</td></tr>';
     }
 }
 
-// Función para aplicar filtros en cascada
+// Función para aplicar filtros
 export function aplicarFiltros(filtroIndex) {
     const filtro1 = document.getElementById('filtro1').value.toLowerCase();
     const filtro2 = document.getElementById('filtro2').value.toLowerCase();
     const filtro3 = document.getElementById('filtro3').value.toLowerCase();
 
-    // Obtener valor del switch de filtro de producción
     const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
     const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
 
-    // Resetear filtros posteriores
     if (filtroIndex === 1) {
         document.getElementById('filtro2').value = '';
         document.getElementById('filtro3').value = '';
@@ -368,7 +275,6 @@ export function aplicarFiltros(filtroIndex) {
         document.getElementById('filtro3').value = '';
     }
 
-    // Aplicar filtros en cascada
     let resultados = state.todosLosArticulos;
 
     if (filtro1) {
@@ -389,18 +295,14 @@ export function aplicarFiltros(filtroIndex) {
         );
     }
 
-    // Aplicar filtro de producción si está activo
     if (mostrarSoloProduccion) {
         resultados = resultados.filter(art => art.no_producido_por_lambda === false);
     }
 
-    // Ordenar resultados: primero producidos por LAMDA, luego no producidos
     resultados.sort((a, b) => {
         if (a.no_producido_por_lambda === b.no_producido_por_lambda) {
-            // Orden alfabético por nombre
             return a.nombre.localeCompare(b.nombre);
         }
-        // Los producidos (false) primero
         return a.no_producido_por_lambda ? 1 : -1;
     });
 
@@ -424,334 +326,59 @@ export function cerrarModalReceta() {
         modal.classList.remove('show');
         setTimeout(() => {
             modal.style.display = 'none';
-            // Limpiar el formulario y los ingredientes
             document.getElementById('articulo_numero').value = '';
             document.getElementById('articulo_descripcion').value = '';
             document.getElementById('descripcion_receta').value = '';
             document.getElementById('selector-ingrediente').value = '';
             document.getElementById('input-cantidad-ingrediente').value = '';
+            
+            const selectorArticulo = document.getElementById('selector-articulo');
+            if (selectorArticulo) {
+                selectorArticulo.value = '';
+            }
+            const inputCantidadArticulo = document.getElementById('input-cantidad-articulo');
+            if (inputCantidadArticulo) {
+                inputCantidadArticulo.value = '';
+            }
+            
             state.ingredientesCargados = [];
+            state.articulosReceta = [];
+            
             const tbody = document.querySelector('#tabla-ingredientes tbody');
             if (tbody) {
-                // Remover event listener al cerrar
-                tbody.removeEventListener('click', handleEliminarIngrediente);
                 tbody.innerHTML = '';
+            }
+            
+            const tbodyArticulos = document.querySelector('#tabla-articulos-receta tbody');
+            if (tbodyArticulos) {
+                tbodyArticulos.innerHTML = '';
+            }
+            
+            const seccionArticulos = document.getElementById('seccion-articulos-receta');
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'none';
+            }
+            
+            const contenedorArticulos = document.getElementById('contenedor-articulos');
+            if (contenedorArticulos) {
+                contenedorArticulos.style.display = 'none';
+            }
+            
+            const formActionsArticulos = document.getElementById('form-actions-articulos');
+            if (formActionsArticulos) {
+                formActionsArticulos.style.display = 'none';
             }
         }, 300);
     }
 }
 
-// Función para manejar la eliminación de ingredientes
-function handleEliminarIngrediente(e) {
-    if (e.target.classList.contains('btn-eliminar-ingrediente')) {
-        const index = parseInt(e.target.dataset.index);
-        if (!isNaN(index) && index >= 0 && index < state.ingredientesCargados.length) {
-            state.ingredientesCargados.splice(index, 1);
-            e.target.closest('tr').remove();
-            // Actualizar índices de los botones restantes
-            const tbody = document.querySelector('#tabla-ingredientes tbody');
-            tbody.querySelectorAll('.btn-eliminar-ingrediente').forEach((btn, i) => {
-                btn.dataset.index = i;
-            });
-        }
-    }
-}
-
-// Función para agregar ingrediente a la tabla
-function agregarIngredienteATabla(ingrediente, index) {
-    const tbody = document.querySelector('#tabla-ingredientes tbody');
-    if (!tbody) return;
-
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-        <td>${ingrediente.nombre_ingrediente}</td>
-        <td>${ingrediente.unidad_medida}</td>
-        <td>${Number(ingrediente.cantidad).toFixed(10)}</td>
-        <td>
-            <button class="btn-eliminar-ingrediente" data-index="${index ?? state.ingredientesCargados.length - 1}"
-                    style="background-color: #dc3545; color: white; border: none; 
-                           padding: 4px 8px; border-radius: 4px;">
-                Eliminar
-            </button>
-        </td>
-    `;
-    tbody.appendChild(tr);
-}
-
-// Función para cargar ingredientes desde el backend
-async function cargarIngredientesDisponibles() {
-    try {
-        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
-        if (!response.ok) {
-            throw new Error('Error al cargar ingredientes');
-        }
-        ingredientesDisponibles = await response.json();
-        actualizarSelectorIngredientes();
-    } catch (error) {
-        mostrarError('No se pudieron cargar los ingredientes');
-        console.error(error);
-    }
-}
-
-// Función para actualizar el selector de ingredientes
-function actualizarSelectorIngredientes() {
-    const selector = document.getElementById('selector-ingrediente');
-    selector.innerHTML = '<option value="">Seleccione un ingrediente...</option>';
-    
-    ingredientesDisponibles.forEach(ing => {
-        selector.innerHTML += `
-            <option value="${ing.id}" 
-                    data-unidad="${ing.unidad_medida}">
-                ${ing.nombre}
-            </option>`;
-    });
-}
-
-// Función para agregar ingrediente desde el selector
-function agregarIngredienteDesdeSelector() {
-    try {
-        const selector = document.getElementById('selector-ingrediente');
-        const cantidadInput = document.getElementById('input-cantidad-ingrediente');
-        
-        const ingredienteId = selector.value;
-        const cantidad = Number(cantidadInput.value.replace(',', '.'));
-        
-        if (!ingredienteId) {
-            throw new Error('Debe seleccionar un ingrediente');
-        }
-        
-        if (isNaN(cantidad) || cantidad <= 0) {
-            throw new Error('La cantidad debe ser un número mayor a 0');
-        }
-        
-        const ingredienteSeleccionado = ingredientesDisponibles.find(i => i.id === parseInt(ingredienteId));
-        
-        const ingrediente = {
-            ingrediente_id: ingredienteSeleccionado.id,
-            nombre_ingrediente: ingredienteSeleccionado.nombre,
-            unidad_medida: ingredienteSeleccionado.unidad_medida,
-            cantidad: Number(cantidadInput.value.replace(',', '.'))
-        };
-        
-        state.ingredientesCargados.push(ingrediente);
-        agregarIngredienteATabla(ingrediente);
-        
-        // Limpiar campos
-        selector.value = '';
-        cantidadInput.value = '';
-        
-    } catch (error) {
-        mostrarError(error.message);
-    }
-}
-
-// Función para guardar la receta
-async function guardarReceta() {
-    try {
-        const articulo_numero = document.getElementById('articulo_numero').value.trim();
-        const descripcion = document.getElementById('descripcion_receta').value;
-
-        // Validaciones
-        if (!articulo_numero) {
-            throw new Error('El código de artículo es requerido');
-        }
-
-        if (state.ingredientesCargados.length === 0) {
-            throw new Error('Debe agregar al menos un ingrediente a la receta');
-        }
-
-        // Preparar datos para enviar
-        const datos = {
-            articulo_numero,
-            descripcion: descripcion,
-            ingredientes: state.ingredientesCargados.map(ing => ({
-                ingrediente_id: ing.ingrediente_id,
-                nombre_ingrediente: ing.nombre_ingrediente,
-                unidad_medida: ing.unidad_medida,
-                cantidad: Number(ing.cantidad)
-            }))
-        };
-
-        // Enviar al servidor
-        const url = state.existeReceta
-          ? `http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`
-          : 'http://localhost:3002/api/produccion/recetas';
-        const method = state.existeReceta ? 'PUT' : 'POST';
-        const response = await fetch(url, {
-            method,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(datos)
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            
-            // Si es error 400 por receta existente, mostrar mensaje especial
-            if (response.status === 400 && errorData.error.includes('Ya existe una receta')) {
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'error-message';
-                errorDiv.style.backgroundColor = '#f8d7da';
-                errorDiv.style.color = '#721c24';
-                errorDiv.style.padding = '10px';
-                errorDiv.style.marginBottom = '10px';
-                errorDiv.style.borderRadius = '4px';
-                errorDiv.textContent = errorData.error;
-                
-                // Insertar al inicio del contenido del modal
-                const modalContent = document.querySelector('.modal-content');
-                modalContent.insertBefore(errorDiv, modalContent.firstChild);
-                
-                // Remover después de 5 segundos
-                setTimeout(() => {
-                    errorDiv.remove();
-                }, 5000);
-                return;
-            }
-            
-            throw new Error(errorData.error || 'Error al guardar la receta');
-        }
-
-        // Guardar el artículo editado
-        state.ultimoArticuloEditado = articulo_numero;
-        
-        // Actualizar tabla inmediatamente
-        await actualizarTablaArticulos(state.articulosFiltrados);
-        
-        // Cerrar el modal
-        cerrarModalReceta();
-
-        // Buscar y resaltar el artículo editado
-        const filaEditada = document.querySelector(`tr[data-numero="${articulo_numero}"]`);
-        if (filaEditada) {
-            filaEditada.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-
-        // Mostrar mensaje de éxito
-        const successDiv = document.createElement('div');
-        successDiv.className = 'success-message';
-        successDiv.textContent = 'Receta guardada correctamente';
-        document.querySelector('.modal-content').appendChild(successDiv);
-        
-        // Remover el mensaje después de 3 segundos
-        setTimeout(() => {
-            successDiv.remove();
-        }, 3000);
-
-    } catch (error) {
-        console.error('Error al guardar receta:', error);
-        mostrarError(error.message);
-    }
-}
-
-// Función para mostrar el modal de receta
-export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo = 'auto') {
-    const modal = document.getElementById('modal-receta');
-    if (modal) {
-        try {
-            // Establecer el modo explícitamente
-            if (modo === 'crear') {
-                state.existeReceta = false;
-            } else if (modo === 'editar') {
-                state.existeReceta = true;
-            }
-
-            // Establecer el código del artículo
-            document.getElementById('articulo_numero').value = articulo_numero;
-            document.getElementById('articulo_descripcion').value = articulo_nombre;
-            
-            // Cargar ingredientes disponibles primero
-            await cargarIngredientesDisponibles();
-            
-            // Intentar obtener la receta existente solo si no es modo crear
-            if (modo !== 'crear') {
-                try {
-                    const response = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`);
-                    
-                    if (response.ok) {
-                        // Si la receta existe, cargar sus datos
-                        const receta = await response.json();
-                        document.getElementById('descripcion_receta').value = receta.descripcion || '';
-                        state.ingredientesCargados = receta.ingredientes || [];
-                        state.existeReceta = true;
-                    } else if (response.status === 404) {
-                        // Si la receta no existe, inicializar vacía
-                        document.getElementById('descripcion_receta').value = '';
-                        state.ingredientesCargados = [];
-                        state.existeReceta = false;
-                    } else {
-                        // Si hay otro error, lanzarlo
-                        throw new Error('Error al obtener la receta');
-                    }
-                } catch (error) {
-                    if (error.message !== 'Error al obtener la receta') {
-                        console.error('Error al cargar la receta:', error);
-                    }
-                    // Si hay error que no sea 404, inicializar vacía
-                    document.getElementById('descripcion_receta').value = '';
-                    state.ingredientesCargados = [];
-                }
-            } else {
-                // Si es modo crear, inicializar vacía directamente
-                document.getElementById('descripcion_receta').value = '';
-                state.ingredientesCargados = [];
-            }
-
-            // Actualizar tabla de ingredientes
-            const tbody = document.querySelector('#tabla-ingredientes tbody');
-            if (tbody) {
-                tbody.innerHTML = '';
-                // Remover listener anterior si existe
-                tbody.removeEventListener('click', handleEliminarIngrediente);
-                // Agregar nuevo listener
-                tbody.addEventListener('click', handleEliminarIngrediente);
-                // Renderizar ingredientes
-                state.ingredientesCargados.forEach((ingrediente, index) => {
-                    agregarIngredienteATabla(ingrediente, index);
-                });
-            }
-
-            // Mostrar el modal con animación
-            modal.style.display = 'block';
-            setTimeout(() => {
-                modal.classList.add('show');
-            }, 10);
-
-
-
-            // Registrar el event listener para el botón de agregar ingrediente
-            const btnAgregarIngrediente = document.getElementById('btn-agregar-ingrediente');
-            if (btnAgregarIngrediente) {
-                btnAgregarIngrediente.removeEventListener('click', agregarIngredienteDesdeSelector);
-                btnAgregarIngrediente.addEventListener('click', agregarIngredienteDesdeSelector);
-            }
-
-            // Reconectar el event listener para el selector de ingredientes
-            const selectorIngrediente = document.getElementById('selector-ingrediente');
-            if (selectorIngrediente) {
-                selectorIngrediente.removeEventListener('change', toggleCantidadField);
-                selectorIngrediente.addEventListener('change', toggleCantidadField);
-                toggleCantidadField();
-            }
-
-        } catch (error) {
-            console.error('Error al preparar el modal de receta:', error);
-            mostrarError('Error al preparar el formulario de receta');
-            modal.style.display = 'none';
-        }
-    }
-}
-
-// Función para agregar artículo al carro (optimizada)
+// Función para agregar artículo al carro
 export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
-    // Si el botón es rojo, mostrar el modal de receta en lugar de agregar al carro
     if (btnElement.classList.contains('btn-danger')) {
         mostrarModalReceta(articulo_numero);
         return;
     }
 
-    // Verificar si es una receta con problemas de integridad
     const esIntegra = btnElement.dataset.integra === 'true';
     if (btnElement.classList.contains('btn-warning-integridad') || !esIntegra) {
         const confirmar = confirm(
@@ -784,7 +411,6 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             throw new Error('La cantidad debe ser un número positivo');
         }
 
-        // Mostrar feedback inmediato
         btnElement.disabled = true;
         btnElement.textContent = 'Agregando...';
 
@@ -806,17 +432,15 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             throw new Error(errorData.error || 'Error al agregar el artículo al carro');
         }
 
-        // Restaurar botón
         btnElement.disabled = false;
         btnElement.textContent = 'Ag. carro';
 
-        // Mostrar mensaje de éxito (diferente si hay problemas de integridad)
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
         
         if (!esIntegra) {
             successDiv.textContent = 'Artículo agregado con advertencias de integridad';
-            successDiv.style.backgroundColor = '#ffc107'; // Color amarillo para advertencia
+            successDiv.style.backgroundColor = '#ffc107';
             successDiv.style.color = '#212529';
         } else {
             successDiv.textContent = 'Artículo agregado correctamente';
@@ -835,237 +459,523 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         `;
         document.body.appendChild(successDiv);
         
-        // Remover el mensaje después de 3 segundos
         setTimeout(() => {
             successDiv.remove();
         }, 3000);
 
-        // Agregar el nuevo artículo al DOM inmediatamente
-        await agregarArticuloAlDOM(articulo_numero, descripcion, cantidad);
-        
-        // Actualizar resumen en segundo plano
-        actualizarResumenEnSegundoPlano(carroId, colaborador.id);
-
-        // Cerrar el modal después de agregar
         cerrarModalArticulos();
+
+        // 🔄 ACTUALIZAR RESUMEN AUTOMÁTICAMENTE DESPUÉS DE AGREGAR ARTÍCULO
+        try {
+            console.log('🔄 Actualizando resumen después de agregar artículo...');
+            
+            // Actualizar lista de artículos del carro
+            await mostrarArticulosDelCarro();
+            
+            // Actualizar resumen de ingredientes
+            const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+            mostrarResumenIngredientes(ingredientes);
+            
+            // Actualizar resumen de mixes
+            const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+            mostrarResumenMixes(mixes);
+            
+            // Actualizar resumen de artículos (solo para carros externos)
+            const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+            if (articulos && articulos.length > 0) {
+                mostrarResumenArticulos(articulos);
+                const seccionArticulos = document.getElementById('resumen-articulos');
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'block';
+                }
+            }
+            
+            console.log('✅ Resumen actualizado correctamente');
+        } catch (updateError) {
+            console.error('⚠️ Error al actualizar resumen:', updateError);
+            // No mostrar error al usuario, solo log para debug
+        }
 
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
-        // Restaurar botón en caso de error
         btnElement.disabled = false;
         btnElement.textContent = 'Ag. carro';
     }
 }
 
-// Función para agregar artículo al DOM inmediatamente
-async function agregarArticuloAlDOM(articulo_numero, descripcion, cantidad) {
+// Funciones para manejo de artículos en recetas
+export async function cargarArticulosDisponibles() {
     try {
-        const contenedor = document.getElementById('lista-articulos');
-        if (!contenedor) return;
+        // Para el desplegable de artículos en recetas, cargar TODOS los artículos
+        // No aplicar filtro de tipo_carro para permitir insumos como "mezcla para grana de sol"
+        const response = await fetch('http://localhost:3002/api/produccion/articulos');
+        if (!response.ok) {
+            throw new Error('Error al cargar artículos disponibles');
+        }
+        const articulos = await response.json();
+        state.articulosDisponibles = articulos;
+        actualizarSelectorArticulos();
+    } catch (error) {
+        mostrarError(error.message);
+        console.error(error);
+    }
+}
 
-        const seccionArticulos = contenedor.querySelector('.seccion-articulos');
-        if (!seccionArticulos) return;
+export function actualizarSelectorArticulos() {
+    const selector = document.getElementById('selector-articulo');
+    if (!selector) return;
+    selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
+    state.articulosDisponibles.forEach(art => {
+        selector.innerHTML += `<option value="${art.numero}">${art.nombre}</option>`;
+    });
+}
 
-        // Obtener ingredientes del artículo
-        const ingredientes = await obtenerIngredientesExpandidos(articulo_numero);
+export function toggleCantidadArticuloField() {
+    const selector = document.getElementById('selector-articulo');
+    const cantidadContainer = document.getElementById('cantidad-articulo-container');
+    if (!selector || !cantidadContainer) return;
 
-        // Crear HTML del nuevo artículo
-        let htmlArticulo = `
-            <div class="articulo-container" data-numero="${articulo_numero}">
-                <div class="articulo-info">
-                    <span class="articulo-codigo">${articulo_numero}</span>
-                    <span class="articulo-descripcion">${descripcion}</span>
-                </div>
-                <div class="articulo-actions">
-                    <input type="number"
-                           class="input-cantidad-articulo"
-                           value="${cantidad}"
-                           min="1"
-                           data-numero="${articulo_numero}">
-                    <button class="btn-eliminar-articulo"
-                            data-numero="${articulo_numero}">
-                        🗑️
-                    </button>
-                </div>
-                <button class="toggle-ingredientes">Ver</button>
-            </div>
-        `;
+    if (selector.value) {
+        cantidadContainer.style.display = 'block';
+    } else {
+        cantidadContainer.style.display = 'none';
+        const inputCantidad = document.getElementById('input-cantidad-articulo');
+        if (inputCantidad) inputCantidad.value = '';
+    }
+}
 
-        // Agregar ingredientes
-        if (ingredientes && ingredientes.length > 0) {
-            htmlArticulo += `
-                <div class="ingredientes-expandidos hidden">
-                    <div>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Ingrediente</th>
-                                    <th>Cantidad</th>
-                                    <th>Unidad</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-            `;
+export function agregarArticuloATabla(articulo, index) {
+    const tbody = document.querySelector('#tabla-articulos-receta tbody');
+    if (!tbody) return;
 
-            ingredientes.forEach(ing => {
-                const cantidadTotal = Number(ing.cantidad) * Number(cantidad);
-                htmlArticulo += `
-                    <tr>
-                        <td>${ing.nombre}</td>
-                        <td data-base="${Number(ing.cantidad).toFixed(10)}">${Number(cantidadTotal).toFixed(10)}</td>
-                        <td>${ing.unidad_medida}</td>
-                    </tr>
-                `;
-            });
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${articulo.articulo_numero}</td>
+        <td>${Number(articulo.cantidad).toFixed(2)}</td>
+        <td>
+            <button class="btn-eliminar-articulo-receta" data-index="${index}" style="background-color: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px;">
+                Eliminar
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+}
 
-            htmlArticulo += `
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-        } else {
-            htmlArticulo += `
-                <div class="ingredientes-expandidos hidden">
-                    <div class="ingredientes-error">
-                        No se pudieron cargar los ingredientes para este artículo.
-                    </div>
-                </div>
-            `;
+export function agregarArticuloDesdeSelector() {
+    try {
+        const selector = document.getElementById('selector-articulo');
+        const cantidadInput = document.getElementById('input-cantidad-articulo');
+
+        const articuloNumero = selector.value;
+        const cantidad = Number(cantidadInput.value.replace(',', '.'));
+
+        if (!articuloNumero) {
+            throw new Error('Debe seleccionar un artículo');
         }
 
-        // Insertar el nuevo artículo al final
-        seccionArticulos.insertAdjacentHTML('beforeend', htmlArticulo);
-
-    } catch (error) {
-        console.error('Error al agregar artículo al DOM:', error);
-        // Si falla, recargar la vista completa
-        const { mostrarArticulosDelCarro } = await import('./carro.js');
-        await mostrarArticulosDelCarro();
-    }
-}
-
-// Función para actualizar resumen en segundo plano
-async function actualizarResumenEnSegundoPlano(carroId, colaboradorId) {
-    try {
-        const { obtenerResumenIngredientesCarro, mostrarResumenIngredientes, obtenerResumenMixesCarro, mostrarResumenMixes } = await import('./carro.js');
-        
-        // Actualizar ingredientes
-        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaboradorId);
-        mostrarResumenIngredientes(ingredientes);
-        
-        // Actualizar mixes
-        const mixes = await obtenerResumenMixesCarro(carroId, colaboradorId);
-        mostrarResumenMixes(mixes);
-    } catch (error) {
-        console.error('Error al actualizar resumen:', error);
-    }
-}
-
-// Función auxiliar para obtener ingredientes expandidos
-async function obtenerIngredientesExpandidos(numeroArticulo) {
-    try {
-        const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
-        const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticuloEncoded}/ingredientes-expandido`);
-        if (!response.ok) throw new Error('No se encontraron ingredientes');
-        return await response.json();
-    } catch (error) {
-        console.error(`Error al obtener ingredientes para ${numeroArticulo}:`, error);
-        return null;
-    }
-}
-
-// Función para abrir el modal de nuevo ingrediente
-function abrirModalNuevoIngrediente() {
-    const modal = document.getElementById('modal-nuevo-ingrediente');
-    if (modal) {
-        modal.style.display = 'block';
-        setTimeout(() => {
-            modal.classList.add('show');
-        }, 10);
-    }
-}
-
-// Función para cerrar el modal de nuevo ingrediente
-function cerrarModalNuevoIngrediente() {
-    const modal = document.getElementById('modal-nuevo-ingrediente');
-    if (modal) {
-        modal.classList.remove('show');
-        setTimeout(() => {
-            modal.style.display = 'none';
-            // Limpiar el formulario
-            document.getElementById('nombre-ingrediente').value = '';
-            document.getElementById('unidad-medida-ingrediente').value = '';
-            document.getElementById('categoria-ingrediente').value = '';
-            document.getElementById('stock-ingrediente').value = '';
-        }, 300);
-    }
-}
-
-// Función para guardar el nuevo ingrediente
-async function guardarNuevoIngrediente() {
-    try {
-        const nombre = document.getElementById('nombre-ingrediente').value.trim();
-        const unidadMedida = document.getElementById('unidad-medida-ingrediente').value;
-        const categoria = document.getElementById('categoria-ingrediente').value;
-        const stock = document.getElementById('stock-ingrediente').value;
-
-        if (!nombre) {
-            throw new Error('El nombre del ingrediente es requerido');
+        if (isNaN(cantidad) || cantidad <= 0) {
+            throw new Error('La cantidad debe ser un número mayor a 0');
         }
 
-        const datos = {
-            nombre,
-            unidad_medida: unidadMedida,
-            categoria,
-            stock: stock || 0
+        const articuloSeleccionado = state.articulosDisponibles.find(a => a.numero === articuloNumero);
+
+        const articulo = {
+            articulo_numero: articuloSeleccionado.numero,
+            cantidad: cantidad
         };
 
-        const response = await fetch('http://localhost:3002/api/produccion/ingredientes', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(datos)
-        });
+        state.articulosReceta.push(articulo);
+        agregarArticuloATabla(articulo, state.articulosReceta.length - 1);
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al guardar el ingrediente');
-        }
-
-        const nuevoIngrediente = await response.json();
-        
-        // Cerrar el modal
-        cerrarModalNuevoIngrediente();
-        
-        // Actualizar la lista de ingredientes y preseleccionar el nuevo
-        await cargarIngredientesDisponibles();
-        
-        // Seleccionar el nuevo ingrediente
-        const selector = document.getElementById('selector-ingrediente');
-        if (selector) {
-            selector.value = nuevoIngrediente.id;
-            // Disparar el evento change para que se muestre el campo de cantidad automáticamente
-            selector.dispatchEvent(new Event('change'));
-        }
-
-        // Mostrar mensaje de éxito
-        const successDiv = document.createElement('div');
-        successDiv.className = 'success-message';
-        successDiv.textContent = 'Ingrediente creado correctamente';
-        document.querySelector('.modal-content').appendChild(successDiv);
-        
-        setTimeout(() => {
-            successDiv.remove();
-        }, 3000);
+        selector.value = '';
+        cantidadInput.value = '';
 
     } catch (error) {
-        console.error('Error:', error);
         mostrarError(error.message);
     }
 }
+
+export function eliminarArticuloDeTabla(index) {
+    if (index >= 0 && index < state.articulosReceta.length) {
+        state.articulosReceta.splice(index, 1);
+        const tbody = document.querySelector('#tabla-articulos-receta tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        state.articulosReceta.forEach((art, idx) => {
+            agregarArticuloATabla(art, idx);
+        });
+    }
+}
+
+// Función para mostrar modal de receta
+export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo = 'auto') {
+    const modal = document.getElementById('modal-receta');
+    if (modal) {
+        try {
+            if (modo === 'crear') {
+                state.existeReceta = false;
+            } else if (modo === 'editar') {
+                state.existeReceta = true;
+            }
+
+            document.getElementById('articulo_numero').value = articulo_numero;
+            document.getElementById('articulo_descripcion').value = articulo_nombre;
+            
+            // Detectar tipo de carro para mostrar/ocultar sección de artículos
+            const carroId = localStorage.getItem('carroActivo');
+            let tipoCarro = 'interna';
+            
+            if (carroId) {
+                try {
+                    const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+                    if (carroResponse.ok) {
+                        const carroData = await carroResponse.json();
+                        tipoCarro = carroData.tipo_carro || 'interna';
+                    }
+                } catch (error) {
+                    console.warn('Error al obtener tipo de carro:', error);
+                }
+            }
+
+            // Mostrar/ocultar sección de artículos según tipo de carro
+            const seccionArticulos = document.getElementById('seccion-articulos-receta');
+            const contenedorArticulos = document.getElementById('contenedor-articulos');
+            const formActionsArticulos = document.getElementById('form-actions-articulos');
+            
+            if (tipoCarro === 'externa') {
+                if (seccionArticulos) seccionArticulos.style.display = 'block';
+                if (contenedorArticulos) contenedorArticulos.style.display = 'block';
+                if (formActionsArticulos) formActionsArticulos.style.display = 'block';
+                
+                // Cargar artículos disponibles
+                await cargarArticulosDisponibles();
+            } else {
+                if (seccionArticulos) seccionArticulos.style.display = 'none';
+                if (contenedorArticulos) contenedorArticulos.style.display = 'none';
+                if (formActionsArticulos) formActionsArticulos.style.display = 'none';
+            }
+            
+            // Cargar ingredientes disponibles
+            await cargarIngredientesDisponibles();
+            
+            // Intentar obtener la receta existente
+            if (modo !== 'crear') {
+                try {
+                    const response = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`);
+                    
+                    if (response.ok) {
+                        const receta = await response.json();
+                        document.getElementById('descripcion_receta').value = receta.descripcion || '';
+                        state.ingredientesCargados = receta.ingredientes || [];
+                        state.articulosReceta = receta.articulos || [];
+                        state.existeReceta = true;
+                    } else if (response.status === 404) {
+                        document.getElementById('descripcion_receta').value = '';
+                        state.ingredientesCargados = [];
+                        state.articulosReceta = [];
+                        state.existeReceta = false;
+                    }
+                } catch (error) {
+                    console.error('Error al cargar la receta:', error);
+                    document.getElementById('descripcion_receta').value = '';
+                    state.ingredientesCargados = [];
+                    state.articulosReceta = [];
+                }
+            } else {
+                document.getElementById('descripcion_receta').value = '';
+                state.ingredientesCargados = [];
+                state.articulosReceta = [];
+            }
+
+            // Actualizar tablas
+            const tbody = document.querySelector('#tabla-ingredientes tbody');
+            if (tbody) {
+                tbody.innerHTML = '';
+                state.ingredientesCargados.forEach((ingrediente, index) => {
+                    agregarIngredienteATabla(ingrediente, index);
+                });
+            }
+
+            const tbodyArticulos = document.querySelector('#tabla-articulos-receta tbody');
+            if (tbodyArticulos) {
+                tbodyArticulos.innerHTML = '';
+                state.articulosReceta.forEach((articulo, index) => {
+                    agregarArticuloATabla(articulo, index);
+                });
+            }
+
+            modal.style.display = 'block';
+            setTimeout(() => {
+                modal.classList.add('show');
+            }, 10);
+
+        } catch (error) {
+            console.error('Error al preparar el modal de receta:', error);
+            mostrarError('Error al preparar el formulario de receta');
+            modal.style.display = 'none';
+        }
+    }
+}
+
+// Funciones auxiliares para ingredientes
+async function cargarIngredientesDisponibles() {
+    try {
+        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+        if (!response.ok) {
+            throw new Error('Error al cargar ingredientes');
+        }
+        ingredientesDisponibles = await response.json();
+        actualizarSelectorIngredientes();
+    } catch (error) {
+        mostrarError('No se pudieron cargar los ingredientes');
+        console.error(error);
+    }
+}
+
+function actualizarSelectorIngredientes() {
+    const selector = document.getElementById('selector-ingrediente');
+    selector.innerHTML = '<option value="">Seleccione un ingrediente...</option>';
+    
+    ingredientesDisponibles.forEach(ing => {
+        selector.innerHTML += `
+            <option value="${ing.id}" 
+                    data-unidad="${ing.unidad_medida}">
+                ${ing.nombre}
+            </option>`;
+    });
+}
+
+function agregarIngredienteATabla(ingrediente, index) {
+    const tbody = document.querySelector('#tabla-ingredientes tbody');
+    if (!tbody) return;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${ingrediente.nombre_ingrediente}</td>
+        <td>${ingrediente.unidad_medida}</td>
+        <td>${Number(ingrediente.cantidad).toFixed(10)}</td>
+        <td>
+            <button class="btn-eliminar-ingrediente" data-index="${index ?? state.ingredientesCargados.length - 1}"
+                    style="background-color: #dc3545; color: white; border: none; 
+                           padding: 4px 8px; border-radius: 4px;">
+                Eliminar
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Event listeners para el modal de receta
+    const btnGuardarReceta = document.getElementById('btn-guardar-receta');
+    if (btnGuardarReceta) {
+        btnGuardarReceta.addEventListener('click', async () => {
+            try {
+                const articulo_numero = document.getElementById('articulo_numero').value.trim();
+                const descripcion = document.getElementById('descripcion_receta').value;
+
+                if (!articulo_numero) {
+                    throw new Error('El código de artículo es requerido');
+                }
+
+                if (state.ingredientesCargados.length === 0 && state.articulosReceta.length === 0) {
+                    throw new Error('Debe agregar al menos un ingrediente o artículo a la receta');
+                }
+
+                const datos = {
+                    articulo_numero,
+                    descripcion,
+                    ingredientes: state.ingredientesCargados.map(ing => ({
+                        ingrediente_id: ing.ingrediente_id,
+                        nombre_ingrediente: ing.nombre_ingrediente,
+                        unidad_medida: ing.unidad_medida,
+                        cantidad: Number(ing.cantidad)
+                    })),
+                    articulos: state.articulosReceta.map(art => ({
+                        articulo_numero: art.articulo_numero,
+                        cantidad: Number(art.cantidad)
+                    }))
+                };
+
+                const url = state.existeReceta
+                    ? `http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`
+                    : 'http://localhost:3002/api/produccion/recetas';
+                const method = state.existeReceta ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(datos)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error al guardar la receta');
+                }
+
+                state.ultimoArticuloEditado = articulo_numero;
+                await actualizarTablaArticulos(state.articulosFiltrados);
+                cerrarModalReceta();
+
+                const successDiv = document.createElement('div');
+                successDiv.className = 'success-message';
+                successDiv.textContent = 'Receta guardada correctamente';
+                successDiv.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background-color: #28a745;
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 4px;
+                    z-index: 10000;
+                `;
+                document.body.appendChild(successDiv);
+
+                setTimeout(() => {
+                    successDiv.remove();
+                }, 3000);
+
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+    }
+
+    // Event listeners para agregar ingredientes
+    const btnAgregarIngrediente = document.getElementById('btn-agregar-ingrediente');
+    if (btnAgregarIngrediente) {
+        btnAgregarIngrediente.addEventListener('click', () => {
+            try {
+                const selector = document.getElementById('selector-ingrediente');
+                const cantidadInput = document.getElementById('input-cantidad-ingrediente');
+                
+                const ingredienteId = selector.value;
+                const cantidad = Number(cantidadInput.value.replace(',', '.'));
+                
+                if (!ingredienteId) {
+                    throw new Error('Debe seleccionar un ingrediente');
+                }
+                
+                if (isNaN(cantidad) || cantidad <= 0) {
+                    throw new Error('La cantidad debe ser un número mayor a 0');
+                }
+                
+                const ingredienteSeleccionado = ingredientesDisponibles.find(i => i.id === parseInt(ingredienteId));
+                
+                const ingrediente = {
+                    ingrediente_id: ingredienteSeleccionado.id,
+                    nombre_ingrediente: ingredienteSeleccionado.nombre,
+                    unidad_medida: ingredienteSeleccionado.unidad_medida,
+                    cantidad: cantidad
+                };
+                
+                state.ingredientesCargados.push(ingrediente);
+                agregarIngredienteATabla(ingrediente);
+                
+                selector.value = '';
+                cantidadInput.value = '';
+                
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+    }
+
+    // Event listeners para agregar artículos
+    const btnAgregarArticulo = document.getElementById('btn-agregar-articulo');
+    if (btnAgregarArticulo) {
+        btnAgregarArticulo.addEventListener('click', agregarArticuloDesdeSelector);
+    }
+
+    // Event listeners para selectores
+    const selectorIngrediente = document.getElementById('selector-ingrediente');
+    if (selectorIngrediente) {
+        selectorIngrediente.addEventListener('change', () => {
+            const cantidadContainer = document.getElementById('cantidad-container');
+            if (cantidadContainer) {
+                cantidadContainer.style.display = selectorIngrediente.value ? 'block' : 'none';
+            }
+        });
+    }
+
+    const selectorArticulo = document.getElementById('selector-articulo');
+    if (selectorArticulo) {
+        selectorArticulo.addEventListener('change', toggleCantidadArticuloField);
+    }
+
+    // Event listeners para eliminar elementos
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('btn-eliminar-ingrediente')) {
+            const index = parseInt(e.target.dataset.index);
+            if (!isNaN(index) && index >= 0 && index < state.ingredientesCargados.length) {
+                state.ingredientesCargados.splice(index, 1);
+                e.target.closest('tr').remove();
+                const tbody = document.querySelector('#tabla-ingredientes tbody');
+                tbody.querySelectorAll('.btn-eliminar-ingrediente').forEach((btn, i) => {
+                    btn.dataset.index = i;
+                });
+            }
+        }
+
+        if (e.target.classList.contains('btn-eliminar-articulo-receta')) {
+            const index = parseInt(e.target.dataset.index);
+            eliminarArticuloDeTabla(index);
+        }
+
+        if (e.target.classList.contains('btn-agregar')) {
+            const articulo_numero = e.target.dataset.numero;
+            const descripcion = e.target.dataset.nombre;
+            agregarAlCarro(articulo_numero, descripcion, e.target);
+        }
+
+        if (e.target.classList.contains('btn-editar-receta')) {
+            const articulo_numero = e.target.dataset.numero;
+            const articulo_nombre = e.target.dataset.nombre;
+            const modo = e.target.dataset.modo;
+            mostrarModalReceta(articulo_numero, articulo_nombre, modo);
+        }
+
+        if (e.target.classList.contains('btn-desvincular-receta')) {
+            const articulo_numero = e.target.dataset.numero;
+            const articulo_nombre = e.target.dataset.nombre;
+            desvincularReceta(articulo_numero, articulo_nombre);
+        }
+    });
+
+    // Event listeners para cerrar modales
+    const modalReceta = document.getElementById('modal-receta');
+    if (modalReceta) {
+        const btnCerrar = modalReceta.querySelector('.close-modal');
+        if (btnCerrar) {
+            btnCerrar.addEventListener('click', cerrarModalReceta);
+        }
+
+        modalReceta.addEventListener('click', (e) => {
+            if (e.target === modalReceta) {
+                cerrarModalReceta();
+            }
+        });
+    }
+
+    const modalArticulos = document.getElementById('modal-articulos');
+    if (modalArticulos) {
+        const btnCerrar = modalArticulos.querySelector('.close-modal');
+        if (btnCerrar) {
+            btnCerrar.addEventListener('click', cerrarModalArticulos);
+        }
+
+        modalArticulos.addEventListener('click', (e) => {
+            if (e.target === modalArticulos) {
+                cerrarModalArticulos();
+            }
+        });
+    }
+});
 
 // Función para desvincular receta
 async function desvincularReceta(articulo_numero, articulo_nombre) {
@@ -1074,7 +984,6 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             return;
         }
 
-        // 1. Eliminar la receta - usar el número de artículo sin modificar
         const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`, {
             method: 'DELETE'
         });
@@ -1084,28 +993,8 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             throw new Error(errorData.error || 'Error al desvincular la receta');
         }
 
-        // 2. Obtener el estado actualizado de todas las recetas
-        const estadoResponse = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                articulos: state.articulosFiltrados.map(art => art.numero.replace(/[^a-zA-Z0-9]/g, ''))
-            })
-        });
-
-        if (!estadoResponse.ok) {
-            throw new Error('Error al actualizar el estado de las recetas');
-        }
-
-        // 3. Actualizar el estado local
-        const estadoRecetas = await estadoResponse.json();
-        
-        // 4. Actualizar la tabla con el nuevo estado
         await actualizarTablaArticulos(state.articulosFiltrados);
 
-        // Mostrar mensaje de éxito
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
         successDiv.textContent = 'Receta desvinculada correctamente';
@@ -1118,7 +1007,6 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             padding: 10px 20px;
             border-radius: 4px;
             z-index: 10000;
-            animation: slideIn 0.3s ease-out;
         `;
         document.body.appendChild(successDiv);
         
@@ -1131,89 +1019,3 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
         mostrarError(error.message);
     }
 }
-
-// Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
-    const btnGuardarReceta = document.getElementById('btn-guardar-receta');
-    if (btnGuardarReceta) {
-        btnGuardarReceta.addEventListener('click', guardarReceta);
-    }
-
-    // Asignar el evento change y ejecutar la función inicialmente
-    const selectorIngrediente = document.getElementById('selector-ingrediente');
-    const cantidadContainer = document.getElementById('cantidad-container');
-    if (selectorIngrediente && cantidadContainer) {
-        selectorIngrediente.addEventListener('change', toggleCantidadField);
-        // Asegurar el estado inicial correcto
-        toggleCantidadField();
-    }
-
-    // Event listeners para el modal de nuevo ingrediente
-    const btnNuevoIngrediente = document.getElementById('btn-nuevo-ingrediente');
-    if (btnNuevoIngrediente) {
-        btnNuevoIngrediente.addEventListener('click', abrirModalNuevoIngrediente);
-    }
-
-    const modalNuevoIngrediente = document.getElementById('modal-nuevo-ingrediente');
-    if (modalNuevoIngrediente) {
-        // Cerrar al hacer clic en el botón X
-        const btnCerrar = modalNuevoIngrediente.querySelector('.close-modal');
-        if (btnCerrar) {
-            btnCerrar.addEventListener('click', cerrarModalNuevoIngrediente);
-        }
-
-        // Cerrar al hacer clic fuera del modal
-        modalNuevoIngrediente.addEventListener('click', (e) => {
-            if (e.target === modalNuevoIngrediente) {
-                cerrarModalNuevoIngrediente();
-            }
-        });
-
-        // Botón cancelar
-        const btnCancelar = document.getElementById('btn-cancelar-ingrediente');
-        if (btnCancelar) {
-            btnCancelar.addEventListener('click', cerrarModalNuevoIngrediente);
-        }
-
-        // Botón guardar
-        const btnGuardar = document.getElementById('btn-guardar-ingrediente');
-        if (btnGuardar) {
-            btnGuardar.addEventListener('click', guardarNuevoIngrediente);
-        }
-    }
-
-    // Agregar event listener para el botón de cerrar del modal de receta
-    const modalReceta = document.getElementById('modal-receta');
-    if (modalReceta) {
-        // Cerrar al hacer clic en el botón X
-        const btnCerrar = modalReceta.querySelector('.close-modal');
-        if (btnCerrar) {
-            btnCerrar.addEventListener('click', cerrarModalReceta);
-        }
-
-        // Cerrar al hacer clic fuera del modal
-        modalReceta.addEventListener('click', (e) => {
-            if (e.target === modalReceta) {
-                cerrarModalReceta();
-            }
-        });
-    }
-
-    // Agregar event listener para los botones de agregar al carro y editar receta
-    document.addEventListener('click', async (e) => {
-        if (e.target.classList.contains('btn-agregar')) {
-            const articulo_numero = e.target.dataset.numero;
-            const descripcion = e.target.dataset.nombre;
-            await agregarAlCarro(articulo_numero, descripcion, e.target);
-        } else if (e.target.classList.contains('btn-editar-receta')) {
-            const articulo_numero = e.target.dataset.numero;
-            const articulo_nombre = e.target.dataset.nombre;
-            const modo = e.target.dataset.modo;
-            mostrarModalReceta(articulo_numero, articulo_nombre, modo);
-        } else if (e.target.classList.contains('btn-desvincular-receta')) {
-            const articulo_numero = e.target.dataset.numero;
-            const articulo_nombre = e.target.dataset.nombre;
-            await desvincularReceta(articulo_numero, articulo_nombre);
-        }
-    });
-});

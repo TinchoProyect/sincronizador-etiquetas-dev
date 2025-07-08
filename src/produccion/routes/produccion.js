@@ -1040,9 +1040,85 @@ router.post('/carro/:id/finalizar', async (req, res, next) => {
     }
 });
 
+// Ruta para obtener el resumen de artículos de un carro (solo para carros externos)
+router.get('/carro/:id/articulos-resumen', async (req, res) => {
+    try {
+        const carroId = parseInt(req.params.id);
+        const usuarioId = parseInt(req.query.usuarioId);
+
+        if (isNaN(carroId) || isNaN(usuarioId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+
+        // Verificar que el carro pertenezca al usuario
+        const carroQuery = `
+            SELECT tipo_carro
+            FROM carros_produccion
+            WHERE id = $1 AND usuario_id = $2
+        `;
+        const carroResult = await req.db.query(carroQuery, [carroId, usuarioId]);
+
+        if (carroResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Carro no encontrado' });
+        }
+
+        const tipoCarro = carroResult.rows[0].tipo_carro;
+
+        // Solo devolver artículos para carros externos
+        if (tipoCarro !== 'externa') {
+            return res.status(404).json({ error: 'Esta funcionalidad solo está disponible para carros externos' });
+        }
+
+        // Obtener artículos de recetas en el carro
+        const articulosQuery = `
+            SELECT 
+                ra.articulo_numero,
+                a.nombre,
+                SUM(ra.cantidad * ca.cantidad) as cantidad_total,
+                COALESCE(src.stock_consolidado, 0) as stock_actual
+            FROM carros_articulos ca
+            JOIN recetas r ON r.articulo_numero = ca.articulo_numero
+            JOIN receta_articulos ra ON ra.receta_id = r.id
+            LEFT JOIN articulos a ON a.numero = ra.articulo_numero
+            LEFT JOIN stock_real_consolidado src ON src.articulo_numero = ra.articulo_numero
+            WHERE ca.carro_id = $1
+            GROUP BY ra.articulo_numero, a.nombre, src.stock_consolidado
+            ORDER BY ra.articulo_numero
+        `;
+
+        const result = await req.db.query(articulosQuery, [carroId]);
+        res.json(result.rows);
+
+    } catch (error) {
+        console.error('Error al obtener resumen de artículos:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
 // Ruta para obtener el estado de un carro
 // Ruta para obtener artículos para impresión de etiquetas
 router.get('/carro/:id/articulos-etiquetas', obtenerArticulosParaEtiquetas);
+
+// Ruta para obtener artículos de recetas de un carro (solo para carros externos)
+router.get('/carro/:id/articulos-recetas', async (req, res) => {
+    try {
+        const carroId = parseInt(req.params.id);
+        const usuarioId = parseInt(req.query.usuarioId);
+
+        if (isNaN(carroId) || isNaN(usuarioId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+
+        // Importar la función del controlador
+        const { obtenerArticulosDeRecetas } = require('../controllers/carroIngredientes');
+        
+        const articulos = await obtenerArticulosDeRecetas(carroId, usuarioId);
+        res.json(articulos);
+    } catch (error) {
+        console.error('Error al obtener artículos de recetas del carro:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Ruta para obtener ingresos manuales de un carro
 router.get('/carro/:id/ingresos-manuales', async (req, res) => {

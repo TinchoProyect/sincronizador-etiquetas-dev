@@ -45,6 +45,151 @@ async function buscarIngredientePorNombre(nombre) {
 }
 
 /**
+ * Obtiene todos los artículos de recetas necesarios para un carro
+ * @param {number} carroId - ID del carro
+ * @param {number} usuarioId - ID del usuario que solicita los artículos
+ * @returns {Promise<Array>} Lista de artículos consolidados
+ */
+async function obtenerArticulosDeRecetas(carroId, usuarioId) {
+    try {
+        console.log(`\n🚚 INICIANDO ANÁLISIS DE ARTÍCULOS DE RECETAS DEL CARRO ${carroId}`);
+        console.log(`===============================================`);
+        
+        // Validar que el carro pertenece al usuario
+        const esValido = await validarPropiedadCarro(carroId, usuarioId);
+        if (!esValido) {
+            throw new Error('El carro no pertenece al usuario especificado');
+        }
+
+        // 1. Obtener artículos del carro
+        const queryArticulos = `
+            SELECT 
+                ca.articulo_numero,
+                ca.cantidad
+            FROM carros_articulos ca
+            WHERE ca.carro_id = $1
+        `;
+        const articulosResult = await pool.query(queryArticulos, [carroId]);
+        console.log(`📦 ARTÍCULOS EN EL CARRO: ${articulosResult.rows.length}`);
+
+        // 2. Por cada artículo, obtener sus artículos de receta
+        let todosLosArticulos = [];
+        for (const articulo of articulosResult.rows) {
+            console.log(`\n🔍 PROCESANDO ARTÍCULO: ${articulo.articulo_numero}`);
+            console.log(`Cantidad solicitada: ${articulo.cantidad}`);
+            
+            // Obtener artículos de la receta del artículo
+            const queryRecetaArticulos = `
+                SELECT 
+                    ra.articulo_numero,
+                    CAST(ra.cantidad AS DECIMAL(20,10)) as cantidad,
+                    a.nombre as descripcion
+                FROM recetas r
+                JOIN receta_articulos ra ON r.id = ra.receta_id
+                LEFT JOIN articulos a ON a.numero = ra.articulo_numero
+                WHERE r.articulo_numero = $1
+            `;
+            const recetaResult = await pool.query(queryRecetaArticulos, [articulo.articulo_numero]);
+            console.log("🔎 recetaArticulos para", articulo.articulo_numero, recetaResult.rows);
+
+            // Por cada artículo en la receta
+            for (const art of recetaResult.rows) {
+                // Mantener alta precisión en el cálculo de cantidad total
+                const cantidadTotal = Number((art.cantidad * articulo.cantidad).toPrecision(10));
+                
+                console.log(`\n🔍 ANÁLISIS DE CANTIDADES - ${articulo.articulo_numero}`);
+                console.log(`=====================================================`);
+                console.log(`1️⃣ DATOS DE ENTRADA:`);
+                console.log(`- Cantidad en receta: ${art.cantidad} unidades`);
+                console.log(`- Unidades pedidas: ${articulo.cantidad}`);
+                console.log(`2️⃣ CÁLCULO:`);
+                console.log(`${art.cantidad} × ${articulo.cantidad} = ${cantidadTotal} unidades`);
+                console.log(`=====================================================\n`);
+                
+                todosLosArticulos.push({
+                    articulo_numero: art.articulo_numero,
+                    descripcion: art.descripcion || art.articulo_numero,
+                    cantidad: cantidadTotal
+                });
+            }
+        }
+
+        // 3. Consolidar todos los artículos por articulo_numero
+        const articulosConsolidados = consolidarArticulos(todosLosArticulos);
+
+        console.log(`\n✅ ARTÍCULOS DE RECETAS CONSOLIDADOS: ${articulosConsolidados.length}`);
+        if (articulosConsolidados.length > 0) {
+            articulosConsolidados.forEach((art, index) => {
+                console.log(`  ${index + 1}. ${art.articulo_numero}: ${art.cantidad} unidades`);
+            });
+        } else {
+            console.log(`⚠️ No se encontraron artículos en las recetas del carro ${carroId}`);
+        }
+
+        console.log(`===============================================\n`);
+
+        return articulosConsolidados;
+
+    } catch (error) {
+        console.error('Error al obtener artículos de recetas del carro:', error);
+        throw new Error('No se pudieron obtener los artículos de las recetas del carro');
+    }
+}
+
+/**
+ * Consolida una lista de artículos sumando cantidades de artículos con el mismo número
+ * @param {Array} articulos - Lista de artículos a consolidar
+ * @returns {Array} Lista de artículos consolidados
+ */
+function consolidarArticulos(articulos) {
+    console.log(`\n📊 INICIANDO CONSOLIDACIÓN DE ARTÍCULOS`);
+    console.log(`=========================================`);
+    console.log(`Total artículos a consolidar: ${articulos.length}`);
+
+    const consolidados = {};
+
+    articulos.forEach((art, index) => {
+        // Validar estructura del artículo
+        if (!art.articulo_numero || typeof art.cantidad !== 'number') {
+            console.error(`❌ Artículo #${index + 1} inválido:`, art);
+            return;
+        }
+
+        const key = art.articulo_numero;
+
+        console.log(`\n🔍 Procesando artículo #${index + 1}:`);
+        console.log(`- Número: "${art.articulo_numero}"`);
+        console.log(`- Descripción: "${art.descripcion}"`);
+        console.log(`- Cantidad: ${art.cantidad}`);
+
+        if (consolidados[key]) {
+            const anterior = consolidados[key].cantidad;
+            // Mantener alta precisión en las sumas
+            consolidados[key].cantidad = Number((consolidados[key].cantidad + art.cantidad).toPrecision(10));
+            console.log(`➕ SUMANDO cantidades para ${key}:`);
+            console.log(`   ${anterior} + ${art.cantidad} = ${consolidados[key].cantidad}`);
+        } else {
+            console.log(`🆕 NUEVO ARTÍCULO (${key})`);
+            // Asegurar que la cantidad inicial tenga alta precisión
+            consolidados[key] = {
+                articulo_numero: art.articulo_numero,
+                descripcion: art.descripcion,
+                cantidad: Number(art.cantidad.toPrecision(10))
+            };
+        }
+    });
+
+    console.log(`\n✅ CONSOLIDACIÓN COMPLETADA`);
+    console.log(`- Artículos únicos: ${Object.keys(consolidados).length}`);
+
+    const resultado = Object.values(consolidados)
+        .sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
+    
+    console.log(`✅ Consolidación completada. ${resultado.length} artículos únicos:`, resultado);
+    return resultado;
+}
+
+/**
  * Obtiene todos los ingredientes base necesarios para un carro,
  * expandiendo mixes y consolidando cantidades
  * @param {number} carroId - ID del carro
@@ -504,5 +649,6 @@ async function obtenerMixesCarro(carroId, usuarioId) {
 
 module.exports = {
     obtenerIngredientesBaseCarro,
-    obtenerMixesCarro
+    obtenerMixesCarro,
+    obtenerArticulosDeRecetas
 };

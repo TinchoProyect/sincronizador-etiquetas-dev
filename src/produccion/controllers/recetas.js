@@ -115,29 +115,50 @@ async function crearReceta(req, res) {
     const client = await pool.connect();
     
     try {
-        const { articulo_numero, descripcion, ingredientes } = req.body;
+        const { articulo_numero, descripcion, ingredientes, articulos } = req.body;
 
         // Validaciones
         if (!articulo_numero) {
             return res.status(400).json({ error: 'El número de artículo es requerido' });
         }
 
-        if (!Array.isArray(ingredientes) || ingredientes.length === 0) {
-            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente' });
+        // Validar que haya al menos ingredientes O artículos
+        const tieneIngredientes = Array.isArray(ingredientes) && ingredientes.length > 0;
+        const tieneArticulos = Array.isArray(articulos) && articulos.length > 0;
+
+        if (!tieneIngredientes && !tieneArticulos) {
+            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo' });
         }
 
-        // Validar que cada ingrediente tenga los campos requeridos
-        const ingredientesValidos = ingredientes.every(ing => 
-            ing.nombre_ingrediente && 
-            ing.unidad_medida && 
-            typeof ing.cantidad === 'number' && 
-            ing.cantidad > 0
-        );
+        // Validar ingredientes si existen
+        if (tieneIngredientes) {
+            const ingredientesValidos = ingredientes.every(ing => 
+                ing.nombre_ingrediente && 
+                ing.unidad_medida && 
+                typeof ing.cantidad === 'number' && 
+                ing.cantidad > 0
+            );
 
-        if (!ingredientesValidos) {
-            return res.status(400).json({ 
-                error: 'Todos los ingredientes deben tener nombre, unidad de medida y cantidad válida' 
-            });
+            if (!ingredientesValidos) {
+                return res.status(400).json({ 
+                    error: 'Todos los ingredientes deben tener nombre, unidad de medida y cantidad válida' 
+                });
+            }
+        }
+
+        // Validar artículos si existen
+        if (tieneArticulos) {
+            const articulosValidos = articulos.every(art => 
+                art.articulo_numero && 
+                typeof art.cantidad === 'number' && 
+                art.cantidad > 0
+            );
+
+            if (!articulosValidos) {
+                return res.status(400).json({ 
+                    error: 'Todos los artículos deben tener número de artículo y cantidad válida' 
+                });
+            }
         }
 
         // Iniciar transacción
@@ -152,32 +173,51 @@ async function crearReceta(req, res) {
         const recetaResult = await client.query(recetaQuery, [articulo_numero, descripcion]);
         const recetaId = recetaResult.rows[0].id;
 
-        // Insertar los ingredientes
-        const ingredientesQuery = `
-            INSERT INTO receta_ingredientes 
-            (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
-            VALUES ($1, $2, $3, $4, $5)
-        `;
+        // Insertar los ingredientes si existen
+        if (tieneIngredientes) {
+            const ingredientesQuery = `
+                INSERT INTO receta_ingredientes 
+                (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
+                VALUES ($1, $2, $3, $4, $5)
+            `;
 
-        for (const ing of ingredientes) {
-            // Usar el ingrediente_id que viene del frontend si está disponible
-            let ingredienteId = ing.ingrediente_id;
-            
-            // Si no viene el ID, buscar por nombre como fallback
-            if (!ingredienteId) {
-                ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+            for (const ing of ingredientes) {
+                // Usar el ingrediente_id que viene del frontend si está disponible
+                let ingredienteId = ing.ingrediente_id;
+                
+                // Si no viene el ID, buscar por nombre como fallback
+                if (!ingredienteId) {
+                    ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+                }
+
+                // Normalizar el nombre del ingrediente eliminando espacios extras
+                const nombreNormalizado = ing.nombre_ingrediente.trim();
+                
+                await client.query(ingredientesQuery, [
+                    recetaId,
+                    ingredienteId,
+                    nombreNormalizado,
+                    ing.unidad_medida,
+                    ing.cantidad
+                ]);
             }
+        }
 
-            // Normalizar el nombre del ingrediente eliminando espacios extras
-            const nombreNormalizado = ing.nombre_ingrediente.trim();
-            
-            await client.query(ingredientesQuery, [
-                recetaId,
-                ingredienteId,
-                nombreNormalizado,
-                ing.unidad_medida,
-                ing.cantidad
-            ]);
+        // Insertar los artículos si existen
+        if (tieneArticulos) {
+            const articulosQuery = `
+                INSERT INTO receta_articulos 
+                (receta_id, articulo_numero, cantidad)
+                VALUES ($1, $2, $3)
+            `;
+
+            for (const art of articulos) {
+                await client.query(articulosQuery, [
+                    recetaId,
+                    art.articulo_numero,
+                    art.cantidad
+                ]);
+            }
         }
 
         // Confirmar transacción
@@ -214,31 +254,56 @@ async function obtenerReceta(numero_articulo) {
     const client = await pool.connect();
     
     try {
-        // Obtener la receta
-        const recetaQuery = `
-            SELECT r.id, r.articulo_numero, r.descripcion, r.fecha_creacion,
-                   ri.nombre_ingrediente, ri.unidad_medida, ri.cantidad
-            FROM recetas r
-            LEFT JOIN receta_ingredientes ri ON r.id = ri.receta_id
-            WHERE r.articulo_numero = $1
-            ORDER BY ri.id
+        // Obtener la receta base
+        const recetaBaseQuery = `
+            SELECT id, articulo_numero, descripcion, fecha_creacion
+            FROM recetas
+            WHERE articulo_numero = $1
         `;
         
-        const result = await client.query(recetaQuery, [numero_articulo]);
+        const recetaResult = await client.query(recetaBaseQuery, [numero_articulo]);
         
-        if (result.rows.length === 0) {
+        if (recetaResult.rows.length === 0) {
             throw new Error('Receta no encontrada');
         }
 
+        const recetaBase = recetaResult.rows[0];
+
+        // Obtener ingredientes de la receta
+        const ingredientesQuery = `
+            SELECT nombre_ingrediente, unidad_medida, cantidad
+            FROM receta_ingredientes
+            WHERE receta_id = $1
+            ORDER BY id
+        `;
+        
+        const ingredientesResult = await client.query(ingredientesQuery, [recetaBase.id]);
+
+        // Obtener artículos de la receta
+        const articulosQuery = `
+            SELECT ra.articulo_numero, ra.cantidad, a.nombre as descripcion
+            FROM receta_articulos ra
+            LEFT JOIN articulos a ON a.numero = ra.articulo_numero
+            WHERE ra.receta_id = $1
+            ORDER BY ra.id
+        `;
+        
+        const articulosResult = await client.query(articulosQuery, [recetaBase.id]);
+
         // Estructurar la respuesta
         const receta = {
-            articulo_numero: result.rows[0].articulo_numero,
-            descripcion: result.rows[0].descripcion,
-            fecha_creacion: result.rows[0].fecha_creacion,
-            ingredientes: result.rows.map(row => ({
+            articulo_numero: recetaBase.articulo_numero,
+            descripcion: recetaBase.descripcion,
+            fecha_creacion: recetaBase.fecha_creacion,
+            ingredientes: ingredientesResult.rows.map(row => ({
                 nombre_ingrediente: row.nombre_ingrediente,
                 unidad_medida: row.unidad_medida,
                 cantidad: row.cantidad
+            })),
+            articulos: articulosResult.rows.map(row => ({
+                articulo_numero: row.articulo_numero,
+                cantidad: row.cantidad,
+                descripcion: row.descripcion
             }))
         };
 
@@ -255,25 +320,45 @@ async function actualizarReceta(req, res) {
     
     try {
         const { numero_articulo } = req.params;
-        const { descripcion, ingredientes } = req.body;
+        const { descripcion, ingredientes, articulos } = req.body;
 
-        // Validaciones
-        if (!Array.isArray(ingredientes) || ingredientes.length === 0) {
-            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente' });
+        // Validar que haya al menos ingredientes O artículos
+        const tieneIngredientes = Array.isArray(ingredientes) && ingredientes.length > 0;
+        const tieneArticulos = Array.isArray(articulos) && articulos.length > 0;
+
+        if (!tieneIngredientes && !tieneArticulos) {
+            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo' });
         }
 
-        // Validar que cada ingrediente tenga los campos requeridos
-        const ingredientesValidos = ingredientes.every(ing => 
-            ing.nombre_ingrediente && 
-            ing.unidad_medida && 
-            typeof ing.cantidad === 'number' && 
-            ing.cantidad > 0
-        );
+        // Validar ingredientes si existen
+        if (tieneIngredientes) {
+            const ingredientesValidos = ingredientes.every(ing => 
+                ing.nombre_ingrediente && 
+                ing.unidad_medida && 
+                typeof ing.cantidad === 'number' && 
+                ing.cantidad > 0
+            );
 
-        if (!ingredientesValidos) {
-            return res.status(400).json({ 
-                error: 'Todos los ingredientes deben tener nombre, unidad de medida y cantidad válida' 
-            });
+            if (!ingredientesValidos) {
+                return res.status(400).json({ 
+                    error: 'Todos los ingredientes deben tener nombre, unidad de medida y cantidad válida' 
+                });
+            }
+        }
+
+        // Validar artículos si existen
+        if (tieneArticulos) {
+            const articulosValidos = articulos.every(art => 
+                art.articulo_numero && 
+                typeof art.cantidad === 'number' && 
+                art.cantidad > 0
+            );
+
+            if (!articulosValidos) {
+                return res.status(400).json({ 
+                    error: 'Todos los artículos deben tener número de artículo y cantidad válida' 
+                });
+            }
         }
 
         // Iniciar transacción
@@ -293,38 +378,58 @@ async function actualizarReceta(req, res) {
 
         const recetaId = recetaResult.rows[0].id;
 
-        // Eliminar ingredientes actuales
+        // Eliminar ingredientes y artículos actuales
         await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+        await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
 
         // Actualizar descripción
         await client.query('UPDATE recetas SET descripcion = $1 WHERE id = $2', [descripcion, recetaId]);
 
-        // Insertar nuevos ingredientes
-        const ingredientesQuery = `
-            INSERT INTO receta_ingredientes 
-            (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
-            VALUES ($1, $2, $3, $4, $5)
-        `;
+        // Insertar nuevos ingredientes si existen
+        if (tieneIngredientes) {
+            const ingredientesQuery = `
+                INSERT INTO receta_ingredientes 
+                (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
+                VALUES ($1, $2, $3, $4, $5)
+            `;
 
-        for (const ing of ingredientes) {
-            // Usar el ingrediente_id que viene del frontend si está disponible
-            let ingredienteId = ing.ingrediente_id;
-            
-            // Si no viene el ID, buscar por nombre como fallback
-            if (!ingredienteId) {
-                ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+            for (const ing of ingredientes) {
+                // Usar el ingrediente_id que viene del frontend si está disponible
+                let ingredienteId = ing.ingrediente_id;
+                
+                // Si no viene el ID, buscar por nombre como fallback
+                if (!ingredienteId) {
+                    ingredienteId = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+                }
+
+                // Normalizar el nombre del ingrediente eliminando espacios extras
+                const nombreNormalizado = ing.nombre_ingrediente.trim();
+                
+                await client.query(ingredientesQuery, [
+                    recetaId,
+                    ingredienteId,
+                    nombreNormalizado,
+                    ing.unidad_medida,
+                    ing.cantidad
+                ]);
             }
+        }
 
-            // Normalizar el nombre del ingrediente eliminando espacios extras
-            const nombreNormalizado = ing.nombre_ingrediente.trim();
-            
-            await client.query(ingredientesQuery, [
-                recetaId,
-                ingredienteId,
-                nombreNormalizado,
-                ing.unidad_medida,
-                ing.cantidad
-            ]);
+        // Insertar nuevos artículos si existen
+        if (tieneArticulos) {
+            const articulosQuery = `
+                INSERT INTO receta_articulos 
+                (receta_id, articulo_numero, cantidad)
+                VALUES ($1, $2, $3)
+            `;
+
+            for (const art of articulos) {
+                await client.query(articulosQuery, [
+                    recetaId,
+                    art.articulo_numero,
+                    art.cantidad
+                ]);
+            }
         }
 
         // Confirmar transacción
@@ -457,8 +562,9 @@ async function eliminarReceta(req, res) {
 
         const recetaId = recetaResult.rows[0].id;
 
-        // Eliminar ingredientes de la receta
+        // Eliminar ingredientes y artículos de la receta
         await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+        await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
 
         // Eliminar la receta
         await client.query('DELETE FROM recetas WHERE id = $1', [recetaId]);

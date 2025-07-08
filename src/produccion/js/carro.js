@@ -882,6 +882,8 @@ export function mostrarResumenMixes(mixes) {
                     <th>Ingrediente Compuesto</th>
                     <th>Cantidad Total</th>
                     <th>Unidad</th>
+                    <th>Stock Actual</th>
+                    <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -920,6 +922,120 @@ export function mostrarResumenMixes(mixes) {
     `;
 
     contenedor.innerHTML = html;
+}
+
+// Función para obtener el resumen consolidado de artículos de un carro (solo para carros externos)
+export async function obtenerResumenArticulosCarro(carroId, usuarioId) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${usuarioId}`);
+        
+        if (!response.ok) {
+            if (response.status === 404) {
+                // No hay artículos o no es un carro externo
+                return [];
+            }
+            throw new Error('No se pudo obtener el resumen de artículos');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Error al obtener resumen de artículos:', error);
+        return [];
+    }
+}
+
+// Función para mostrar el resumen de artículos en la UI (solo para carros externos)
+export function mostrarResumenArticulos(articulos) {
+    const contenedor = document.getElementById('tabla-resumen-articulos');
+    if (!contenedor) return;
+
+    console.log('\n📦 VERIFICACIÓN FINAL DEL INFORME DE ARTÍCULOS');
+    console.log('==========================================');
+    console.log('Array final de artículos recibido para mostrar en la UI:');
+    console.log('Cantidad de artículos únicos:', articulos?.length || 0);
+    
+    if (articulos && articulos.length > 0) {
+        console.log('\n📋 ARTÍCULOS FINALES PARA EL INFORME:');
+        articulos.forEach((art, index) => {
+            console.log(`${index + 1}. ${art.articulo_numero} - ${art.nombre}: ${art.cantidad_total}`);
+        });
+        console.log('==========================================\n');
+    } else {
+        console.log('⚠️ No hay artículos para mostrar en el informe');
+    }
+
+    if (!articulos || articulos.length === 0) {
+        contenedor.innerHTML = '<p>No hay artículos de producción externa para mostrar</p>';
+        return;
+    }
+
+    let html = `
+        <table class="tabla-resumen">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Artículo</th>
+                    <th>Cantidad Total</th>
+                    <th>Stock Actual</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    articulos.forEach(art => {
+        // Calcular estado del stock con tolerancia para diferencias decimales
+        const stockActual = art.stock_actual || 0;
+        const cantidadNecesaria = art.cantidad_total;
+        const diferencia = stockActual - cantidadNecesaria;
+        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+        const faltante = tieneStock ? 0 : Math.abs(diferencia);
+
+        // Generar indicador visual
+        let indicadorEstado = '';
+        if (tieneStock) {
+            indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
+        } else {
+            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)}</span>`;
+        }
+
+        html += `
+            <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'}">
+                <td>${art.articulo_numero}</td>
+                <td>${art.nombre || 'Sin descripción'}</td>
+                <td>${cantidadNecesaria.toFixed(2)}</td>
+                <td>${stockActual.toFixed(2)}</td>
+                <td>${indicadorEstado}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    contenedor.innerHTML = html;
+}
+
+// Función para obtener artículos de recetas de un carro (solo para carros externos)
+async function obtenerArticulosDeRecetas(carroId, usuarioId) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos-recetas?usuarioId=${usuarioId}`);
+        
+        if (!response.ok) {
+            if (response.status === 404) {
+                // No hay artículos de receta o no es un carro externo
+                return [];
+            }
+            throw new Error('No se pudieron obtener los artículos de recetas');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Error al obtener artículos de recetas:', error);
+        return [];
+    }
 }
 
 // Función para obtener ingredientes expandidos de un artículo
@@ -966,6 +1082,7 @@ async function obtenerIngredientesExpandidos(numeroArticulo) {
  * Muestra los artículos agregados al carro activo en el área de trabajo,
  * incluyendo sus ingredientes expandidos
  */
+
 export async function mostrarArticulosDelCarro() {
     try {
         const carroId = localStorage.getItem('carroActivo');
@@ -980,6 +1097,15 @@ export async function mostrarArticulosDelCarro() {
         }
 
         const colaborador = JSON.parse(colaboradorData);
+
+        // Obtener tipo de carro para condicionar mostrar artículos de receta
+        const responseTipoCarro = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+        let tipoCarro = 'interna';
+        if (responseTipoCarro.ok) {
+            const dataTipoCarro = await responseTipoCarro.json();
+            tipoCarro = dataTipoCarro.tipo_carro || 'interna';
+        }
+
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
 
         if (!response.ok) {
@@ -1054,7 +1180,7 @@ export async function mostrarArticulosDelCarro() {
                                            onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
                                     ing.nombre}
                             </td>
-                            <td data-base="${ing.cantidad}" data-valor="${cantidadTotal}">${parseFloat(cantidadTotal.toFixed(2))}</td>
+                <td data-base="${ing.cantidad}" data-valor="${cantidadTotal}">${parseFloat(cantidadTotal.toFixed(2))}</td>
                             <td>${ing.unidad_medida}</td>
                         </tr>
                     `;
@@ -1078,6 +1204,40 @@ export async function mostrarArticulosDelCarro() {
         }
 
         html += `</div>`; // cerrar seccion-articulos
+
+        // Si es carro externo, obtener y mostrar artículos de receta
+        if (tipoCarro === 'externa') {
+            const articulosReceta = await obtenerArticulosDeRecetas(carroId, colaborador.id);
+            if (articulosReceta && articulosReceta.length > 0) {
+                html += `
+                    <div id="seccion-articulos-receta" class="seccion-articulos-receta">
+                        <h3>Artículos necesarios de la receta</h3>
+                        <table class="tabla-resumen">
+                            <thead>
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Descripción</th>
+                                    <th>Cantidad Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                articulosReceta.forEach(art => {
+                    html += `
+                        <tr>
+                            <td>${art.articulo_numero}</td>
+                            <td>${art.descripcion || 'Sin descripción'}</td>
+                            <td>${art.cantidad.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        }
 
         const contenedor = document.getElementById('lista-articulos');
         if (contenedor) {

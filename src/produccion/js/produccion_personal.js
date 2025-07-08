@@ -10,7 +10,9 @@ import {
     obtenerResumenIngredientesCarro,
     mostrarResumenIngredientes,
     obtenerResumenMixesCarro,
-    mostrarResumenMixes
+    mostrarResumenMixes,
+    obtenerResumenArticulosCarro,
+    mostrarResumenArticulos
 } from './carro.js';
 import {
     abrirModalArticulos,
@@ -184,7 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
     actualizarEstadoCarro();
 });
 
-// Función para cargar y mostrar el resumen de ingredientes del carro activo
 async function cargarResumenIngredientes() {
     try {
         const carroId = localStorage.getItem('carroActivo');
@@ -200,6 +201,19 @@ async function cargarResumenIngredientes() {
             if (contenedorMixes) {
                 contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
             }
+
+            // Limpiar sección de artículos
+            const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
+            if (contenedorArticulos) {
+                contenedorArticulos.innerHTML = '<p>No hay carro activo</p>';
+            }
+
+            // Ocultar sección de artículos
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'none';
+            }
+
             return;
         }
 
@@ -219,6 +233,21 @@ async function cargarResumenIngredientes() {
         // Obtener y mostrar el resumen de mixes
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
+
+        // Obtener y mostrar el resumen de artículos (solo para carros externos)
+        const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+        if (articulos && articulos.length > 0) {
+            mostrarResumenArticulos(articulos);
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'block';
+            }
+        } else {
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'none';
+            }
+        }
         
         // Actualizar visibilidad de los botones después de cargar ingredientes
         await actualizarVisibilidadBotones();
@@ -233,6 +262,11 @@ async function cargarResumenIngredientes() {
         const contenedorMixes = document.getElementById('tabla-resumen-mixes');
         if (contenedorMixes) {
             contenedorMixes.innerHTML = '<p>Error al cargar el resumen de mixes</p>';
+        }
+
+        const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
+        if (contenedorArticulos) {
+            contenedorArticulos.innerHTML = '<p>Error al cargar el resumen de artículos</p>';
         }
     }
 }

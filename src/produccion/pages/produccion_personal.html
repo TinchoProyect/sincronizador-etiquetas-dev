@@ -67,6 +67,12 @@
                         <div id="tabla-resumen-mixes"></div>
                     </div>
 
+                    <!-- Nueva sección de resumen de artículos (solo para carros externos) -->
+                    <div id="resumen-articulos" class="seccion-resumen" style="display: none;">
+                        <h3>Artículos de Producción Externa Necesarios</h3>
+                        <div id="tabla-resumen-articulos"></div>
+                    </div>
+
                     <!-- Nueva sección de ingresos manuales -->
                     <div id="resumen-ingresos-manuales" class="seccion-resumen">
                         <h3>Ingresos Manuales Realizados</h3>
@@ -148,6 +154,7 @@
                     <label for="descripcion_receta">Descripción de la Receta:</label>
                     <textarea id="descripcion_receta" rows="4" placeholder="Ingrese una descripción opcional..."></textarea>
                 </div>
+                <!-- Sección de Ingredientes -->
                 <div class="form-group ingredientes-container">
                     <div class="selector-container">
                         <div class="selector-wrapper">
@@ -171,9 +178,6 @@
                     <button type="button" class="btn btn-primary" id="btn-agregar-ingrediente">
                         Agregar Ingrediente
                     </button>
-                    <button type="button" class="btn btn-success" id="btn-guardar-receta">
-                        Guardar Receta
-                    </button>
                 </div>
                 
                 <div id="contenedor-ingredientes">
@@ -189,6 +193,48 @@
                             <!-- Acá se van a insertar dinámicamente los ingredientes -->
                         </tbody>
                     </table>
+                </div>
+
+                <!-- Sección de Artículos (solo para carros externos) -->
+                <div id="seccion-articulos-receta" class="form-group articulos-container" style="display: none;">
+                    <div class="selector-container">
+                        <div class="selector-wrapper">
+                            <label for="selector-articulo">Seleccionar Artículo de Producción Externa:</label>
+                            <select id="selector-articulo">
+                                <option value="">Seleccione un artículo...</option>
+                            </select>
+                        </div>
+                        <div id="cantidad-articulo-container" class="cantidad-wrapper" style="display: none;">
+                            <label for="input-cantidad-articulo">Cantidad:</label>
+                            <input type="number" id="input-cantidad-articulo" min="0.0000000001" step="0.0000000001">
+                        </div>
+                    </div>
+                </div>
+                <div id="form-actions-articulos" class="form-actions" style="display: none;">
+                    <button type="button" class="btn btn-primary" id="btn-agregar-articulo">
+                        Agregar Artículo
+                    </button>
+                </div>
+                
+                <div id="contenedor-articulos" style="display: none;">
+                    <table id="tabla-articulos-receta">
+                        <thead>
+                            <tr>
+                                <th>Artículo</th>
+                                <th>Cantidad</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Acá se van a insertar dinámicamente los artículos -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-success" id="btn-guardar-receta">
+                        Guardar Receta
+                    </button>
                 </div>
             </form>
         </div>

@@ -109,6 +109,27 @@ async function marcarCarroPreparado(req, res) {
                 
                 console.log('✅ Movimiento FIFO registrado correctamente');
             }
+
+            // NUEVO: Obtener artículos de recetas y registrar movimientos en stock_ventas_movimientos
+            const { obtenerArticulosDeRecetas } = require('./carroIngredientes');
+            const articulosRecetas = await obtenerArticulosDeRecetas(carroId, usuarioId);
+
+            for (const articulo of articulosRecetas) {
+                console.log(`\n🔄 Procesando artículo ${articulo.articulo_numero}:`);
+                console.log(`- Cantidad: ${articulo.cantidad}`);
+                
+                await db.query(`
+                    INSERT INTO stock_ventas_movimientos (
+                        articulo_numero, cantidad, carro_id, usuario_id, fecha, tipo, kilos, codigo_barras
+                    ) VALUES ($1, $2, $3, $4, NOW(), 'egreso por receta externa', 0, '')
+                `, [articulo.articulo_numero, -articulo.cantidad, carroId, usuarioId]);
+
+                // Actualizar stock consolidado para el artículo
+                const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+                await recalcularStockConsolidado(db, articulo.articulo_numero);
+
+                console.log('✅ Movimiento de stock de ventas registrado correctamente');
+            }
         } else {
             console.log('\n🏭 PROCESANDO CARRO INTERNO');
             console.log('==========================================');
