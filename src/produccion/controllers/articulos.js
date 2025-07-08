@@ -2,11 +2,21 @@ const pool = require('../config/database');
 
 /**
  * Obtiene la lista de todos los artículos disponibles
+ * @param {string} tipoCarro - Tipo de carro ('interna', 'externa', o null para todos)
  * @returns {Promise<Array>} Lista de artículos
  */
-async function obtenerArticulos() {
+async function obtenerArticulos(tipoCarro = null) {
     try {
-        console.log('Iniciando obtención de artículos...');
+        console.log('Iniciando obtención de artículos...', tipoCarro ? `Filtro: ${tipoCarro}` : 'Sin filtro');
+        
+        // Construir WHERE clause según el tipo de carro
+        let whereClause = '';
+        let params = [];
+        
+        if (tipoCarro === 'externa') {
+            whereClause = 'WHERE COALESCE(src.solo_produccion_externa, false) = true';
+            console.log('Aplicando filtro para producción externa');
+        }
         
         const query = `
             SELECT 
@@ -14,14 +24,16 @@ async function obtenerArticulos() {
                 a.nombre,
                 a.codigo_barras,
                 COALESCE(src.stock_consolidado, 0) as stock_consolidado,
-                COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda
+                COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda,
+                COALESCE(src.solo_produccion_externa, false) as solo_produccion_externa
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            ${whereClause}
             ORDER BY a.nombre ASC
         `;
         
         console.log('Ejecutando query:', query);
-        const result = await pool.query(query);
+        const result = await pool.query(query, params);
         
         console.log(`Se encontraron ${result.rows.length} artículos`);
         if (result.rows.length === 0) {

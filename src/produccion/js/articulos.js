@@ -55,10 +55,40 @@ export async function abrirModalArticulos() {
             filtroProduccionSwitch.checked = true;
         }
 
-        // Cargar artículos si aún no se han cargado
-        if (state.todosLosArticulos.length === 0) {
-            console.log('Solicitando artículos al servidor...');
-            const response = await fetch('http://localhost:3002/api/produccion/articulos');
+        // NUEVO: Detectar tipo de carro activo
+        let tipoCarro = 'interna'; // default
+        const carroId = localStorage.getItem('carroActivo');
+        
+        if (carroId) {
+            try {
+                console.log('Detectando tipo de carro para ID:', carroId);
+                const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+                if (carroResponse.ok) {
+                    const carroData = await carroResponse.json();
+                    tipoCarro = carroData.tipo_carro || 'interna';
+                    console.log('Tipo de carro detectado:', tipoCarro);
+                } else {
+                    console.warn('No se pudo obtener el estado del carro, usando tipo interna por defecto');
+                }
+            } catch (error) {
+                console.warn('Error al obtener tipo de carro, usando interna por defecto:', error);
+            }
+        } else {
+            console.log('No hay carro activo, usando tipo interna por defecto');
+        }
+
+        // Cargar artículos si aún no se han cargado o si el tipo de carro cambió
+        const cacheKey = `articulos_${tipoCarro}`;
+        if (!state[cacheKey] || state[cacheKey].length === 0) {
+            console.log('Solicitando artículos al servidor para tipo de carro:', tipoCarro);
+            
+            // Construir URL con parámetro de filtro según tipo de carro
+            const url = tipoCarro === 'externa' 
+                ? 'http://localhost:3002/api/produccion/articulos?tipo_carro=externa'
+                : 'http://localhost:3002/api/produccion/articulos';
+                
+            console.log('URL de solicitud:', url);
+            const response = await fetch(url);
             
             if (!response.ok) {
                 const errorData = await response.json();
@@ -66,22 +96,40 @@ export async function abrirModalArticulos() {
             }
 
             const articulos = await response.json();
-            console.log(`Recibidos ${articulos.length} artículos del servidor`);
+            console.log(`Recibidos ${articulos.length} artículos del servidor para tipo ${tipoCarro}`);
             
             if (articulos.length === 0) {
-                console.warn('La lista de artículos está vacía');
-                mostrarError('No se encontraron artículos disponibles');
+                const mensaje = tipoCarro === 'externa' 
+                    ? 'No se encontraron artículos de producción externa disponibles'
+                    : 'No se encontraron artículos disponibles';
+                console.warn(mensaje);
+                mostrarError(mensaje);
                 return;
             }
 
+            // Guardar en cache específico por tipo de carro
+            state[cacheKey] = articulos;
             state.todosLosArticulos = articulos;
             state.articulosFiltrados = [...articulos];
+            
             // Aplicar filtro de producción por defecto
             aplicarFiltros(0);
         } else {
-            // Si ya hay artículos cargados, aplicar el filtro de producción
+            // Si ya hay artículos cargados para este tipo, usarlos
+            console.log('Usando artículos en cache para tipo:', tipoCarro);
+            state.todosLosArticulos = state[cacheKey];
+            state.articulosFiltrados = [...state[cacheKey]];
             aplicarFiltros(0);
         }
+
+        // Mostrar indicador visual del tipo de carro en el modal
+        const modalTitle = modal.querySelector('h2');
+        if (modalTitle) {
+            const tipoTexto = tipoCarro === 'externa' ? 'Producción Externa' : 'Producción Interna';
+            const icono = tipoCarro === 'externa' ? '🚚' : '🏭';
+            modalTitle.textContent = `${icono} Seleccionar Artículo - ${tipoTexto}`;
+        }
+        
     } catch (error) {
         console.error('Error al abrir modal de artículos:', error);
         mostrarError(error.message);
