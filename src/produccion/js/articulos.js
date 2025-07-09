@@ -429,6 +429,37 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         if (!response.ok) {
             const errorData = await response.json();
+            
+            // Verificar si es el error específico de artículo duplicado
+            if (errorData.error === 'Este artículo ya fue agregado al carro') {
+                // Mostrar mensaje específico con estilo de alerta
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert-message';
+                alertDiv.textContent = errorData.error;
+                alertDiv.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background-color: #dc3545;
+                    color: white;
+                    padding: 15px 20px;
+                    border-radius: 4px;
+                    z-index: 10000;
+                    font-weight: bold;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    animation: slideIn 0.3s ease-out;
+                `;
+                document.body.appendChild(alertDiv);
+                
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 4000);
+                
+                btnElement.disabled = false;
+                btnElement.textContent = 'Ag. carro';
+                return;
+            }
+            
             throw new Error(errorData.error || 'Error al agregar el artículo al carro');
         }
 

@@ -1,0 +1,135 @@
+/* Estilos para botones de relación de artículos */
+.botones-relacion {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.btn-vincular-articulo,
+.btn-editar-relacion,
+.btn-editar-relacion-simple,
+.btn-eliminar-relacion {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-vincular-articulo {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-vincular-articulo:hover {
+    background-color: #218838;
+}
+
+.btn-editar-relacion,
+.btn-editar-relacion-simple {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-editar-relacion:hover,
+.btn-editar-relacion-simple:hover {
+    background-color: #0056b3;
+}
+
+.btn-eliminar-relacion {
+    background-color: #dc3545;
+    color: white;
+}
+
+.btn-eliminar-relacion:hover {
+    background-color: #c82333;
+}
+
+/* Estilos para artículos vinculados */
+.articulo-vinculado {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 4px;
+    opacity: 0.8;
+}
+
+.vinculo-icono {
+    margin-right: 8px;
+    color: #6c757d;
+}
+
+.vinculo-etiqueta {
+    font-size: 11px;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.cantidad-vinculada {
+    font-size: 12px;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Modal de edición de vínculos */
+#modal-editar-vinculo .modal-content {
+    max-width: 600px;
+}
+
+.vinculo-info-section {
+    background-color: #f8f9fa;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+.articulo-padre-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.articulo-codigo-padre {
+    font-weight: bold;
+    color: #495057;
+}
+
+.articulo-descripcion-padre {
+    color: #6c757d;
+}
+
+.badge-readonly {
+    background-color: #6c757d;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+}
+
+.selector-vinculo-section {
+    margin-bottom: 16px;
+}
+
+.selector-vinculo-section .form-group {
+    margin-bottom: 12px;
+}
+
+.selector-vinculo-section label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.selector-vinculo-section input,
+.selector-vinculo-section select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+.selector-vinculo-section select {
+    height: 120px;
+}

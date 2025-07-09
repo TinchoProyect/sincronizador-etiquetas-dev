@@ -934,6 +934,14 @@ const { finalizarProduccion } = require('../controllers/finalizarProduccion');
 const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
 const { obtenerArticulosParaEtiquetas } = require('../controllers/obtenerArticulosParaEtiquetas');
 const { agregarStockUsuario } = require('../controllers/ingredientesStockUsuarios');
+const {
+    obtenerRelacionesCarro,
+    obtenerRelacionPorArticulo,
+    crearRelacion,
+    actualizarRelacion,
+    eliminarRelacion,
+    eliminarRelacionPorArticulo
+} = require('../controllers/relacionesArticulos');
 
 // Ruta para agregar stock de ingrediente a un usuario
 router.post('/ingredientes-usuarios/agregar', async (req, res) => {
@@ -1337,6 +1345,160 @@ router.post('/ingredientes_movimientos', async (req, res) => {
     console.error('❌ Error en POST /ingredientes_movimientos:', error);
     return res.status(500).json({ error: 'Error al registrar el movimiento' });
   }
+});
+
+
+// ==========================================
+// RUTAS PARA RELACIONES DE ARTÍCULOS
+// ==========================================
+
+// Ruta para obtener relaciones de artículos de un carro específico
+router.get('/carro/:id/relaciones-articulos', async (req, res) => {
+    try {
+        const carroId = parseInt(req.params.id);
+        const usuarioId = parseInt(req.query.usuarioId);
+
+        if (isNaN(carroId) || isNaN(usuarioId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+
+        console.log(`🔗 Obteniendo relaciones para carro ${carroId}, usuario ${usuarioId}`);
+        const relaciones = await obtenerRelacionesCarro(carroId, usuarioId);
+        res.json(relaciones);
+    } catch (error) {
+        console.error('Error al obtener relaciones del carro:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para obtener una relación específica por código de artículo
+router.get('/relacion-articulo/:articuloCodigo', async (req, res) => {
+    try {
+        const articuloCodigo = req.params.articuloCodigo;
+        
+        if (!articuloCodigo) {
+            return res.status(400).json({ error: 'Código de artículo requerido' });
+        }
+
+        console.log(`🔍 Buscando relación para artículo ${articuloCodigo}`);
+        const relacion = await obtenerRelacionPorArticulo(articuloCodigo);
+        
+        if (!relacion) {
+            return res.status(404).json({ error: 'No se encontró relación para este artículo' });
+        }
+        
+        res.json(relacion);
+    } catch (error) {
+        console.error('Error al obtener relación por artículo:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para crear una nueva relación artículo-kilo
+router.post('/relacion-articulo', async (req, res) => {
+    try {
+        const { articulo_produccion_codigo, articulo_kilo_codigo } = req.body;
+        
+        if (!articulo_produccion_codigo || !articulo_kilo_codigo) {
+            return res.status(400).json({ 
+                error: 'Se requieren ambos códigos: articulo_produccion_codigo y articulo_kilo_codigo' 
+            });
+        }
+
+        console.log(`➕ Creando relación: ${articulo_produccion_codigo} -> ${articulo_kilo_codigo}`);
+        const nuevaRelacion = await crearRelacion(articulo_produccion_codigo, articulo_kilo_codigo);
+        
+        res.status(201).json({
+            message: 'Relación creada correctamente',
+            relacion: nuevaRelacion
+        });
+    } catch (error) {
+        console.error('Error al crear relación:', error);
+        if (error.message.includes('Ya existe una relación')) {
+            res.status(409).json({ error: error.message });
+        } else if (error.message.includes('no existe')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Ruta para actualizar una relación existente
+router.put('/relacion-articulo/:id', async (req, res) => {
+    try {
+        const relacionId = parseInt(req.params.id);
+        const { articulo_kilo_codigo } = req.body;
+        
+        if (isNaN(relacionId)) {
+            return res.status(400).json({ error: 'ID de relación inválido' });
+        }
+        
+        if (!articulo_kilo_codigo) {
+            return res.status(400).json({ error: 'Se requiere el código del artículo por kilo' });
+        }
+
+        console.log(`✏️ Actualizando relación ${relacionId} con nuevo artículo: ${articulo_kilo_codigo}`);
+        const relacionActualizada = await actualizarRelacion(relacionId, articulo_kilo_codigo);
+        
+        res.json({
+            message: 'Relación actualizada correctamente',
+            relacion: relacionActualizada
+        });
+    } catch (error) {
+        console.error('Error al actualizar relación:', error);
+        if (error.message.includes('no encontrada') || error.message.includes('no existe')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Ruta para eliminar una relación por ID
+router.delete('/relacion-articulo/:id', async (req, res) => {
+    try {
+        const relacionId = parseInt(req.params.id);
+        
+        if (isNaN(relacionId)) {
+            return res.status(400).json({ error: 'ID de relación inválido' });
+        }
+
+        console.log(`🗑️ Eliminando relación ${relacionId}`);
+        await eliminarRelacion(relacionId);
+        
+        res.json({ message: 'Relación eliminada correctamente' });
+    } catch (error) {
+        console.error('Error al eliminar relación:', error);
+        if (error.message.includes('no encontrada')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Ruta para eliminar una relación por código de artículo de producción
+router.delete('/relacion-articulo/por-articulo/:articuloCodigo', async (req, res) => {
+    try {
+        const articuloCodigo = req.params.articuloCodigo;
+        
+        if (!articuloCodigo) {
+            return res.status(400).json({ error: 'Código de artículo requerido' });
+        }
+
+        console.log(`🗑️ Eliminando relación para artículo ${articuloCodigo}`);
+        await eliminarRelacionPorArticulo(articuloCodigo);
+        
+        res.json({ message: 'Relación eliminada correctamente' });
+    } catch (error) {
+        console.error('Error al eliminar relación por artículo:', error);
+        if (error.message.includes('No se encontró relación')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
+    }
 });
 
 module.exports = router;

@@ -220,6 +220,8 @@ const debouncedUpdateCantidad = debounce(async (numeroArticulo, nuevaCantidad, i
 
         // Hacer la llamada al servidor en segundo plano
         await modificarCantidadArticulo(numeroArticulo, nuevaCantidad);
+        // Actualizar resumen de artículos externos también
+        await actualizarResumenArticulos();
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
@@ -262,7 +264,24 @@ export async function actualizarResumenIngredientes() {
     debouncedActualizarResumen();
 }
 
-// Función para eliminar un artículo del carro (optimizada y robusta)
+// Función para actualizar el resumen de artículos vinculados (carros externos)
+export async function actualizarResumenArticulos() {
+    const carroId = localStorage.getItem('carroActivo');
+    const colaboradorData = localStorage.getItem('colaboradorActivo');
+
+    if (!carroId || !colaboradorData) {
+        return;
+    }
+
+    const colaborador = JSON.parse(colaboradorData);
+    try {
+        const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+        mostrarResumenArticulos(articulos);
+    } catch (error) {
+        console.error('Error al actualizar resumen de artículos:', error);
+    }
+}
+
 async function eliminarArticuloDelCarro(numeroArticulo) {
     const carroId = localStorage.getItem('carroActivo');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
@@ -298,6 +317,8 @@ async function eliminarArticuloDelCarro(numeroArticulo) {
 
         eliminarArticuloDelDOM(numeroArticulo);
         debouncedActualizarResumen();
+        // También actualizar el resumen de artículos para carros externos
+        await actualizarResumenArticulos();
         mostrarNotificacionEliminacion(numeroArticulo);
 
     } catch (error) {
@@ -328,6 +349,27 @@ function eliminarArticuloDelDOM(numeroArticulo) {
         // Buscar el contenedor de ingredientes (siguiente elemento hermano)
         const ingredientesContainer = articulo.nextElementSibling;
         
+        // Buscar el artículo vinculado (si existe)
+        let articuloVinculado = null;
+        if (ingredientesContainer && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
+            // El artículo vinculado estaría después del contenedor de ingredientes
+            articuloVinculado = ingredientesContainer.nextElementSibling;
+            if (articuloVinculado && !articuloVinculado.classList.contains('articulo-vinculado')) {
+                articuloVinculado = null;
+            }
+        } else {
+            // Si no hay ingredientes expandidos, el artículo vinculado estaría directamente después
+            articuloVinculado = articulo.nextElementSibling;
+            if (articuloVinculado && !articuloVinculado.classList.contains('articulo-vinculado')) {
+                articuloVinculado = null;
+            }
+        }
+
+        // También buscar por atributo data-articulo-padre como respaldo
+        if (!articuloVinculado) {
+            articuloVinculado = document.querySelector(`.articulo-vinculado[data-articulo-padre="${numeroArticulo}"]`);
+        }
+        
         // Eliminar con animación suave
         articulo.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
         articulo.style.opacity = '0';
@@ -338,6 +380,14 @@ function eliminarArticuloDelDOM(numeroArticulo) {
             ingredientesContainer.style.opacity = '0';
         }
 
+        // Animar también el artículo vinculado si existe
+        if (articuloVinculado) {
+            console.log(`🔗 Eliminando también artículo vinculado para ${numeroArticulo}`);
+            articuloVinculado.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+            articuloVinculado.style.opacity = '0';
+            articuloVinculado.style.transform = 'translateX(-100%)';
+        }
+
         // Remover elementos después de la animación
         setTimeout(() => {
             try {
@@ -346,6 +396,10 @@ function eliminarArticuloDelDOM(numeroArticulo) {
                 }
                 if (ingredientesContainer && ingredientesContainer.parentNode && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
                     ingredientesContainer.parentNode.removeChild(ingredientesContainer);
+                }
+                if (articuloVinculado && articuloVinculado.parentNode) {
+                    console.log(`✅ Artículo vinculado eliminado del DOM para ${numeroArticulo}`);
+                    articuloVinculado.parentNode.removeChild(articuloVinculado);
                 }
             } catch (removeError) {
                 console.error('Error al remover elementos del DOM:', removeError);
@@ -630,6 +684,21 @@ export async function seleccionarCarro(carroId) {
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
         
+        // Cargar y mostrar resumen de artículos externos (si aplica)
+        const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+        if (articulos && articulos.length > 0) {
+            mostrarResumenArticulos(articulos);
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'block';
+            }
+        } else {
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'none';
+            }
+        }
+        
         // Actualizar ingresos manuales realizados para el carro seleccionado
         if (typeof window.actualizarInformeIngresosManuales === 'function') {
             console.log('Actualizando ingresos manuales después de seleccionar carro...');
@@ -671,6 +740,18 @@ export async function deseleccionarCarro() {
     const contenedorMixes = document.getElementById('tabla-resumen-mixes');
     if (contenedorMixes) {
         contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
+    }
+    
+    // Limpiar resumen de artículos externos
+    const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
+    if (contenedorArticulos) {
+        contenedorArticulos.innerHTML = '<p>No hay carro activo</p>';
+    }
+    
+    // Ocultar sección de artículos externos
+    const seccionArticulos = document.getElementById('resumen-articulos');
+    if (seccionArticulos) {
+        seccionArticulos.style.display = 'none';
     }
     
     // Limpiar informe de ingresos manuales
@@ -733,7 +814,27 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
             throw new Error('No se pudo obtener el resumen de ingredientes');
         }
 
-        return await response.json();
+        const data = await response.json();
+        
+        // 🔍 LOG DE DEPURACIÓN 1: Estructura completa
+        console.log('🔍 DEPURACIÓN - Respuesta completa del backend:', data);
+        console.log('🔍 DEPURACIÓN - Cantidad de ingredientes:', data?.length || 0);
+        
+        // 🔍 LOG DE DEPURACIÓN 2: Inspeccionar cada ingrediente
+        if (data && data.length > 0) {
+            data.forEach((ing, index) => {
+                console.log(`🔍 INGREDIENTE ${index + 1}:`, {
+                    nombre: ing.nombre,
+                    cantidad: ing.cantidad,
+                    tipoCantidad: typeof ing.cantidad,
+                    stockActual: ing.stock_actual,
+                    tipoStock: typeof ing.stock_actual,
+                    objetoCompleto: ing
+                });
+            });
+        }
+
+        return data;
     } catch (error) {
         console.error('Error al obtener resumen de ingredientes:', error);
         mostrarError(error.message);
@@ -808,15 +909,59 @@ export function mostrarResumenIngredientes(ingredientes) {
             <tbody>
     `;
 
-    ingredientes.forEach(ing => {
+    ingredientes.forEach((ing, index) => {
+        // 🔍 LOG DE DEPURACIÓN 3: Justo antes del procesamiento
+        console.log(`🔍 PROCESANDO INGREDIENTE ${index + 1}: ${ing.nombre}`, {
+            cantidadRaw: ing.cantidad,
+            tipoCantidadRaw: typeof ing.cantidad,
+            esNull: ing.cantidad === null,
+            esUndefined: ing.cantidad === undefined,
+            esString: typeof ing.cantidad === 'string',
+            valorString: ing.cantidad?.toString(),
+            stockActualRaw: ing.stock_actual,
+            tipoStockRaw: typeof ing.stock_actual,
+            objetoCompleto: ing
+        });
+
         const deshabilitado = (window.carroIdGlobal == null);
         const boton = deshabilitado
             ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
             : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
 
-        // Calcular estado del stock con tolerancia para diferencias decimales
-        const stockActual = ing.stock_actual || 0;
-        const cantidadNecesaria = ing.cantidad;
+        // Validación robusta para evitar errores con .toFixed()
+        const stockActualRaw = ing.stock_actual;
+        const cantidadNecesariaRaw = ing.cantidad;
+        
+        // Convertir a números de forma segura
+        let stockActual = 0;
+        let cantidadNecesaria = 0;
+        
+        if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
+            const stockParsed = parseFloat(stockActualRaw);
+            stockActual = isNaN(stockParsed) ? 0 : stockParsed;
+        }
+        
+        if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
+            const cantidadParsed = parseFloat(cantidadNecesariaRaw);
+            cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
+        }
+        
+        // 🔍 LOG DE DEPURACIÓN 4: Después de la conversión
+        console.log(`🔍 CONVERSIÓN COMPLETADA para ${ing.nombre}:`, {
+            stockActualFinal: stockActual,
+            cantidadNecesariaFinal: cantidadNecesaria,
+            conversionExitosa: !isNaN(stockActual) && !isNaN(cantidadNecesaria)
+        });
+        
+        // Log para diagnóstico
+        if (cantidadNecesaria === 0 && cantidadNecesariaRaw !== 0) {
+            console.warn(`⚠️ Cantidad inválida para ingrediente ${ing.nombre}:`, {
+                raw: cantidadNecesariaRaw,
+                type: typeof cantidadNecesariaRaw,
+                parsed: cantidadNecesaria
+            });
+        }
+
         const diferencia = stockActual - cantidadNecesaria;
         const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
         const faltante = tieneStock ? 0 : Math.abs(diferencia);
@@ -826,16 +971,16 @@ export function mostrarResumenIngredientes(ingredientes) {
         if (tieneStock) {
             indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
         } else {
-            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida}</span>`;
+            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
         }
 
         html += `
             <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'}">
-                <td>${ing.nombre}</td>
+                <td>${ing.nombre || 'Sin nombre'}</td>
                 <td>${cantidadNecesaria.toFixed(2)}</td>
                 <td>${stockActual.toFixed(2)}</td>
                 <td>${indicadorEstado}</td>
-                <td>${ing.unidad_medida}</td>
+                <td>${ing.unidad_medida || ''}</td>
                 <td>${boton}</td>
             </tr>
         `;
@@ -983,10 +1128,50 @@ export function mostrarResumenArticulos(articulos) {
             <tbody>
     `;
 
-    articulos.forEach(art => {
-        // Calcular estado del stock con tolerancia para diferencias decimales
-        const stockActual = art.stock_actual || 0;
-        const cantidadNecesaria = art.cantidad_total;
+    articulos.forEach((art, index) => {
+        // 🔍 LOG DE DEPURACIÓN: Inspeccionar artículo antes del procesamiento
+        console.log(`🔍 PROCESANDO ARTÍCULO ${index + 1}: ${art.articulo_numero}`, {
+            cantidadTotalRaw: art.cantidad_total,
+            tipoCantidadTotal: typeof art.cantidad_total,
+            stockActualRaw: art.stock_actual,
+            tipoStockActual: typeof art.stock_actual,
+            objetoCompleto: art
+        });
+
+        // Validación robusta para evitar errores con .toFixed()
+        const stockActualRaw = art.stock_actual;
+        const cantidadTotalRaw = art.cantidad_total;
+        
+        // Convertir a números de forma segura
+        let stockActual = 0;
+        let cantidadNecesaria = 0;
+        
+        if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
+            const stockParsed = parseFloat(stockActualRaw);
+            stockActual = isNaN(stockParsed) ? 0 : stockParsed;
+        }
+        
+        if (cantidadTotalRaw !== null && cantidadTotalRaw !== undefined && cantidadTotalRaw !== '') {
+            const cantidadParsed = parseFloat(cantidadTotalRaw);
+            cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
+        }
+        
+        // 🔍 LOG DE DEPURACIÓN: Después de la conversión
+        console.log(`🔍 CONVERSIÓN COMPLETADA para artículo ${art.articulo_numero}:`, {
+            stockActualFinal: stockActual,
+            cantidadNecesariaFinal: cantidadNecesaria,
+            conversionExitosa: !isNaN(stockActual) && !isNaN(cantidadNecesaria)
+        });
+        
+        // Log para diagnóstico
+        if (cantidadNecesaria === 0 && cantidadTotalRaw !== 0) {
+            console.warn(`⚠️ Cantidad total inválida para artículo ${art.articulo_numero}:`, {
+                raw: cantidadTotalRaw,
+                type: typeof cantidadTotalRaw,
+                parsed: cantidadNecesaria
+            });
+        }
+
         const diferencia = stockActual - cantidadNecesaria;
         const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
         const faltante = tieneStock ? 0 : Math.abs(diferencia);
@@ -1080,7 +1265,7 @@ async function obtenerIngredientesExpandidos(numeroArticulo) {
 
 /**
  * Muestra los artículos agregados al carro activo en el área de trabajo,
- * incluyendo sus ingredientes expandidos
+ * incluyendo sus ingredientes expandidos y botones de relación para carros externos
  */
 
 export async function mostrarArticulosDelCarro() {
@@ -1114,6 +1299,22 @@ export async function mostrarArticulosDelCarro() {
 
         const articulos = await response.json();
 
+        // Obtener relaciones existentes para carros externos
+        let relacionesExistentes = {};
+        if (tipoCarro === 'externa') {
+            try {
+                const relacionesResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
+                if (relacionesResponse.ok) {
+                    const relaciones = await relacionesResponse.json();
+                    relaciones.forEach(rel => {
+                        relacionesExistentes[rel.articulo_produccion_codigo] = rel;
+                    });
+                }
+            } catch (error) {
+                console.warn('Error al obtener relaciones:', error);
+            }
+        }
+
         let html = `
             <div class="agregar-articulo-container">
                 <button id="agregar-articulo" class="btn btn-secondary">
@@ -1125,6 +1326,10 @@ export async function mostrarArticulosDelCarro() {
         `;
 
         for (const art of articulos) {
+            const relacion = relacionesExistentes[art.numero];
+            const tieneRelacion = !!relacion;
+
+            // Artículo original (siempre se muestra)
             html += `
                 <div class="articulo-container" data-numero="${art.numero}">
                     <div class="articulo-info">
@@ -1142,7 +1347,10 @@ export async function mostrarArticulosDelCarro() {
                             🗑️
                         </button>
                     </div>
-                    <button class="toggle-ingredientes">Ver</button>
+                    <div class="articulo-controls">
+                        <button class="toggle-ingredientes">Ver</button>
+                        ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
+                    </div>
                 </div>
             `;
 
@@ -1201,43 +1409,15 @@ export async function mostrarArticulosDelCarro() {
                     </div>
                 `;
             }
+
+            // Si hay relación, agregar fila del artículo vinculado
+            if (tieneRelacion && relacion.articulo_kilo_codigo) {
+                html += generarFilaArticuloVinculado(art.numero, relacion);
+            }
         }
 
         html += `</div>`; // cerrar seccion-articulos
 
-        // Si es carro externo, obtener y mostrar artículos de receta
-        if (tipoCarro === 'externa') {
-            const articulosReceta = await obtenerArticulosDeRecetas(carroId, colaborador.id);
-            if (articulosReceta && articulosReceta.length > 0) {
-                html += `
-                    <div id="seccion-articulos-receta" class="seccion-articulos-receta">
-                        <h3>Artículos necesarios de la receta</h3>
-                        <table class="tabla-resumen">
-                            <thead>
-                                <tr>
-                                    <th>Código</th>
-                                    <th>Descripción</th>
-                                    <th>Cantidad Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                `;
-                articulosReceta.forEach(art => {
-                    html += `
-                        <tr>
-                            <td>${art.articulo_numero}</td>
-                            <td>${art.descripcion || 'Sin descripción'}</td>
-                            <td>${art.cantidad.toFixed(2)}</td>
-                        </tr>
-                    `;
-                });
-                html += `
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            }
-        }
 
         const contenedor = document.getElementById('lista-articulos');
         if (contenedor) {
@@ -1256,8 +1436,626 @@ export async function mostrarArticulosDelCarro() {
     }
 }
 
-// Agregar toggle para mostrar/ocultar ingredientes
-document.addEventListener('click', (e) => {
+/**
+ * Genera los botones de relación para un artículo específico
+ * @param {string} articuloCodigo - Código del artículo
+ * @param {boolean} tieneRelacion - Si ya tiene una relación establecida
+ * @param {Object} relacion - Objeto de relación existente (si existe)
+ * @returns {string} HTML de los botones
+ */
+function generarBotonesRelacion(articuloCodigo, tieneRelacion, relacion) {
+    if (tieneRelacion) {
+        return ''; // No mostrar botones en el artículo original si ya tiene relación
+    } else {
+        return `
+            <div class="botones-relacion">
+                <button class="btn-vincular-articulo" 
+                        data-articulo="${articuloCodigo}"
+                        title="Vincular con artículo por kilo">
+                    ➕ Vincular artículo por kilo
+                </button>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Genera la fila del artículo vinculado (visualmente atenuada)
+ * @param {string} articuloProduccionCodigo - Código del artículo de producción
+ * @param {Object} relacion - Objeto de relación con datos del artículo vinculado
+ * @returns {string} HTML de la fila del artículo vinculado
+ */
+function generarFilaArticuloVinculado(articuloProduccionCodigo, relacion) {
+    return `
+        <div class="articulo-vinculado" data-articulo-padre="${articuloProduccionCodigo}">
+            <div class="articulo-info">
+                <span class="vinculo-icono">🔗</span>
+                <span class="articulo-codigo">${relacion.articulo_kilo_codigo}</span>
+                <span class="articulo-descripcion">${relacion.articulo_kilo_nombre || 'Artículo vinculado por kilo'}</span>
+                <span class="vinculo-etiqueta">Artículo vinculado</span>
+            </div>
+            <div class="articulo-actions">
+                <span class="cantidad-vinculada">Cantidad automática</span>
+            </div>
+            <div class="articulo-controls">
+                <button class="btn-editar-relacion-simple" 
+                        data-articulo="${articuloProduccionCodigo}" 
+                        data-relacion-id="${relacion.id}"
+                        title="Editar vínculo con artículo por kilo">
+                    ✏️ Editar vínculo
+                </button>
+                <button class="btn-eliminar-relacion" 
+                        data-articulo="${articuloProduccionCodigo}" 
+                        data-relacion-id="${relacion.id}"
+                        title="Eliminar vínculo con artículo por kilo">
+                    🗑️ Eliminar vínculo
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// ==========================================
+// FUNCIONES PARA GESTIÓN DE RELACIONES
+// ==========================================
+
+/**
+ * Abre el modal simplificado para vincular un artículo de producción externa con un artículo por kilo
+ * @param {string} articuloCodigo - Código del artículo de producción externa
+ */
+async function abrirModalVincularArticulo(articuloCodigo) {
+    try {
+        console.log(`🔗 Abriendo modal simplificado para vincular artículo: ${articuloCodigo}`);
+        
+        // Obtener información del artículo padre
+        const articuloInfo = await obtenerInfoArticulo(articuloCodigo);
+        
+        // Abrir el modal simplificado en modo crear
+        await abrirModalEditarVinculoSimplificado(articuloCodigo, null, articuloInfo);
+        
+        // Cambiar el título del modal para reflejar que es para vincular
+        const modal = document.getElementById('modal-editar-vinculo');
+        if (modal) {
+            const titulo = modal.querySelector('h2');
+            if (titulo) {
+                titulo.textContent = '➕ Vincular Artículo por Kilo';
+            }
+            
+            // Configurar el modal para modo crear
+            modal.dataset.modo = 'crear';
+            delete modal.dataset.relacionId; // No hay relación existente
+        }
+        
+    } catch (error) {
+        console.error('Error al abrir modal de vinculación:', error);
+        mostrarError('No se pudo abrir el modal de vinculación');
+    }
+}
+
+/**
+ * Abre el modal simplificado para editar una relación existente
+ * @param {string} articuloCodigo - Código del artículo de producción externa
+ * @param {number} relacionId - ID de la relación existente
+ */
+async function abrirModalEditarRelacion(articuloCodigo, relacionId) {
+    try {
+        console.log(`✏️ Abriendo modal simplificado para editar relación: ${articuloCodigo} (ID: ${relacionId})`);
+        
+        // Obtener información del artículo padre
+        const articuloInfo = await obtenerInfoArticulo(articuloCodigo);
+        
+        // Abrir el modal simplificado
+        await abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, articuloInfo);
+        
+    } catch (error) {
+        console.error('Error al abrir modal de edición:', error);
+        mostrarError('No se pudo abrir el modal de edición');
+    }
+}
+
+/**
+ * Obtiene información de un artículo por su código
+ * @param {string} articuloCodigo - Código del artículo
+ * @returns {Object} Información del artículo
+ */
+async function obtenerInfoArticulo(articuloCodigo) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/articulos`);
+        if (!response.ok) {
+            throw new Error('Error al obtener información del artículo');
+        }
+        
+        const articulos = await response.json();
+        const articulo = articulos.find(art => art.numero === articuloCodigo);
+        
+        return articulo || { numero: articuloCodigo, nombre: 'Artículo no encontrado' };
+    } catch (error) {
+        console.error('Error al obtener info del artículo:', error);
+        return { numero: articuloCodigo, nombre: 'Error al cargar información' };
+    }
+}
+
+/**
+ * Abre el modal simplificado para editar vínculos
+ * @param {string} articuloCodigo - Código del artículo de producción externa
+ * @param {number} relacionId - ID de la relación existente
+ * @param {Object} articuloInfo - Información del artículo padre
+ */
+async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, articuloInfo) {
+    try {
+        const modal = document.getElementById('modal-editar-vinculo');
+        if (!modal) {
+            throw new Error('No se encontró el modal de edición de vínculos');
+        }
+
+        // Configurar información del artículo padre
+        const codigoPadre = modal.querySelector('.articulo-codigo-padre');
+        const descripcionPadre = modal.querySelector('.articulo-descripcion-padre');
+        
+        if (codigoPadre) codigoPadre.textContent = articuloCodigo;
+        if (descripcionPadre) descripcionPadre.textContent = articuloInfo.nombre || 'Sin descripción';
+
+        // Cargar artículos disponibles
+        await cargarArticulosParaVinculo();
+
+        // Configurar datos del modal
+        modal.dataset.articuloCodigo = articuloCodigo;
+        modal.dataset.relacionId = relacionId;
+
+        // Mostrar el modal
+        modal.style.display = 'block';
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
+
+    } catch (error) {
+        console.error('Error al abrir modal simplificado:', error);
+        mostrarError(error.message);
+    }
+}
+
+/**
+ * Carga la lista de artículos disponibles para vincular
+ */
+async function cargarArticulosParaVinculo() {
+    try {
+        const response = await fetch('http://localhost:3002/api/produccion/articulos');
+        if (!response.ok) {
+            throw new Error('Error al cargar artículos');
+        }
+
+        const articulos = await response.json();
+        const selector = document.getElementById('selector-articulo-vinculo');
+        
+        if (!selector) return;
+
+        // Limpiar opciones existentes
+        selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
+
+        // Ordenar artículos alfabéticamente
+        articulos.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+        // Agregar opciones
+        articulos.forEach(articulo => {
+            const option = document.createElement('option');
+            option.value = articulo.numero;
+            option.textContent = `${articulo.numero} - ${articulo.nombre}`;
+            option.dataset.nombre = articulo.nombre;
+            selector.appendChild(option);
+        });
+
+        // Configurar búsqueda en tiempo real
+        configurarBusquedaVinculo(articulos);
+
+    } catch (error) {
+        console.error('Error al cargar artículos:', error);
+        const selector = document.getElementById('selector-articulo-vinculo');
+        if (selector) {
+            selector.innerHTML = '<option value="">Error al cargar artículos</option>';
+        }
+    }
+}
+
+/**
+ * Configura la funcionalidad de búsqueda en tiempo real
+ * @param {Array} articulos - Lista completa de artículos
+ */
+function configurarBusquedaVinculo(articulos) {
+    const inputBusqueda = document.getElementById('buscar-articulo-vinculo');
+    const selector = document.getElementById('selector-articulo-vinculo');
+    
+    if (!inputBusqueda || !selector) return;
+
+    inputBusqueda.addEventListener('input', (e) => {
+        const termino = e.target.value.toLowerCase().trim();
+        
+        // Limpiar selector
+        selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
+        
+        // Filtrar artículos
+        const articulosFiltrados = articulos.filter(articulo => 
+            articulo.numero.toLowerCase().includes(termino) ||
+            articulo.nombre.toLowerCase().includes(termino)
+        );
+
+        // Agregar opciones filtradas
+        articulosFiltrados.forEach(articulo => {
+            const option = document.createElement('option');
+            option.value = articulo.numero;
+            option.textContent = `${articulo.numero} - ${articulo.nombre}`;
+            option.dataset.nombre = articulo.nombre;
+            selector.appendChild(option);
+        });
+    });
+}
+
+/**
+ * Cierra el modal simplificado de edición de vínculos
+ */
+function cerrarModalEditarVinculo() {
+    const modal = document.getElementById('modal-editar-vinculo');
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
+        
+        // Limpiar datos
+        delete modal.dataset.articuloCodigo;
+        delete modal.dataset.relacionId;
+        
+        // Limpiar campos
+        const inputBusqueda = document.getElementById('buscar-articulo-vinculo');
+        const selector = document.getElementById('selector-articulo-vinculo');
+        
+        if (inputBusqueda) inputBusqueda.value = '';
+        if (selector) selector.selectedIndex = 0;
+    }
+}
+
+/**
+ * Procesa el guardado del vínculo (crear nuevo o editar existente)
+ */
+async function procesarGuardadoVinculo() {
+    try {
+        const modal = document.getElementById('modal-editar-vinculo');
+        const selector = document.getElementById('selector-articulo-vinculo');
+        
+        if (!modal || !selector) {
+            throw new Error('No se encontraron los elementos del modal');
+        }
+
+        const articuloCodigo = modal.dataset.articuloCodigo;
+        const relacionId = modal.dataset.relacionId;
+        const articuloKiloCodigo = selector.value;
+
+        if (!articuloCodigo) {
+            throw new Error('Código de artículo de producción no válido');
+        }
+
+        if (!articuloKiloCodigo) {
+            mostrarError('Debe seleccionar un artículo por kilo');
+            return;
+        }
+
+        console.log(`🔗 Procesando vínculo: ${articuloCodigo} -> ${articuloKiloCodigo}`);
+        console.log(`📋 Modo: ${relacionId ? 'editar' : 'crear'} | RelacionId: ${relacionId}`);
+
+        let response;
+        let mensaje;
+
+        if (relacionId && relacionId !== 'undefined' && relacionId !== 'null') {
+            // Editar relación existente
+            console.log(`✏️ Editando relación existente con ID: ${relacionId}`);
+            response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulo_kilo_codigo: articuloKiloCodigo
+                })
+            });
+            mensaje = 'Vínculo actualizado correctamente';
+        } else {
+            // Crear nueva relación
+            console.log(`➕ Creando nueva relación`);
+            response = await fetch('http://localhost:3002/api/produccion/relacion-articulo', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulo_produccion_codigo: articuloCodigo,
+                    articulo_kilo_codigo: articuloKiloCodigo
+                })
+            });
+            mensaje = 'Vínculo creado correctamente';
+        }
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al procesar la relación');
+        }
+
+        // Mostrar notificación de éxito
+        mostrarNotificacionExito(mensaje);
+
+        // Cerrar modal
+        cerrarModalEditarVinculo();
+
+        // Actualizar la vista del carro
+        await mostrarArticulosDelCarro();
+
+    } catch (error) {
+        console.error('Error al guardar vínculo:', error);
+        mostrarError(error.message);
+    }
+}
+
+/**
+ * Elimina una relación existente
+ * @param {string} articuloCodigo - Código del artículo de producción externa
+ * @param {number} relacionId - ID de la relación a eliminar
+ */
+async function eliminarRelacionArticulo(articuloCodigo, relacionId) {
+    try {
+        const confirmar = confirm(`¿Está seguro de que desea eliminar el vínculo del artículo ${articuloCodigo}?`);
+        if (!confirmar) return;
+        
+        console.log(`🗑️ Eliminando relación: ${articuloCodigo} (ID: ${relacionId})`);
+        
+        const response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al eliminar la relación');
+        }
+        
+        // Mostrar notificación de éxito
+        mostrarNotificacionExito('Vínculo eliminado correctamente');
+        
+        // Actualizar la vista del carro
+        await mostrarArticulosDelCarro();
+        
+    } catch (error) {
+        console.error('Error al eliminar relación:', error);
+        mostrarError(error.message);
+    }
+}
+
+/**
+ * Abre el modal de artículos sin aplicar filtros de producción externa
+ */
+async function abrirModalArticulosSinFiltros() {
+    try {
+        const modal = document.getElementById('modal-articulos');
+        if (!modal) {
+            throw new Error('No se encontró el modal de artículos');
+        }
+
+        modal.style.display = 'block';
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
+
+        // Cargar TODOS los artículos sin filtros
+        const response = await fetch('http://localhost:3002/api/produccion/articulos');
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al obtener artículos');
+        }
+
+        const articulos = await response.json();
+        
+        if (articulos.length === 0) {
+            mostrarError('No se encontraron artículos disponibles');
+            return;
+        }
+
+        // Actualizar el título del modal
+        const modalTitle = modal.querySelector('h2');
+        if (modalTitle) {
+            const tipoOperacion = window.modoVinculacion?.tipo === 'editar' ? 'Editar vínculo' : 'Vincular artículo';
+            modalTitle.textContent = `🔗 ${tipoOperacion} - Seleccionar artículo por kilo`;
+        }
+
+        // Ocultar el switch de filtro de producción
+        const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+        if (filtroProduccionSwitch) {
+            filtroProduccionSwitch.checked = false;
+            const formCheck = filtroProduccionSwitch.closest('.filtro-grupo');
+            if (formCheck) {
+                formCheck.style.display = 'none';
+            }
+        }
+
+        // Actualizar la tabla con todos los artículos
+        await actualizarTablaArticulosVinculacion(articulos);
+        
+    } catch (error) {
+        console.error('Error al abrir modal sin filtros:', error);
+        mostrarError(error.message);
+        const modal = document.getElementById('modal-articulos');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Actualiza la tabla de artículos para el modo vinculación
+ * @param {Array} articulos - Lista de artículos
+ */
+async function actualizarTablaArticulosVinculacion(articulos) {
+    const tbody = document.getElementById('tabla-articulos-body');
+    tbody.innerHTML = '';
+
+    if (!articulos || articulos.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
+        return;
+    }
+
+    // Ordenar artículos alfabéticamente
+    articulos.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+    articulos.forEach(articulo => {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-numero', articulo.numero);
+
+        tr.innerHTML = `
+            <td>${articulo.numero}</td>
+            <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+            <td style="text-align: center; font-weight: bold; color: ${articulo.stock_consolidado > 0 ? '#28a745' : '#dc3545'};">
+                ${articulo.stock_consolidado || 0}
+            </td>
+            <td>
+                <button class="btn-seleccionar-vinculacion" 
+                        data-numero="${articulo.numero}" 
+                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                        style="background-color: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px;">
+                    Seleccionar
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+/**
+ * Procesa la selección de un artículo para vinculación
+ * @param {string} articuloKiloCodigo - Código del artículo por kilo seleccionado
+ * @param {string} articuloKiloNombre - Nombre del artículo por kilo seleccionado
+ */
+async function procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNombre) {
+    try {
+        if (!window.modoVinculacion || !window.modoVinculacion.activo) {
+            throw new Error('No hay modo de vinculación activo');
+        }
+
+        const { articuloProduccion, relacionId, tipo } = window.modoVinculacion;
+        
+        console.log(`🔗 Procesando vinculación: ${articuloProduccion} -> ${articuloKiloCodigo}`);
+        
+        let response;
+        
+        if (tipo === 'crear') {
+            // Crear nueva relación
+            response = await fetch('http://localhost:3002/api/produccion/relacion-articulo', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulo_produccion_codigo: articuloProduccion,
+                    articulo_kilo_codigo: articuloKiloCodigo
+                })
+            });
+        } else if (tipo === 'editar') {
+            // Actualizar relación existente
+            response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulo_kilo_codigo: articuloKiloCodigo
+                })
+            });
+        }
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al procesar la vinculación');
+        }
+        
+        // Mostrar notificación de éxito
+        const mensaje = tipo === 'crear' ? 'Vínculo creado correctamente' : 'Vínculo actualizado correctamente';
+        mostrarNotificacionExito(mensaje);
+        
+        // Cerrar modal y limpiar modo vinculación
+        cerrarModalVinculacion();
+        
+        // Actualizar la vista del carro
+        await mostrarArticulosDelCarro();
+        
+    } catch (error) {
+        console.error('Error al procesar vinculación:', error);
+        mostrarError(error.message);
+    }
+}
+
+/**
+ * Cierra el modal de vinculación y limpia el estado
+ */
+function cerrarModalVinculacion() {
+    const modal = document.getElementById('modal-articulos');
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
+    }
+    
+    // Limpiar campos de filtro
+    const filtro1 = document.getElementById('filtro1');
+    const filtro2 = document.getElementById('filtro2');
+    const filtro3 = document.getElementById('filtro3');
+    const codigoBarras = document.getElementById('codigo-barras');
+    
+    if (filtro1) filtro1.value = '';
+    if (filtro2) filtro2.value = '';
+    if (filtro3) filtro3.value = '';
+    if (codigoBarras) codigoBarras.value = '';
+    
+    // Mostrar nuevamente el switch de filtro de producción
+    const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
+    if (filtroProduccionSwitch) {
+        const formCheck = filtroProduccionSwitch.closest('.filtro-grupo');
+        if (formCheck) {
+            formCheck.style.display = 'block';
+        }
+    }
+    
+    // Limpiar modo vinculación
+    window.modoVinculacion = null;
+}
+
+/**
+ * Muestra una notificación de éxito
+ * @param {string} mensaje - Mensaje a mostrar
+ */
+function mostrarNotificacionExito(mensaje) {
+    const notification = document.createElement('div');
+    notification.textContent = mensaje;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background-color: #28a745;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 4px;
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+        font-size: 14px;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 3000);
+}
+
+// Event listeners para los botones de relación y vinculación
+document.addEventListener('click', async (e) => {
+    // Toggle para mostrar/ocultar ingredientes
     if (e.target.classList.contains('toggle-ingredientes')) {
         const articuloContainer = e.target.closest('.articulo-container');
         const ingredientes = articuloContainer.nextElementSibling;
@@ -1265,4 +2063,44 @@ document.addEventListener('click', (e) => {
         e.target.textContent = ingredientes.classList.contains('hidden') ?
             'Ver' : 'Ocultar';
     }
+    
+    // Botón vincular artículo
+    if (e.target.classList.contains('btn-vincular-articulo')) {
+        const articuloCodigo = e.target.dataset.articulo;
+        await abrirModalVincularArticulo(articuloCodigo);
+    }
+    
+    // Botón editar relación
+    if (e.target.classList.contains('btn-editar-relacion')) {
+        const articuloCodigo = e.target.dataset.articulo;
+        const relacionId = e.target.dataset.relacionId;
+        await abrirModalEditarRelacion(articuloCodigo, relacionId);
+    }
+    
+    // Botón editar relación simple
+    if (e.target.classList.contains('btn-editar-relacion-simple')) {
+        const articuloCodigo = e.target.dataset.articulo;
+        const relacionId = e.target.dataset.relacionId;
+        await abrirModalEditarRelacion(articuloCodigo, relacionId);
+    }
+    
+    // Botón eliminar relación
+    if (e.target.classList.contains('btn-eliminar-relacion')) {
+        const articuloCodigo = e.target.dataset.articulo;
+        const relacionId = e.target.dataset.relacionId;
+        await eliminarRelacionArticulo(articuloCodigo, relacionId);
+    }
+    
+    // Botón seleccionar en modo vinculación
+    if (e.target.classList.contains('btn-seleccionar-vinculacion')) {
+        const articuloKiloCodigo = e.target.dataset.numero;
+        const articuloKiloNombre = e.target.dataset.nombre;
+        await procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNombre);
+    }
 });
+
+// Exportar funciones para uso en módulos ES6
+export {
+    cerrarModalEditarVinculo,
+    procesarGuardadoVinculo
+};

@@ -59,6 +59,17 @@ async function validarPropiedadCarro(carroId, usuarioId) {
  */
 async function agregarArticulo(carroId, articuloNumero, descripcion, cantidad) {
     try {
+        // Verificar si el artículo ya existe en el carro
+        const checkQuery = `
+            SELECT COUNT(*)::integer AS count
+            FROM carros_articulos
+            WHERE carro_id = $1 AND articulo_numero = $2
+        `;
+        const checkResult = await pool.query(checkQuery, [carroId, articuloNumero]);
+        if (checkResult.rows[0].count > 0) {
+            throw new Error('Este artículo ya fue agregado al carro');
+        }
+
         const query = `
             INSERT INTO carros_articulos (carro_id, articulo_numero, descripcion, cantidad)
             VALUES ($1, $2, $3, $4)
@@ -67,7 +78,7 @@ async function agregarArticulo(carroId, articuloNumero, descripcion, cantidad) {
         await pool.query(query, [carroId, articuloNumero, descripcion, cantidad]);
     } catch (error) {
         console.error('Error al agregar artículo al carro:', error);
-        throw new Error('No se pudo agregar el artículo al carro');
+        throw error;
     }
 }
 
@@ -157,22 +168,48 @@ async function obtenerInfoEliminacion(carroId, usuarioId) {
 }
 
 async function eliminarArticuloDeCarro(carroId, articuloId, usuarioId) {
+    const client = await pool.connect();
     try {
+        await client.query('BEGIN');
+
         // Validar que el carro pertenece al usuario
         const esValido = await validarPropiedadCarro(carroId, usuarioId);
         if (!esValido) {
             throw new Error('El carro no pertenece al usuario especificado');
         }
 
-        // Eliminar el artículo del carro
-        const query = `
+        // Consultar si el artículo es padre y tiene artículo hijo vinculado
+        const relacionQuery = `
+            SELECT articulo_kilo_codigo
+            FROM articulos_produccion_externa_relacion
+            WHERE articulo_produccion_codigo = $1
+        `;
+        const relacionResult = await client.query(relacionQuery, [articuloId]);
+        const articuloHijo = relacionResult.rows.length > 0 ? relacionResult.rows[0].articulo_kilo_codigo : null;
+
+        // Eliminar artículo padre
+        const eliminarPadreQuery = `
             DELETE FROM carros_articulos
             WHERE carro_id = $1 AND articulo_numero = $2
         `;
-        await pool.query(query, [carroId, articuloId]);
+        await client.query(eliminarPadreQuery, [carroId, articuloId]);
+
+        // Si hay artículo hijo vinculado, eliminarlo también
+        if (articuloHijo) {
+            const eliminarHijoQuery = `
+                DELETE FROM carros_articulos
+                WHERE carro_id = $1 AND articulo_numero = $2
+            `;
+            await client.query(eliminarHijoQuery, [carroId, articuloHijo]);
+        }
+
+        await client.query('COMMIT');
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error al eliminar artículo del carro:', error);
         throw new Error('No se pudo eliminar el artículo del carro');
+    } finally {
+        client.release();
     }
 }
 

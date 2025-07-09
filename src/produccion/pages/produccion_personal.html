@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/css/modal-receta.css">
     <link rel="stylesheet" href="/css/carroPreparado.css">
     <link rel="stylesheet" href="/css/stock-indicators.css">
+    <link rel="stylesheet" href="/css/relaciones-articulos.css">
     <link rel="stylesheet" href="/css/modal-mix.css">
     <link rel="stylesheet" href="/css/modal-articulos.css">
     <link rel="stylesheet" href="/css/modal-articulos-fix.css">
@@ -339,6 +340,45 @@
                 
                 <div class="modal-actions">
                     <button id="btn-guardar-mix" class="btn btn-success">Guardar Receta</button>
+                    <button class="btn btn-secondary close-modal">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal simplificado para editar vínculos de artículos -->
+    <div id="modal-editar-vinculo" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✏️ Editar Vínculo de Artículo</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="vinculo-info-section">
+                    <h3>Artículo de Producción Externa</h3>
+                    <div class="articulo-padre-info">
+                        <span class="articulo-codigo-padre"></span>
+                        <span class="articulo-descripcion-padre"></span>
+                        <span class="badge-readonly">Solo lectura</span>
+                    </div>
+                </div>
+
+                <div class="selector-vinculo-section">
+                    <h3>Seleccionar Artículo por Kilo</h3>
+                    <div class="form-group">
+                        <label for="buscar-articulo-vinculo">Buscar artículo:</label>
+                        <input type="text" id="buscar-articulo-vinculo" placeholder="Escriba para buscar..." autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="selector-articulo-vinculo">Artículo por kilo:</label>
+                        <select id="selector-articulo-vinculo" size="8">
+                            <option value="">Cargando artículos...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="btn-guardar-vinculo" class="btn btn-success">Guardar Vínculo</button>
                     <button class="btn btn-secondary close-modal">Cancelar</button>
                 </div>
             </div>

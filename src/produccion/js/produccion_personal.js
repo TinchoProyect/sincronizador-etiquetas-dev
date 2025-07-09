@@ -47,6 +47,11 @@ window.cerrarModalReceta = cerrarModalReceta;
 window.abrirModalIngresoManual = abrirModalIngresoManual;
 window.imprimirOrdenProduccion = imprimirOrdenProduccion;
 
+// Importar y hacer disponibles las funciones del modal simplificado
+import { cerrarModalEditarVinculo, procesarGuardadoVinculo } from './carro.js';
+window.cerrarModalEditarVinculo = cerrarModalEditarVinculo;
+window.procesarGuardadoVinculo = procesarGuardadoVinculo;
+
 // Función asíncrona para inicializar el espacio de trabajo
 async function inicializarEspacioTrabajo() {
     try {
@@ -174,11 +179,27 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('click', (e) => {
         const modalArticulos = document.getElementById('modal-articulos');
         const modalReceta = document.getElementById('modal-receta');
+        const modalEditarVinculo = document.getElementById('modal-editar-vinculo');
         
         if (e.target === modalArticulos) {
             cerrarModalArticulos();
         } else if (e.target === modalReceta) {
             cerrarModalReceta();
+        } else if (e.target === modalEditarVinculo) {
+            window.cerrarModalEditarVinculo();
+        }
+    });
+
+    // Event listeners para el modal simplificado de edición de vínculos
+    document.addEventListener('click', (e) => {
+        // Botón cerrar modal simplificado
+        if (e.target.closest('#modal-editar-vinculo .close-modal')) {
+            window.cerrarModalEditarVinculo();
+        }
+        
+        // Botón guardar vínculo
+        if (e.target.id === 'btn-guardar-vinculo') {
+            window.procesarGuardadoVinculo();
         }
     });
 
