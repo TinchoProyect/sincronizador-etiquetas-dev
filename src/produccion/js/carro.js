@@ -808,35 +808,83 @@ export async function eliminarCarro(carroId) {
 // Función para obtener el resumen consolidado de ingredientes de un carro
 export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
+        console.log(`🚀 INICIANDO obtenerResumenIngredientesCarro para carro ${carroId}, usuario ${usuarioId}`);
         
-        if (!response.ok) {
+        // Primero verificar el tipo de carro
+        console.log('🔍 Verificando tipo de carro...');
+        const responseTipoCarro = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+        let tipoCarro = 'interna';
+        if (responseTipoCarro.ok) {
+            const dataTipoCarro = await responseTipoCarro.json();
+            tipoCarro = dataTipoCarro.tipo_carro || 'interna';
+            console.log(`🔍 Tipo de carro detectado: ${tipoCarro}`);
+        } else {
+            console.warn('⚠️ No se pudo obtener el tipo de carro, asumiendo interna');
+        }
+        
+        // Obtener ingredientes base
+        console.log('📦 Obteniendo ingredientes base...');
+        const responseBase = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
+        if (!responseBase.ok) {
             throw new Error('No se pudo obtener el resumen de ingredientes');
         }
+        const ingredientesBase = await responseBase.json();
+        console.log(`📦 Ingredientes base obtenidos: ${ingredientesBase.length}`);
 
-        const data = await response.json();
+        // Obtener ingredientes de artículos vinculados (solo para carros externos)
+        console.log(`🔗 Iniciando obtención de ingredientes vinculados para carro tipo: ${tipoCarro}...`);
         
-        // 🔍 LOG DE DEPURACIÓN 1: Estructura completa
-        console.log('🔍 DEPURACIÓN - Respuesta completa del backend:', data);
-        console.log('🔍 DEPURACIÓN - Cantidad de ingredientes:', data?.length || 0);
+        let ingredientesVinculados = [];
         
-        // 🔍 LOG DE DEPURACIÓN 2: Inspeccionar cada ingrediente
-        if (data && data.length > 0) {
-            data.forEach((ing, index) => {
-                console.log(`🔍 INGREDIENTE ${index + 1}:`, {
-                    nombre: ing.nombre,
-                    cantidad: ing.cantidad,
-                    tipoCantidad: typeof ing.cantidad,
-                    stockActual: ing.stock_actual,
-                    tipoStock: typeof ing.stock_actual,
-                    objetoCompleto: ing
+        if (tipoCarro === 'externa') {
+            console.log('🔗 Es carro externo, procediendo a obtener ingredientes vinculados...');
+            const responseVinculados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${usuarioId}`);
+            console.log('🔗 Response status ingredientes vinculados:', responseVinculados.status);
+            
+            if (responseVinculados.ok) {
+                ingredientesVinculados = await responseVinculados.json();
+                console.log('🔗 Ingredientes vinculados RAW obtenidos:', ingredientesVinculados);
+                console.log('🔗 Cantidad de ingredientes vinculados:', ingredientesVinculados.length);
+                
+                // Log detallado de cada ingrediente vinculado
+                ingredientesVinculados.forEach((ing, index) => {
+                    console.log(`🔗 Ingrediente vinculado ${index + 1}:`, {
+                        id: ing.id,
+                        nombre: ing.nombre,
+                        cantidad: ing.cantidad,
+                        stock_actual: ing.stock_actual,
+                        unidad_medida: ing.unidad_medida,
+                        tipo_stock_actual: typeof ing.stock_actual,
+                        valor_stock_actual: ing.stock_actual
+                    });
                 });
-            });
+            } else {
+                const errorText = await responseVinculados.text();
+                console.warn('❌ No se pudieron obtener ingredientes de artículos vinculados:', responseVinculados.status, errorText);
+            }
+        } else {
+            console.log('🔗 Es carro interno, saltando ingredientes vinculados');
         }
 
-        return data;
+        // Marcar ingredientes vinculados para diferenciarlos en UI
+        ingredientesVinculados = ingredientesVinculados.map(ing => ({
+            ...ing,
+            es_de_articulo_vinculado: true
+        }));
+
+        // Combinar ambos arrays
+        const ingredientesAntesCombinat = [...ingredientesBase];
+        const ingredientesCombinados = [...ingredientesBase, ...ingredientesVinculados];
+
+        console.log('🔗 Ingredientes ANTES de combinar:', ingredientesAntesCombinat.length);
+        console.log('🔗 Ingredientes vinculados a agregar:', ingredientesVinculados.length);
+        console.log('🔗 Ingredientes DESPUÉS de combinar:', ingredientesCombinados.length);
+        console.log('🔍 DEPURACIÓN - Ingredientes combinados completos:', ingredientesCombinados);
+        console.log('🔍 DEPURACIÓN - Cantidad total de ingredientes:', ingredientesCombinados.length);
+
+        return ingredientesCombinados;
     } catch (error) {
-        console.error('Error al obtener resumen de ingredientes:', error);
+        console.error('❌ Error al obtener resumen de ingredientes:', error);
         mostrarError(error.message);
         return [];
     }
@@ -974,8 +1022,14 @@ export function mostrarResumenIngredientes(ingredientes) {
             indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
         }
 
+        // Determinar clases CSS para la fila
+        let clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
+        if (ing.es_de_articulo_vinculado) {
+            clasesFila += ' ingrediente-vinculado';
+        }
+
         html += `
-            <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'}">
+            <tr class="${clasesFila}">
                 <td>${ing.nombre || 'Sin nombre'}</td>
                 <td>${cantidadNecesaria.toFixed(2)}</td>
                 <td>${stockActual.toFixed(2)}</td>

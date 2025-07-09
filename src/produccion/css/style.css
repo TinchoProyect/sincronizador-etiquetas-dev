@@ -115,4 +115,15 @@ input:focus, select:focus, textarea:focus {
     margin-bottom: 1rem;
 }
 
+/* Estilos para ingredientes vinculados */
+tr.ingrediente-vinculado {
+    background-color: rgba(108, 117, 125, 0.1);
+    opacity: 0.8;
+    font-style: italic;
+}
+
+tr.ingrediente-vinculado td {
+    color: #6c757d;
+}
+
 

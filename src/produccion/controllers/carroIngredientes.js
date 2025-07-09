@@ -647,8 +647,295 @@ async function obtenerMixesCarro(carroId, usuarioId) {
     }
 }
 
+/**
+ * Obtiene todos los ingredientes de artículos vinculados para un carro de producción externa
+ * @param {number} carroId - ID del carro
+ * @param {number} usuarioId - ID del usuario que solicita los ingredientes
+ * @returns {Promise<Array>} Lista de ingredientes de artículos vinculados consolidados
+ */
+async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
+    try {
+        console.log(`\n🔗 INICIANDO ANÁLISIS DE INGREDIENTES VINCULADOS DEL CARRO ${carroId}`);
+        console.log(`===============================================`);
+        
+        // Validar que el carro pertenece al usuario
+        const esValido = await validarPropiedadCarro(carroId, usuarioId);
+        if (!esValido) {
+            throw new Error('El carro no pertenece al usuario especificado');
+        }
+
+        // Verificar que es un carro de producción externa
+        const queryTipoCarro = `
+            SELECT tipo_carro
+            FROM carros_produccion
+            WHERE id = $1
+        `;
+        const tipoCarroResult = await pool.query(queryTipoCarro, [carroId]);
+        const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro;
+        
+        if (tipoCarro !== 'externa') {
+            console.log(`⚠️ Carro ${carroId} no es de producción externa (tipo: ${tipoCarro})`);
+            return [];
+        }
+
+        // 1. Obtener artículos del carro que tienen vínculos
+        const queryArticulosVinculados = `
+            SELECT 
+                ca.articulo_numero,
+                ca.cantidad,
+                rel.articulo_kilo_codigo
+            FROM carros_articulos ca
+            INNER JOIN articulos_produccion_externa_relacion rel 
+                ON ca.articulo_numero = rel.articulo_produccion_codigo
+            WHERE ca.carro_id = $1
+        `;
+        const articulosVinculadosResult = await pool.query(queryArticulosVinculados, [carroId]);
+        
+        console.log(`🔗 ARTÍCULOS CON VÍNCULOS: ${articulosVinculadosResult.rows.length}`);
+        
+        if (articulosVinculadosResult.rows.length === 0) {
+            console.log(`⚠️ No se encontraron artículos vinculados en el carro ${carroId}`);
+            return [];
+        }
+
+        // 2. Por cada artículo vinculado, obtener sus ingredientes
+        let todosLosIngredientesVinculados = [];
+        
+        for (const articuloVinculado of articulosVinculadosResult.rows) {
+            console.log(`\n🔍 PROCESANDO ARTÍCULO VINCULADO: ${articuloVinculado.articulo_kilo_codigo}`);
+            console.log(`Cantidad del artículo padre: ${articuloVinculado.cantidad}`);
+            
+            // Obtener la receta del artículo vinculado
+            const queryRecetaVinculado = `
+                SELECT 
+                    ri.ingrediente_id,
+                    CAST(ri.cantidad AS DECIMAL(20,10)) as cantidad,
+                    COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
+                    COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
+                FROM recetas r
+                JOIN receta_ingredientes ri ON r.id = ri.receta_id
+                LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id
+                WHERE r.articulo_numero = $1
+            `;
+            const recetaVinculadoResult = await pool.query(queryRecetaVinculado, [articuloVinculado.articulo_kilo_codigo]);
+            
+            console.log(`🔎 Ingredientes en receta vinculada: ${recetaVinculadoResult.rows.length}`);
+
+            // Por cada ingrediente en la receta del artículo vinculado
+            for (const ing of recetaVinculadoResult.rows) {
+                // Mantener alta precisión en el cálculo de cantidad total
+                const cantidadTotal = Number((ing.cantidad * articuloVinculado.cantidad).toPrecision(10));
+                
+                console.log(`\n🔍 ANÁLISIS DE CANTIDADES VINCULADAS - ${articuloVinculado.articulo_kilo_codigo}`);
+                console.log(`=====================================================`);
+                console.log(`1️⃣ DATOS DE ENTRADA:`);
+                console.log(`- Cantidad en receta vinculada: ${ing.cantidad}kg`);
+                console.log(`- Unidades del artículo padre: ${articuloVinculado.cantidad}`);
+                console.log(`2️⃣ CÁLCULO:`);
+                console.log(`${ing.cantidad} × ${articuloVinculado.cantidad} = ${cantidadTotal}kg`);
+                console.log(`=====================================================\n`);
+                
+                let ingredienteIdParaExpandir = ing.ingrediente_id;
+                
+                // Si ingrediente_id es null, buscar por nombre
+                if (!ingredienteIdParaExpandir) {
+                    console.log(`🔍 ingrediente_id es NULL para ${ing.nombre_ingrediente}, buscando por nombre...`);
+                    ingredienteIdParaExpandir = await buscarIngredientePorNombre(ing.nombre_ingrediente);
+                    if (ingredienteIdParaExpandir) {
+                        console.log(`✅ ID encontrado por nombre: ${ingredienteIdParaExpandir} para ${ing.nombre_ingrediente}`);
+                    } else {
+                        console.log(`⚠️ No se encontró ID para ${ing.nombre_ingrediente}, omitiendo expansión`);
+                    }
+                }
+                
+                let ingredientesExpandidos = [];
+                if (ingredienteIdParaExpandir) {
+                    const esMix = await verificarSiEsMix(ingredienteIdParaExpandir);
+                    
+                    if (esMix) {
+                        console.log(`✅ Ingrediente vinculado ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaExpandir}) es un MIX - procediendo a expandir`);
+                        ingredientesExpandidos = await expandirIngrediente(
+                            ingredienteIdParaExpandir,
+                            cantidadTotal,
+                            new Set(),
+                            ingredienteIdParaExpandir
+                        );
+                        
+                        if (ingredientesExpandidos.length > 0) {
+                            todosLosIngredientesVinculados = todosLosIngredientesVinculados.concat(ingredientesExpandidos);
+                        } else {
+                            console.log(`⚠️ Error: No se obtuvieron ingredientes expandidos para el mix vinculado ${ing.nombre_ingrediente}`);
+                        }
+                    } else {
+                        console.log(`ℹ️ Ingrediente vinculado ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaExpandir}) es un ingrediente simple - agregando directamente`);
+                        // Para ingredientes simples, agregar directamente
+                        todosLosIngredientesVinculados.push({
+                            id: ingredienteIdParaExpandir,
+                            nombre: ing.nombre_ingrediente,
+                            unidad_medida: ing.unidad_medida,
+                            cantidad: cantidadTotal
+                        });
+                    }
+                } else {
+                    console.log(`⚠️ No se encontró ID para ingrediente vinculado ${ing.nombre_ingrediente} - agregando sin ID`);
+                    // Si no se encontró ID, agregar sin ID (fallback)
+                    todosLosIngredientesVinculados.push({
+                        id: null,
+                        nombre: ing.nombre_ingrediente,
+                        unidad_medida: ing.unidad_medida,
+                        cantidad: cantidadTotal
+                    });
+                }
+            }
+
+            // Si el artículo vinculado no tiene receta, verificar si es un mix o ingrediente primario
+            if (recetaVinculadoResult.rows.length === 0) {
+                console.log(`📦 Artículo vinculado ${articuloVinculado.articulo_kilo_codigo} sin receta - verificando tipo`);
+                const queryIngredientePrimario = `
+                    SELECT id, nombre, unidad_medida
+                    FROM ingredientes
+                    WHERE LOWER(nombre) = LOWER($1)
+                `;
+                const ingredientePrimario = await pool.query(queryIngredientePrimario, [articuloVinculado.articulo_kilo_codigo]);
+
+                if (ingredientePrimario.rows.length > 0) {
+                    const ingredienteId = ingredientePrimario.rows[0].id;
+                    const esMix = await verificarSiEsMix(ingredienteId);
+
+                    if (esMix) {
+                        console.log(`✅ Artículo vinculado ${articuloVinculado.articulo_kilo_codigo} es un MIX - expandiendo componentes`);
+                        const ingredientesExpandidos = await expandirIngrediente(
+                            ingredienteId,
+                            articuloVinculado.cantidad
+                        );
+                        if (ingredientesExpandidos.length > 0) {
+                            todosLosIngredientesVinculados = todosLosIngredientesVinculados.concat(ingredientesExpandidos);
+                        } else {
+                            console.log(`⚠️ Error: No se obtuvieron ingredientes expandidos para el mix vinculado ${articuloVinculado.articulo_kilo_codigo}`);
+                        }
+                    } else {
+                        console.log(`✅ Artículo vinculado ${articuloVinculado.articulo_kilo_codigo} es ingrediente primario - agregando directamente`);
+                        todosLosIngredientesVinculados.push({
+                            id: ingredienteId,
+                            nombre: ingredientePrimario.rows[0].nombre,
+                            unidad_medida: ingredientePrimario.rows[0].unidad_medida,
+                            cantidad: articuloVinculado.cantidad
+                        });
+                    }
+                } else {
+                    console.log(`⚠️ No se encontró ingrediente para artículo vinculado ${articuloVinculado.articulo_kilo_codigo}`);
+                }
+            }
+        }
+
+        // 3. Consolidar todos los ingredientes vinculados
+        const ingredientesVinculadosConsolidados = consolidarIngredientes(todosLosIngredientesVinculados);
+
+        // 4. Agregar stock_actual de producción general (stock_real_consolidado) a cada ingrediente
+        console.log(`\n🔍 INICIANDO PROCESO DE OBTENCIÓN DE STOCK PARA INGREDIENTES VINCULADOS`);
+        console.log(`Total de ingredientes vinculados consolidados: ${ingredientesVinculadosConsolidados.length}`);
+        
+        const ingredientesVinculadosConStock = await Promise.all(
+            ingredientesVinculadosConsolidados.map(async (ingrediente, index) => {
+                console.log(`\n🔍 [${index + 1}/${ingredientesVinculadosConsolidados.length}] PROCESANDO INGREDIENTE VINCULADO:`);
+                console.log(`- ID: ${ingrediente.id}`);
+                console.log(`- Nombre: ${ingrediente.nombre}`);
+                console.log(`- Cantidad necesaria: ${ingrediente.cantidad}`);
+                
+                if (ingrediente.id) {
+                    try {
+                        console.log(`\n📦 Obteniendo stock de producción general para ingrediente vinculado ${ingrediente.id}`);
+                        
+                        // Para ingredientes vinculados, consultar stock directamente desde la tabla ingredientes
+                        console.log(`🔍 Consultando stock directamente desde tabla ingredientes para ID ${ingrediente.id}`);
+                        
+                        // Consultar stock de producción general desde tabla ingredientes
+                        const queryStockGeneral = `
+                            SELECT 
+                                i.stock_actual,
+                                i.nombre as ingrediente_nombre,
+                                i.id as ingrediente_id
+                            FROM ingredientes i
+                            WHERE i.id = $1
+                        `;
+                        console.log(`🔍 Ejecutando query de stock: ${queryStockGeneral}`);
+                        console.log(`🔍 Parámetro ingrediente_id: ${ingrediente.id}`);
+                        
+                        const stockGeneralResult = await pool.query(queryStockGeneral, [ingrediente.id]);
+                        console.log(`🔍 Resultado de query stock:`, stockGeneralResult.rows);
+                        console.log(`🔍 Número de filas devueltas: ${stockGeneralResult.rows.length}`);
+                        
+                        if (stockGeneralResult.rows.length > 0) {
+                            const stockData = stockGeneralResult.rows[0];
+                            console.log(`✅ Stock encontrado para ${stockData.ingrediente_nombre}:`);
+                            console.log(`- stock_actual: ${stockData.stock_actual}`);
+                            console.log(`- ingrediente_id: ${stockData.ingrediente_id}`);
+                        } else {
+                            console.log(`❌ No se encontró stock para ingrediente ID ${ingrediente.id}`);
+                        }
+                        
+                        const stockActual = stockGeneralResult.rows[0]?.stock_actual || 0;
+                        console.log(`📊 Stock final asignado: ${stockActual}`);
+                        
+                        const resultado = {
+                            ...ingrediente,
+                            stock_actual: Number(parseFloat(stockActual).toPrecision(10)),
+                            origen_mix_id: ingrediente.origen_mix_id
+                        };
+                        
+                        console.log(`✅ Ingrediente procesado:`, {
+                            id: resultado.id,
+                            nombre: resultado.nombre,
+                            cantidad: resultado.cantidad,
+                            stock_actual: resultado.stock_actual
+                        });
+                        
+                        return resultado;
+                    } catch (error) {
+                        console.error(`❌ Error obteniendo stock de producción general para ingrediente vinculado ${ingrediente.id}:`, error);
+                        console.error(`❌ Stack trace:`, error.stack);
+                        return {
+                            ...ingrediente,
+                            stock_actual: 0,
+                            origen_mix_id: ingrediente.origen_mix_id
+                        };
+                    }
+                } else {
+                    console.log(`⚠️ Ingrediente sin ID, asignando stock 0`);
+                    // Si no tiene ID, no podemos obtener stock
+                    return {
+                        ...ingrediente,
+                        stock_actual: 0
+                    };
+                }
+            })
+        );
+        
+        console.log(`\n📊 RESUMEN FINAL DE INGREDIENTES VINCULADOS CON STOCK:`);
+        ingredientesVinculadosConStock.forEach((ing, index) => {
+            console.log(`${index + 1}. ${ing.nombre} (ID: ${ing.id}): Necesario ${ing.cantidad}, Stock ${ing.stock_actual}`);
+        });
+
+        console.log(`\n📊 INGREDIENTES VINCULADOS CON STOCK AGREGADO:`);
+        ingredientesVinculadosConStock.forEach((ing, index) => {
+            const estado = ing.stock_actual >= ing.cantidad ? '✅' : '❌';
+            console.log(`  ${index + 1}. ${ing.nombre}: Necesario ${ing.cantidad}, Stock ${ing.stock_actual} ${estado}`);
+        });
+
+        console.log(`\n✅ INGREDIENTES VINCULADOS CONSOLIDADOS: ${ingredientesVinculadosConStock.length}`);
+        console.log(`===============================================\n`);
+
+        return ingredientesVinculadosConStock;
+
+    } catch (error) {
+        console.error('Error al obtener ingredientes de artículos vinculados:', error);
+        throw new Error('No se pudieron obtener los ingredientes de artículos vinculados');
+    }
+}
+
 module.exports = {
     obtenerIngredientesBaseCarro,
     obtenerMixesCarro,
-    obtenerArticulosDeRecetas
+    obtenerArticulosDeRecetas,
+    obtenerIngredientesArticulosVinculados
 };
