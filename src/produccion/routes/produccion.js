@@ -1397,23 +1397,39 @@ router.get('/relacion-articulo/:articuloCodigo', async (req, res) => {
 // Ruta para crear una nueva relación artículo-kilo
 router.post('/relacion-articulo', async (req, res) => {
     try {
-        const { articulo_produccion_codigo, articulo_kilo_codigo } = req.body;
+        console.log('\n🔍 DEPURACIÓN POST /relacion-articulo:');
+        console.log('===========================================');
+        console.log('📥 PAYLOAD COMPLETO RECIBIDO:', JSON.stringify(req.body, null, 2));
+        
+        const { articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes } = req.body;
+        
+        console.log('\n📋 CAMPOS EXTRAÍDOS:');
+        console.log('- articulo_produccion_codigo:', articulo_produccion_codigo);
+        console.log('- articulo_kilo_codigo:', articulo_kilo_codigo);
+        console.log('- multiplicador_ingredientes:', multiplicador_ingredientes, typeof multiplicador_ingredientes);
         
         if (!articulo_produccion_codigo || !articulo_kilo_codigo) {
+            console.log('❌ ERROR: Faltan códigos requeridos');
             return res.status(400).json({ 
                 error: 'Se requieren ambos códigos: articulo_produccion_codigo y articulo_kilo_codigo' 
             });
         }
 
-        console.log(`➕ Creando relación: ${articulo_produccion_codigo} -> ${articulo_kilo_codigo}`);
-        const nuevaRelacion = await crearRelacion(articulo_produccion_codigo, articulo_kilo_codigo);
+        // Validar y convertir multiplicador_ingredientes
+        const multiplicador = multiplicador_ingredientes ? parseFloat(multiplicador_ingredientes) : 1;
+        console.log('🔢 MULTIPLICADOR PROCESADO:', multiplicador);
+
+        console.log(`➕ Creando relación: ${articulo_produccion_codigo} -> ${articulo_kilo_codigo} (multiplicador: ${multiplicador})`);
+        const nuevaRelacion = await crearRelacion(articulo_produccion_codigo, articulo_kilo_codigo, multiplicador);
+        
+        console.log('✅ RELACIÓN CREADA:', JSON.stringify(nuevaRelacion, null, 2));
         
         res.status(201).json({
             message: 'Relación creada correctamente',
             relacion: nuevaRelacion
         });
     } catch (error) {
-        console.error('Error al crear relación:', error);
+        console.error('❌ Error al crear relación:', error);
         if (error.message.includes('Ya existe una relación')) {
             res.status(409).json({ error: error.message });
         } else if (error.message.includes('no existe')) {
@@ -1427,26 +1443,44 @@ router.post('/relacion-articulo', async (req, res) => {
 // Ruta para actualizar una relación existente
 router.put('/relacion-articulo/:id', async (req, res) => {
     try {
+        console.log('\n🔍 DEPURACIÓN PUT /relacion-articulo/:id');
+        console.log('============================================');
+        console.log('📥 PAYLOAD COMPLETO RECIBIDO:', JSON.stringify(req.body, null, 2));
+        console.log('📋 ID DE RELACIÓN:', req.params.id);
+        
         const relacionId = parseInt(req.params.id);
-        const { articulo_kilo_codigo } = req.body;
+        const { articulo_kilo_codigo, multiplicador_ingredientes } = req.body;
+        
+        console.log('\n📋 CAMPOS EXTRAÍDOS:');
+        console.log('- relacionId:', relacionId);
+        console.log('- articulo_kilo_codigo:', articulo_kilo_codigo);
+        console.log('- multiplicador_ingredientes:', multiplicador_ingredientes, typeof multiplicador_ingredientes);
         
         if (isNaN(relacionId)) {
+            console.log('❌ ERROR: ID de relación inválido');
             return res.status(400).json({ error: 'ID de relación inválido' });
         }
         
         if (!articulo_kilo_codigo) {
+            console.log('❌ ERROR: Falta código del artículo por kilo');
             return res.status(400).json({ error: 'Se requiere el código del artículo por kilo' });
         }
 
-        console.log(`✏️ Actualizando relación ${relacionId} con nuevo artículo: ${articulo_kilo_codigo}`);
-        const relacionActualizada = await actualizarRelacion(relacionId, articulo_kilo_codigo);
+        // Procesar multiplicador_ingredientes
+        const multiplicador = multiplicador_ingredientes !== undefined ? parseFloat(multiplicador_ingredientes) : null;
+        console.log('🔢 MULTIPLICADOR PROCESADO:', multiplicador);
+
+        console.log(`✏️ Actualizando relación ${relacionId} con artículo: ${articulo_kilo_codigo} y multiplicador: ${multiplicador}`);
+        const relacionActualizada = await actualizarRelacion(relacionId, articulo_kilo_codigo, multiplicador);
+        
+        console.log('✅ RELACIÓN ACTUALIZADA:', JSON.stringify(relacionActualizada, null, 2));
         
         res.json({
             message: 'Relación actualizada correctamente',
             relacion: relacionActualizada
         });
     } catch (error) {
-        console.error('Error al actualizar relación:', error);
+        console.error('❌ Error al actualizar relación:', error);
         if (error.message.includes('no encontrada') || error.message.includes('no existe')) {
             res.status(404).json({ error: error.message });
         } else {

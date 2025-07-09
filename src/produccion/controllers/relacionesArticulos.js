@@ -9,7 +9,8 @@ const pool = require('../config/database');
 async function obtenerRelacionesCarro(carroId, usuarioId) {
     try {
         const query = `
-            SELECT id, articulo_produccion_codigo, articulo_kilo_codigo
+            SELECT id, articulo_produccion_codigo, articulo_kilo_codigo, 
+                   COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
             FROM articulos_produccion_externa_relacion
             WHERE articulo_produccion_codigo IN (
                 SELECT articulo_numero FROM carros_articulos WHERE carro_id = $1
@@ -31,7 +32,8 @@ async function obtenerRelacionesCarro(carroId, usuarioId) {
 async function obtenerRelacionPorArticulo(articuloCodigo) {
     try {
         const query = `
-            SELECT id, articulo_produccion_codigo, articulo_kilo_codigo
+            SELECT id, articulo_produccion_codigo, articulo_kilo_codigo,
+                   COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
             FROM articulos_produccion_externa_relacion
             WHERE articulo_produccion_codigo = $1
             LIMIT 1
@@ -48,10 +50,13 @@ async function obtenerRelacionPorArticulo(articuloCodigo) {
  * Crea una nueva relación artículo_produccion -> articulo_kilo
  * @param {string} articuloProduccionCodigo 
  * @param {string} articuloKiloCodigo 
+ * @param {number} multiplicadorIngredientes - Multiplicador para ingredientes (default: 1)
  * @returns {Promise<Object>}
  */
-async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo) {
+async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multiplicadorIngredientes = 1) {
     try {
+        console.log(`🔗 Creando relación: ${articuloProduccionCodigo} -> ${articuloKiloCodigo} (multiplicador: ${multiplicadorIngredientes})`);
+        
         // Verificar si ya existe la relación
         const existeQuery = `
             SELECT id FROM articulos_produccion_externa_relacion
@@ -64,11 +69,13 @@ async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo) {
 
         const insertQuery = `
             INSERT INTO articulos_produccion_externa_relacion
-            (articulo_produccion_codigo, articulo_kilo_codigo)
-            VALUES ($1, $2)
-            RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo
+            (articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes)
+            VALUES ($1, $2, $3)
+            RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo, 
+                     COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
         `;
-        const result = await pool.query(insertQuery, [articuloProduccionCodigo, articuloKiloCodigo]);
+        const result = await pool.query(insertQuery, [articuloProduccionCodigo, articuloKiloCodigo, multiplicadorIngredientes]);
+        console.log(`✅ Relación creada con ID: ${result.rows[0].id}`);
         return result.rows[0];
     } catch (error) {
         console.error('Error al crear relación:', error);
@@ -80,20 +87,40 @@ async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo) {
  * Actualiza una relación existente
  * @param {number} relacionId 
  * @param {string} articuloKiloCodigo 
+ * @param {number} multiplicadorIngredientes - Multiplicador para ingredientes (opcional)
  * @returns {Promise<Object>}
  */
-async function actualizarRelacion(relacionId, articuloKiloCodigo) {
+async function actualizarRelacion(relacionId, articuloKiloCodigo, multiplicadorIngredientes = null) {
     try {
-        const updateQuery = `
-            UPDATE articulos_produccion_externa_relacion
-            SET articulo_kilo_codigo = $1
-            WHERE id = $2
-            RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo
-        `;
-        const result = await pool.query(updateQuery, [articuloKiloCodigo, relacionId]);
+        console.log(`✏️ Actualizando relación ${relacionId}: ${articuloKiloCodigo} (multiplicador: ${multiplicadorIngredientes})`);
+        
+        let updateQuery, params;
+        
+        if (multiplicadorIngredientes !== null) {
+            updateQuery = `
+                UPDATE articulos_produccion_externa_relacion
+                SET articulo_kilo_codigo = $1, multiplicador_ingredientes = $2
+                WHERE id = $3
+                RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo,
+                         COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
+            `;
+            params = [articuloKiloCodigo, multiplicadorIngredientes, relacionId];
+        } else {
+            updateQuery = `
+                UPDATE articulos_produccion_externa_relacion
+                SET articulo_kilo_codigo = $1
+                WHERE id = $2
+                RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo,
+                         COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
+            `;
+            params = [articuloKiloCodigo, relacionId];
+        }
+        
+        const result = await pool.query(updateQuery, params);
         if (result.rows.length === 0) {
             throw new Error('Relación no encontrada');
         }
+        console.log(`✅ Relación actualizada: ${result.rows[0].id}`);
         return result.rows[0];
     } catch (error) {
         console.error('Error al actualizar relación:', error);

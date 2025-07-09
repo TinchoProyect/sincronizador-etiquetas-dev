@@ -1520,16 +1520,21 @@ function generarBotonesRelacion(articuloCodigo, tieneRelacion, relacion) {
  * @returns {string} HTML de la fila del artículo vinculado
  */
 function generarFilaArticuloVinculado(articuloProduccionCodigo, relacion) {
+    // Obtener el multiplicador, por defecto 1 si no existe
+    const multiplicador = relacion.multiplicador_ingredientes || 1;
+    const multiplicadorTexto = multiplicador === 1 ? '' : ` (×${multiplicador})`;
+    
     return `
         <div class="articulo-vinculado" data-articulo-padre="${articuloProduccionCodigo}">
             <div class="articulo-info">
                 <span class="vinculo-icono">🔗</span>
                 <span class="articulo-codigo">${relacion.articulo_kilo_codigo}</span>
                 <span class="articulo-descripcion">${relacion.articulo_kilo_nombre || 'Artículo vinculado por kilo'}</span>
-                <span class="vinculo-etiqueta">Artículo vinculado</span>
+                <span class="vinculo-etiqueta">Artículo vinculado${multiplicadorTexto}</span>
             </div>
             <div class="articulo-actions">
                 <span class="cantidad-vinculada">Cantidad automática</span>
+                ${multiplicador !== 1 ? `<span class="multiplicador-info" title="Multiplicador de ingredientes">🔢 ${multiplicador}x</span>` : ''}
             </div>
             <div class="articulo-controls">
                 <button class="btn-editar-relacion-simple" 
@@ -1652,6 +1657,72 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
         // Cargar artículos disponibles
         await cargarArticulosParaVinculo();
 
+        // Si es edición, cargar datos existentes de la relación
+        if (relacionId && relacionId !== 'null' && relacionId !== 'undefined') {
+            console.log(`\n🔍 DEPURACIÓN CARGA DE RELACIÓN EXISTENTE:`);
+            console.log('===============================================');
+            console.log('- relacionId:', relacionId, typeof relacionId);
+            console.log('- URL a consultar:', `http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
+            
+            try {
+                const response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
+                console.log('- Response status:', response.status);
+                console.log('- Response ok:', response.ok);
+                
+                if (response.ok) {
+                    const relacion = await response.json();
+                    console.log(`\n📋 DATOS DE RELACIÓN RECIBIDOS DEL SERVIDOR:`);
+                    console.log('- Objeto completo:', JSON.stringify(relacion, null, 2));
+                    console.log('- articulo_kilo_codigo:', relacion.articulo_kilo_codigo);
+                    console.log('- multiplicador_ingredientes RAW:', relacion.multiplicador_ingredientes, typeof relacion.multiplicador_ingredientes);
+                    
+                    // Preseleccionar el artículo vinculado
+                    const selector = document.getElementById('selector-articulo-vinculo');
+                    if (selector && relacion.articulo_kilo_codigo) {
+                        selector.value = relacion.articulo_kilo_codigo;
+                        console.log('✅ Artículo preseleccionado en selector:', relacion.articulo_kilo_codigo);
+                    } else {
+                        console.log('⚠️ No se pudo preseleccionar artículo - selector:', !!selector, 'codigo:', relacion.articulo_kilo_codigo);
+                    }
+                    
+                    // Cargar el multiplicador existente
+                    const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
+                    console.log('\n🔢 PROCESANDO MULTIPLICADOR:');
+                    console.log('- Input multiplicador encontrado:', !!inputMultiplicador);
+                    
+                    if (inputMultiplicador) {
+                        const valorMultiplicador = relacion.multiplicador_ingredientes || 1;
+                        inputMultiplicador.value = valorMultiplicador;
+                        console.log('- Valor asignado al input:', valorMultiplicador);
+                        console.log('- Valor actual del input después de asignar:', inputMultiplicador.value);
+                        console.log('✅ Multiplicador cargado en el input');
+                    } else {
+                        console.log('❌ No se encontró el input multiplicador-ingredientes');
+                    }
+                } else {
+                    const errorText = await response.text();
+                    console.warn('⚠️ No se pudieron cargar los datos de la relación existente');
+                    console.warn('- Error response:', errorText);
+                }
+            } catch (error) {
+                console.error('❌ Error al cargar datos de relación:', error);
+                console.error('- Error completo:', error.message);
+            }
+        } else {
+            console.log(`\n🔢 ESTABLECIENDO MULTIPLICADOR POR DEFECTO:`);
+            console.log('- relacionId es null/undefined, estableciendo valor por defecto');
+            
+            // Para nuevas relaciones, establecer valor por defecto
+            const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
+            if (inputMultiplicador) {
+                inputMultiplicador.value = 1;
+                console.log('✅ Multiplicador establecido por defecto: 1');
+                console.log('- Valor actual del input:', inputMultiplicador.value);
+            } else {
+                console.log('❌ No se encontró el input multiplicador-ingredientes para valor por defecto');
+            }
+        }
+
         // Configurar datos del modal
         modal.dataset.articuloCodigo = articuloCodigo;
         modal.dataset.relacionId = relacionId;
@@ -1772,65 +1843,117 @@ function cerrarModalEditarVinculo() {
  */
 async function procesarGuardadoVinculo() {
     try {
+        console.log('\n🔍 DEPURACIÓN FRONTEND - procesarGuardadoVinculo():');
+        console.log('=======================================================');
+        
         const modal = document.getElementById('modal-editar-vinculo');
         const selector = document.getElementById('selector-articulo-vinculo');
+        const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
+        
+        console.log('\n📋 ELEMENTOS DEL MODAL:');
+        console.log('- modal encontrado:', !!modal);
+        console.log('- selector encontrado:', !!selector);
+        console.log('- inputMultiplicador encontrado:', !!inputMultiplicador);
         
         if (!modal || !selector) {
+            console.log('❌ ERROR: No se encontraron los elementos del modal');
             throw new Error('No se encontraron los elementos del modal');
         }
 
         const articuloCodigo = modal.dataset.articuloCodigo;
         const relacionId = modal.dataset.relacionId;
         const articuloKiloCodigo = selector.value;
+        const multiplicadorIngredientesRaw = inputMultiplicador?.value;
+        const multiplicadorIngredientes = parseFloat(multiplicadorIngredientesRaw || 1);
+
+        console.log('\n📋 VALORES EXTRAÍDOS DEL MODAL:');
+        console.log('- articuloCodigo:', articuloCodigo);
+        console.log('- relacionId:', relacionId);
+        console.log('- articuloKiloCodigo:', articuloKiloCodigo);
+        console.log('- multiplicadorIngredientesRaw:', multiplicadorIngredientesRaw, typeof multiplicadorIngredientesRaw);
+        console.log('- multiplicadorIngredientes (parseado):', multiplicadorIngredientes, typeof multiplicadorIngredientes);
 
         if (!articuloCodigo) {
+            console.log('❌ ERROR: Código de artículo de producción no válido');
             throw new Error('Código de artículo de producción no válido');
         }
 
         if (!articuloKiloCodigo) {
+            console.log('❌ ERROR: Debe seleccionar un artículo por kilo');
             mostrarError('Debe seleccionar un artículo por kilo');
             return;
         }
 
-        console.log(`🔗 Procesando vínculo: ${articuloCodigo} -> ${articuloKiloCodigo}`);
-        console.log(`📋 Modo: ${relacionId ? 'editar' : 'crear'} | RelacionId: ${relacionId}`);
+        // Validar multiplicador
+        if (isNaN(multiplicadorIngredientes) || multiplicadorIngredientes <= 0) {
+            console.log('❌ ERROR: Multiplicador inválido:', multiplicadorIngredientes);
+            mostrarError('El multiplicador debe ser un número mayor a 0');
+            return;
+        }
+
+        console.log(`\n🔗 PROCESANDO VÍNCULO: ${articuloCodigo} -> ${articuloKiloCodigo}`);
+        console.log(`🔢 MULTIPLICADOR FINAL: ${multiplicadorIngredientes}`);
+        console.log(`📋 MODO: ${relacionId ? 'editar' : 'crear'} | RelacionId: ${relacionId}`);
 
         let response;
         let mensaje;
+        let requestBody;
 
         if (relacionId && relacionId !== 'undefined' && relacionId !== 'null') {
             // Editar relación existente
-            console.log(`✏️ Editando relación existente con ID: ${relacionId}`);
+            requestBody = {
+                articulo_kilo_codigo: articuloKiloCodigo,
+                multiplicador_ingredientes: multiplicadorIngredientes
+            };
+            
+            console.log(`\n✏️ EDITANDO RELACIÓN EXISTENTE:`);
+            console.log('- URL:', `http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
+            console.log('- Method: PUT');
+            console.log('- Body:', JSON.stringify(requestBody, null, 2));
+            
             response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    articulo_kilo_codigo: articuloKiloCodigo
-                })
+                body: JSON.stringify(requestBody)
             });
             mensaje = 'Vínculo actualizado correctamente';
         } else {
             // Crear nueva relación
-            console.log(`➕ Creando nueva relación`);
+            requestBody = {
+                articulo_produccion_codigo: articuloCodigo,
+                articulo_kilo_codigo: articuloKiloCodigo,
+                multiplicador_ingredientes: multiplicadorIngredientes
+            };
+            
+            console.log(`\n➕ CREANDO NUEVA RELACIÓN:`);
+            console.log('- URL:', 'http://localhost:3002/api/produccion/relacion-articulo');
+            console.log('- Method: POST');
+            console.log('- Body:', JSON.stringify(requestBody, null, 2));
+            
             response = await fetch('http://localhost:3002/api/produccion/relacion-articulo', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    articulo_produccion_codigo: articuloCodigo,
-                    articulo_kilo_codigo: articuloKiloCodigo
-                })
+                body: JSON.stringify(requestBody)
             });
             mensaje = 'Vínculo creado correctamente';
         }
 
+        console.log('\n📡 RESPUESTA DEL SERVIDOR:');
+        console.log('- Status:', response.status);
+        console.log('- OK:', response.ok);
+
         if (!response.ok) {
             const errorData = await response.json();
+            console.log('❌ ERROR EN RESPUESTA:', errorData);
             throw new Error(errorData.error || 'Error al procesar la relación');
         }
+
+        const resultado = await response.json();
+        console.log('✅ VÍNCULO PROCESADO EXITOSAMENTE:', JSON.stringify(resultado, null, 2));
 
         // Mostrar notificación de éxito
         mostrarNotificacionExito(mensaje);
@@ -1842,7 +1965,7 @@ async function procesarGuardadoVinculo() {
         await mostrarArticulosDelCarro();
 
     } catch (error) {
-        console.error('Error al guardar vínculo:', error);
+        console.error('❌ Error al guardar vínculo:', error);
         mostrarError(error.message);
     }
 }

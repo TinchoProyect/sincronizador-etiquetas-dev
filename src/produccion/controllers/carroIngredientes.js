@@ -683,7 +683,8 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
             SELECT 
                 ca.articulo_numero,
                 ca.cantidad,
-                rel.articulo_kilo_codigo
+                rel.articulo_kilo_codigo,
+                COALESCE(rel.multiplicador_ingredientes, 1) as multiplicador_ingredientes
             FROM carros_articulos ca
             INNER JOIN articulos_produccion_externa_relacion rel 
                 ON ca.articulo_numero = rel.articulo_produccion_codigo
@@ -723,16 +724,18 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
 
             // Por cada ingrediente en la receta del artículo vinculado
             for (const ing of recetaVinculadoResult.rows) {
-                // Mantener alta precisión en el cálculo de cantidad total
-                const cantidadTotal = Number((ing.cantidad * articuloVinculado.cantidad).toPrecision(10));
+                // Aplicar multiplicador de ingredientes para artículos vinculados
+                const multiplicador = articuloVinculado.multiplicador_ingredientes || 1;
+                const cantidadTotal = Number((ing.cantidad * articuloVinculado.cantidad * multiplicador).toPrecision(10));
                 
                 console.log(`\n🔍 ANÁLISIS DE CANTIDADES VINCULADAS - ${articuloVinculado.articulo_kilo_codigo}`);
                 console.log(`=====================================================`);
                 console.log(`1️⃣ DATOS DE ENTRADA:`);
                 console.log(`- Cantidad en receta vinculada: ${ing.cantidad}kg`);
                 console.log(`- Unidades del artículo padre: ${articuloVinculado.cantidad}`);
-                console.log(`2️⃣ CÁLCULO:`);
-                console.log(`${ing.cantidad} × ${articuloVinculado.cantidad} = ${cantidadTotal}kg`);
+                console.log(`- Multiplicador de ingredientes: ${multiplicador}`);
+                console.log(`2️⃣ CÁLCULO CON MULTIPLICADOR:`);
+                console.log(`${ing.cantidad} × ${articuloVinculado.cantidad} × ${multiplicador} = ${cantidadTotal}kg`);
                 console.log(`=====================================================\n`);
                 
                 let ingredienteIdParaExpandir = ing.ingrediente_id;
