@@ -455,18 +455,52 @@ export async function finalizarProduccion(carroId) {
             throw new Error('No se encontró información del colaborador activo');
         }
 
-        // Obtener kilos producidos del input (solo para carros externos)
+        // 🔍 OBTENER TIPO DE CARRO ANTES DE VALIDAR KILOS PRODUCIDOS
+        console.log('🔍 Obteniendo tipo de carro antes de validar kilos producidos...');
+        const estadoResponse = await fetch(`/api/produccion/carro/${carroId}/estado`);
+        
+        if (!estadoResponse.ok) {
+            throw new Error('No se pudo obtener el estado del carro');
+        }
+        
+        const estadoCarro = await estadoResponse.json();
+        const tipoCarro = estadoCarro.tipo_carro || 'interna';
+        
+        console.log(`🔍 Tipo de carro detectado: ${tipoCarro}`);
+
+        // Obtener kilos producidos del input (SOLO para carros externos)
         let kilosProducidos = null;
         const kilosProducidosInput = document.getElementById('kilos-producidos');
         
-        if (kilosProducidosInput && kilosProducidosInput.style.display !== 'none') {
-            const kilosProducidosStr = kilosProducidosInput.value;
-            kilosProducidos = parseFloat(kilosProducidosStr);
+        console.log('🔍 Estado del input kilos-producidos:', {
+            existe: !!kilosProducidosInput,
+            display: kilosProducidosInput?.style.display,
+            valor: kilosProducidosInput?.value,
+            tipoCarro: tipoCarro
+        });
+        
+        // ✅ VALIDACIÓN CORREGIDA: Solo validar si es carro externo
+        if (tipoCarro === 'externa') {
+            console.log('🚚 Carro externo: validando kilos producidos...');
+            
+            if (kilosProducidosInput && kilosProducidosInput.style.display !== 'none') {
+                const kilosProducidosStr = kilosProducidosInput.value;
+                kilosProducidos = parseFloat(kilosProducidosStr);
 
-            if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
-                throw new Error('Debe ingresar un valor numérico válido para kilos producidos mayor a cero.');
+                if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
+                    throw new Error('Debe ingresar un valor numérico válido para kilos producidos mayor a cero.');
+                }
+                
+                console.log(`✅ Kilos producidos validados: ${kilosProducidos}`);
+            } else {
+                throw new Error('Para carros de producción externa es obligatorio ingresar los kilos producidos.');
             }
+        } else {
+            console.log('🏭 Carro interno: saltando validación de kilos producidos');
+            kilosProducidos = null; // Asegurar que sea null para carros internos
         }
+
+        console.log(`🔍 Enviando al backend - Tipo: ${tipoCarro}, Kilos: ${kilosProducidos}`);
 
         const response = await fetch(`/api/produccion/carro/${carroId}/finalizar`, {
             method: 'POST',
