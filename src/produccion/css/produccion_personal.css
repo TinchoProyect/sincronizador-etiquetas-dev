@@ -319,6 +319,61 @@
 .workspace-actions {
     margin-bottom: 20px;
     text-align: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Estilos para el campo de kilos producidos */
+.kilos-producidos-section {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border: 2px solid #28a745;
+    border-radius: 8px;
+    margin: 10px 0;
+    width: 100%;
+    max-width: 300px;
+}
+
+.kilos-producidos-section label {
+    font-weight: bold;
+    color: #28a745;
+    font-size: 14px;
+}
+
+.kilos-producidos-section input {
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 16px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.kilos-producidos-section input:focus {
+    outline: none;
+    border-color: #28a745;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25);
+}
+
+.kilos-producidos-section .help-text {
+    font-size: 12px;
+    color: #6c757d;
+    margin: 0;
+}
+
+.kilos-producidos-section input:invalid {
+    border-color: #dc3545;
+}
+
+.kilos-producidos-section input:invalid:focus {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.25);
 }
 
 .carro-info {

@@ -66,6 +66,18 @@ export async function actualizarVisibilidadBotones() {
                     btnAgregarArticulo.style.display = 'none';
                 }
                 
+                // Mostrar campo de kilos producidos solo para carros de producción externa
+                const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
+                if (data.tipo_carro === 'externa') {
+                    if (kilosProducidosContainer) {
+                        kilosProducidosContainer.style.display = 'flex';
+                    }
+                } else {
+                    if (kilosProducidosContainer) {
+                        kilosProducidosContainer.style.display = 'none';
+                    }
+                }
+                
                 // ✅ NUEVA FUNCIONALIDAD: Activar transición visual para carros externos
                 if (data.tipo_carro === 'externa' && data.fase_actual === 'articulos_secundarios') {
                     console.log('🔄 Activando modo artículos secundarios para carro externo');
@@ -437,18 +449,32 @@ export async function finalizarProduccion(carroId) {
 
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
-        
+
         if (!colaborador || !colaborador.id) {
             throw new Error('No se encontró información del colaborador activo');
         }
+
+        // Obtener kilos producidos del input (solo para carros externos)
+        let kilosProducidos = null;
+        const kilosProducidosInput = document.getElementById('kilos-producidos');
         
+        if (kilosProducidosInput && kilosProducidosInput.style.display !== 'none') {
+            const kilosProducidosStr = kilosProducidosInput.value;
+            kilosProducidos = parseFloat(kilosProducidosStr);
+
+            if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
+                throw new Error('Debe ingresar un valor numérico válido para kilos producidos mayor a cero.');
+            }
+        }
+
         const response = await fetch(`/api/produccion/carro/${carroId}/finalizar`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                usuarioId: colaborador.id
+                usuarioId: colaborador.id,
+                kilos_producidos: kilosProducidos
             })
         });
 
@@ -459,10 +485,10 @@ export async function finalizarProduccion(carroId) {
 
         // Mostrar notificación de éxito
         mostrarNotificacion('Producción finalizada exitosamente');
-        
+
         // Actualizar la visibilidad de los botones
         await actualizarVisibilidadBotones();
-        
+
         // Actualizar el estado del carro en la interfaz si es necesario
         if (window.actualizarEstadoCarro) {
             window.actualizarEstadoCarro();

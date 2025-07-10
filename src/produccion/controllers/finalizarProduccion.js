@@ -6,11 +6,18 @@ const { registrarMovimientoStockVentas } = require('./stockVentasMovimientos');
 async function finalizarProduccion(req, res) {
     const db = req.db;
     const { id: carroId } = req.params;
-    const { usuarioId } = req.body;
+    const { usuarioId, kilos_producidos } = req.body;
 
     if (!carroId || !usuarioId) {
         return res.status(400).json({ 
             error: 'Faltan datos obligatorios (carroId o usuarioId)' 
+        });
+    }
+
+    // Validar kilos_producidos solo si se proporciona (será requerido para carros externos)
+    if (kilos_producidos !== undefined && kilos_producidos !== null && (isNaN(kilos_producidos) || kilos_producidos <= 0)) {
+        return res.status(400).json({
+            error: 'Si se proporciona kilos_producidos, debe ser un valor numérico válido mayor a cero'
         });
     }
 
@@ -115,13 +122,85 @@ async function finalizarProduccion(req, res) {
             console.log('✅ Movimiento de stock registrado y stock_movimientos actualizado correctamente');
         }
 
+        // 5. Registrar en produccion_externa_historial (solo para carros externos)
+        if (carro.tipo_carro === 'externa') {
+            // Validar que se haya proporcionado kilos_producidos para carros externos
+            if (kilos_producidos === undefined || kilos_producidos === null || isNaN(kilos_producidos) || kilos_producidos <= 0) {
+                throw new Error('Para carros de producción externa es obligatorio ingresar los kilos producidos');
+            }
+            
+            console.log('\n📝 REGISTRANDO EN HISTORIAL DE PRODUCCIÓN EXTERNA');
+            console.log('==========================================');
+            
+            // Obtener el primer artículo del carro como artículo padre
+            const articuloPadre = articulosCarro[0];
+            console.log(`🔍 DEBUG - Artículo padre obtenido:`, {
+                codigo: articuloPadre.articulo_numero,
+                descripcion: articuloPadre.descripcion,
+                cantidad: articuloPadre.cantidad
+            });
+            
+            // Buscar relación en articulos_produccion_externa_relacion
+            console.log(`🔍 DEBUG - Buscando relación para artículo: ${articuloPadre.articulo_numero}`);
+            const { rows: relacionRows } = await db.query(`
+                SELECT articulo_kilo_codigo 
+                FROM articulos_produccion_externa_relacion
+                WHERE articulo_produccion_codigo = $1
+                LIMIT 1
+            `, [articuloPadre.articulo_numero]);
+            
+            console.log(`🔍 DEBUG - Resultado búsqueda relación:`, relacionRows);
+            
+            let articuloFraccionadoCodigo = null;
+            if (relacionRows.length > 0) {
+                articuloFraccionadoCodigo = relacionRows[0].articulo_kilo_codigo;
+                console.log(`✅ DEBUG - Artículo fraccionado encontrado: ${articuloFraccionadoCodigo}`);
+            } else {
+                console.log(`ℹ️ DEBUG - No hay relación definida para este artículo`);
+            }
+            
+            // Preparar datos para inserción (usando códigos alfanuméricos como TEXT)
+            const datosHistorial = [
+                carroId,                              // carro_id (integer)
+                usuarioId,                            // usuario_id (integer)
+                articuloPadre.articulo_numero,        // articulo_padre_id (text) - código alfanumérico
+                articuloFraccionadoCodigo,            // articulo_fraccionado_id (text) - código alfanumérico o null
+                kilos_producidos                      // kilos_producidos (numeric)
+            ];
+            
+            console.log(`🔍 DEBUG - Datos para insertar en historial:`, {
+                carro_id: carroId,
+                usuario_id: usuarioId,
+                articulo_padre_id: articuloPadre.articulo_numero,
+                articulo_fraccionado_id: articuloFraccionadoCodigo,
+                kilos_producidos: kilos_producidos
+            });
+            
+            // Insertar en historial usando códigos alfanuméricos
+            await db.query(`
+                INSERT INTO produccion_externa_historial (
+                    carro_id,
+                    usuario_id,
+                    articulo_padre_id,
+                    articulo_fraccionado_id,
+                    kilos_producidos,
+                    fecha_registro
+                ) VALUES ($1, $2, $3, $4, $5, NOW())
+            `, datosHistorial);
+            
+            console.log(`✅ Registro en historial creado para carro ${carroId}`);
+            console.log(`- Artículo padre (código): ${articuloPadre.articulo_numero}`);
+            console.log(`- Artículo fraccionado (código): ${articuloFraccionadoCodigo || 'No definido'}`);
+            console.log(`- Kilos producidos: ${kilos_producidos}`);
+        }
+
         // Recalcular stock_consolidado para todos los artículos afectados
         if (articulosAfectados.length > 0) {
             await recalcularStockConsolidado(db, articulosAfectados);
             console.log(`Stock consolidado recalculado para ${articulosAfectados.length} artículo(s)`);
         }
 
-        // 5. Actualizar fecha_confirmacion del carro
+        // 6. Actualizar fecha_confirmacion del carro
         await db.query(
             'UPDATE carros_produccion SET fecha_confirmacion = NOW() WHERE id = $1',
             [carroId]
