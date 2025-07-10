@@ -34,17 +34,27 @@ async function contarRegistrosRelacionados(carroId) {
             ? `SELECT COUNT(*) as count FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1`
             : `SELECT COUNT(*) as count FROM ingredientes_movimientos WHERE carro_id = $1`;
 
-        const [movimientosResult, stockResult, articulosResult] = await Promise.all([
+        // Query para historial de producción externa
+        const countHistorialQuery = tipoCarro === 'externa' 
+            ? `SELECT COUNT(*) as count FROM produccion_externa_historial WHERE carro_id = $1`
+            : `SELECT 0 as count`;
+
+        // Ejecutar queries con parámetros apropiados según tipo de carro
+        const [movimientosResult, stockResult, articulosResult, historialResult] = await Promise.all([
             pool.query(countMovimientosQuery, [carroId]),
             pool.query(countStockQuery, [carroId]),
-            pool.query(countArticulosQuery, [carroId])
+            pool.query(countArticulosQuery, [carroId]),
+            tipoCarro === 'externa' 
+                ? pool.query(countHistorialQuery, [carroId])  // ✅ CON parámetro para externos
+                : pool.query(countHistorialQuery)             // ✅ SIN parámetro para internos
         ]);
 
         return {
             tipoCarro,
             ingredientes: parseInt(movimientosResult.rows[0].count),
             stockVentas: parseInt(stockResult.rows[0].count),
-            articulos: parseInt(articulosResult.rows[0].count)
+            articulos: parseInt(articulosResult.rows[0].count),
+            historial: parseInt(historialResult.rows[0].count)
         };
     } catch (error) {
         console.error('Error al contar registros relacionados:', error);
@@ -147,11 +157,17 @@ async function eliminarRegistrosRelacionados(carroId) {
         await pool.query('DELETE FROM stock_ventas_movimientos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.stockVentas} movimientos de stock de ventas`);
         
-        // 3. Eliminar artículos del carro
+        // 3. Eliminar registros de historial de producción externa (solo para carros externos)
+        if (conteos.tipoCarro === 'externa' && conteos.historial > 0) {
+            await pool.query('DELETE FROM produccion_externa_historial WHERE carro_id = $1', [carroId]);
+            console.log(`Eliminados ${conteos.historial} registros de historial de producción externa`);
+        }
+        
+        // 4. Eliminar artículos del carro
         await pool.query('DELETE FROM carros_articulos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.articulos} artículos del carro`);
         
-        // 4. Finalmente eliminar el carro
+        // 5. Finalmente eliminar el carro
         await pool.query('DELETE FROM carros_produccion WHERE id = $1', [carroId]);
         console.log(`Carro ${carroId} eliminado de carros_produccion`);
 
@@ -179,7 +195,7 @@ async function eliminarCarroCompleto(carroId, usuarioId) {
 
         // Contar registros relacionados para informar al usuario
         const conteos = await contarRegistrosRelacionados(carroId);
-        const tieneRegistrosRelacionados = conteos.ingredientes > 0 || conteos.stockVentas > 0;
+        const tieneRegistrosRelacionados = conteos.ingredientes > 0 || conteos.stockVentas > 0 || conteos.historial > 0;
 
         // Iniciar transacción para garantizar atomicidad
         await pool.query('BEGIN');
@@ -198,6 +214,10 @@ async function eliminarCarroCompleto(carroId, usuarioId) {
                           `- ${conteosEliminados.ingredientes} ${conteos.tipoCarro === 'externa' ? 'movimientos de stock de usuarios' : 'movimientos de ingredientes'}\n` +
                           `- ${conteosEliminados.stockVentas} movimientos de stock de ventas\n` +
                           `- ${conteosEliminados.articulos} artículos`;
+                
+                if (conteos.tipoCarro === 'externa' && conteosEliminados.historial > 0) {
+                    mensaje += `\n- ${conteosEliminados.historial} registros de historial de producción externa`;
+                }
             }
 
             return {
@@ -238,12 +258,16 @@ async function obtenerInformacionEliminacion(carroId, usuarioId) {
         const conteos = await contarRegistrosRelacionados(carroId);
 
         // Preparar mensaje informativo
-        const tieneRegistros = conteos.ingredientes > 0 || conteos.stockVentas > 0 || conteos.articulos > 0;
+        const tieneRegistros = conteos.ingredientes > 0 || conteos.stockVentas > 0 || conteos.articulos > 0 || conteos.historial > 0;
         
         let mensaje = `Información sobre el carro ${carroId} (${conteos.tipoCarro}):\n`;
         mensaje += `- ${conteos.articulos} artículos\n`;
         mensaje += `- ${conteos.ingredientes} ${conteos.tipoCarro === 'externa' ? 'movimientos de stock de usuarios' : 'movimientos de ingredientes'}\n`;
         mensaje += `- ${conteos.stockVentas} movimientos de stock de ventas\n`;
+        
+        if (conteos.tipoCarro === 'externa' && conteos.historial > 0) {
+            mensaje += `- ${conteos.historial} registros de historial de producción externa\n`;
+        }
         
         if (tieneRegistros) {
             mensaje += `\n⚠️ ATENCIÓN: Todos estos registros serán eliminados permanentemente.`;

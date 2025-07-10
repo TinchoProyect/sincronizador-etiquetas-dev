@@ -94,102 +94,8 @@ async function finalizarProduccion(req, res) {
             throw new Error('El carro no tiene artículos para finalizar');
         }
 
-        // 4. Registrar movimientos según el tipo de carro
-        for (const articulo of articulosCarro) {
-            console.log(`\n🔄 Procesando artículo ${articulo.articulo_numero}:`);
-            console.log(`- Descripción: ${articulo.descripcion}`);
-            console.log(`- Cantidad: ${articulo.cantidad}`);
-            console.log(`- Código de barras: ${articulo.codigo_barras}`);
-            
-            if (carro.tipo_carro === 'externa') {
-                // Para carros externos: registrar ingreso del artículo vinculado con kilos producidos
-                await db.query(`
-                    INSERT INTO stock_ventas_movimientos (
-                        articulo_numero, 
-                        codigo_barras, 
-                        kilos,
-                        cantidad,
-                        carro_id, 
-                        usuario_id, 
-                        fecha,
-                        tipo
-                    ) VALUES ($1, $2, $3, 0, $4, $5, NOW(), 'ingreso por produccion externa')
-                `, [
-                    articulo.articulo_numero,  // Artículo vinculado (ej: GSGNFX1)
-                    articulo.codigo_barras || '',
-                    kilos_producidos,  // Kilos reales producidos
-                    carroId,
-                    usuarioId
-                ]);
-                
-                // Actualizar stock_movimientos para ingreso
-                await db.query(`
-                    INSERT INTO stock_real_consolidado (
-                        articulo_numero, 
-                        stock_movimientos,
-                        stock_ajustes, 
-                        ultima_actualizacion
-                    )
-                    VALUES ($1, $2, 0, NOW())
-                    ON CONFLICT (articulo_numero) 
-                    DO UPDATE SET 
-                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
-                        ultima_actualizacion = NOW()
-                `, [
-                    articulo.articulo_numero,
-                    kilos_producidos // Sumar los kilos producidos a stock_movimientos
-                ]);
-                
-                console.log('✅ Movimiento de ingreso por producción externa registrado correctamente');
-            } else {
-                // Para carros internos: mantener lógica original
-                await db.query(`
-                    INSERT INTO stock_ventas_movimientos (
-                        articulo_numero, 
-                        codigo_barras, 
-                        kilos,
-                        cantidad,
-                        carro_id, 
-                        usuario_id, 
-                        fecha,
-                        tipo
-                    ) VALUES ($1, $2, 0, $3, $4, $5, NOW(), 'salida a ventas')
-                `, [
-                    articulo.articulo_numero,
-                    articulo.codigo_barras || '',
-                    articulo.cantidad,
-                    carroId,
-                    usuarioId
-                ]);
-                
-                // Actualizar stock_movimientos para salida a ventas
-                await db.query(`
-                    INSERT INTO stock_real_consolidado (
-                        articulo_numero, 
-                        stock_movimientos,
-                        stock_ajustes, 
-                        ultima_actualizacion
-                    )
-                    VALUES ($1, $2, 0, NOW())
-                    ON CONFLICT (articulo_numero) 
-                    DO UPDATE SET 
-                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
-                        ultima_actualizacion = NOW()
-                `, [
-                    articulo.articulo_numero,
-                    articulo.cantidad
-                ]);
-                
-                console.log('✅ Movimiento de salida a ventas registrado correctamente');
-            }
-            
-            // Agregar artículo a la lista para recalcular
-            if (!articulosAfectados.includes(articulo.articulo_numero)) {
-                articulosAfectados.push(articulo.articulo_numero);
-            }
-        }
-
-        // 5. Registrar en produccion_externa_historial (solo para carros externos)
+        // 4. Registrar en produccion_externa_historial PRIMERO (solo para carros externos)
+        let historialData = null;
         if (carro.tipo_carro === 'externa') {
             // Validar que se haya proporcionado kilos_producidos para carros externos
             if (kilos_producidos === undefined || kilos_producidos === null || isNaN(kilos_producidos) || kilos_producidos <= 0) {
@@ -290,6 +196,118 @@ async function finalizarProduccion(req, res) {
             console.log(`- Artículo padre (código): ${articuloPadre.articulo_numero}`);
             console.log(`- Artículo fraccionado (código): ${articuloFraccionadoCodigo || 'No definido'}`);
             console.log(`- Kilos producidos: ${kilos_producidos}`);
+            
+            // Guardar datos para usar en el registro de movimientos
+            historialData = {
+                articulo_fraccionado_id: articuloFraccionadoCodigo,
+                kilos_producidos: kilos_producidos,
+                ingredientes_sumados: ingredientesSumados
+            };
+        }
+
+        // 5. Registrar movimientos según el tipo de carro
+        for (const articulo of articulosCarro) {
+            console.log(`\n🔄 Procesando artículo ${articulo.articulo_numero}:`);
+            console.log(`- Descripción: ${articulo.descripcion}`);
+            console.log(`- Cantidad: ${articulo.cantidad}`);
+            console.log(`- Código de barras: ${articulo.codigo_barras}`);
+            
+            if (carro.tipo_carro === 'externa') {
+                // Para carros externos: usar datos del historial ya creado
+                const cantidadTotal = parseFloat(historialData.kilos_producidos) + parseFloat(historialData.ingredientes_sumados);
+                
+                console.log(`🔍 Datos del historial para carro ${carroId}:`);
+                console.log(`- Artículo vinculado: ${historialData.articulo_fraccionado_id}`);
+                console.log(`- Kilos producidos: ${historialData.kilos_producidos}`);
+                console.log(`- Ingredientes sumados: ${historialData.ingredientes_sumados}`);
+                console.log(`- Cantidad total calculada: ${cantidadTotal}`);
+                
+                // Registrar ingreso del artículo vinculado con cantidad calculada
+                await db.query(`
+                    INSERT INTO stock_ventas_movimientos (
+                        articulo_numero, 
+                        codigo_barras, 
+                        kilos,
+                        cantidad,
+                        carro_id, 
+                        usuario_id, 
+                        fecha,
+                        tipo
+                    ) VALUES ($1, $2, 1, $3, $4, $5, NOW(), 'ingreso por produccion externa')
+                `, [
+                    historialData.articulo_fraccionado_id,  // Artículo vinculado desde historial
+                    articulo.codigo_barras || '',
+                    cantidadTotal,     // kilos_producidos + ingredientes_sumados
+                    carroId,
+                    usuarioId
+                ]);
+                
+                // Actualizar stock_movimientos para ingreso
+                await db.query(`
+                    INSERT INTO stock_real_consolidado (
+                        articulo_numero, 
+                        stock_movimientos,
+                        stock_ajustes, 
+                        ultima_actualizacion
+                    )
+                    VALUES ($1, $2, 0, NOW())
+                    ON CONFLICT (articulo_numero) 
+                    DO UPDATE SET 
+                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
+                        ultima_actualizacion = NOW()
+                `, [
+                    historialData.articulo_fraccionado_id,
+                    cantidadTotal // Sumar la cantidad total calculada a stock_movimientos
+                ]);
+                
+                console.log('✅ Movimiento de ingreso por producción externa registrado correctamente');
+                console.log(`✅ Cantidad registrada: ${cantidadTotal} (${historialData.kilos_producidos} + ${historialData.ingredientes_sumados})`);
+            } else {
+                // Para carros internos: mantener lógica original
+                await db.query(`
+                    INSERT INTO stock_ventas_movimientos (
+                        articulo_numero, 
+                        codigo_barras, 
+                        kilos,
+                        cantidad,
+                        carro_id, 
+                        usuario_id, 
+                        fecha,
+                        tipo
+                    ) VALUES ($1, $2, 0, $3, $4, $5, NOW(), 'salida a ventas')
+                `, [
+                    articulo.articulo_numero,
+                    articulo.codigo_barras || '',
+                    articulo.cantidad,
+                    carroId,
+                    usuarioId
+                ]);
+                
+                // Actualizar stock_movimientos para salida a ventas
+                await db.query(`
+                    INSERT INTO stock_real_consolidado (
+                        articulo_numero, 
+                        stock_movimientos,
+                        stock_ajustes, 
+                        ultima_actualizacion
+                    )
+                    VALUES ($1, $2, 0, NOW())
+                    ON CONFLICT (articulo_numero) 
+                    DO UPDATE SET 
+                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
+                        ultima_actualizacion = NOW()
+                `, [
+                    articulo.articulo_numero,
+                    articulo.cantidad
+                ]);
+                
+                console.log('✅ Movimiento de salida a ventas registrado correctamente');
+            }
+            
+            // Agregar artículo a la lista para recalcular
+            if (!articulosAfectados.includes(articulo.articulo_numero)) {
+                articulosAfectados.push(articulo.articulo_numero);
+            }
         }
 
         // Recalcular stock_consolidado para todos los artículos afectados
