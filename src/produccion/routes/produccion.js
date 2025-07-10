@@ -461,33 +461,44 @@ const validarEstadoRecetas = (req, res, next) => {
 
 // Middleware de validación para recetas
 const validarReceta = (req, res, next) => {
-    const { descripcion, ingredientes } = req.body;
+    console.log('🔍 validarReceta - Body recibido:', req.body);
+    const { descripcion, ingredientes, esProduccionExternaConArticuloPrincipal } = req.body;
     const articulo_numero = req.method === 'POST' ? req.body.articulo_numero : req.params.numero_articulo;
 
+    console.log('🔍 validarReceta - esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
+    console.log('🔍 validarReceta - ingredientes:', ingredientes);
+
     if (req.method === 'POST' && (!articulo_numero || typeof articulo_numero !== 'string' || !articulo_numero.trim())) {
+        console.log('❌ validarReceta - Error: número de artículo inválido');
         return res.status(400).json({ error: 'El número de artículo es requerido y debe ser un texto válido' });
     }
 
-    if (!Array.isArray(ingredientes) || ingredientes.length === 0) {
-        return res.status(400).json({ error: 'Se requiere al menos un ingrediente' });
+    // Permitir ingredientes vacíos si es producción externa con artículo principal
+    if (!Array.isArray(ingredientes) || (ingredientes.length === 0 && !esProduccionExternaConArticuloPrincipal)) {
+        console.log('❌ validarReceta - Error: ingredientes vacíos sin flag de producción externa');
+        return res.status(400).json({ error: 'Se requiere al menos un ingrediente, excepto para producción externa con artículo principal' });
     }
 
-    const ingredientesValidos = ingredientes.every(ing => {
-        const cantidadNumerica = parseFloat(ing.cantidad);
-        return ing.nombre_ingrediente && 
-               typeof ing.nombre_ingrediente === 'string' && 
-               ing.nombre_ingrediente.trim() &&
-               ing.unidad_medida && 
-               typeof ing.unidad_medida === 'string' &&
-               ing.unidad_medida.trim() &&
-               !isNaN(cantidadNumerica) && 
-               cantidadNumerica > 0;
-    });
-
-    if (!ingredientesValidos) {
-        return res.status(400).json({ 
-            error: 'Cada ingrediente debe tener nombre válido, unidad de medida y cantidad mayor a 0' 
+    // Solo validar ingredientes si existen
+    if (ingredientes.length > 0) {
+        const ingredientesValidos = ingredientes.every(ing => {
+            const cantidadNumerica = parseFloat(ing.cantidad);
+            return ing.nombre_ingrediente && 
+                   typeof ing.nombre_ingrediente === 'string' && 
+                   ing.nombre_ingrediente.trim() &&
+                   ing.unidad_medida && 
+                   typeof ing.unidad_medida === 'string' &&
+                   ing.unidad_medida.trim() &&
+                   !isNaN(cantidadNumerica) && 
+                   cantidadNumerica > 0;
         });
+
+        if (!ingredientesValidos) {
+            console.log('❌ validarReceta - Error: ingredientes inválidos');
+            return res.status(400).json({ 
+                error: 'Cada ingrediente debe tener nombre válido, unidad de medida y cantidad mayor a 0' 
+            });
+        }
     }
 
     // Limpiar datos
@@ -500,6 +511,7 @@ const validarReceta = (req, res, next) => {
         cantidad: parseFloat(ing.cantidad)
     }));
 
+    console.log('✅ validarReceta - Validación exitosa, pasando al controlador');
     next();
 };
 

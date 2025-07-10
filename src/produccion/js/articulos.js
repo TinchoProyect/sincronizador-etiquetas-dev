@@ -824,6 +824,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error('Debe agregar al menos un ingrediente o artículo a la receta');
                 }
 
+                // Detectar si es un carro de producción externa para permitir recetas sin ingredientes
+                const carroId = localStorage.getItem('carroActivo');
+                let esProduccionExternaConArticuloPrincipal = false;
+                
+                if (carroId) {
+                    try {
+                        const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+                        if (carroResponse.ok) {
+                            const carroData = await carroResponse.json();
+                            const tipoCarro = carroData.tipo_carro || 'interna';
+                            // Es producción externa con artículo principal si:
+                            // 1. Es carro externo
+                            // 2. Tiene artículos en la receta (artículo principal)
+                            // 3. No tiene ingredientes (solo el artículo principal)
+                            esProduccionExternaConArticuloPrincipal = (
+                                tipoCarro === 'externa' && 
+                                state.articulosReceta.length > 0 && 
+                                state.ingredientesCargados.length === 0
+                            );
+                        }
+                    } catch (error) {
+                        console.warn('Error al obtener tipo de carro:', error);
+                    }
+                }
+
                 const datos = {
                     articulo_numero,
                     descripcion,
@@ -836,7 +861,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     articulos: state.articulosReceta.map(art => ({
                         articulo_numero: art.articulo_numero,
                         cantidad: Number(art.cantidad)
-                    }))
+                    })),
+                    esProduccionExternaConArticuloPrincipal: esProduccionExternaConArticuloPrincipal
                 };
 
                 const url = state.existeReceta

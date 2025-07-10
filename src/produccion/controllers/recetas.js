@@ -115,19 +115,22 @@ async function crearReceta(req, res) {
     const client = await pool.connect();
     
     try {
-        const { articulo_numero, descripcion, ingredientes, articulos } = req.body;
+        console.log('📥 crearReceta - Body recibido:', req.body);
+        const { articulo_numero, descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal } = req.body;
+
+        console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
 
         // Validaciones
         if (!articulo_numero) {
             return res.status(400).json({ error: 'El número de artículo es requerido' });
         }
 
-        // Validar que haya al menos ingredientes O artículos
+        // Validar que haya al menos ingredientes O artículos (excepto para producción externa con artículo principal)
         const tieneIngredientes = Array.isArray(ingredientes) && ingredientes.length > 0;
         const tieneArticulos = Array.isArray(articulos) && articulos.length > 0;
 
-        if (!tieneIngredientes && !tieneArticulos) {
-            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo' });
+        if (!tieneIngredientes && !tieneArticulos && !esProduccionExternaConArticuloPrincipal) {
+            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo, excepto para producción externa con artículo principal' });
         }
 
         // Validar ingredientes si existen
@@ -319,15 +322,18 @@ async function actualizarReceta(req, res) {
     const client = await pool.connect();
     
     try {
+        console.log('📥 actualizarReceta - Body recibido:', req.body);
         const { numero_articulo } = req.params;
-        const { descripcion, ingredientes, articulos } = req.body;
+        const { descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal } = req.body;
 
-        // Validar que haya al menos ingredientes O artículos
+        console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
+
+        // Validar que haya al menos ingredientes O artículos (excepto para producción externa con artículo principal)
         const tieneIngredientes = Array.isArray(ingredientes) && ingredientes.length > 0;
         const tieneArticulos = Array.isArray(articulos) && articulos.length > 0;
 
-        if (!tieneIngredientes && !tieneArticulos) {
-            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo' });
+        if (!tieneIngredientes && !tieneArticulos && !esProduccionExternaConArticuloPrincipal) {
+            return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo, excepto para producción externa con artículo principal' });
         }
 
         // Validar ingredientes si existen
