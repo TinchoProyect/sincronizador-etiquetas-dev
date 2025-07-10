@@ -47,79 +47,146 @@ async function finalizarProduccion(req, res) {
             });
         }
 
-        // 3. Obtener artículos del carro para registrar en stock de ventas
-        const { rows: articulosCarro } = await db.query(`
-            SELECT 
-                ca.articulo_numero,
-                ca.cantidad,
-                a.codigo_barras,
-                a.nombre as descripcion
-            FROM carros_articulos ca
-            LEFT JOIN articulos a ON a.numero = ca.articulo_numero
-            WHERE ca.carro_id = $1
-        `, [carroId]);
-
-        if (articulosCarro.length === 0) {
-            throw new Error('El carro no tiene artículos para finalizar');
-        }
-
         console.log('\n📦 REGISTRANDO MOVIMIENTOS DE STOCK DE VENTAS');
         console.log('==========================================');
 
         const { recalcularStockConsolidado } = require('../utils/recalcularStock');
         const articulosAfectados = [];
+        let articulosCarro = [];
 
-        // 4. Registrar movimientos de ingreso en stock de ventas para cada artículo
+        // 3. Obtener artículos según el tipo de carro
+        if (carro.tipo_carro === 'externa') {
+            // Para carros externos, obtener artículos vinculados
+            const { rows: articulosVinculados } = await db.query(`
+                SELECT 
+                    rel.articulo_kilo_codigo as articulo_numero,
+                    a.codigo_barras,
+                    a.nombre as descripcion,
+                    ca.cantidad,
+                    rel.multiplicador_ingredientes
+                FROM carros_articulos ca
+                INNER JOIN articulos_produccion_externa_relacion rel 
+                    ON ca.articulo_numero = rel.articulo_produccion_codigo
+                LEFT JOIN articulos a ON a.numero = rel.articulo_kilo_codigo
+                WHERE ca.carro_id = $1
+            `, [carroId]);
+            
+            articulosCarro = articulosVinculados;
+            console.log('🔗 Usando artículos vinculados para carro externo');
+        } else {
+            // Para carros internos, obtener artículos del carro normalmente
+            const { rows: articulosInternos } = await db.query(`
+                SELECT 
+                    ca.articulo_numero,
+                    ca.cantidad,
+                    a.codigo_barras,
+                    a.nombre as descripcion
+                FROM carros_articulos ca
+                LEFT JOIN articulos a ON a.numero = ca.articulo_numero
+                WHERE ca.carro_id = $1
+            `, [carroId]);
+            
+            articulosCarro = articulosInternos;
+            console.log('🏭 Usando artículos del carro para carro interno');
+        }
+
+        if (articulosCarro.length === 0) {
+            throw new Error('El carro no tiene artículos para finalizar');
+        }
+
+        // 4. Registrar movimientos según el tipo de carro
         for (const articulo of articulosCarro) {
             console.log(`\n🔄 Procesando artículo ${articulo.articulo_numero}:`);
             console.log(`- Descripción: ${articulo.descripcion}`);
             console.log(`- Cantidad: ${articulo.cantidad}`);
             console.log(`- Código de barras: ${articulo.codigo_barras}`);
             
-            // Insertar movimiento en stock_ventas_movimientos
-            await db.query(`
-                INSERT INTO stock_ventas_movimientos (
-                    articulo_numero, 
-                    codigo_barras, 
-                    kilos,
-                    cantidad,
-                    carro_id, 
-                    usuario_id, 
-                    fecha,
-                    tipo
-                ) VALUES ($1, $2, 0, $3, $4, $5, NOW(), 'salida a ventas')
-            `, [
-                articulo.articulo_numero,
-                articulo.codigo_barras || '',
-                articulo.cantidad,  // La cantidad va en la columna cantidad
-                carroId,
-                usuarioId
-            ]);
-            
-            // Actualizar stock_movimientos para salida a ventas
-            await db.query(`
-                INSERT INTO stock_real_consolidado (
-                    articulo_numero, 
-                    stock_movimientos,
-                    stock_ajustes, 
-                    ultima_actualizacion
-                )
-                VALUES ($1, $2, 0, NOW())
-                ON CONFLICT (articulo_numero) 
-                DO UPDATE SET 
-                    stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
-                    ultima_actualizacion = NOW()
-            `, [
-                articulo.articulo_numero,
-                articulo.cantidad // Sumar la cantidad a stock_movimientos
-            ]);
+            if (carro.tipo_carro === 'externa') {
+                // Para carros externos: registrar ingreso del artículo vinculado con kilos producidos
+                await db.query(`
+                    INSERT INTO stock_ventas_movimientos (
+                        articulo_numero, 
+                        codigo_barras, 
+                        kilos,
+                        cantidad,
+                        carro_id, 
+                        usuario_id, 
+                        fecha,
+                        tipo
+                    ) VALUES ($1, $2, $3, 0, $4, $5, NOW(), 'ingreso por produccion externa')
+                `, [
+                    articulo.articulo_numero,  // Artículo vinculado (ej: GSGNFX1)
+                    articulo.codigo_barras || '',
+                    kilos_producidos,  // Kilos reales producidos
+                    carroId,
+                    usuarioId
+                ]);
+                
+                // Actualizar stock_movimientos para ingreso
+                await db.query(`
+                    INSERT INTO stock_real_consolidado (
+                        articulo_numero, 
+                        stock_movimientos,
+                        stock_ajustes, 
+                        ultima_actualizacion
+                    )
+                    VALUES ($1, $2, 0, NOW())
+                    ON CONFLICT (articulo_numero) 
+                    DO UPDATE SET 
+                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
+                        ultima_actualizacion = NOW()
+                `, [
+                    articulo.articulo_numero,
+                    kilos_producidos // Sumar los kilos producidos a stock_movimientos
+                ]);
+                
+                console.log('✅ Movimiento de ingreso por producción externa registrado correctamente');
+            } else {
+                // Para carros internos: mantener lógica original
+                await db.query(`
+                    INSERT INTO stock_ventas_movimientos (
+                        articulo_numero, 
+                        codigo_barras, 
+                        kilos,
+                        cantidad,
+                        carro_id, 
+                        usuario_id, 
+                        fecha,
+                        tipo
+                    ) VALUES ($1, $2, 0, $3, $4, $5, NOW(), 'salida a ventas')
+                `, [
+                    articulo.articulo_numero,
+                    articulo.codigo_barras || '',
+                    articulo.cantidad,
+                    carroId,
+                    usuarioId
+                ]);
+                
+                // Actualizar stock_movimientos para salida a ventas
+                await db.query(`
+                    INSERT INTO stock_real_consolidado (
+                        articulo_numero, 
+                        stock_movimientos,
+                        stock_ajustes, 
+                        ultima_actualizacion
+                    )
+                    VALUES ($1, $2, 0, NOW())
+                    ON CONFLICT (articulo_numero) 
+                    DO UPDATE SET 
+                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
+                        ultima_actualizacion = NOW()
+                `, [
+                    articulo.articulo_numero,
+                    articulo.cantidad
+                ]);
+                
+                console.log('✅ Movimiento de salida a ventas registrado correctamente');
+            }
             
             // Agregar artículo a la lista para recalcular
             if (!articulosAfectados.includes(articulo.articulo_numero)) {
                 articulosAfectados.push(articulo.articulo_numero);
             }
-            
-            console.log('✅ Movimiento de stock registrado y stock_movimientos actualizado correctamente');
         }
 
         // 5. Registrar en produccion_externa_historial (solo para carros externos)
@@ -132,31 +199,59 @@ async function finalizarProduccion(req, res) {
             console.log('\n📝 REGISTRANDO EN HISTORIAL DE PRODUCCIÓN EXTERNA');
             console.log('==========================================');
             
-            // Obtener el primer artículo del carro como artículo padre
-            const articuloPadre = articulosCarro[0];
+            // Obtener artículos padre del carro (no los vinculados)
+            const { rows: articulosPadre } = await db.query(`
+                SELECT 
+                    ca.articulo_numero,
+                    ca.cantidad,
+                    a.nombre as descripcion
+                FROM carros_articulos ca
+                LEFT JOIN articulos a ON a.numero = ca.articulo_numero
+                WHERE ca.carro_id = $1
+                LIMIT 1
+            `, [carroId]);
+            
+            if (articulosPadre.length === 0) {
+                throw new Error('No se encontraron artículos padre para el historial');
+            }
+            
+            const articuloPadre = articulosPadre[0];
             console.log(`🔍 DEBUG - Artículo padre obtenido:`, {
                 codigo: articuloPadre.articulo_numero,
                 descripcion: articuloPadre.descripcion,
                 cantidad: articuloPadre.cantidad
             });
             
-            // Buscar relación en articulos_produccion_externa_relacion
-            console.log(`🔍 DEBUG - Buscando relación para artículo: ${articuloPadre.articulo_numero}`);
-            const { rows: relacionRows } = await db.query(`
-                SELECT articulo_kilo_codigo 
-                FROM articulos_produccion_externa_relacion
-                WHERE articulo_produccion_codigo = $1
-                LIMIT 1
-            `, [articuloPadre.articulo_numero]);
+            // El artículo fraccionado ya lo tenemos en articulosCarro[0] (que son los vinculados)
+            const articuloFraccionadoCodigo = articulosCarro[0]?.articulo_numero || null;
+            console.log(`✅ DEBUG - Artículo fraccionado: ${articuloFraccionadoCodigo}`);
             
-            console.log(`🔍 DEBUG - Resultado búsqueda relación:`, relacionRows);
-            
-            let articuloFraccionadoCodigo = null;
-            if (relacionRows.length > 0) {
-                articuloFraccionadoCodigo = relacionRows[0].articulo_kilo_codigo;
-                console.log(`✅ DEBUG - Artículo fraccionado encontrado: ${articuloFraccionadoCodigo}`);
+            // Calcular ingredientes_sumados: obtener ingredientes del artículo vinculado
+            let ingredientesSumados = 0;
+            if (articuloFraccionadoCodigo) {
+                console.log(`\n🧮 CALCULANDO INGREDIENTES SUMADOS PARA: ${articuloFraccionadoCodigo}`);
+                console.log('==========================================');
+                
+                // Obtener ingredientes vinculados usando la función existente
+                const { obtenerIngredientesArticulosVinculados } = require('./carroIngredientes');
+                const ingredientesVinculados = await obtenerIngredientesArticulosVinculados(carroId, usuarioId);
+                
+                console.log(`🔍 Ingredientes vinculados obtenidos: ${ingredientesVinculados.length}`);
+                
+                // Sumar todas las cantidades de ingredientes vinculados
+                ingredientesSumados = ingredientesVinculados.reduce((suma, ingrediente) => {
+                    const cantidad = parseFloat(ingrediente.cantidad) || 0;
+                    console.log(`- ${ingrediente.nombre}: ${cantidad} ${ingrediente.unidad_medida || 'kg'}`);
+                    return suma + cantidad;
+                }, 0);
+                
+                // Redondear a 2 decimales para evitar problemas de precisión
+                ingredientesSumados = Number(ingredientesSumados.toFixed(2));
+                
+                console.log(`\n📊 TOTAL INGREDIENTES SUMADOS: ${ingredientesSumados} kg`);
+                console.log('==========================================');
             } else {
-                console.log(`ℹ️ DEBUG - No hay relación definida para este artículo`);
+                console.log(`⚠️ No se encontró artículo vinculado, ingredientes_sumados = 0`);
             }
             
             // Preparar datos para inserción (usando códigos alfanuméricos como TEXT)
@@ -165,7 +260,8 @@ async function finalizarProduccion(req, res) {
                 usuarioId,                            // usuario_id (integer)
                 articuloPadre.articulo_numero,        // articulo_padre_id (text) - código alfanumérico
                 articuloFraccionadoCodigo,            // articulo_fraccionado_id (text) - código alfanumérico o null
-                kilos_producidos                      // kilos_producidos (numeric)
+                kilos_producidos,                     // kilos_producidos (numeric)
+                ingredientesSumados                   // ingredientes_sumados (numeric)
             ];
             
             console.log(`🔍 DEBUG - Datos para insertar en historial:`, {
@@ -173,7 +269,8 @@ async function finalizarProduccion(req, res) {
                 usuario_id: usuarioId,
                 articulo_padre_id: articuloPadre.articulo_numero,
                 articulo_fraccionado_id: articuloFraccionadoCodigo,
-                kilos_producidos: kilos_producidos
+                kilos_producidos: kilos_producidos,
+                ingredientes_sumados: ingredientesSumados
             });
             
             // Insertar en historial usando códigos alfanuméricos
@@ -184,8 +281,9 @@ async function finalizarProduccion(req, res) {
                     articulo_padre_id,
                     articulo_fraccionado_id,
                     kilos_producidos,
+                    ingredientes_sumados,
                     fecha_registro
-                ) VALUES ($1, $2, $3, $4, $5, NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
             `, datosHistorial);
             
             console.log(`✅ Registro en historial creado para carro ${carroId}`);
