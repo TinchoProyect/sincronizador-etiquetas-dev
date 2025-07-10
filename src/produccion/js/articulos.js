@@ -580,9 +580,18 @@ export function agregarArticuloATabla(articulo, index) {
     const tbody = document.querySelector('#tabla-articulos-receta tbody');
     if (!tbody) return;
 
+    // Buscar la información completa del artículo en state.articulosDisponibles
+    const articuloCompleto = state.articulosDisponibles.find(art => art.numero === articulo.articulo_numero);
+    
+    // Obtener descripción y código de barras
+    const descripcion = articuloCompleto ? articuloCompleto.nombre : 'Descripción no disponible';
+    const codigoBarras = articuloCompleto ? (articuloCompleto.codigo_barras || 'Sin código') : 'Sin código';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
         <td>${articulo.articulo_numero}</td>
+        <td title="${descripcion}">${descripcion}</td>
+        <td>${codigoBarras}</td>
         <td>${Number(articulo.cantidad).toFixed(2)}</td>
         <td>
             <button class="btn-eliminar-articulo-receta" data-index="${index}" style="background-color: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px;">

@@ -9,10 +9,16 @@ const pool = require('../config/database');
 async function obtenerRelacionesCarro(carroId, usuarioId) {
     try {
         const query = `
-            SELECT id, articulo_produccion_codigo, articulo_kilo_codigo, 
-                   COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
-            FROM articulos_produccion_externa_relacion
-            WHERE articulo_produccion_codigo IN (
+            SELECT 
+                aper.id, 
+                aper.articulo_produccion_codigo, 
+                aper.articulo_kilo_codigo, 
+                COALESCE(aper.multiplicador_ingredientes, 1) as multiplicador_ingredientes,
+                a.nombre as articulo_kilo_nombre,
+                a.codigo_barras as articulo_kilo_codigo_barras
+            FROM articulos_produccion_externa_relacion aper
+            LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
+            WHERE aper.articulo_produccion_codigo IN (
                 SELECT articulo_numero FROM carros_articulos WHERE carro_id = $1
             )
         `;
@@ -32,10 +38,16 @@ async function obtenerRelacionesCarro(carroId, usuarioId) {
 async function obtenerRelacionPorArticulo(articuloCodigo) {
     try {
         const query = `
-            SELECT id, articulo_produccion_codigo, articulo_kilo_codigo,
-                   COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
-            FROM articulos_produccion_externa_relacion
-            WHERE articulo_produccion_codigo = $1
+            SELECT 
+                aper.id, 
+                aper.articulo_produccion_codigo, 
+                aper.articulo_kilo_codigo,
+                COALESCE(aper.multiplicador_ingredientes, 1) as multiplicador_ingredientes,
+                a.nombre as articulo_kilo_nombre,
+                a.codigo_barras as articulo_kilo_codigo_barras
+            FROM articulos_produccion_externa_relacion aper
+            LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
+            WHERE aper.articulo_produccion_codigo = $1
             LIMIT 1
         `;
         const result = await pool.query(query, [articuloCodigo]);

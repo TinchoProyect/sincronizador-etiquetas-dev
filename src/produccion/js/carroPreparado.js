@@ -218,7 +218,8 @@ async function mostrarArticulosSecundariosEditables() {
                     <div class="articulo-info">
                         <span class="vinculo-icono">🔗</span>
                         <span class="articulo-codigo">${vinculo.articulo_kilo_codigo}</span>
-                        <span class="articulo-descripcion">${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}</span>
+                        <span class="articulo-descripcion" title="${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}">${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}</span>
+                        ${vinculo.articulo_kilo_codigo_barras ? `<span class="codigo-barras" title="Código de barras: ${vinculo.articulo_kilo_codigo_barras}">📊 ${vinculo.articulo_kilo_codigo_barras}</span>` : ''}
                         <span class="vinculo-etiqueta">Vinculado a: ${vinculo.articulo_produccion_codigo}${multiplicadorTexto}</span>
                     </div>
                     <div class="articulo-actions">

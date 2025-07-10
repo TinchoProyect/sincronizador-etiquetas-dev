@@ -1524,12 +1524,17 @@ function generarFilaArticuloVinculado(articuloProduccionCodigo, relacion) {
     const multiplicador = relacion.multiplicador_ingredientes || 1;
     const multiplicadorTexto = multiplicador === 1 ? '' : ` (×${multiplicador})`;
     
+    // Obtener descripción y código de barras del artículo vinculado
+    const descripcionVinculado = relacion.articulo_kilo_nombre || 'Artículo vinculado por kilo';
+    const codigoBarrasVinculado = relacion.articulo_kilo_codigo_barras || '';
+    
     return `
         <div class="articulo-vinculado" data-articulo-padre="${articuloProduccionCodigo}">
             <div class="articulo-info">
                 <span class="vinculo-icono">🔗</span>
                 <span class="articulo-codigo">${relacion.articulo_kilo_codigo}</span>
-                <span class="articulo-descripcion">${relacion.articulo_kilo_nombre || 'Artículo vinculado por kilo'}</span>
+                <span class="articulo-descripcion" title="${descripcionVinculado}">${descripcionVinculado}</span>
+                ${codigoBarrasVinculado ? `<span class="codigo-barras" title="Código de barras: ${codigoBarrasVinculado}">📊 ${codigoBarrasVinculado}</span>` : ''}
                 <span class="vinculo-etiqueta">Artículo vinculado${multiplicadorTexto}</span>
             </div>
             <div class="articulo-actions">
