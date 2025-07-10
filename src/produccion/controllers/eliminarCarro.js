@@ -106,11 +106,23 @@ async function eliminarRegistrosRelacionados(carroId) {
         }
         
         // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos
-        const movimientosQuery = `
-            SELECT articulo_numero, cantidad, tipo
-            FROM stock_ventas_movimientos 
-            WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas')
-        `;
+        let movimientosQuery;
+        if (conteos.tipoCarro === 'externa') {
+            // Para carros externos: incluir movimientos de producción externa
+            movimientosQuery = `
+                SELECT articulo_numero, cantidad, tipo
+                FROM stock_ventas_movimientos 
+                WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas', 'ingreso por produccion externa')
+            `;
+        } else {
+            // Para carros internos: solo movimientos tradicionales
+            movimientosQuery = `
+                SELECT articulo_numero, cantidad, tipo
+                FROM stock_ventas_movimientos 
+                WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas')
+            `;
+        }
+        
         const movimientosResult = await pool.query(movimientosQuery, [carroId]);
         
         const { recalcularStockConsolidado } = require('../utils/recalcularStock');
@@ -139,6 +151,16 @@ async function eliminarRegistrosRelacionados(carroId) {
                     WHERE articulo_numero = $2
                 `, [mov.cantidad, mov.articulo_numero]);
                 console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: -${mov.cantidad} (revertir salida a ventas)`);
+            } else if (mov.tipo === 'ingreso por produccion externa') {
+                // Para ingreso por producción externa eliminado: RESTAR la cantidad de stock_movimientos
+                await pool.query(`
+                    UPDATE stock_real_consolidado 
+                    SET 
+                        stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [mov.cantidad, mov.articulo_numero]);
+                console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: -${mov.cantidad} (revertir ingreso por producción externa)`);
             }
             
             // Agregar artículo a la lista para recalcular
