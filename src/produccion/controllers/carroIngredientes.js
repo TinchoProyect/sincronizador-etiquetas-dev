@@ -84,7 +84,8 @@ async function obtenerArticulosDeRecetas(carroId, usuarioId) {
                 SELECT 
                     ra.articulo_numero,
                     CAST(ra.cantidad AS DECIMAL(20,10)) as cantidad,
-                    a.nombre as descripcion
+                    a.nombre as descripcion,
+                    a.codigo_barras
                 FROM recetas r
                 JOIN receta_articulos ra ON r.id = ra.receta_id
                 LEFT JOIN articulos a ON a.numero = ra.articulo_numero
@@ -110,7 +111,8 @@ async function obtenerArticulosDeRecetas(carroId, usuarioId) {
                 todosLosArticulos.push({
                     articulo_numero: art.articulo_numero,
                     descripcion: art.descripcion || art.articulo_numero,
-                    cantidad: cantidadTotal
+                    cantidad: cantidadTotal,
+                    codigo_barras: art.codigo_barras || ''
                 });
             }
         }
@@ -175,7 +177,8 @@ function consolidarArticulos(articulos) {
             consolidados[key] = {
                 articulo_numero: art.articulo_numero,
                 descripcion: art.descripcion,
-                cantidad: Number(art.cantidad.toPrecision(10))
+                cantidad: Number(art.cantidad.toPrecision(10)),
+                codigo_barras: art.codigo_barras || ''
             };
         }
     });

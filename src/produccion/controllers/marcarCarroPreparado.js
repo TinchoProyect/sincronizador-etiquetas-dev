@@ -118,11 +118,11 @@ async function marcarCarroPreparado(req, res) {
                 console.log(`\n🔄 Procesando artículo ${articulo.articulo_numero}:`);
                 console.log(`- Cantidad: ${articulo.cantidad}`);
                 
-                await db.query(`
-                    INSERT INTO stock_ventas_movimientos (
-                        articulo_numero, cantidad, carro_id, usuario_id, fecha, tipo, kilos, codigo_barras
-                    ) VALUES ($1, $2, $3, $4, NOW(), 'egreso por receta externa', 0, '')
-                `, [articulo.articulo_numero, -articulo.cantidad, carroId, usuarioId]);
+            await db.query(`
+                INSERT INTO stock_ventas_movimientos (
+                    articulo_numero, cantidad, carro_id, usuario_id, fecha, tipo, kilos, codigo_barras
+                ) VALUES ($1, $2, $3, $4, NOW(), 'egreso por receta externa', 0, $5)
+            `, [articulo.articulo_numero, -articulo.cantidad, carroId, usuarioId, articulo.codigo_barras || '']);
 
                 // Actualizar stock consolidado para el artículo
                 const { recalcularStockConsolidado } = require('../utils/recalcularStock');
