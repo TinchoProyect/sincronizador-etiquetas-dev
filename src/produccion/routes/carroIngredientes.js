@@ -63,20 +63,19 @@ router.get('/:carroId/ingredientes-vinculados', async (req, res) => {
         const carroId = parseInt(req.params.carroId);
         const usuarioId = parseInt(req.query.usuarioId);
 
-        if (!carroId || !usuarioId) {
-            return res.status(400).json({
-                error: 'Se requiere ID de carro y usuario válidos'
-            });
+        if (isNaN(carroId) || isNaN(usuarioId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
         }
 
-        const ingredientesVinculados = await obtenerIngredientesArticulosVinculados(carroId, usuarioId);
-        res.json(ingredientesVinculados);
+        console.log(`🔗 Obteniendo ingredientes vinculados para carro ${carroId}, usuario ${usuarioId}`);
+
+        // Usar la función del controlador en lugar de consulta SQL directa
+        const ingredientes = await obtenerIngredientesArticulosVinculados(carroId, usuarioId);
+        res.json(ingredientes);
 
     } catch (error) {
-        console.error('Error en ruta de ingredientes vinculados de carro:', error);
-        res.status(500).json({
-            error: error.message || 'Error al obtener ingredientes de artículos vinculados'
-        });
+        console.error('❌ Error al obtener ingredientes vinculados:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 

@@ -472,3 +472,229 @@
     color: #28a745;
     font-weight: bold;
 }
+
+/* ✅ NUEVOS ESTILOS PARA TRANSICIONES VISUALES DE CARROS EXTERNOS */
+
+/* Artículos en segundo plano */
+.articulo-container.segundo-plano {
+    opacity: 0.3;
+    pointer-events: none;
+    filter: grayscale(50%);
+    transition: all 0.5s ease;
+}
+
+/* Informes minimizados */
+.seccion-resumen.minimizado {
+    height: 60px;
+    overflow: hidden;
+    opacity: 0.5;
+    transition: all 0.3s ease;
+}
+
+.seccion-resumen.minimizado h3 {
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+.seccion-resumen.minimizado h3::after {
+    content: " (minimizado)";
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: normal;
+}
+
+/* Sección de artículos secundarios */
+.seccion-articulos-secundarios {
+    margin-top: 20px;
+    padding: 20px;
+    background: linear-gradient(135deg, #e3f2fd 0%, #f8f9fa 100%);
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,123,255,0.1);
+    animation: slideInFromBottom 0.5s ease-out;
+}
+
+.seccion-articulos-secundarios.activa {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.header-articulos-secundarios {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.header-articulos-secundarios h3 {
+    color: #007bff;
+    margin-bottom: 10px;
+    font-size: 20px;
+}
+
+.descripcion-fase {
+    color: #495057;
+    font-style: italic;
+    margin: 0;
+    padding: 10px;
+    background-color: rgba(0,123,255,0.1);
+    border-radius: 4px;
+}
+
+.lista-articulos-secundarios {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.articulo-secundario-editable {
+    background-color: white;
+    border: 1px solid #007bff;
+    border-radius: 6px;
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,123,255,0.1);
+    transition: all 0.2s ease;
+}
+
+.articulo-secundario-editable:hover {
+    box-shadow: 0 4px 8px rgba(0,123,255,0.2);
+    transform: translateY(-2px);
+}
+
+.articulo-secundario-editable .articulo-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.articulo-secundario-editable .vinculo-icono {
+    font-size: 18px;
+    color: #007bff;
+}
+
+.articulo-secundario-editable .articulo-codigo {
+    font-weight: bold;
+    color: #333;
+}
+
+.articulo-secundario-editable .articulo-descripcion {
+    color: #495057;
+    flex: 1;
+}
+
+.articulo-secundario-editable .vinculo-etiqueta {
+    font-size: 12px;
+    color: #6c757d;
+    background-color: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.articulo-secundario-editable .articulo-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.btn-editar-vinculo-secundario,
+.btn-eliminar-vinculo-secundario {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-editar-vinculo-secundario {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-editar-vinculo-secundario:hover {
+    background-color: #0056b3;
+}
+
+.btn-eliminar-vinculo-secundario {
+    background-color: #dc3545;
+    color: white;
+}
+
+.btn-eliminar-vinculo-secundario:hover {
+    background-color: #c82333;
+}
+
+/* Informes de ingredientes vinculados */
+.seccion-resumen.activa {
+    border: 2px solid #28a745;
+    background: linear-gradient(135deg, #e8f5e8 0%, #f8f9fa 100%);
+    animation: slideInFromRight 0.5s ease-out;
+}
+
+.descripcion-informe {
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: rgba(40,167,69,0.1);
+    border-radius: 4px;
+    border-left: 4px solid #28a745;
+}
+
+.descripcion-informe p {
+    margin: 0;
+    color: #495057;
+    font-size: 14px;
+}
+
+.tabla-vinculados {
+    border: 1px solid #28a745;
+}
+
+.tabla-vinculados th {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.ingrediente-vinculado {
+    border-left: 3px solid #28a745;
+}
+
+/* Animaciones para transiciones */
+@keyframes slideInFromBottom {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideInFromRight {
+    from {
+        transform: translateX(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Responsive para artículos secundarios */
+@media (max-width: 768px) {
+    .seccion-articulos-secundarios {
+        margin-top: 15px;
+        padding: 15px;
+    }
+    
+    .articulo-secundario-editable .articulo-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+    
+    .articulo-secundario-editable .articulo-actions {
+        justify-content: center;
+        width: 100%;
+    }
+}

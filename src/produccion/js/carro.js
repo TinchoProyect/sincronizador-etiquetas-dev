@@ -2268,6 +2268,22 @@ document.addEventListener('click', async (e) => {
         await eliminarRelacionArticulo(articuloCodigo, relacionId);
     }
     
+    // ✅ NUEVOS EVENT LISTENERS PARA ARTÍCULOS SECUNDARIOS
+    
+    // Botón editar vínculo secundario
+    if (e.target.classList.contains('btn-editar-vinculo-secundario')) {
+        const articuloCodigo = e.target.dataset.articuloPadre;
+        const relacionId = e.target.dataset.relacionId;
+        await abrirModalEditarRelacion(articuloCodigo, relacionId);
+    }
+    
+    // Botón eliminar vínculo secundario
+    if (e.target.classList.contains('btn-eliminar-vinculo-secundario')) {
+        const articuloCodigo = e.target.dataset.articuloPadre;
+        const relacionId = e.target.dataset.relacionId;
+        await eliminarRelacionArticulo(articuloCodigo, relacionId);
+    }
+    
     // Botón seleccionar en modo vinculación
     if (e.target.classList.contains('btn-seleccionar-vinculacion')) {
         const articuloKiloCodigo = e.target.dataset.numero;

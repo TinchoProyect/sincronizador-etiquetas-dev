@@ -65,6 +65,12 @@ export async function actualizarVisibilidadBotones() {
                 if (btnAgregarArticulo) {
                     btnAgregarArticulo.style.display = 'none';
                 }
+                
+                // ✅ NUEVA FUNCIONALIDAD: Activar transición visual para carros externos
+                if (data.tipo_carro === 'externa' && data.fase_actual === 'articulos_secundarios') {
+                    console.log('🔄 Activando modo artículos secundarios para carro externo');
+                    await activarModoArticulosSecundarios();
+                }
                 break;
 
             case 'confirmado':
@@ -92,6 +98,266 @@ export async function actualizarVisibilidadBotones() {
         if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
         if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
+    }
+}
+
+/**
+ * Activa el modo de artículos secundarios para carros de producción externa
+ * Atenúa artículos padres y activa artículos secundarios editables
+ */
+async function activarModoArticulosSecundarios() {
+    try {
+        console.log('🔄 Iniciando transición a modo artículos secundarios');
+        
+        // 1. Atenuar artículos padres visualmente
+        const articulosPadres = document.querySelectorAll('.articulo-container');
+        articulosPadres.forEach(articulo => {
+            articulo.classList.add('segundo-plano');
+        });
+        console.log(`✅ ${articulosPadres.length} artículos padres atenuados`);
+        
+        // 2. Minimizar informes de ingredientes padres
+        const resumenIngredientes = document.getElementById('resumen-ingredientes');
+        const resumenMixes = document.getElementById('resumen-mixes');
+        
+        if (resumenIngredientes) {
+            resumenIngredientes.classList.add('minimizado');
+            console.log('✅ Resumen de ingredientes minimizado');
+        }
+        
+        if (resumenMixes) {
+            resumenMixes.classList.add('minimizado');
+            console.log('✅ Resumen de mixes minimizado');
+        }
+        
+        // 3. Activar sección de artículos secundarios
+        await mostrarArticulosSecundariosEditables();
+        
+        // 4. Mostrar informes de ingredientes vinculados
+        await mostrarInformesIngredientesVinculados();
+        
+        console.log('✅ Transición a modo artículos secundarios completada');
+        
+    } catch (error) {
+        console.error('❌ Error en transición a modo artículos secundarios:', error);
+    }
+}
+
+/**
+ * Muestra los artículos secundarios en estado editable
+ */
+async function mostrarArticulosSecundariosEditables() {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        
+        if (!carroId || !colaboradorData) {
+            console.warn('⚠️ No hay carro activo o colaborador para mostrar artículos secundarios');
+            return;
+        }
+        
+        const colaborador = JSON.parse(colaboradorData);
+        
+        // Obtener artículos vinculados del carro
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
+        
+        if (!response.ok) {
+            console.warn('⚠️ No se pudieron obtener artículos vinculados');
+            return;
+        }
+        
+        const articulosVinculados = await response.json();
+        console.log(`🔗 Artículos vinculados encontrados: ${articulosVinculados.length}`);
+        
+        if (articulosVinculados.length === 0) {
+            console.log('ℹ️ No hay artículos vinculados para mostrar');
+            return;
+        }
+        
+        // Crear o actualizar sección de artículos secundarios
+        let seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
+        if (!seccionSecundarios) {
+            seccionSecundarios = document.createElement('div');
+            seccionSecundarios.id = 'seccion-articulos-secundarios';
+            seccionSecundarios.className = 'seccion-articulos-secundarios';
+            
+            // Insertar después de la sección de artículos principales
+            const listaArticulos = document.getElementById('lista-articulos');
+            if (listaArticulos && listaArticulos.parentNode) {
+                listaArticulos.parentNode.insertBefore(seccionSecundarios, listaArticulos.nextSibling);
+            }
+        }
+        
+        // Generar HTML para artículos secundarios editables
+        let html = `
+            <div class="header-articulos-secundarios">
+                <h3>🔗 Artículos Vinculados (Editables)</h3>
+                <p class="descripcion-fase">Los artículos padres han sido procesados. Ahora puedes gestionar los artículos vinculados.</p>
+            </div>
+            <div class="lista-articulos-secundarios">
+        `;
+        
+        articulosVinculados.forEach(vinculo => {
+            const multiplicador = vinculo.multiplicador_ingredientes || 1;
+            const multiplicadorTexto = multiplicador === 1 ? '' : ` (×${multiplicador})`;
+            
+            html += `
+                <div class="articulo-secundario-editable" data-relacion-id="${vinculo.id}">
+                    <div class="articulo-info">
+                        <span class="vinculo-icono">🔗</span>
+                        <span class="articulo-codigo">${vinculo.articulo_kilo_codigo}</span>
+                        <span class="articulo-descripcion">${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}</span>
+                        <span class="vinculo-etiqueta">Vinculado a: ${vinculo.articulo_produccion_codigo}${multiplicadorTexto}</span>
+                    </div>
+                    <div class="articulo-actions">
+                        <button class="btn-editar-vinculo-secundario" 
+                                data-relacion-id="${vinculo.id}"
+                                data-articulo-padre="${vinculo.articulo_produccion_codigo}">
+                            ✏️ Editar vínculo
+                        </button>
+                        <button class="btn-eliminar-vinculo-secundario" 
+                                data-relacion-id="${vinculo.id}"
+                                data-articulo-padre="${vinculo.articulo_produccion_codigo}">
+                            🗑️ Eliminar vínculo
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        
+        seccionSecundarios.innerHTML = html;
+        seccionSecundarios.style.display = 'block';
+        seccionSecundarios.classList.add('activa');
+        
+        console.log('✅ Sección de artículos secundarios activada');
+        
+    } catch (error) {
+        console.error('❌ Error al mostrar artículos secundarios:', error);
+    }
+}
+
+/**
+ * Muestra los informes de ingredientes de artículos vinculados
+ */
+async function mostrarInformesIngredientesVinculados() {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        
+        if (!carroId || !colaboradorData) {
+            console.warn('⚠️ No hay carro activo o colaborador para mostrar informes vinculados');
+            return;
+        }
+        
+        const colaborador = JSON.parse(colaboradorData);
+        
+        // Obtener ingredientes de artículos vinculados
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${colaborador.id}`);
+        
+        if (!response.ok) {
+            console.warn('⚠️ No se pudieron obtener ingredientes vinculados');
+            return;
+        }
+        
+        const ingredientesVinculados = await response.json();
+        console.log(`🔗 Ingredientes vinculados encontrados: ${ingredientesVinculados.length}`);
+        
+        // Crear o actualizar sección de informes vinculados
+        let seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
+        if (!seccionInformesVinculados) {
+            seccionInformesVinculados = document.createElement('div');
+            seccionInformesVinculados.id = 'resumen-ingredientes-vinculados';
+            seccionInformesVinculados.className = 'seccion-resumen';
+            
+            // Insertar en el área derecha después de los informes principales
+            const workspaceRight = document.querySelector('.workspace-right');
+            if (workspaceRight) {
+                workspaceRight.appendChild(seccionInformesVinculados);
+            }
+        }
+        
+        // Generar HTML para el informe
+        let html = `
+            <h3>🔗 Ingredientes de Artículos Vinculados</h3>
+            <div class="descripcion-informe">
+                <p>Estos ingredientes corresponden a los artículos vinculados y se obtienen del stock general de producción.</p>
+            </div>
+        `;
+        
+        if (ingredientesVinculados.length === 0) {
+            html += '<p>No hay ingredientes vinculados para mostrar</p>';
+        } else {
+            html += `
+                <table class="tabla-resumen tabla-vinculados">
+                    <thead>
+                        <tr>
+                            <th>Ingrediente</th>
+                            <th>Cantidad Necesaria</th>
+                            <th>Stock General</th>
+                            <th>Estado</th>
+                            <th>Unidad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            ingredientesVinculados.forEach(ing => {
+                // Validación robusta para evitar errores con .toFixed()
+                const stockActualRaw = ing.stock_actual;
+                const cantidadNecesariaRaw = ing.cantidad;
+                
+                // Convertir a números de forma segura
+                let stockActual = 0;
+                let cantidadNecesaria = 0;
+                
+                if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
+                    const stockParsed = parseFloat(stockActualRaw);
+                    stockActual = isNaN(stockParsed) ? 0 : stockParsed;
+                }
+                
+                if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
+                    const cantidadParsed = parseFloat(cantidadNecesariaRaw);
+                    cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
+                }
+                
+                const diferencia = stockActual - cantidadNecesaria;
+                const tieneStock = diferencia >= -0.01;
+                const faltante = tieneStock ? 0 : Math.abs(diferencia);
+                
+                let indicadorEstado = '';
+                if (tieneStock) {
+                    indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
+                } else {
+                    indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
+                }
+                
+                html += `
+                    <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'} ingrediente-vinculado">
+                        <td>${ing.nombre || 'Sin nombre'}</td>
+                        <td>${cantidadNecesaria.toFixed(2)}</td>
+                        <td>${stockActual.toFixed(2)}</td>
+                        <td>${indicadorEstado}</td>
+                        <td>${ing.unidad_medida || ''}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        seccionInformesVinculados.innerHTML = html;
+        seccionInformesVinculados.style.display = 'block';
+        seccionInformesVinculados.classList.add('activa');
+        
+        console.log('✅ Informes de ingredientes vinculados activados');
+        
+    } catch (error) {
+        console.error('❌ Error al mostrar informes vinculados:', error);
     }
 }
 

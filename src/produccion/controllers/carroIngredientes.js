@@ -1,4 +1,5 @@
 const pool = require('../../usuarios/pool');
+const db = require('../config/database');
 const { expandirIngrediente } = require('../utils/ingredientes/expandirIngredientes');
 const { consolidarIngredientes } = require('../utils/ingredientes/consolidarIngredientes');
 const { validarPropiedadCarro } = require('./carro');

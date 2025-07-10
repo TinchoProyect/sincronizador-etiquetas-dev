@@ -1281,6 +1281,7 @@ router.get('/carro/:id/estado', async (req, res) => {
         const carro = result.rows[0];
         const preparado = carro.fecha_preparado !== null;
         const confirmado = carro.fecha_confirmacion !== null;
+        const tipoCarro = carro.tipo_carro || 'interna';
         
         let estado = 'en_preparacion';
         if (confirmado) {
@@ -1289,13 +1290,22 @@ router.get('/carro/:id/estado', async (req, res) => {
             estado = 'preparado';
         }
         
+        // Determinar fase actual para carros externos
+        let faseActual = 'articulos_padres';
+        if (tipoCarro === 'externa' && preparado && !confirmado) {
+            faseActual = 'articulos_secundarios';
+        }
+        
         res.json({
             estado: estado,
             fecha_preparado: carro.fecha_preparado,
             fecha_confirmacion: carro.fecha_confirmacion,
             preparado: preparado,
             confirmado: confirmado,
-            tipo_carro: carro.tipo_carro || 'interna' // Si no tiene tipo, asumir interna
+            tipo_carro: tipoCarro,
+            fase_actual: faseActual,
+            mostrar_artículos_padres: faseActual === 'articulos_padres',
+            mostrar_artículos_secundarios: faseActual === 'articulos_secundarios'
         });
         
     } catch (error) {
