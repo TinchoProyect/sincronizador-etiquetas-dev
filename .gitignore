@@ -37,12 +37,21 @@ desktop.ini
 # ⛔ Archivos fuera del código fuente
 # -----------------------
 /sincronizar-etiquetas.bat
-/*.json
+
+# -----------------------
+# ✅ Incluir archivos esenciales del proyecto
+# -----------------------
+# Incluir archivos de configuración
 !package.json
 !package-lock.json
 
-# -----------------------
-# ✅ Incluir solo src/
-# -----------------------
+# Incluir carpetas esenciales
 !/src/
 !/src/**
+!/pages/
+!/pages/**
+!/migrations/
+!/migrations/**
+
+# Incluir archivos SQL de migración en la raíz
+!*.sql
