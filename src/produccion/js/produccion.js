@@ -1,6 +1,8 @@
 // Configuración inicial
 const API_BASE = '/api';
 
+
+
 // Función para cargar la lista de usuarios con permiso de Produccion
 async function cargarUsuariosProduccion() {
     try {
@@ -32,6 +34,7 @@ async function cargarUsuariosProduccion() {
     }
 }
 
+
 // Función para manejar la selección de un usuario
 function seleccionarUsuario(usuario) {
     // Guardar el colaborador seleccionado en localStorage incluyendo rol_id
@@ -42,8 +45,13 @@ function seleccionarUsuario(usuario) {
         timestamp: new Date().toISOString()
     }));
     
+    
+
     // Abrir la página personal en una nueva pestaña
-    window.open('/pages/produccion_personal.html', '_blank');
+    //window.open('/pages/produccion_personal.html', '_blank');
+    window.open('/pages/produccion_personal.html', `ventanaProduccion_${usuario.id}`);
+
+
 }
 
 // Inicializar cuando se carga la página
