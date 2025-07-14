@@ -11,6 +11,30 @@ let modoSeleccion = false;
 let todosLosArticulos = []; // Array para almacenar todos los artículos cargados
 let articulosFiltrados = []; // Array para almacenar los artículos filtrados
 
+/**
+ * Formatea un número para mostrar de forma legible
+ * - Redondea a 2 decimales máximo
+ * - Elimina decimales innecesarios (.00)
+ * - Maneja valores muy pequeños como 0
+ * @param {number} valor - El valor numérico a formatear
+ * @returns {string} - El valor formateado como string
+ */
+function formatearNumero(valor) {
+    if (valor === null || valor === undefined || isNaN(valor)) {
+        return '0';
+    }
+    
+    const numero = Number(valor);
+    
+    // Si el valor es prácticamente cero (debido a precisión de punto flotante)
+    if (Math.abs(numero) < 0.001) {
+        return '0';
+    }
+    
+    // Redondear a 2 decimales y eliminar ceros innecesarios
+    return numero.toFixed(2).replace(/\.?0+$/, '');
+}
+
 // Función para mostrar mensajes
 function mostrarMensaje(mensaje, tipo = 'error') {
     const mensajeDiv = document.createElement('div');
@@ -70,7 +94,7 @@ function actualizarTablaArticulos(articulos) {
             <td>${articulo.numero}</td>
             <td>${articulo.nombre}</td>
             <td>${articulo.codigo_barras || '-'}</td>
-            <td>${stockConsolidado}</td>
+            <td>${formatearNumero(stockConsolidado)}</td>
             <td class="produccion-cell">
                 <label class="switch">
                     <input type="checkbox" ${!articulo.no_producido_por_lambda ? 'checked' : ''} 
@@ -658,19 +682,19 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
     console.log('➕ Creando nuevo elemento para el artículo');
     const div = document.createElement('div');
     div.className = 'inventario-item';
-    div.innerHTML = `
-        <h4>${articulo.nombre}</h4>
-        <div class="info-row">
-            <span>Código: ${articulo.numero}</span>
-            <span>Código de Barras: ${articulo.codigo_barras || '-'}</span>
-            <span>Stock Actual: ${articulo.stock_consolidado || 0}</span>
-        </div>
-        <div class="stock-input">
-            <label>Stock Físico:</label>
-            <input type="number" min="0" step="1" class="stock-fisico" 
-                   data-articulo="${articulo.numero}" value="${cantidadInicial}">
-        </div>
-    `;
+        div.innerHTML = `
+            <h4>${articulo.nombre}</h4>
+            <div class="info-row">
+                <span>Código: ${articulo.numero}</span>
+                <span>Código de Barras: ${articulo.codigo_barras || '-'}</span>
+                <span>Stock Actual: ${formatearNumero(articulo.stock_consolidado || 0)}</span>
+            </div>
+            <div class="stock-input">
+                <label>Stock Físico:</label>
+                <input type="number" min="0" step="1" class="stock-fisico" 
+                       data-articulo="${articulo.numero}" value="${cantidadInicial}">
+            </div>
+        `;
 
     console.log('🔍 Buscando contenedor articulos-inventario');
     // Insertar al principio del contenedor para que aparezca arriba
