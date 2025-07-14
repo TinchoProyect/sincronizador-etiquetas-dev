@@ -71,7 +71,7 @@ function actualizarTablaArticulos(articulos) {
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        const colspan = modoSeleccion ? 6 : 5;
+        const colspan = modoSeleccion ? 7 : 6;
         tbody.innerHTML = `<tr><td colspan="${colspan}" class="mensaje-info">No hay artículos registrados</td></tr>`;
         return;
     }
@@ -99,6 +99,13 @@ function actualizarTablaArticulos(articulos) {
                 <label class="switch">
                     <input type="checkbox" ${!articulo.no_producido_por_lambda ? 'checked' : ''} 
                            onchange="toggleProduccion('${articulo.numero}', this.checked)">
+                    <span class="slider round"></span>
+                </label>
+            </td>
+            <td class="produccion-cell">
+                <label class="switch">
+                    <input type="checkbox" ${articulo.solo_produccion_externa ? 'checked' : ''} 
+                           onchange="toggleProduccionExterna('${articulo.numero}', this.checked)">
                     <span class="slider round"></span>
                 </label>
             </td>
@@ -218,17 +225,53 @@ function filtrarPorProduccion(articulos, condicion) {
     return resultado;
 }
 
+function filtrarPorProduccionExterna(articulos, condicion) {
+    console.log('🚚 [DEBUG] filtrarPorProduccionExterna - Iniciando filtrado');
+    console.log('🚚 [DEBUG] Condición de filtro:', condicion);
+    console.log('🚚 [DEBUG] Cantidad de artículos a filtrar:', articulos.length);
+    
+    let resultado;
+    switch (condicion) {
+        case 'externa_si':
+            resultado = articulos.filter(articulo => {
+                const esSoloProduccionExterna = articulo.solo_produccion_externa === true;
+                if (esSoloProduccionExterna) {
+                    console.log(`🚚 [DEBUG] Artículo de solo producción externa: ${articulo.nombre}`);
+                }
+                return esSoloProduccionExterna;
+            });
+            break;
+        case 'externa_no':
+            resultado = articulos.filter(articulo => {
+                const noEsSoloProduccionExterna = !articulo.solo_produccion_externa;
+                if (noEsSoloProduccionExterna) {
+                    console.log(`🚚 [DEBUG] Artículo NO de solo producción externa: ${articulo.nombre}`);
+                }
+                return noEsSoloProduccionExterna;
+            });
+            break;
+        default:
+            resultado = articulos;
+    }
+    
+    console.log('✅ [DEBUG] filtrarPorProduccionExterna - Filtrado completado');
+    console.log('✅ [DEBUG] Artículos después del filtro:', resultado.length);
+    return resultado;
+}
+
 function aplicarFiltros() {
     console.log('🔍 [DEBUG] aplicarFiltros - Iniciando aplicación de filtros');
     
     const textoFiltro = document.getElementById('filtro-nombre').value;
     const stockFiltro = document.getElementById('filtro-stock').value;
     const filtroProduccion = document.querySelector('input[name="filtroProduccion"]:checked').value;
+    const filtroProduccionExterna = document.querySelector('input[name="filtroProduccionExterna"]:checked').value;
     
     console.log('🔍 [DEBUG] Filtros actuales:');
     console.log('- Texto:', textoFiltro);
     console.log('- Stock:', stockFiltro);
     console.log('- Filtro producción:', filtroProduccion);
+    console.log('- Filtro producción externa:', filtroProduccionExterna);
     console.log('- Total artículos antes de filtrar:', todosLosArticulos.length);
     
     let articulosFiltrados = [...todosLosArticulos];
@@ -252,6 +295,13 @@ function aplicarFiltros() {
         console.log('🏭 [DEBUG] Aplicando filtro de producción:', filtroProduccion);
         articulosFiltrados = filtrarPorProduccion(articulosFiltrados, filtroProduccion);
         console.log('🏭 [DEBUG] Artículos después de filtrar por producción:', articulosFiltrados.length);
+    }
+    
+    // Aplicar filtro de producción externa
+    if (filtroProduccionExterna !== 'todos') {
+        console.log('🚚 [DEBUG] Aplicando filtro de producción externa:', filtroProduccionExterna);
+        articulosFiltrados = filtrarPorProduccionExterna(articulosFiltrados, filtroProduccionExterna);
+        console.log('🚚 [DEBUG] Artículos después de filtrar por producción externa:', articulosFiltrados.length);
     }
     
     console.log('✅ [DEBUG] Filtrado completado');
@@ -1416,10 +1466,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const filtroNombre = document.getElementById('filtro-nombre');
     const filtroStock = document.getElementById('filtro-stock');
     const filtrosProduccion = document.querySelectorAll('input[name="filtroProduccion"]');
+    const filtrosProduccionExterna = document.querySelectorAll('input[name="filtroProduccionExterna"]');
     
     filtroNombre.addEventListener('input', aplicarFiltros);
     filtroStock.addEventListener('change', aplicarFiltros);
     filtrosProduccion.forEach(radio => {
+        radio.addEventListener('change', aplicarFiltros);
+    });
+    filtrosProduccionExterna.forEach(radio => {
         radio.addEventListener('change', aplicarFiltros);
     });
 });
@@ -1464,6 +1518,53 @@ async function toggleProduccion(articuloId, checked) {
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje('Error al actualizar el estado de producción');
+        // Revertir el estado del switch al anterior
+        switchElement.checked = previousChecked;
+    } finally {
+        // Habilitar el switch nuevamente
+        switchElement.disabled = false;
+    }
+}
+
+async function toggleProduccionExterna(articuloId, checked) {
+    const switchElement = document.querySelector(`input[type="checkbox"][onchange="toggleProduccionExterna('${articuloId}', this.checked)"]`);
+    if (!switchElement) {
+        console.error('No se encontró el switch para el artículo (producción externa):', articuloId);
+        return;
+    }
+    // Deshabilitar el switch para evitar múltiples clics
+    switchElement.disabled = true;
+    const previousChecked = !checked; // Estado anterior invertido
+
+    try {
+        const response = await fetch(`/api/produccion/articulos/${encodeURIComponent(articuloId)}/toggle-produccion-externa`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                solo_produccion_externa: checked
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al actualizar el estado de producción externa');
+        }
+
+        // Actualizar el estado en todosLosArticulos para reflejar el cambio
+        const articulo = todosLosArticulos.find(a => a.numero === articuloId);
+        if (articulo) {
+            articulo.solo_produccion_externa = checked;
+        }
+
+        // Actualizar la UI: aplicar filtros actuales para reflejar cambios sin perder filtrado
+        aplicarFiltros();
+        
+        mostrarMensaje(`Estado de producción externa actualizado correctamente`, 'info');
+        
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarMensaje('Error al actualizar el estado de producción externa');
         // Revertir el estado del switch al anterior
         switchElement.checked = previousChecked;
     } finally {

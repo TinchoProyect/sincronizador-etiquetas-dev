@@ -23,7 +23,29 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda } = require('../controllers/articulos');
+const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna } = require('../controllers/articulos');
+
+// Ruta para alternar estado de producción externa (toggle)
+router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) => {
+    try {
+        const { articuloId } = req.params;
+        const { solo_produccion_externa } = req.body;
+
+        if (!articuloId) {
+            return res.status(400).json({ error: 'ID de artículo requerido' });
+        }
+
+        if (typeof solo_produccion_externa !== 'boolean') {
+            return res.status(400).json({ error: 'El campo solo_produccion_externa debe ser un booleano' });
+        }
+
+        const resultado = await actualizarProduccionExterna(articuloId, solo_produccion_externa);
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error en ruta PUT /articulos/:articuloId/toggle-produccion-externa:', error);
+        res.status(500).json({ error: 'Error al actualizar el estado de producción externa' });
+    }
+});
 const {
     obtenerIngredientes,
     obtenerIngrediente,

@@ -637,6 +637,19 @@
                                 <label class="btn btn-outline-warning" for="filtroNoProducidos">NO producidos por LAMDA</label>
                             </div>
                         </div>
+                        <div class="filter-group">
+                            <label>Filtro producción externa:</label>
+                            <div class="btn-group" role="group" aria-label="Filtro producción externa">
+                                <input type="radio" class="btn-check" name="filtroProduccionExterna" id="filtroExternaTodos" value="todos" checked>
+                                <label class="btn btn-outline-secondary" for="filtroExternaTodos">Todos</label>
+                                
+                                <input type="radio" class="btn-check" name="filtroProduccionExterna" id="filtroExternaSi" value="externa_si">
+                                <label class="btn btn-outline-success" for="filtroExternaSi">Solo Prod. Externa</label>
+                                
+                                <input type="radio" class="btn-check" name="filtroProduccionExterna" id="filtroExternaNo" value="externa_no">
+                                <label class="btn btn-outline-warning" for="filtroExternaNo">NO Prod. Externa</label>
+                            </div>
+                        </div>
                     </div>
                     <div class="buttons-container">
                         <button id="btn-ajustes-puntuales" class="secondary-button">Ajustes Puntuales</button>
@@ -657,6 +670,7 @@
                             <th>Código de Barras</th>
                             <th>Stock Ventas</th>
                             <th>Producción LAMDA</th>
+                            <th>Solo Prod. Externa</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-articulos-body">

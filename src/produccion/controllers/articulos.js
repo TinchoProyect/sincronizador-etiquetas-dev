@@ -146,8 +146,60 @@ async function actualizarProduccionLambda(articuloNumero, noProducidoPorLambda) 
     }
 }
 
+/**
+ * Actualiza el campo solo_produccion_externa de un artículo
+ * @param {string} articuloNumero - Número del artículo
+ * @param {boolean} soloProduccionExterna - Nuevo valor del campo
+ * @returns {Promise<Object>} Resultado de la actualización
+ */
+async function actualizarProduccionExterna(articuloNumero, soloProduccionExterna) {
+    try {
+        console.log('Actualizando producción externa para artículo:', articuloNumero, 'Valor:', soloProduccionExterna);
+        
+        // Verificar que el artículo existe
+        const checkQuery = `
+            SELECT articulo_numero 
+            FROM public.stock_real_consolidado 
+            WHERE articulo_numero = $1
+        `;
+        const checkResult = await pool.query(checkQuery, [articuloNumero]);
+        
+        if (checkResult.rows.length === 0) {
+            // Si no existe en stock_real_consolidado, crear el registro
+            const insertQuery = `
+                INSERT INTO public.stock_real_consolidado (articulo_numero, solo_produccion_externa)
+                VALUES ($1, $2)
+                ON CONFLICT (articulo_numero) 
+                DO UPDATE SET solo_produccion_externa = $2
+            `;
+            await pool.query(insertQuery, [articuloNumero, soloProduccionExterna]);
+        } else {
+            // Actualizar el campo existente
+            const updateQuery = `
+                UPDATE public.stock_real_consolidado 
+                SET solo_produccion_externa = $1
+                WHERE articulo_numero = $2
+            `;
+            await pool.query(updateQuery, [soloProduccionExterna, articuloNumero]);
+        }
+
+        console.log('Campo de producción externa actualizado correctamente');
+        return { 
+            success: true, 
+            message: 'Campo de producción externa actualizado correctamente',
+            articulo_numero: articuloNumero,
+            solo_produccion_externa: soloProduccionExterna
+        };
+
+    } catch (error) {
+        console.error('Error al actualizar campo de producción externa:', error);
+        throw new Error(`Error al actualizar campo de producción externa: ${error.message}`);
+    }
+}
+
 module.exports = {
     obtenerArticulos,
     buscarArticuloPorCodigo,
-    actualizarProduccionLambda
+    actualizarProduccionLambda,
+    actualizarProduccionExterna
 };
