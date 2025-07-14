@@ -2,6 +2,7 @@ const pool = require('../config/database');
 
 /**
  * Elimina físicamente un ingreso manual y sus movimientos asociados
+ * 🔧 CORRECCIÓN CRÍTICA: Simplificado para evitar duplicación de lógica
  */
 async function eliminarIngresoManual(req, res) {
     const client = await pool.connect();
@@ -9,108 +10,179 @@ async function eliminarIngresoManual(req, res) {
     try {
         const { carroId, ingresoId } = req.params;
         
-        console.log(`🗑️ Eliminando ingreso manual ${ingresoId} del carro ${carroId}`);
+        console.log(`🗑️ ELIMINANDO INGRESO MANUAL ${ingresoId} DEL CARRO ${carroId}`);
+        console.log('================================================================');
         
         // Iniciar transacción
         await client.query('BEGIN');
 
-        // 1. Obtener datos del ingreso antes de eliminarlo
+        // 🔍 PASO 1: Buscar el ingreso en stock_ventas_movimientos (fuente principal del ID)
+        const stockQuery = `
+            SELECT 
+                svm.*,
+                cp.tipo_carro,
+                a.nombre as articulo_nombre
+            FROM stock_ventas_movimientos svm
+            LEFT JOIN carros_produccion cp ON cp.id = svm.carro_id
+            LEFT JOIN articulos a ON a.numero = svm.articulo_numero
+            WHERE svm.id = $1 AND svm.carro_id = $2 AND svm.tipo = 'ingreso a producción'
+        `;
+        const stockResult = await client.query(stockQuery, [ingresoId, carroId]);
+        
+        if (stockResult.rows.length === 0) {
+            throw new Error(`Ingreso manual ${ingresoId} no encontrado`);
+        }
+        
+        const stockIngreso = stockResult.rows[0];
+        const tipoCarro = stockIngreso.tipo_carro || 'interna';
+        
+        console.log('📋 Ingreso encontrado:', {
+            id: stockIngreso.id,
+            articulo_numero: stockIngreso.articulo_numero,
+            articulo_nombre: stockIngreso.articulo_nombre,
+            kilos: stockIngreso.kilos,
+            tipo_carro: tipoCarro
+        });
+
+        // 🔍 PASO 2: Buscar registro relacionado en ingredientes_movimientos
         const ingresoQuery = `
-            SELECT im.*, a.codigo_barras 
+            SELECT im.*, i.nombre as ingrediente_nombre
             FROM ingredientes_movimientos im
-            LEFT JOIN articulos a ON a.numero = im.observaciones
-            WHERE im.id = $1 AND im.carro_id = $2 AND im.tipo = 'ingreso'
+            LEFT JOIN ingredientes i ON i.id = im.ingrediente_id
+            WHERE im.carro_id = $1 
+            AND im.tipo = 'ingreso'
+            AND im.observaciones = $2
+            ORDER BY im.fecha DESC
+            LIMIT 1
         `;
-        const ingresoResult = await client.query(ingresoQuery, [ingresoId, carroId]);
         
-        if (ingresoResult.rows.length === 0) {
-            throw new Error('Ingreso manual no encontrado');
+        const ingresoResult = await client.query(ingresoQuery, [
+            carroId, 
+            stockIngreso.articulo_numero
+        ]);
+        
+        let ingresoIngrediente = null;
+        if (ingresoResult.rows.length > 0) {
+            ingresoIngrediente = ingresoResult.rows[0];
+            console.log('📋 Registro relacionado encontrado en ingredientes_movimientos:', {
+                id: ingresoIngrediente.id,
+                ingrediente_id: ingresoIngrediente.ingrediente_id,
+                ingrediente_nombre: ingresoIngrediente.ingrediente_nombre,
+                kilos: ingresoIngrediente.kilos
+            });
+        } else {
+            console.log('⚠️ No se encontró registro relacionado en ingredientes_movimientos');
         }
-        
-        const ingreso = ingresoResult.rows[0];
-        
-        // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos
-        let deleteStockResult = { rowCount: 0 };
-        if (ingreso.observaciones) { // observaciones contiene el articulo_numero
-            // Primero obtener los movimientos que vamos a eliminar
-            const movimientosQuery = `
-                SELECT articulo_numero, cantidad, tipo
-                FROM stock_ventas_movimientos 
-                WHERE articulo_numero = $1 
-                AND carro_id = $2 
-                AND tipo = 'ingreso a producción'
-            `;
-            const movimientosResult = await client.query(movimientosQuery, [
-                ingreso.observaciones,
-                carroId
-            ]);
+
+        // 🔧 PASO 3: Eliminar registro de ingredientes_movimientos (si existe)
+        // El trigger se encargará automáticamente de revertir el stock_actual
+        if (ingresoIngrediente) {
+            console.log('🗑️ Eliminando de ingredientes_movimientos...');
             
-            // Revertir el efecto en stock_movimientos antes de eliminar
-            for (const mov of movimientosResult.rows) {
-                if (mov.tipo === 'ingreso a producción') {
-                    // Para ingreso a producción eliminado: SUMAR de vuelta la cantidad a stock_movimientos
-                    await client.query(`
-                        UPDATE stock_real_consolidado 
-                        SET 
-                            stock_movimientos = COALESCE(stock_movimientos, 0) + $1,
-                            ultima_actualizacion = NOW()
-                        WHERE articulo_numero = $2
-                    `, [mov.cantidad, mov.articulo_numero]);
-                    console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: +${mov.cantidad} (revertir ingreso a producción)`);
+            // 🔍 LOG: Stock antes de eliminar
+            const stockAntesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
+            const stockAntesResult = await client.query(stockAntesQuery, [ingresoIngrediente.ingrediente_id]);
+            const stockAntes = stockAntesResult.rows[0]?.stock_actual || 0;
+            const nombreIngrediente = stockAntesResult.rows[0]?.nombre || 'Desconocido';
+
+            console.log(`\n🔍 ===== ELIMINACIÓN INGRESO MANUAL - INGREDIENTE ID ${ingresoIngrediente.ingrediente_id} =====`);
+            console.log(`📋 INGREDIENTE: "${nombreIngrediente}"`);
+            console.log(`📊 STOCK ANTES: ${stockAntes}`);
+            console.log(`⚡ El trigger revertirá automáticamente el stock al eliminar el registro`);
+            
+            const deleteIngresoQuery = `
+                DELETE FROM ingredientes_movimientos 
+                WHERE id = $1 AND carro_id = $2 AND tipo = 'ingreso'
+            `;
+            const deleteIngresoResult = await client.query(deleteIngresoQuery, [ingresoIngrediente.id, carroId]);
+            
+            if (deleteIngresoResult.rowCount > 0) {
+                console.log(`✅ Eliminado de ingredientes_movimientos (ID: ${ingresoIngrediente.id})`);
+                
+                // 🔍 LOG: Stock después de eliminar (trigger ya actuó)
+                const stockDespuesResult = await client.query(stockAntesQuery, [ingresoIngrediente.ingrediente_id]);
+                const stockDespues = stockDespuesResult.rows[0]?.stock_actual || 0;
+                console.log(`📊 STOCK DESPUÉS: ${stockDespues}`);
+                console.log(`✅ CAMBIO POR TRIGGER: ${stockAntes} → ${stockDespues} (${stockDespues - stockAntes >= 0 ? '+' : ''}${stockDespues - stockAntes})`);
+                
+                // 🔍 LOG ESPECIAL para Grana de Flor
+                if (ingresoIngrediente.ingrediente_id === 122 || nombreIngrediente.toLowerCase().includes('grana')) {
+                    console.log(`\n🌸 ===== GRANA DE FLOR - MONITOREO ESPECIAL ELIMINACIÓN =====`);
+                    console.log(`🆔 ID: ${ingresoIngrediente.ingrediente_id}`);
+                    console.log(`📛 NOMBRE: ${nombreIngrediente}`);
+                    console.log(`📊 STOCK ANTERIOR: ${stockAntes}`);
+                    console.log(`📊 STOCK NUEVO: ${stockDespues}`);
+                    console.log(`🔄 DIFERENCIA: ${stockDespues - stockAntes}`);
+                    console.log(`⏰ TIMESTAMP: ${new Date().toISOString()}`);
+                    console.log(`===============================================\n`);
                 }
+            } else {
+                console.warn('⚠️ No se pudo eliminar el registro de ingredientes_movimientos');
             }
-            
-            // Ahora eliminar los movimientos
-            const deleteStockQuery = `
-                DELETE FROM stock_ventas_movimientos 
-                WHERE articulo_numero = $1 
-                AND carro_id = $2 
-                AND tipo = 'ingreso a producción'
+            console.log(`========================================================\n`);
+        }
+
+        // 🔧 PASO 4: Eliminar de stock_ventas_movimientos y revertir stock consolidado
+        console.log('🔄 Eliminando de stock_ventas_movimientos y revirtiendo stock consolidado...');
+        
+        // Revertir el efecto en stock_real_consolidado
+        const cantidadARevertir = Math.abs(parseFloat(stockIngreso.kilos) || 0);
+        
+        if (cantidadARevertir > 0 && stockIngreso.articulo_numero) {
+            const revertirStockConsolidadoQuery = `
+                UPDATE stock_real_consolidado 
+                SET 
+                    stock_consolidado = COALESCE(stock_consolidado, 0) + $1,
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
             `;
-            
-            deleteStockResult = await client.query(deleteStockQuery, [
-                ingreso.observaciones,
-                carroId
-            ]);
-            
-            console.log(`✅ Eliminados ${deleteStockResult.rowCount} movimientos de stock_ventas_movimientos`);
+            const revertirStockResult = await client.query(revertirStockConsolidadoQuery, [cantidadARevertir, stockIngreso.articulo_numero]);
+            console.log(`📈 Stock consolidado revertido para artículo ${stockIngreso.articulo_numero}: +${cantidadARevertir} (filas afectadas: ${revertirStockResult.rowCount})`);
         }
         
-        // 3. Eliminar el movimiento de ingredientes
-        const deleteIngresoQuery = `
-            DELETE FROM ingredientes_movimientos 
-            WHERE id = $1 AND carro_id = $2 AND tipo = 'ingreso'
+        // Eliminar de stock_ventas_movimientos
+        const deleteStockQuery = `
+            DELETE FROM stock_ventas_movimientos 
+            WHERE id = $1 AND carro_id = $2
         `;
-        const deleteIngresoResult = await client.query(deleteIngresoQuery, [ingresoId, carroId]);
+        const deleteStockResult = await client.query(deleteStockQuery, [ingresoId, carroId]);
         
-        if (deleteIngresoResult.rowCount === 0) {
-            throw new Error('No se pudo eliminar el ingreso de ingredientes_movimientos');
+        if (deleteStockResult.rowCount === 0) {
+            throw new Error('No se pudo eliminar el registro de stock_ventas_movimientos');
         }
         
-        console.log('✅ Eliminado de ingredientes_movimientos');
-        
-        // 4. Recalcular el stock consolidado
-        if (ingreso.observaciones) {
-            const { recalcularStockConsolidado } = require('../utils/recalcularStock');
-            await recalcularStockConsolidado(client, ingreso.observaciones);
+        console.log(`✅ Eliminado de stock_ventas_movimientos (ID: ${ingresoId})`);
+
+        // 🔧 PASO 5: Recalcular stock consolidado
+        if (stockIngreso.articulo_numero) {
+            try {
+                const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+                await recalcularStockConsolidado(client, stockIngreso.articulo_numero);
+                console.log('✅ Stock consolidado recalculado');
+            } catch (recalcError) {
+                console.warn('⚠️ Error al recalcular stock consolidado:', recalcError.message);
+            }
         }
         
         // Confirmar transacción
         await client.query('COMMIT');
         
-        console.log('✅ Ingreso manual eliminado correctamente');
+        console.log('✅ INGRESO MANUAL ELIMINADO COMPLETAMENTE');
+        console.log('================================================================');
         
         res.json({
             message: 'Ingreso manual eliminado correctamente',
             eliminados: {
-                ingrediente_movimiento: true,
-                stock_movimiento: ingreso.observaciones ? true : false
+                ingrediente_movimiento: ingresoIngrediente ? true : false,
+                stock_movimiento: true,
+                stock_revertido: true
             }
         });
         
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('❌ Error al eliminar ingreso manual:', error);
+        console.error('❌ ERROR AL ELIMINAR INGRESO MANUAL:', error);
+        console.error('❌ Stack trace:', error.stack);
         res.status(500).json({ 
             error: 'Error al eliminar ingreso manual',
             detalle: error.message 

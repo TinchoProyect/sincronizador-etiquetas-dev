@@ -389,16 +389,29 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                             stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
                             console.log(`Stock usuario encontrado: ${stockActual}`);
                         } else {
-                            console.log(`\n📦 Obteniendo stock central para ingrediente ${ingrediente.id}`);
-                            // Consultar stock central para carros internos
-                            const queryStock = `
-                                SELECT stock_actual 
-                                FROM ingredientes 
-                                WHERE id = $1
+                            console.log(`\n📦 Obteniendo stock REAL para ingrediente ${ingrediente.id} (SOLO desde tabla ingredientes)`);
+                            // 🔧 CORRECCIÓN CRÍTICA: Usar SOLO stock_actual de la tabla ingredientes
+                            // La tabla ingredientes.stock_actual es la fuente única de verdad
+                            const queryStockReal = `
+                                SELECT 
+                                    i.stock_actual,
+                                    i.nombre as ingrediente_nombre
+                                FROM ingredientes i
+                                WHERE i.id = $1
                             `;
-                            const stockResult = await pool.query(queryStock, [ingrediente.id]);
-                            stockActual = stockResult.rows[0]?.stock_actual || 0;
-                            console.log(`Stock central encontrado: ${stockActual}`);
+                            const stockResult = await pool.query(queryStockReal, [ingrediente.id]);
+                            
+                            if (stockResult.rows.length > 0) {
+                                const stockData = stockResult.rows[0];
+                                stockActual = parseFloat(stockData.stock_actual) || 0;
+                                console.log(`📊 Stock obtenido para ingrediente ${ingrediente.id} (${stockData.ingrediente_nombre}):`);
+                                console.log(`- Stock actual (fuente única de verdad): ${stockActual}`);
+                                console.log(`- Tipo de dato: ${typeof stockData.stock_actual}`);
+                                console.log(`- Valor raw: ${stockData.stock_actual}`);
+                            } else {
+                                stockActual = 0;
+                                console.log(`⚠️ No se encontró el ingrediente ${ingrediente.id}`);
+                            }
                         }
                         
                         return {

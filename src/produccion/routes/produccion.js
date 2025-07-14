@@ -632,7 +632,7 @@ router.get('/carro/:id/articulos', async (req, res) => {
             return res.status(400).json({ error: 'IDs inválidos' });
         }
 
-        const articulos = await obtenerArticulosDeCarro(carroId, usuarioId);
+        const articulos = await obtenerArticulosDeCarro(carroId, usuarioId, req.db);
         res.json(articulos);
     } catch (error) {
         console.error('Error al obtener artículos del carro:', error);
@@ -1060,7 +1060,7 @@ router.post('/carro/:id/finalizar', async (req, res, next) => {
     }
 });
 
-// Ruta para obtener el resumen de artículos de un carro (solo para carros externos)
+// Ruta para obtener el resumen de artículos de un carro
 router.get('/carro/:id/articulos-resumen', async (req, res) => {
     try {
         const carroId = parseInt(req.params.id);
@@ -1084,30 +1084,31 @@ router.get('/carro/:id/articulos-resumen', async (req, res) => {
 
         const tipoCarro = carroResult.rows[0].tipo_carro;
 
-        // Solo devolver artículos para carros externos
-        if (tipoCarro !== 'externa') {
-            return res.status(404).json({ error: 'Esta funcionalidad solo está disponible para carros externos' });
+        if (tipoCarro === 'externa') {
+            // Para carros externos: obtener artículos de recetas
+            const articulosQuery = `
+                SELECT 
+                    ra.articulo_numero,
+                    a.nombre,
+                    SUM(ra.cantidad * ca.cantidad) as cantidad_total,
+                    COALESCE(src.stock_consolidado, 0) as stock_actual
+                FROM carros_articulos ca
+                JOIN recetas r ON r.articulo_numero = ca.articulo_numero
+                JOIN receta_articulos ra ON ra.receta_id = r.id
+                LEFT JOIN articulos a ON a.numero = ra.articulo_numero
+                LEFT JOIN stock_real_consolidado src ON src.articulo_numero = ra.articulo_numero
+                WHERE ca.carro_id = $1
+                GROUP BY ra.articulo_numero, a.nombre, src.stock_consolidado
+                ORDER BY ra.articulo_numero
+            `;
+
+            const result = await req.db.query(articulosQuery, [carroId]);
+            res.json(result.rows);
+        } else {
+            // Para carros internos: devolver array vacío (no tienen artículos de recetas)
+            console.log(`📦 Carro interno ${carroId} - devolviendo array vacío para articulos-resumen`);
+            res.json([]);
         }
-
-        // Obtener artículos de recetas en el carro
-        const articulosQuery = `
-            SELECT 
-                ra.articulo_numero,
-                a.nombre,
-                SUM(ra.cantidad * ca.cantidad) as cantidad_total,
-                COALESCE(src.stock_consolidado, 0) as stock_actual
-            FROM carros_articulos ca
-            JOIN recetas r ON r.articulo_numero = ca.articulo_numero
-            JOIN receta_articulos ra ON ra.receta_id = r.id
-            LEFT JOIN articulos a ON a.numero = ra.articulo_numero
-            LEFT JOIN stock_real_consolidado src ON src.articulo_numero = ra.articulo_numero
-            WHERE ca.carro_id = $1
-            GROUP BY ra.articulo_numero, a.nombre, src.stock_consolidado
-            ORDER BY ra.articulo_numero
-        `;
-
-        const result = await req.db.query(articulosQuery, [carroId]);
-        res.json(result.rows);
 
     } catch (error) {
         console.error('Error al obtener resumen de artículos:', error);
@@ -1164,6 +1165,7 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
         
         if (tipoCarro === 'interna') {
             // 🏭 CARROS INTERNOS: Solo movimientos de artículos (stock_ventas_movimientos)
+            // 🔧 CORRECCIÓN CRÍTICA: NO multiplicar por cantidad porque el frontend ya lo hizo
             query = `
                 SELECT
                     svm.id,
@@ -1183,7 +1185,7 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                   AND svm.tipo = 'ingreso a producción'
                 ORDER BY svm.fecha DESC
             `;
-            console.log('🏭 Usando consulta para CARRO INTERNO (solo stock_ventas_movimientos)');
+            console.log('🏭 Usando consulta para CARRO INTERNO - CORRECCIÓN: sin doble multiplicación');
         } else {
             // 🌐 CARROS EXTERNOS: Ambas fuentes (ingredientes_movimientos + stock_ventas_movimientos)
             query = `
@@ -1329,9 +1331,11 @@ router.get('/carro/:id/estado', async (req, res) => {
 /**
  * Ruta: POST /api/produccion/ingredientes_movimientos
  * Descripción: Registra un movimiento manual de ingreso de stock
- * en la tabla ingredientes_movimientos.
+ * en la tabla ingredientes_movimientos Y actualiza stock_actual.
+ * 🔧 CORRECCIÓN CRÍTICA: Evitar duplicación de stock_actual
  */
 router.post('/ingredientes_movimientos', async (req, res) => {
+  const client = await req.db.connect();
   try {
     console.log('📥 Solicitud POST /ingredientes_movimientos recibida');
     const { ingrediente_id, kilos, carro_id, tipo, observaciones } = req.body;
@@ -1358,14 +1362,90 @@ router.post('/ingredientes_movimientos', async (req, res) => {
 
     console.log('📦 Movimiento armado para registrar:', movimiento);
 
-    await registrarMovimientoIngrediente(movimiento, req.db);
+    // Iniciar transacción
+    await client.query('BEGIN');
 
-    console.log('✅ Movimiento registrado correctamente');
-    return res.status(201).json({ message: 'Movimiento registrado correctamente' });
+    // 🔍 LOG CRÍTICO: Obtener stock ANTES de cualquier modificación
+    const stockAntesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
+    const stockAntesResult = await client.query(stockAntesQuery, [ingrediente_id]);
+    const stockAntes = stockAntesResult.rows[0]?.stock_actual || 0;
+    const nombreIngrediente = stockAntesResult.rows[0]?.nombre || 'Desconocido';
+
+    console.log(`\n🔍 ===== LOG INGRESO MANUAL - INGREDIENTE ID ${ingrediente_id} =====`);
+    console.log(`📋 INGREDIENTE: "${nombreIngrediente}"`);
+    console.log(`📊 STOCK ANTES: ${stockAntes}`);
+
+    // 1. Registrar movimiento en ingredientes_movimientos
+    await registrarMovimientoIngrediente(movimiento, client);
+    console.log('✅ Movimiento registrado en ingredientes_movimientos');
+
+    // 2. 🔧 CORRECCIÓN CRÍTICA: NO actualizar stock_actual manualmente
+    // El trigger actualizar_stock_ingrediente() se encarga automáticamente
+    const tipoMovimiento = movimiento.tipo.toLowerCase();
+    const cantidadStock = Number(kilos) * (tipoMovimiento === 'ingreso' ? 1 : -1);
+
+    console.log(`🔄 OPERACIÓN: ${tipoMovimiento} de ${Math.abs(cantidadStock)}kg`);
+    console.log(`⚡ TRIGGER: El stock_actual se actualizará automáticamente via trigger`);
+
+    // Obtener stock actualizado DESPUÉS del trigger para logs
+    const stockDespuesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
+    const stockResult = await client.query(stockDespuesQuery, [ingrediente_id]);
+    
+    if (stockResult.rows.length > 0) {
+      const { stock_actual, nombre } = stockResult.rows[0];
+      console.log(`📊 STOCK DESPUÉS: ${stock_actual}`);
+      console.log(`✅ CAMBIO APLICADO: ${stockAntes} → ${stock_actual} (${stock_actual - stockAntes >= 0 ? '+' : ''}${stock_actual - stockAntes})`);
+      
+      // 🔍 LOG ESPECIAL para Grana de Flor
+      if (ingrediente_id === 122 || nombre.toLowerCase().includes('grana')) {
+        console.log(`\n🌸 ===== GRANA DE FLOR - MONITOREO ESPECIAL =====`);
+        console.log(`🆔 ID: ${ingrediente_id}`);
+        console.log(`📛 NOMBRE: ${nombre}`);
+        console.log(`📊 STOCK ANTERIOR: ${stockAntes}`);
+        console.log(`📊 STOCK NUEVO: ${stock_actual}`);
+        console.log(`🔄 DIFERENCIA: ${stock_actual - stockAntes}`);
+        console.log(`⏰ TIMESTAMP: ${new Date().toISOString()}`);
+        console.log(`===============================================\n`);
+      }
+
+      // 🔧 VERIFICACIÓN CRÍTICA: Detectar duplicación
+      const diferencia = stock_actual - stockAntes;
+      const tipoMovimiento = movimiento.tipo.toLowerCase();
+      const factorStock = tipoMovimiento === 'ingreso' ? 1 : -1;
+      const esperado = Number(kilos) * factorStock;
+      
+      if (Math.abs(diferencia - esperado) > 0.01) {
+        console.log(`\n⚠️ ===== POSIBLE DUPLICACIÓN DETECTADA =====`);
+        console.log(`🔍 DIFERENCIA REAL: ${diferencia}`);
+        console.log(`🔍 DIFERENCIA ESPERADA: ${esperado}`);
+        console.log(`🔍 DISCREPANCIA: ${diferencia - esperado}`);
+        console.log(`===============================================\n`);
+      }
+    } else {
+      console.warn(`⚠️ No se encontró ingrediente con ID ${ingrediente_id}`);
+    }
+    console.log(`========================================================\n`);
+
+    // Confirmar transacción
+    await client.query('COMMIT');
+    console.log('✅ Transacción completada exitosamente');
+
+    return res.status(201).json({ 
+      message: 'Movimiento registrado y stock actualizado correctamente',
+      stock_actualizado: stockResult.rows.length > 0
+    });
 
   } catch (error) {
+    // Revertir transacción en caso de error
+    await client.query('ROLLBACK');
     console.error('❌ Error en POST /ingredientes_movimientos:', error);
-    return res.status(500).json({ error: 'Error al registrar el movimiento' });
+    console.error('❌ Stack trace:', error.stack);
+    return res.status(500).json({ 
+      error: 'Error al registrar el movimiento',
+      detalle: error.message 
+    });
+  } finally {
+    client.release();
   }
 });
 

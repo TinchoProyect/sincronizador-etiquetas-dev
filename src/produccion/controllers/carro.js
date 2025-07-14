@@ -32,16 +32,18 @@ async function crearCarro(usuarioId, enAuditoria = true, tipoCarro = 'interna') 
  * Valida si un carro pertenece a un usuario específico
  * @param {number} carroId - ID del carro
  * @param {number} usuarioId - ID del usuario
+ * @param {Object} db - Conexión de base de datos (opcional, usa pool por defecto)
  * @returns {Promise<boolean>}
  */
-async function validarPropiedadCarro(carroId, usuarioId) {
+async function validarPropiedadCarro(carroId, usuarioId, db = null) {
     try {
         const query = `
             SELECT COUNT(*)::integer AS count 
             FROM carros_produccion 
             WHERE id = $1 AND usuario_id = $2
         `;
-        const result = await pool.query(query, [carroId, usuarioId]);
+        const dbConnection = db || pool;
+        const result = await dbConnection.query(query, [carroId, usuarioId]);
         return result.rows[0].count > 0;
     } catch (error) {
         console.error('Error al validar propiedad del carro:', error);
@@ -86,12 +88,15 @@ async function agregarArticulo(carroId, articuloNumero, descripcion, cantidad) {
  * Obtiene todos los artículos agregados a un carro específico
  * @param {number} carroId - ID del carro de producción
  * @param {number} usuarioId - ID del usuario que solicita los artículos
+ * @param {Object} db - Conexión de base de datos (opcional, usa pool por defecto)
  * @returns {Promise<Array>} Lista de artículos en el carro
  */
-async function obtenerArticulosDeCarro(carroId, usuarioId) {
+async function obtenerArticulosDeCarro(carroId, usuarioId, db = null) {
     try {
+        const dbConnection = db || pool;
+        
         // Primero validar que el carro pertenezca al usuario
-        const esValido = await validarPropiedadCarro(carroId, usuarioId);
+        const esValido = await validarPropiedadCarro(carroId, usuarioId, dbConnection);
         if (!esValido) {
             throw new Error('El carro no pertenece al usuario especificado');
         }
@@ -108,7 +113,7 @@ async function obtenerArticulosDeCarro(carroId, usuarioId) {
             ORDER BY ca.id DESC
         `;
         
-        const result = await pool.query(query, [carroId]);
+        const result = await dbConnection.query(query, [carroId]);
         return result.rows;
     } catch (error) {
         console.error('Error al obtener artículos del carro:', error);

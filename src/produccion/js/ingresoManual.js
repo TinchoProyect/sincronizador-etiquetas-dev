@@ -79,27 +79,93 @@ export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
 }
 
 function inicializarModal() {
-  modal = document.getElementById('modalIngresoManual');
-  inputBusqueda = document.getElementById('busquedaArticulo');
-  listaResultados = document.getElementById('listaArticulos');
-  inputKilos = document.getElementById('inputKilos');
-  inputCantidad = document.getElementById('inputCantidad');
-  btnConfirmar = document.getElementById('btnConfirmarIngreso');
-  btnCancelar = document.getElementById('btnCancelarIngreso');
-  nombreIngredienteDisplay = modal.querySelector('.nombre-ingrediente');
+  try {
+    // Verificar que el DOM esté completamente cargado
+    if (document.readyState === 'loading') {
+      console.log('⏳ DOM aún cargando, esperando...');
+      document.addEventListener('DOMContentLoaded', inicializarModal);
+      return;
+    }
 
-  if (!modal) {
-    console.error('❌ No se encontró el modal con id "modalIngresoManual"');
-    return;
+    console.log('🔧 Inicializando modal de ingreso manual...');
+    
+    // Obtener elementos del DOM con validación robusta
+    modal = document.getElementById('modalIngresoManual');
+    if (!modal) {
+      console.error('❌ No se encontró el modal con id "modalIngresoManual"');
+      return false;
+    }
+
+    inputBusqueda = document.getElementById('busquedaArticulo');
+    if (!inputBusqueda) {
+      console.error('❌ No se encontró el input de búsqueda');
+      return false;
+    }
+
+    listaResultados = document.getElementById('listaArticulos');
+    if (!listaResultados) {
+      console.error('❌ No se encontró la lista de artículos');
+      return false;
+    }
+
+    inputKilos = document.getElementById('inputKilos');
+    if (!inputKilos) {
+      console.error('❌ No se encontró el input de kilos');
+      return false;
+    }
+
+    inputCantidad = document.getElementById('inputCantidad');
+    if (!inputCantidad) {
+      console.error('❌ No se encontró el input de cantidad');
+      return false;
+    }
+
+    btnConfirmar = document.getElementById('btnConfirmarIngreso');
+    if (!btnConfirmar) {
+      console.error('❌ No se encontró el botón confirmar');
+      return false;
+    }
+
+    btnCancelar = document.getElementById('btnCancelarIngreso');
+    if (!btnCancelar) {
+      console.error('❌ No se encontró el botón cancelar');
+      return false;
+    }
+
+    // Buscar el elemento nombre-ingrediente de forma segura
+    nombreIngredienteDisplay = modal.querySelector('.nombre-ingrediente');
+    if (!nombreIngredienteDisplay) {
+      console.warn('⚠️ No se encontró el elemento .nombre-ingrediente, creando uno temporal');
+      // Crear elemento si no existe para evitar errores
+      nombreIngredienteDisplay = document.createElement('p');
+      nombreIngredienteDisplay.className = 'nombre-ingrediente';
+      modal.insertBefore(nombreIngredienteDisplay, modal.firstChild);
+    }
+
+    // Agregar event listeners con manejo de errores
+    try {
+      inputBusqueda.addEventListener('input', manejarBusqueda);
+      btnConfirmar.addEventListener('click', confirmarIngreso);
+      btnCancelar.addEventListener('click', cerrarModal);
+
+      // Event listener para cerrar modal al hacer click fuera
+      window.addEventListener('click', (e) => {
+        if (e.target === modal) cerrarModal();
+      });
+
+      console.log('✅ Modal de ingreso manual inicializado correctamente');
+      return true;
+      
+    } catch (eventError) {
+      console.error('❌ Error al agregar event listeners:', eventError);
+      return false;
+    }
+
+  } catch (error) {
+    console.error('❌ Error crítico al inicializar modal:', error);
+    console.error('❌ Stack trace:', error.stack);
+    return false;
   }
-
-  inputBusqueda.addEventListener('input', manejarBusqueda);
-  btnConfirmar.addEventListener('click', confirmarIngreso);
-  btnCancelar.addEventListener('click', cerrarModal);
-
-  window.addEventListener('click', (e) => {
-    if (e.target === modal) cerrarModal();
-  });
 }
 
 function limpiarCamposModal() {
@@ -368,26 +434,33 @@ async function confirmarIngreso() {
     } else {
       console.log('🏭 PROCESANDO INGRESO MANUAL EN CARRO INTERNO');
       
-      // Para carros internos, usar el flujo original
+      // 🔧 CORRECCIÓN CRÍTICA: Para carros internos, NO duplicar la multiplicación
+      // El backend ya maneja la multiplicación por cantidad en el endpoint /ingredientes_movimientos
+      
       const movimientoIngrediente = {
         ingredienteId: ingredienteSeleccionado,
         articuloNumero: articuloSeleccionado.numero,
-        kilos: kilos * cantidad, // Multiplicar por cantidad
-        carroId: parseInt(carroIdGlobal),
-        usuarioId: parseInt(usuarioId)
+        kilos: kilos * cantidad, // Kilos totales para el ingrediente
+        carroId: parseInt(carroIdGlobal)
       };
 
       const movimientoStock = {
         articuloNumero: articuloSeleccionado.numero,
         codigoBarras: articuloSeleccionado.codigo_barras,
-        kilos: -kilos, // Kilos por unidad (sin multiplicar)
+        kilos: -(kilos * cantidad), // 🔧 CORRECCIÓN CRÍTICA: Kilos totales (multiplicar por cantidad)
         carroId: parseInt(carroIdGlobal),
         usuarioId: parseInt(usuarioId),
-        cantidad: cantidad, // Cantidad de unidades
+        cantidad: cantidad, // La cantidad se maneja por separado
         tipo: 'ingreso a producción'
       };
 
-      console.log('📦 Guardando ingreso manual:', movimientoIngrediente);
+      console.log('📦 Guardando ingreso manual CORREGIDO:', {
+        movimientoIngrediente,
+        movimientoStock,
+        kilosUnitarios: kilos,
+        cantidad: cantidad,
+        kilosTotales: kilos * cantidad
+      });
       
       await registrarMovimientoIngrediente(movimientoIngrediente);
       await registrarMovimientoStockVentas(movimientoStock);
@@ -424,8 +497,8 @@ async function confirmarIngreso() {
 
     console.log('🔍 DEBUG - ingresosManualesDelCarro después de registrar:', ingresosManualesDelCarro);
 
-    // Actualizar el informe de ingresos manuales
-    await actualizarInformeIngresosManuales();
+    // Actualizar el informe de ingresos manuales con delay para evitar duplicados
+    await actualizarInformeIngresosManuales(1500); // 1.5 segundos de delay
 
     alert('Ingreso registrado correctamente');
     cerrarModal();
@@ -481,9 +554,41 @@ async function registrarIngresoManualEnInforme(datosIngreso) {
   }
 }
 
-// Función para actualizar el informe visual de ingresos manuales
-async function actualizarInformeIngresosManuales() {
+// 🔧 CORRECCIÓN 2: Función específica para filtrar duplicados en carros internos
+function filtrarDuplicadosCarrosInternos(ingresosBackend, ingresosMemoria) {
+  const ingresosUnicosMap = new Map();
+  
+  // Procesar ingresos del backend primero (tienen prioridad)
+  ingresosBackend.forEach(ing => {
+    const key = `${ing.articulo_numero}-${Math.round(parseFloat(ing.kilos) * 100)}`; // Redondear para evitar diferencias decimales mínimas
+    if (!ingresosUnicosMap.has(key)) {
+      ingresosUnicosMap.set(key, { ...ing, fuente: 'backend' });
+    }
+  });
+  
+  // Procesar ingresos en memoria solo si NO existen en backend
+  ingresosMemoria.forEach(ing => {
+    const key = `${ing.articuloNumero}-${Math.round(parseFloat(ing.kilosTotales) * 100)}`;
+    if (!ingresosUnicosMap.has(key)) {
+      ingresosUnicosMap.set(key, { ...ing, fuente: 'memoria' });
+    }
+  });
+  
+  return Array.from(ingresosUnicosMap.values());
+}
+
+// 🔧 CORRECCIÓN 5: Función completamente reescrita para eliminar duplicados definitivamente
+async function actualizarInformeIngresosManuales(delayMs = 0) {
   try {
+    console.log('\n🔄 INICIANDO ACTUALIZACIÓN DE INFORME DE INGRESOS MANUALES');
+    console.log('================================================================');
+    
+    // Agregar delay opcional para permitir que el backend procese
+    if (delayMs > 0) {
+      console.log(`⏳ Esperando ${delayMs}ms para que el backend procese...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+
     const contenedor = document.getElementById('tabla-ingresos-manuales');
     if (!contenedor) {
       console.warn('⚠️ No se encontró el contenedor del informe de ingresos manuales');
@@ -497,7 +602,18 @@ async function actualizarInformeIngresosManuales() {
       return;
     }
 
-    // Obtener ingresos manuales desde el backend
+    console.log(`🚚 Procesando carro ID: ${carroId}`);
+
+    // PASO 1: Limpiar completamente la memoria local para evitar acumulación
+    console.log('🧹 PASO 1: Limpiando memoria local...');
+    ingresosManualesDelCarro = ingresosManualesDelCarro.filter(ing => 
+      ing.carroId.toString() !== carroId
+    );
+    sincronizarArrayGlobal();
+    console.log(`✅ Memoria local limpiada. Ingresos restantes: ${ingresosManualesDelCarro.length}`);
+
+    // PASO 2: Obtener SOLO datos del backend (fuente única de verdad)
+    console.log('📡 PASO 2: Obteniendo datos del backend...');
     let ingresosDelBackend = [];
     try {
       const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`, {
@@ -507,75 +623,50 @@ async function actualizarInformeIngresosManuales() {
           'Pragma': 'no-cache'
         }
       });
+      
       if (response.ok) {
         ingresosDelBackend = await response.json();
+        console.log(`📊 Ingresos obtenidos del backend: ${ingresosDelBackend.length}`);
         
-        // Log de depuración: mostrar datos del backend
-        console.log('\n📊 INGRESOS DEL BACKEND:');
-        console.table(ingresosDelBackend.map(ing => ({
-          articulo_nombre: ing.articulo_nombre || 'Sin nombre',
-          tipo_articulo: ing.tipo_articulo,
-          fuente_datos: ing.fuente_datos,
-          kilos: ing.kilos,
-          carro_id: ing.carro_id
-        })));
+        // Log detallado de cada ingreso
+        ingresosDelBackend.forEach((ing, index) => {
+          console.log(`  ${index + 1}. ID: ${ing.id} | Artículo: ${ing.articulo_nombre} | Kilos: ${ing.kilos} | Fecha: ${ing.fecha}`);
+        });
+      } else {
+        console.warn('⚠️ Error al obtener ingresos del backend:', response.status);
       }
     } catch (error) {
-      console.warn('⚠️ Error al obtener ingresos del backend:', error);
+      console.error('❌ Error al obtener ingresos del backend:', error);
     }
 
-    // Filtrar ingresos en memoria del carro actual que NO estén ya persistidos
-    const ingresosEnMemoria = ingresosManualesDelCarro.filter(ingreso => {
-      // Solo incluir si es del carro actual
-      if (ingreso.carroId.toString() !== carroId) return false;
+    // PASO 3: Aplicar filtrado robusto para eliminar duplicados absolutos
+    console.log('🔍 PASO 3: Aplicando filtrado anti-duplicados...');
+    const ingresosUnicos = new Map();
+    
+    ingresosDelBackend.forEach((ing, index) => {
+      // Crear clave única basada en múltiples campos
+      const clave = `${ing.articulo_numero}-${ing.ingrediente_id}-${Math.round(parseFloat(ing.kilos || 0) * 1000)}-${ing.fecha}`;
       
-      // Verificar si ya existe en el backend (por artículo y fecha aproximada)
-      const existeEnBackend = ingresosDelBackend.some(backendIngreso => {
-        const mismoArticulo = backendIngreso.articulo_numero === ingreso.articuloNumero;
-        const kilosSimilares = Math.abs((parseFloat(backendIngreso.kilos) || 0) - (parseFloat(ingreso.kilosTotales) || 0)) < 0.01;
-        return mismoArticulo && kilosSimilares;
-      });
-      
-      return !existeEnBackend; // Solo incluir si NO existe en backend
-    });
-
-    // Log de depuración: mostrar datos en memoria
-    if (ingresosEnMemoria.length > 0) {
-      console.log('\n💾 INGRESOS EN MEMORIA:');
-      console.table(ingresosEnMemoria.map(ing => ({
-        articuloNombre: ing.articuloNombre || 'Sin nombre',
-        tipoArticulo: 'simple',
-        fuente_datos: 'memoria',
-        kilosTotales: ing.kilosTotales,
-        carroId: ing.carroId
-      })));
-    }
-
-    // Combinar: priorizar backend, luego memoria sin duplicados
-    const todosLosIngresos = [...ingresosDelBackend, ...ingresosEnMemoria];
-
-    // Filtrar duplicados basados en combinación de campos clave
-    const ingresosUnicosMap = new Map();
-    todosLosIngresos.forEach(ing => {
-      const key = `${ing.articulo_numero || ing.articuloNumero}-${ing.kilos || ing.kilosTotales}-${ing.fecha || ing.fechaIngreso}-${ing.fuente_datos || ing.fuenteDatos}`;
-      if (!ingresosUnicosMap.has(key)) {
-        ingresosUnicosMap.set(key, ing);
+      if (!ingresosUnicos.has(clave)) {
+        ingresosUnicos.set(clave, {
+          ...ing,
+          fuente: 'backend',
+          indiceOriginal: index
+        });
+        console.log(`  ✅ Agregado: ${ing.articulo_nombre} (${ing.kilos}kg) - Clave: ${clave}`);
+      } else {
+        console.log(`  🚫 Duplicado eliminado: ${ing.articulo_nombre} (${ing.kilos}kg) - Clave: ${clave}`);
       }
     });
-    const ingresosUnicos = Array.from(ingresosUnicosMap.values());
 
-    // Log de depuración: mostrar combinación final sin duplicados
-    console.log('\n🔄 COMBINACIÓN FINAL SIN DUPLICADOS:');
-    console.table(ingresosUnicos.map(ing => ({
-      articulo_nombre: ing.articulo_nombre || ing.articuloNombre || 'Sin nombre',
-      tipo_articulo: ing.tipo_articulo || 'simple',
-      fuente_datos: ing.fuente_datos || 'memoria',
-      kilos: ing.kilos || ing.kilosTotales,
-      carro_id: ing.carro_id || ing.carroId
-    })));
+    const ingresosFiltrados = Array.from(ingresosUnicos.values());
+    console.log(`🎯 Resultado del filtrado: ${ingresosFiltrados.length} ingresos únicos`);
 
-    if (ingresosUnicos.length === 0) {
+    // PASO 4: Generar HTML
+    console.log('🎨 PASO 4: Generando HTML...');
+    if (ingresosFiltrados.length === 0) {
       contenedor.innerHTML = '<p>No se han realizado ingresos manuales en este carro</p>';
+      console.log('📝 No hay ingresos para mostrar');
       return;
     }
 
@@ -595,35 +686,14 @@ async function actualizarInformeIngresosManuales() {
         <tbody>
     `;
 
-    ingresosUnicos.forEach(ingreso => {
+    ingresosFiltrados.forEach((ingreso, index) => {
       try {
-        // Determinar si es un ingreso del backend o en memoria
-        const esIngresoBackend = ingreso.hasOwnProperty('articulo_nombre') || ingreso.hasOwnProperty('ingrediente_nombre');
+        const kilos = parseFloat(ingreso.kilos) || 0;
+        const nombreArticulo = ingreso.articulo_nombre || ingreso.ingrediente_nombre || 'Sin nombre';
+        const fecha = ingreso.fecha ? new Date(ingreso.fecha).toLocaleString() : '-';
+        const ingresoId = `db_${ingreso.id}`;
+        const tipoArticulo = ingreso.tipo_articulo || 'simple';
         
-        let kilos, nombreArticulo, fecha, ingresoId, tipoIngreso, tipoArticulo;
-        
-        if (esIngresoBackend) {
-          // Ingreso del backend
-          kilos = parseFloat(ingreso.kilos) || 0;
-          nombreArticulo = ingreso.articulo_nombre || ingreso.ingrediente_nombre || 'Sin nombre';
-          try {
-            fecha = ingreso.fecha ? new Date(ingreso.fecha).toLocaleString() : '-';
-          } catch (e) {
-            fecha = '-';
-          }
-          ingresoId = `db_${ingreso.id || 0}`;
-          tipoIngreso = 'backend';
-          tipoArticulo = ingreso.tipo_articulo || 'simple'; // Usar el campo del backend
-        } else {
-          // Ingreso en memoria
-          kilos = parseFloat(ingreso.kilosTotales) || 0;
-          nombreArticulo = ingreso.articuloNombre || 'Sin nombre';
-          fecha = ingreso.fechaIngreso || '-';
-          ingresoId = `mem_${ingreso.id || 0}`;
-          tipoIngreso = 'memoria';
-          tipoArticulo = 'simple'; // Los ingresos en memoria son siempre simples
-        }
-
         // Determinar iconografía y texto según el tipo de artículo
         const esMix = tipoArticulo === 'mix';
         const icono = esMix ? '🧪' : '📦';
@@ -635,7 +705,7 @@ async function actualizarInformeIngresosManuales() {
           '<td class="stock-anterior">-</td><td class="stock-nuevo">-</td>';
 
         html += `
-          <tr data-tipo="${tipoIngreso}" data-articulo-tipo="${tipoArticulo}">
+          <tr data-tipo="backend" data-articulo-tipo="${tipoArticulo}" data-ingreso-id="${ingreso.id}">
             <td>
               ${icono} ${nombreArticulo} 
               <span class="tipo-badge tipo-${tipoArticulo}">${tipoBadge}</span>
@@ -651,8 +721,10 @@ async function actualizarInformeIngresosManuales() {
             </td>
           </tr>
         `;
+        
+        console.log(`  ${index + 1}. Fila generada: ${nombreArticulo} (${kilos}kg)`);
       } catch (err) {
-        console.warn('Error al procesar ingreso:', err, ingreso);
+        console.error('❌ Error al procesar ingreso:', err, ingreso);
       }
     });
 
@@ -661,20 +733,36 @@ async function actualizarInformeIngresosManuales() {
       </table>
     `;
 
+    // PASO 5: Actualizar DOM
+    console.log('🖥️ PASO 5: Actualizando DOM...');
     contenedor.innerHTML = html;
-    console.log('✅ Informe de ingresos manuales actualizado');
+    
+    console.log('✅ INFORME DE INGRESOS MANUALES ACTUALIZADO EXITOSAMENTE');
+    console.log(`📊 Total de filas mostradas: ${ingresosFiltrados.length}`);
+    console.log('================================================================\n');
+    
   } catch (error) {
-    console.error('❌ Error al actualizar informe de ingresos manuales:', error);
+    console.error('❌ ERROR CRÍTICO al actualizar informe de ingresos manuales:', error);
+    console.error('❌ Stack trace:', error.stack);
   }
 }
 
 // Función para eliminar un ingreso manual
 async function eliminarIngresoManual(ingresoId) {
   try {
+    console.log('\n🚨 INICIANDO ELIMINACIÓN DE INGRESO MANUAL');
+    console.log('================================================================');
+    console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+    console.log(`🆔 ID del ingreso a eliminar: "${ingresoId}"`);
+    console.log(`📋 Tipo de dato: ${typeof ingresoId}`);
+    console.log(`📏 Longitud: ${ingresoId ? ingresoId.length : 'undefined'}`);
+    
     if (!confirm('¿Estás seguro de que querés eliminar este ingreso manual? Esta acción no se puede deshacer.')) {
+      console.log('❌ Usuario canceló la eliminación');
       return;
     }
 
+    console.log('✅ Usuario confirmó la eliminación, procediendo...');
     console.log('🗑️ Eliminando ingreso manual:', ingresoId);
 
     // Determinar si es un ingreso del backend o en memoria
@@ -756,7 +844,12 @@ async function eliminarIngresoManual(ingresoId) {
       } else {
         // Para ingredientes simples: usar el endpoint existente
         console.log('📦 Eliminando ingrediente simple...');
+        console.log(`🌐 URL del endpoint: http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`);
+        console.log(`📋 Método: DELETE`);
+        console.log(`🆔 Carro ID: ${carroId}`);
+        console.log(`🆔 Ingreso ID Real: ${ingresoIdReal}`);
         
+        console.log('🚀 ENVIANDO REQUEST DELETE AL BACKEND...');
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`, {
           method: 'DELETE',
           headers: {
@@ -764,13 +857,21 @@ async function eliminarIngresoManual(ingresoId) {
           }
         });
 
+        console.log(`📡 Respuesta recibida del servidor:`);
+        console.log(`- Status: ${response.status}`);
+        console.log(`- Status Text: ${response.statusText}`);
+        console.log(`- OK: ${response.ok}`);
+
         if (!response.ok) {
+          console.error('❌ ERROR EN RESPUESTA DEL SERVIDOR');
           const errorData = await response.json();
+          console.error('📋 Datos del error:', errorData);
           throw new Error(`Error al eliminar ingreso: ${errorData.error || 'Error desconocido'}`);
         }
 
         const result = await response.json();
-        console.log('✅ Respuesta del servidor:', result);
+        console.log('✅ RESPUESTA EXITOSA DEL SERVIDOR:', result);
+        console.log('🎯 Eliminación completada en el backend');
       }
       
     } else {
@@ -779,9 +880,95 @@ async function eliminarIngresoManual(ingresoId) {
       return;
     }
 
+    // 🔧 CORRECCIÓN CRÍTICA: Esperar confirmación del backend antes de actualizar UI
+    console.log('⏳ Esperando confirmación completa del backend...');
+    await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 segundos para asegurar procesamiento completo
+    
     // Actualizar la UI inmediatamente después de la eliminación exitosa
     console.log('🔄 Actualizando UI después de eliminación exitosa...');
     await actualizarInformeIngresosManuales();
+    
+    // 🔧 CORRECCIÓN CRÍTICA: Forzar recálculo completo y sincronizado del resumen de ingredientes
+    console.log('🔄 INICIANDO RECÁLCULO COMPLETO DEL RESUMEN DE INGREDIENTES...');
+    console.log('================================================================');
+    console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+    console.log(`🗑️ Ingreso eliminado: ${ingresoId}`);
+    
+    try {
+      const carroId = localStorage.getItem('carroActivo');
+      const colaboradorData = localStorage.getItem('colaboradorActivo');
+      
+      if (!carroId || !colaboradorData) {
+        console.warn('⚠️ No hay carro activo o colaborador para actualizar resumen');
+        return;
+      }
+      
+      const colaborador = JSON.parse(colaboradorData);
+      console.log(`🚚 Recalculando para carro ${carroId}, usuario ${colaborador.id}`);
+      
+      // PASO 1: Obtener resumen fresco desde el backend (fuerza recálculo en servidor)
+      console.log('📡 PASO 1: Obteniendo resumen fresco desde el backend...');
+      const { obtenerResumenIngredientesCarro, mostrarResumenIngredientes } = await import('./carro.js');
+      
+      // Forzar recarga completa con parámetros de cache
+      const ingredientesActualizados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}&_t=${Date.now()}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }).then(response => {
+        if (!response.ok) {
+          throw new Error('Error al obtener ingredientes actualizados');
+        }
+        return response.json();
+      });
+      
+      console.log('📊 Ingredientes actualizados obtenidos del backend:', ingredientesActualizados.length);
+      
+      // Log detallado de cada ingrediente para verificar stock_actual
+      console.log('\n🔍 VERIFICACIÓN DE STOCK_ACTUAL DESPUÉS DE ELIMINACIÓN:');
+      ingredientesActualizados.forEach((ing, index) => {
+        console.log(`${index + 1}. ${ing.nombre}: stock_actual = ${ing.stock_actual} (${typeof ing.stock_actual})`);
+      });
+      
+      // PASO 2: Actualizar la UI con los datos frescos
+      console.log('🎨 PASO 2: Actualizando UI con datos frescos...');
+      mostrarResumenIngredientes(ingredientesActualizados);
+      
+      console.log('✅ Resumen de ingredientes recalculado y actualizado correctamente');
+      
+      // PASO 3: También actualizar resumen de mixes si existe
+      console.log('🧪 PASO 3: Actualizando resumen de mixes...');
+      try {
+        const { obtenerResumenMixesCarro, mostrarResumenMixes } = await import('./carro.js');
+        const mixesActualizados = await obtenerResumenMixesCarro(carroId, colaborador.id);
+        mostrarResumenMixes(mixesActualizados);
+        console.log('✅ Resumen de mixes también actualizado');
+      } catch (mixError) {
+        console.warn('⚠️ No se pudo actualizar resumen de mixes:', mixError);
+      }
+      
+      console.log('✅ RECÁLCULO COMPLETO FINALIZADO EXITOSAMENTE');
+      console.log('================================================================');
+      
+    } catch (resumenError) {
+      console.error('❌ ERROR CRÍTICO al recalcular resumen de ingredientes:', resumenError);
+      console.error('❌ Stack trace completo:', resumenError.stack);
+      
+      // Fallback: intentar actualización básica
+      console.log('🔄 Intentando fallback con actualización básica...');
+      try {
+        if (typeof actualizarResumenIngredientes === 'function') {
+          await actualizarResumenIngredientes();
+          console.log('✅ Fallback: Resumen actualizado con función básica');
+        }
+      } catch (fallbackError) {
+        console.error('❌ Error en fallback de actualización:', fallbackError);
+        alert('Error crítico: No se pudo actualizar el resumen de ingredientes. Por favor, recarga la página.');
+      }
+    }
     
   } catch (error) {
     console.error('❌ Error al eliminar ingreso manual:', error);
@@ -789,6 +976,10 @@ async function eliminarIngresoManual(ingresoId) {
     // Si hay error, al menos actualizar la UI para reflejar el estado real
     try {
       await actualizarInformeIngresosManuales();
+      // También intentar actualizar el resumen de ingredientes en caso de error
+      if (typeof actualizarResumenIngredientes === 'function') {
+        actualizarResumenIngredientes();
+      }
     } catch (updateError) {
       console.error('❌ Error adicional al actualizar UI:', updateError);
     }
