@@ -22,7 +22,6 @@ async function registrarMovimientoIngrediente(movimiento, db) {
     // ✅ Validación de campos
     if (
       ingrediente_id == null ||
-      carro_id == null ||
       tipo == null ||
       kilos === undefined || kilos === null || isNaN(Number(kilos))
     ) {
@@ -30,15 +29,17 @@ async function registrarMovimientoIngrediente(movimiento, db) {
       throw new Error('Faltan datos obligatorios.');
     }
 
-    // Verificar existencia del carro
-    const carroExiste = await db.query(
-      'SELECT id FROM carros_produccion WHERE id = $1',
-      [carro_id]
-    );
+    // Verificar existencia del carro solo si se proporciona
+    if (carro_id != null) {
+      const carroExiste = await db.query(
+        'SELECT id FROM carros_produccion WHERE id = $1',
+        [carro_id]
+      );
 
-    if (carroExiste.rowCount === 0) {
-      console.warn(`❌ Carro con ID ${carro_id} no existe en la tabla carros_produccion`);
-      throw new Error(`El carro_id ${carro_id} no existe en la tabla carros_produccion.`);
+      if (carroExiste.rowCount === 0) {
+        console.warn(`❌ Carro con ID ${carro_id} no existe en la tabla carros_produccion`);
+        throw new Error(`El carro_id ${carro_id} no existe en la tabla carros_produccion.`);
+      }
     }
 
     // 📝 Construcción final de observaciones

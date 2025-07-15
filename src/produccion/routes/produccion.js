@@ -977,6 +977,74 @@ const {
     eliminarRelacionPorArticulo
 } = require('../controllers/relacionesArticulos');
 
+// Controlador para inventario de ingredientes
+const {
+    iniciarSesionInventario,
+    registrarIngredienteContado,
+    aplicarAjustesInventario,
+    obtenerEstadoSesion
+} = require('../controllers/inventarioIngredientesSimple');
+
+// ==========================================
+// RUTAS PARA INVENTARIO DE INGREDIENTES
+// ==========================================
+
+// Ruta para iniciar una nueva sesión de inventario de ingredientes
+router.post('/inventario-ingredientes/iniciar', async (req, res) => {
+    try {
+        console.log('🚀 [RUTA] Iniciando sesión de inventario de ingredientes');
+        await iniciarSesionInventario(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /inventario-ingredientes/iniciar:', error);
+        res.status(500).json({
+            error: 'Error al iniciar sesión de inventario',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para registrar un ingrediente contado en la sesión
+router.post('/inventario-ingredientes/contar', async (req, res) => {
+    try {
+        console.log('📝 [RUTA] Registrando ingrediente contado');
+        await registrarIngredienteContado(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /inventario-ingredientes/contar:', error);
+        res.status(500).json({
+            error: 'Error al registrar ingrediente contado',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para aplicar los ajustes de inventario
+router.post('/inventario-ingredientes/:session_id/aplicar', async (req, res) => {
+    try {
+        console.log('🔧 [RUTA] Aplicando ajustes de inventario');
+        await aplicarAjustesInventario(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /inventario-ingredientes/:session_id/aplicar:', error);
+        res.status(500).json({
+            error: 'Error al aplicar ajustes de inventario',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para obtener el estado de una sesión de inventario
+router.get('/inventario-ingredientes/:session_id/estado', async (req, res) => {
+    try {
+        console.log('📊 [RUTA] Obteniendo estado de sesión de inventario');
+        await obtenerEstadoSesion(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /inventario-ingredientes/:session_id/estado:', error);
+        res.status(500).json({
+            error: 'Error al obtener estado de sesión',
+            detalle: error.message
+        });
+    }
+});
+
 // Ruta para agregar stock de ingrediente a un usuario
 router.post('/ingredientes-usuarios/agregar', async (req, res) => {
     try {
@@ -1353,8 +1421,7 @@ router.get('/carro/:id/estado', async (req, res) => {
 /**
  * Ruta: POST /api/produccion/ingredientes_movimientos
  * Descripción: Registra un movimiento manual de ingreso de stock
- * en la tabla ingredientes_movimientos Y actualiza stock_actual.
- * 🔧 CORRECCIÓN CRÍTICA: Evitar duplicación de stock_actual
+ * 🔧 NUEVA ESTRATEGIA: Usa ingredientes_ajustes para ajustes puntuales
  */
 router.post('/ingredientes_movimientos', async (req, res) => {
   const client = await req.db.connect();
@@ -1366,7 +1433,6 @@ router.post('/ingredientes_movimientos', async (req, res) => {
 
     if (
       ingrediente_id == null ||
-      carro_id == null ||
       kilos == null ||
       isNaN(Number(kilos))
     ) {
@@ -1374,87 +1440,133 @@ router.post('/ingredientes_movimientos', async (req, res) => {
       return res.status(400).json({ error: 'Faltan campos obligatorios o kilos inválidos' });
     }
 
-    const movimiento = {
-      ingrediente_id,
-      kilos: Number(kilos),
-      tipo: tipo || 'ingreso',
-      carro_id,
-      observaciones: observaciones || null
-    };
-
-    console.log('📦 Movimiento armado para registrar:', movimiento);
-
     // Iniciar transacción
     await client.query('BEGIN');
 
-    // 🔍 LOG CRÍTICO: Obtener stock ANTES de cualquier modificación
-    const stockAntesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
-    const stockAntesResult = await client.query(stockAntesQuery, [ingrediente_id]);
-    const stockAntes = stockAntesResult.rows[0]?.stock_actual || 0;
-    const nombreIngrediente = stockAntesResult.rows[0]?.nombre || 'Desconocido';
-
-    console.log(`\n🔍 ===== LOG INGRESO MANUAL - INGREDIENTE ID ${ingrediente_id} =====`);
-    console.log(`📋 INGREDIENTE: "${nombreIngrediente}"`);
-    console.log(`📊 STOCK ANTES: ${stockAntes}`);
-
-    // 1. Registrar movimiento en ingredientes_movimientos
-    await registrarMovimientoIngrediente(movimiento, client);
-    console.log('✅ Movimiento registrado en ingredientes_movimientos');
-
-    // 2. 🔧 CORRECCIÓN CRÍTICA: NO actualizar stock_actual manualmente
-    // El trigger actualizar_stock_ingrediente() se encarga automáticamente
-    const tipoMovimiento = movimiento.tipo.toLowerCase();
-    const cantidadStock = Number(kilos) * (tipoMovimiento === 'ingreso' ? 1 : -1);
-
-    console.log(`🔄 OPERACIÓN: ${tipoMovimiento} de ${Math.abs(cantidadStock)}kg`);
-    console.log(`⚡ TRIGGER: El stock_actual se actualizará automáticamente via trigger`);
-
-    // Obtener stock actualizado DESPUÉS del trigger para logs
-    const stockDespuesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
-    const stockResult = await client.query(stockDespuesQuery, [ingrediente_id]);
+    // 🔧 DETECCIÓN DE AJUSTE PUNTUAL: Si las observaciones contienen "Ajuste puntual"
+    const esAjustePuntual = observaciones && observaciones.includes('Ajuste puntual');
     
-    if (stockResult.rows.length > 0) {
-      const { stock_actual, nombre } = stockResult.rows[0];
-      console.log(`📊 STOCK DESPUÉS: ${stock_actual}`);
-      console.log(`✅ CAMBIO APLICADO: ${stockAntes} → ${stock_actual} (${stock_actual - stockAntes >= 0 ? '+' : ''}${stock_actual - stockAntes})`);
+    if (esAjustePuntual) {
+      console.log('🔧 [AJUSTE PUNTUAL] Detectado ajuste puntual - Aplicando nueva estrategia');
       
-      // 🔍 LOG ESPECIAL para Grana de Flor
-      if (ingrediente_id === 122 || nombre.toLowerCase().includes('grana')) {
-        console.log(`\n🌸 ===== GRANA DE FLOR - MONITOREO ESPECIAL =====`);
-        console.log(`🆔 ID: ${ingrediente_id}`);
-        console.log(`📛 NOMBRE: ${nombre}`);
-        console.log(`📊 STOCK ANTERIOR: ${stockAntes}`);
-        console.log(`📊 STOCK NUEVO: ${stock_actual}`);
-        console.log(`🔄 DIFERENCIA: ${stock_actual - stockAntes}`);
-        console.log(`⏰ TIMESTAMP: ${new Date().toISOString()}`);
-        console.log(`===============================================\n`);
-      }
-
-      // 🔧 VERIFICACIÓN CRÍTICA: Detectar duplicación
-      const diferencia = stock_actual - stockAntes;
-      const tipoMovimiento = movimiento.tipo.toLowerCase();
-      const factorStock = tipoMovimiento === 'ingreso' ? 1 : -1;
-      const esperado = Number(kilos) * factorStock;
+      // Obtener información del ingrediente
+      const ingredienteQuery = `
+        SELECT nombre, unidad_medida, stock_actual 
+        FROM ingredientes 
+        WHERE id = $1
+      `;
+      const ingredienteResult = await client.query(ingredienteQuery, [ingrediente_id]);
       
-      if (Math.abs(diferencia - esperado) > 0.01) {
-        console.log(`\n⚠️ ===== POSIBLE DUPLICACIÓN DETECTADA =====`);
-        console.log(`🔍 DIFERENCIA REAL: ${diferencia}`);
-        console.log(`🔍 DIFERENCIA ESPERADA: ${esperado}`);
-        console.log(`🔍 DISCREPANCIA: ${diferencia - esperado}`);
-        console.log(`===============================================\n`);
+      if (ingredienteResult.rows.length === 0) {
+        throw new Error(`Ingrediente con ID ${ingrediente_id} no encontrado`);
       }
+      
+      const ingredienteInfo = ingredienteResult.rows[0];
+      
+      console.log(`\n🔍 ===== NUEVA ESTRATEGIA - AJUSTE PUNTUAL =====`);
+      console.log(`📋 INGREDIENTE: ${ingredienteInfo.nombre} (ID: ${ingrediente_id})`);
+      console.log(`📊 UNIDAD DE MEDIDA: ${ingredienteInfo.unidad_medida}`);
+      console.log(`📊 STOCK ACTUAL EN BD: ${ingredienteInfo.stock_actual}`);
+      
+      const stockActualReal = parseFloat(ingredienteInfo.stock_actual);
+      const tipoMovimiento = tipo.toLowerCase();
+      const cantidadMovimiento = Number(kilos);
+      
+      // Calcular el stock nuevo deseado
+      const stockNuevo = tipoMovimiento === 'ingreso' 
+        ? stockActualReal + cantidadMovimiento 
+        : stockActualReal - cantidadMovimiento;
+      
+      console.log(`🔄 NUEVA ESTRATEGIA: ACTUALIZACIÓN DIRECTA + REGISTRO EN ingredientes_ajustes`);
+      console.log(`⚡ OPERACIÓN: ${stockActualReal} → ${stockNuevo} (${tipoMovimiento} de ${cantidadMovimiento})`);
+      
+      // 1. Actualizar directamente el stock_actual en la tabla ingredientes
+      const updateStockQuery = `
+        UPDATE ingredientes 
+        SET stock_actual = $1 
+        WHERE id = $2
+      `;
+      
+      await client.query(updateStockQuery, [stockNuevo, ingrediente_id]);
+      console.log(`✅ Stock actualizado directamente: ${stockActualReal} → ${stockNuevo}`);
+      
+      // 2. Extraer usuario_id de las observaciones si está disponible
+      let usuario_id = null;
+      const usuarioMatch = observaciones.match(/Usuario:\s*(\d+)/);
+      if (usuarioMatch) {
+        usuario_id = parseInt(usuarioMatch[1]);
+      }
+      
+      // 3. Registrar el ajuste en la nueva tabla ingredientes_ajustes
+      const insertAjusteQuery = `
+        INSERT INTO ingredientes_ajustes 
+        (ingrediente_id, usuario_id, tipo_ajuste, stock_anterior, stock_nuevo, observacion, fecha)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `;
+      
+      await client.query(insertAjusteQuery, [
+        ingrediente_id,
+        usuario_id,
+        'ajuste_puntual',
+        stockActualReal,
+        stockNuevo,
+        observaciones
+      ]);
+      
+      console.log(`✅ Ajuste registrado en ingredientes_ajustes:`);
+      console.log(`   - Tipo: ajuste_puntual`);
+      console.log(`   - Stock anterior: ${stockActualReal}`);
+      console.log(`   - Stock nuevo: ${stockNuevo}`);
+      console.log(`   - Diferencia: ${stockNuevo - stockActualReal}`);
+      console.log(`   - Usuario: ${usuario_id || 'No especificado'}`);
+      
+      // 4. Verificación post-ajuste
+      const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
+      const verificacionResult = await client.query(verificacionQuery, [ingrediente_id]);
+      const stockFinal = verificacionResult.rows[0].stock_actual;
+      
+      console.log(`🔍 VERIFICACIÓN: Stock final en BD: ${stockFinal}`);
+      console.log(`🎯 ¿CORRECTO?: ${Math.abs(stockFinal - stockNuevo) < 0.001 ? 'SÍ ✅' : 'NO ❌'}`);
+      console.log(`===============================================\n`);
+      
     } else {
-      console.warn(`⚠️ No se encontró ingrediente con ID ${ingrediente_id}`);
+      // 🔄 MOVIMIENTO NORMAL: Usar lógica original para movimientos de producción
+      console.log('🔄 [MOVIMIENTO NORMAL] Aplicando lógica estándar para movimientos de producción');
+      
+      const movimiento = {
+        ingrediente_id,
+        kilos: Number(kilos),
+        tipo: tipo || 'ingreso',
+        carro_id,
+        observaciones: observaciones || null
+      };
+      
+      // Obtener stock antes para logs
+      const stockAntesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
+      const stockAntesResult = await client.query(stockAntesQuery, [ingrediente_id]);
+      const stockAntes = stockAntesResult.rows[0]?.stock_actual || 0;
+      const nombreIngrediente = stockAntesResult.rows[0]?.nombre || 'Desconocido';
+      
+      console.log(`📋 INGREDIENTE: "${nombreIngrediente}" - STOCK ANTES: ${stockAntes}`);
+      
+      await registrarMovimientoIngrediente(movimiento, client);
     }
-    console.log(`========================================================\n`);
+
+    // 🔍 VERIFICACIÓN POST-MOVIMIENTO
+    const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
+    const verificacionResult = await client.query(verificacionQuery, [ingrediente_id]);
+    const stockFinal = verificacionResult.rows[0]?.stock_actual || 0;
+    
+    console.log(`✅ STOCK FINAL DESPUÉS DEL MOVIMIENTO: ${stockFinal}`);
+    console.log(`===============================================\n`);
 
     // Confirmar transacción
     await client.query('COMMIT');
     console.log('✅ Transacción completada exitosamente');
 
     return res.status(201).json({ 
-      message: 'Movimiento registrado y stock actualizado correctamente',
-      stock_actualizado: stockResult.rows.length > 0
+      message: 'Movimiento registrado correctamente',
+      stock_final: stockFinal
     });
 
   } catch (error) {

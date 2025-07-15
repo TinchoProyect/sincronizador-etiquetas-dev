@@ -226,7 +226,26 @@
         .btn-imprimir:hover {
             background-color: #138496;
         }
-    </style> 
+
+        .btn-inventario {
+            background-color: #6f42c1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-inventario:hover {
+            background-color: #5a32a3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3);
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -239,7 +258,12 @@
             <div class="content-section">
                 <div class="actions-bar">
                     <h2 class="page-title">Lista de Ingredientes</h2>
-                    <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btn-inventario-ingredientes" class="btn-inventario" onclick="window.open('inventario-ingredientes.html', '_blank')">
+                            📋 Inventario
+                        </button>
+                        <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
+                    </div>
                 </div>
                 
                 <!-- Contenedor de solapas -->
