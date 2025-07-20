@@ -180,21 +180,128 @@ async function marcarCarroPreparado(req, res) {
             const { obtenerArticulosDeRecetas } = require('./carroIngredientes');
             const articulosRecetas = await obtenerArticulosDeRecetas(carroId, usuarioId);
 
+            console.log('\n🔍 ===== DIAGNÓSTICO TÉCNICO - EGRESO POR RECETA EXTERNA =====');
+            console.log(`📋 CARRO ID: ${carroId}`);
+            console.log(`👤 USUARIO ID: ${usuarioId}`);
+            console.log(`📦 ARTÍCULOS DE RECETAS ENCONTRADOS: ${articulosRecetas.length}`);
+            
+            if (articulosRecetas.length > 0) {
+                console.log('📋 DETALLE DE ARTÍCULOS DE RECETAS:');
+                articulosRecetas.forEach((art, index) => {
+                    console.log(`  ${index + 1}. Código: "${art.articulo_numero}"`);
+                    console.log(`     - Descripción: ${art.descripcion || 'Sin descripción'}`);
+                    console.log(`     - Cantidad: ${art.cantidad}`);
+                    console.log(`     - Código barras: ${art.codigo_barras || 'Sin código'}`);
+                    console.log(`     - Longitud código: ${art.articulo_numero.length} caracteres`);
+                    console.log(`     - Representación hex: ${Buffer.from(art.articulo_numero, 'utf8').toString('hex')}`);
+                });
+            }
+
             for (const articulo of articulosRecetas) {
-                console.log(`\n🔄 Procesando artículo ${articulo.articulo_numero}:`);
+                console.log(`\n🔄 PROCESANDO ARTÍCULO: ${articulo.articulo_numero}`);
                 console.log(`- Cantidad: ${articulo.cantidad}`);
                 
+                // LOG TÉCNICO: Antes del INSERT en stock_ventas_movimientos
+                console.log('\n🔍 LOG TÉCNICO: ANTES DEL INSERT - stock_ventas_movimientos');
+                console.log('==========================================');
+                console.log(`📝 Parámetros para INSERT:`);
+                console.log(`   - articulo_numero: "${articulo.articulo_numero}"`);
+                console.log(`   - cantidad: ${-articulo.cantidad} (negativo para egreso)`);
+                console.log(`   - carro_id: ${carroId}`);
+                console.log(`   - usuario_id: ${usuarioId}`);
+                console.log(`   - tipo: 'egreso por receta externa'`);
+                console.log(`   - codigo_barras: "${articulo.codigo_barras || ''}"`);
+                
+                // Verificar stock ANTES del movimiento
+                const { rows: stockAntes } = await db.query(`
+                    SELECT stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion
+                    FROM stock_real_consolidado 
+                    WHERE articulo_numero = $1
+                `, [articulo.articulo_numero]);
+                
+                console.log('\n📊 STOCK ANTES DEL MOVIMIENTO:');
+                if (stockAntes.length > 0) {
+                    const stock = stockAntes[0];
+                    console.log(`   - stock_lomasoft: ${stock.stock_lomasoft || 0}`);
+                    console.log(`   - stock_movimientos: ${stock.stock_movimientos || 0}`);
+                    console.log(`   - stock_ajustes: ${stock.stock_ajustes || 0}`);
+                    console.log(`   - stock_consolidado: ${stock.stock_consolidado || 0}`);
+                    console.log(`   - ultima_actualizacion: ${stock.ultima_actualizacion}`);
+                } else {
+                    console.log(`   ⚠️ No existe registro en stock_real_consolidado para ${articulo.articulo_numero}`);
+                }
+                
+                // Registrar movimiento
                 await db.query(`
                     INSERT INTO stock_ventas_movimientos (
                         articulo_numero, cantidad, carro_id, usuario_id, fecha, tipo, kilos, codigo_barras
                     ) VALUES ($1, $2, $3, $4, NOW(), 'egreso por receta externa', 0, $5)
                 `, [articulo.articulo_numero, -articulo.cantidad, carroId, usuarioId, articulo.codigo_barras || '']);
 
-                // Actualizar stock consolidado para el artículo
+                console.log('✅ LOG TÉCNICO: MOVIMIENTO REGISTRADO EN stock_ventas_movimientos');
+                
+                // 🔧 SOLUCIÓN QUIRÚRGICA: Actualizar stock_movimientos en stock_real_consolidado
+                console.log('\n🔍 LOG TÉCNICO: ACTUALIZANDO stock_movimientos EN stock_real_consolidado');
+                console.log('==========================================');
+                console.log(`📊 Artículo: "${articulo.articulo_numero}"`);
+                console.log(`📊 Cantidad del movimiento: ${-articulo.cantidad}`);
+                
+                await db.query(`
+                    INSERT INTO stock_real_consolidado (articulo_numero, stock_movimientos, ultima_actualizacion)
+                    VALUES ($1, $2, NOW())
+                    ON CONFLICT (articulo_numero) 
+                    DO UPDATE SET 
+                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
+                        ultima_actualizacion = NOW()
+                `, [articulo.articulo_numero, -articulo.cantidad]);
+                
+                console.log('✅ LOG TÉCNICO: stock_movimientos ACTUALIZADO EN stock_real_consolidado');
+                
+                // LOG TÉCNICO: Antes de recalcularStockConsolidado
+                console.log('\n🔍 LOG TÉCNICO: ANTES DE RECALCULAR STOCK CONSOLIDADO');
+                console.log('==========================================');
+                console.log(`📊 Artículo a recalcular: "${articulo.articulo_numero}"`);
+                console.log(`🔄 Ejecutando recalcularStockConsolidado()...`);
+                
+                // Actualizar stock consolidado para el artículo (CORRECCIÓN: pasar array)
                 const { recalcularStockConsolidado } = require('../utils/recalcularStock');
-                await recalcularStockConsolidado(db, articulo.articulo_numero);
+                await recalcularStockConsolidado(db, [articulo.articulo_numero]);
+                
+                console.log('✅ LOG TÉCNICO: recalcularStockConsolidado() EJECUTADO');
+                
+                // Verificar stock DESPUÉS del recálculo
+                const { rows: stockDespues } = await db.query(`
+                    SELECT stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion
+                    FROM stock_real_consolidado 
+                    WHERE articulo_numero = $1
+                `, [articulo.articulo_numero]);
+                
+                console.log('\n📊 STOCK DESPUÉS DEL RECÁLCULO:');
+                if (stockDespues.length > 0) {
+                    const stock = stockDespues[0];
+                    console.log(`   - stock_lomasoft: ${stock.stock_lomasoft || 0}`);
+                    console.log(`   - stock_movimientos: ${stock.stock_movimientos || 0}`);
+                    console.log(`   - stock_ajustes: ${stock.stock_ajustes || 0}`);
+                    console.log(`   - stock_consolidado: ${stock.stock_consolidado || 0}`);
+                    console.log(`   - ultima_actualizacion: ${stock.ultima_actualizacion}`);
+                    
+                    // Comparar cambios
+                    if (stockAntes.length > 0) {
+                        const stockAnt = stockAntes[0];
+                        const cambioMovimientos = (stock.stock_movimientos || 0) - (stockAnt.stock_movimientos || 0);
+                        const cambioConsolidado = (stock.stock_consolidado || 0) - (stockAnt.stock_consolidado || 0);
+                        
+                        console.log('\n🔍 ANÁLISIS DE CAMBIOS:');
+                        console.log(`   - Cambio en stock_movimientos: ${cambioMovimientos}`);
+                        console.log(`   - Cambio en stock_consolidado: ${cambioConsolidado}`);
+                        console.log(`   - ¿Se actualizó correctamente?: ${cambioMovimientos !== 0 ? 'SÍ ✅' : 'NO ❌'}`);
+                    }
+                } else {
+                    console.log(`   ⚠️ PROBLEMA: Aún no existe registro en stock_real_consolidado para ${articulo.articulo_numero}`);
+                }
 
                 console.log('✅ Movimiento de stock de ventas registrado correctamente');
+                console.log('===============================================\n');
             }
         } else {
             console.log('\n🏭 PROCESANDO CARRO INTERNO');

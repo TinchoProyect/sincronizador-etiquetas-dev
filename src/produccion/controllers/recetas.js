@@ -521,15 +521,29 @@ async function expandirIngredientes(numeroArticulo, cantidadBase = 1, procesados
 async function obtenerIngredientesExpandidos(req, res) {
     try {
         const { numero_articulo } = req.params;
-        const ingredientes = await expandirIngredientes(numero_articulo);
         
-        if (ingredientes.length === 0) {
+        // 🔧 CORRECCIÓN: Verificar primero si el artículo existe en la base de datos
+        const articuloQuery = `
+            SELECT numero, nombre 
+            FROM articulos 
+            WHERE numero = $1
+        `;
+        const articuloResult = await pool.query(articuloQuery, [numero_articulo]);
+        
+        // Si el artículo no existe en absoluto, devolver 404
+        if (articuloResult.rows.length === 0) {
             return res.status(404).json({ 
-                error: 'No se encontraron ingredientes para este artículo' 
+                error: 'Artículo no encontrado' 
             });
         }
-
+        
+        // El artículo existe, intentar expandir ingredientes
+        const ingredientes = await expandirIngredientes(numero_articulo);
+        
+        // 🔧 CORRECCIÓN: Si el artículo existe pero no tiene ingredientes, devolver array vacío
+        // Esto es válido para artículos como almendras tostadas que no se combinan con otros insumos
         res.json(ingredientes);
+        
     } catch (error) {
         console.error('Error al obtener ingredientes expandidos:', error);
         res.status(500).json({ 

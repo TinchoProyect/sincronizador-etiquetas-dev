@@ -3,7 +3,8 @@ const { registrarMovimientoStockVentas } = require('./stockVentasMovimientos');
 /**
  * Finaliza la producción de un carro y registra los movimientos de stock de ventas
  */
-async function finalizarProduccion(req, res) {
+async function 
+finalizarProduccion(req, res) {
     const db = req.db;
     const { id: carroId } = req.params;
     const { usuarioId, kilos_producidos } = req.body;
@@ -56,6 +57,103 @@ async function finalizarProduccion(req, res) {
 
         // 3. Obtener artículos según el tipo de carro
         if (carro.tipo_carro === 'externa') {
+            console.log('\n🔍 ===== DIAGNÓSTICO DETALLADO - CARRO EXTERNO =====');
+            console.log(`📋 CARRO ID: ${carroId}`);
+            console.log(`👤 USUARIO ID: ${usuarioId}`);
+            console.log(`📦 TIPO CARRO: ${carro.tipo_carro}`);
+            console.log(`⏰ FECHA PREPARADO: ${carro.fecha_preparado}`);
+            console.log(`⏰ FECHA CONFIRMACION: ${carro.fecha_confirmacion}`);
+            
+            // LOG 1: Antes de la consulta SQL a articulos_produccion_externa_relacion
+            console.log('\n🔍 LOG 1: ANTES DE CONSULTA SQL - articulos_produccion_externa_relacion');
+            console.log('==========================================');
+            console.log(`Query a ejecutar:`);
+            console.log(`SELECT rel.articulo_kilo_codigo, a.codigo_barras, a.nombre, ca.cantidad, rel.multiplicador_ingredientes`);
+            console.log(`FROM carros_articulos ca`);
+            console.log(`INNER JOIN articulos_produccion_externa_relacion rel ON ca.articulo_numero = rel.articulo_produccion_codigo`);
+            console.log(`LEFT JOIN articulos a ON a.numero = rel.articulo_kilo_codigo`);
+            console.log(`WHERE ca.carro_id = ${carroId}`);
+            
+            // VERIFICACIÓN TÉCNICA ADICIONAL: Obtener artículos exactos del carro
+            console.log('\n🔍 VERIFICACIÓN TÉCNICA: Artículos exactos en el carro');
+            console.log('==========================================');
+            const { rows: articulosExactos } = await db.query(`
+                SELECT 
+                    ca.articulo_numero,
+                    ca.cantidad,
+                    LENGTH(ca.articulo_numero) as longitud_codigo,
+                    ASCII(SUBSTRING(ca.articulo_numero, 1, 1)) as primer_caracter_ascii,
+                    ASCII(SUBSTRING(ca.articulo_numero, LENGTH(ca.articulo_numero), 1)) as ultimo_caracter_ascii
+                FROM carros_articulos ca
+                WHERE ca.carro_id = $1
+            `, [carroId]);
+            
+            console.log(`📦 Artículos encontrados en carros_articulos: ${articulosExactos.length}`);
+            articulosExactos.forEach((art, index) => {
+                console.log(`  ${index + 1}. Código: "${art.articulo_numero}"`);
+                console.log(`     - Cantidad: ${art.cantidad}`);
+                console.log(`     - Longitud: ${art.longitud_codigo} caracteres`);
+                console.log(`     - Primer carácter ASCII: ${art.primer_caracter_ascii}`);
+                console.log(`     - Último carácter ASCII: ${art.ultimo_caracter_ascii}`);
+                console.log(`     - Representación hexadecimal: ${Buffer.from(art.articulo_numero, 'utf8').toString('hex')}`);
+            });
+            
+            // VERIFICACIÓN TÉCNICA: Buscar vínculos exactos para cada artículo
+            console.log('\n🔍 VERIFICACIÓN TÉCNICA: Búsqueda directa de vínculos');
+            console.log('==========================================');
+            for (const artExacto of articulosExactos) {
+                console.log(`\n🔎 Buscando vínculos para: "${artExacto.articulo_numero}"`);
+                
+                // Búsqueda exacta
+                const { rows: vinculosExactos } = await db.query(`
+                    SELECT 
+                        articulo_produccion_codigo,
+                        articulo_kilo_codigo,
+                        multiplicador_ingredientes,
+                        LENGTH(articulo_produccion_codigo) as longitud_produccion,
+                        ASCII(SUBSTRING(articulo_produccion_codigo, 1, 1)) as primer_ascii_produccion,
+                        ASCII(SUBSTRING(articulo_produccion_codigo, LENGTH(articulo_produccion_codigo), 1)) as ultimo_ascii_produccion
+                    FROM articulos_produccion_externa_relacion
+                    WHERE articulo_produccion_codigo = $1
+                `, [artExacto.articulo_numero]);
+                
+                console.log(`   📊 Vínculos encontrados con búsqueda exacta: ${vinculosExactos.length}`);
+                if (vinculosExactos.length > 0) {
+                    vinculosExactos.forEach((vinculo, idx) => {
+                        console.log(`     ${idx + 1}. Producción: "${vinculo.articulo_produccion_codigo}"`);
+                        console.log(`        - Kilo: "${vinculo.articulo_kilo_codigo}"`);
+                        console.log(`        - Multiplicador: ${vinculo.multiplicador_ingredientes}`);
+                        console.log(`        - Longitud producción: ${vinculo.longitud_produccion}`);
+                        console.log(`        - Primer ASCII producción: ${vinculo.primer_ascii_produccion}`);
+                        console.log(`        - Último ASCII producción: ${vinculo.ultimo_ascii_produccion}`);
+                    });
+                } else {
+                    console.log(`   ⚠️ NO se encontraron vínculos exactos`);
+                    
+                    // Búsqueda con LIKE para detectar problemas de espacios o caracteres
+                    const { rows: vinculosLike } = await db.query(`
+                        SELECT 
+                            articulo_produccion_codigo,
+                            articulo_kilo_codigo,
+                            LENGTH(articulo_produccion_codigo) as longitud,
+                            TRIM(articulo_produccion_codigo) as codigo_trimmed
+                        FROM articulos_produccion_externa_relacion
+                        WHERE articulo_produccion_codigo LIKE $1
+                           OR TRIM(articulo_produccion_codigo) = $2
+                           OR UPPER(articulo_produccion_codigo) = UPPER($3)
+                    `, [`%${artExacto.articulo_numero}%`, artExacto.articulo_numero.trim(), artExacto.articulo_numero]);
+                    
+                    console.log(`   🔍 Búsqueda con LIKE/TRIM/UPPER: ${vinculosLike.length} resultados`);
+                    vinculosLike.forEach((vinculo, idx) => {
+                        console.log(`     ${idx + 1}. Código BD: "${vinculo.articulo_produccion_codigo}"`);
+                        console.log(`        - Código trimmed: "${vinculo.codigo_trimmed}"`);
+                        console.log(`        - Longitud: ${vinculo.longitud}`);
+                        console.log(`        - ¿Coincide exacto?: ${vinculo.articulo_produccion_codigo === artExacto.articulo_numero}`);
+                        console.log(`        - ¿Coincide trimmed?: ${vinculo.codigo_trimmed === artExacto.articulo_numero.trim()}`);
+                    });
+                }
+            }
+            
             // Para carros externos, obtener artículos vinculados
             const { rows: articulosVinculados } = await db.query(`
                 SELECT 
@@ -70,6 +168,55 @@ async function finalizarProduccion(req, res) {
                 LEFT JOIN articulos a ON a.numero = rel.articulo_kilo_codigo
                 WHERE ca.carro_id = $1
             `, [carroId]);
+            
+            // LOG 2: Después de la consulta SQL
+            console.log('\n🔍 LOG 2: DESPUÉS DE CONSULTA SQL - RESULTADOS');
+            console.log('==========================================');
+            console.log(`📊 Número de artículos vinculados encontrados: ${articulosVinculados.length}`);
+            
+            if (articulosVinculados.length > 0) {
+                console.log('📋 DETALLE DE ARTÍCULOS VINCULADOS:');
+                articulosVinculados.forEach((art, index) => {
+                    console.log(`  ${index + 1}. Artículo kilo: ${art.articulo_numero}`);
+                    console.log(`     - Descripción: ${art.descripcion || 'Sin descripción'}`);
+                    console.log(`     - Cantidad: ${art.cantidad}`);
+                    console.log(`     - Código barras: ${art.codigo_barras || 'Sin código'}`);
+                    console.log(`     - Multiplicador: ${art.multiplicador_ingredientes || 1}`);
+                });
+            } else {
+                console.log('⚠️ NO SE ENCONTRARON ARTÍCULOS VINCULADOS');
+                
+                // Diagnóstico adicional: verificar si existen artículos en el carro
+                const { rows: articulosEnCarro } = await db.query(`
+                    SELECT ca.articulo_numero, ca.cantidad
+                    FROM carros_articulos ca
+                    WHERE ca.carro_id = $1
+                `, [carroId]);
+                
+                console.log(`📦 Artículos en el carro (sin vínculos): ${articulosEnCarro.length}`);
+                articulosEnCarro.forEach((art, index) => {
+                    console.log(`  ${index + 1}. ${art.articulo_numero} - Cantidad: ${art.cantidad}`);
+                });
+                
+                // Verificar si existen vínculos para estos artículos
+                if (articulosEnCarro.length > 0) {
+                    for (const artCarro of articulosEnCarro) {
+                        const { rows: vinculos } = await db.query(`
+                            SELECT * FROM articulos_produccion_externa_relacion
+                            WHERE articulo_produccion_codigo = $1
+                        `, [artCarro.articulo_numero]);
+                        
+                        console.log(`🔗 Vínculos para ${artCarro.articulo_numero}: ${vinculos.length}`);
+                        if (vinculos.length > 0) {
+                            vinculos.forEach((vinculo, idx) => {
+                                console.log(`    ${idx + 1}. Código producción: ${vinculo.articulo_produccion_codigo}`);
+                                console.log(`       Código kilo: ${vinculo.articulo_kilo_codigo}`);
+                                console.log(`       Multiplicador: ${vinculo.multiplicador_ingredientes}`);
+                            });
+                        }
+                    }
+                }
+            }
             
             articulosCarro = articulosVinculados;
             console.log('🔗 Usando artículos vinculados para carro externo');
@@ -90,9 +237,22 @@ async function finalizarProduccion(req, res) {
             console.log('🏭 Usando artículos del carro para carro interno');
         }
 
+        // LOG 3: Justo antes del chequeo de articulosCarro.length === 0
+        console.log('\n🔍 LOG 3: ANTES DEL CHEQUEO DE LONGITUD DE ARTÍCULOS');
+        console.log('==========================================');
+        console.log(`📊 articulosCarro.length: ${articulosCarro.length}`);
+        console.log(`🔍 Contenido de articulosCarro:`, JSON.stringify(articulosCarro, null, 2));
+        
         if (articulosCarro.length === 0) {
+            console.log('❌ ERROR: El carro no tiene artículos para finalizar');
+            console.log('🔍 DIAGNÓSTICO FINAL: El flujo se detiene aquí - no se ejecutarán los siguientes pasos:');
+            console.log('   - Registro en produccion_externa_historial');
+            console.log('   - Registro de movimiento "ingreso por produccion externa"');
+            console.log('   - Actualización de stock_consolidado');
             throw new Error('El carro no tiene artículos para finalizar');
         }
+        
+        console.log('✅ VALIDACIÓN EXITOSA: El carro tiene artículos para procesar');
 
         // 4. Registrar en produccion_externa_historial PRIMERO (solo para carros externos)
         let historialData = null;
@@ -222,6 +382,18 @@ async function finalizarProduccion(req, res) {
                 console.log(`- Ingredientes sumados: ${historialData.ingredientes_sumados}`);
                 console.log(`- Cantidad total calculada: ${cantidadTotal}`);
                 
+                // LOG 4: Justo antes del registro del movimiento 'ingreso por producción externa'
+                console.log('\n🔍 LOG 4: ANTES DEL REGISTRO DE MOVIMIENTO - ingreso por produccion externa');
+                console.log('==========================================');
+                console.log(`📝 Parámetros para INSERT en stock_ventas_movimientos:`);
+                console.log(`   - articulo_numero: ${historialData.articulo_fraccionado_id}`);
+                console.log(`   - codigo_barras: ${articulo.codigo_barras || 'Sin código'}`);
+                console.log(`   - kilos: 1`);
+                console.log(`   - cantidad: ${cantidadTotal}`);
+                console.log(`   - carro_id: ${carroId}`);
+                console.log(`   - usuario_id: ${usuarioId}`);
+                console.log(`   - tipo: 'ingreso por produccion externa'`);
+                
                 // Registrar ingreso del artículo vinculado con cantidad calculada
                 await db.query(`
                     INSERT INTO stock_ventas_movimientos (
@@ -241,6 +413,8 @@ async function finalizarProduccion(req, res) {
                     carroId,
                     usuarioId
                 ]);
+                
+                console.log('✅ LOG 4: MOVIMIENTO REGISTRADO EN stock_ventas_movimientos');
                 
                 // Actualizar stock_movimientos para ingreso
                 await db.query(`
@@ -310,10 +484,40 @@ async function finalizarProduccion(req, res) {
             }
         }
 
+        // LOG 5: Antes y después de recalcularStockConsolidado()
+        console.log('\n🔍 LOG 5: ANTES DE RECALCULAR STOCK CONSOLIDADO');
+        console.log('==========================================');
+        console.log(`📊 Artículos afectados: ${articulosAfectados.length}`);
+        console.log(`📋 Lista de artículos a recalcular:`, articulosAfectados);
+        
         // Recalcular stock_consolidado para todos los artículos afectados
         if (articulosAfectados.length > 0) {
+            console.log('🔄 Ejecutando recalcularStockConsolidado()...');
             await recalcularStockConsolidado(db, articulosAfectados);
-            console.log(`Stock consolidado recalculado para ${articulosAfectados.length} artículo(s)`);
+            console.log(`✅ LOG 5: Stock consolidado recalculado para ${articulosAfectados.length} artículo(s)`);
+            
+            // Verificar el resultado final
+            for (const articulo of articulosAfectados) {
+                const { rows: stockFinal } = await db.query(`
+                    SELECT stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion
+                    FROM stock_real_consolidado 
+                    WHERE articulo_numero = $1
+                `, [articulo]);
+                
+                if (stockFinal.length > 0) {
+                    const stock = stockFinal[0];
+                    console.log(`📊 STOCK FINAL para ${articulo}:`);
+                    console.log(`   - stock_lomasoft: ${stock.stock_lomasoft || 0}`);
+                    console.log(`   - stock_movimientos: ${stock.stock_movimientos || 0}`);
+                    console.log(`   - stock_ajustes: ${stock.stock_ajustes || 0}`);
+                    console.log(`   - stock_consolidado: ${stock.stock_consolidado || 0}`);
+                    console.log(`   - ultima_actualizacion: ${stock.ultima_actualizacion}`);
+                } else {
+                    console.log(`⚠️ No se encontró registro en stock_real_consolidado para ${articulo}`);
+                }
+            }
+        } else {
+            console.log('⚠️ No hay artículos para recalcular');
         }
 
         // 6. Actualizar fecha_confirmacion del carro

@@ -124,6 +124,27 @@ async function registrarMovimientoStockVentas(req, res) {
       await recalcularStockConsolidado(db, articulo_numero);
       
       console.log('✅ stock_movimientos actualizado y stock_consolidado recalculado para salida a ventas');
+    } else if (tipo === 'egreso por receta externa') {
+      console.log('🔄 Actualizando stock_movimientos para egreso por receta externa...');
+      
+      // Para egreso por receta externa, RESTAR la cantidad de stock_movimientos
+      const updateQuery = `
+        UPDATE stock_real_consolidado 
+        SET 
+          stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
+          ultima_actualizacion = NOW()
+        WHERE articulo_numero = $2
+      `;
+
+      await db.query(updateQuery, [
+        Math.abs(cantidad), // Usar valor absoluto porque cantidad puede venir negativa
+        articulo_numero
+      ]);
+      
+      // Recalcular stock_consolidado
+      await recalcularStockConsolidado(db, articulo_numero);
+      
+      console.log('✅ stock_movimientos actualizado y stock_consolidado recalculado para egreso por receta externa');
     }
 
     // Confirmar transacción
