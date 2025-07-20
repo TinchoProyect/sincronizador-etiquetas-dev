@@ -100,9 +100,69 @@ async function eliminarRegistrosRelacionados(carroId) {
             // EXCEPCIÓN AL SISTEMA INMUTABLE: Solo para eliminación completa de carros
             await pool.query('DELETE FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1', [carroId]);
             console.log(`Eliminados ${conteos.ingredientes} movimientos de stock de usuarios`);
+        }
+        
+        // 🔧 CORRECCIÓN CRÍTICA: REVERTIR movimientos de ingredientes_movimientos antes de eliminar
+        // NOTA: Los ingredientes vinculados ahora se descontarán en finalizarProduccion.js
+        // Por lo tanto, solo necesitamos revertir si el carro fue asentado (tiene fecha_confirmacion)
+        
+        // Verificar si el carro fue asentado
+        const carroQuery = `SELECT fecha_confirmacion FROM carros_produccion WHERE id = $1`;
+        const carroResult = await pool.query(carroQuery, [carroId]);
+        const carroAsentado = carroResult.rows[0]?.fecha_confirmacion !== null;
+        
+        console.log(`🔍 ESTADO DEL CARRO: ${carroAsentado ? 'ASENTADO' : 'SOLO PREPARADO'}`);
+        
+        if (carroAsentado) {
+            // Solo revertir movimientos si el carro fue asentado
+            const ingredientesMovimientosQuery = `
+                SELECT id, ingrediente_id, kilos, tipo, observaciones
+                FROM ingredientes_movimientos 
+                WHERE carro_id = $1
+            `;
+            const ingredientesMovimientosResult = await pool.query(ingredientesMovimientosQuery, [carroId]);
+            const movimientosIngredientes = ingredientesMovimientosResult.rows;
+            
+            console.log(`🔍 MOVIMIENTOS DE INGREDIENTES A REVERTIR: ${movimientosIngredientes.length}`);
+            
+            if (movimientosIngredientes.length > 0) {
+                // Importar función para registrar movimientos
+                const { registrarMovimientoIngrediente } = require('./ingredientesMovimientos');
+                
+                for (const mov of movimientosIngredientes) {
+                    console.log(`\n🔄 REVIRTIENDO MOVIMIENTO DE INGREDIENTE:`);
+                    console.log(`- Ingrediente ID: ${mov.ingrediente_id}`);
+                    console.log(`- Movimiento original: ${mov.tipo} de ${mov.kilos}kg`);
+                    console.log(`- Observaciones originales: ${mov.observaciones}`);
+                    
+                    // Calcular movimiento inverso
+                    const tipoInverso = mov.tipo === 'egreso' ? 'ingreso' : 'egreso';
+                    const cantidadInversa = -parseFloat(mov.kilos); // ✅ INVERTIR el signo
+                    
+                    console.log(`- Movimiento inverso: ${tipoInverso} de ${Math.abs(cantidadInversa)}kg`);
+                    
+                    // Registrar movimiento inverso
+                    const movimientoInverso = {
+                        ingrediente_id: mov.ingrediente_id,
+                        kilos: cantidadInversa, // Cantidad con signo invertido
+                        tipo: tipoInverso,
+                        carro_id: parseInt(carroId),
+                        observaciones: `REVERSIÓN: ${mov.observaciones} (eliminación carro #${carroId})`
+                    };
+                    
+                    console.log(`📝 REGISTRANDO MOVIMIENTO INVERSO:`, JSON.stringify(movimientoInverso, null, 2));
+                    await registrarMovimientoIngrediente(movimientoInverso, pool);
+                    console.log(`✅ Movimiento inverso registrado para ingrediente ${mov.ingrediente_id}`);
+                }
+                
+                // Ahora sí eliminar los movimientos originales
+                await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
+                console.log(`✅ Eliminados ${movimientosIngredientes.length} movimientos originales de ingredientes después de revertir`);
+            }
         } else {
+            console.log(`ℹ️ Carro solo preparado - eliminando movimientos sin reversión (ingredientes vinculados no fueron descontados)`);
+            // Para carros solo preparados, eliminar directamente sin reversión
             await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
-            console.log(`Eliminados ${conteos.ingredientes} movimientos de ingredientes`);
         }
         
         // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos

@@ -382,6 +382,55 @@ finalizarProduccion(req, res) {
                 console.log(`- Ingredientes sumados: ${historialData.ingredientes_sumados}`);
                 console.log(`- Cantidad total calculada: ${cantidadTotal}`);
                 
+                // ✅ CORRECCIÓN CRÍTICA: Los ingredientes vinculados se descontarán AQUÍ
+                // en finalizarProduccion.js, NO en marcarCarroPreparado.js
+                console.log('\n🔍 INGREDIENTES VINCULADOS: Procesando descuento en asentado');
+                console.log('==========================================');
+                
+                // Obtener y descontar ingredientes vinculados del stock general
+                const { obtenerIngredientesArticulosVinculados } = require('./carroIngredientes');
+                const { registrarMovimientoIngrediente } = require('./ingredientesMovimientos');
+                
+                try {
+                    const ingredientesVinculados = await obtenerIngredientesArticulosVinculados(carroId, usuarioId);
+                    console.log(`🔗 Ingredientes vinculados a descontar: ${ingredientesVinculados?.length || 0}`);
+                    
+                    if (ingredientesVinculados && ingredientesVinculados.length > 0) {
+                        for (const ing of ingredientesVinculados) {
+                            console.log(`\n🔄 DESCONTANDO INGREDIENTE VINCULADO: ${ing.nombre}`);
+                            console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
+                            console.log(`- Stock disponible: ${ing.stock_actual}`);
+                            
+                            // Validar stock suficiente
+                            const stockGeneral = parseFloat(ing.stock_actual) || 0;
+                            const cantidadRequerida = Number(ing.cantidad.toFixed(4));
+                            
+                            if (stockGeneral < cantidadRequerida) {
+                                throw new Error(`Stock general insuficiente para ingrediente vinculado "${ing.nombre}". Disponible: ${stockGeneral}, Requerido: ${cantidadRequerida}`);
+                            }
+                            
+                            // Registrar movimiento de egreso
+                            const movimientoData = {
+                                ingrediente_id: ing.id,
+                                kilos: -cantidadRequerida, // Negativo para egreso
+                                tipo: 'egreso',
+                                carro_id: parseInt(carroId),
+                                observaciones: `Egreso por asentado carro externo #${carroId} - Ingrediente vinculado (stock general)`
+                            };
+                            
+                            console.log(`📝 REGISTRANDO MOVIMIENTO DE EGRESO:`, JSON.stringify(movimientoData, null, 2));
+                            await registrarMovimientoIngrediente(movimientoData, db);
+                            console.log(`✅ Ingrediente vinculado ${ing.nombre} descontado correctamente`);
+                        }
+                    } else {
+                        console.log('ℹ️ No hay ingredientes vinculados para descontar');
+                    }
+                } catch (error) {
+                    console.error('❌ Error procesando ingredientes vinculados:', error);
+                    throw new Error(`Error al descontar ingredientes vinculados: ${error.message}`);
+                }
+                
+                
                 // LOG 4: Justo antes del registro del movimiento 'ingreso por producción externa'
                 console.log('\n🔍 LOG 4: ANTES DEL REGISTRO DE MOVIMIENTO - ingreso por produccion externa');
                 console.log('==========================================');
