@@ -150,28 +150,103 @@ async function marcarCarroPreparado(req, res) {
             console.log('\n🏠 PROCESANDO CARRO EXTERNO');
             console.log('==========================================');
             
+            // 🔍 DIAGNÓSTICO DETALLADO: Verificar ingredientes válidos
+            console.log('\n🔍 ===== DIAGNÓSTICO DETALLADO - INGREDIENTES VÁLIDOS =====');
+            console.log(`📊 Total ingredientes válidos: ${ingredientesValidos.length}`);
+            
+            if (ingredientesValidos.length > 0) {
+                console.log('📋 DETALLE DE INGREDIENTES VÁLIDOS:');
+                ingredientesValidos.forEach((ing, index) => {
+                    console.log(`  ${index + 1}. Ingrediente: "${ing.nombre}"`);
+                    console.log(`     - ID: ${ing.id} (tipo: ${typeof ing.id})`);
+                    console.log(`     - Cantidad: ${ing.cantidad} (tipo: ${typeof ing.cantidad})`);
+                    console.log(`     - Unidad: ${ing.unidad_medida}`);
+                    console.log(`     - Stock actual: ${ing.stock_actual}`);
+                    console.log(`     - Origen Mix ID: ${ing.origen_mix_id || 'NULL'}`);
+                });
+            }
+            
             // Solo procesar ingredientes si hay ingredientes válidos
             if (ingredientesValidos.length > 0) {
-                // Para carros externos, usar ingredientes_stock_usuarios con FIFO
-                for (const ing of ingredientesValidos) {
-                    console.log(`\n🔄 Procesando ${ing.nombre}:`);
-                    console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
-                    console.log(`- ID: ${ing.id}`);
+                console.log('\n🔄 INICIANDO PROCESAMIENTO DE INGREDIENTES VÁLIDOS');
+                console.log('================================================');
+                
+                // 🔧 CORRECCIÓN CRÍTICA: Distinguir entre ingredientes de usuario vs ingredientes vinculados
+                for (let i = 0; i < ingredientesValidos.length; i++) {
+                    const ing = ingredientesValidos[i];
                     
-                    console.log(`\n🔍 ORIGEN MIX ID:`, ing.origen_mix_id);
-                    // Redondear cantidad a 4 decimales para evitar problemas de precisión
-                    const cantidadRedondeada = Number(ing.cantidad.toFixed(4));
-                    
-                    await registrarMovimientoStockUsuarioFIFO({
-                        usuario_id: parseInt(usuarioId),
-                        ingrediente_id: ing.id,
-                        cantidad: -cantidadRedondeada, // Negativo para consumo
-                        carro_id: parseInt(carroId),
-                        origen_mix_id: ing.origen_mix_id // Pasar el origen_mix_id del ingrediente
-                    }, db);
-                    
-                    console.log('✅ Movimiento FIFO registrado correctamente');
+                    try {
+                        console.log(`\n🔄 PROCESANDO INGREDIENTE ${i + 1}/${ingredientesValidos.length}: ${ing.nombre}`);
+                        console.log(`- Cantidad: ${ing.cantidad} ${ing.unidad_medida}`);
+                        console.log(`- ID: ${ing.id}`);
+                        console.log(`- Stock actual: ${ing.stock_actual}`);
+                        
+                        // 🔍 VALIDACIONES CRÍTICAS
+                        if (!ing.id) {
+                            throw new Error(`Ingrediente "${ing.nombre}" no tiene ID válido`);
+                        }
+                        
+                        if (ing.cantidad === undefined || ing.cantidad === null || isNaN(ing.cantidad)) {
+                            throw new Error(`Ingrediente "${ing.nombre}" no tiene cantidad válida: ${ing.cantidad}`);
+                        }
+                        
+                        console.log(`\n🔍 ORIGEN MIX ID:`, ing.origen_mix_id);
+                        
+                        // Redondear cantidad a 4 decimales para evitar problemas de precisión
+                        const cantidadRedondeada = Number(ing.cantidad.toFixed(4));
+                        console.log(`📊 Cantidad redondeada: ${cantidadRedondeada}`);
+                        
+                        // 🔧 LÓGICA CORREGIDA: Verificar si es ingrediente vinculado (stock general) o de usuario
+                        const stockActual = parseFloat(ing.stock_actual) || 0;
+                        
+                        if (stockActual > 0) {
+                            console.log(`🔧 INGREDIENTE VINCULADO DETECTADO - Usando stock general`);
+                            console.log(`📊 Stock disponible: ${stockActual}`);
+                            console.log(`📊 Cantidad requerida: ${cantidadRedondeada}`);
+                            
+                            if (stockActual < cantidadRedondeada) {
+                                throw new Error(`Stock insuficiente para ingrediente vinculado "${ing.nombre}". Disponible: ${stockActual}, Requerido: ${cantidadRedondeada}`);
+                            }
+                            
+                            // Para ingredientes vinculados: registrar movimiento directo en ingredientes_movimientos
+                            const movimientoData = {
+                                ingrediente_id: ing.id,
+                                kilos: cantidadRedondeada, // Positivo porque es un egreso (se resta del stock)
+                                tipo: 'egreso',
+                                carro_id: parseInt(carroId),
+                                observaciones: `Egreso por carro externo #${carroId} - Ingrediente vinculado`
+                            };
+                            
+                            console.log('📝 REGISTRANDO MOVIMIENTO DIRECTO (ingredientes_movimientos):', JSON.stringify(movimientoData, null, 2));
+                            await registrarMovimientoIngrediente(movimientoData, db);
+                            console.log(`✅ Movimiento directo registrado correctamente para ${ing.nombre}`);
+                            
+                        } else {
+                            console.log(`🔧 INGREDIENTE DE USUARIO DETECTADO - Usando FIFO`);
+                            
+                            // Para ingredientes de usuario: usar FIFO como antes
+                            const datosMovimiento = {
+                                usuario_id: parseInt(usuarioId),
+                                ingrediente_id: ing.id,
+                                cantidad: -cantidadRedondeada, // Negativo para consumo
+                                carro_id: parseInt(carroId),
+                                origen_mix_id: ing.origen_mix_id
+                            };
+                            
+                            console.log('📝 DATOS PARA MOVIMIENTO FIFO:', JSON.stringify(datosMovimiento, null, 2));
+                            await registrarMovimientoStockUsuarioFIFO(datosMovimiento, db);
+                            console.log(`✅ Movimiento FIFO registrado correctamente para ${ing.nombre}`);
+                        }
+                        
+                    } catch (error) {
+                        console.error(`❌ ERROR PROCESANDO INGREDIENTE "${ing.nombre}":`, error);
+                        console.error(`❌ Stack trace:`, error.stack);
+                        throw new Error(`Error procesando ingrediente "${ing.nombre}": ${error.message}`);
+                    }
                 }
+                
+                console.log('\n✅ TODOS LOS INGREDIENTES PROCESADOS EXITOSAMENTE');
+                
             } else {
                 console.log('⚠️ Sin ingredientes válidos - saltando movimientos de ingredientes');
             }
