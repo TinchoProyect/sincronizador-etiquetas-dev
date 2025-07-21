@@ -14,6 +14,30 @@ const state = {
 
 let ingredientesDisponibles = [];
 
+/**
+ * Formatea un número de stock para mostrar de forma legible
+ * - Redondea a 2 decimales máximo
+ * - Elimina decimales innecesarios (.00)
+ * - Maneja valores muy pequeños como 0
+ * @param {number} valor - El valor numérico a formatear
+ * @returns {string} - El valor formateado como string
+ */
+function formatearStock(valor) {
+    if (valor === null || valor === undefined || isNaN(valor)) {
+        return '0';
+    }
+    
+    const numero = Number(valor);
+    
+    // Si el valor es prácticamente cero (debido a precisión de punto flotante)
+    if (Math.abs(numero) < 0.001) {
+        return '0';
+    }
+    
+    // Redondear a 2 decimales y eliminar ceros innecesarios
+    return numero.toFixed(2).replace(/\.?0+$/, '');
+}
+
 // Función para actualizar el título de la página
 export function actualizarTituloPagina() {
     try {
@@ -191,7 +215,7 @@ export async function actualizarTablaArticulos(articulos) {
                     <td>${articulo.numero}</td>
                     <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
                     <td style="text-align: center; font-weight: bold; color: ${articulo.stock_consolidado > 0 ? '#28a745' : '#dc3545'};">
-                        ${articulo.stock_consolidado || 0}
+                        ${formatearStock(articulo.stock_consolidado || 0)}
                     </td>
                     <td>
                         ${tieneReceta ? `
