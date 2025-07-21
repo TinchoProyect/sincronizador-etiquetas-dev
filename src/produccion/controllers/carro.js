@@ -134,6 +134,8 @@ async function obtenerCarrosDeUsuario(usuarioId) {
                 cp.fecha_inicio,
                 cp.en_auditoria,
                 cp.tipo_carro,
+                cp.fecha_preparado,
+                cp.fecha_confirmacion,
                 (SELECT COUNT(*) FROM carros_articulos ca WHERE ca.carro_id = cp.id) as total_articulos
             FROM carros_produccion cp
             WHERE cp.usuario_id = $1

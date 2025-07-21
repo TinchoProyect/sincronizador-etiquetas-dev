@@ -94,6 +94,18 @@ export const estilosTablaCarros = `
         background-color: #d4edda;
         border-left: 4px solid #28a745;
     }
+    .carro-finalizado {
+        background-color: #f8f9fa !important;
+        opacity: 0.7;
+        color: #6c757d;
+    }
+    .carro-finalizado td {
+        font-style: italic;
+    }
+    .carro-finalizado.carro-activo {
+        background-color: #e9ecef !important;
+        opacity: 0.8;
+    }
     .btn-group {
         display: flex;
         gap: 5px;

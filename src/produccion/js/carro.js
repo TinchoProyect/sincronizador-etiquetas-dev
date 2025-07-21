@@ -138,6 +138,7 @@ export async function actualizarEstadoCarro() {
             const fecha = new Date(carro.fecha_inicio).toLocaleString();
             const estaActivo = carro.id.toString() === carroId;
             const esExterno = carro.tipo_carro === 'externa';
+            const esFinalizado = carro.fecha_confirmacion !== null;
             
             // Aplicar clases CSS para diferenciación visual
             let clasesFila = '';
@@ -146,6 +147,9 @@ export async function actualizarEstadoCarro() {
             }
             if (esExterno) {
                 clasesFila += 'carro-externo ';
+            }
+            if (esFinalizado) {
+                clasesFila += 'carro-finalizado ';
             }
             
             html += `
