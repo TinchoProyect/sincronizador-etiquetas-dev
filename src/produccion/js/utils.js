@@ -86,6 +86,14 @@ export const estilosTablaCarros = `
     .carro-activo {
         background-color: #e8f5e9;
     }
+    .carro-externo {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+    }
+    .carro-externo.carro-activo {
+        background-color: #d4edda;
+        border-left: 4px solid #28a745;
+    }
     .btn-group {
         display: flex;
         gap: 5px;

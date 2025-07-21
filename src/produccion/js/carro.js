@@ -137,9 +137,19 @@ export async function actualizarEstadoCarro() {
         carros.forEach(carro => {
             const fecha = new Date(carro.fecha_inicio).toLocaleString();
             const estaActivo = carro.id.toString() === carroId;
+            const esExterno = carro.tipo_carro === 'externa';
+            
+            // Aplicar clases CSS para diferenciación visual
+            let clasesFila = '';
+            if (estaActivo) {
+                clasesFila += 'carro-activo ';
+            }
+            if (esExterno) {
+                clasesFila += 'carro-externo ';
+            }
             
             html += `
-                <tr class="${estaActivo ? 'carro-activo' : ''}" onclick="seleccionarCarro(${carro.id})">
+                <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
                     <td>${carro.id}</td>
                     <td>${fecha}</td>
                     <td>${carro.total_articulos} artículos</td>
@@ -147,7 +157,6 @@ export async function actualizarEstadoCarro() {
                         ${carro.tipo_carro === 'interna' ? '🏭' : '🚚'} 
                         ${carro.tipo_carro === 'interna' ? 'Producción Interna' : 'Producción Externa'}
                     </td>
-                    <td>${carro.en_auditoria ? 'En auditoría' : 'Completado'}</td>
                     <td>
                         <div class="btn-group">
                             ${estaActivo ? 
