@@ -741,7 +741,7 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
             </div>
             <div class="stock-input">
                 <label>Stock Físico:</label>
-                <input type="number" min="0" step="1" class="stock-fisico" 
+                <input type="number" min="0" step="0.01" class="stock-fisico" 
                        data-articulo="${articulo.numero}" value="${cantidadInicial}">
             </div>
         `;
@@ -787,7 +787,7 @@ async function finalizarInventario() {
     inputs.forEach(input => {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosInventario.get(articuloNumero);
-        const stockFisico = parseInt(input.value) || 0;
+        const stockFisico = parseFloat(input.value) || 0;
         const ajuste = stockFisico - (articulo.stock_ventas || 0);
         
         if (ajuste !== 0) {
@@ -919,7 +919,7 @@ function mostrarArticulosSeleccionados() {
                 <label>Stock Físico:</label>
                 <input type="number" 
                        min="0" 
-                       step="1" 
+                       step="0.01" 
                        class="stock-nuevo" 
                        data-articulo="${articulo.numero}"
                        data-stock-actual="${stockActual}"
@@ -943,7 +943,10 @@ function mostrarArticulosSeleccionados() {
 }
 
 async function finalizarAjustes() {
+    console.log('🔧 [AJUSTE PUNTUAL] ===== INICIANDO FINALIZACIÓN DE AJUSTES =====');
+    
     if (articulosSeleccionados.size === 0) {
+        console.log('❌ [AJUSTE PUNTUAL] No hay artículos seleccionados');
         mostrarMensaje('No hay artículos seleccionados para ajustar', 'error');
         return;
     }
@@ -953,34 +956,79 @@ async function finalizarAjustes() {
     const inputs = document.querySelectorAll('.stock-nuevo');
     let hayAjustes = false;
     
-    inputs.forEach(input => {
+    console.log(`🔧 [AJUSTE PUNTUAL] Procesando ${inputs.length} inputs de stock`);
+    
+    inputs.forEach((input, index) => {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosSeleccionados.get(articuloNumero);
-        const stockNuevo = parseInt(input.value) || 0;
+        
+        console.log(`\n🔧 [AJUSTE PUNTUAL] ===== PROCESANDO ARTÍCULO ${index + 1}/${inputs.length} =====`);
+        console.log(`🔧 [AJUSTE PUNTUAL] Artículo: ${articulo?.nombre || 'DESCONOCIDO'} (${articuloNumero})`);
+        
+        // 1. Valor RAW del input (antes de cualquier parseo)
+        const valorRawInput = input.value;
+        console.log(`🔧 [AJUSTE PUNTUAL] Valor RAW del input: "${valorRawInput}" (tipo: ${typeof valorRawInput})`);
+        
+        // 2. Validar si el valor es válido antes del parseo
+        if (valorRawInput === '' || valorRawInput === null || valorRawInput === undefined) {
+            console.log(`⚠️ [AJUSTE PUNTUAL] [ADVERTENCIA] Valor vacío o nulo en input para artículo ${articuloNumero}`);
+        }
+        
+        // 3. Aplicar parseFloat y validar resultado
+        const stockNuevoFloat = parseFloat(valorRawInput);
+        const stockNuevo = isNaN(stockNuevoFloat) ? 0 : stockNuevoFloat;
+        
+        console.log(`🔧 [AJUSTE PUNTUAL] Valor después de parseFloat: ${stockNuevoFloat} (isNaN: ${isNaN(stockNuevoFloat)})`);
+        console.log(`🔧 [AJUSTE PUNTUAL] Valor final a usar: ${stockNuevo}`);
+        
+        if (isNaN(stockNuevoFloat)) {
+            console.log(`⚠️ [AJUSTE PUNTUAL] [ADVERTENCIA] Valor no válido en input para artículo ${articuloNumero}: "${valorRawInput}"`);
+        }
+        
+        // 4. Stock actual antes del ajuste
         const stockActual = articulo.stock_consolidado || 0;
+        console.log(`🔧 [AJUSTE PUNTUAL] Stock actual antes del ajuste: ${stockActual} (tipo: ${typeof stockActual})`);
+        
+        // 5. Calcular diferencia (ajuste)
         const ajuste = stockNuevo - stockActual;
+        console.log(`🔧 [AJUSTE PUNTUAL] Diferencia calculada (ajuste): ${stockNuevo} - ${stockActual} = ${ajuste}`);
         
         // Solo registrar si hay diferencia, igual que en inventario
         if (ajuste !== 0) {
+            console.log(`✅ [AJUSTE PUNTUAL] Ajuste necesario detectado: ${ajuste}`);
             hayAjustes = true;
-            ajustes.push({
+            
+            const ajusteData = {
                 articulo_numero: articuloNumero,
                 codigo_barras: articulo.codigo_barras,
                 usuario_id: usuarioAjustes,
                 tipo: 'registro de ajuste', // Usar el mismo tipo que inventario
                 kilos: ajuste,
                 cantidad: ajuste // Mantener consistencia con inventario
-            });
+            };
+            
+            console.log(`🔧 [AJUSTE PUNTUAL] Datos del ajuste a enviar:`, JSON.stringify(ajusteData, null, 2));
+            ajustes.push(ajusteData);
+        } else {
+            console.log(`➖ [AJUSTE PUNTUAL] Sin cambios para artículo ${articuloNumero} (ajuste = 0)`);
         }
     });
 
+    console.log(`\n🔧 [AJUSTE PUNTUAL] ===== RESUMEN DE PROCESAMIENTO =====`);
+    console.log(`🔧 [AJUSTE PUNTUAL] Total ajustes a procesar: ${ajustes.length}`);
+    console.log(`🔧 [AJUSTE PUNTUAL] Hay ajustes: ${hayAjustes}`);
+
     if (!hayAjustes) {
+        console.log('ℹ️ [AJUSTE PUNTUAL] No hay ajustes para registrar');
         mostrarMensaje('No hay ajustes para registrar', 'info');
         cerrarModalAjustes();
         return;
     }
 
     try {
+        console.log(`🔧 [AJUSTE PUNTUAL] ===== ENVIANDO AL BACKEND =====`);
+        console.log(`🔧 [AJUSTE PUNTUAL] Payload completo:`, JSON.stringify({ ajustes }, null, 2));
+        
         // Usar el mismo endpoint y estructura que inventario
         const response = await fetch('/api/produccion/stock-ventas-movimientos/batch', {
             method: 'POST',
@@ -990,16 +1038,24 @@ async function finalizarAjustes() {
             body: JSON.stringify({ ajustes })
         });
 
+        console.log(`🔧 [AJUSTE PUNTUAL] Respuesta del servidor - Status: ${response.status}`);
+
         if (!response.ok) {
             const errorData = await response.json();
+            console.log(`❌ [AJUSTE PUNTUAL] Error del servidor:`, errorData);
             throw new Error(errorData.error || 'Error al registrar los ajustes');
         }
+
+        const responseData = await response.json();
+        console.log(`✅ [AJUSTE PUNTUAL] Respuesta exitosa del servidor:`, responseData);
 
         mostrarMensaje('Ajustes registrados correctamente', 'info');
         cerrarModalAjustes();
         await cargarArticulos(); // Recargar artículos después de ajustes
+        
+        console.log(`🔧 [AJUSTE PUNTUAL] ===== FINALIZACIÓN COMPLETADA =====`);
     } catch (error) {
-        console.error('Error al finalizar ajustes:', error);
+        console.error('❌ [AJUSTE PUNTUAL] Error al finalizar ajustes:', error);
         mostrarMensaje(error.message || 'Error al registrar los ajustes');
     }
 }
