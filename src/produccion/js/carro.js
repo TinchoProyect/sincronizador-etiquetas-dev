@@ -1,4 +1,6 @@
-import { mostrarError, estilosTablaCarros } from './utils.js';
+
+
+import { mostrarError, estilosTablaCarros, agruparCarrosPorSemanas, agruparCarrosPorSemanasYMeses } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
 import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
 
@@ -114,71 +116,110 @@ export async function actualizarEstadoCarro() {
             console.error('Error al verificar permisos:', error);
         }
 
-        // Construir la lista de carros
+        // Agrupar carros por semanas y meses (nueva funcionalidad mixta)
+        const gruposMixtos = agruparCarrosPorSemanasYMeses(carros);
+
+        // Construir HTML con agrupación mixta
         let html = `
             <div class="carros-lista">
                 <h3>Tus carros de producción</h3>
                 <div class="botones-crear-carro" style="margin-bottom: 20px;">
                     ${botonProduccionExterna}
                 </div>
-                <table class="carros-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Fecha de inicio</th>
-                            <th>Artículos</th>
-                            <th>Tipo</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
         `;
 
-        carros.forEach(carro => {
-            const fecha = new Date(carro.fecha_inicio).toLocaleString();
-            const estaActivo = carro.id.toString() === carroId;
-            const esExterno = carro.tipo_carro === 'externa';
-            const esFinalizado = carro.fecha_confirmacion !== null;
+        gruposMixtos.forEach((grupo, indiceGrupo) => {
+            const claseGrupo = grupo.esActual ? 'semana-actual' : '';
+            const totalCarros = grupo.carros.length;
+            const esGrupoMensual = grupo.anio !== undefined; // Los grupos mensuales tienen propiedades anio y mes
             
-            // Aplicar clases CSS para diferenciación visual
-            let clasesFila = '';
-            if (estaActivo) {
-                clasesFila += 'carro-activo ';
-            }
-            if (esExterno) {
-                clasesFila += 'carro-externo ';
-            }
-            if (esFinalizado) {
-                clasesFila += 'carro-finalizado ';
-            }
+            // 🔍 DEPURACIÓN: Determinar si el grupo debe estar expandido por defecto
+            const esEstaSemanaSoloExpandida = grupo.etiqueta.includes('Esta semana');
+            console.log(`🔍 DEBUG EXPANSIÓN - Grupo: "${grupo.etiqueta}" | Es "Esta semana": ${esEstaSemanaSoloExpandida}`);
+            
+            const estaExpandido = esEstaSemanaSoloExpandida;
+            const indicadorColapso = estaExpandido ? '▼' : '▶';
+            const displayTabla = estaExpandido ? 'table' : 'none';
+            const claseColapsado = estaExpandido ? '' : 'colapsado';
+            
+            console.log(`🔍 DEBUG EXPANSIÓN - Resultado: expandido=${estaExpandido}, display=${displayTabla}, clase="${claseColapsado}"`);
             
             html += `
-                <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
-                    <td>${carro.id}</td>
-                    <td>${fecha}</td>
-                    <td>${carro.total_articulos} artículos</td>
-                    <td>
-                        ${carro.tipo_carro === 'interna' ? '🏭' : '🚚'} 
-                        ${carro.tipo_carro === 'interna' ? 'Producción Interna' : 'Producción Externa'}
-                    </td>
-                    <td>
-                        <div class="btn-group">
-                            ${estaActivo ? 
-                                '<button class="btn-deseleccionar" onclick="event.stopPropagation(); deseleccionarCarro()">Deseleccionar</button>' :
-                                ''
-                            }
-                            <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})">Eliminar</button>
+                <div class="grupo-temporal ${claseGrupo} ${esGrupoMensual ? 'grupo-mensual' : 'grupo-semanal'} ${claseColapsado}" data-grupo="${indiceGrupo}">
+                    <div class="header-grupo-temporal" onclick="toggleGrupoTemporal(${indiceGrupo})">
+                        <div class="etiqueta-temporal">
+                            ${grupo.etiqueta}
                         </div>
-                    </td>
-                </tr>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="contador-carros">${totalCarros} carro${totalCarros !== 1 ? 's' : ''}</span>
+                            <span class="indicador-colapso">${indicadorColapso}</span>
+                        </div>
+                    </div>
+                    <table class="tabla-carros-grupo" style="display: ${displayTabla};">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Fecha de inicio</th>
+                                <th>Artículos</th>
+                                <th>Tipo</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
             `;
-        });
+
+            grupo.carros.forEach(carro => {
+                const fecha = new Date(carro.fecha_inicio).toLocaleString();
+                const estaActivo = carro.id.toString() === carroId;
+                const esExterno = carro.tipo_carro === 'externa';
+                const esFinalizado = carro.fecha_confirmacion !== null;
+                const esHoy = carro.esHoy;
+                
+                // Aplicar clases CSS para diferenciación visual
+                let clasesFila = '';
+                if (estaActivo) {
+                    clasesFila += 'carro-activo ';
+                }
+                if (esExterno) {
+                    clasesFila += 'carro-externo ';
+                }
+                if (esFinalizado) {
+                    clasesFila += 'carro-finalizado ';
+                }
+                if (esHoy) {
+                    clasesFila += 'carro-hoy ';
+                }
+                
+                html += `
+                    <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
+                        <td>${carro.id}</td>
+                        <td>${fecha}</td>
+                        <td>${carro.total_articulos} artículos</td>
+                        <td>
+                            ${carro.tipo_carro === 'interna' ? '🏭' : '🚚'} 
+                            ${carro.tipo_carro === 'interna' ? 'Producción Interna' : 'Producción Externa'}
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                ${estaActivo ? 
+                                    '<button class="btn-deseleccionar" onclick="event.stopPropagation(); deseleccionarCarro()">Deseleccionar</button>' :
+                                    ''
+                                }
+                                <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})">Eliminar</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
 
         html += `
                     </tbody>
                 </table>
             </div>
         `;
+        });
+
+        html += `</div>`; // cerrar carros-lista
 
         carroInfo.innerHTML = html;
 
@@ -649,6 +690,28 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         mostrarError(error.message);
     }
 }
+
+// Función para alternar la visibilidad de grupos temporales (semanas y meses)
+window.toggleGrupoTemporal = function(indiceGrupo) {
+    const grupo = document.querySelector(`[data-grupo="${indiceGrupo}"]`);
+    if (!grupo) return;
+    
+    const tabla = grupo.querySelector('.tabla-carros-grupo');
+    const indicador = grupo.querySelector('.indicador-colapso');
+    
+    if (!tabla || !indicador) return;
+    
+    // Alternar visibilidad de la tabla
+    if (tabla.style.display === 'none') {
+        tabla.style.display = 'table';
+        indicador.textContent = '▼';
+        grupo.classList.remove('colapsado');
+    } else {
+        tabla.style.display = 'none';
+        indicador.textContent = '▶';
+        grupo.classList.add('colapsado');
+    }
+};
 
 // Hacer funciones disponibles globalmente para los botones HTML
 window.crearNuevoCarro = crearNuevoCarro;

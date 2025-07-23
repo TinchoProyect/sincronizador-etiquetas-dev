@@ -65,6 +65,161 @@ export function limpiarDatosSesion() {
     window.location.href = '/produccion/pages/produccion.html';
 }
 
+/**
+ * Obtiene información de la semana para una fecha dada
+ * @param {Date|string} fecha - Fecha a analizar
+ * @returns {Object} Información de la semana
+ */
+export function obtenerInfoSemana(fecha) {
+    const ahora = new Date();
+    const inicioSemanaActual = new Date(ahora);
+    inicioSemanaActual.setDate(ahora.getDate() - ahora.getDay());
+    inicioSemanaActual.setHours(0, 0, 0, 0);
+    
+    const fechaCarro = new Date(fecha);
+    const inicioSemanaCarro = new Date(fechaCarro);
+    inicioSemanaCarro.setDate(fechaCarro.getDate() - fechaCarro.getDay());
+    inicioSemanaCarro.setHours(0, 0, 0, 0);
+    
+    const diferenciaSemanas = Math.floor((inicioSemanaActual - inicioSemanaCarro) / (7 * 24 * 60 * 60 * 1000));
+    
+    return {
+        esHoy: fechaCarro.toDateString() === ahora.toDateString(),
+        esSemanaActual: diferenciaSemanas === 0,
+        diferenciaSemanas,
+        inicioSemana: inicioSemanaCarro,
+        etiquetaSemana: generarEtiquetaSemana(diferenciaSemanas, inicioSemanaCarro, fechaCarro)
+    };
+}
+
+/**
+ * Genera etiqueta descriptiva para la semana
+ * @param {number} diferenciaSemanas - Diferencia en semanas
+ * @param {Date} inicioSemana - Inicio de la semana
+ * @param {Date} fechaCarro - Fecha del carro
+ * @returns {string} Etiqueta descriptiva
+ */
+function generarEtiquetaSemana(diferenciaSemanas, inicioSemana, fechaCarro) {
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    
+    if (diferenciaSemanas === 0) {
+        return '📅 Esta semana';
+    } else if (diferenciaSemanas === 1) {
+        return '📆 Semana pasada';
+    } else if (diferenciaSemanas <= 4) {
+        const mesInicio = meses[inicioSemana.getMonth()];
+        const diaInicio = inicioSemana.getDate();
+        return `📋 ${diferenciaSemanas}ª semana de ${mesInicio} (${diaInicio})`;
+    } else {
+        const mes = meses[fechaCarro.getMonth()];
+        return `📁 ${mes} ${fechaCarro.getFullYear()}`;
+    }
+}
+
+/**
+ * Agrupa carros por semanas manteniendo orden cronológico
+ * @param {Array} carros - Array de carros ordenados por fecha desc
+ * @returns {Array} Array de grupos de semanas
+ */
+export function agruparCarrosPorSemanas(carros) {
+    const grupos = new Map();
+    
+    carros.forEach(carro => {
+        const infoSemana = obtenerInfoSemana(carro.fecha_inicio);
+        const claveSemana = `${infoSemana.diferenciaSemanas}-${infoSemana.inicioSemana.getTime()}`;
+        
+        if (!grupos.has(claveSemana)) {
+            grupos.set(claveSemana, {
+                etiqueta: infoSemana.etiquetaSemana,
+                esActual: infoSemana.esSemanaActual,
+                diferenciaSemanas: infoSemana.diferenciaSemanas,
+                carros: []
+            });
+        }
+        
+        grupos.get(claveSemana).carros.push({
+            ...carro,
+            esHoy: infoSemana.esHoy
+        });
+    });
+    
+    // Convertir Map a Array y ordenar por diferencia de semanas (más reciente primero)
+    return Array.from(grupos.values()).sort((a, b) => a.diferenciaSemanas - b.diferenciaSemanas);
+}
+
+/**
+ * Agrupa carros por semanas recientes y luego por meses calendario para registros más antiguos
+ * @param {Array} carros - Array de carros ordenados por fecha desc
+ * @returns {Array} Array de grupos mixtos (semanas y meses)
+ */
+export function agruparCarrosPorSemanasYMeses(carros) {
+    const gruposSemanales = new Map();
+    const gruposMensuales = new Map();
+
+    carros.forEach(carro => {
+        const infoSemana = obtenerInfoSemana(carro.fecha_inicio);
+        const diferenciaSemanas = infoSemana.diferenciaSemanas;
+
+        if (diferenciaSemanas <= 1) {
+            // Agrupar en semanas "Esta semana" y "Semana pasada"
+            const claveSemana = `${diferenciaSemanas}-${infoSemana.inicioSemana.getTime()}`;
+            if (!gruposSemanales.has(claveSemana)) {
+                gruposSemanales.set(claveSemana, {
+                    etiqueta: infoSemana.etiquetaSemana,
+                    esActual: infoSemana.esSemanaActual,
+                    diferenciaSemanas: diferenciaSemanas,
+                    carros: []
+                });
+            }
+            gruposSemanales.get(claveSemana).carros.push({
+                ...carro,
+                esHoy: infoSemana.esHoy
+            });
+        } else {
+            // Agrupar por mes y año calendario para registros más antiguos
+            const fechaCarro = new Date(carro.fecha_inicio);
+            const mes = fechaCarro.getMonth();
+            const anio = fechaCarro.getFullYear();
+            const claveMes = `${anio}-${mes}`;
+
+            if (!gruposMensuales.has(claveMes)) {
+                const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                                      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                gruposMensuales.set(claveMes, {
+                    etiqueta: `📁 ${mesesNombres[mes]} ${anio}`,
+                    esActual: false,
+                    anio: anio,
+                    mes: mes,
+                    carros: []
+                });
+            }
+            gruposMensuales.get(claveMes).carros.push({
+                ...carro,
+                esHoy: infoSemana.esHoy
+            });
+        }
+    });
+
+    // Ordenar carros dentro de cada grupo por fecha descendente
+    gruposSemanales.forEach(grupo => {
+        grupo.carros.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
+    });
+    gruposMensuales.forEach(grupo => {
+        grupo.carros.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
+    });
+
+    // Convertir Map a Array y ordenar grupos
+    const arraySemanales = Array.from(gruposSemanales.values()).sort((a, b) => a.diferenciaSemanas - b.diferenciaSemanas);
+    const arrayMensuales = Array.from(gruposMensuales.values()).sort((a, b) => {
+        if (a.anio !== b.anio) return b.anio - a.anio;
+        return b.mes - a.mes;
+    });
+
+    // Combinar: semanas primero, luego meses
+    return [...arraySemanales, ...arrayMensuales];
+}
+
 // Estilos CSS para la tabla de carros
 export const estilosTablaCarros = `
     .carros-lista {

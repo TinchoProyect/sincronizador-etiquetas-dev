@@ -528,6 +528,182 @@
     font-weight: bold;
 }
 
+/* ✅ ESTILOS PARA AGRUPACIÓN SEMANAL DE CARROS */
+
+/* Estilos para agrupación semanal de carros */
+.grupo-semanal {
+    margin-bottom: 25px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.grupo-semanal.semana-actual {
+    border: 2px solid #28a745;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);
+}
+
+.header-grupo-semanal {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 12px 20px;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.header-grupo-semanal:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+}
+
+.grupo-semanal.semana-actual .header-grupo-semanal {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-bottom-color: #28a745;
+}
+
+.grupo-semanal.semana-actual .header-grupo-semanal:hover {
+    background: linear-gradient(135deg, #c3e6cb 0%, #b8dabd 100%);
+}
+
+.etiqueta-semana {
+    font-weight: 600;
+    font-size: 16px;
+    color: #495057;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.grupo-semanal.semana-actual .etiqueta-semana {
+    color: #155724;
+}
+
+.contador-carros {
+    background-color: #6c757d;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.grupo-semanal.semana-actual .contador-carros {
+    background-color: #28a745;
+}
+
+.indicador-colapso {
+    font-size: 12px;
+    color: #6c757d;
+    transition: transform 0.2s ease;
+}
+
+.grupo-semanal.colapsado .indicador-colapso {
+    transform: rotate(-90deg);
+}
+
+.tabla-carros-grupo {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.grupo-semanal.colapsado .tabla-carros-grupo {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+}
+
+.tabla-carros-grupo th,
+.tabla-carros-grupo td {
+    padding: 12px;
+    border-bottom: 1px solid #dee2e6;
+    text-align: left;
+}
+
+.tabla-carros-grupo th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+    font-size: 14px;
+}
+
+/* Resaltado especial para carros de hoy */
+.carro-hoy {
+    background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%);
+    border-left: 4px solid #ffc107;
+    position: relative;
+}
+
+.carro-hoy::before {
+    content: "HOY";
+    position: absolute;
+    left: -2px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    background-color: #ffc107;
+    color: #212529;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: bold;
+    border-radius: 0 0 4px 4px;
+}
+
+.carro-hoy.carro-activo {
+    background: linear-gradient(90deg, #d4edda 0%, #e8f5e9 100%);
+    border-left-color: #28a745;
+}
+
+.carro-hoy.carro-activo::before {
+    background-color: #28a745;
+    color: white;
+}
+
+/* Animaciones para grupos */
+@keyframes slideInGroup {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.grupo-semanal {
+    animation: slideInGroup 0.4s ease-out;
+}
+
+/* Responsive para agrupación semanal */
+@media (max-width: 768px) {
+    .header-grupo-semanal {
+        padding: 10px 15px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .etiqueta-semana {
+        font-size: 14px;
+    }
+    
+    .contador-carros {
+        align-self: flex-end;
+    }
+    
+    .carro-hoy::before {
+        display: none; /* Ocultar en móvil para evitar solapamiento */
+    }
+    
+    .carro-hoy {
+        border-left-width: 6px; /* Compensar con borde más grueso */
+    }
+}
+
 /* ✅ NUEVOS ESTILOS PARA TRANSICIONES VISUALES DE CARROS EXTERNOS */
 
 /* Artículos en segundo plano */
