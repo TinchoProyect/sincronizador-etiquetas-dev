@@ -43,7 +43,9 @@ function seleccionarUsuario(usuario) {
     }));
     
     // Abrir la página personal en una nueva pestaña
-    window.open('/pages/produccion_personal.html', '_blank');
+    //window.open('/pages/produccion_personal.html', '_blank');
+    window.open('/pages/produccion_personal.html', `ventanaProduccion_${usuario.id}`);
+
 }
 
 // Inicializar cuando se carga la página
