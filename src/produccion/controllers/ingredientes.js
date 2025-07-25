@@ -33,80 +33,108 @@ async function obtenerNuevoCodigo() {
 }
 
 /**
- * Obtiene todos los ingredientes
- * @returns {Promise<Array>} Lista de ingredientes
+ * Obtiene todos los ingredientes con información de sector
+ * @returns {Promise<Array>} Lista de ingredientes con sector
  */
 async function obtenerIngredientes() {
     try {
-        console.log('Ejecutando consulta de ingredientes...');
+        console.log('🔍 [SECTORES] Ejecutando consulta de ingredientes con sectores...');
         const query = `
             SELECT 
-                id,
-                codigo,
-                nombre,
-                descripcion,
-                unidad_medida,
-                categoria,
-                stock_actual
-            FROM ingredientes
-            ORDER BY nombre ASC;
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.descripcion,
+                i.unidad_medida,
+                i.categoria,
+                i.stock_actual,
+                i.sector_id,
+                s.nombre as sector_nombre
+            FROM ingredientes i
+            LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            ORDER BY i.nombre ASC;
         `;
         
         const result = await pool.query(query);
-        console.log(`Encontrados ${result.rows.length} ingredientes`);
+        console.log(`✅ [SECTORES] Encontrados ${result.rows.length} ingredientes`);
+        
+        // Log de depuración para sectores
+        const conSector = result.rows.filter(ing => ing.sector_id !== null).length;
+        const sinSector = result.rows.length - conSector;
+        console.log(`📊 [SECTORES] Ingredientes con sector: ${conSector}, sin sector: ${sinSector}`);
+        
         return result.rows;
     } catch (error) {
-        console.error('Error en obtenerIngredientes:', error);
+        console.error('❌ [SECTORES] Error en obtenerIngredientes:', error);
         throw new Error('No se pudo obtener la lista de ingredientes');
     }
 }
 
 /**
- * Obtiene un ingrediente por su ID
+ * Obtiene un ingrediente por su ID con información de sector
  * @param {number} id - ID del ingrediente
- * @returns {Promise<Object>} Datos del ingrediente
+ * @returns {Promise<Object>} Datos del ingrediente con sector
  */
 async function obtenerIngrediente(id) {
     try {
+        console.log(`🔍 [SECTORES] Obteniendo ingrediente ${id} con información de sector...`);
         const query = `
             SELECT 
-                id,
-                codigo,
-                nombre,
-                descripcion,
-                unidad_medida,
-                categoria,
-                stock_actual,
-                receta_base_kg
-            FROM ingredientes
-            WHERE id = $1;
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.descripcion,
+                i.unidad_medida,
+                i.categoria,
+                i.stock_actual,
+                i.receta_base_kg,
+                i.sector_id,
+                s.nombre as sector_nombre
+            FROM ingredientes i
+            LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            WHERE i.id = $1;
         `;
         
         const result = await pool.query(query, [id]);
         if (result.rows.length === 0) {
             throw new Error('Ingrediente no encontrado');
         }
-        return result.rows[0];
+        
+        const ingrediente = result.rows[0];
+        console.log(`✅ [SECTORES] Ingrediente obtenido: ${ingrediente.nombre}, sector: ${ingrediente.sector_nombre || 'Sin asignar'}`);
+        
+        return ingrediente;
     } catch (error) {
-        console.error('Error en obtenerIngrediente:', error);
+        console.error('❌ [SECTORES] Error en obtenerIngrediente:', error);
         throw new Error('No se pudo obtener el ingrediente');
     }
 }
 
 /**
- * Crea un nuevo ingrediente
+ * Crea un nuevo ingrediente con soporte para sectores
  * @param {Object} datos - Datos del ingrediente
  * @returns {Promise<Object>} Ingrediente creado
  */
 async function crearIngrediente(datos) {
     try {
-        const { nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id } = datos;
+        const { nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, sector_id } = datos;
+
+        console.log(`🔍 [SECTORES] Creando ingrediente: ${nombre}, sector_id: ${sector_id || 'null'}`);
 
         // Verificar si ya existe un ingrediente con el mismo nombre (sin distinguir mayúsculas/minúsculas)
         const checkQuery = 'SELECT id FROM ingredientes WHERE LOWER(TRIM(nombre)) = LOWER(TRIM($1))';
         const checkResult = await pool.query(checkQuery, [nombre]);
         if (checkResult.rows.length > 0) {
             throw new Error('El ingrediente ya existe');
+        }
+        
+        // Validar sector_id si se proporciona
+        if (sector_id !== null && sector_id !== undefined && sector_id !== '') {
+            const sectorQuery = 'SELECT id FROM sectores_ingredientes WHERE id = $1';
+            const sectorResult = await pool.query(sectorQuery, [sector_id]);
+            if (sectorResult.rows.length === 0) {
+                console.warn(`⚠️ [SECTORES] Sector ${sector_id} no encontrado, creando ingrediente sin sector`);
+            }
         }
         
         // Obtener nuevo código
@@ -120,24 +148,29 @@ async function crearIngrediente(datos) {
                 unidad_medida,
                 categoria,
                 stock_actual,
-                padre_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                padre_id,
+                sector_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *;
         `;
         
-        const values = [codigo, nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id];
+        // Convertir sector_id vacío a null
+        const sectorIdFinal = (sector_id === '' || sector_id === undefined) ? null : sector_id;
+        const values = [codigo, nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, sectorIdFinal];
         const result = await pool.query(query, values);
+        
+        console.log(`✅ [SECTORES] Ingrediente creado: ${nombre}, sector_id: ${sectorIdFinal || 'null'}`);
         
         return result.rows[0];
     } catch (error) {
-        console.error('Error en crearIngrediente:', error);
+        console.error('❌ [SECTORES] Error en crearIngrediente:', error);
         throw new Error(error.message || 'No se pudo crear el ingrediente');
     }
 }
 
 
 /**
- * Actualiza un ingrediente existente
+ * Actualiza un ingrediente existente con soporte para sectores
  * @param {number} id - ID del ingrediente
  * @param {Object} datos - Nuevos datos del ingrediente
  * @returns {Promise<Object>} Ingrediente actualizado
@@ -152,6 +185,28 @@ async function actualizarIngrediente(id, datos) {
         const stock_actual = (datos.stock_actual === undefined) ? existing.stock_actual : datos.stock_actual;
         const padre_id = (datos.padre_id === undefined) ? existing.padre_id : datos.padre_id;
         const receta_base_kg = (datos.receta_base_kg === undefined) ? existing.receta_base_kg : datos.receta_base_kg;
+        
+        // Manejar sector_id con compatibilidad para null
+        let sector_id;
+        if (datos.sector_id === undefined) {
+            sector_id = existing.sector_id;
+        } else if (datos.sector_id === '' || datos.sector_id === null) {
+            sector_id = null;
+        } else {
+            sector_id = datos.sector_id;
+        }
+
+        console.log(`🔍 [SECTORES] Actualizando ingrediente ${id}: ${nombre}, sector_id: ${existing.sector_id} → ${sector_id}`);
+
+        // Validar sector_id si se proporciona
+        if (sector_id !== null && sector_id !== undefined) {
+            const sectorQuery = 'SELECT id FROM sectores_ingredientes WHERE id = $1';
+            const sectorResult = await pool.query(sectorQuery, [sector_id]);
+            if (sectorResult.rows.length === 0) {
+                console.warn(`⚠️ [SECTORES] Sector ${sector_id} no encontrado, manteniendo sector actual`);
+                sector_id = existing.sector_id;
+            }
+        }
 
         const query = `
             UPDATE ingredientes
@@ -161,21 +216,24 @@ async function actualizarIngrediente(id, datos) {
                 categoria = $4,
                 stock_actual = $5,
                 padre_id = $6,
-                receta_base_kg = $7
-            WHERE id = $8
+                receta_base_kg = $7,
+                sector_id = $8
+            WHERE id = $9
             RETURNING *;
         `;
         
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, receta_base_kg, id];
+        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, receta_base_kg, sector_id, id];
         const result = await pool.query(query, values);
         
         if (result.rows.length === 0) {
             throw new Error('Ingrediente no encontrado');
         }
         
+        console.log(`✅ [SECTORES] Ingrediente actualizado: ${nombre}, sector_id final: ${sector_id || 'null'}`);
+        
         return result.rows[0];
     } catch (error) {
-        console.error('Error en actualizarIngrediente:', error);
+        console.error('❌ [SECTORES] Error en actualizarIngrediente:', error);
         throw new Error('No se pudo actualizar el ingrediente');
     }
 }
@@ -280,6 +338,157 @@ async function obtenerStockPorUsuario(usuarioId) {
     }
 }
 
+/**
+ * Obtiene todos los sectores disponibles
+ * @returns {Promise<Array>} Lista de sectores
+ */
+async function obtenerSectores() {
+    try {
+        console.log('🔍 [SECTORES] Obteniendo lista de sectores...');
+        const query = `
+            SELECT 
+                id,
+                nombre,
+                descripcion
+            FROM sectores_ingredientes
+            ORDER BY nombre ASC;
+        `;
+        
+        const result = await pool.query(query);
+        console.log(`✅ [SECTORES] Encontrados ${result.rows.length} sectores`);
+        return result.rows;
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en obtenerSectores:', error);
+        throw new Error('No se pudo obtener la lista de sectores');
+    }
+}
+
+/**
+ * Crea un nuevo sector
+ * @param {Object} datos - Datos del sector (nombre, descripcion)
+ * @returns {Promise<Object>} Sector creado
+ */
+async function crearSector(datos) {
+    try {
+        const { nombre, descripcion } = datos;
+        
+        if (!nombre || nombre.trim() === '') {
+            throw new Error('El nombre del sector es requerido');
+        }
+        
+        console.log('📝 [SECTORES] Creando nuevo sector:', { nombre, descripcion });
+        
+        // Verificar si ya existe un sector con ese nombre
+        const existeQuery = 'SELECT id FROM sectores_ingredientes WHERE LOWER(nombre) = LOWER($1)';
+        const existeResult = await pool.query(existeQuery, [nombre.trim()]);
+        
+        if (existeResult.rows.length > 0) {
+            throw new Error('Ya existe un sector con ese nombre');
+        }
+        
+        // Crear el nuevo sector
+        const insertQuery = `
+            INSERT INTO sectores_ingredientes (nombre, descripcion) 
+            VALUES ($1, $2) 
+            RETURNING id, nombre, descripcion
+        `;
+        
+        const result = await pool.query(insertQuery, [nombre.trim(), descripcion?.trim() || null]);
+        const nuevoSector = result.rows[0];
+        
+        console.log('✅ [SECTORES] Sector creado exitosamente:', nuevoSector);
+        return nuevoSector;
+        
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en crearSector:', error);
+        throw new Error(error.message || 'No se pudo crear el sector');
+    }
+}
+
+/**
+ * Actualiza un sector existente
+ * @param {number} id - ID del sector
+ * @param {Object} datos - Nuevos datos del sector
+ * @returns {Promise<Object>} Sector actualizado
+ */
+async function actualizarSector(id, datos) {
+    try {
+        const { nombre, descripcion } = datos;
+        
+        if (!nombre || nombre.trim() === '') {
+            throw new Error('El nombre del sector es requerido');
+        }
+        
+        console.log('📝 [SECTORES] Actualizando sector:', { id, nombre, descripcion });
+        
+        // Verificar si existe otro sector con ese nombre
+        const existeQuery = 'SELECT id FROM sectores_ingredientes WHERE LOWER(nombre) = LOWER($1) AND id != $2';
+        const existeResult = await pool.query(existeQuery, [nombre.trim(), id]);
+        
+        if (existeResult.rows.length > 0) {
+            throw new Error('Ya existe otro sector con ese nombre');
+        }
+        
+        // Actualizar el sector
+        const updateQuery = `
+            UPDATE sectores_ingredientes 
+            SET nombre = $1, descripcion = $2 
+            WHERE id = $3 
+            RETURNING id, nombre, descripcion
+        `;
+        
+        const result = await pool.query(updateQuery, [nombre.trim(), descripcion?.trim() || null, id]);
+        
+        if (result.rows.length === 0) {
+            throw new Error('Sector no encontrado');
+        }
+        
+        const sectorActualizado = result.rows[0];
+        console.log('✅ [SECTORES] Sector actualizado exitosamente:', sectorActualizado);
+        return sectorActualizado;
+        
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en actualizarSector:', error);
+        throw new Error(error.message || 'No se pudo actualizar el sector');
+    }
+}
+
+/**
+ * Elimina un sector
+ * @param {number} id - ID del sector a eliminar
+ * @returns {Promise<Object>} Mensaje de confirmación
+ */
+async function eliminarSector(id) {
+    try {
+        console.log('🗑️ [SECTORES] Eliminando sector:', id);
+        
+        // Verificar si hay ingredientes asignados a este sector
+        const ingredientesQuery = 'SELECT COUNT(*) as count FROM ingredientes WHERE sector_id = $1';
+        const ingredientesResult = await pool.query(ingredientesQuery, [id]);
+        const cantidadIngredientes = parseInt(ingredientesResult.rows[0].count);
+        
+        if (cantidadIngredientes > 0) {
+            throw new Error(`No se puede eliminar el sector porque tiene ${cantidadIngredientes} ingrediente(s) asignado(s)`);
+        }
+        
+        // Eliminar el sector
+        const deleteQuery = 'DELETE FROM sectores_ingredientes WHERE id = $1 RETURNING nombre';
+        const result = await pool.query(deleteQuery, [id]);
+        
+        if (result.rows.length === 0) {
+            throw new Error('Sector no encontrado');
+        }
+        
+        const sectorEliminado = result.rows[0];
+        console.log('✅ [SECTORES] Sector eliminado exitosamente:', sectorEliminado.nombre);
+        return { message: `Sector "${sectorEliminado.nombre}" eliminado exitosamente` };
+        
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en eliminarSector:', error);
+        throw new Error(error.message || 'No se pudo eliminar el sector');
+    }
+}
+
 module.exports = {
     obtenerIngredientes,
     obtenerIngrediente,
@@ -288,5 +497,9 @@ module.exports = {
     eliminarIngrediente,
     obtenerNuevoCodigo,
     obtenerUsuariosConStock,
-    obtenerStockPorUsuario
+    obtenerStockPorUsuario,
+    obtenerSectores,
+    crearSector,
+    actualizarSector,
+    eliminarSector
 };

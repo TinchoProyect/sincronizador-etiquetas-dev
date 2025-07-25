@@ -54,7 +54,8 @@ const {
     eliminarIngrediente,
     obtenerNuevoCodigo,
     obtenerUsuariosConStock,
-    obtenerStockPorUsuario
+    obtenerStockPorUsuario,
+    obtenerSectores
 } = require('../controllers/ingredientes');
 
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
@@ -73,6 +74,67 @@ router.get('/ingredientes', async (req, res) => {
     } catch (error) {
         console.error('Error en ruta GET /ingredientes:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para obtener sectores disponibles
+router.get('/sectores', async (req, res) => {
+    try {
+        console.log('🔍 [SECTORES] Solicitando lista de sectores...');
+        const sectores = await obtenerSectores();
+        res.json(sectores);
+    } catch (error) {
+        console.error('❌ [SECTORES] Error al obtener sectores:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para crear un nuevo sector
+router.post('/sectores', async (req, res) => {
+    try {
+        const { crearSector } = require('../controllers/ingredientes');
+        const nuevoSector = await crearSector(req.body);
+        res.status(201).json(nuevoSector);
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en POST /sectores:', error);
+        const statusCode = error.message.includes('requerido') || error.message.includes('existe') ? 400 : 500;
+        res.status(statusCode).json({ error: error.message });
+    }
+});
+
+// Ruta para actualizar un sector
+router.put('/sectores/:id', async (req, res) => {
+    try {
+        const { actualizarSector } = require('../controllers/ingredientes');
+        const sectorActualizado = await actualizarSector(req.params.id, req.body);
+        res.json(sectorActualizado);
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en PUT /sectores/:id:', error);
+        let statusCode = 500;
+        if (error.message.includes('requerido') || error.message.includes('existe')) {
+            statusCode = 400;
+        } else if (error.message.includes('no encontrado')) {
+            statusCode = 404;
+        }
+        res.status(statusCode).json({ error: error.message });
+    }
+});
+
+// Ruta para eliminar un sector
+router.delete('/sectores/:id', async (req, res) => {
+    try {
+        const { eliminarSector } = require('../controllers/ingredientes');
+        const resultado = await eliminarSector(req.params.id);
+        res.json(resultado);
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en DELETE /sectores/:id:', error);
+        let statusCode = 500;
+        if (error.message.includes('no se puede eliminar')) {
+            statusCode = 400;
+        } else if (error.message.includes('no encontrado')) {
+            statusCode = 404;
+        }
+        res.status(statusCode).json({ error: error.message });
     }
 });
 

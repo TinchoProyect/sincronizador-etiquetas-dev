@@ -245,6 +245,39 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3);
         }
+
+        /* Estilos para selectores de sector inline */
+        .selector-sector-inline:hover {
+            border-color: #007bff !important;
+        }
+
+        .selector-sector-inline:disabled {
+            cursor: wait !important;
+            opacity: 0.6 !important;
+        }
+
+        /* Animaciones para mensajes discretos */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -261,6 +294,9 @@
                     <div style="display: flex; gap: 10px;">
                         <button id="btn-inventario-ingredientes" class="btn-inventario" onclick="window.open('inventario-ingredientes.html', '_blank')">
                             📋 Inventario
+                        </button>
+                        <button id="btn-gestionar-sectores" class="btn-inventario" onclick="window.open('sectores.html', '_blank')" style="background-color: #28a745;">
+                            🏢 Gestionar Sectores
                         </button>
                         <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
                     </div>
@@ -286,6 +322,7 @@
                             <th>Unidad de Medida</th>
                             <th>Categoría</th>
                             <th id="columna-dinamica">Stock Actual</th>
+                            <th>Sector</th>
                             <th>Descripción</th>
                             <th>Tipo</th>
                             <th>Composición</th>
@@ -328,6 +365,14 @@
                     <div class="form-group">
                         <label for="stock">Stock Actual:</label>
                         <input type="number" id="stock" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="sector">Sector:</label>
+                        <select id="sector">
+                            <option value="">Sin sector asignado</option>
+                            <!-- Los sectores se cargarán dinámicamente aquí -->
+                        </select>
+                        <small class="form-text text-muted">Seleccione un sector para organizar el ingrediente</small>
                     </div>
                     <div class="form-group">
                         <label for="descripcion">Descripción:</label>
