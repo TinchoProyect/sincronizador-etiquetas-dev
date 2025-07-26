@@ -57,29 +57,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // VALIDACIÓN SIMPLIFICADA - Solo verificar que comience con 'inv_'
-    const sessionParts = sessionId.split('_');
-    console.log('🔍 [MÓVIL] Partes del sessionId:', sessionParts);
-    console.log('🔍 [MÓVIL] Número de partes:', sessionParts.length);
-    console.log('✅ [MÓVIL] VALIDACIÓN SIMPLIFICADA - SessionId aceptado:', sessionId);
-    
-    // COMENTADO: Validación estricta que causaba problemas
-    // if (sessionParts.length < 2 || sessionParts[0] !== 'inv') {
-    //     console.error('❌ [MÓVIL] ERROR: sessionId no tiene el formato correcto');
-    //     mostrarSinInventario('Formato de ID de sesión inválido. Verifique el enlace QR.');
-    //     return;
-    // }
+    // VALIDACIÓN SIMPLIFICADA Y ROBUSTA - Compatible con ambos formatos
+    console.log('🔍 [MÓVIL] Session ID recibido:', sessionId);
     
     // Validar que tenga el formato correcto para ingredientes o artículos
     const esIngredientes = sessionId.startsWith('inv_ing_');
     const esArticulos = sessionId.startsWith('inv_') && !sessionId.startsWith('inv_ing_');
     
+    console.log('🔍 [MÓVIL] Es ingredientes:', esIngredientes);
+    console.log('🔍 [MÓVIL] Es artículos:', esArticulos);
+    
+    // Validación básica - solo verificar que sea uno de los dos tipos válidos
     if (!esIngredientes && !esArticulos) {
         console.error('❌ [MÓVIL] ERROR: sessionId no es de inventario válido');
         console.error('❌ [MÓVIL] sessionId recibido:', sessionId);
         mostrarSinInventario('Tipo de inventario no reconocido. Verifique el enlace QR.');
         return;
     }
+    
+    console.log('✅ [MÓVIL] Validación exitosa - Tipo detectado:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
     
     console.log('✅ [MÓVIL] Tipo de inventario detectado:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
     
@@ -495,15 +491,14 @@ function enviarArticuloAPC() {
             cantidad: cantidad
         };
         
-        // Determinar evento y estructura de datos según el tipo
-        let evento;
+        // Usar evento unificado 'articulo_escaneado' para ambos tipos
+        const evento = 'articulo_escaneado';
+        
         if (esIngredientes) {
             console.log('🧪 [MÓVIL] Escaneando ingrediente desde móvil...');
-            evento = 'escanear_ingrediente_movil';
             datosEnvio.ingrediente = articuloActual;
         } else {
             console.log('📦 [MÓVIL] Escaneando artículo desde móvil...');
-            evento = 'articulo_escaneado';
             datosEnvio.articulo = articuloActual;
         }
         

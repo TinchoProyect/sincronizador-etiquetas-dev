@@ -241,32 +241,99 @@ async function calcularDiferencias(session_id) {
 }
 
 /**
- * Aplica los ajustes de inventario usando la nueva tabla ingredientes_ajustes
+ * Aplica los ajustes de inventario procesando datos directos del frontend
  * @param {Object} req - Request object
  * @param {Object} res - Response object
  */
 async function aplicarAjustesInventario(req, res) {
     try {
-        console.log('🔧 [INVENTARIO] Aplicando ajustes de inventario con nueva estrategia');
+        console.log('🔧 [INVENTARIO] ===== INICIANDO APLICACIÓN DE AJUSTES (NUEVA ESTRATEGIA) =====');
         const { session_id } = req.params;
+        const { ingredientes_contados, usuario_id } = req.body;
         
+        console.log('📋 [INVENTARIO] Datos recibidos:');
+        console.log('- Session ID:', session_id);
+        console.log('- Usuario ID:', usuario_id);
+        console.log('- Ingredientes contados:', ingredientes_contados?.length || 0);
+        
+        // Validaciones básicas
         if (!session_id) {
+            console.error('❌ [INVENTARIO] Error: Falta session_id');
             return res.status(400).json({ error: 'Se requiere session_id' });
+        }
+        
+        if (!usuario_id) {
+            console.error('❌ [INVENTARIO] Error: Falta usuario_id');
+            return res.status(400).json({ error: 'Se requiere usuario_id' });
+        }
+        
+        if (!ingredientes_contados || !Array.isArray(ingredientes_contados)) {
+            console.error('❌ [INVENTARIO] Error: ingredientes_contados debe ser un array');
+            return res.status(400).json({ error: 'Se requiere un array de ingredientes_contados' });
         }
         
         console.log('📋 [INVENTARIO] Procesando ajustes para sesión:', session_id);
         
-        // Calcular diferencias
-        const diferencias = await calcularDiferencias(session_id);
+        // Verificar que la sesión existe (opcional, para logging)
+        const sesionQuery = `
+            SELECT id, usuario_id, estado 
+            FROM inventario_ingredientes_sesiones 
+            WHERE session_id = $1
+        `;
+        const sesionResult = await pool.query(sesionQuery, [session_id]);
+        
+        if (sesionResult.rows.length > 0) {
+            const sesion = sesionResult.rows[0];
+            console.log('✅ [INVENTARIO] Sesión encontrada:', {
+                id: sesion.id,
+                usuario_id: sesion.usuario_id,
+                estado: sesion.estado
+            });
+        } else {
+            console.log('⚠️ [INVENTARIO] Sesión no encontrada en BD, continuando con datos del frontend');
+        }
+        
+        // Calcular diferencias significativas desde los datos del frontend
+        const diferencias = [];
+        
+        for (const ingrediente of ingredientes_contados) {
+            const stockActual = parseFloat(ingrediente.stock_actual) || 0;
+            const stockContado = parseFloat(ingrediente.stock_contado) || 0;
+            const diferencia = stockContado - stockActual;
+            
+            console.log(`📊 [INVENTARIO] Analizando ${ingrediente.nombre}:`);
+            console.log(`   - Stock actual: ${stockActual}`);
+            console.log(`   - Stock contado: ${stockContado}`);
+            console.log(`   - Diferencia: ${diferencia}`);
+            
+            // Solo incluir si hay diferencia significativa (mayor a 0.001)
+            if (Math.abs(diferencia) > 0.001) {
+                diferencias.push({
+                    ingrediente_id: ingrediente.ingrediente_id,
+                    nombre: ingrediente.nombre,
+                    stock_actual: stockActual,
+                    stock_contado: stockContado,
+                    diferencia: diferencia,
+                    usuario_id: usuario_id,
+                    session_id: session_id
+                });
+                
+                console.log(`📈 [INVENTARIO] ✅ Diferencia significativa detectada para ${ingrediente.nombre}: ${diferencia}`);
+            } else {
+                console.log(`📈 [INVENTARIO] ⏭️ Sin diferencia significativa para ${ingrediente.nombre}`);
+            }
+        }
         
         if (diferencias.length === 0) {
             console.log('ℹ️ [INVENTARIO] No hay ajustes necesarios');
             
-            // Marcar sesión como finalizada
-            await pool.query(
-                `UPDATE inventario_ingredientes_sesiones SET estado = 'finalizado' WHERE session_id = $1`,
-                [session_id]
-            );
+            // Marcar sesión como finalizada si existe
+            if (sesionResult.rows.length > 0) {
+                await pool.query(
+                    `UPDATE inventario_ingredientes_sesiones SET estado = 'finalizado' WHERE session_id = $1`,
+                    [session_id]
+                );
+            }
             
             return res.json({ 
                 success: true, 
@@ -285,92 +352,104 @@ async function aplicarAjustesInventario(req, res) {
             let ajustesAplicados = 0;
             
             for (const diff of diferencias) {
-                if (Math.abs(diff.diferencia) > 0.001) {
-                    // Obtener información del ingrediente
-                    const ingredienteQuery = `
-                        SELECT nombre, unidad_medida, stock_actual 
-                        FROM ingredientes 
-                        WHERE id = $1
-                    `;
-                    const ingredienteResult = await client.query(ingredienteQuery, [diff.ingrediente_id]);
-                    const ingredienteInfo = ingredienteResult.rows[0];
-                    
-                    console.log(`\n🔍 ===== NUEVA ESTRATEGIA - AJUSTE INVENTARIO =====`);
-                    console.log(`📋 INGREDIENTE: ${ingredienteInfo.nombre} (ID: ${diff.ingrediente_id})`);
-                    console.log(`📊 UNIDAD DE MEDIDA: ${ingredienteInfo.unidad_medida}`);
-                    console.log(`📊 STOCK ACTUAL EN BD: ${ingredienteInfo.stock_actual}`);
-                    console.log(`📊 STOCK CONTADO: ${diff.stock_contado}`);
-                    console.log(`📊 DIFERENCIA CALCULADA: ${diff.diferencia}`);
-                    
-                    const stockActualReal = parseFloat(ingredienteInfo.stock_actual);
-                    const stockNuevo = parseFloat(diff.stock_contado);
-                    
-                    console.log(`🔄 NUEVA ESTRATEGIA: ACTUALIZACIÓN DIRECTA + REGISTRO EN ingredientes_ajustes`);
-                    console.log(`⚡ OPERACIÓN: ${stockActualReal} → ${stockNuevo}`);
-                    
-                    // 1. Actualizar directamente el stock_actual en la tabla ingredientes
-                    const updateStockQuery = `
-                        UPDATE ingredientes 
-                        SET stock_actual = $1 
-                        WHERE id = $2
-                    `;
-                    
-                    await client.query(updateStockQuery, [stockNuevo, diff.ingrediente_id]);
-                    console.log(`✅ Stock actualizado directamente: ${stockActualReal} → ${stockNuevo}`);
-                    
-                    // 2. Registrar el ajuste en la nueva tabla ingredientes_ajustes
-                    const insertAjusteQuery = `
-                        INSERT INTO ingredientes_ajustes 
-                        (ingrediente_id, usuario_id, tipo_ajuste, stock_anterior, stock_nuevo, observacion, fecha)
-                        VALUES ($1, $2, $3, $4, $5, $6, NOW())
-                    `;
-                    
-                    const observacion = `Ajuste inventario - Session: ${session_id}`;
-                    
-                    await client.query(insertAjusteQuery, [
-                        diff.ingrediente_id,
-                        diff.usuario_id,
-                        'inventario',
-                        stockActualReal,
-                        stockNuevo,
-                        observacion
-                    ]);
-                    
-                    console.log(`✅ Ajuste registrado en ingredientes_ajustes:`);
-                    console.log(`   - Tipo: inventario`);
-                    console.log(`   - Stock anterior: ${stockActualReal}`);
-                    console.log(`   - Stock nuevo: ${stockNuevo}`);
-                    console.log(`   - Diferencia: ${diff.diferencia}`);
-                    console.log(`   - Usuario: ${diff.usuario_id}`);
-                    
-                    // 3. Verificación post-ajuste
-                    const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
-                    const verificacionResult = await client.query(verificacionQuery, [diff.ingrediente_id]);
-                    const stockFinal = verificacionResult.rows[0].stock_actual;
-                    
-                    console.log(`🔍 VERIFICACIÓN: Stock final en BD: ${stockFinal}`);
-                    console.log(`🎯 ¿CORRECTO?: ${Math.abs(stockFinal - stockNuevo) < 0.001 ? 'SÍ ✅' : 'NO ❌'}`);
-                    console.log(`===============================================\n`);
-                    
-                    ajustesAplicados++;
+                // Obtener información actualizada del ingrediente
+                const ingredienteQuery = `
+                    SELECT nombre, unidad_medida, stock_actual 
+                    FROM ingredientes 
+                    WHERE id = $1
+                `;
+                const ingredienteResult = await client.query(ingredienteQuery, [diff.ingrediente_id]);
+                
+                if (ingredienteResult.rows.length === 0) {
+                    console.error(`❌ [INVENTARIO] Ingrediente no encontrado: ${diff.ingrediente_id}`);
+                    continue;
                 }
+                
+                const ingredienteInfo = ingredienteResult.rows[0];
+                
+                console.log(`\n🔍 ===== APLICANDO AJUSTE DE INVENTARIO =====`);
+                console.log(`📋 INGREDIENTE: ${ingredienteInfo.nombre} (ID: ${diff.ingrediente_id})`);
+                console.log(`📊 UNIDAD DE MEDIDA: ${ingredienteInfo.unidad_medida}`);
+                console.log(`📊 STOCK ACTUAL EN BD: ${ingredienteInfo.stock_actual}`);
+                console.log(`📊 STOCK CONTADO: ${diff.stock_contado}`);
+                console.log(`📊 DIFERENCIA CALCULADA: ${diff.diferencia}`);
+                
+                const stockActualReal = parseFloat(ingredienteInfo.stock_actual);
+                const stockNuevo = parseFloat(diff.stock_contado);
+                
+                console.log(`🔄 ESTRATEGIA: ACTUALIZACIÓN DIRECTA + REGISTRO EN ingredientes_ajustes`);
+                console.log(`⚡ OPERACIÓN: ${stockActualReal} → ${stockNuevo}`);
+                
+                // 1. Actualizar directamente el stock_actual en la tabla ingredientes
+                const updateStockQuery = `
+                    UPDATE ingredientes 
+                    SET stock_actual = $1 
+                    WHERE id = $2
+                `;
+                
+                await client.query(updateStockQuery, [stockNuevo, diff.ingrediente_id]);
+                console.log(`✅ Stock actualizado directamente: ${stockActualReal} → ${stockNuevo}`);
+                
+                // 2. Registrar el ajuste en la nueva tabla ingredientes_ajustes
+                const insertAjusteQuery = `
+                    INSERT INTO ingredientes_ajustes 
+                    (ingrediente_id, usuario_id, tipo_ajuste, stock_anterior, stock_nuevo, observacion, fecha)
+                    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                `;
+                
+                const observacion = `Ajuste inventario PC - Session: ${session_id}`;
+                
+                await client.query(insertAjusteQuery, [
+                    diff.ingrediente_id,
+                    diff.usuario_id,
+                    'inventario',
+                    stockActualReal,
+                    stockNuevo,
+                    observacion
+                ]);
+                
+                console.log(`✅ Ajuste registrado en ingredientes_ajustes:`);
+                console.log(`   - Tipo: inventario`);
+                console.log(`   - Stock anterior: ${stockActualReal}`);
+                console.log(`   - Stock nuevo: ${stockNuevo}`);
+                console.log(`   - Diferencia: ${diff.diferencia}`);
+                console.log(`   - Usuario: ${diff.usuario_id}`);
+                
+                // 3. Verificación post-ajuste
+                const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
+                const verificacionResult = await client.query(verificacionQuery, [diff.ingrediente_id]);
+                const stockFinal = verificacionResult.rows[0].stock_actual;
+                
+                console.log(`🔍 VERIFICACIÓN: Stock final en BD: ${stockFinal}`);
+                console.log(`🎯 ¿CORRECTO?: ${Math.abs(stockFinal - stockNuevo) < 0.001 ? 'SÍ ✅' : 'NO ❌'}`);
+                console.log(`===============================================\n`);
+                
+                ajustesAplicados++;
             }
             
-            // Marcar sesión como finalizada
-            await client.query(
-                `UPDATE inventario_ingredientes_sesiones SET estado = 'finalizado' WHERE session_id = $1`,
-                [session_id]
-            );
+            // Marcar sesión como finalizada si existe
+            if (sesionResult.rows.length > 0) {
+                await client.query(
+                    `UPDATE inventario_ingredientes_sesiones SET estado = 'finalizado' WHERE session_id = $1`,
+                    [session_id]
+                );
+            }
             
             await client.query('COMMIT');
             
-            console.log(`🎉 [INVENTARIO] Inventario completado exitosamente con nueva estrategia: ${ajustesAplicados} ajustes aplicados`);
+            console.log(`🎉 [INVENTARIO] ===== INVENTARIO COMPLETADO EXITOSAMENTE =====`);
+            console.log(`🎉 [INVENTARIO] Ajustes aplicados: ${ajustesAplicados}`);
+            console.log(`🎉 [INVENTARIO] Diferencias procesadas: ${diferencias.length}`);
+            console.log(`🎉 [INVENTARIO] Session ID: ${session_id}`);
+            console.log(`🎉 [INVENTARIO] Estrategia: Procesamiento directo desde frontend`);
             
             res.json({ 
                 success: true, 
-                message: 'Ajustes aplicados correctamente con nueva estrategia',
+                message: 'Ajustes aplicados correctamente desde frontend',
                 ajustes_aplicados: ajustesAplicados,
-                diferencias_procesadas: diferencias.length
+                diferencias_procesadas: diferencias.length,
+                session_id: session_id,
+                estrategia: 'frontend_directo'
             });
             
         } catch (error) {
@@ -383,6 +462,7 @@ async function aplicarAjustesInventario(req, res) {
         
     } catch (error) {
         console.error('❌ [INVENTARIO] Error al aplicar ajustes:', error);
+        console.error('❌ [INVENTARIO] Stack trace:', error.stack);
         res.status(500).json({ 
             error: 'Error al aplicar ajustes de inventario',
             detalle: error.message 

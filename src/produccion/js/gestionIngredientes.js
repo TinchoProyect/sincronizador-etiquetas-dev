@@ -696,14 +696,15 @@ function inicializarWebSocketIngredientes() {
                 usuario: usuarioInfo,
                 sectores: sectores
             };
-            console.log('📤 [WEBSOCKET] Enviando iniciar_inventario_ingredientes con datos:', datosInicioSesion);
-            socket.emit('iniciar_inventario_ingredientes', datosInicioSesion);
+            console.log('📤 [WEBSOCKET] Enviando iniciar_inventario (UNIFICADO) con datos:', datosInicioSesion);
+            socket.emit('iniciar_inventario', datosInicioSesion);
         });
         
-        socket.on('inventario_ingredientes_iniciado', (data) => {
-            console.log('🎉 [WEBSOCKET] SESIÓN DE INVENTARIO DE INGREDIENTES INICIADA EXITOSAMENTE');
+        socket.on('inventario_iniciado', (data) => {
+            console.log('🎉 [WEBSOCKET] SESIÓN DE INVENTARIO INICIADA EXITOSAMENTE (UNIFICADO)');
             console.log('🎉 [WEBSOCKET] Datos recibidos del servidor:', data);
             console.log('🎉 [WEBSOCKET] Session ID confirmado:', data.sessionId);
+            console.log('🎉 [WEBSOCKET] Sectores recibidos:', data.sectores);
             
             // Generar código QR con el ID de sesión
             generarCodigoQR(sessionId);
@@ -723,12 +724,20 @@ function inicializarWebSocketIngredientes() {
             mostrarMensaje('Dispositivo móvil desconectado', 'info');
         });
         
-        socket.on('nuevo_ingrediente', (data) => {
-            console.log('🔥 [WEBSOCKET] ===== EVENTO nuevo_ingrediente RECIBIDO =====');
+        socket.on('nuevo_articulo', (data) => {
+            console.log('🔥 [WEBSOCKET] ===== EVENTO nuevo_articulo RECIBIDO (UNIFICADO) =====');
             console.log('🔥 [WEBSOCKET] Datos completos recibidos:', JSON.stringify(data, null, 2));
             console.log('🔥 [WEBSOCKET] Session ID del evento:', data.sessionId);
             console.log('🔥 [WEBSOCKET] Session ID actual de PC:', sessionId);
-            console.log('🔥 [WEBSOCKET] Estructura del ingrediente:', data.ingrediente);
+            
+            // Detectar si es ingrediente o artículo
+            const ingrediente = data.ingrediente;
+            const articulo = data.articulo;
+            const item = ingrediente || articulo;
+            const tipoItem = ingrediente ? 'ingrediente' : 'artículo';
+            
+            console.log('🔥 [WEBSOCKET] Estructura del item:', item);
+            console.log('🔥 [WEBSOCKET] Tipo detectado:', tipoItem);
             console.log('🔥 [WEBSOCKET] Cantidad recibida:', data.cantidad);
             
             // Verificar que el sessionId coincida
@@ -740,12 +749,17 @@ function inicializarWebSocketIngredientes() {
                 return;
             }
             
-            const ingrediente = data.ingrediente;
             const cantidad = data.cantidad;
             
+            if (!item) {
+                console.error(`❌ [WEBSOCKET] ERROR: No se recibió información del ${tipoItem}`);
+                mostrarMensaje(`Error: Datos del ${tipoItem} incompletos`, 'error');
+                return;
+            }
+            
+            // Solo procesar si es ingrediente (este archivo maneja ingredientes)
             if (!ingrediente) {
-                console.error('❌ [WEBSOCKET] ERROR: No se recibió información del ingrediente');
-                mostrarMensaje('Error: Datos del ingrediente incompletos', 'error');
+                console.log('ℹ️ [WEBSOCKET] Item recibido no es ingrediente, ignorando en este contexto');
                 return;
             }
             
@@ -766,7 +780,7 @@ function inicializarWebSocketIngredientes() {
                 mostrarMensaje(`Ingrediente agregado desde móvil: ${ingrediente.nombre}`, 'info');
             }
             
-            console.log('🔥 [WEBSOCKET] ===== FIN PROCESAMIENTO nuevo_ingrediente =====');
+            console.log('🔥 [WEBSOCKET] ===== FIN PROCESAMIENTO nuevo_articulo (INGREDIENTE) =====');
         });
         
         socket.on('disconnect', () => {
@@ -1223,4 +1237,124 @@ document.addEventListener('DOMContentLoaded', () => {
     if (filtroStock) {
         filtroStock.addEventListener('change', aplicarFiltros);
     }
+
+    // Botón finalizar inventario
+    const btnFinalizarInventario = document.getElementById('btn-finalizar-inventario');
+    if (btnFinalizarInventario) {
+        btnFinalizarInventario.addEventListener('click', async () => {
+            await finalizarInventarioManual();
+        });
+    }
 });
+
+// ===== FUNCIÓN PARA FINALIZAR INVENTARIO MANUAL =====
+
+/**
+ * Finaliza el inventario manual aplicando los ajustes de stock
+ */
+async function finalizarInventarioManual() {
+    try {
+        console.log('🏁 [FINALIZAR] ===== INICIANDO FINALIZACIÓN DE INVENTARIO MANUAL =====');
+        console.log('🏁 [FINALIZAR] Session ID:', sessionId);
+        console.log('🏁 [FINALIZAR] Ingredientes en inventario:', ingredientesInventario.size);
+        
+        // Validar que hay una sesión activa
+        if (!sessionId) {
+            console.error('❌ [FINALIZAR] ERROR: No hay sesión activa');
+            mostrarMensaje('Error: No hay una sesión de inventario activa', 'error');
+            return;
+        }
+        
+        // Obtener información del usuario
+        const usuarioInfo = JSON.parse(sessionStorage.getItem('usuarioInventario') || '{}');
+        if (!usuarioInfo.id) {
+            console.error('❌ [FINALIZAR] ERROR: No hay información de usuario');
+            mostrarMensaje('Error: No hay información de usuario válida', 'error');
+            return;
+        }
+        
+        // Recopilar ingredientes contados desde el DOM con información completa
+        const ingredientesContados = [];
+        const inputs = document.querySelectorAll('.stock-fisico');
+        
+        console.log('🔍 [FINALIZAR] Inputs de stock físico encontrados:', inputs.length);
+        
+        inputs.forEach((input, index) => {
+            const ingredienteId = input.dataset.ingrediente;
+            const stockContado = parseFloat(input.value) || 0;
+            
+            console.log(`📊 [FINALIZAR] Input ${index + 1}: ID=${ingredienteId}, Stock=${stockContado}`);
+            
+            if (ingredienteId && stockContado >= 0) {
+                // Buscar información completa del ingrediente
+                const ingredienteInfo = ingredientesInventario.get(ingredienteId);
+                if (ingredienteInfo) {
+                    ingredientesContados.push({
+                        ingrediente_id: parseInt(ingredienteId),
+                        nombre: ingredienteInfo.nombre,
+                        stock_actual: parseFloat(ingredienteInfo.stock_actual) || 0,
+                        stock_contado: stockContado
+                    });
+                }
+            }
+        });
+        
+        console.log('📋 [FINALIZAR] Ingredientes contados para enviar:', ingredientesContados);
+        console.log('📋 [FINALIZAR] Total ingredientes a procesar:', ingredientesContados.length);
+        
+        if (ingredientesContados.length === 0) {
+            console.warn('⚠️ [FINALIZAR] No hay ingredientes contados');
+            mostrarMensaje('No hay ingredientes contados para procesar', 'error');
+            return;
+        }
+        
+        // Mostrar mensaje de procesamiento
+        mostrarMensaje('Procesando inventario...', 'info');
+        
+        // Aplicar ajustes via API con el formato correcto
+        console.log('📤 [FINALIZAR] Enviando request a API...');
+        console.log('📤 [FINALIZAR] URL:', `/api/produccion/inventario-ingredientes/${sessionId}/aplicar`);
+        
+        const response = await fetch(`/api/produccion/inventario-ingredientes/${sessionId}/aplicar`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ingredientes_contados: ingredientesContados,
+                usuario_id: usuarioInfo.id
+            })
+        });
+        
+        console.log('📡 [FINALIZAR] Respuesta recibida:');
+        console.log('- Status:', response.status);
+        console.log('- Status Text:', response.statusText);
+        console.log('- OK:', response.ok);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+            console.error('❌ [FINALIZAR] Error en respuesta:', errorData);
+            throw new Error(errorData.error || `Error HTTP ${response.status}`);
+        }
+        
+        const resultado = await response.json();
+        console.log('✅ [FINALIZAR] Resultado exitoso:', resultado);
+        
+        // Mostrar mensaje de éxito
+        mostrarMensaje('Inventario finalizado correctamente. Los ajustes han sido aplicados.', 'info');
+        
+        // Cerrar modal después de un breve delay
+        setTimeout(() => {
+            cerrarModal();
+            // Recargar la tabla de ingredientes para mostrar los nuevos stocks
+            cargarIngredientes();
+        }, 2000);
+        
+        console.log('🎉 [FINALIZAR] ===== INVENTARIO FINALIZADO EXITOSAMENTE =====');
+        
+    } catch (error) {
+        console.error('❌ [FINALIZAR] Error al finalizar inventario:', error);
+        console.error('❌ [FINALIZAR] Stack trace:', error.stack);
+        mostrarMensaje('Error al finalizar inventario: ' + error.message, 'error');
+    }
+}
