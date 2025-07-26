@@ -191,26 +191,39 @@ router.get('/ingredientes/nuevo-codigo', async (req, res) => {
 
 router.get('/ingredientes/buscar', async (req, res) => {
     try {
-        const { nombre } = req.query;
-        if (!nombre) {
-            return res.status(400).json({ error: 'Se requiere el parámetro nombre' });
+        const { nombre, codigo } = req.query;
+        
+        if (codigo) {
+            // Buscar por código usando el controlador
+            const { buscarIngredientePorCodigo } = require('../controllers/ingredientes');
+            const ingrediente = await buscarIngredientePorCodigo(codigo);
+            return res.json(ingrediente);
         }
         
-        const query = `
-            SELECT id 
-            FROM ingredientes 
-            WHERE LOWER(nombre) = LOWER($1)
-        `;
-        const result = await req.db.query(query, [nombre]);
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Ingrediente no encontrado' });
+        if (nombre) {
+            // Buscar por nombre (lógica original)
+            const query = `
+                SELECT id 
+                FROM ingredientes 
+                WHERE LOWER(nombre) = LOWER($1)
+            `;
+            const result = await req.db.query(query, [nombre]);
+            
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: 'Ingrediente no encontrado' });
+            }
+            
+            return res.json({ id: result.rows[0].id });
         }
         
-        res.json({ id: result.rows[0].id });
+        return res.status(400).json({ error: 'Se requiere el parámetro nombre o codigo' });
     } catch (error) {
         console.error('Error en ruta GET /ingredientes/buscar:', error);
-        res.status(500).json({ error: error.message });
+        if (error.message === 'Ingrediente no encontrado') {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
     }
 });
 

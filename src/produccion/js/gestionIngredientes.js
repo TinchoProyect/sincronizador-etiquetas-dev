@@ -1,4 +1,5 @@
-// Variables globales para el inventario y ajustes de ingredientes
+// ===== VARIABLES GLOBALES =====
+// Variables para el inventario y ajustes de ingredientes
 let usuarioSeleccionado = null;
 let usuarioAjustes = null;
 let ingredientesInventario = new Map(); // Mapa para almacenar los ingredientes escaneados
@@ -7,9 +8,14 @@ let socket = null;
 let sessionId = null;
 let modoSeleccion = false;
 
-// Variables globales para filtrado
+// Variables para filtrado
 let todosLosIngredientes = []; // Array para almacenar todos los ingredientes cargados
 let ingredientesFiltrados = []; // Array para almacenar los ingredientes filtrados
+
+// Variables para sectores
+let todosLosSectores = []; // Array para almacenar todos los sectores disponibles
+
+// ===== FUNCIONES UTILITARIAS =====
 
 /**
  * Formatea un número para mostrar de forma legible
@@ -37,6 +43,8 @@ function formatearNumero(valor) {
 
 // Función para mostrar mensajes
 function mostrarMensaje(mensaje, tipo = 'error') {
+    console.log(`📢 [MENSAJE] ${tipo.toUpperCase()}: ${mensaje}`);
+    
     const mensajeDiv = document.createElement('div');
     mensajeDiv.className = tipo === 'error' ? 'mensaje-error' : 'mensaje-info';
     mensajeDiv.textContent = mensaje;
@@ -60,13 +68,19 @@ function mostrarMensaje(mensaje, tipo = 'error') {
     }, 3000);
 }
 
+// ===== FUNCIONES DE TABLA Y FILTRADO =====
+
 // Función para actualizar la tabla con los ingredientes
 function actualizarTablaIngredientes(ingredientes) {
     console.log('🔄 [DEBUG] actualizarTablaIngredientes - Iniciando actualización de tabla');
     console.log('🔄 [DEBUG] Cantidad de ingredientes recibidos:', ingredientes?.length || 0);
+    console.log('🔄 [DEBUG] Modo selección activo:', modoSeleccion);
     
     const tbody = document.getElementById('tabla-ingredientes-body');
-    if (!tbody) return;
+    if (!tbody) {
+        console.error('❌ [DEBUG] No se encontró tbody con ID tabla-ingredientes-body');
+        return;
+    }
 
     tbody.innerHTML = '';
 
@@ -180,8 +194,8 @@ function filtrarPorStock(ingredientes, condicion) {
 function aplicarFiltros() {
     console.log('🔍 [DEBUG] aplicarFiltros - Iniciando aplicación de filtros');
     
-    const textoFiltro = document.getElementById('filtro-nombre').value;
-    const stockFiltro = document.getElementById('filtro-stock').value;
+    const textoFiltro = document.getElementById('filtro-nombre')?.value || '';
+    const stockFiltro = document.getElementById('filtro-stock')?.value || 'todos';
     
     console.log('🔍 [DEBUG] Filtros actuales:');
     console.log('- Texto:', textoFiltro);
@@ -211,10 +225,12 @@ function aplicarFiltros() {
     actualizarTablaIngredientes(ingredientesFiltrados);
 }
 
+// ===== FUNCIONES DE CARGA DE DATOS =====
+
 // Función para cargar los ingredientes
 async function cargarIngredientes() {
     try {
-        console.log('Cargando ingredientes...');
+        console.log('🔄 [CARGA] Cargando ingredientes...');
         const response = await fetch('/api/produccion/ingredientes');
         
         if (!response.ok) {
@@ -223,7 +239,7 @@ async function cargarIngredientes() {
         }
 
         const ingredientes = await response.json();
-        console.log('Ingredientes cargados:', ingredientes.length);
+        console.log('✅ [CARGA] Ingredientes cargados:', ingredientes.length);
         
         // Almacenar todos los ingredientes globalmente
         todosLosIngredientes = ingredientes;
@@ -232,173 +248,606 @@ async function cargarIngredientes() {
         actualizarTablaIngredientes(ingredientes);
 
     } catch (error) {
-        console.error('Error al cargar ingredientes:', error);
+        console.error('❌ [CARGA] Error al cargar ingredientes:', error);
         mostrarMensaje(error.message || 'No se pudieron cargar los ingredientes');
     }
 }
 
-// Funciones para el modal de inventario
-function mostrarModal() {
-    const modal = document.getElementById('modal-inventario');
-    modal.style.display = 'block';
-    document.getElementById('paso-usuario').style.display = 'block';
-    document.getElementById('paso-conteo').style.display = 'none';
-    cargarUsuarios();
-}
-
-function cerrarModal() {
-    const modal = document.getElementById('modal-inventario');
-    modal.style.display = 'none';
-    reiniciarInventario();
-}
-
-function reiniciarInventario() {
-    console.log('🧹 Reiniciando inventario...');
-    usuarioSeleccionado = null;
-    ingredientesInventario.clear();
-    document.getElementById('select-usuario').value = '';
-    document.getElementById('input-codigo-barras').value = '';
-    document.getElementById('ingredientes-inventario').innerHTML = '';
-    document.getElementById('btn-continuar-usuario').disabled = true;
-    
-    // Limpiar botones de prueba si existen
-    const testButtons = document.getElementById('test-buttons');
-    if (testButtons) {
-        console.log('🧹 Eliminando botones de prueba existentes');
-        testButtons.remove();
-    }
-    
-    // Cerrar conexión WebSocket si existe
-    if (socket) {
-        console.log('🧹 Cerrando conexión WebSocket');
-        socket.emit('finalizar_inventario', { sessionId });
-        socket.disconnect();
-        socket = null;
-    }
-    sessionId = null;
-    sessionStorage.removeItem('usuarioInventario');
-    console.log('🧹 Inventario reiniciado completamente');
-}
-
 async function cargarUsuarios() {
     try {
-        console.log('🔄 Cargando usuarios...');
-        
-        // Limpiar botones de prueba existentes antes de cargar nuevos
-        const testButtonsExistentes = document.getElementById('test-buttons');
-        if (testButtonsExistentes) {
-            console.log('🧹 Eliminando botones de prueba existentes antes de cargar');
-            testButtonsExistentes.remove();
-        }
+        console.log('🔄 [USUARIOS] Cargando usuarios...');
         
         const response = await fetch('/api/usuarios?rol=3&activo=true');
         if (!response.ok) throw new Error('Error al cargar usuarios');
         
         const usuarios = await response.json();
         const select = document.getElementById('select-usuario');
-        select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
+        if (select) {
+            select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
+            
+            usuarios.forEach(usuario => {
+                const option = document.createElement('option');
+                option.value = usuario.id;
+                option.textContent = usuario.nombre_completo;
+                select.appendChild(option);
+            });
+        }
         
-        usuarios.forEach(usuario => {
-            const option = document.createElement('option');
-            option.value = usuario.id;
-            option.textContent = usuario.nombre_completo;
-            select.appendChild(option);
-        });
-        
-        console.log('✅ Usuarios cargados:', usuarios.length);
+        console.log('✅ [USUARIOS] Usuarios cargados:', usuarios.length);
         
     } catch (error) {
-        console.error('Error al cargar usuarios:', error);
+        console.error('❌ [USUARIOS] Error al cargar usuarios:', error);
         mostrarMensaje('No se pudieron cargar los usuarios');
     }
 }
 
-function mostrarPasoConteo() {
-    document.getElementById('paso-usuario').style.display = 'none';
-    document.getElementById('paso-conteo').style.display = 'block';
-    
-    // PRIMERO: Guardar el usuario seleccionado en la sesión
-    const usuarioNombre = document.getElementById('select-usuario').options[document.getElementById('select-usuario').selectedIndex].text;
-    sessionStorage.setItem('usuarioInventario', JSON.stringify({
-        id: usuarioSeleccionado,
-        nombre: usuarioNombre
-    }));
-    
-    // DESPUÉS: Inicializar sesión de inventario de ingredientes
-    inicializarSesionInventario();
-    
-    document.getElementById('input-codigo-barras').focus();
+async function cargarUsuariosAjustes() {
+    try {
+        console.log('🔄 [USUARIOS-AJUSTES] Cargando usuarios para ajustes...');
+        
+        const response = await fetch('/api/usuarios?rol=3&activo=true');
+        if (!response.ok) throw new Error('Error al cargar usuarios');
+        
+        const usuarios = await response.json();
+        const select = document.getElementById('select-usuario-ajustes');
+        if (select) {
+            select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
+            
+            usuarios.forEach(usuario => {
+                const option = document.createElement('option');
+                option.value = usuario.id;
+                option.textContent = usuario.nombre_completo;
+                select.appendChild(option);
+            });
+        }
+        
+        console.log('✅ [USUARIOS-AJUSTES] Usuarios cargados:', usuarios.length);
+        
+    } catch (error) {
+        console.error('❌ [USUARIOS-AJUSTES] Error al cargar usuarios:', error);
+        mostrarMensaje('No se pudieron cargar los usuarios');
+    }
 }
 
 /**
- * Inicializa una nueva sesión de inventario de ingredientes
+ * Carga los sectores desde la API
  */
-async function inicializarSesionInventario() {
+async function cargarSectores() {
     try {
-        console.log('🚀 [INVENTARIO] Iniciando sesión de inventario de ingredientes');
+        console.log('🔄 [SECTORES] ===== INICIANDO CARGA DE SECTORES =====');
+        console.log('🔄 [SECTORES] Timestamp:', new Date().toISOString());
+        console.log('🔄 [SECTORES] URL del endpoint:', '/api/produccion/sectores');
+        console.log('🔄 [SECTORES] Realizando fetch...');
         
-        // Generar ID de sesión único
+        const response = await fetch('/api/produccion/sectores');
+        
+        console.log('📡 [SECTORES] Respuesta recibida:');
+        console.log('- Status:', response.status);
+        console.log('- Status Text:', response.statusText);
+        console.log('- OK:', response.ok);
+        console.log('- Headers:', Object.fromEntries(response.headers.entries()));
+        
+        if (!response.ok) {
+            console.error('❌ [SECTORES] Respuesta no exitosa del servidor');
+            console.error('❌ [SECTORES] Status completo:', response.status, response.statusText);
+            
+            // Intentar leer el cuerpo del error
+            let errorBody = 'No se pudo leer el cuerpo del error';
+            try {
+                errorBody = await response.text();
+                console.error('❌ [SECTORES] Cuerpo del error:', errorBody);
+            } catch (e) {
+                console.error('❌ [SECTORES] Error al leer cuerpo del error:', e);
+            }
+            
+            throw new Error(`Error HTTP ${response.status}: ${response.statusText} - ${errorBody}`);
+        }
+        
+        console.log('✅ [SECTORES] Respuesta exitosa, parseando JSON...');
+        const sectores = await response.json();
+        
+        console.log('🎉 [SECTORES] ===== SECTORES CARGADOS EXITOSAMENTE =====');
+        console.log('📊 [SECTORES] Total de sectores recibidos:', sectores.length);
+        console.log('📋 [SECTORES] Lista completa de sectores:');
+        
+        sectores.forEach((sector, index) => {
+            console.log(`  ${index + 1}. ID: ${sector.id} | Nombre: "${sector.nombre}" | Descripción: "${sector.descripcion || 'Sin descripción'}"`);
+        });
+        
+        // Almacenar sectores en variable global
+        todosLosSectores = sectores;
+        console.log('💾 [SECTORES] Sectores almacenados en variable global todosLosSectores');
+        console.log('💾 [SECTORES] Verificación - todosLosSectores.length:', todosLosSectores.length);
+        
+        return sectores;
+    } catch (error) {
+        console.error('❌ [SECTORES] ===== ERROR AL CARGAR SECTORES =====');
+        console.error('❌ [SECTORES] Tipo de error:', error.constructor.name);
+        console.error('❌ [SECTORES] Mensaje de error:', error.message);
+        console.error('❌ [SECTORES] Stack trace:', error.stack);
+        
+        // Información adicional para debugging
+        console.error('🔍 [SECTORES] Información de debugging:');
+        console.error('- URL intentada:', '/api/produccion/sectores');
+        console.error('- Timestamp del error:', new Date().toISOString());
+        console.error('- User Agent:', navigator.userAgent);
+        console.error('- Location:', window.location.href);
+        
+        // Devolver array vacío en caso de error
+        todosLosSectores = [];
+        console.log('💾 [SECTORES] Variable global todosLosSectores reiniciada a array vacío');
+        
+        return [];
+    }
+}
+
+// ===== FUNCIONES DE MODAL DE INVENTARIO =====
+
+function mostrarModal() {
+    console.log('🔄 [MODAL] Mostrando modal de inventario');
+    
+    const modal = document.getElementById('modal-inventario');
+    if (modal) {
+        modal.style.display = 'block';
+        
+        const pasoUsuario = document.getElementById('paso-usuario');
+        const pasoConteo = document.getElementById('paso-conteo');
+        
+        if (pasoUsuario) pasoUsuario.style.display = 'block';
+        if (pasoConteo) pasoConteo.style.display = 'none';
+        
+        cargarUsuarios();
+    }
+}
+
+function cerrarModal() {
+    console.log('🔄 [MODAL] Cerrando modal de inventario');
+    
+    const modal = document.getElementById('modal-inventario');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    reiniciarInventario();
+}
+
+function reiniciarInventario() {
+    console.log('🧹 [INVENTARIO] Reiniciando inventario...');
+    
+    usuarioSeleccionado = null;
+    ingredientesInventario.clear();
+    
+    const selectUsuario = document.getElementById('select-usuario');
+    const inputCodigo = document.getElementById('input-codigo-barras');
+    const contenedorIngredientes = document.getElementById('ingredientes-inventario');
+    const btnContinuar = document.getElementById('btn-continuar-usuario');
+    
+    if (selectUsuario) selectUsuario.value = '';
+    if (inputCodigo) inputCodigo.value = '';
+    if (contenedorIngredientes) contenedorIngredientes.innerHTML = '';
+    if (btnContinuar) btnContinuar.disabled = true;
+    
+    // Cerrar conexión WebSocket si existe
+    if (socket) {
+        console.log('🧹 [INVENTARIO] Cerrando conexión WebSocket');
+        socket.emit('finalizar_inventario', { sessionId });
+        socket.disconnect();
+        socket = null;
+    }
+    sessionId = null;
+    sessionStorage.removeItem('usuarioInventario');
+    
+    console.log('✅ [INVENTARIO] Inventario reiniciado completamente');
+}
+
+/**
+ * Muestra el paso de selección de sectores
+ */
+async function mostrarPasoSectores() {
+    console.log('🏢 [SECTORES] Mostrando paso de selección de sectores');
+    
+    // Ocultar paso de usuario y mostrar paso de sectores
+    const pasoUsuario = document.getElementById('paso-usuario');
+    const pasoSectores = document.getElementById('paso-sectores');
+    
+    if (pasoUsuario) pasoUsuario.style.display = 'none';
+    if (pasoSectores) pasoSectores.style.display = 'block';
+    
+    try {
+        // Cargar sectores desde backend
+        console.log('🔄 [SECTORES] Cargando sectores desde API...');
+        await cargarSectores();
+        
+        // Mostrar checkboxes de sectores
+        console.log('🔄 [SECTORES] Llamando a mostrarCheckboxesSectores...');
+        mostrarCheckboxesSectores();
+        
+        console.log('✅ [SECTORES] Paso de sectores mostrado correctamente');
+    } catch (error) {
+        console.error('❌ [SECTORES] Error al mostrar paso de sectores:', error);
+        mostrarMensaje('Error al cargar sectores: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Muestra los checkboxes de sectores en el contenedor correspondiente
+ */
+function mostrarCheckboxesSectores() {
+    console.log('🔄 [SECTORES] mostrarCheckboxesSectores llamada');
+    console.log(`📊 [SECTORES] Sectores disponibles para mostrar: ${todosLosSectores.length}`);
+    
+    const contenedor = document.getElementById('sectores-checkboxes');
+    if (!contenedor) {
+        console.error('❌ [SECTORES] No se encontró el contenedor #sectores-checkboxes');
+        return;
+    }
+    
+    // Limpiar contenedor
+    contenedor.innerHTML = '';
+    
+    if (todosLosSectores.length === 0) {
+        console.log('⚠️ [SECTORES] No hay sectores para mostrar');
+        contenedor.innerHTML = '<p style="color: #666; font-style: italic;">No hay sectores disponibles</p>';
+        return;
+    }
+    
+    console.log('✅ [SECTORES] Renderizando sectores:', todosLosSectores.map(s => s.nombre));
+    
+    // Crear checkboxes para cada sector
+    todosLosSectores.forEach(sector => {
+        const checkboxDiv = document.createElement('div');
+        checkboxDiv.className = 'sector-checkbox-item';
+        checkboxDiv.style.cssText = 'margin-bottom: 8px; display: flex; align-items: center;';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `sector-${sector.id}`;
+        checkbox.className = 'sector-checkbox';
+        checkbox.setAttribute('data-sector-id', sector.id);
+        checkbox.style.cssText = 'margin-right: 8px;';
+        
+        const label = document.createElement('label');
+        label.htmlFor = `sector-${sector.id}`;
+        label.textContent = sector.nombre;
+        label.style.cssText = 'cursor: pointer; user-select: none;';
+        
+        // Agregar descripción si existe
+        if (sector.descripcion && sector.descripcion.trim() !== '') {
+            const descripcion = document.createElement('small');
+            descripcion.textContent = ` (${sector.descripcion})`;
+            descripcion.style.cssText = 'color: #666; margin-left: 4px;';
+            label.appendChild(descripcion);
+        }
+        
+        checkboxDiv.appendChild(checkbox);
+        checkboxDiv.appendChild(label);
+        contenedor.appendChild(checkboxDiv);
+        
+        console.log(`📋 [SECTORES] Checkbox creado: ${sector.nombre} (ID: ${sector.id})`);
+    });
+    
+    // Agregar event listener para el checkbox "Todos los sectores"
+    const checkboxTodos = document.getElementById('todos-sectores');
+    if (checkboxTodos) {
+        checkboxTodos.addEventListener('change', function() {
+            const sectoresCheckboxes = document.querySelectorAll('.sector-checkbox');
+            
+            if (this.checked) {
+                console.log('🔄 [SECTORES] "Todos los sectores" marcado - deshabilitando sectores individuales');
+                // Deshabilitar y desmarcar todos los sectores individuales
+                sectoresCheckboxes.forEach(checkbox => {
+                    checkbox.disabled = true;
+                    checkbox.checked = false;
+                });
+            } else {
+                console.log('🔄 [SECTORES] "Todos los sectores" desmarcado - habilitando sectores individuales');
+                // Habilitar todos los sectores individuales
+                sectoresCheckboxes.forEach(checkbox => {
+                    checkbox.disabled = false;
+                });
+            }
+        });
+        
+        console.log('✅ [SECTORES] Event listener agregado para "Todos los sectores"');
+    } else {
+        console.warn('⚠️ [SECTORES] No se encontró el checkbox "Todos los sectores"');
+    }
+    
+    console.log(`✅ [SECTORES] ${todosLosSectores.length} checkboxes de sectores renderizados correctamente`);
+}
+
+function mostrarPasoConteo() {
+    console.log('🔄 [CONTEO] Mostrando paso de conteo');
+    
+    const pasoSectores = document.getElementById('paso-sectores');
+    const pasoConteo = document.getElementById('paso-conteo');
+    
+    if (pasoSectores) pasoSectores.style.display = 'none';
+    if (pasoConteo) pasoConteo.style.display = 'block';
+    
+    // PRIMERO: Guardar el usuario seleccionado en la sesión
+    const selectUsuario = document.getElementById('select-usuario');
+    if (selectUsuario && selectUsuario.selectedIndex > 0) {
+        const usuarioNombre = selectUsuario.options[selectUsuario.selectedIndex].text;
+        sessionStorage.setItem('usuarioInventario', JSON.stringify({
+            id: usuarioSeleccionado,
+            nombre: usuarioNombre
+        }));
+    }
+    
+    // MOSTRAR INFORMACIÓN DE SECTORES SELECCIONADOS
+    mostrarInfoSectoresInventario();
+    
+    // DESPUÉS: Inicializar WebSocket para ingredientes
+    inicializarWebSocketIngredientes();
+    
+    const inputCodigo = document.getElementById('input-codigo-barras');
+    if (inputCodigo) {
+        inputCodigo.focus();
+    }
+}
+
+/**
+ * Muestra la información de sectores seleccionados en el paso de conteo
+ */
+function mostrarInfoSectoresInventario() {
+    console.log('🏢 [INFO-SECTORES] ===== MOSTRANDO INFORMACIÓN DE SECTORES =====');
+    
+    const sectoresInfo = sessionStorage.getItem('sectoresInventario');
+    const sectoresTextoElement = document.getElementById('sectores-inventario-texto');
+    
+    if (!sectoresTextoElement) {
+        console.error('❌ [INFO-SECTORES] No se encontró elemento sectores-inventario-texto');
+        return;
+    }
+    
+    console.log('🏢 [INFO-SECTORES] Sectores en sessionStorage:', sectoresInfo);
+    
+    if (sectoresInfo === 'TODOS') {
+        console.log('🏢 [INFO-SECTORES] Mostrando: Todos los sectores');
+        sectoresTextoElement.innerHTML = '📦 <strong>Todos los sectores</strong> - Inventario completo de ingredientes';
+    } else {
+        try {
+            const sectoresSeleccionados = JSON.parse(sectoresInfo || '[]');
+            console.log('🏢 [INFO-SECTORES] Sectores específicos:', sectoresSeleccionados);
+            
+            if (sectoresSeleccionados.length === 0) {
+                console.log('🏢 [INFO-SECTORES] No hay sectores específicos seleccionados');
+                sectoresTextoElement.innerHTML = '⚠️ <strong>Sin sectores específicos</strong> - Revise la configuración';
+            } else {
+                // Buscar nombres de sectores
+                const nombresSectores = sectoresSeleccionados.map(sectorId => {
+                    const sector = todosLosSectores.find(s => s.id === sectorId);
+                    return sector ? sector.nombre : `Sector ${sectorId}`;
+                });
+                
+                console.log('🏢 [INFO-SECTORES] Nombres de sectores:', nombresSectores);
+                
+                const textoSectores = nombresSectores.join(', ');
+                sectoresTextoElement.innerHTML = `🏢 <strong>Sectores seleccionados:</strong> ${textoSectores}`;
+            }
+        } catch (e) {
+            console.error('❌ [INFO-SECTORES] Error al parsear sectores:', e);
+            sectoresTextoElement.innerHTML = '❌ <strong>Error</strong> - No se pudo cargar información de sectores';
+        }
+    }
+    
+    console.log('✅ [INFO-SECTORES] Información de sectores mostrada correctamente');
+}
+
+// ===== FUNCIONES DE WEBSOCKET =====
+
+/**
+ * Inicializa la conexión WebSocket para inventario de ingredientes
+ */
+function inicializarWebSocketIngredientes() {
+    try {
+        console.log('🚀 [WEBSOCKET] ===== INICIANDO WEBSOCKET PARA INVENTARIO DE INGREDIENTES =====');
+        console.log('📅 [WEBSOCKET] Timestamp:', new Date().toISOString());
+        
+        // Verificar si io está disponible
+        if (typeof io === 'undefined') {
+            console.error('❌ [WEBSOCKET] Socket.IO no está disponible');
+            mostrarMensaje('Error: Socket.IO no está cargado', 'error');
+            return;
+        }
+        
+        // Conectar a WebSocket con opciones de reconexión
+        socket = io({
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
+        
+        // Generar ID de sesión único con timestamp para debugging
         const timestamp = Date.now();
         const random = Math.random().toString(36).substr(2, 9);
         sessionId = `inv_ing_${timestamp}_${random}`;
         
-        console.log('🆔 [INVENTARIO] Session ID generado:', sessionId);
+        console.log('🆔 [WEBSOCKET] ===== GENERACIÓN DE SESSION ID =====');
+        console.log('- Timestamp:', timestamp);
+        console.log('- Random:', random);
+        console.log('- Session ID completo:', sessionId);
         
-        // Obtener información del usuario
-        const usuarioInfo = JSON.parse(sessionStorage.getItem('usuarioInventario') || '{}');
-        console.log('👤 [INVENTARIO] Usuario seleccionado:', usuarioInfo);
-        
-        // Iniciar sesión en el backend
-        const response = await fetch('/api/produccion/inventario-ingredientes/iniciar', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                usuario_id: usuarioInfo.id,
-                session_id: sessionId
-            })
+        socket.on('connect', () => {
+            console.log('✅ [WEBSOCKET] Conectado a WebSocket con socket ID:', socket.id);
+            
+            // Obtener información del usuario y sectores
+            const usuarioInfo = JSON.parse(sessionStorage.getItem('usuarioInventario') || '{}');
+            const sectoresInfo = sessionStorage.getItem('sectoresInventario');
+            
+            let sectores;
+            if (sectoresInfo === 'TODOS') {
+                sectores = 'TODOS';
+            } else {
+                try {
+                    sectores = JSON.parse(sectoresInfo || '[]');
+                } catch (e) {
+                    console.error('❌ [WEBSOCKET] Error al parsear sectores:', e);
+                    sectores = [];
+                }
+            }
+            
+            console.log('👤 [WEBSOCKET] Información del usuario para sesión:', usuarioInfo);
+            console.log('🏢 [WEBSOCKET] Sectores seleccionados:', sectores);
+            
+            // Iniciar sesión de inventario de ingredientes
+            const datosInicioSesion = { 
+                sessionId,
+                usuario: usuarioInfo,
+                sectores: sectores
+            };
+            console.log('📤 [WEBSOCKET] Enviando iniciar_inventario_ingredientes con datos:', datosInicioSesion);
+            socket.emit('iniciar_inventario_ingredientes', datosInicioSesion);
         });
         
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al iniciar sesión de inventario');
-        }
+        socket.on('inventario_ingredientes_iniciado', (data) => {
+            console.log('🎉 [WEBSOCKET] SESIÓN DE INVENTARIO DE INGREDIENTES INICIADA EXITOSAMENTE');
+            console.log('🎉 [WEBSOCKET] Datos recibidos del servidor:', data);
+            console.log('🎉 [WEBSOCKET] Session ID confirmado:', data.sessionId);
+            
+            // Generar código QR con el ID de sesión
+            generarCodigoQR(sessionId);
+            
+            mostrarMensaje('Sesión de inventario de ingredientes iniciada correctamente', 'info');
+        });
         
-        const resultado = await response.json();
-        console.log('✅ [INVENTARIO] Sesión iniciada exitosamente:', resultado);
+        socket.on('movil_conectado', (data) => {
+            console.log('📱 [WEBSOCKET] DISPOSITIVO MÓVIL CONECTADO');
+            console.log('📱 [WEBSOCKET] Datos del móvil:', data);
+            mostrarMensaje('Dispositivo móvil conectado', 'info');
+        });
         
-        // Generar código QR para acceso móvil
-        generarCodigoQR();
+        socket.on('movil_desconectado', (data) => {
+            console.log('📱 [WEBSOCKET] DISPOSITIVO MÓVIL DESCONECTADO');
+            console.log('📱 [WEBSOCKET] Datos:', data);
+            mostrarMensaje('Dispositivo móvil desconectado', 'info');
+        });
         
-        mostrarMensaje('Sesión de inventario iniciada correctamente', 'info');
+        socket.on('nuevo_ingrediente', (data) => {
+            console.log('🔥 [WEBSOCKET] ===== EVENTO nuevo_ingrediente RECIBIDO =====');
+            console.log('🔥 [WEBSOCKET] Datos completos recibidos:', JSON.stringify(data, null, 2));
+            console.log('🔥 [WEBSOCKET] Session ID del evento:', data.sessionId);
+            console.log('🔥 [WEBSOCKET] Session ID actual de PC:', sessionId);
+            console.log('🔥 [WEBSOCKET] Estructura del ingrediente:', data.ingrediente);
+            console.log('🔥 [WEBSOCKET] Cantidad recibida:', data.cantidad);
+            
+            // Verificar que el sessionId coincida
+            if (data.sessionId !== sessionId) {
+                console.error('❌ [WEBSOCKET] ERROR: Session ID no coincide');
+                console.error('❌ [WEBSOCKET] Esperado:', sessionId);
+                console.error('❌ [WEBSOCKET] Recibido:', data.sessionId);
+                mostrarMensaje('Error: Sesión no válida', 'error');
+                return;
+            }
+            
+            const ingrediente = data.ingrediente;
+            const cantidad = data.cantidad;
+            
+            if (!ingrediente) {
+                console.error('❌ [WEBSOCKET] ERROR: No se recibió información del ingrediente');
+                mostrarMensaje('Error: Datos del ingrediente incompletos', 'error');
+                return;
+            }
+            
+            console.log('🔍 [WEBSOCKET] Buscando ingrediente existente con ID:', ingrediente.id);
+            
+            // Si el ingrediente ya existe, actualizar cantidad
+            const existingInput = document.querySelector(`input[data-ingrediente="${ingrediente.id}"]`);
+            if (existingInput) {
+                console.log('✅ [WEBSOCKET] Ingrediente existente encontrado, actualizando cantidad');
+                console.log('✅ [WEBSOCKET] Input encontrado:', existingInput);
+                existingInput.value = cantidad;
+                mostrarMensaje(`Cantidad actualizada para ${ingrediente.nombre}: ${cantidad}`, 'info');
+            } else {
+                console.log('➕ [WEBSOCKET] Ingrediente nuevo, agregando al inventario');
+                console.log('➕ [WEBSOCKET] Llamando a agregarIngredienteAInventario...');
+                // Agregar nuevo ingrediente
+                agregarIngredienteAInventario(ingrediente, cantidad);
+                mostrarMensaje(`Ingrediente agregado desde móvil: ${ingrediente.nombre}`, 'info');
+            }
+            
+            console.log('🔥 [WEBSOCKET] ===== FIN PROCESAMIENTO nuevo_ingrediente =====');
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('❌ [WEBSOCKET] Desconectado de WebSocket');
+            console.log('❌ [WEBSOCKET] Session ID era:', sessionId);
+        });
+        
+        // Agregar listener para errores generales
+        socket.on('error', (error) => {
+            console.error('❌ [WEBSOCKET] Error en WebSocket:', error);
+        });
+        
+        // Agregar listener para eventos no manejados
+        socket.onAny((eventName, ...args) => {
+            if (!['connect', 'inventario_ingredientes_iniciado', 'movil_conectado', 'movil_desconectado', 'nuevo_ingrediente', 'disconnect'].includes(eventName)) {
+                console.log('🔔 [WEBSOCKET] Evento WebSocket no manejado:', eventName, args);
+            }
+        });
         
     } catch (error) {
-        console.error('❌ [INVENTARIO] Error al iniciar sesión:', error);
-        mostrarMensaje('Error al iniciar sesión de inventario: ' + error.message);
+        console.error('❌ [WEBSOCKET] Error al inicializar WebSocket:', error);
+        mostrarMensaje('Error al conectar con el servidor', 'error');
     }
+}
+
+/**
+ * Espera a que la librería QRCode esté disponible
+ */
+function esperarLibreriaQR() {
+    return new Promise((resolve) => {
+        console.log('⏳ [QR] Verificando disponibilidad de librería QRCode...');
+        
+        if (typeof QRCode !== 'undefined') {
+            console.log('✅ [QR] Librería QRCode ya está disponible');
+            resolve();
+        } else {
+            console.log('🔄 [QR] Librería QRCode no disponible, esperando...');
+            let intentos = 0;
+            const maxIntentos = 50; // 5 segundos máximo (50 * 100ms)
+            
+            const interval = setInterval(() => {
+                intentos++;
+                console.log(`🔄 [QR] Intento ${intentos}/${maxIntentos} - Verificando QRCode...`);
+                
+                if (typeof QRCode !== 'undefined') {
+                    console.log('✅ [QR] Librería QRCode cargada exitosamente');
+                    clearInterval(interval);
+                    resolve();
+                } else if (intentos >= maxIntentos) {
+                    console.error('❌ [QR] Timeout: Librería QRCode no se cargó después de 5 segundos');
+                    clearInterval(interval);
+                    resolve(); // Resolver de todos modos para continuar con el flujo
+                }
+            }, 100); // Verificar cada 100ms
+        }
+    });
 }
 
 /**
  * Genera el código QR para acceso móvil al inventario
  */
-function generarCodigoQR() {
+async function generarCodigoQR() {
     try {
-        console.log('🔗 [PC] ===== GENERANDO CÓDIGO QR =====');
-        console.log('🔗 [PC] Timestamp:', new Date().toISOString());
-        console.log('🔗 [PC] Session ID actual:', sessionId);
-        console.log('🔗 [PC] Tipo de sessionId:', typeof sessionId);
-        console.log('🔗 [PC] Longitud sessionId:', sessionId?.length);
+        console.log('🔗 [QR] ===== GENERANDO CÓDIGO QR =====');
+        console.log('🔗 [QR] Timestamp:', new Date().toISOString());
+        console.log('🔗 [QR] Session ID actual:', sessionId);
+        console.log('🔗 [QR] Tipo de sessionId:', typeof sessionId);
+        console.log('🔗 [QR] Longitud sessionId:', sessionId?.length);
+        
+        // ESPERAR A QUE LA LIBRERÍA QR ESTÉ DISPONIBLE
+        await esperarLibreriaQR();
         
         // Validar sessionId antes de generar QR
         if (!sessionId) {
-            console.error('❌ [PC] ERROR: sessionId es null/undefined');
+            console.error('❌ [QR] ERROR: sessionId es null/undefined');
             mostrarMensaje('Error: No hay ID de sesión válido', 'error');
             return;
         }
         
         if (!sessionId.startsWith('inv_ing_')) {
-            console.error('❌ [PC] ERROR: sessionId no tiene formato válido:', sessionId);
+            console.error('❌ [QR] ERROR: sessionId no tiene formato válido:', sessionId);
             mostrarMensaje('Error: Formato de sesión inválido', 'error');
             return;
         }
@@ -408,45 +857,48 @@ function generarCodigoQR() {
         // Mantener la ruta original a /pages/inventario-movil.html (reutilizar la misma página móvil)
         const urlMovil = `${baseUrl}/pages/inventario-movil.html?session=${encodeURIComponent(sessionId)}`;
         
-        console.log('🔗 [PC] URL base (Cloudflare):', baseUrl);
-        console.log('🔗 [PC] URL generada para el QR:', urlMovil);
-        console.log('🔗 [PC] Session ID en URL:', sessionId);
-        console.log('🔗 [PC] Verificando formato URL...');
+        console.log('🔗 [QR] URL base (Cloudflare):', baseUrl);
+        console.log('🔗 [QR] URL generada para el QR:', urlMovil);
+        console.log('🔗 [QR] Session ID en URL:', sessionId);
+        console.log('🔗 [QR] Verificando formato URL...');
         
         // Verificar que la URL se construyó correctamente
         try {
             const testUrl = new URL(urlMovil);
             const testSessionId = testUrl.searchParams.get('session');
-            console.log('🔗 [PC] URL parseada correctamente');
-            console.log('🔗 [PC] Session ID extraído de URL de prueba:', testSessionId);
+            console.log('🔗 [QR] URL parseada correctamente');
+            console.log('🔗 [QR] Session ID extraído de URL de prueba:', testSessionId);
             
             if (testSessionId !== sessionId) {
-                console.error('❌ [PC] ERROR: Session ID no coincide en URL');
-                console.error('❌ [PC] Original:', sessionId);
-                console.error('❌ [PC] Extraído:', testSessionId);
+                console.error('❌ [QR] ERROR: Session ID no coincide en URL');
+                console.error('❌ [QR] Original:', sessionId);
+                console.error('❌ [QR] Extraído:', testSessionId);
                 mostrarMensaje('Error: Problema al generar URL', 'error');
                 return;
             }
         } catch (urlError) {
-            console.error('❌ [PC] ERROR: URL malformada:', urlError);
+            console.error('❌ [QR] ERROR: URL malformada:', urlError);
             mostrarMensaje('Error: URL inválida generada', 'error');
             return;
         }
         
         // Mostrar la URL en texto para debugging
-        document.getElementById('url-movil').textContent = urlMovil;
+        const urlMovilElement = document.getElementById('url-movil');
+        if (urlMovilElement) {
+            urlMovilElement.textContent = urlMovil;
+        }
         
-        // Verificar si la librería QRCode está disponible
+        // Verificar si la librería QRCode está disponible (después de esperar)
         if (typeof QRCode === 'undefined') {
-            console.error('❌ [PC] La librería QRCode no está cargada');
-            mostrarMensaje('Error: Librería QR no disponible', 'error');
+            console.error('❌ [QR] La librería QRCode no está cargada después de esperar');
+            mostrarMensaje('Error: Librería QR no disponible después de esperar', 'error');
             return;
         }
         
         // Verificar si el contenedor existe
         const qrContainer = document.getElementById('qr-canvas');
         if (!qrContainer) {
-            console.error('❌ [PC] Contenedor qr-canvas no encontrado');
+            console.error('❌ [QR] Contenedor qr-canvas no encontrado');
             mostrarMensaje('Error: Contenedor QR no encontrado', 'error');
             return;
         }
@@ -454,8 +906,8 @@ function generarCodigoQR() {
         // Limpiar contenido anterior
         qrContainer.innerHTML = '';
         
-        console.log('Contenedor encontrado:', qrContainer);
-        console.log('QRCode disponible:', typeof QRCode);
+        console.log('🔗 [QR] Contenedor encontrado:', qrContainer);
+        console.log('🔗 [QR] QRCode disponible:', typeof QRCode);
         
         // Generar el código QR usando la API de qrcodejs
         const qrcode = new QRCode(qrContainer, {
@@ -467,43 +919,134 @@ function generarCodigoQR() {
             correctLevel: QRCode.CorrectLevel.M
         });
         
-        console.log('✅ [PC] Código QR generado correctamente');
+        console.log('✅ [QR] Código QR generado correctamente');
         
     } catch (error) {
-        console.error('❌ [PC] Error en generarCodigoQR:', error);
+        console.error('❌ [QR] Error en generarCodigoQR:', error);
         mostrarMensaje('Error al generar código QR: ' + error.message, 'error');
     }
 }
 
+// ===== FUNCIONES DE INVENTARIO =====
+
 async function buscarIngredientePorCodigo(codigoBarras) {
     try {
+        console.log('🔍 [BUSQUEDA] Buscando ingrediente por código:', codigoBarras);
+        
         const response = await fetch(`/api/produccion/ingredientes/buscar?codigo=${codigoBarras}`);
         if (!response.ok) throw new Error('Ingrediente no encontrado');
-        return await response.json();
+        
+        const ingrediente = await response.json();
+        console.log('✅ [BUSQUEDA] Ingrediente encontrado:', ingrediente.nombre);
+        
+        return ingrediente;
     } catch (error) {
-        console.error('Error al buscar ingrediente:', error);
+        console.error('❌ [BUSQUEDA] Error al buscar ingrediente:', error);
         mostrarMensaje('Ingrediente no encontrado');
         return null;
     }
 }
 
 function agregarIngredienteAInventario(ingrediente, cantidadInicial = 0) {
-    console.log('🚀 EJECUTANDO agregarIngredienteAInventario');
-    console.log('🚀 Ingrediente recibido:', ingrediente);
-    console.log('🚀 Cantidad inicial:', cantidadInicial);
-    console.log('🚀 Ingredientes en inventario actual:', ingredientesInventario.size);
+    console.log('🚀 [INVENTARIO] EJECUTANDO agregarIngredienteAInventario');
+    console.log('🚀 [INVENTARIO] Ingrediente recibido:', ingrediente);
+    console.log('🚀 [INVENTARIO] Cantidad inicial:', cantidadInicial);
+    console.log('🚀 [INVENTARIO] Ingredientes en inventario actual:', ingredientesInventario.size);
+    
+    // ===== VALIDACIÓN DE SECTORES =====
+    console.log('🔒 [VALIDACIÓN] ===== INICIANDO VALIDACIÓN DE SECTORES =====');
+    
+    // Obtener sectores seleccionados del sessionStorage
+    const sectoresInfo = sessionStorage.getItem('sectoresInventario');
+    console.log('🔒 [VALIDACIÓN] Sectores en sessionStorage:', sectoresInfo);
+    
+    if (sectoresInfo !== 'TODOS') {
+        console.log('🔒 [VALIDACIÓN] No es "TODOS" - validando sectores específicos');
+        
+        let sectoresSeleccionados;
+        try {
+            sectoresSeleccionados = JSON.parse(sectoresInfo || '[]');
+            console.log('🔒 [VALIDACIÓN] Sectores seleccionados parseados:', sectoresSeleccionados);
+        } catch (e) {
+            console.error('❌ [VALIDACIÓN] Error al parsear sectores:', e);
+            sectoresSeleccionados = [];
+        }
+        
+        // Verificar si el ingrediente tiene sector asignado
+        const ingredienteSectorId = ingrediente.sector_id;
+        console.log('🔒 [VALIDACIÓN] Sector del ingrediente:', ingredienteSectorId);
+        console.log('🔒 [VALIDACIÓN] Tipo de sector del ingrediente:', typeof ingredienteSectorId);
+        
+        // Si hay sectores específicos seleccionados, validar
+        if (sectoresSeleccionados.length > 0) {
+            console.log('🔒 [VALIDACIÓN] Hay sectores específicos seleccionados, validando...');
+            
+            // Verificar si el ingrediente pertenece a alguno de los sectores seleccionados
+            const perteneceASectorSeleccionado = ingredienteSectorId && 
+                sectoresSeleccionados.includes(parseInt(ingredienteSectorId));
+            
+            console.log('🔒 [VALIDACIÓN] ¿Pertenece a sector seleccionado?:', perteneceASectorSeleccionado);
+            console.log('🔒 [VALIDACIÓN] Sectores seleccionados incluyen', ingredienteSectorId, '?:', 
+                sectoresSeleccionados.includes(parseInt(ingredienteSectorId)));
+            
+            if (!perteneceASectorSeleccionado) {
+                console.log('❌ [VALIDACIÓN] INGREDIENTE RECHAZADO - No pertenece al sector seleccionado');
+                
+                // Buscar el nombre del sector del ingrediente para el mensaje
+                let nombreSectorIngrediente = 'Sin sector asignado';
+                if (ingredienteSectorId) {
+                    const sectorIngrediente = todosLosSectores.find(s => s.id === parseInt(ingredienteSectorId));
+                    if (sectorIngrediente) {
+                        nombreSectorIngrediente = sectorIngrediente.nombre;
+                    }
+                }
+                
+                // Buscar nombres de sectores seleccionados para el mensaje
+                const nombresSectoresSeleccionados = sectoresSeleccionados.map(sectorId => {
+                    const sector = todosLosSectores.find(s => s.id === sectorId);
+                    return sector ? sector.nombre : `Sector ${sectorId}`;
+                }).join(', ');
+                
+                console.log('🔒 [VALIDACIÓN] Sector del ingrediente:', nombreSectorIngrediente);
+                console.log('🔒 [VALIDACIÓN] Sectores permitidos:', nombresSectoresSeleccionados);
+                
+                // Mostrar mensaje de advertencia VISIBLE al usuario
+                const mensajeCorto = `⚠️ Este ingrediente no pertenece al sector seleccionado y no puede ser inventariado.`;
+                const mensajeDetallado = `INGREDIENTE RECHAZADO:\n\n` +
+                    `• Ingrediente: ${ingrediente.nombre}\n` +
+                    `• Sector del ingrediente: ${nombreSectorIngrediente}\n` +
+                    `• Sectores permitidos: ${nombresSectoresSeleccionados}\n\n` +
+                    `Este ingrediente no puede ser agregado al inventario.`;
+                
+                // Mostrar mensaje en el modal (más visible)
+                mostrarMensaje(mensajeCorto, 'error');
+                
+                // TAMBIÉN mostrar alert para máxima visibilidad
+                alert(mensajeDetallado);
+                
+                console.log('❌ [VALIDACIÓN] Ingrediente rechazado - función terminada');
+                console.log('❌ [VALIDACIÓN] Mensaje mostrado al usuario:', mensajeDetallado);
+                return; // ← SALIR SIN AGREGAR EL INGREDIENTE
+            }
+        }
+    }
+    
+    console.log('✅ [VALIDACIÓN] Ingrediente aprobado - continuando con agregado');
+    console.log('🔒 [VALIDACIÓN] ===== FIN VALIDACIÓN DE SECTORES =====');
+    
+    // ===== LÓGICA ORIGINAL (solo si pasa la validación) =====
     
     if (ingredientesInventario.has(ingrediente.id.toString())) {
-        console.log('⚠️ Ingrediente ya existe en inventario');
+        console.log('⚠️ [INVENTARIO] Ingrediente ya existe en inventario');
         // Si el ingrediente ya existe, actualizar la cantidad si viene del móvil
         if (cantidadInicial > 0) {
             const input = document.querySelector(`input[data-ingrediente="${ingrediente.id}"]`);
             if (input) {
                 input.value = cantidadInicial;
                 mostrarMensaje(`Cantidad actualizada para ${ingrediente.nombre}: ${cantidadInicial}`, 'info');
-                console.log('✅ Cantidad actualizada en input existente');
+                console.log('✅ [INVENTARIO] Cantidad actualizada en input existente');
             } else {
-                console.error('❌ No se encontró el input para actualizar');
+                console.error('❌ [INVENTARIO] No se encontró el input para actualizar');
             }
         } else {
             mostrarMensaje('Este ingrediente ya fue agregado al inventario', 'info');
@@ -511,7 +1054,7 @@ function agregarIngredienteAInventario(ingrediente, cantidadInicial = 0) {
         return;
     }
 
-    console.log('➕ Creando nuevo elemento para el ingrediente');
+    console.log('➕ [INVENTARIO] Creando nuevo elemento para el ingrediente');
     const div = document.createElement('div');
     div.className = 'inventario-item';
     div.innerHTML = `
@@ -528,757 +1071,156 @@ function agregarIngredienteAInventario(ingrediente, cantidadInicial = 0) {
         </div>
     `;
 
-    console.log('🔍 Buscando contenedor ingredientes-inventario');
+    console.log('🔍 [INVENTARIO] Buscando contenedor ingredientes-inventario');
     // Insertar al principio del contenedor para que aparezca arriba
     const contenedor = document.getElementById('ingredientes-inventario');
     if (!contenedor) {
-        console.error('❌ ERROR CRÍTICO: No se encontró el contenedor ingredientes-inventario');
+        console.error('❌ [INVENTARIO] ERROR CRÍTICO: No se encontró el contenedor ingredientes-inventario');
         mostrarMensaje('Error: No se pudo agregar el ingrediente al formulario', 'error');
         return;
     }
     
-    console.log('✅ Contenedor encontrado, insertando elemento');
+    console.log('✅ [INVENTARIO] Contenedor encontrado, insertando elemento');
     contenedor.insertBefore(div, contenedor.firstChild);
     ingredientesInventario.set(ingrediente.id.toString(), ingrediente);
     
-    console.log('✅ Ingrediente agregado al Map. Total ingredientes:', ingredientesInventario.size);
+    console.log('✅ [INVENTARIO] Ingrediente agregado al Map. Total ingredientes:', ingredientesInventario.size);
     
     // Mostrar el botón "Mostrar Diferencias" si hay ingredientes
-    if (ingredientesInventario.size > 0) {
-        document.getElementById('btn-mostrar-diferencias').style.display = 'inline-block';
+    const btnMostrarDiferencias = document.getElementById('btn-mostrar-diferencias');
+    if (btnMostrarDiferencias && ingredientesInventario.size > 0) {
+        btnMostrarDiferencias.style.display = 'inline-block';
     }
     
     // Si viene del móvil, mostrar mensaje
     if (cantidadInicial > 0) {
         mostrarMensaje(`Ingrediente agregado desde móvil: ${ingrediente.nombre}`, 'info');
-        console.log('✅ Mensaje de confirmación mostrado');
+        console.log('✅ [INVENTARIO] Mensaje de confirmación mostrado');
     }
     
-    console.log('🎉 agregarIngredienteAInventario completado exitosamente');
+    console.log('🎉 [INVENTARIO] agregarIngredienteAInventario completado exitosamente');
 }
 
-async function finalizarInventario() {
-    if (ingredientesInventario.size === 0) {
-        mostrarMensaje('No hay ingredientes para registrar', 'error');
-        return;
-    }
+// ===== EVENT LISTENERS =====
 
-    try {
-        console.log('🔧 [INVENTARIO] Finalizando inventario de ingredientes...');
-        
-        // Registrar cada ingrediente contado
-        const inputs = document.querySelectorAll('.stock-fisico');
-        
-        for (const input of inputs) {
-            const ingredienteId = input.dataset.ingrediente;
-            const ingrediente = ingredientesInventario.get(ingredienteId);
-            const stockContado = parseFloat(input.value) || 0;
-            
-            console.log(`📝 [INVENTARIO] Registrando: ${ingrediente.nombre} - Stock contado: ${stockContado}`);
-            
-            // Registrar ingrediente contado
-            const response = await fetch('/api/produccion/inventario-ingredientes/contar', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    ingrediente_id: parseInt(ingredienteId),
-                    stock_contado: stockContado,
-                    codigo_barras: ingrediente.codigo
-                })
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`Error al registrar ${ingrediente.nombre}: ${errorData.error}`);
-            }
-        }
-        
-        // Aplicar ajustes de inventario
-        const ajustesResponse = await fetch(`/api/produccion/inventario-ingredientes/${sessionId}/aplicar`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!ajustesResponse.ok) {
-            const errorData = await ajustesResponse.json();
-            throw new Error(errorData.error || 'Error al aplicar ajustes');
-        }
-        
-        const resultado = await ajustesResponse.json();
-        console.log('✅ [INVENTARIO] Inventario finalizado:', resultado);
-        
-        mostrarMensaje(`Inventario registrado correctamente. ${resultado.ajustes_aplicados} ajustes aplicados.`, 'info');
-        cerrarModal();
-        cargarIngredientes(); // Recargar la tabla de ingredientes
-        
-    } catch (error) {
-        console.error('❌ [INVENTARIO] Error al finalizar inventario:', error);
-        mostrarMensaje('Error al registrar el inventario: ' + error.message);
-    }
-}
-
-// Funciones para ajustes puntuales
-function iniciarAjustesPuntuales() {
-    mostrarModalAjustes();
-}
-
-function mostrarModalAjustes() {
-    const modal = document.getElementById('modal-ajustes');
-    modal.style.display = 'block';
-    document.getElementById('paso-usuario-ajustes').style.display = 'block';
-    document.getElementById('paso-ajuste').style.display = 'none';
-    cargarUsuariosAjustes();
-}
-
-function activarModoSeleccion() {
-    modoSeleccion = true;
-    ingredientesSeleccionados.clear();
-    document.querySelector('.tabla-ingredientes').classList.add('modo-seleccion');
-    document.getElementById('btn-ajustes-puntuales').style.display = 'none';
-    document.getElementById('btn-confirmar-seleccion').style.display = 'inline-block';
-    actualizarTablaIngredientes(ingredientesFiltrados.length > 0 ? ingredientesFiltrados : todosLosIngredientes);
-}
-
-function cerrarModalAjustes(reiniciarTodo = true) {
-    const modal = document.getElementById('modal-ajustes');
-    modal.style.display = 'none';
-    
-    if (reiniciarTodo) {
-        reiniciarAjustes();
-    }
-}
-
-function reiniciarAjustes() {
-    usuarioAjustes = null;
-    ingredientesSeleccionados.clear();
-    modoSeleccion = false;
-    document.querySelector('.tabla-ingredientes').classList.remove('modo-seleccion');
-    document.getElementById('select-usuario-ajustes').value = '';
-    document.getElementById('btn-continuar-ajustes').disabled = true;
-    document.getElementById('ingredientes-seleccionados').innerHTML = '';
-    document.getElementById('btn-ajustes-puntuales').style.display = 'inline-block';
-    document.getElementById('btn-confirmar-seleccion').style.display = 'none';
-    actualizarTablaIngredientes(ingredientesFiltrados.length > 0 ? ingredientesFiltrados : todosLosIngredientes);
-}
-
-async function cargarUsuariosAjustes() {
-    try {
-        const response = await fetch('/api/usuarios?rol=3&activo=true');
-        if (!response.ok) throw new Error('Error al cargar usuarios');
-        
-        const usuarios = await response.json();
-        const select = document.getElementById('select-usuario-ajustes');
-        select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
-        
-        usuarios.forEach(usuario => {
-            const option = document.createElement('option');
-            option.value = usuario.id;
-            option.textContent = usuario.nombre_completo;
-            select.appendChild(option);
-        });
-    } catch (error) {
-        console.error('Error al cargar usuarios:', error);
-        mostrarMensaje('No se pudieron cargar los usuarios');
-    }
-}
-
-function mostrarPasoAjuste() {
-    document.getElementById('paso-usuario-ajustes').style.display = 'none';
-    document.getElementById('paso-ajuste').style.display = 'block';
-    mostrarIngredientesSeleccionados();
-}
-
-function mostrarIngredientesSeleccionados() {
-    const contenedor = document.getElementById('ingredientes-seleccionados');
-    contenedor.innerHTML = '';
-
-    ingredientesSeleccionados.forEach(ingrediente => {
-        const div = document.createElement('div');
-        div.className = 'ajuste-item';
-        const stockActual = ingrediente.stock_actual || 0;
-        
-        div.innerHTML = `
-            <h4>${ingrediente.nombre}</h4>
-            <div class="info-row">
-                <span>ID: ${ingrediente.id}</span>
-                <span>Código: ${ingrediente.codigo || '-'}</span>
-                <span>Stock Actual: ${formatearNumero(stockActual)} ${ingrediente.unidad_medida || 'kg'}</span>
-            </div>
-            <div class="stock-input">
-                <label>Stock Físico (${ingrediente.unidad_medida || 'kg'}):</label>
-                <input type="number" 
-                       min="0" 
-                       step="0.01" 
-                       class="stock-nuevo" 
-                       data-ingrediente="${ingrediente.id}"
-                       data-stock-actual="${stockActual}"
-                       value="${stockActual}">
-            </div>
-        `;
-        contenedor.appendChild(div);
-    });
-
-    // Agregar listeners para validación de inputs
-    const inputs = contenedor.querySelectorAll('.stock-nuevo');
-    inputs.forEach(input => {
-        input.addEventListener('change', function() {
-            const valor = parseFloat(this.value) || 0;
-            if (valor < 0) {
-                this.value = 0;
-                mostrarMensaje('El stock no puede ser negativo', 'error');
-            }
-        });
-    });
-}
-
-async function finalizarAjustes() {
-    if (ingredientesSeleccionados.size === 0) {
-        mostrarMensaje('No hay ingredientes seleccionados para ajustar', 'error');
-        return;
-    }
-
-    try {
-        console.log('🔧 [AJUSTES] Finalizando ajustes de ingredientes...');
-        console.log('🔧 [AJUSTES] Usuario de ajustes:', usuarioAjustes, typeof usuarioAjustes);
-        
-        const inputs = document.querySelectorAll('.stock-nuevo');
-        let hayAjustes = false;
-        
-        for (const input of inputs) {
-            const ingredienteId = input.dataset.ingrediente;
-            const ingrediente = ingredientesSeleccionados.get(ingredienteId);
-            
-            // 🔧 VALIDACIÓN CRÍTICA: Verificar que el ingrediente existe
-            if (!ingrediente) {
-                console.error(`❌ [AJUSTES] ERROR: No se encontró ingrediente con ID ${ingredienteId}`);
-                continue;
-            }
-            
-            // 🔧 VALIDACIÓN CRÍTICA: Verificar que el ingrediente tiene nombre
-            if (!ingrediente.nombre || ingrediente.nombre.trim() === '') {
-                console.error(`❌ [AJUSTES] ERROR: Ingrediente ${ingredienteId} no tiene nombre válido:`, ingrediente);
-                continue;
-            }
-            
-            const stockNuevo = parseFloat(input.value) || 0;
-            const stockActual = ingrediente.stock_actual || 0;
-            const diferencia = stockNuevo - stockActual;
-            
-            console.log(`🔍 [AJUSTES] Procesando ingrediente:`, {
-                id: ingredienteId,
-                nombre: ingrediente.nombre,
-                stockActual: stockActual,
-                stockNuevo: stockNuevo,
-                diferencia: diferencia
-            });
-            
-            // Solo registrar si hay diferencia significativa
-            if (Math.abs(diferencia) > 0.001) {
-                hayAjustes = true;
-                
-                console.log(`📝 [AJUSTES] Registrando ajuste: ${ingrediente.nombre} - Diferencia: ${diferencia}`);
-                
-                // Usar el endpoint existente ingredientes_movimientos
-                const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
-                const cantidadAjuste = Math.abs(diferencia);
-                
-                // 🔧 VALIDACIÓN CRÍTICA: Verificar que cantidadAjuste es válida
-                if (isNaN(cantidadAjuste) || cantidadAjuste <= 0) {
-                    console.error(`❌ [AJUSTES] ERROR: Cantidad de ajuste inválida para ${ingrediente.nombre}:`, cantidadAjuste);
-                    continue;
-                }
-                
-                // 🔧 VALIDACIÓN CRÍTICA: Verificar que ingredienteId es válido
-                const ingredienteIdNum = parseInt(ingredienteId);
-                if (isNaN(ingredienteIdNum) || ingredienteIdNum <= 0) {
-                    console.error(`❌ [AJUSTES] ERROR: ID de ingrediente inválido:`, ingredienteId);
-                    continue;
-                }
-                
-                const payload = {
-                    ingrediente_id: ingredienteIdNum,
-                    kilos: cantidadAjuste,
-                    tipo: tipoMovimiento,
-                    carro_id: null,
-                    observaciones: `Ajuste puntual - Usuario: ${usuarioAjustes}`
-                };
-                
-                console.log(`📤 [AJUSTES] Enviando payload:`, payload);
-                
-                const response = await fetch('/api/produccion/ingredientes_movimientos', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    console.error(`❌ [AJUSTES] Error del servidor para ${ingrediente.nombre}:`, errorData);
-                    throw new Error(`Error al ajustar ${ingrediente.nombre}: ${errorData.error}`);
-                }
-                
-                console.log(`✅ [AJUSTES] Ajuste registrado exitosamente para ${ingrediente.nombre}`);
-            }
-        }
-
-        if (!hayAjustes) {
-            mostrarMensaje('No hay ajustes para registrar', 'info');
-            cerrarModalAjustes();
-            return;
-        }
-
-        mostrarMensaje('Ajustes registrados correctamente', 'info');
-        cerrarModalAjustes();
-        await cargarIngredientes(); // Recargar ingredientes después de ajustes
-        
-    } catch (error) {
-        console.error('❌ [AJUSTES] Error al finalizar ajustes:', error);
-        mostrarMensaje('Error al registrar los ajustes: ' + error.message);
-    }
-}
-
-/**
- * Compara el stock contado vs el stock del sistema
- */
-async function compararStock() {
-    console.log('🔍 [DIFERENCIAS] Iniciando comparación de stock...');
-    
-    if (ingredientesInventario.size === 0) {
-        mostrarMensaje('No hay ingredientes contados para comparar', 'error');
-        return;
-    }
-
-    try {
-        // Obtener todos los ingredientes del sistema
-        console.log('📊 [DIFERENCIAS] Obteniendo ingredientes del sistema...');
-        const response = await fetch('/api/produccion/ingredientes');
-        if (!response.ok) throw new Error('Error al obtener ingredientes del sistema');
-        
-        const ingredientesDelSistema = await response.json();
-        console.log(`📊 [DIFERENCIAS] Ingredientes del sistema obtenidos: ${ingredientesDelSistema.length}`);
-        
-        // Generar lista de diferencias
-        const diferencias = [];
-        
-        // Procesar ingredientes contados
-        console.log('🔄 [DIFERENCIAS] Procesando ingredientes contados...');
-        ingredientesInventario.forEach((ingrediente, ingredienteId) => {
-            const input = document.querySelector(`input[data-ingrediente="${ingredienteId}"]`);
-            const stockContado = parseFloat(input?.value || 0);
-            const stockSistema = ingrediente.stock_actual || 0;
-            const diferencia = stockContado - stockSistema;
-            
-            console.log(`📝 [DIFERENCIAS] ${ingrediente.nombre}: Sistema=${stockSistema}, Contado=${stockContado}, Diferencia=${diferencia}`);
-            
-            diferencias.push({
-                id: ingredienteId,
-                descripcion: ingrediente.nombre,
-                unidad_medida: ingrediente.unidad_medida || 'kg',
-                stockSistema: stockSistema,
-                stockContado: stockContado,
-                diferencia: diferencia,
-                estado: diferencia === 0 ? 'sin-diferencia' : 'con-diferencia',
-                esContado: true
-            });
-        });
-        
-        // Procesar ingredientes no contados (solo los que tienen stock en el sistema)
-        console.log('🔄 [DIFERENCIAS] Procesando ingredientes no contados...');
-        ingredientesDelSistema.forEach(ingrediente => {
-            if (!ingredientesInventario.has(ingrediente.id.toString())) {
-                const stockSistema = ingrediente.stock_actual || 0;
-                if (stockSistema !== 0) { // Solo mostrar ingredientes con stock diferente de 0
-                    console.log(`📝 [DIFERENCIAS] No contado: ${ingrediente.nombre}, Stock Sistema=${stockSistema}`);
-                    
-                    diferencias.push({
-                        id: ingrediente.id.toString(),
-                        descripcion: ingrediente.nombre,
-                        unidad_medida: ingrediente.unidad_medida || 'kg',
-                        stockSistema: stockSistema,
-                        stockContado: 0,
-                        diferencia: -stockSistema,
-                        estado: 'no-contado',
-                        esContado: false
-                    });
-                }
-            }
-        });
-        
-        console.log(`✅ [DIFERENCIAS] Comparación completada. Total diferencias: ${diferencias.length}`);
-        
-        // Ordenar diferencias
-        const diferenciasOrdenadas = diferencias.sort((a, b) => {
-            const getPrioridad = (item) => {
-                const stockSistema = Number(item.stockSistema) || 0;
-                const stockContado = Number(item.stockContado) || 0;
-                const MARGEN_TOLERANCIA = 0.001;
-                const esSinDiferencia = Math.abs(stockContado - stockSistema) <= MARGEN_TOLERANCIA;
-                
-                if (item.esContado) {
-                    if (esSinDiferencia) {
-                        return 1; // 🟩 Contados sin diferencia
-                    } else {
-                        return 2; // 🟥 Contados con diferencia
-                    }
-                } else {
-                    if (Math.abs(stockSistema) <= MARGEN_TOLERANCIA && Math.abs(stockContado) <= MARGEN_TOLERANCIA) {
-                        return 3; // 🟨 No contados sin diferencia (ambos cero)
-                    } else {
-                        return 4; // 🟥 No contados con diferencia
-                    }
-                }
-            };
-            
-            const prioridadA = getPrioridad(a);
-            const prioridadB = getPrioridad(b);
-            
-            if (prioridadA !== prioridadB) {
-                return prioridadA - prioridadB;
-            } else {
-                return a.descripcion.localeCompare(b.descripcion);
-            }
-        });
-        
-        console.log(`🎯 [DIFERENCIAS] Ordenamiento aplicado. Mostrando ${diferenciasOrdenadas.length} diferencias ordenadas`);
-        
-        // Mostrar modal con diferencias ordenadas
-        mostrarModalDiferencias(diferenciasOrdenadas);
-        
-    } catch (error) {
-        console.error('❌ [DIFERENCIAS] Error al comparar stock:', error);
-        mostrarMensaje('Error al comparar stock: ' + error.message, 'error');
-    }
-}
-
-/**
- * Muestra el modal con las diferencias de stock
- */
-function mostrarModalDiferencias(diferencias) {
-    console.log('🎯 [DIFERENCIAS] Mostrando modal de diferencias...');
-    
-    const modal = document.getElementById('modal-diferencias');
-    const tbody = document.getElementById('tabla-diferencias-body');
-    
-    // Limpiar tabla
-    tbody.innerHTML = '';
-    
-    if (diferencias.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="mensaje-info">No hay diferencias de stock</td></tr>';
-    } else {
-        diferencias.forEach(diferencia => {
-            const tr = document.createElement('tr');
-            tr.dataset.id = diferencia.id;
-            tr.dataset.esContado = diferencia.esContado;
-            
-            // Asegurar que los valores sean números para comparación correcta
-            const stockSistema = Number(diferencia.stockSistema) || 0;
-            const stockContado = Number(diferencia.stockContado) || 0;
-            const diferenciaCalculada = stockContado - stockSistema;
-            
-            // Margen de tolerancia para comparaciones de punto flotante
-            const MARGEN_TOLERANCIA = 0.001;
-            const esSinDiferencia = Math.abs(diferenciaCalculada) <= MARGEN_TOLERANCIA;
-            
-            // Asignar clase de fila
-            let claseFila = '';
-            if (diferencia.esContado) {
-                if (esSinDiferencia) {
-                    claseFila = 'sin-diferencia'; // Verde
-                } else {
-                    claseFila = 'con-diferencia'; // Rojo
-                }
-            } else {
-                if (Math.abs(stockSistema) <= MARGEN_TOLERANCIA && Math.abs(stockContado) <= MARGEN_TOLERANCIA) {
-                    claseFila = 'sin-diferencia'; // Amarillo (neutral) - ambos son cero
-                } else {
-                    claseFila = 'con-diferencia'; // Rojo (diferencia real)
-                }
-            }
-            tr.className = `diferencia-row ${claseFila}`;
-            
-            // Determinar clase de diferencia para celda
-            let claseDiferencia = 'diferencia-cero';
-            if (diferenciaCalculada > MARGEN_TOLERANCIA) claseDiferencia = 'diferencia-positiva';
-            if (diferenciaCalculada < -MARGEN_TOLERANCIA) claseDiferencia = 'diferencia-negativa';
-            
-            // Determinar estado badge
-            let estadoBadge = '';
-            if (claseFila === 'sin-diferencia' && diferencia.esContado) {
-                estadoBadge = '<span class="estado-badge estado-contado">Contado</span>';
-            } else if (claseFila === 'sin-diferencia' && !diferencia.esContado) {
-                estadoBadge = '<span class="estado-badge estado-no-contado">No Contado</span>';
-            } else {
-                estadoBadge = '<span class="estado-badge estado-diferencia">Diferencia</span>';
-            }
-            
-            // Formatear diferencia para mostrar
-            const diferenciaFormateada = Math.abs(diferenciaCalculada) <= MARGEN_TOLERANCIA ? 
-                '0' : 
-                (diferenciaCalculada > 0 ? '+' : '') + diferenciaCalculada.toFixed(2).replace(/\.?0+$/, '');
-            
-            tr.innerHTML = `
-                <td>${diferencia.id}</td>
-                <td>${diferencia.descripcion}</td>
-                <td>${formatearNumero(stockSistema)} ${diferencia.unidad_medida}</td>
-                <td>
-                    <input type="number" 
-                           class="stock-contado-input" 
-                           value="${stockContado}" 
-                           min="0" 
-                           step="0.01"
-                           data-id="${diferencia.id}"
-                           data-stock-sistema="${stockSistema}">
-                    <span class="unidad-medida">${diferencia.unidad_medida}</span>
-                </td>
-                <td class="${claseDiferencia}">${diferenciaFormateada} ${diferencia.unidad_medida}</td>
-                <td>${estadoBadge}</td>
-            `;
-            
-            tbody.appendChild(tr);
-        });
-        
-        // Agregar eventos a los inputs
-        const inputs = tbody.querySelectorAll('.stock-contado-input');
-        inputs.forEach(input => {
-            input.addEventListener('input', actualizarDiferencia);
-        });
-    }
-    
-    // Mostrar modal
-    modal.style.display = 'block';
-    console.log('✅ [DIFERENCIAS] Modal de diferencias mostrado');
-}
-
-/**
- * Actualiza la diferencia cuando se cambia el stock contado
- */
-function actualizarDiferencia(event) {
-    const input = event.target;
-    
-    // Asegurar que los valores sean números para comparación correcta
-    const stockContado = Number(input.value) || 0;
-    const stockSistema = Number(input.dataset.stockSistema) || 0;
-    const diferencia = stockContado - stockSistema;
-    
-    // Margen de tolerancia para comparaciones de punto flotante
-    const MARGEN_TOLERANCIA = 0.001;
-    const esSinDiferencia = Math.abs(diferencia) <= MARGEN_TOLERANCIA;
-    
-    // Actualizar celda de diferencia
-    const tr = input.closest('tr');
-    const celdaDiferencia = tr.querySelector('td:nth-child(5)');
-    const unidadMedida = input.nextElementSibling.textContent;
-    
-    // Actualizar clase y contenido con margen de tolerancia
-    celdaDiferencia.className = '';
-    if (diferencia > MARGEN_TOLERANCIA) {
-        celdaDiferencia.className = 'diferencia-positiva';
-        celdaDiferencia.textContent = '+' + diferencia.toFixed(2).replace(/\.?0+$/, '') + ' ' + unidadMedida;
-    } else if (diferencia < -MARGEN_TOLERANCIA) {
-        celdaDiferencia.className = 'diferencia-negativa';
-        celdaDiferencia.textContent = diferencia.toFixed(2).replace(/\.?0+$/, '') + ' ' + unidadMedida;
-    } else {
-        celdaDiferencia.className = 'diferencia-cero';
-        celdaDiferencia.textContent = '0 ' + unidadMedida;
-    }
-    
-    // Actualizar clase de fila
-    const esContado = tr.dataset.esContado === 'true';
-    let claseFila = '';
-    
-    if (esContado) {
-        if (esSinDiferencia) {
-            claseFila = 'sin-diferencia'; // Verde
-        } else {
-            claseFila = 'con-diferencia'; // Rojo
-        }
-    } else {
-        if (Math.abs(stockSistema) <= MARGEN_TOLERANCIA && Math.abs(stockContado) <= MARGEN_TOLERANCIA) {
-            claseFila = 'sin-diferencia'; // Amarillo (neutral) - ambos son cero
-        } else {
-            claseFila = 'con-diferencia'; // Rojo (diferencia real)
-        }
-    }
-    
-    tr.className = `diferencia-row ${claseFila}`;
-}
-
-/**
- * Guarda las correcciones realizadas en el modal de diferencias
- */
-async function guardarCorrecciones() {
-    console.log('💾 [CORRECCIONES] Iniciando guardado de correcciones...');
-    
-    const inputs = document.querySelectorAll('.stock-contado-input');
-    let ingredientesAgregados = 0;
-    let ingredientesModificados = 0;
-    
-    inputs.forEach(input => {
-        const ingredienteId = input.dataset.id;
-        const stockContado = parseFloat(input.value) || 0;
-        const tr = input.closest('tr');
-        const esContado = tr.dataset.esContado === 'true';
-        
-        if (esContado) {
-            // Ingrediente ya contado - actualizar si fue modificado
-            const inputOriginal = document.querySelector(`input[data-ingrediente="${ingredienteId}"]`);
-            if (inputOriginal && parseFloat(inputOriginal.value) !== stockContado) {
-                inputOriginal.value = stockContado;
-                ingredientesModificados++;
-                console.log(`✏️ [CORRECCIONES] Modificado: ${ingredienteId} -> ${stockContado}`);
-            }
-        } else {
-            // Ingrediente no contado - agregar al inventario
-            const ingrediente = todosLosIngredientes.find(i => i.id.toString() === ingredienteId);
-            if (ingrediente) {
-                agregarIngredienteAInventario(ingrediente, stockContado);
-                ingredientesAgregados++;
-                console.log(`➕ [CORRECCIONES] Agregado: ${ingredienteId} -> ${stockContado}`);
-            }
-        }
-    });
-    
-    // Mostrar el botón "Mostrar Diferencias" si hay ingredientes
-    if (ingredientesInventario.size > 0) {
-        document.getElementById('btn-mostrar-diferencias').style.display = 'inline-block';
-    }
-    
-    // Cerrar modal
-    document.getElementById('modal-diferencias').style.display = 'none';
-    
-    // Mostrar resumen
-    const mensaje = `Correcciones aplicadas: ${ingredientesAgregados} ingredientes agregados, ${ingredientesModificados} ingredientes modificados`;
-    mostrarMensaje(mensaje, 'info');
-    
-    console.log(`✅ [CORRECCIONES] Guardado completado: +${ingredientesAgregados} agregados, ~${ingredientesModificados} modificados`);
-}
-
-// Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Página de gestión de ingredientes cargada');
+    console.log('📱 [INIT] Página de gestión de ingredientes cargada');
     cargarIngredientes();
 
     // Botón para iniciar inventario
-    document.getElementById('btn-iniciar-inventario').addEventListener('click', mostrarModal);
-
-    // Botones para ajustes puntuales
-    document.getElementById('btn-ajustes-puntuales').addEventListener('click', iniciarAjustesPuntuales);
-    document.getElementById('btn-confirmar-seleccion').addEventListener('click', () => {
-        if (ingredientesSeleccionados.size === 0) {
-            mostrarMensaje('Debe seleccionar al menos un ingrediente', 'error');
-            return;
-        }
-        document.getElementById('paso-ajuste').style.display = 'block';
-        mostrarIngredientesSeleccionados();
-        document.getElementById('modal-ajustes').style.display = 'block';
-    });
+    const btnIniciarInventario = document.getElementById('btn-iniciar-inventario');
+    if (btnIniciarInventario) {
+        btnIniciarInventario.addEventListener('click', mostrarModal);
+    }
 
     // Cerrar modales
-    document.getElementById('close-modal').addEventListener('click', cerrarModal);
-    document.getElementById('close-modal-ajustes').addEventListener('click', () => cerrarModalAjustes(true));
+    const closeModal = document.getElementById('close-modal');
+    if (closeModal) {
+        closeModal.addEventListener('click', cerrarModal);
+    }
 
     // Selects de usuario
     const selectUsuario = document.getElementById('select-usuario');
-    const selectUsuarioAjustes = document.getElementById('select-usuario-ajustes');
     
-    function actualizarSeleccionUsuario(select, variable, btnId) {
-        const valor = select.value;
-        if (variable === 'usuarioSeleccionado') {
-            usuarioSeleccionado = valor;
-        } else {
-            usuarioAjustes = valor;
+    function actualizarSeleccionUsuario() {
+        const valor = selectUsuario?.value || '';
+        usuarioSeleccionado = valor;
+        const btnContinuar = document.getElementById('btn-continuar-usuario');
+        if (btnContinuar) {
+            btnContinuar.disabled = !valor;
         }
-        const btnContinuar = document.getElementById(btnId);
-        btnContinuar.disabled = !valor;
     }
     
     // Eventos del select de inventario
-    selectUsuario.addEventListener('change', () => actualizarSeleccionUsuario(selectUsuario, 'usuarioSeleccionado', 'btn-continuar-usuario'));
-    selectUsuario.addEventListener('input', () => actualizarSeleccionUsuario(selectUsuario, 'usuarioSeleccionado', 'btn-continuar-usuario'));
-    selectUsuario.addEventListener('keydown', (e) => setTimeout(() => actualizarSeleccionUsuario(selectUsuario, 'usuarioSeleccionado', 'btn-continuar-usuario'), 10));
-    
-    // Eventos del select de ajustes
-    selectUsuarioAjustes.addEventListener('change', () => actualizarSeleccionUsuario(selectUsuarioAjustes, 'usuarioAjustes', 'btn-continuar-ajustes'));
-    selectUsuarioAjustes.addEventListener('input', () => actualizarSeleccionUsuario(selectUsuarioAjustes, 'usuarioAjustes', 'btn-continuar-ajustes'));
-    selectUsuarioAjustes.addEventListener('keydown', (e) => setTimeout(() => actualizarSeleccionUsuario(selectUsuarioAjustes, 'usuarioAjustes', 'btn-continuar-ajustes'), 10));
+    if (selectUsuario) {
+        selectUsuario.addEventListener('change', actualizarSeleccionUsuario);
+        selectUsuario.addEventListener('input', actualizarSeleccionUsuario);
+        selectUsuario.addEventListener('keydown', (e) => setTimeout(actualizarSeleccionUsuario, 10));
+    }
 
     // Botones continuar
-    document.getElementById('btn-continuar-usuario').addEventListener('click', () => {
-        if (usuarioSeleccionado) {
-            mostrarPasoConteo();
-        } else {
-            mostrarMensaje('Por favor selecciona un usuario', 'error');
-        }
-    });
-
-    document.getElementById('btn-continuar-ajustes').addEventListener('click', () => {
-        if (usuarioAjustes) {
-            cerrarModalAjustes(false);
-            activarModoSeleccion();
-        } else {
-            mostrarMensaje('Por favor selecciona un usuario', 'error');
-        }
-    });
-
-    // Input de código de barras y botones de inventario
-    document.getElementById('input-codigo-barras').addEventListener('keypress', async (e) => {
-        if (e.key === 'Enter') {
-            const codigo = e.target.value.trim();
-            if (!codigo) return;
-
-            const ingrediente = await buscarIngredientePorCodigo(codigo);
-            if (ingrediente) {
-                agregarIngredienteAInventario(ingrediente);
-                e.target.value = '';
-            }
-        }
-    });
-
-    // Botones de finalizar y cancelar inventario
-    document.getElementById('btn-finalizar-inventario').addEventListener('click', finalizarInventario);
-    document.getElementById('btn-cancelar-inventario').addEventListener('click', cerrarModal);
-
-    // Botones de finalizar y cancelar ajustes
-    document.getElementById('btn-finalizar-ajustes').addEventListener('click', finalizarAjustes);
-    document.getElementById('btn-cancelar-ajustes').addEventListener('click', cerrarModalAjustes);
-
-    // Botones del modal de diferencias
-    document.getElementById('btn-mostrar-diferencias').addEventListener('click', compararStock);
-    document.getElementById('btn-guardar-correcciones').addEventListener('click', guardarCorrecciones);
-    document.getElementById('btn-cerrar-diferencias').addEventListener('click', () => {
-        document.getElementById('modal-diferencias').style.display = 'none';
-    });
-    document.getElementById('close-modal-diferencias').addEventListener('click', () => {
-        document.getElementById('modal-diferencias').style.display = 'none';
-    });
-
-    // Checkbox seleccionar todos
-    document.getElementById('seleccionar-todos').addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('.checkbox-ingrediente');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = this.checked;
-            const ingredienteId = checkbox.dataset.ingrediente;
-            const ingrediente = todosLosIngredientes.find(i => i.id.toString() === ingredienteId);
-            
-            if (this.checked) {
-                ingredientesSeleccionados.set(ingredienteId, ingrediente);
+    const btnContinuarUsuario = document.getElementById('btn-continuar-usuario');
+    if (btnContinuarUsuario) {
+        btnContinuarUsuario.addEventListener('click', () => {
+            if (usuarioSeleccionado) {
+                mostrarPasoSectores();
             } else {
-                ingredientesSeleccionados.delete(ingredienteId);
+                mostrarMensaje('Por favor selecciona un usuario', 'error');
             }
         });
-    });
+    }
+
+    // Botones del paso de sectores
+    const btnVolverUsuario = document.getElementById('btn-volver-usuario');
+    if (btnVolverUsuario) {
+        btnVolverUsuario.addEventListener('click', () => {
+            const pasoSectores = document.getElementById('paso-sectores');
+            const pasoUsuario = document.getElementById('paso-usuario');
+            if (pasoSectores) pasoSectores.style.display = 'none';
+            if (pasoUsuario) pasoUsuario.style.display = 'block';
+        });
+    }
+
+    const btnContinuarSectores = document.getElementById('btn-continuar-sectores');
+    if (btnContinuarSectores) {
+        btnContinuarSectores.addEventListener('click', () => {
+            console.log('🏢 [SECTORES] Botón continuar sectores presionado');
+            
+            // Verificar si "Todos los sectores" está marcado
+            const checkboxTodos = document.getElementById('todos-sectores');
+            
+            if (checkboxTodos && checkboxTodos.checked) {
+                console.log('🏢 [SECTORES] "Todos los sectores" seleccionado');
+                sessionStorage.setItem('sectoresInventario', 'TODOS');
+                console.log('✅ [SECTORES] Guardado en sessionStorage: TODOS');
+            } else {
+                // Obtener sectores individuales seleccionados
+                const sectoresCheckboxes = document.querySelectorAll('.sector-checkbox:checked');
+                const sectoresSeleccionados = [];
+                
+                sectoresCheckboxes.forEach(checkbox => {
+                    const sectorId = checkbox.getAttribute('data-sector-id');
+                    if (sectorId) {
+                        sectoresSeleccionados.push(parseInt(sectorId));
+                        console.log(`📋 [SECTORES] Sector seleccionado: ID ${sectorId}`);
+                    }
+                });
+                
+                console.log('🏢 [SECTORES] Sectores individuales seleccionados:', sectoresSeleccionados);
+                sessionStorage.setItem('sectoresInventario', JSON.stringify(sectoresSeleccionados));
+                console.log('✅ [SECTORES] Guardado en sessionStorage:', JSON.stringify(sectoresSeleccionados));
+            }
+            
+            // Continuar al paso de conteo
+            mostrarPasoConteo();
+        });
+    }
+
+    // Input de código de barras
+    const inputCodigoBarras = document.getElementById('input-codigo-barras');
+    if (inputCodigoBarras) {
+        inputCodigoBarras.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                const codigo = e.target.value.trim();
+                if (!codigo) return;
+
+                const ingrediente = await buscarIngredientePorCodigo(codigo);
+                if (ingrediente) {
+                    agregarIngredienteAInventario(ingrediente);
+                    e.target.value = '';
+                }
+            }
+        });
+    }
 
     // Filtros
     const filtroNombre = document.getElementById('filtro-nombre');
     const filtroStock = document.getElementById('filtro-stock');
     
-    filtroNombre.addEventListener('input', aplicarFiltros);
-    filtroStock.addEventListener('change', aplicarFiltros);
+    if (filtroNombre) {
+        filtroNombre.addEventListener('input', aplicarFiltros);
+    }
+    if (filtroStock) {
+        filtroStock.addEventListener('change', aplicarFiltros);
+    }
 });

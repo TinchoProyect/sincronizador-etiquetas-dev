@@ -244,6 +244,110 @@ io.on('connection', (socket) => {
         console.log('✅ [WS] Inventario finalizado correctamente');
     });
 
+    // ===== EVENTOS PARA INVENTARIO DE INGREDIENTES =====
+    
+    // PC inicia una sesión de inventario de ingredientes
+    socket.on('iniciar_inventario_ingredientes', (data) => {
+        const { sessionId, usuario, sectores } = data;
+        
+        console.log('🧪 [WS] ===== NUEVA SESIÓN DE INVENTARIO DE INGREDIENTES =====');
+        console.log('🆔 [WS] Session ID:', sessionId);
+        console.log('👤 [WS] Usuario:', usuario);
+        console.log('🏷️ [WS] Sectores:', sectores);
+        console.log('🔌 [WS] Socket PC:', socket.id);
+        
+        // Unir socket al sessionId para comunicación grupal
+        socket.join(sessionId);
+        
+        // Verificar si ya existe la sesión
+        if (inventarioSesiones.has(sessionId)) {
+            console.log('⚠️ [WS] Sesión de ingredientes existente, actualizando datos...');
+            const sesionExistente = inventarioSesiones.get(sessionId);
+            sesionExistente.pcSocketId = socket.id;
+            sesionExistente.usuario = usuario;
+            sesionExistente.sectores = sectores;
+            sesionExistente.tipo = 'ingredientes';
+        } else {
+            console.log('✨ [WS] Creando nueva sesión de ingredientes...');
+            inventarioSesiones.set(sessionId, {
+                pcSocketId: socket.id,
+                usuario: usuario,
+                sectores: sectores,
+                items: new Map(),
+                fechaInicio: new Date(),
+                estado: 'activa',
+                tipo: 'ingredientes'
+            });
+        }
+        
+        // Emitir confirmación al socket origen
+        socket.emit('inventario_ingredientes_iniciado', { 
+            sessionId, 
+            usuario, 
+            sectores 
+        });
+        
+        console.log('✅ [WS] Sesión de inventario de ingredientes iniciada exitosamente');
+        console.log('📊 [WS] Total sesiones activas:', inventarioSesiones.size);
+    });
+
+    // Móvil envía un ingrediente escaneado
+    socket.on('escanear_ingrediente_movil', (data) => {
+        const { sessionId, ingrediente, cantidad } = data;
+        
+        console.log('📱 [WS] ===== INGREDIENTE ESCANEADO DESDE MÓVIL =====');
+        console.log('🆔 [WS] Session ID:', sessionId);
+        console.log('🧪 [WS] Ingrediente:', ingrediente?.nombre || 'Sin nombre');
+        console.log('🔢 [WS] Cantidad:', cantidad);
+        
+        const session = inventarioSesiones.get(sessionId);
+        
+        if (!session) {
+            console.error('❌ [WS] Error: Sesión de ingredientes no encontrada');
+            socket.emit('error_conexion', { mensaje: 'Sesión no válida' });
+            return;
+        }
+        
+        if (session.estado !== 'activa') {
+            console.error('❌ [WS] Error: Sesión de ingredientes no activa');
+            socket.emit('error_conexion', { mensaje: 'La sesión no está activa' });
+            return;
+        }
+        
+        if (session.tipo !== 'ingredientes') {
+            console.error('❌ [WS] Error: Sesión no es de tipo ingredientes');
+            socket.emit('error_conexion', { mensaje: 'Tipo de sesión incorrecto' });
+            return;
+        }
+        
+        // Guardar en la sesión
+        const key = ingrediente.id || ingrediente.codigo;
+        session.items.set(key, { 
+            ingrediente, 
+            cantidad, 
+            timestamp: new Date() 
+        });
+        
+        console.log('📤 [WS] Enviando ingrediente a grupo de sesión...');
+        
+        // Enviar evento al grupo del sessionId (PC y otros dispositivos conectados)
+        io.to(sessionId).emit('nuevo_ingrediente', { 
+            sessionId,
+            ingrediente, 
+            cantidad,
+            timestamp: new Date()
+        });
+        
+        // Confirmar al móvil
+        socket.emit('ingrediente_confirmado', {
+            ingrediente: ingrediente.nombre,
+            cantidad
+        });
+        
+        console.log('✅ [WS] Ingrediente procesado exitosamente');
+        console.log('📊 [WS] Total ingredientes en sesión:', session.items.size);
+    });
+
     // Limpiar cuando se desconectan
     socket.on('disconnect', () => {
         console.log('👋 [WS] ===== CLIENTE DESCONECTADO =====');

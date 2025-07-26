@@ -30,6 +30,14 @@
                     Debe iniciar el inventario desde una PC.
                 </div>
 
+                <!-- Información de sectores (solo para ingredientes) -->
+                <div id="info-sectores-movil" class="info-sectores-movil" style="display: none; background: #e8f4fd; border: 1px solid #bee5eb; border-radius: 8px; padding: 12px; margin-bottom: 15px; color: #0c5460;">
+                    <h4 style="margin: 0 0 6px 0; font-size: 13px; font-weight: 600;">🏢 Sectores del inventario:</h4>
+                    <div id="sectores-movil-texto" style="font-size: 12px; font-weight: 500;">
+                        Cargando información...
+                    </div>
+                </div>
+
                 <!-- Formulario de carga -->
                 <div id="form-carga" class="form-carga" style="display: none;">
                     <div class="form-group">
@@ -43,7 +51,7 @@
                             <button id="btn-escanear" class="btn-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
-                                    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                                    <path d="M17 3h2a2 2 2 0 0 1 2 2v2"></path>
                                     <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
                                     <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
                                     <rect x="7" y="7" width="10" height="10"></rect>
@@ -59,13 +67,13 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="cantidad">Cantidad:</label>
+                        <label for="cantidad">Cantidad (kg):</label>
                         <input type="number" 
                                id="cantidad" 
                                class="input-large"
-                               placeholder="Ingrese la cantidad"
+                               placeholder="Ingrese los kilos"
                                min="0"
-                               step="1">
+                               step="0.01">
                     </div>
 
                     <button id="btn-cargar" class="btn-primary btn-large" disabled>
@@ -76,7 +84,7 @@
                 <!-- Mensaje de confirmación -->
                 <div id="confirmacion" class="mensaje-confirmacion" style="display: none;">
                     <div class="icon-success">✓</div>
-                    <p>¡Artículo cargado correctamente!</p>
+                    <p id="mensaje-confirmacion-texto">¡Artículo cargado correctamente!</p>
                 </div>
             </div>
         </main>

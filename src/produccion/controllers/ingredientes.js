@@ -489,6 +489,52 @@ async function eliminarSector(id) {
     }
 }
 
+/**
+ * Busca un ingrediente por su código de barras
+ * @param {string} codigo - Código de barras del ingrediente
+ * @returns {Promise<Object>} Ingrediente encontrado con información de sector
+ */
+async function buscarIngredientePorCodigo(codigo) {
+    try {
+        console.log(`🔍 [BUSQUEDA] Buscando ingrediente por código: ${codigo}`);
+        
+        if (!codigo || codigo.trim() === '') {
+            throw new Error('El código es requerido');
+        }
+        
+        const query = `
+            SELECT 
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.descripcion,
+                i.unidad_medida,
+                i.categoria,
+                i.stock_actual,
+                i.sector_id,
+                s.nombre as sector_nombre
+            FROM ingredientes i
+            LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            WHERE i.codigo = $1;
+        `;
+        
+        const result = await pool.query(query, [codigo.trim()]);
+        
+        if (result.rows.length === 0) {
+            console.log(`⚠️ [BUSQUEDA] Ingrediente no encontrado para código: ${codigo}`);
+            throw new Error('Ingrediente no encontrado');
+        }
+        
+        const ingrediente = result.rows[0];
+        console.log(`✅ [BUSQUEDA] Ingrediente encontrado: ${ingrediente.nombre}, sector: ${ingrediente.sector_nombre || 'Sin asignar'}`);
+        
+        return ingrediente;
+    } catch (error) {
+        console.error('❌ [BUSQUEDA] Error en buscarIngredientePorCodigo:', error);
+        throw new Error(error.message || 'Error al buscar el ingrediente');
+    }
+}
+
 module.exports = {
     obtenerIngredientes,
     obtenerIngrediente,
@@ -501,5 +547,6 @@ module.exports = {
     obtenerSectores,
     crearSector,
     actualizarSector,
-    eliminarSector
+    eliminarSector,
+    buscarIngredientePorCodigo
 };
