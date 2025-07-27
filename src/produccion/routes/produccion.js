@@ -55,7 +55,8 @@ const {
     obtenerNuevoCodigo,
     obtenerUsuariosConStock,
     obtenerStockPorUsuario,
-    obtenerSectores
+    obtenerSectores,
+    obtenerIngredientesPorSectores
 } = require('../controllers/ingredientes');
 
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
@@ -85,6 +86,26 @@ router.get('/sectores', async (req, res) => {
         res.json(sectores);
     } catch (error) {
         console.error('❌ [SECTORES] Error al obtener sectores:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Ruta para obtener ingredientes por sectores específicos (para diferencias de inventario)
+router.post('/ingredientes/por-sectores', async (req, res) => {
+    try {
+        console.log('🔍 [DIFERENCIAS] Solicitando ingredientes por sectores...');
+        const { sectores } = req.body;
+        
+        if (!sectores) {
+            return res.status(400).json({ error: 'Se requiere el parámetro sectores' });
+        }
+        
+        console.log('🔍 [DIFERENCIAS] Sectores recibidos:', sectores);
+        const ingredientes = await obtenerIngredientesPorSectores(sectores);
+        console.log(`✅ [DIFERENCIAS] Enviando ${ingredientes.length} ingredientes`);
+        res.json(ingredientes);
+    } catch (error) {
+        console.error('❌ [DIFERENCIAS] Error al obtener ingredientes por sectores:', error);
         res.status(500).json({ error: error.message });
     }
 });

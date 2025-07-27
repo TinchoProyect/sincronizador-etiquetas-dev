@@ -535,6 +535,84 @@ async function buscarIngredientePorCodigo(codigo) {
     }
 }
 
+/**
+ * Obtiene ingredientes filtrados por sectores específicos
+ * @param {Array|string} sectores - Array de IDs de sectores o 'TODOS'
+ * @returns {Promise<Array>} Lista de ingredientes de los sectores especificados
+ */
+async function obtenerIngredientesPorSectores(sectores) {
+    try {
+        console.log('🔍 [DIFERENCIAS] Obteniendo ingredientes por sectores:', sectores);
+        
+        let query;
+        let params = [];
+        
+        if (sectores === 'TODOS') {
+            console.log('🔍 [DIFERENCIAS] Obteniendo TODOS los ingredientes');
+            query = `
+                SELECT 
+                    i.id,
+                    i.codigo,
+                    i.nombre,
+                    i.descripcion,
+                    i.unidad_medida,
+                    i.categoria,
+                    i.stock_actual,
+                    i.sector_id,
+                    s.nombre as sector_nombre
+                FROM ingredientes i
+                LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+                ORDER BY i.nombre ASC;
+            `;
+        } else if (Array.isArray(sectores) && sectores.length > 0) {
+            console.log(`🔍 [DIFERENCIAS] Obteniendo ingredientes de sectores específicos: [${sectores.join(', ')}]`);
+            
+            // Crear placeholders para la consulta IN
+            const placeholders = sectores.map((_, index) => `$${index + 1}`).join(', ');
+            
+            query = `
+                SELECT 
+                    i.id,
+                    i.codigo,
+                    i.nombre,
+                    i.descripcion,
+                    i.unidad_medida,
+                    i.categoria,
+                    i.stock_actual,
+                    i.sector_id,
+                    s.nombre as sector_nombre
+                FROM ingredientes i
+                LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+                WHERE i.sector_id IN (${placeholders})
+                ORDER BY i.nombre ASC;
+            `;
+            params = sectores;
+        } else {
+            console.log('⚠️ [DIFERENCIAS] No hay sectores válidos especificados, devolviendo array vacío');
+            return [];
+        }
+        
+        const result = await pool.query(query, params);
+        console.log(`✅ [DIFERENCIAS] Encontrados ${result.rows.length} ingredientes para los sectores especificados`);
+        
+        // Log detallado para debugging
+        if (sectores !== 'TODOS') {
+            const porSector = {};
+            result.rows.forEach(ing => {
+                const sectorNombre = ing.sector_nombre || 'Sin sector';
+                if (!porSector[sectorNombre]) porSector[sectorNombre] = 0;
+                porSector[sectorNombre]++;
+            });
+            console.log('📊 [DIFERENCIAS] Distribución por sector:', porSector);
+        }
+        
+        return result.rows;
+    } catch (error) {
+        console.error('❌ [DIFERENCIAS] Error en obtenerIngredientesPorSectores:', error);
+        throw new Error('No se pudieron obtener los ingredientes por sectores');
+    }
+}
+
 module.exports = {
     obtenerIngredientes,
     obtenerIngrediente,
@@ -548,5 +626,6 @@ module.exports = {
     crearSector,
     actualizarSector,
     eliminarSector,
-    buscarIngredientePorCodigo
+    buscarIngredientePorCodigo,
+    obtenerIngredientesPorSectores
 };
