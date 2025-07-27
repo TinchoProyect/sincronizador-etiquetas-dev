@@ -788,7 +788,7 @@ async function finalizarInventario() {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosInventario.get(articuloNumero);
         const stockFisico = parseFloat(input.value) || 0;
-        const ajuste = stockFisico - (articulo.stock_ventas || 0);
+        const ajuste = stockFisico - (articulo.stock_consolidado || 0);
         
         if (ajuste !== 0) {
             ajustes.push({
