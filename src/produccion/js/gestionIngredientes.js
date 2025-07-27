@@ -72,13 +72,9 @@ function mostrarMensaje(mensaje, tipo = "error") {
 
 // Funcion para actualizar la tabla con los ingredientes
 function actualizarTablaIngredientes(ingredientes) {
-    console.log("🔄 [DEBUG] actualizarTablaIngredientes - Iniciando actualizacion de tabla");
-    console.log("🔄 [DEBUG] Cantidad de ingredientes recibidos:", ingredientes?.length || 0);
-    console.log("🔄 [DEBUG] Modo seleccion activo:", modoSeleccion);
-    
     const tbody = document.getElementById("tabla-ingredientes-body");
     if (!tbody) {
-        console.error("❌ [DEBUG] No se encontro tbody con ID tabla-ingredientes-body");
+        console.error("❌ No se encontro tbody con ID tabla-ingredientes-body");
         return;
     }
 
@@ -92,7 +88,6 @@ function actualizarTablaIngredientes(ingredientes) {
 
     ingredientes.forEach((ingrediente, index) => {
         const stockActual = ingrediente.stock_actual || 0;
-        console.log("📊 [DEBUG] Ingrediente " + (index + 1) + ": " + ingrediente.nombre + " - Stock Actual: " + stockActual);
         
         const tr = document.createElement("tr");
         const checkboxHtml = modoSeleccion ? 
@@ -111,8 +106,6 @@ function actualizarTablaIngredientes(ingredientes) {
             "<td>" + formatearNumero(stockActual) + " " + (ingrediente.unidad_medida || "kg") + "</td>";
         tbody.appendChild(tr);
     });
-    
-    console.log("✅ [DEBUG] actualizarTablaIngredientes - Tabla actualizada correctamente");
 
     // Actualizar eventos de los checkboxes si estamos en modo seleccion
     if (modoSeleccion) {
@@ -1102,8 +1095,385 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
     
+    // Botón para ajustes puntuales
+    const btnAjustesPuntuales = document.getElementById("btn-ajustes-puntuales");
+    if (btnAjustesPuntuales) {
+        btnAjustesPuntuales.addEventListener("click", iniciarAjustesPuntuales);
+    }
+    
+    const btnConfirmarSeleccion = document.getElementById("btn-confirmar-seleccion");
+    if (btnConfirmarSeleccion) {
+        btnConfirmarSeleccion.addEventListener("click", confirmarSeleccionIngredientes);
+    }
+    
+    // Event listeners del modal de ajustes
+    const btnContinuarAjustes = document.getElementById("btn-continuar-ajustes");
+    if (btnContinuarAjustes) {
+        btnContinuarAjustes.addEventListener("click", mostrarPasoAjuste);
+    }
+    
+    const btnCancelarAjustes = document.getElementById("btn-cancelar-ajustes");
+    if (btnCancelarAjustes) {
+        btnCancelarAjustes.addEventListener("click", () => cerrarModalAjustes(true));
+    }
+    
+    const btnFinalizarAjustes = document.getElementById("btn-finalizar-ajustes");
+    if (btnFinalizarAjustes) {
+        btnFinalizarAjustes.addEventListener("click", finalizarAjustesPuntuales);
+    }
+    
+    const closeModalAjustes = document.getElementById("close-modal-ajustes");
+    if (closeModalAjustes) {
+        closeModalAjustes.addEventListener("click", () => cerrarModalAjustes(true));
+    }
+    
+    // Event listener para select de usuario de ajustes
+    const selectUsuarioAjustes = document.getElementById("select-usuario-ajustes");
+    if (selectUsuarioAjustes) {
+        selectUsuarioAjustes.addEventListener("change", () => actualizarSeleccionUsuario(selectUsuarioAjustes, "usuarioAjustes", "btn-continuar-ajustes"));
+    }
+    
+    // Event listener para seleccionar todos los ingredientes
+    const seleccionarTodos = document.getElementById("seleccionar-todos");
+    if (seleccionarTodos) {
+        seleccionarTodos.addEventListener("change", function() {
+            if (modoSeleccion) {
+                const checkboxes = document.querySelectorAll(".checkbox-ingrediente");
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                    const ingredienteId = checkbox.dataset.ingrediente;
+                    const ingrediente = todosLosIngredientes.find(i => i.id.toString() === ingredienteId);
+                    
+                    if (this.checked && ingrediente) {
+                        ingredientesSeleccionados.set(ingredienteId, ingrediente);
+                    } else {
+                        ingredientesSeleccionados.delete(ingredienteId);
+                    }
+                });
+                
+                console.log("🔄 [SELECCION] Seleccionar todos:", this.checked ? "activado" : "desactivado");
+                console.log("🔄 [SELECCION] Total seleccionados:", ingredientesSeleccionados.size);
+            }
+        });
+    }
+    
     console.log("✅ [INIT] Gestion de ingredientes inicializada correctamente");
 });
+
+// ===== FUNCIONES DE AJUSTES PUNTUALES =====
+
+/**
+ * Inicia el modo de ajustes puntuales
+ */
+function iniciarAjustesPuntuales() {
+    console.log("⚙️ [AJUSTES] Iniciando ajustes puntuales");
+    
+    // Limpiar selecciones previas
+    ingredientesSeleccionados.clear();
+    
+    // Activar modo selección en la tabla principal
+    modoSeleccion = true;
+    
+    // Cambiar interfaz para modo selección
+    const tabla = document.querySelector(".tabla-ingredientes");
+    if (tabla) {
+        tabla.classList.add("modo-seleccion");
+    }
+    
+    // Cambiar botones del header
+    document.getElementById("btn-ajustes-puntuales").style.display = "none";
+    document.getElementById("btn-confirmar-seleccion").style.display = "inline-block";
+    
+    // Actualizar tabla para mostrar checkboxes
+    actualizarTablaIngredientes(todosLosIngredientes);
+    
+    // Mostrar mensaje informativo
+    mostrarMensaje("Seleccione los ingredientes que desea ajustar y luego presione 'Confirmar Selección'", "info");
+    
+    console.log("✅ [AJUSTES] Modo selección activado - Usuario puede seleccionar ingredientes");
+}
+
+/**
+ * Confirma la selección de ingredientes y abre el modal de ajustes
+ */
+function confirmarSeleccionIngredientes() {
+    console.log("✅ [SELECCION] Confirmando selección de ingredientes");
+    console.log("✅ [SELECCION] Total seleccionados:", ingredientesSeleccionados.size);
+    
+    if (ingredientesSeleccionados.size === 0) {
+        mostrarMensaje("Debe seleccionar al menos un ingrediente para ajustar", "error");
+        return;
+    }
+    
+    // Salir del modo selección visual
+    const tabla = document.querySelector(".tabla-ingredientes");
+    if (tabla) {
+        tabla.classList.remove("modo-seleccion");
+    }
+    
+    // Restaurar botones del header
+    document.getElementById("btn-ajustes-puntuales").style.display = "inline-block";
+    document.getElementById("btn-confirmar-seleccion").style.display = "none";
+    
+    // Actualizar tabla sin checkboxes
+    modoSeleccion = false;
+    actualizarTablaIngredientes(todosLosIngredientes);
+    
+    // AHORA SÍ mostrar modal de ajustes con ingredientes ya seleccionados
+    const modal = document.getElementById("modal-ajustes");
+    if (modal) {
+        modal.style.display = "block";
+        
+        // Mostrar paso de selección de usuario
+        document.getElementById("paso-usuario-ajustes").style.display = "block";
+        document.getElementById("paso-ajuste").style.display = "none";
+        
+        // Cargar usuarios para ajustes
+        cargarUsuariosAjustes();
+    }
+    
+    console.log("✅ [SELECCION] Selección confirmada, modal de ajustes abierto");
+}
+
+/**
+ * Muestra el paso de ajuste de ingredientes
+ */
+function mostrarPasoAjuste() {
+    console.log("📝 [AJUSTES] Mostrando paso de ajuste");
+    
+    // Cambiar pasos del modal
+    document.getElementById("paso-usuario-ajustes").style.display = "none";
+    document.getElementById("paso-ajuste").style.display = "block";
+    
+    // Mostrar ingredientes seleccionados
+    mostrarIngredientesSeleccionados();
+    
+    console.log("✅ [AJUSTES] Paso de ajuste mostrado");
+}
+
+/**
+ * Muestra los ingredientes seleccionados en el modal de ajustes
+ */
+function mostrarIngredientesSeleccionados() {
+    console.log("📋 [AJUSTES] Mostrando ingredientes seleccionados");
+    
+    const contenedor = document.getElementById("ingredientes-seleccionados");
+    if (!contenedor) {
+        console.error("❌ [AJUSTES] No se encontró contenedor ingredientes-seleccionados");
+        return;
+    }
+    
+    contenedor.innerHTML = "";
+    
+    if (ingredientesSeleccionados.size === 0) {
+        contenedor.innerHTML = "<p class='mensaje-info'>No hay ingredientes seleccionados</p>";
+        return;
+    }
+    
+    ingredientesSeleccionados.forEach((ingrediente, id) => {
+        const div = document.createElement("div");
+        div.className = "inventario-item";
+        div.setAttribute("data-ingrediente-id", ingrediente.id);
+        
+        div.innerHTML = `
+            <h4>${ingrediente.nombre}</h4>
+            <div class="info-row">
+                <span><strong>ID:</strong> ${ingrediente.id}</span>
+                <span><strong>Código:</strong> ${ingrediente.codigo || "N/A"}</span>
+                <span><strong>Stock actual:</strong> ${formatearNumero(ingrediente.stock_actual)} ${ingrediente.unidad_medida || "kg"}</span>
+            </div>
+            <div class="stock-input">
+                <label>Nuevo stock:</label>
+                <input type="number" 
+                       step="0.01" 
+                       min="0" 
+                       value="${ingrediente.stock_actual || 0}" 
+                       data-ingrediente-id="${ingrediente.id}"
+                       placeholder="Ingrese nuevo stock">
+                <span>${ingrediente.unidad_medida || "kg"}</span>
+            </div>
+        `;
+        
+        contenedor.appendChild(div);
+        
+        // Agregar event listener al input
+        const input = div.querySelector("input[type='number']");
+        if (input) {
+            input.addEventListener("input", function() {
+                const nuevoStock = parseFloat(this.value) || 0;
+                ingrediente.nuevo_stock = nuevoStock;
+                console.log(`📝 [AJUSTES] Stock actualizado para ${ingrediente.nombre}: ${nuevoStock}`);
+            });
+        }
+    });
+    
+    console.log(`✅ [AJUSTES] ${ingredientesSeleccionados.size} ingredientes mostrados para ajuste`);
+}
+
+/**
+ * Carga usuarios para ajustes puntuales
+ */
+async function cargarUsuariosAjustes() {
+    try {
+        console.log("🔄 [USUARIOS-AJUSTES] Cargando usuarios para ajustes...");
+        
+        const response = await fetch("/api/usuarios?rol=3&activo=true");
+        if (!response.ok) throw new Error("Error al cargar usuarios");
+        
+        const usuarios = await response.json();
+        const select = document.getElementById("select-usuario-ajustes");
+        if (select) {
+            select.innerHTML = "<option value=''>-- Seleccionar usuario --</option>";
+            
+            usuarios.forEach(usuario => {
+                const option = document.createElement("option");
+                option.value = usuario.id;
+                option.textContent = usuario.nombre_completo;
+                select.appendChild(option);
+            });
+        }
+        
+        console.log("✅ [USUARIOS-AJUSTES] Usuarios cargados:", usuarios.length);
+        
+    } catch (error) {
+        console.error("❌ [USUARIOS-AJUSTES] Error al cargar usuarios:", error);
+        mostrarMensaje("No se pudieron cargar los usuarios para ajustes");
+    }
+}
+
+/**
+ * Finaliza los ajustes puntuales aplicando los cambios
+ */
+async function finalizarAjustesPuntuales() {
+    try {
+        console.log("🏁 [AJUSTES] ===== FINALIZANDO AJUSTES PUNTUALES =====");
+        
+        if (!usuarioAjustes) {
+            mostrarMensaje("Debe seleccionar un usuario responsable", "error");
+            return;
+        }
+        
+        if (ingredientesSeleccionados.size === 0) {
+            mostrarMensaje("No hay ingredientes seleccionados para ajustar", "error");
+            return;
+        }
+        
+        // Preparar ajustes
+        const ajustes = [];
+        
+        ingredientesSeleccionados.forEach((ingrediente, id) => {
+            const stockActual = parseFloat(ingrediente.stock_actual) || 0;
+            const nuevoStock = parseFloat(ingrediente.nuevo_stock) || 0;
+            const ajuste = nuevoStock - stockActual;
+            
+            // Solo registrar si hay diferencia significativa
+            if (Math.abs(ajuste) > 0.001) {
+                ajustes.push({
+                    articulo_numero: ingrediente.codigo || ingrediente.id.toString(),
+                    usuario_id: usuarioAjustes,
+                    tipo: "ajuste puntual",
+                    kilos: ajuste,
+                    cantidad: ajuste,
+                    observacion: `Ajuste puntual - Stock anterior: ${stockActual}, Stock nuevo: ${nuevoStock}`
+                });
+                
+                console.log(`📝 [AJUSTES] Ajuste preparado: ${ingrediente.nombre} = ${ajuste}`);
+            }
+        });
+        
+        if (ajustes.length === 0) {
+            mostrarMensaje("No hay cambios significativos para aplicar", "info");
+            return;
+        }
+        
+        console.log(`📤 [AJUSTES] Enviando ${ajustes.length} ajustes al servidor...`);
+        mostrarMensaje("Aplicando ajustes...", "info");
+        
+        // Enviar ajustes al servidor usando el endpoint específico para ingredientes
+        const response = await fetch("/api/produccion/ingredientes-ajustes/batch", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ ajustes })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Error al aplicar ajustes");
+        }
+        
+        const resultado = await response.json();
+        console.log("✅ [AJUSTES] Ajustes aplicados exitosamente:", resultado);
+        
+        mostrarMensaje(`Ajustes aplicados correctamente. ${ajustes.length} ingredientes actualizados.`, "info");
+        
+        // Cerrar modal y limpiar
+        cerrarModalAjustes(true);
+        
+        // Recargar ingredientes para mostrar cambios
+        await cargarIngredientes();
+        
+    } catch (error) {
+        console.error("❌ [AJUSTES] Error al finalizar ajustes:", error);
+        mostrarMensaje("Error al aplicar ajustes: " + error.message, "error");
+    }
+}
+
+/**
+ * Cierra el modal de ajustes y limpia el estado
+ */
+function cerrarModalAjustes(reiniciarTodo = true) {
+    console.log("🔄 [AJUSTES] Cerrando modal de ajustes");
+    
+    const modal = document.getElementById("modal-ajustes");
+    if (modal) {
+        modal.style.display = "none";
+    }
+    
+    if (reiniciarTodo) {
+        // Limpiar selecciones
+        ingredientesSeleccionados.clear();
+        usuarioAjustes = null;
+        
+        // Salir del modo selección
+        modoSeleccion = false;
+        const tabla = document.querySelector(".tabla-ingredientes");
+        if (tabla) {
+            tabla.classList.remove("modo-seleccion");
+        }
+        
+        // Restaurar botones del header
+        document.getElementById("btn-ajustes-puntuales").style.display = "inline-block";
+        document.getElementById("btn-confirmar-seleccion").style.display = "none";
+        
+        // Limpiar contenedor
+        const contenedor = document.getElementById("ingredientes-seleccionados");
+        if (contenedor) {
+            contenedor.innerHTML = "";
+        }
+        
+        // Resetear pasos del modal
+        document.getElementById("paso-usuario-ajustes").style.display = "block";
+        document.getElementById("paso-ajuste").style.display = "none";
+        
+        // Resetear select de usuario
+        const selectUsuario = document.getElementById("select-usuario-ajustes");
+        if (selectUsuario) {
+            selectUsuario.value = "";
+        }
+        
+        const btnContinuar = document.getElementById("btn-continuar-ajustes");
+        if (btnContinuar) {
+            btnContinuar.disabled = true;
+        }
+        
+        // Actualizar tabla sin checkboxes
+        actualizarTablaIngredientes(todosLosIngredientes);
+        
+        console.log("✅ [AJUSTES] Modal cerrado y estado limpiado");
+    }
+}
 
 function actualizarSeleccionUsuario(selectElement, variableGlobal, botonId) {
     const valorSeleccionado = selectElement.value;
