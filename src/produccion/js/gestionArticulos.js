@@ -876,50 +876,61 @@ async function finalizarInventario() {
         return;
     }
 
-    const ajustes = [];
+    console.log('🚀 [INVENTARIO-ARTICULOS] Iniciando finalización de inventario');
+    console.log('📊 [INVENTARIO-ARTICULOS] Total artículos inventariados:', articulosInventario.size);
+    console.log('👤 [INVENTARIO-ARTICULOS] Usuario seleccionado:', usuarioSeleccionado);
+
+    // Construir array de artículos inventariados con la estructura requerida por el backend
+    const articulosInventariados = [];
     const inputs = document.querySelectorAll('.stock-fisico');
     
     inputs.forEach(input => {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosInventario.get(articuloNumero);
-        const stockFisico = parseFloat(input.value) || 0;
-        const ajuste = stockFisico - (articulo.stock_consolidado || 0);
+        const stockContado = parseFloat(input.value) || 0;
+        const stockSistema = articulo.stock_consolidado || 0;
         
-        if (ajuste !== 0) {
-            ajustes.push({
-                articulo_numero: articuloNumero,
-                codigo_barras: articulo.codigo_barras,
-                usuario_id: usuarioSeleccionado,
-                tipo: 'registro de ajuste',
-                kilos: ajuste,
-                cantidad: ajuste // Usar cantidad para el ajuste real en unidades
-            });
-        }
+        console.log(`📦 [ARTICULO] ${articuloNumero}: Sistema=${stockSistema}, Contado=${stockContado}`);
+        
+        articulosInventariados.push({
+            articulo_numero: articuloNumero,
+            stock_sistema: stockSistema,
+            stock_contado: stockContado
+        });
     });
 
-    if (ajustes.length === 0) {
-        mostrarMensaje('No hay ajustes para registrar', 'info');
-        cerrarModal();
-        return;
-    }
+    console.log('📋 [INVENTARIO-ARTICULOS] Total artículos a procesar:', articulosInventariados.length);
 
     try {
-        const response = await fetch('/api/produccion/stock-ventas-movimientos/batch', {
+        const payload = {
+            usuario_id: usuarioSeleccionado,
+            articulos_inventariados: articulosInventariados
+        };
+
+        console.log('📤 [INVENTARIO-ARTICULOS] Enviando datos al backend:', payload);
+
+        const response = await fetch('/api/produccion/inventario-articulos/finalizar', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ ajustes })
+            body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error('Error al registrar los ajustes');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al finalizar inventario');
+        }
 
-        mostrarMensaje('Inventario registrado correctamente', 'info');
+        const resultado = await response.json();
+        console.log('✅ [INVENTARIO-ARTICULOS] Respuesta del backend:', resultado);
+
+        mostrarMensaje(`Inventario finalizado correctamente: ${resultado.articulos_registrados} artículos procesados, ${resultado.diferencias_encontradas} diferencias aplicadas`, 'info');
         cerrarModal();
         cargarArticulos(); // Recargar la tabla de artículos
     } catch (error) {
-        console.error('Error al finalizar inventario:', error);
-        mostrarMensaje('Error al registrar el inventario');
+        console.error('❌ [INVENTARIO-ARTICULOS] Error al finalizar inventario:', error);
+        mostrarMensaje(`Error al finalizar inventario: ${error.message}`, 'error');
     }
 }
 

@@ -1271,6 +1271,11 @@ const {
     obtenerEstadoSesion
 } = require('../controllers/inventarioIngredientesSimple');
 
+// Controlador para inventario de artículos
+const {
+    finalizarInventarioArticulos
+} = require('../controllers/inventarioArticulos');
+
 // ==========================================
 // RUTAS PARA INVENTARIO DE INGREDIENTES
 // ==========================================
@@ -1326,6 +1331,24 @@ router.get('/inventario-ingredientes/:session_id/estado', async (req, res) => {
         console.error('❌ [RUTA] Error en /inventario-ingredientes/:session_id/estado:', error);
         res.status(500).json({
             error: 'Error al obtener estado de sesión',
+            detalle: error.message
+        });
+    }
+});
+
+// ==========================================
+// RUTAS PARA INVENTARIO DE ARTÍCULOS
+// ==========================================
+
+// Ruta para finalizar inventario de artículos
+router.post('/inventario-articulos/finalizar', async (req, res) => {
+    try {
+        console.log('🚀 [RUTA] Finalizando inventario de artículos');
+        await finalizarInventarioArticulos(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /inventario-articulos/finalizar:', error);
+        res.status(500).json({
+            error: 'Error al finalizar inventario de artículos',
             detalle: error.message
         });
     }
