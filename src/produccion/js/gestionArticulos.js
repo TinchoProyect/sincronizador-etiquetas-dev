@@ -62,23 +62,59 @@ function mostrarMensaje(mensaje, tipo = 'error') {
 
 // Función para actualizar la tabla con los artículos
 function actualizarTablaArticulos(articulos) {
-    console.log('🔄 [DEBUG] actualizarTablaArticulos - Iniciando actualización de tabla');
-    console.log('🔄 [DEBUG] Cantidad de artículos recibidos:', articulos?.length || 0);
+    console.log('🔄 [FRONTEND] ===== INICIANDO actualizarTablaArticulos() =====');
+    console.log('🔄 [FRONTEND] Timestamp:', new Date().toISOString());
+    console.log('🔄 [FRONTEND] Stack trace de llamada:', new Error().stack.split('\n').slice(1, 4));
+    console.log('🔄 [FRONTEND] Cantidad de artículos recibidos:', articulos?.length || 0);
     
     const tbody = document.getElementById('tabla-articulos-body');
-    if (!tbody) return;
+    if (!tbody) {
+        console.error('❌ [FRONTEND] ERROR: No se encontró el elemento tabla-articulos-body');
+        return;
+    }
 
+    console.log('🔄 [FRONTEND] Limpiando contenido anterior de la tabla');
+    const filasAnteriores = tbody.children.length;
+    console.log('🔄 [FRONTEND] Filas anteriores en la tabla:', filasAnteriores);
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
         const colspan = modoSeleccion ? 7 : 6;
         tbody.innerHTML = `<tr><td colspan="${colspan}" class="mensaje-info">No hay artículos registrados</td></tr>`;
+        console.log('🔄 [FRONTEND] Tabla vacía - mostrando mensaje de no hay artículos');
         return;
+    }
+
+    console.log('🔄 [FRONTEND] ===== PROCESANDO ARTÍCULOS PARA RENDERIZAR =====');
+    
+    // DIAGNÓSTICO CRÍTICO: Verificar duplicados antes del renderizado
+    const articulosUnicos = new Set();
+    const duplicadosEnRender = [];
+    
+    articulos.forEach((articulo, index) => {
+        if (articulosUnicos.has(articulo.numero)) {
+            duplicadosEnRender.push({
+                index,
+                numero: articulo.numero,
+                nombre: articulo.nombre
+            });
+        } else {
+            articulosUnicos.add(articulo.numero);
+        }
+    });
+    
+    if (duplicadosEnRender.length > 0) {
+        console.log('🚨 [FRONTEND] ¡DUPLICADOS DETECTADOS EN RENDERIZADO!');
+        duplicadosEnRender.forEach(dup => {
+            console.log(`🚨 [FRONTEND] Duplicado en render: ${dup.numero} - ${dup.nombre} (índice ${dup.index})`);
+        });
+    } else {
+        console.log('✅ [FRONTEND] No se detectaron duplicados en el array para renderizar');
     }
 
     articulos.forEach((articulo, index) => {
         const stockConsolidado = articulo.stock_consolidado || 0;
-        console.log(`📊 [DEBUG] Artículo ${index + 1}: ${articulo.nombre} - Stock Consolidado: ${stockConsolidado}`);
+        console.log(`📊 [FRONTEND] Renderizando artículo ${index + 1}/${articulos.length}: ${articulo.numero} - ${articulo.nombre} - Stock: ${stockConsolidado}`);
         
         const tr = document.createElement('tr');
         const checkboxHtml = modoSeleccion ? `
@@ -111,9 +147,24 @@ function actualizarTablaArticulos(articulos) {
             </td>
         `;
         tbody.appendChild(tr);
+        console.log(`✅ [FRONTEND] Fila agregada para artículo: ${articulo.numero}`);
     });
     
-    console.log('✅ [DEBUG] actualizarTablaArticulos - Tabla actualizada correctamente');
+    console.log('🔄 [FRONTEND] ===== VERIFICACIÓN POST-RENDERIZADO =====');
+    const filasFinales = tbody.children.length;
+    console.log('🔄 [FRONTEND] Total filas renderizadas en DOM:', filasFinales);
+    console.log('🔄 [FRONTEND] Artículos únicos esperados:', articulosUnicos.size);
+    console.log('🔄 [FRONTEND] Total artículos procesados:', articulos.length);
+    
+    if (filasFinales !== articulosUnicos.size) {
+        console.log('🚨 [FRONTEND] ¡DISCREPANCIA DETECTADA!');
+        console.log('🚨 [FRONTEND] Filas en DOM:', filasFinales);
+        console.log('🚨 [FRONTEND] Artículos únicos esperados:', articulosUnicos.size);
+    } else {
+        console.log('✅ [FRONTEND] Renderizado correcto - filas coinciden con artículos únicos');
+    }
+    
+    console.log('✅ [FRONTEND] actualizarTablaArticulos - Tabla actualizada correctamente');
 
     // Actualizar eventos de los checkboxes si estamos en modo selección
     if (modoSeleccion) {
@@ -131,6 +182,8 @@ function actualizarTablaArticulos(articulos) {
             });
         });
     }
+    
+    console.log('🔄 [FRONTEND] ===== FIN actualizarTablaArticulos() =====');
 }
 
 // Funciones de filtrado
@@ -314,8 +367,15 @@ function aplicarFiltros() {
 // Función para cargar los artículos
 async function cargarArticulos() {
     try {
-        console.log('Cargando artículos...');
+        console.log('🔍 [FRONTEND] ===== INICIANDO cargarArticulos() =====');
+        console.log('🔍 [FRONTEND] Timestamp:', new Date().toISOString());
+        console.log('🔍 [FRONTEND] Stack trace de llamada:', new Error().stack.split('\n').slice(1, 4));
+        
+        console.log('🔍 [FRONTEND] Realizando fetch a /api/produccion/articulos');
         const response = await fetch('/api/produccion/articulos');
+        
+        console.log('🔍 [FRONTEND] Respuesta recibida - Status:', response.status);
+        console.log('🔍 [FRONTEND] Respuesta recibida - OK:', response.ok);
         
         if (!response.ok) {
             const errorData = await response.json();
@@ -323,16 +383,51 @@ async function cargarArticulos() {
         }
 
         const articulos = await response.json();
-        console.log('Artículos cargados:', articulos.length);
+        console.log('🔍 [FRONTEND] ===== DATOS RECIBIDOS DEL BACKEND =====');
+        console.log('🔍 [FRONTEND] Total artículos recibidos:', articulos.length);
+        console.log('🔍 [FRONTEND] Muestra del primer artículo:', articulos[0]);
+        
+        // DIAGNÓSTICO CRÍTICO: Verificar si hay duplicados en los datos recibidos
+        const articulosUnicos = new Set();
+        const duplicados = [];
+        
+        articulos.forEach((articulo, index) => {
+            if (articulosUnicos.has(articulo.numero)) {
+                duplicados.push({
+                    index,
+                    numero: articulo.numero,
+                    nombre: articulo.nombre
+                });
+            } else {
+                articulosUnicos.add(articulo.numero);
+            }
+        });
+        
+        console.log('🔍 [FRONTEND] ===== ANÁLISIS DE DUPLICADOS EN FRONTEND =====');
+        console.log('🔍 [FRONTEND] Artículos únicos encontrados:', articulosUnicos.size);
+        console.log('🔍 [FRONTEND] Total artículos recibidos:', articulos.length);
+        console.log('🔍 [FRONTEND] Duplicados detectados:', duplicados.length);
+        
+        if (duplicados.length > 0) {
+            console.log('🚨 [FRONTEND] ¡DUPLICADOS ENCONTRADOS EN DATOS RECIBIDOS!');
+            duplicados.forEach(dup => {
+                console.log(`🚨 [FRONTEND] Duplicado: ${dup.numero} - ${dup.nombre} (índice ${dup.index})`);
+            });
+        } else {
+            console.log('✅ [FRONTEND] No se encontraron duplicados en los datos recibidos del backend');
+        }
         
         // Almacenar todos los artículos globalmente
         todosLosArticulos = articulos;
         
         // Mostrar los artículos en la tabla
+        console.log('🔍 [FRONTEND] Llamando a actualizarTablaArticulos()');
         actualizarTablaArticulos(articulos);
+        
+        console.log('🔍 [FRONTEND] ===== FIN cargarArticulos() =====');
 
     } catch (error) {
-        console.error('Error al cargar artículos:', error);
+        console.error('❌ [FRONTEND] Error al cargar artículos:', error);
         mostrarMensaje(error.message || 'No se pudieron cargar los artículos');
     }
 }
@@ -781,50 +876,61 @@ async function finalizarInventario() {
         return;
     }
 
-    const ajustes = [];
+    console.log('🚀 [INVENTARIO-ARTICULOS] Iniciando finalización de inventario');
+    console.log('📊 [INVENTARIO-ARTICULOS] Total artículos inventariados:', articulosInventario.size);
+    console.log('👤 [INVENTARIO-ARTICULOS] Usuario seleccionado:', usuarioSeleccionado);
+
+    // Construir array de artículos inventariados con la estructura requerida por el backend
+    const articulosInventariados = [];
     const inputs = document.querySelectorAll('.stock-fisico');
     
     inputs.forEach(input => {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosInventario.get(articuloNumero);
-        const stockFisico = parseFloat(input.value) || 0;
-        const ajuste = stockFisico - (articulo.stock_ventas || 0);
+        const stockContado = parseFloat(input.value) || 0;
+        const stockSistema = articulo.stock_consolidado || 0;
         
-        if (ajuste !== 0) {
-            ajustes.push({
-                articulo_numero: articuloNumero,
-                codigo_barras: articulo.codigo_barras,
-                usuario_id: usuarioSeleccionado,
-                tipo: 'registro de ajuste',
-                kilos: ajuste,
-                cantidad: ajuste // Usar cantidad para el ajuste real en unidades
-            });
-        }
+        console.log(`📦 [ARTICULO] ${articuloNumero}: Sistema=${stockSistema}, Contado=${stockContado}`);
+        
+        articulosInventariados.push({
+            articulo_numero: articuloNumero,
+            stock_sistema: stockSistema,
+            stock_contado: stockContado
+        });
     });
 
-    if (ajustes.length === 0) {
-        mostrarMensaje('No hay ajustes para registrar', 'info');
-        cerrarModal();
-        return;
-    }
+    console.log('📋 [INVENTARIO-ARTICULOS] Total artículos a procesar:', articulosInventariados.length);
 
     try {
-        const response = await fetch('/api/produccion/stock-ventas-movimientos/batch', {
+        const payload = {
+            usuario_id: usuarioSeleccionado,
+            articulos_inventariados: articulosInventariados
+        };
+
+        console.log('📤 [INVENTARIO-ARTICULOS] Enviando datos al backend:', payload);
+
+        const response = await fetch('/api/produccion/inventario-articulos/finalizar', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ ajustes })
+            body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error('Error al registrar los ajustes');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al finalizar inventario');
+        }
 
-        mostrarMensaje('Inventario registrado correctamente', 'info');
+        const resultado = await response.json();
+        console.log('✅ [INVENTARIO-ARTICULOS] Respuesta del backend:', resultado);
+
+        mostrarMensaje(`Inventario finalizado correctamente: ${resultado.articulos_registrados} artículos procesados, ${resultado.diferencias_encontradas} diferencias aplicadas`, 'info');
         cerrarModal();
         cargarArticulos(); // Recargar la tabla de artículos
     } catch (error) {
-        console.error('Error al finalizar inventario:', error);
-        mostrarMensaje('Error al registrar el inventario');
+        console.error('❌ [INVENTARIO-ARTICULOS] Error al finalizar inventario:', error);
+        mostrarMensaje(`Error al finalizar inventario: ${error.message}`, 'error');
     }
 }
 

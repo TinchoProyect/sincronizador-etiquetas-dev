@@ -108,6 +108,35 @@
             background-color: #0056b3;
         }
 
+        /* Estilos para el header con botones */
+        .header-buttons {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-buttons .primary-button {
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .back-button {
+            background-color: #6c757d;
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+
+        .back-button:hover {
+            background-color: #5a6268;
+        }
+
         /* Modal styles */
         .modal {
             display: none;
@@ -604,7 +633,12 @@
     <div class="container">
         <header>
             <h1>Gestión de Artículos</h1>
-            <a href="produccion.html" class="back-button">← Volver a Producción</a>
+            <div class="header-buttons">
+                <a href="historialInventarios.html" class="primary-button" style="margin-right: 10px;">
+                    📋 Historial de Inventarios
+                </a>
+                <a href="produccion.html" class="back-button">← Volver a Producción</a>
+            </div>
         </header>
 
         <main>

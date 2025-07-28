@@ -57,14 +57,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // Validación adicional del formato
-    const sessionParts = sessionId.split('_');
-    if (sessionParts.length !== 3) {
-        console.error('❌ [MÓVIL] ERROR: sessionId no tiene el formato correcto');
-        console.error('❌ [MÓVIL] Partes encontradas:', sessionParts);
-        mostrarSinInventario('Formato de ID de sesión inválido. Verifique el enlace QR.');
+    // VALIDACIÓN SIMPLIFICADA Y ROBUSTA - Compatible con ambos formatos
+    console.log('🔍 [MÓVIL] Session ID recibido:', sessionId);
+    
+    // Validar que tenga el formato correcto para ingredientes o artículos
+    const esIngredientes = sessionId.startsWith('inv_ing_');
+    const esArticulos = sessionId.startsWith('inv_') && !sessionId.startsWith('inv_ing_');
+    
+    console.log('🔍 [MÓVIL] Es ingredientes:', esIngredientes);
+    console.log('🔍 [MÓVIL] Es artículos:', esArticulos);
+    
+    // Validación básica - solo verificar que sea uno de los dos tipos válidos
+    if (!esIngredientes && !esArticulos) {
+        console.error('❌ [MÓVIL] ERROR: sessionId no es de inventario válido');
+        console.error('❌ [MÓVIL] sessionId recibido:', sessionId);
+        mostrarSinInventario('Tipo de inventario no reconocido. Verifique el enlace QR.');
         return;
     }
+    
+    console.log('✅ [MÓVIL] Validación exitosa - Tipo detectado:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
+    
+    console.log('✅ [MÓVIL] Tipo de inventario detectado:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
     
     console.log('✅ Session ID válido:', sessionId);
     
@@ -177,6 +190,12 @@ function inicializarWebSocket() {
                 return;
             }
             
+            // MOSTRAR INFORMACIÓN DE SECTORES SI ES INVENTARIO DE INGREDIENTES
+            if (esSessionDeIngredientes() && data.sectores) {
+                console.log('🏢 [MÓVIL] Mostrando información de sectores para ingredientes');
+                mostrarInfoSectoresMovil(data.sectores);
+            }
+            
             console.log('✅ [MÓVIL] Formulario de carga mostrado y listo');
         });
         
@@ -205,6 +224,12 @@ function inicializarWebSocket() {
             console.log('✅ [MÓVIL] ARTÍCULO CONFIRMADO');
             console.log('✅ [MÓVIL] Datos de confirmación:', data);
             mostrarMensaje(`${data.articulo} registrado: ${data.cantidad}`, 'info');
+        });
+
+        socket.on('ingrediente_confirmado', (data) => {
+            console.log('✅ [MÓVIL] INGREDIENTE CONFIRMADO');
+            console.log('✅ [MÓVIL] Datos de confirmación:', data);
+            mostrarMensaje(`${data.ingrediente} registrado: ${data.cantidad}`, 'info');
         });
         
         socket.on('disconnect', () => {
@@ -318,7 +343,7 @@ function manejarCodigoBarras() {
 }
 
 /**
- * Busca un artículo por código de barras
+ * Busca un artículo o ingrediente por código de barras
  */
 async function buscarArticulo() {
     const codigo = document.getElementById('codigo-barras').value.trim();
@@ -329,41 +354,70 @@ async function buscarArticulo() {
     }
 
     try {
-        const response = await fetch(`/api/produccion/articulos/buscar?codigo_barras=${codigo}`);
+        const esIngredientes = esSessionDeIngredientes();
+        const tipoItem = esIngredientes ? 'ingrediente' : 'artículo';
+        
+        // Determinar endpoint según el tipo de inventario
+        let endpoint;
+        if (esIngredientes) {
+            endpoint = `/api/produccion/ingredientes/buscar?codigo=${codigo}`;
+        } else {
+            endpoint = `/api/produccion/articulos/buscar?codigo_barras=${codigo}`;
+        }
+        
+        console.log(`🔍 [MÓVIL] Buscando ${tipoItem} con código:`, codigo);
+        console.log(`🔍 [MÓVIL] Endpoint:`, endpoint);
+        
+        const response = await fetch(endpoint);
         
         if (!response.ok) {
-            throw new Error('Artículo no encontrado');
+            throw new Error(`${tipoItem} no encontrado`);
         }
 
-        const articulo = await response.json();
-        articuloActual = articulo;
-        mostrarInfoArticulo(articulo);
+        const item = await response.json();
+        articuloActual = item;
+        mostrarInfoArticulo(item);
+        
+        console.log(`✅ [MÓVIL] ${tipoItem} encontrado:`, item.nombre);
         
         // Enfocar el input de cantidad
         document.getElementById('cantidad').focus();
         
     } catch (error) {
-        console.error('Error al buscar artículo:', error);
+        const esIngredientes = esSessionDeIngredientes();
+        const tipoItem = esIngredientes ? 'Ingrediente' : 'Artículo';
+        
+        console.error(`Error al buscar ${tipoItem.toLowerCase()}:`, error);
         articuloActual = null;
         ocultarInfoArticulo();
-        mostrarMensajeError('Artículo no encontrado');
+        mostrarMensajeError(`${tipoItem} no encontrado`);
     }
     
     validarFormulario();
 }
 
 /**
- * Muestra la información del artículo encontrado
+ * Muestra la información del artículo/ingrediente encontrado
  */
-function mostrarInfoArticulo(articulo) {
+function mostrarInfoArticulo(item) {
     const infoDiv = document.getElementById('info-articulo');
     const nombreElement = document.getElementById('nombre-articulo');
     const codigoElement = document.getElementById('codigo-articulo');
     const stockElement = document.getElementById('stock-actual');
 
-    nombreElement.textContent = articulo.nombre;
-    codigoElement.textContent = `Código: ${articulo.numero}`;
-    stockElement.textContent = `Stock actual: ${articulo.stock_consolidado || 0}`;
+    const esIngredientes = esSessionDeIngredientes();
+    
+    nombreElement.textContent = item.nombre;
+    
+    if (esIngredientes) {
+        // Para ingredientes
+        codigoElement.textContent = `Código: ${item.codigo || item.id}`;
+        stockElement.textContent = `Stock actual: ${item.stock_actual || 0} ${item.unidad_medida || 'kg'}`;
+    } else {
+        // Para artículos
+        codigoElement.textContent = `Código: ${item.numero}`;
+        stockElement.textContent = `Stock actual: ${item.stock_consolidado || 0}`;
+    }
 
     infoDiv.style.display = 'block';
 }
@@ -393,24 +447,36 @@ function validarFormulario() {
 }
 
 /**
- * Envía el artículo a la PC mediante WebSocket
+ * Detecta si la sesión es de ingredientes o artículos
+ */
+function esSessionDeIngredientes() {
+    return sessionId && sessionId.startsWith('inv_ing_');
+}
+
+/**
+ * Envía el artículo o ingrediente a la PC mediante WebSocket
  */
 function enviarArticuloAPC() {
-    console.log('🚀 [MÓVIL] Iniciando envío de artículo a PC...');
+    const esIngredientes = esSessionDeIngredientes();
+    const tipoItem = esIngredientes ? 'ingrediente' : 'artículo';
+    const emoji = esIngredientes ? '🧪' : '📦';
+    
+    console.log(`🚀 [MÓVIL] Iniciando envío de ${tipoItem} a PC...`);
     console.log('🔍 [MÓVIL] Estado de conexión:', conectado);
     console.log('🔍 [MÓVIL] Socket ID actual:', socket?.id);
     console.log('🔍 [MÓVIL] Session ID actual:', sessionId);
+    console.log('🔍 [MÓVIL] Tipo de sesión:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
     
     if (!articuloActual || !conectado) {
         console.error('❌ [MÓVIL] Error de validación:');
-        console.error('- Artículo actual:', articuloActual ? '✅' : '❌');
+        console.error(`- ${tipoItem} actual:`, articuloActual ? '✅' : '❌');
         console.error('- Conectado:', conectado ? '✅' : '❌');
-        mostrarMensajeError('No hay conexión con la PC o falta información del artículo');
+        mostrarMensajeError(`No hay conexión con la PC o falta información del ${tipoItem}`);
         return;
     }
 
     const cantidad = parseFloat(document.getElementById('cantidad').value);
-    console.log('📦 [MÓVIL] Cantidad a enviar:', cantidad);
+    console.log(`${emoji} [MÓVIL] Cantidad a enviar:`, cantidad);
     
     if (isNaN(cantidad) || cantidad < 0) {
         console.error('❌ [MÓVIL] Cantidad inválida:', cantidad);
@@ -419,20 +485,31 @@ function enviarArticuloAPC() {
     }
 
     try {
-        // Preparar datos para envío
+        // Preparar datos para envío según el tipo de sesión
         const datosEnvio = {
             sessionId: sessionId,
-            articulo: articuloActual,
             cantidad: cantidad
         };
         
-        console.log('📤 [MÓVIL] ===== ENVIANDO ARTÍCULO =====');
+        // Usar evento unificado 'articulo_escaneado' para ambos tipos
+        const evento = 'articulo_escaneado';
+        
+        if (esIngredientes) {
+            console.log('🧪 [MÓVIL] Escaneando ingrediente desde móvil...');
+            datosEnvio.ingrediente = articuloActual;
+        } else {
+            console.log('📦 [MÓVIL] Escaneando artículo desde móvil...');
+            datosEnvio.articulo = articuloActual;
+        }
+        
+        console.log(`📤 [MÓVIL] ===== ENVIANDO ${tipoItem.toUpperCase()} =====`);
+        console.log('📤 [MÓVIL] Evento a emitir:', evento);
         console.log('📤 [MÓVIL] Datos completos:', JSON.stringify(datosEnvio, null, 2));
         console.log('📤 [MÓVIL] Socket conectado:', socket.connected);
         
-        // Enviar artículo a la PC mediante WebSocket
-        socket.emit('articulo_escaneado', datosEnvio);
-        console.log('✅ [MÓVIL] Evento articulo_escaneado emitido');
+        // Enviar según el tipo de sesión
+        socket.emit(evento, datosEnvio);
+        console.log(`✅ [MÓVIL] Evento ${evento} emitido`);
 
         // Mostrar confirmación
         mostrarConfirmacion();
@@ -442,12 +519,12 @@ function enviarArticuloAPC() {
         limpiarFormulario();
         console.log('✅ [MÓVIL] Formulario limpiado');
         
-        console.log('🎉 [MÓVIL] ===== ENVÍO COMPLETADO =====');
+        console.log(`🎉 [MÓVIL] ===== ENVÍO DE ${tipoItem.toUpperCase()} COMPLETADO =====`);
         
     } catch (error) {
-        console.error('❌ [MÓVIL] Error al enviar artículo a PC:', error);
+        console.error(`❌ [MÓVIL] Error al enviar ${tipoItem} a PC:`, error);
         console.error('❌ [MÓVIL] Stack:', error.stack);
-        mostrarMensajeError('Error al enviar el artículo a la PC');
+        mostrarMensajeError(`Error al enviar el ${tipoItem} a la PC`);
     }
 }
 
@@ -662,4 +739,45 @@ function mostrarMensaje(mensaje, tipo = 'error') {
  */
 function mostrarMensajeError(mensaje) {
     mostrarMensaje(mensaje, 'error');
+}
+
+/**
+ * Muestra la información de sectores en la aplicación móvil
+ */
+function mostrarInfoSectoresMovil(sectores) {
+    console.log('🏢 [MÓVIL-SECTORES] ===== MOSTRANDO INFORMACIÓN DE SECTORES =====');
+    console.log('🏢 [MÓVIL-SECTORES] Sectores recibidos:', sectores);
+    
+    const infoSectoresDiv = document.getElementById('info-sectores-movil');
+    const sectoresTextoElement = document.getElementById('sectores-movil-texto');
+    
+    if (!infoSectoresDiv || !sectoresTextoElement) {
+        console.error('❌ [MÓVIL-SECTORES] No se encontraron elementos de sectores en el DOM');
+        return;
+    }
+    
+    // Mostrar el contenedor de sectores
+    infoSectoresDiv.style.display = 'block';
+    
+    if (sectores === 'TODOS') {
+        console.log('🏢 [MÓVIL-SECTORES] Mostrando: Todos los sectores');
+        sectoresTextoElement.innerHTML = '📦 <strong>Todos los sectores</strong>';
+    } else if (Array.isArray(sectores)) {
+        console.log('🏢 [MÓVIL-SECTORES] Sectores específicos:', sectores);
+        
+        if (sectores.length === 0) {
+            console.log('🏢 [MÓVIL-SECTORES] No hay sectores específicos');
+            sectoresTextoElement.innerHTML = '⚠️ <strong>Sin sectores específicos</strong>';
+        } else {
+            // Para el móvil, mostrar solo los IDs ya que no tenemos los nombres
+            // En una implementación completa, se podrían enviar los nombres desde el servidor
+            const textoSectores = sectores.map(id => `Sector ${id}`).join(', ');
+            sectoresTextoElement.innerHTML = `🏢 <strong>Sectores:</strong> ${textoSectores}`;
+        }
+    } else {
+        console.error('❌ [MÓVIL-SECTORES] Formato de sectores no reconocido:', sectores);
+        sectoresTextoElement.innerHTML = '❌ <strong>Error</strong> - Formato de sectores inválido';
+    }
+    
+    console.log('✅ [MÓVIL-SECTORES] Información de sectores mostrada correctamente');
 }

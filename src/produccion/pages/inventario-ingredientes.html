@@ -260,23 +260,30 @@
 
         .modal-content {
             background-color: white;
-            margin: 5% auto;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
             padding: 0;
             border-radius: 10px;
             width: 90%;
             max-width: 600px;
+            max-height: 90vh;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             animation: modalSlideIn 0.3s ease-out;
+            cursor: move;
+            display: flex;
+            flex-direction: column;
         }
 
         @keyframes modalSlideIn {
             from {
                 opacity: 0;
-                transform: translateY(-50px);
+                transform: translate(-50%, -60%);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translate(-50%, -50%);
             }
         }
 
@@ -288,6 +295,13 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            cursor: move;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .modal-header:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
         }
 
         .modal-title {
@@ -318,6 +332,31 @@
 
         .modal-body {
             padding: 30px;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Estilos para hacer el modal draggable */
+        .modal-content.dragging {
+            transition: none;
+        }
+
+        .modal-header .modal-title::before {
+            content: "↔️ ";
+            opacity: 0.7;
+            font-size: 16px;
+            margin-right: 8px;
+        }
+
+        /* Asegurar que los botones siempre sean accesibles */
+        .modal-actions {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            padding-top: 20px;
+            margin-top: 30px;
+            border-top: 1px solid #e9ecef;
         }
 
         .paso-modal {
@@ -587,9 +626,44 @@
                     </div>
                 </div>
 
-                <!-- Paso 2: Conteo de Ingredientes -->
+                <!-- Paso 2: Selección de Sectores -->
+                <div id="paso-sectores" class="paso-modal">
+                    <h3>🏢 Seleccionar Sectores para Inventario</h3>
+                    
+                    <div class="sectores-selection">
+                        <div class="form-group">
+                            <label class="sector-option" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; margin-bottom: 15px;">
+                                <input type="checkbox" id="todos-sectores" checked style="transform: scale(1.2);">
+                                <span>📦 Todos los sectores</span>
+                            </label>
+                        </div>
+                        
+                        <div id="sectores-checkboxes" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <!-- Los sectores se cargarán dinámicamente aquí -->
+                        </div>
+                        
+                        <div id="sectores-seleccionados-info" class="info-sectores" style="padding: 10px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #1565c0; color: #1565c0; font-weight: 500; margin-bottom: 20px;">
+                            Inventario completo: todos los ingredientes
+                        </div>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button id="btn-volver-usuario" class="btn-cancel">← Volver</button>
+                        <button id="btn-continuar-sectores" class="btn-primary">Continuar</button>
+                    </div>
+                </div>
+
+                <!-- Paso 3: Conteo de Ingredientes -->
                 <div id="paso-conteo" class="paso-modal">
                     <h3>📱 Escanear Ingredientes</h3>
+                    
+                    <!-- Información de sectores seleccionados -->
+                    <div id="info-sectores-inventario" style="background: #e8f4fd; border: 1px solid #bee5eb; border-radius: 6px; padding: 15px; margin-bottom: 20px; color: #0c5460;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600;">🏢 Sectores para inventario:</h4>
+                        <div id="sectores-inventario-texto" style="font-size: 13px; font-weight: 500;">
+                            Cargando información de sectores...
+                        </div>
+                    </div>
                     
                     <!-- Código QR para móvil -->
                     <div class="qr-section">
@@ -688,7 +762,142 @@
     </div>
 
     <!-- Scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="../js/gestionIngredientes.js"></script>
+    
+    <!-- Script para hacer los modales draggables -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 [MODAL-DRAG] Inicializando funcionalidad de arrastrar modales');
+            
+            // Hacer todos los modales draggables
+            const modales = document.querySelectorAll('.modal-content');
+            
+            modales.forEach(modal => {
+                makeModalDraggable(modal);
+            });
+            
+            function makeModalDraggable(modalContent) {
+                const header = modalContent.querySelector('.modal-header');
+                if (!header) return;
+                
+                let isDragging = false;
+                let currentX;
+                let currentY;
+                let initialX;
+                let initialY;
+                let xOffset = 0;
+                let yOffset = 0;
+                
+                // Eventos para mouse
+                header.addEventListener('mousedown', dragStart);
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', dragEnd);
+                
+                // Eventos para touch (móvil)
+                header.addEventListener('touchstart', dragStart);
+                document.addEventListener('touchmove', drag);
+                document.addEventListener('touchend', dragEnd);
+                
+                function dragStart(e) {
+                    // No arrastrar si se hace clic en el botón de cerrar
+                    if (e.target.classList.contains('close-modal')) {
+                        return;
+                    }
+                    
+                    console.log('🎯 [MODAL-DRAG] Iniciando arrastre');
+                    
+                    if (e.type === "touchstart") {
+                        initialX = e.touches[0].clientX - xOffset;
+                        initialY = e.touches[0].clientY - yOffset;
+                    } else {
+                        initialX = e.clientX - xOffset;
+                        initialY = e.clientY - yOffset;
+                    }
+                    
+                    if (e.target === header || header.contains(e.target)) {
+                        isDragging = true;
+                        modalContent.classList.add('dragging');
+                        header.style.cursor = 'grabbing';
+                    }
+                }
+                
+                function drag(e) {
+                    if (isDragging) {
+                        e.preventDefault();
+                        
+                        if (e.type === "touchmove") {
+                            currentX = e.touches[0].clientX - initialX;
+                            currentY = e.touches[0].clientY - initialY;
+                        } else {
+                            currentX = e.clientX - initialX;
+                            currentY = e.clientY - initialY;
+                        }
+                        
+                        xOffset = currentX;
+                        yOffset = currentY;
+                        
+                        // Obtener dimensiones de la ventana y del modal
+                        const windowWidth = window.innerWidth;
+                        const windowHeight = window.innerHeight;
+                        const modalRect = modalContent.getBoundingClientRect();
+                        
+                        // Calcular límites para mantener el modal dentro de la pantalla
+                        const minX = -modalRect.width / 2 + 50; // Permitir que se salga un poco
+                        const maxX = windowWidth - modalRect.width / 2 - 50;
+                        const minY = -modalRect.height / 2 + 50;
+                        const maxY = windowHeight - modalRect.height / 2 - 50;
+                        
+                        // Aplicar límites
+                        const constrainedX = Math.max(minX, Math.min(maxX, currentX));
+                        const constrainedY = Math.max(minY, Math.min(maxY, currentY));
+                        
+                        // Aplicar transformación
+                        modalContent.style.transform = `translate(calc(-50% + ${constrainedX}px), calc(-50% + ${constrainedY}px))`;
+                        
+                        // Actualizar offsets con valores restringidos
+                        xOffset = constrainedX;
+                        yOffset = constrainedY;
+                    }
+                }
+                
+                function dragEnd(e) {
+                    if (isDragging) {
+                        console.log('🎯 [MODAL-DRAG] Finalizando arrastre');
+                        isDragging = false;
+                        modalContent.classList.remove('dragging');
+                        header.style.cursor = 'move';
+                    }
+                }
+                
+                // Resetear posición cuando se abre el modal
+                const modal = modalContent.closest('.modal');
+                if (modal) {
+                    const observer = new MutationObserver(function(mutations) {
+                        mutations.forEach(function(mutation) {
+                            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                                const display = modal.style.display;
+                                if (display === 'block') {
+                                    // Modal se está abriendo - resetear posición
+                                    console.log('🎯 [MODAL-DRAG] Modal abierto - reseteando posición');
+                                    xOffset = 0;
+                                    yOffset = 0;
+                                    modalContent.style.transform = 'translate(-50%, -50%)';
+                                }
+                            }
+                        });
+                    });
+                    
+                    observer.observe(modal, {
+                        attributes: true,
+                        attributeFilter: ['style']
+                    });
+                }
+            }
+            
+            console.log('✅ [MODAL-DRAG] Funcionalidad de arrastrar modales inicializada');
+        });
+    </script>
 </body>
 </html>
