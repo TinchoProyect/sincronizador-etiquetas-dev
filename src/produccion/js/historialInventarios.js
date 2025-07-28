@@ -382,9 +382,7 @@ function renderizarStockRegistrado(contenedor, stockData) {
                 <tr>
                     <th>Código Artículo</th>
                     <th>Nombre</th>
-                    <th>Stock Sistema</th>
-                    <th>Stock Contado</th>
-                    <th>Fecha Registro</th>
+                    <th>Stock Consolidado</th>
                 </tr>
             </thead>
             <tbody>
@@ -395,9 +393,7 @@ function renderizarStockRegistrado(contenedor, stockData) {
             <tr>
                 <td><strong>${registro.articulo_numero}</strong></td>
                 <td>${registro.nombre_articulo || 'N/A'}</td>
-                <td>${formatearNumero(registro.stock_sistema)}</td>
-                <td>${formatearNumero(registro.stock_contado)}</td>
-                <td>${formatearFecha(registro.fecha_registro)}</td>
+                <td>${formatearNumero(registro.stock_consolidado)}</td>
             </tr>
         `;
     });
@@ -429,19 +425,18 @@ function renderizarDiferencias(contenedor, diferenciasData) {
                 <tr>
                     <th>Código Artículo</th>
                     <th>Nombre</th>
-                    <th>Stock Sistema</th>
+                    <th>Stock Antes</th>
                     <th>Stock Contado</th>
                     <th>Diferencia</th>
-                    <th>Fecha Registro</th>
                 </tr>
             </thead>
             <tbody>
     `;
     
     diferenciasData.forEach(diferencia => {
-        const stockSistema = Number(diferencia.stock_sistema) || 0;
+        const stockAntes = Number(diferencia.stock_antes) || 0;
         const stockContado = Number(diferencia.stock_contado) || 0;
-        const diferenciaCalculada = stockContado - stockSistema;
+        const diferenciaCalculada = stockContado - stockAntes;
         
         // Determinar clase CSS para la diferencia
         let claseDiferencia = 'diferencia-cero';
@@ -458,12 +453,11 @@ function renderizarDiferencias(contenedor, diferenciasData) {
             <tr>
                 <td><strong>${diferencia.articulo_numero}</strong></td>
                 <td>${diferencia.nombre_articulo || 'N/A'}</td>
-                <td>${formatearNumero(stockSistema)}</td>
+                <td>${formatearNumero(stockAntes)}</td>
                 <td>${formatearNumero(stockContado)}</td>
                 <td class="${claseDiferencia}">
                     ${simboloDiferencia}${formatearNumero(Math.abs(diferenciaCalculada))}
                 </td>
-                <td>${formatearFecha(diferencia.fecha_registro)}</td>
             </tr>
         `;
     });
