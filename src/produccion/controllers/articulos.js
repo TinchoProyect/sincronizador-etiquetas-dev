@@ -7,19 +7,16 @@ const pool = require('../config/database');
  */
 async function obtenerArticulos(tipoCarro = null) {
     try {
-        console.log('Iniciando obtención de artículos...', tipoCarro ? `Filtro: ${tipoCarro}` : 'Sin filtro');
-        
         // Construir WHERE clause según el tipo de carro
         let whereClause = '';
         let params = [];
         
         if (tipoCarro === 'externa') {
             whereClause = 'WHERE COALESCE(src.solo_produccion_externa, false) = true';
-            console.log('Aplicando filtro para producción externa');
         }
         
         const query = `
-            SELECT 
+            SELECT DISTINCT
                 a.numero,
                 a.nombre,
                 a.codigo_barras,
@@ -32,15 +29,7 @@ async function obtenerArticulos(tipoCarro = null) {
             ORDER BY a.nombre ASC
         `;
         
-        console.log('Ejecutando query:', query);
         const result = await pool.query(query, params);
-        
-        console.log(`Se encontraron ${result.rows.length} artículos`);
-        if (result.rows.length === 0) {
-            console.log('La consulta no retornó resultados. Verificar la tabla articulos.');
-        } else {
-            console.log('Muestra del primer artículo:', result.rows[0]);
-        }
         
         return result.rows;
     } catch (error) {
