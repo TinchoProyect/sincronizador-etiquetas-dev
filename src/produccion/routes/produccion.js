@@ -950,8 +950,43 @@ router.put('/articulos/:articuloId/toggle-produccion', async (req, res) => {
 // Importar el controlador de eliminación de ingresos manuales
 const { eliminarIngresoManual } = require('../controllers/eliminarIngresoManual');
 
+// Importar el controlador de guardado de ingredientes
+const { obtenerIngredientesConsolidadosCarro, ajustarStockIngrediente } = require('../controllers/guardadoIngredientes');
+
 // Ruta para eliminar físicamente un ingreso manual
 router.delete('/carro/:carroId/ingreso-manual/:ingresoId', eliminarIngresoManual);
+
+// ==========================================
+// RUTAS PARA GUARDADO DE INGREDIENTES
+// ==========================================
+
+// Ruta para obtener ingredientes consolidados de un carro para el modal de guardado
+router.get('/carro/:carroId/ingredientes-consolidados', async (req, res) => {
+    try {
+        console.log('🔍 [GUARDADO] Solicitando ingredientes consolidados para guardado');
+        await obtenerIngredientesConsolidadosCarro(req, res);
+    } catch (error) {
+        console.error('❌ [GUARDADO] Error en /carro/:carroId/ingredientes-consolidados:', error);
+        res.status(500).json({
+            error: 'Error al obtener ingredientes consolidados',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para realizar ajuste manual de stock de ingrediente
+router.post('/ingredientes/:ingredienteId/ajustar-stock', async (req, res) => {
+    try {
+        console.log('🔧 [GUARDADO] Realizando ajuste manual de stock');
+        await ajustarStockIngrediente(req, res);
+    } catch (error) {
+        console.error('❌ [GUARDADO] Error en /ingredientes/:ingredienteId/ajustar-stock:', error);
+        res.status(500).json({
+            error: 'Error al ajustar stock de ingrediente',
+            detalle: error.message
+        });
+    }
+});
 
 // Ruta para ajustes puntuales de ingredientes (batch)
 router.post('/ingredientes-ajustes/batch', async (req, res) => {

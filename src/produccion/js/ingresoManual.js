@@ -48,7 +48,7 @@ let ingredienteSeleccionado = null;
 let articuloSeleccionado = null;
 let carroIdGlobal = null;
 
-// 🔒 Variables para controlar el estado del botón y evitar clics múltiples
+// 🔒 Variables para controlar el estado del botón y prevenir clics múltiples
 let procesamientoEnCurso = false;
 let textoOriginalBoton = 'Confirmar';
 let estadoOriginalBoton = {
