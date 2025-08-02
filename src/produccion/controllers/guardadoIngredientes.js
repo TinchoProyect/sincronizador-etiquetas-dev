@@ -72,6 +72,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                 i.nombre,
                 i.unidad_medida,
                 i.stock_actual,
+                i.codigo,
                 i.sector_id,
                 s.nombre as sector_nombre,
                 SUM(im.kilos) as cantidad_ingresada
@@ -79,7 +80,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
             JOIN ingredientes i ON i.id = im.ingrediente_id
             LEFT JOIN sectores_ingredientes s ON s.id = i.sector_id
             WHERE im.carro_id = $1 AND im.tipo = 'ingreso'
-            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual, i.sector_id, s.nombre
+            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual, i.codigo, i.sector_id, s.nombre
             ORDER BY s.nombre ASC NULLS LAST, i.nombre ASC
         `;
         
@@ -104,6 +105,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     unidad_medida: ing.unidad_medida,
                     cantidad_necesaria: Number(parseFloat(ing.cantidad).toFixed(3)),
                     stock_actual: Number(parseFloat(ing.stock_actual).toFixed(3)),
+                    codigo: null, // Se obtendrá en el siguiente paso
                     sector_id: null, // Se obtendrá en el siguiente paso
                     sector_nombre: null,
                     origen: 'receta',
@@ -116,8 +118,9 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
         ingredientesIngresos.forEach(ing => {
             const existente = ingredientesConsolidados.get(ing.ingrediente_id);
             if (existente) {
-                // Si ya existe, actualizar cantidad ingresada y sector
+                // Si ya existe, actualizar cantidad ingresada, sector y código
                 existente.cantidad_ingresada = Number(parseFloat(ing.cantidad_ingresada).toFixed(3));
+                existente.codigo = ing.codigo;
                 existente.sector_id = ing.sector_id;
                 existente.sector_nombre = ing.sector_nombre;
                 existente.origen = 'ambos';
@@ -129,6 +132,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     unidad_medida: ing.unidad_medida,
                     cantidad_necesaria: 0,
                     stock_actual: Number(parseFloat(ing.stock_actual).toFixed(3)),
+                    codigo: ing.codigo,
                     sector_id: ing.sector_id,
                     sector_nombre: ing.sector_nombre,
                     origen: 'ingreso_manual',
@@ -137,16 +141,17 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
             }
         });
 
-        // PASO 4: Obtener información de sectores para ingredientes de recetas
-        console.log(`\n📋 PASO 4: Completando información de sectores...`);
-        const ingredientesSinSector = Array.from(ingredientesConsolidados.values())
-            .filter(ing => ing.sector_id === null && ing.id);
+        // PASO 4: Obtener información de sectores y códigos para ingredientes de recetas
+        console.log(`\n📋 PASO 4: Completando información de sectores y códigos...`);
+        const ingredientesSinInfo = Array.from(ingredientesConsolidados.values())
+            .filter(ing => (ing.sector_id === null || ing.codigo === null) && ing.id);
 
-        if (ingredientesSinSector.length > 0) {
-            const idsIngredientes = ingredientesSinSector.map(ing => ing.id);
+        if (ingredientesSinInfo.length > 0) {
+            const idsIngredientes = ingredientesSinInfo.map(ing => ing.id);
             const querySectores = `
                 SELECT 
                     i.id,
+                    i.codigo,
                     i.sector_id,
                     s.nombre as sector_nombre
                 FROM ingredientes i
@@ -159,6 +164,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
             sectoresResult.rows.forEach(sector => {
                 const ingrediente = ingredientesConsolidados.get(sector.id);
                 if (ingrediente) {
+                    ingrediente.codigo = sector.codigo;
                     ingrediente.sector_id = sector.sector_id;
                     ingrediente.sector_nombre = sector.sector_nombre;
                 }

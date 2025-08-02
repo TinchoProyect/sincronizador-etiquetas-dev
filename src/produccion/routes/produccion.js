@@ -1055,56 +1055,68 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                     console.log(`✅ [ENCONTRADO] Código: ${ingrediente.codigo}`);
                     console.log(`✅ [ENCONTRADO] Stock actual: ${ingrediente.stock_actual}`);
                     
-                    // 🧮 CALCULAR NUEVO STOCK
+                    // 🧮 CALCULAR DIFERENCIA PARA TRIGGER
                     const stockAnterior = parseFloat(ingrediente.stock_actual) || 0;
-                    const ajusteKilos = parseFloat(kilos) || 0;
-                    const nuevoStock = stockAnterior + ajusteKilos;
+                    const nuevoStockDeseado = parseFloat(kilos) || 0;
+                    const diferencia = nuevoStockDeseado - stockAnterior;
                     
-                    console.log(`🧮 [CÁLCULO] ===== CALCULANDO NUEVO STOCK =====`);
+                    console.log(`🧮 [CÁLCULO] ===== CALCULANDO AJUSTE PARA TRIGGER =====`);
                     console.log(`🧮 [CÁLCULO] Stock anterior: ${stockAnterior}`);
-                    console.log(`🧮 [CÁLCULO] Ajuste: ${ajusteKilos}`);
-                    console.log(`🧮 [CÁLCULO] Nuevo stock: ${stockAnterior} + ${ajusteKilos} = ${nuevoStock}`);
+                    console.log(`🧮 [CÁLCULO] Nuevo stock deseado: ${nuevoStockDeseado}`);
+                    console.log(`🧮 [CÁLCULO] Diferencia calculada: ${diferencia}`);
+                    console.log(`🔧 [CORRECCIÓN] Usando trigger actualizar_stock_ingrediente`);
                     
-                    // 🔄 ACTUALIZAR STOCK EN INGREDIENTES
-                    const updateStockQuery = `
-                        UPDATE ingredientes 
-                        SET stock_actual = $1 
-                        WHERE id = $2
-                    `;
-                    
-                    console.log(`🔄 [ACTUALIZAR] Ejecutando actualización de stock...`);
-                    console.log(`🔄 [ACTUALIZAR] Query: UPDATE ingredientes SET stock_actual = ${nuevoStock} WHERE id = ${ingrediente.id}`);
-                    
-                    const updateResult = await req.db.query(updateStockQuery, [nuevoStock, ingrediente.id]);
-                    console.log(`✅ [ACTUALIZAR] Filas afectadas: ${updateResult.rowCount}`);
-                    
-                    if (updateResult.rowCount === 0) {
-                        const error = `No se pudo actualizar el stock del ingrediente ${ingrediente.id}`;
-                        console.error(`❌ [ERROR] ${error}`);
-                        erroresEncontrados.push(error);
+                    // Si la diferencia es 0, no hacer nada
+                    if (Math.abs(diferencia) < 0.001) {
+                        console.log(`ℹ️ [SKIP] Diferencia es 0, no se registra movimiento`);
+                        ajustesAplicados++;
                         continue;
                     }
                     
-                    // 📝 REGISTRAR EN INGREDIENTES_AJUSTES (sin columna diferencia - es generada automáticamente)
+                    // 🔄 REGISTRAR EN INGREDIENTES_MOVIMIENTOS (trigger actualiza stock_actual automáticamente)
+                    const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
+                    const kilosParaTrigger = diferencia; // El trigger suma/resta según el valor (+ o -)
+                    
+                    const insertMovimientoQuery = `
+                        INSERT INTO ingredientes_movimientos 
+                        (ingrediente_id, tipo, kilos, fecha, observaciones)
+                        VALUES ($1, $2, $3, NOW(), $4)
+                        RETURNING id
+                    `;
+                    
+                    console.log(`🔄 [MOVIMIENTO] Registrando en ingredientes_movimientos...`);
+                    console.log(`🔄 [MOVIMIENTO] Tipo: ${tipoMovimiento}, Kilos: ${kilosParaTrigger}`);
+                    
+                    const movimientoResult = await req.db.query(insertMovimientoQuery, [
+                        ingrediente.id,
+                        tipoMovimiento,
+                        kilosParaTrigger,
+                        observacion || `Ajuste puntual desde guardado - De ${stockAnterior} a ${nuevoStockDeseado}`
+                    ]);
+                    
+                    const movimientoId = movimientoResult.rows[0].id;
+                    console.log(`✅ [MOVIMIENTO] Movimiento registrado con ID: ${movimientoId}`);
+                    console.log(`✅ [TRIGGER] El trigger actualizar_stock_ingrediente actualizará stock_actual automáticamente`);
+                    
+                    // 📝 REGISTRAR EN INGREDIENTES_AJUSTES para auditoría
                     const insertAjusteQuery = `
                         INSERT INTO ingredientes_ajustes 
                         (ingrediente_id, usuario_id, tipo_ajuste, stock_anterior, stock_nuevo, observacion, fecha)
                         VALUES ($1, $2, $3, $4, $5, $6, NOW())
                     `;
                     
-                    console.log(`📝 [REGISTRAR] Registrando ajuste en ingredientes_ajustes...`);
+                    console.log(`📝 [AUDITORÍA] Registrando en ingredientes_ajustes...`);
                     
                     const insertResult = await req.db.query(insertAjusteQuery, [
                         ingrediente.id,
                         usuario_id,
                         'ajuste_puntual',
                         stockAnterior,
-                        nuevoStock,
-                        observacion || `Ajuste puntual - Stock anterior: ${stockAnterior}, Stock nuevo: ${nuevoStock}`
+                        nuevoStockDeseado,
+                        observacion || `Ajuste puntual - Movimiento ID: ${movimientoId}`
                     ]);
                     
-                    console.log(`✅ [REGISTRAR] Ajuste registrado exitosamente`);
-                    console.log(`✅ [REGISTRAR] Filas insertadas: ${insertResult.rowCount}`);
+                    console.log(`✅ [AUDITORÍA] Ajuste registrado para auditoría`);
                     
                     ajustesAplicados++;
                     console.log(`🎯 [AJUSTE-PUNTUAL] Completado exitosamente para ${ingrediente.nombre}`);

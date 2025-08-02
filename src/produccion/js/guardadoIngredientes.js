@@ -269,13 +269,29 @@ async function imprimirEtiqueta(ingredienteId, nombre) {
   try {
     console.log(`🏷️ [GUARDADO] Imprimiendo etiqueta: ${nombre} (ID: ${ingredienteId})`);
     
-    // Llamar al endpoint de impresión (reutilizar lógica existente)
+    // 🔍 DIAGNÓSTICO: Buscar el código de barras del ingrediente en los datos cargados
+    const ingredienteData = ingredientes.ingredientes?.find(ing => ing.id.toString() === ingredienteId.toString());
+    let codigoBarras = ingredienteId.toString(); // Fallback al ID si no se encuentra código
+    
+    if (ingredienteData && ingredienteData.codigo) {
+      codigoBarras = ingredienteData.codigo;
+      console.log(`✅ [ETIQUETA-DEBUG] Código de barras encontrado: ${codigoBarras}`);
+    } else {
+      console.warn(`⚠️ [ETIQUETA-DEBUG] No se encontró código de barras para ingrediente ${ingredienteId}, usando ID como fallback`);
+    }
+    
+    console.log(`🔍 [ETIQUETA-DEBUG] Datos para impresión:`);
+    console.log(`- Nombre: ${nombre}`);
+    console.log(`- ID interno: ${ingredienteId}`);
+    console.log(`- Código de barras: ${codigoBarras}`);
+    
+    // Llamar al endpoint de impresión con el código de barras correcto
     const response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         nombre: nombre, 
-        codigo: ingredienteId.toString()
+        codigo: codigoBarras  // ✅ CORREGIDO: Usar código de barras real
       })
     });
     
@@ -283,8 +299,8 @@ async function imprimirEtiqueta(ingredienteId, nombre) {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
     
-    console.log(`✅ [GUARDADO] Etiqueta enviada a imprimir: ${nombre}`);
-    alert(`✅ Etiqueta de "${nombre}" enviada a imprimir correctamente`);
+    console.log(`✅ [GUARDADO] Etiqueta enviada a imprimir: ${nombre} con código ${codigoBarras}`);
+    alert(`✅ Etiqueta de "${nombre}" enviada a imprimir correctamente\nCódigo: ${codigoBarras}`);
   } catch (error) {
     console.error('❌ [GUARDADO] Error al imprimir etiqueta:', error);
     alert('❌ Error al imprimir etiqueta: ' + error.message);
