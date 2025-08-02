@@ -122,23 +122,26 @@ async function eliminarIngresoManual(req, res) {
             console.log(`========================================================\n`);
         }
 
-        // 🔧 PASO 4: Eliminar de stock_ventas_movimientos y revertir stock consolidado
-        console.log('🔄 Eliminando de stock_ventas_movimientos y revirtiendo stock consolidado...');
+        // 🔧 PASO 4: Eliminar de stock_ventas_movimientos y revertir stock_movimientos correctamente
+        console.log('🔄 Eliminando de stock_ventas_movimientos y revirtiendo stock_movimientos...');
         
-        // Revertir el efecto en stock_real_consolidado
-        const cantidadARevertir = Math.abs(parseFloat(stockIngreso.kilos) || 0);
+        // 🔍 LOG: Obtener estado actual antes de la eliminación
+        const stockAntesQuery = `
+            SELECT stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion
+            FROM stock_real_consolidado 
+            WHERE articulo_numero = $1
+        `;
+        const stockAntesResult = await client.query(stockAntesQuery, [stockIngreso.articulo_numero]);
+        const stockAntes = stockAntesResult.rows[0] || {};
         
-        if (cantidadARevertir > 0 && stockIngreso.articulo_numero) {
-            const revertirStockConsolidadoQuery = `
-                UPDATE stock_real_consolidado 
-                SET 
-                    stock_consolidado = COALESCE(stock_consolidado, 0) + $1,
-                    ultima_actualizacion = NOW()
-                WHERE articulo_numero = $2
-            `;
-            const revertirStockResult = await client.query(revertirStockConsolidadoQuery, [cantidadARevertir, stockIngreso.articulo_numero]);
-            console.log(`📈 Stock consolidado revertido para artículo ${stockIngreso.articulo_numero}: +${cantidadARevertir} (filas afectadas: ${revertirStockResult.rowCount})`);
-        }
+        console.log(`\n🔍 ===== ESTADO ANTES DE ELIMINACIÓN - ARTÍCULO ${stockIngreso.articulo_numero} =====`);
+        console.log(`📋 ARTÍCULO: "${stockIngreso.articulo_nombre}"`);
+        console.log(`📊 stock_lomasoft: ${stockAntes.stock_lomasoft || 0}`);
+        console.log(`📊 stock_movimientos: ${stockAntes.stock_movimientos || 0}`);
+        console.log(`📊 stock_ajustes: ${stockAntes.stock_ajustes || 0}`);
+        console.log(`📊 stock_consolidado: ${stockAntes.stock_consolidado || 0}`);
+        console.log(`🗑️ Kilos a revertir: ${stockIngreso.kilos} (cantidad original del ingreso)`);
+        console.log(`===============================================================`);
         
         // Eliminar de stock_ventas_movimientos
         const deleteStockQuery = `
@@ -152,6 +155,49 @@ async function eliminarIngresoManual(req, res) {
         }
         
         console.log(`✅ Eliminado de stock_ventas_movimientos (ID: ${ingresoId})`);
+        
+        // 🔧 CORRECCIÓN CRÍTICA: Revertir correctamente el stock_movimientos usando CANTIDAD (no kilos)
+        // Cuando se registró el ingreso, se RESTÓ la CANTIDAD de stock_movimientos
+        // Al eliminar, debemos SUMAR la CANTIDAD para revertir el efecto
+        const cantidadUnidadesARevertir = Math.abs(parseFloat(stockIngreso.cantidad) || 1);
+        const kilosOriginales = Math.abs(parseFloat(stockIngreso.kilos) || 0);
+        
+        if (cantidadUnidadesARevertir > 0 && stockIngreso.articulo_numero) {
+            console.log(`🔄 Revirtiendo stock_movimientos para artículo ${stockIngreso.articulo_numero}...`);
+            
+            // 🔍 LOG CRÍTICO: Mostrar claramente qué valores se están usando
+            console.log(`\n🔍 ===== DEPURACIÓN CRÍTICA - REVERSIÓN DE STOCK_MOVIMIENTOS =====`);
+            console.log(`📋 articulo_numero: ${stockIngreso.articulo_numero}`);
+            console.log(`📊 cantidad (unidades): ${cantidadUnidadesARevertir} ← ESTE VALOR SE USA PARA stock_movimientos`);
+            console.log(`📊 kilos: ${kilosOriginales} ← ESTE VALOR NO SE USA PARA stock_movimientos`);
+            console.log(`✅ Valor aplicado a stock_movimientos: +${cantidadUnidadesARevertir} (unidades)`);
+            console.log(`================================================================`);
+            
+            // Para carros internos: el ingreso original RESTÓ la CANTIDAD de stock_movimientos, 
+            // por lo tanto al eliminar debemos SUMAR la CANTIDAD para revertir
+            const revertirStockMovimientosQuery = `
+                UPDATE stock_real_consolidado 
+                SET 
+                    stock_movimientos = COALESCE(stock_movimientos, 0) + $1,
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `;
+            const revertirStockResult = await client.query(revertirStockMovimientosQuery, [cantidadUnidadesARevertir, stockIngreso.articulo_numero]);
+            
+            console.log(`📈 stock_movimientos revertido para artículo ${stockIngreso.articulo_numero}: +${cantidadUnidadesARevertir} unidades (filas afectadas: ${revertirStockResult.rowCount})`);
+            
+            // 🔍 LOG: Verificar estado después de la reversión manual
+            const stockDespuesRevertirResult = await client.query(stockAntesQuery, [stockIngreso.articulo_numero]);
+            const stockDespuesRevertir = stockDespuesRevertirResult.rows[0] || {};
+            
+            console.log(`\n🔍 ===== ESTADO DESPUÉS DE REVERTIR stock_movimientos =====`);
+            console.log(`📊 stock_movimientos ANTES: ${stockAntes.stock_movimientos || 0}`);
+            console.log(`📊 stock_movimientos DESPUÉS: ${stockDespuesRevertir.stock_movimientos || 0}`);
+            console.log(`📊 Cambio en stock_movimientos: ${(stockDespuesRevertir.stock_movimientos || 0) - (stockAntes.stock_movimientos || 0)} (debe ser +${cantidadUnidadesARevertir})`);
+            console.log(`📊 stock_consolidado (antes del recálculo): ${stockDespuesRevertir.stock_consolidado || 0}`);
+            console.log(`✅ VERIFICACIÓN: ¿Cambio correcto? ${((stockDespuesRevertir.stock_movimientos || 0) - (stockAntes.stock_movimientos || 0)) === cantidadUnidadesARevertir ? 'SÍ ✅' : 'NO ❌'}`);
+            console.log(`========================================================`);
+        }
 
         // 🔧 PASO 5: Recalcular stock consolidado
         if (stockIngreso.articulo_numero) {
@@ -159,6 +205,20 @@ async function eliminarIngresoManual(req, res) {
                 const { recalcularStockConsolidado } = require('../utils/recalcularStock');
                 await recalcularStockConsolidado(client, stockIngreso.articulo_numero);
                 console.log('✅ Stock consolidado recalculado');
+                
+                // 🔍 LOG: Verificar estado final después del recálculo
+                const stockFinalResult = await client.query(stockAntesQuery, [stockIngreso.articulo_numero]);
+                const stockFinal = stockFinalResult.rows[0] || {};
+                
+                console.log(`\n🔍 ===== ESTADO FINAL DESPUÉS DEL RECÁLCULO =====`);
+                console.log(`📊 stock_lomasoft: ${stockFinal.stock_lomasoft || 0}`);
+                console.log(`📊 stock_movimientos: ${stockFinal.stock_movimientos || 0}`);
+                console.log(`📊 stock_ajustes: ${stockFinal.stock_ajustes || 0}`);
+                console.log(`📊 stock_consolidado FINAL: ${stockFinal.stock_consolidado || 0}`);
+                console.log(`🔄 Cambio total en stock_consolidado: ${(stockFinal.stock_consolidado || 0) - (stockAntes.stock_consolidado || 0)}`);
+                console.log(`⏰ Última actualización: ${stockFinal.ultima_actualizacion}`);
+                console.log(`===============================================`);
+                
             } catch (recalcError) {
                 console.warn('⚠️ Error al recalcular stock consolidado:', recalcError.message);
             }
