@@ -103,13 +103,36 @@ export async function abrirModalArticulos() {
                 return;
             }
 
-            state[cacheKey] = articulos;
-            state.todosLosArticulos = articulos;
-            state.articulosFiltrados = [...articulos];
+            // 🔍 FASE 1: Filtrar artículos ya agregados al carro (solo producción interna)
+            let articulosDisponibles = articulos;
+            if (tipoCarro === 'interna' && carroId) {
+                articulosDisponibles = await filtrarArticulosYaAgregados(articulos, carroId);
+                console.log(`🔍 [FASE 1] Filtro aplicado - Artículos totales: ${articulos.length}, Disponibles: ${articulosDisponibles.length}`);
+            }
+
+            state[cacheKey] = articulosDisponibles;
+            state.todosLosArticulos = articulosDisponibles;
+            state.articulosFiltrados = [...articulosDisponibles];
             aplicarFiltros(0);
         } else {
-            state.todosLosArticulos = state[cacheKey];
-            state.articulosFiltrados = [...state[cacheKey]];
+            // 🔍 FASE 1: Aplicar filtro también al usar caché (solo producción interna)
+            let articulosDisponibles = state[cacheKey];
+            if (tipoCarro === 'interna' && carroId) {
+                // Re-obtener artículos originales para aplicar filtro actualizado
+                const url = 'http://localhost:3002/api/produccion/articulos';
+                const response = await fetch(url);
+                if (response.ok) {
+                    const articulosOriginales = await response.json();
+                    articulosDisponibles = await filtrarArticulosYaAgregados(articulosOriginales, carroId);
+                    console.log(`🔍 [FASE 1] Filtro aplicado (caché) - Artículos totales: ${articulosOriginales.length}, Disponibles: ${articulosDisponibles.length}`);
+                    
+                    // Actualizar caché con artículos filtrados
+                    state[cacheKey] = articulosDisponibles;
+                }
+            }
+            
+            state.todosLosArticulos = articulosDisponibles;
+            state.articulosFiltrados = [...articulosDisponibles];
             aplicarFiltros(0);
         }
 
@@ -125,6 +148,47 @@ export async function abrirModalArticulos() {
         mostrarError(error.message);
         const modal = document.getElementById('modal-articulos');
         modal.style.display = 'none';
+    }
+}
+
+/**
+ * 🔍 FASE 1: Filtra artículos que ya están agregados al carro actual
+ * Solo se ejecuta para carros de producción interna
+ * @param {Array} articulos - Lista completa de artículos disponibles
+ * @param {string} carroId - ID del carro activo
+ * @returns {Array} Artículos filtrados (sin los ya agregados al carro)
+ */
+async function filtrarArticulosYaAgregados(articulos, carroId) {
+    try {
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            console.warn('🔍 [FASE 1] No hay colaborador activo, no se puede filtrar');
+            return articulos;
+        }
+
+        const colaborador = JSON.parse(colaboradorData);
+        
+        // Obtener artículos ya agregados al carro
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
+        
+        if (!response.ok) {
+            console.warn('🔍 [FASE 1] Error al obtener artículos del carro, no se aplicará filtro');
+            return articulos;
+        }
+
+        const articulosEnCarro = await response.json();
+        const numerosEnCarro = articulosEnCarro.map(art => art.numero);
+        
+        console.log(`🔍 [FASE 1] Artículos en carro: ${numerosEnCarro.length} (${numerosEnCarro.slice(0, 3).join(', ')}${numerosEnCarro.length > 3 ? '...' : ''})`);
+        
+        // Filtrar artículos que no están en el carro
+        const articulosFiltrados = articulos.filter(art => !numerosEnCarro.includes(art.numero));
+        
+        return articulosFiltrados;
+        
+    } catch (error) {
+        console.error('🔍 [FASE 1] Error al filtrar artículos ya agregados:', error);
+        return articulos; // En caso de error, devolver todos los artículos
     }
 }
 
