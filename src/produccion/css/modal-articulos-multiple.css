@@ -1,0 +1,113 @@
+/* 🔍 [FASE 2] Estilos para selección múltiple en modal de artículos (solo producción interna) */
+
+.modal-articulos-interna-multiple {
+    /* Clase base para elementos de selección múltiple */
+}
+
+/* Estilos para checkboxes de selección */
+.seleccionar-articulo.modal-articulos-interna-multiple {
+    transform: scale(1.2);
+    cursor: pointer;
+    margin: 0;
+}
+
+.seleccionar-articulo.modal-articulos-interna-multiple:hover {
+    transform: scale(1.3);
+}
+
+/* Estilos para inputs de cantidad múltiple */
+.cantidad-multiple.modal-articulos-interna-multiple {
+    border: 2px solid #007bff;
+    border-radius: 4px;
+    padding: 4px 8px;
+    text-align: center;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.cantidad-multiple.modal-articulos-interna-multiple:focus {
+    outline: none;
+    border-color: #0056b3;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    transform: scale(1.05);
+}
+
+/* 🔍 [OPTIMIZACIÓN] Estilos para inputs cuando se está modificando */
+.cantidad-multiple.modal-articulos-interna-multiple:focus {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Efecto visual cuando el input tiene un valor válido */
+.cantidad-multiple.modal-articulos-interna-multiple:valid:not(:placeholder-shown) {
+    border-color: #28a745;
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+/* Estilos para el botón de agregar múltiples */
+#btn-agregar-multiples {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#btn-agregar-multiples:hover:not(:disabled) {
+    background: linear-gradient(135deg, #218838, #1ea085);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+#btn-agregar-multiples:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Contenedor del botón centralizado */
+.modal-actions-header {
+    text-align: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Ajustes para la tabla con selección múltiple */
+.tabla-articulos th:first-child {
+    width: 50px;
+    text-align: center;
+}
+
+/* Resaltar filas cuando el checkbox está seleccionado */
+.tabla-articulos tbody tr:has(.seleccionar-articulo:checked) {
+    background-color: rgba(0, 123, 255, 0.1);
+    border-left: 4px solid #007bff;
+}
+
+/* Fallback para navegadores que no soportan :has() */
+.tabla-articulos tbody tr.selected-row {
+    background-color: rgba(0, 123, 255, 0.1);
+    border-left: 4px solid #007bff;
+}
+
+/* Animación para elementos que aparecen/desaparecen */
+.modal-articulos-interna-multiple {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Estilos responsivos */
+@media (max-width: 768px) {
+    #btn-agregar-multiples {
+        padding: 10px 20px;
+        font-size: 14px;
+    }
+    
+    .cantidad-multiple.modal-articulos-interna-multiple {
+        width: 50px;
+    }
+}

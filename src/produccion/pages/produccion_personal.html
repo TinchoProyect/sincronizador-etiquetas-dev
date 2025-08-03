@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/css/modal-mix.css">
     <link rel="stylesheet" href="/css/modal-articulos.css">
     <link rel="stylesheet" href="/css/modal-articulos-fix.css">
+    <link rel="stylesheet" href="/css/modal-articulos-multiple.css">
     <link rel="stylesheet" href="/css/modal-ingreso-manual.css">
     <link rel="stylesheet" href="/css/modal-guardado-ingredientes.css">
 </head>
@@ -130,10 +131,18 @@
                 </div>
             </div>
 
+            <!-- 🔍 [FASE 2] Botón centralizado para selección múltiple (solo producción interna) -->
+            <div class="modal-actions-header" style="margin-bottom: 15px;">
+                <button id="btn-agregar-multiples" class="btn btn-success modal-articulos-interna-multiple" 
+                        style="display: none;" onclick="agregarMultiplesAlCarroInterno()">
+                    ➕ Agregar seleccionados al carro
+                </button>
+            </div>
+
             <!-- Tabla de artículos -->
             <table class="tabla-articulos">
                 <thead>
-                    <tr>
+                    <tr id="tabla-articulos-header">
                         <th>Código</th>
                         <th>Descripción</th>
                         <th>Stock</th>
