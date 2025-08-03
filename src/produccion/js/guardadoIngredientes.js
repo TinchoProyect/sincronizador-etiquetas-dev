@@ -370,12 +370,13 @@ async function guardarAjustes() {
       ajustes.push({
         articulo_numero: ingredienteId,
         usuario_id: usuarioIdGlobal,
+        carro_id: carroIdGlobal, // 🔧 CORRECCIÓN: Incluir carro_id en el payload
         tipo: 'ajuste puntual',
         kilos: cantidad,
         cantidad: Math.abs(cantidad), // Para compatibilidad con el endpoint
         observacion: `Ajuste manual selectivo desde guardado de ingredientes - Carro #${carroIdGlobal}`
       });
-      console.log(`📝 [GUARDADO] Agregado ajuste: Ingrediente ${ingredienteId} → ${cantidad}kg`);
+      console.log(`📝 [GUARDADO] Agregado ajuste: Ingrediente ${ingredienteId} → ${cantidad}kg - Carro: ${carroIdGlobal}`);
     } else {
       console.warn(`⚠️ [GUARDADO] Valor inválido para ingrediente ${ingredienteId}: ${inputAjuste.value}`);
     }

@@ -300,10 +300,17 @@ async function ajustarStockIngrediente(req, res) {
             });
         }
 
-        // Registrar movimiento en ingredientes_movimientos
-        // El trigger se encargará de actualizar automáticamente el stock_actual
-        const tipoMovimiento = cantidadNumerica > 0 ? 'ingreso' : 'egreso';
+        // 🔧 CORRECCIÓN: Siempre usar "ajuste" para movimientos desde guardado de ingredientes
+        const tipoMovimiento = 'ajuste';
         const observacionesCompletas = `Ajuste manual desde guardado de ingredientes${carro_id ? ` - Carro #${carro_id}` : ''}${observaciones ? ` - ${observaciones}` : ''}`;
+
+        // Log de depuración para auditoría
+        console.log("🔍 DEBUG - Guardando ajuste de ingrediente", {
+            ingrediente_id: ingredienteId,
+            cantidadNumerica,
+            tipo: tipoMovimiento,
+            carro_id: carro_id || null
+        });
 
         const queryMovimiento = `
             INSERT INTO ingredientes_movimientos (

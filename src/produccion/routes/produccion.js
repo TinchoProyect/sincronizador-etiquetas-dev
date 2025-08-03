@@ -1073,24 +1073,33 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                         continue;
                     }
                     
-                    // 🔄 REGISTRAR EN INGREDIENTES_MOVIMIENTOS (trigger actualiza stock_actual automáticamente)
-                    const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
+                    // 🔧 CORRECCIÓN: Siempre usar "ajuste" para movimientos desde guardado de ingredientes
+                    const tipoMovimiento = 'ajuste';
                     const kilosParaTrigger = diferencia; // El trigger suma/resta según el valor (+ o -)
+                    
+                    // Log de depuración para auditoría
+                    console.log("🔍 DEBUG - Guardando ajuste de ingrediente desde batch", {
+                        ingrediente_id: ingrediente.id,
+                        diferencia: kilosParaTrigger,
+                        tipo: tipoMovimiento,
+                        carro_id: ajuste.carro_id || null
+                    });
                     
                     const insertMovimientoQuery = `
                         INSERT INTO ingredientes_movimientos 
-                        (ingrediente_id, tipo, kilos, fecha, observaciones)
-                        VALUES ($1, $2, $3, NOW(), $4)
+                        (ingrediente_id, tipo, kilos, fecha, carro_id, observaciones)
+                        VALUES ($1, $2, $3, NOW(), $4, $5)
                         RETURNING id
                     `;
                     
                     console.log(`🔄 [MOVIMIENTO] Registrando en ingredientes_movimientos...`);
-                    console.log(`🔄 [MOVIMIENTO] Tipo: ${tipoMovimiento}, Kilos: ${kilosParaTrigger}`);
+                    console.log(`🔄 [MOVIMIENTO] Tipo: ${tipoMovimiento}, Kilos: ${kilosParaTrigger}, Carro: ${ajuste.carro_id || 'NULL'}`);
                     
                     const movimientoResult = await req.db.query(insertMovimientoQuery, [
                         ingrediente.id,
                         tipoMovimiento,
                         kilosParaTrigger,
+                        ajuste.carro_id || null,
                         observacion || `Ajuste puntual desde guardado - De ${stockAnterior} a ${nuevoStockDeseado}`
                     ]);
                     
