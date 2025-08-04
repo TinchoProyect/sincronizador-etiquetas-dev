@@ -23,7 +23,7 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna } = require('../controllers/articulos');
+const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad } = require('../controllers/articulos');
 
 // Ruta para alternar estado de producción externa (toggle)
 router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) => {
@@ -44,6 +44,24 @@ router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) 
     } catch (error) {
         console.error('Error en ruta PUT /articulos/:articuloId/toggle-produccion-externa:', error);
         res.status(500).json({ error: 'Error al actualizar el estado de producción externa' });
+    }
+});
+
+// Ruta para actualizar kilos por unidad de un artículo
+router.put('/articulos/:articuloId/kilos-unidad', async (req, res) => {
+    try {
+        const { articuloId } = req.params;
+        const { kilos_unidad } = req.body;
+
+        if (!articuloId) {
+            return res.status(400).json({ error: 'ID de artículo requerido' });
+        }
+
+        const resultado = await actualizarKilosUnidad(articuloId, kilos_unidad);
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error en ruta PUT /articulos/:articuloId/kilos-unidad:', error);
+        res.status(500).json({ error: 'Error al actualizar kilos por unidad' });
     }
 });
 const {
@@ -950,8 +968,43 @@ router.put('/articulos/:articuloId/toggle-produccion', async (req, res) => {
 // Importar el controlador de eliminación de ingresos manuales
 const { eliminarIngresoManual } = require('../controllers/eliminarIngresoManual');
 
+// Importar el controlador de guardado de ingredientes
+const { obtenerIngredientesConsolidadosCarro, ajustarStockIngrediente } = require('../controllers/guardadoIngredientes');
+
 // Ruta para eliminar físicamente un ingreso manual
 router.delete('/carro/:carroId/ingreso-manual/:ingresoId', eliminarIngresoManual);
+
+// ==========================================
+// RUTAS PARA GUARDADO DE INGREDIENTES
+// ==========================================
+
+// Ruta para obtener ingredientes consolidados de un carro para el modal de guardado
+router.get('/carro/:carroId/ingredientes-consolidados', async (req, res) => {
+    try {
+        console.log('🔍 [GUARDADO] Solicitando ingredientes consolidados para guardado');
+        await obtenerIngredientesConsolidadosCarro(req, res);
+    } catch (error) {
+        console.error('❌ [GUARDADO] Error en /carro/:carroId/ingredientes-consolidados:', error);
+        res.status(500).json({
+            error: 'Error al obtener ingredientes consolidados',
+            detalle: error.message
+        });
+    }
+});
+
+// Ruta para realizar ajuste manual de stock de ingrediente
+router.post('/ingredientes/:ingredienteId/ajustar-stock', async (req, res) => {
+    try {
+        console.log('🔧 [GUARDADO] Realizando ajuste manual de stock');
+        await ajustarStockIngrediente(req, res);
+    } catch (error) {
+        console.error('❌ [GUARDADO] Error en /ingredientes/:ingredienteId/ajustar-stock:', error);
+        res.status(500).json({
+            error: 'Error al ajustar stock de ingrediente',
+            detalle: error.message
+        });
+    }
+});
 
 // Ruta para ajustes puntuales de ingredientes (batch)
 router.post('/ingredientes-ajustes/batch', async (req, res) => {
@@ -1020,56 +1073,77 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                     console.log(`✅ [ENCONTRADO] Código: ${ingrediente.codigo}`);
                     console.log(`✅ [ENCONTRADO] Stock actual: ${ingrediente.stock_actual}`);
                     
-                    // 🧮 CALCULAR NUEVO STOCK
+                    // 🧮 CALCULAR DIFERENCIA PARA TRIGGER
                     const stockAnterior = parseFloat(ingrediente.stock_actual) || 0;
-                    const ajusteKilos = parseFloat(kilos) || 0;
-                    const nuevoStock = stockAnterior + ajusteKilos;
+                    const nuevoStockDeseado = parseFloat(kilos) || 0;
+                    const diferencia = nuevoStockDeseado - stockAnterior;
                     
-                    console.log(`🧮 [CÁLCULO] ===== CALCULANDO NUEVO STOCK =====`);
+                    console.log(`🧮 [CÁLCULO] ===== CALCULANDO AJUSTE PARA TRIGGER =====`);
                     console.log(`🧮 [CÁLCULO] Stock anterior: ${stockAnterior}`);
-                    console.log(`🧮 [CÁLCULO] Ajuste: ${ajusteKilos}`);
-                    console.log(`🧮 [CÁLCULO] Nuevo stock: ${stockAnterior} + ${ajusteKilos} = ${nuevoStock}`);
+                    console.log(`🧮 [CÁLCULO] Nuevo stock deseado: ${nuevoStockDeseado}`);
+                    console.log(`🧮 [CÁLCULO] Diferencia calculada: ${diferencia}`);
+                    console.log(`🔧 [CORRECCIÓN] Usando trigger actualizar_stock_ingrediente`);
                     
-                    // 🔄 ACTUALIZAR STOCK EN INGREDIENTES
-                    const updateStockQuery = `
-                        UPDATE ingredientes 
-                        SET stock_actual = $1 
-                        WHERE id = $2
-                    `;
-                    
-                    console.log(`🔄 [ACTUALIZAR] Ejecutando actualización de stock...`);
-                    console.log(`🔄 [ACTUALIZAR] Query: UPDATE ingredientes SET stock_actual = ${nuevoStock} WHERE id = ${ingrediente.id}`);
-                    
-                    const updateResult = await req.db.query(updateStockQuery, [nuevoStock, ingrediente.id]);
-                    console.log(`✅ [ACTUALIZAR] Filas afectadas: ${updateResult.rowCount}`);
-                    
-                    if (updateResult.rowCount === 0) {
-                        const error = `No se pudo actualizar el stock del ingrediente ${ingrediente.id}`;
-                        console.error(`❌ [ERROR] ${error}`);
-                        erroresEncontrados.push(error);
+                    // Si la diferencia es 0, no hacer nada
+                    if (Math.abs(diferencia) < 0.001) {
+                        console.log(`ℹ️ [SKIP] Diferencia es 0, no se registra movimiento`);
+                        ajustesAplicados++;
                         continue;
                     }
                     
-                    // 📝 REGISTRAR EN INGREDIENTES_AJUSTES (sin columna diferencia - es generada automáticamente)
+                    // 🔧 CORRECCIÓN: Siempre usar "ajuste" para movimientos desde guardado de ingredientes
+                    const tipoMovimiento = 'ajuste';
+                    const kilosParaTrigger = diferencia; // El trigger suma/resta según el valor (+ o -)
+                    
+                    // Log de depuración para auditoría
+                    console.log("🔍 DEBUG - Guardando ajuste de ingrediente desde batch", {
+                        ingrediente_id: ingrediente.id,
+                        diferencia: kilosParaTrigger,
+                        tipo: tipoMovimiento,
+                        carro_id: ajuste.carro_id || null
+                    });
+                    
+                    const insertMovimientoQuery = `
+                        INSERT INTO ingredientes_movimientos 
+                        (ingrediente_id, tipo, kilos, fecha, carro_id, observaciones)
+                        VALUES ($1, $2, $3, NOW(), $4, $5)
+                        RETURNING id
+                    `;
+                    
+                    console.log(`🔄 [MOVIMIENTO] Registrando en ingredientes_movimientos...`);
+                    console.log(`🔄 [MOVIMIENTO] Tipo: ${tipoMovimiento}, Kilos: ${kilosParaTrigger}, Carro: ${ajuste.carro_id || 'NULL'}`);
+                    
+                    const movimientoResult = await req.db.query(insertMovimientoQuery, [
+                        ingrediente.id,
+                        tipoMovimiento,
+                        kilosParaTrigger,
+                        ajuste.carro_id || null,
+                        observacion || `Ajuste puntual desde guardado - De ${stockAnterior} a ${nuevoStockDeseado}`
+                    ]);
+                    
+                    const movimientoId = movimientoResult.rows[0].id;
+                    console.log(`✅ [MOVIMIENTO] Movimiento registrado con ID: ${movimientoId}`);
+                    console.log(`✅ [TRIGGER] El trigger actualizar_stock_ingrediente actualizará stock_actual automáticamente`);
+                    
+                    // 📝 REGISTRAR EN INGREDIENTES_AJUSTES para auditoría
                     const insertAjusteQuery = `
                         INSERT INTO ingredientes_ajustes 
                         (ingrediente_id, usuario_id, tipo_ajuste, stock_anterior, stock_nuevo, observacion, fecha)
                         VALUES ($1, $2, $3, $4, $5, $6, NOW())
                     `;
                     
-                    console.log(`📝 [REGISTRAR] Registrando ajuste en ingredientes_ajustes...`);
+                    console.log(`📝 [AUDITORÍA] Registrando en ingredientes_ajustes...`);
                     
                     const insertResult = await req.db.query(insertAjusteQuery, [
                         ingrediente.id,
                         usuario_id,
                         'ajuste_puntual',
                         stockAnterior,
-                        nuevoStock,
-                        observacion || `Ajuste puntual - Stock anterior: ${stockAnterior}, Stock nuevo: ${nuevoStock}`
+                        nuevoStockDeseado,
+                        observacion || `Ajuste puntual - Movimiento ID: ${movimientoId}`
                     ]);
                     
-                    console.log(`✅ [REGISTRAR] Ajuste registrado exitosamente`);
-                    console.log(`✅ [REGISTRAR] Filas insertadas: ${insertResult.rowCount}`);
+                    console.log(`✅ [AUDITORÍA] Ajuste registrado para auditoría`);
                     
                     ajustesAplicados++;
                     console.log(`🎯 [AJUSTE-PUNTUAL] Completado exitosamente para ${ingrediente.nombre}`);
@@ -1567,26 +1641,32 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
         if (tipoCarro === 'interna') {
             // 🏭 CARROS INTERNOS: Solo movimientos de artículos (stock_ventas_movimientos)
             // 🔧 CORRECCIÓN CRÍTICA: NO multiplicar por cantidad porque el frontend ya lo hizo
+            // 🆕 CORRECCIÓN ETIQUETAS: Obtener ingrediente_id desde ingredientes_movimientos relacionados
             query = `
                 SELECT
                     svm.id,
                     svm.fecha,
                     ABS(svm.kilos) as kilos,
                     svm.carro_id,
-                    NULL as ingrediente_id,
+                    COALESCE(im.ingrediente_id, NULL) as ingrediente_id,
                     svm.articulo_numero,
                     a.nombre as articulo_nombre,
                     svm.codigo_barras,
-                    a.nombre as ingrediente_nombre,
+                    COALESCE(i.nombre, a.nombre) as ingrediente_nombre,
                     COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
                     'stock_ventas_movimientos' as fuente_datos
                 FROM stock_ventas_movimientos svm
                 LEFT JOIN articulos a ON a.numero = svm.articulo_numero
+                LEFT JOIN ingredientes_movimientos im ON im.carro_id = svm.carro_id 
+                    AND im.observaciones = svm.articulo_numero 
+                    AND im.tipo = 'ingreso'
+                    AND ABS(im.kilos - ABS(svm.kilos)) < 0.01
+                LEFT JOIN ingredientes i ON i.id = im.ingrediente_id
                 WHERE svm.carro_id = $1 
                   AND svm.tipo = 'ingreso a producción'
                 ORDER BY svm.fecha DESC
             `;
-            console.log('🏭 Usando consulta para CARRO INTERNO - CORRECCIÓN: sin doble multiplicación');
+            console.log('🏭 Usando consulta para CARRO INTERNO - CORRECCIÓN: con ingrediente_id para etiquetas');
         } else {
             // 🌐 CARROS EXTERNOS: Ambas fuentes (ingredientes_movimientos + stock_ventas_movimientos)
             query = `

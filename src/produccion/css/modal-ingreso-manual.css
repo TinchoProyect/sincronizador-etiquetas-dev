@@ -71,3 +71,18 @@
   gap: 10px;
   margin-top: 20px;
 }
+
+/* 🔒 Estilos para el botón desactivado durante procesamiento */
+#btnConfirmarIngreso:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+  background-color: #6c757d !important;
+  border-color: #6c757d !important;
+  color: #fff !important;
+}
+
+#btnConfirmarIngreso:disabled:hover {
+  background-color: #6c757d !important;
+  border-color: #6c757d !important;
+  transform: none !important;
+}

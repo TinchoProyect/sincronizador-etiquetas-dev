@@ -884,62 +884,35 @@ export async function eliminarCarro(carroId) {
 // Función para obtener el resumen consolidado de ingredientes de un carro
 export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
     try {
-        console.log(`🚀 INICIANDO obtenerResumenIngredientesCarro para carro ${carroId}, usuario ${usuarioId}`);
-        
-        // Primero verificar el tipo de carro
-        console.log('🔍 Verificando tipo de carro...');
+        // Verificar el tipo de carro
         const responseTipoCarro = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
         let tipoCarro = 'interna';
         if (responseTipoCarro.ok) {
             const dataTipoCarro = await responseTipoCarro.json();
             tipoCarro = dataTipoCarro.tipo_carro || 'interna';
-            console.log(`🔍 Tipo de carro detectado: ${tipoCarro}`);
         } else {
             console.warn('⚠️ No se pudo obtener el tipo de carro, asumiendo interna');
         }
         
         // Obtener ingredientes base
-        console.log('📦 Obteniendo ingredientes base...');
         const responseBase = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
         if (!responseBase.ok) {
             throw new Error('No se pudo obtener el resumen de ingredientes');
         }
         const ingredientesBase = await responseBase.json();
-        console.log(`📦 Ingredientes base obtenidos: ${ingredientesBase.length}`);
 
         // Obtener ingredientes de artículos vinculados (solo para carros externos)
-        console.log(`🔗 Iniciando obtención de ingredientes vinculados para carro tipo: ${tipoCarro}...`);
-        
         let ingredientesVinculados = [];
         
         if (tipoCarro === 'externa') {
-            console.log('🔗 Es carro externo, procediendo a obtener ingredientes vinculados...');
             const responseVinculados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${usuarioId}`);
-            console.log('🔗 Response status ingredientes vinculados:', responseVinculados.status);
             
             if (responseVinculados.ok) {
                 ingredientesVinculados = await responseVinculados.json();
-                console.log('🔗 Ingredientes vinculados RAW obtenidos:', ingredientesVinculados);
-                console.log('🔗 Cantidad de ingredientes vinculados:', ingredientesVinculados.length);
-                
-                // Log detallado de cada ingrediente vinculado
-                ingredientesVinculados.forEach((ing, index) => {
-                    console.log(`🔗 Ingrediente vinculado ${index + 1}:`, {
-                        id: ing.id,
-                        nombre: ing.nombre,
-                        cantidad: ing.cantidad,
-                        stock_actual: ing.stock_actual,
-                        unidad_medida: ing.unidad_medida,
-                        tipo_stock_actual: typeof ing.stock_actual,
-                        valor_stock_actual: ing.stock_actual
-                    });
-                });
+                console.log(`🔗 Ingredientes vinculados obtenidos: ${ingredientesVinculados.length}`);
             } else {
-                const errorText = await responseVinculados.text();
-                console.warn('❌ No se pudieron obtener ingredientes de artículos vinculados:', responseVinculados.status, errorText);
+                console.warn('❌ No se pudieron obtener ingredientes de artículos vinculados');
             }
-        } else {
-            console.log('🔗 Es carro interno, saltando ingredientes vinculados');
         }
 
         // Marcar ingredientes vinculados para diferenciarlos en UI
@@ -949,14 +922,8 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
         }));
 
         // Combinar ambos arrays
-        const ingredientesAntesCombinat = [...ingredientesBase];
         const ingredientesCombinados = [...ingredientesBase, ...ingredientesVinculados];
-
-        console.log('🔗 Ingredientes ANTES de combinar:', ingredientesAntesCombinat.length);
-        console.log('🔗 Ingredientes vinculados a agregar:', ingredientesVinculados.length);
-        console.log('🔗 Ingredientes DESPUÉS de combinar:', ingredientesCombinados.length);
-        console.log('🔍 DEPURACIÓN - Ingredientes combinados completos:', ingredientesCombinados);
-        console.log('🔍 DEPURACIÓN - Cantidad total de ingredientes:', ingredientesCombinados.length);
+        console.log(`📦 Resumen ingredientes - Base: ${ingredientesBase.length}, Vinculados: ${ingredientesVinculados.length}, Total: ${ingredientesCombinados.length}`);
 
         return ingredientesCombinados;
     } catch (error) {

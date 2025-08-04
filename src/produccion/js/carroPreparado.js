@@ -6,6 +6,7 @@ export async function actualizarVisibilidadBotones() {
     const btnAgregarArticulo = document.getElementById('agregar-articulo');
     const btnImprimirEtiquetas = document.getElementById('imprimir-etiquetas');
     const btnImprimirOrden = document.getElementById('imprimir-orden-produccion');
+    const btnGuardadoIngredientes = document.getElementById('guardado-ingredientes');
     
     if (!carroId) {
         // No hay carro activo - ocultar todos los botones de acción
@@ -14,6 +15,7 @@ export async function actualizarVisibilidadBotones() {
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
         if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'none';
         if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
+        if (btnGuardadoIngredientes) btnGuardadoIngredientes.style.display = 'none';
         return;
     }
 
@@ -46,6 +48,9 @@ export async function actualizarVisibilidadBotones() {
                 if (btnImprimirOrden) {
                     btnImprimirOrden.style.display = 'none';
                 }
+                if (btnGuardadoIngredientes) {
+                    btnGuardadoIngredientes.style.display = 'none';
+                }
                 break;
 
             case 'preparado':
@@ -64,6 +69,9 @@ export async function actualizarVisibilidadBotones() {
                 }
                 if (btnAgregarArticulo) {
                     btnAgregarArticulo.style.display = 'none';
+                }
+                if (btnGuardadoIngredientes) {
+                    btnGuardadoIngredientes.style.display = 'none';
                 }
                 
                 // Mostrar campo de kilos producidos solo para carros de producción externa
@@ -86,12 +94,22 @@ export async function actualizarVisibilidadBotones() {
                 break;
 
             case 'confirmado':
-                // Producción confirmada - mostrar solo el botón de imprimir etiquetas
+                // Producción confirmada - mostrar botón de imprimir etiquetas y guardado de ingredientes
                 if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
                 if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
                 if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
                 if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'inline-block';
                 if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
+                
+                // 📦 Mostrar botón de guardado de ingredientes solo para carros internos
+                if (btnGuardadoIngredientes) {
+                    if (data.tipo_carro === 'interna') {
+                        btnGuardadoIngredientes.style.display = 'inline-block';
+                        console.log('✅ Botón "Guardado de ingredientes" mostrado para carro interno confirmado');
+                    } else {
+                        btnGuardadoIngredientes.style.display = 'none';
+                    }
+                }
                 break;
 
             default:
@@ -101,6 +119,7 @@ export async function actualizarVisibilidadBotones() {
                 if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
                 if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
                 if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
+                if (btnGuardadoIngredientes) btnGuardadoIngredientes.style.display = 'none';
         }
 
     } catch (error) {
@@ -110,6 +129,7 @@ export async function actualizarVisibilidadBotones() {
         if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
         if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
+        if (btnGuardadoIngredientes) btnGuardadoIngredientes.style.display = 'none';
     }
 }
 

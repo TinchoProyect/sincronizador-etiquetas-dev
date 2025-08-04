@@ -62,59 +62,39 @@ function mostrarMensaje(mensaje, tipo = 'error') {
 
 // Función para actualizar la tabla con los artículos
 function actualizarTablaArticulos(articulos) {
-    console.log('🔄 [FRONTEND] ===== INICIANDO actualizarTablaArticulos() =====');
-    console.log('🔄 [FRONTEND] Timestamp:', new Date().toISOString());
-    console.log('🔄 [FRONTEND] Stack trace de llamada:', new Error().stack.split('\n').slice(1, 4));
-    console.log('🔄 [FRONTEND] Cantidad de artículos recibidos:', articulos?.length || 0);
-    
     const tbody = document.getElementById('tabla-articulos-body');
     if (!tbody) {
-        console.error('❌ [FRONTEND] ERROR: No se encontró el elemento tabla-articulos-body');
+        console.error('❌ No se encontró el elemento tabla-articulos-body');
         return;
     }
 
-    console.log('🔄 [FRONTEND] Limpiando contenido anterior de la tabla');
-    const filasAnteriores = tbody.children.length;
-    console.log('🔄 [FRONTEND] Filas anteriores en la tabla:', filasAnteriores);
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        const colspan = modoSeleccion ? 7 : 6;
+        const colspan = modoSeleccion ? 8 : 7;
         tbody.innerHTML = `<tr><td colspan="${colspan}" class="mensaje-info">No hay artículos registrados</td></tr>`;
-        console.log('🔄 [FRONTEND] Tabla vacía - mostrando mensaje de no hay artículos');
         return;
     }
 
-    console.log('🔄 [FRONTEND] ===== PROCESANDO ARTÍCULOS PARA RENDERIZAR =====');
-    
-    // DIAGNÓSTICO CRÍTICO: Verificar duplicados antes del renderizado
+    // Verificar duplicados
     const articulosUnicos = new Set();
-    const duplicadosEnRender = [];
+    const duplicados = [];
     
     articulos.forEach((articulo, index) => {
         if (articulosUnicos.has(articulo.numero)) {
-            duplicadosEnRender.push({
-                index,
-                numero: articulo.numero,
-                nombre: articulo.nombre
-            });
+            duplicados.push(articulo.numero);
         } else {
             articulosUnicos.add(articulo.numero);
         }
     });
     
-    if (duplicadosEnRender.length > 0) {
-        console.log('🚨 [FRONTEND] ¡DUPLICADOS DETECTADOS EN RENDERIZADO!');
-        duplicadosEnRender.forEach(dup => {
-            console.log(`🚨 [FRONTEND] Duplicado en render: ${dup.numero} - ${dup.nombre} (índice ${dup.index})`);
-        });
-    } else {
-        console.log('✅ [FRONTEND] No se detectaron duplicados en el array para renderizar');
+    if (duplicados.length > 0) {
+        console.warn(`⚠️ Detectados ${duplicados.length} artículos duplicados en renderizado`);
     }
 
-    articulos.forEach((articulo, index) => {
+    // Renderizar artículos
+    articulos.forEach((articulo) => {
         const stockConsolidado = articulo.stock_consolidado || 0;
-        console.log(`📊 [FRONTEND] Renderizando artículo ${index + 1}/${articulos.length}: ${articulo.numero} - ${articulo.nombre} - Stock: ${stockConsolidado}`);
         
         const tr = document.createElement('tr');
         const checkboxHtml = modoSeleccion ? `
@@ -131,6 +111,17 @@ function actualizarTablaArticulos(articulos) {
             <td>${articulo.nombre}</td>
             <td>${articulo.codigo_barras || '-'}</td>
             <td>${formatearNumero(stockConsolidado)}</td>
+            <td class="kilos-unidad-cell">
+                <input type="number" 
+                       step="0.001" 
+                       min="0" 
+                       value="${articulo.kilos_unidad || ''}" 
+                       data-articulo="${articulo.numero}"
+                       class="input-kilos-unidad"
+                       placeholder="0.000"
+                       disabled
+                       style="width: 80px; padding: 4px; border: 1px solid #ddd; border-radius: 3px; text-align: center; background-color: #f5f5f5;">
+            </td>
             <td class="produccion-cell">
                 <label class="switch">
                     <input type="checkbox" ${!articulo.no_producido_por_lambda ? 'checked' : ''} 
@@ -147,24 +138,9 @@ function actualizarTablaArticulos(articulos) {
             </td>
         `;
         tbody.appendChild(tr);
-        console.log(`✅ [FRONTEND] Fila agregada para artículo: ${articulo.numero}`);
     });
     
-    console.log('🔄 [FRONTEND] ===== VERIFICACIÓN POST-RENDERIZADO =====');
-    const filasFinales = tbody.children.length;
-    console.log('🔄 [FRONTEND] Total filas renderizadas en DOM:', filasFinales);
-    console.log('🔄 [FRONTEND] Artículos únicos esperados:', articulosUnicos.size);
-    console.log('🔄 [FRONTEND] Total artículos procesados:', articulos.length);
-    
-    if (filasFinales !== articulosUnicos.size) {
-        console.log('🚨 [FRONTEND] ¡DISCREPANCIA DETECTADA!');
-        console.log('🚨 [FRONTEND] Filas en DOM:', filasFinales);
-        console.log('🚨 [FRONTEND] Artículos únicos esperados:', articulosUnicos.size);
-    } else {
-        console.log('✅ [FRONTEND] Renderizado correcto - filas coinciden con artículos únicos');
-    }
-    
-    console.log('✅ [FRONTEND] actualizarTablaArticulos - Tabla actualizada correctamente');
+    console.log(`🔧 Renderizados ${articulos.length} artículos correctamente`);
 
     // Actualizar eventos de los checkboxes si estamos en modo selección
     if (modoSeleccion) {
@@ -182,8 +158,60 @@ function actualizarTablaArticulos(articulos) {
             });
         });
     }
+
+    // Configurar eventos para edición inline de kilos_unidad
+    configurarEventosKilosUnidad(tbody);
     
-    console.log('🔄 [FRONTEND] ===== FIN actualizarTablaArticulos() =====');
+    // SOLUCIÓN: Agregar listener de dblclick a las celdas TD que contienen inputs de kilos_unidad
+    console.log('🔍 [VERIFICACIÓN] Verificando selector .kilos-unidad-cell...');
+    const celdasKilosUnidad = tbody.querySelectorAll('.kilos-unidad-cell');
+    console.log(`🔍 [VERIFICACIÓN] Celdas encontradas con clase .kilos-unidad-cell: ${celdasKilosUnidad.length}`);
+    
+    if (celdasKilosUnidad.length === 0) {
+        console.warn('⚠️ [VERIFICACIÓN] No se encontraron celdas con clase .kilos-unidad-cell');
+        console.warn('⚠️ [VERIFICACIÓN] Intentando asignar clase dinámicamente...');
+        
+        // Fallback: Asignar clase dinámicamente a celdas que contengan inputs .input-kilos-unidad
+        const inputsKilosUnidad = tbody.querySelectorAll('.input-kilos-unidad');
+        console.log(`🔍 [VERIFICACIÓN] Inputs encontrados: ${inputsKilosUnidad.length}`);
+        
+        inputsKilosUnidad.forEach((input, index) => {
+            const celda = input.closest('td');
+            if (celda) {
+                celda.classList.add('kilos-unidad-cell');
+                console.log(`✅ [VERIFICACIÓN] Clase agregada dinámicamente a celda ${index + 1}`);
+            } else {
+                console.warn(`⚠️ [VERIFICACIÓN] Input ${index + 1} no está dentro de un TD`);
+            }
+        });
+        
+        // Volver a buscar después de agregar las clases
+        const celdasActualizadas = tbody.querySelectorAll('.kilos-unidad-cell');
+        console.log(`🔍 [VERIFICACIÓN] Celdas después de asignación dinámica: ${celdasActualizadas.length}`);
+    }
+    
+    // Agregar listeners a todas las celdas con clase .kilos-unidad-cell
+    const celdasFinales = tbody.querySelectorAll('.kilos-unidad-cell');
+    celdasFinales.forEach((td, index) => {
+        console.log(`🔧 [SOLUCIÓN] Agregando listener a celda ${index + 1}:`, td);
+        
+        td.addEventListener('dblclick', function(e) {
+            console.log('🎯 [SOLUCIÓN] Doble clic detectado en celda TD:', this);
+            const input = this.querySelector('.input-kilos-unidad');
+            if (input) {
+                console.log('✅ [SOLUCIÓN] Input encontrado, activando edición:', input);
+                activarEdicionKilosUnidad(input);
+            } else {
+                console.warn('⚠️ [SOLUCIÓN] No se encontró input en la celda');
+            }
+        });
+        
+        // Agregar estilo visual para indicar que la celda es clickeable
+        td.style.cursor = 'pointer';
+        td.title = 'Doble clic para editar';
+    });
+    
+    console.log(`✅ [SOLUCIÓN] Listeners de doble clic agregados a ${celdasFinales.length} celdas`);
 }
 
 // Funciones de filtrado
@@ -1732,5 +1760,153 @@ async function toggleProduccionExterna(articuloId, checked) {
     } finally {
         // Habilitar el switch nuevamente
         switchElement.disabled = false;
+    }
+}
+
+// Funciones para edición inline de kilos_unidad
+
+/**
+ * Configura los event listeners para la edición inline de kilos_unidad
+ * @param {HTMLElement} tbody - El tbody de la tabla donde están los inputs
+ */
+function configurarEventosKilosUnidad(tbody) {
+    const inputsKilosUnidad = tbody.querySelectorAll('.input-kilos-unidad');
+    
+    inputsKilosUnidad.forEach((input) => {
+        // Remover listeners anteriores si existen
+        const newInput = input.cloneNode(true);
+        input.parentNode.replaceChild(newInput, input);
+        
+        // Agregar listener de dblclick
+        newInput.addEventListener('dblclick', function(e) {
+            activarEdicionKilosUnidad(this);
+        }, true);
+        
+        // Agregar otros listeners necesarios
+        newInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                guardarKilosUnidad(this);
+            }
+        });
+        
+        newInput.addEventListener('blur', function() {
+            // Solo guardar si no está editando activamente o si perdió el foco por más de 500ms
+            if (!this.disabled && this.dataset.editandoActivamente === 'true') {
+                // Dar tiempo al usuario para seguir escribiendo
+                setTimeout(() => {
+                    if (document.activeElement !== this && this.dataset.editandoActivamente === 'true') {
+                        guardarKilosUnidad(this);
+                    }
+                }, 500);
+            }
+        });
+        
+        newInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelarEdicionKilosUnidad(this);
+            }
+        });
+    });
+}
+
+function activarEdicionKilosUnidad(input) {
+    console.log(`✏️ [LOG Edición] Activando edición para artículo: ${input.dataset.articulo}`);
+    console.log(`✏️ [LOG Edición] Estado inicial - disabled: ${input.disabled}, valor: "${input.value}"`);
+    
+    if (input.disabled) {
+        const valorAnterior = input.value;
+        input.disabled = false;
+        input.style.backgroundColor = '#ffffff';
+        input.style.border = '2px solid #007bff';
+        input.dataset.valorAnterior = valorAnterior;
+        input.dataset.editandoActivamente = 'true';
+        
+        // Seleccionar todo el texto para facilitar la edición
+        setTimeout(() => {
+            input.focus();
+            input.select();
+        }, 10);
+        
+        console.log(`✏️ [LOG Edición] Edición activada para artículo: ${input.dataset.articulo}`);
+        console.log(`🔧 [KILOS_UNIDAD] Edición activada para artículo ${input.dataset.articulo}`);
+    } else {
+        console.log(`⚠️ [LOG Edición] Input ya estaba habilitado para artículo: ${input.dataset.articulo}`);
+    }
+}
+
+function cancelarEdicionKilosUnidad(input) {
+    input.value = input.dataset.valorAnterior || '';
+    input.disabled = true;
+    input.style.backgroundColor = '#f5f5f5';
+    console.log(`❌ [KILOS_UNIDAD] Edición cancelada para artículo ${input.dataset.articulo}`);
+}
+
+async function guardarKilosUnidad(input) {
+    if (input.disabled) return;
+
+    const nuevoValor = input.value.trim();
+    const valorAnterior = input.dataset.valorAnterior || '';
+    const articuloId = input.dataset.articulo;
+
+    console.log(`💾 Guardando kilos_unidad para artículo ${articuloId}`);
+    console.log(`📊 Valor anterior: "${valorAnterior}" → Nuevo valor: "${nuevoValor}"`);
+
+    // Validar valor numérico positivo o cero
+    if (nuevoValor !== '' && (isNaN(nuevoValor) || Number(nuevoValor) < 0)) {
+        console.log(`❌ Valor inválido: ${nuevoValor}`);
+        mostrarMensaje('Valor inválido para kilos por unidad. Debe ser un número positivo o cero.', 'error');
+        cancelarEdicionKilosUnidad(input);
+        return;
+    }
+
+    if (nuevoValor === valorAnterior) {
+        console.log(`ℹ️ Sin cambios para artículo ${articuloId}`);
+        cancelarEdicionKilosUnidad(input);
+        return;
+    }
+
+    try {
+        const valorNumerico = nuevoValor === '' ? null : Number(nuevoValor);
+        
+        console.log(`📤 Enviando al backend: articulo_numero=${articuloId}, kilos_unidad=${valorNumerico}`);
+        
+        const response = await fetch(`/api/produccion/articulos/${encodeURIComponent(articuloId)}/kilos-unidad`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kilos_unidad: valorNumerico })
+        });
+
+        console.log(`📥 Respuesta del backend: Status ${response.status}`);
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.log(`❌ [LOG Error] Error al actualizar valor: ${response.status} ${response.statusText}`);
+            console.log(`❌ [LOG Error] Detalles del error:`, errorData);
+            throw new Error(errorData.error || 'Error al actualizar kilos por unidad');
+        }
+
+        const responseData = await response.json();
+        console.log(`📡 [LOG Backend] Respuesta OK del servidor. Valor actualizado.`);
+        console.log(`✅ Backend confirmó guardado exitoso:`, responseData);
+
+        // Actualizar el valor en todosLosArticulos
+        const articulo = todosLosArticulos.find(a => a.numero === articuloId);
+        if (articulo) {
+            articulo.kilos_unidad = valorNumerico;
+            console.log(`✅ Valor actualizado en memoria local`);
+        }
+
+        mostrarMensaje('Kilos por unidad actualizado correctamente', 'info');
+        input.dataset.valorAnterior = nuevoValor;
+        input.disabled = true;
+        input.style.backgroundColor = '#f5f5f5';
+        
+        console.log(`✅ Guardado completado para artículo ${articuloId}`);
+    } catch (error) {
+        console.error(`❌ Error al guardar kilos_unidad para artículo ${articuloId}:`, error);
+        mostrarMensaje('Error al guardar kilos por unidad: ' + error.message, 'error');
+        cancelarEdicionKilosUnidad(input);
     }
 }

@@ -103,13 +103,36 @@ export async function abrirModalArticulos() {
                 return;
             }
 
-            state[cacheKey] = articulos;
-            state.todosLosArticulos = articulos;
-            state.articulosFiltrados = [...articulos];
+            // 🔍 FASE 1: Filtrar artículos ya agregados al carro (solo producción interna)
+            let articulosDisponibles = articulos;
+            if (tipoCarro === 'interna' && carroId) {
+                articulosDisponibles = await filtrarArticulosYaAgregados(articulos, carroId);
+                console.log(`🔍 [FASE 1] Filtro aplicado - Artículos totales: ${articulos.length}, Disponibles: ${articulosDisponibles.length}`);
+            }
+
+            state[cacheKey] = articulosDisponibles;
+            state.todosLosArticulos = articulosDisponibles;
+            state.articulosFiltrados = [...articulosDisponibles];
             aplicarFiltros(0);
         } else {
-            state.todosLosArticulos = state[cacheKey];
-            state.articulosFiltrados = [...state[cacheKey]];
+            // 🔍 FASE 1: Aplicar filtro también al usar caché (solo producción interna)
+            let articulosDisponibles = state[cacheKey];
+            if (tipoCarro === 'interna' && carroId) {
+                // Re-obtener artículos originales para aplicar filtro actualizado
+                const url = 'http://localhost:3002/api/produccion/articulos';
+                const response = await fetch(url);
+                if (response.ok) {
+                    const articulosOriginales = await response.json();
+                    articulosDisponibles = await filtrarArticulosYaAgregados(articulosOriginales, carroId);
+                    console.log(`🔍 [FASE 1] Filtro aplicado (caché) - Artículos totales: ${articulosOriginales.length}, Disponibles: ${articulosDisponibles.length}`);
+                    
+                    // Actualizar caché con artículos filtrados
+                    state[cacheKey] = articulosDisponibles;
+                }
+            }
+            
+            state.todosLosArticulos = articulosDisponibles;
+            state.articulosFiltrados = [...articulosDisponibles];
             aplicarFiltros(0);
         }
 
@@ -125,6 +148,47 @@ export async function abrirModalArticulos() {
         mostrarError(error.message);
         const modal = document.getElementById('modal-articulos');
         modal.style.display = 'none';
+    }
+}
+
+/**
+ * 🔍 FASE 1: Filtra artículos que ya están agregados al carro actual
+ * Solo se ejecuta para carros de producción interna
+ * @param {Array} articulos - Lista completa de artículos disponibles
+ * @param {string} carroId - ID del carro activo
+ * @returns {Array} Artículos filtrados (sin los ya agregados al carro)
+ */
+async function filtrarArticulosYaAgregados(articulos, carroId) {
+    try {
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            console.warn('🔍 [FASE 1] No hay colaborador activo, no se puede filtrar');
+            return articulos;
+        }
+
+        const colaborador = JSON.parse(colaboradorData);
+        
+        // Obtener artículos ya agregados al carro
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
+        
+        if (!response.ok) {
+            console.warn('🔍 [FASE 1] Error al obtener artículos del carro, no se aplicará filtro');
+            return articulos;
+        }
+
+        const articulosEnCarro = await response.json();
+        const numerosEnCarro = articulosEnCarro.map(art => art.numero);
+        
+        console.log(`🔍 [FASE 1] Artículos en carro: ${numerosEnCarro.length} (${numerosEnCarro.slice(0, 3).join(', ')}${numerosEnCarro.length > 3 ? '...' : ''})`);
+        
+        // Filtrar artículos que no están en el carro
+        const articulosFiltrados = articulos.filter(art => !numerosEnCarro.includes(art.numero));
+        
+        return articulosFiltrados;
+        
+    } catch (error) {
+        console.error('🔍 [FASE 1] Error al filtrar artículos ya agregados:', error);
+        return articulos; // En caso de error, devolver todos los artículos
     }
 }
 
@@ -147,11 +211,29 @@ export async function actualizarTablaArticulos(articulos) {
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No hay artículos disponibles</td></tr>';
         return;
     }
 
     try {
+        // 🔍 [FASE 2] Detectar tipo de carro para habilitar selección múltiple
+        let tipoCarro = 'interna';
+        const carroId = localStorage.getItem('carroActivo');
+        
+        if (carroId) {
+            try {
+                const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+                if (carroResponse.ok) {
+                    const carroData = await carroResponse.json();
+                    tipoCarro = carroData.tipo_carro || 'interna';
+                }
+            } catch (error) {
+                console.warn('Error al obtener tipo de carro para tabla:', error);
+            }
+        }
+
+        console.log('🔍 [FASE 2] Renderizando tabla para tipo de carro:', tipoCarro);
+
         const articulosNumeros = articulos.map(art => art.numero);
         
         const [estadoResponse, integridadResponse] = await Promise.all([
@@ -180,10 +262,31 @@ export async function actualizarTablaArticulos(articulos) {
         produccion.sort((a, b) => a.nombre.localeCompare(b.nombre));
         resto.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
+        // 🔍 [FASE 2] Actualizar encabezado de tabla según tipo de carro
+        const tableHeader = document.getElementById('tabla-articulos-header');
+        if (tableHeader) {
+            if (tipoCarro === 'interna') {
+                tableHeader.innerHTML = `
+                    <th style="width: 50px; text-align: center;">Sel.</th>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Stock</th>
+                    <th>Acciones</th>
+                `;
+            } else {
+                tableHeader.innerHTML = `
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Stock</th>
+                    <th>Acciones</th>
+                `;
+            }
+        }
+
         function renderGroup(title, group) {
             const headerRow = document.createElement('tr');
             const headerCell = document.createElement('td');
-            headerCell.colSpan = 4;
+            headerCell.colSpan = tipoCarro === 'interna' ? 5 : 4; // 🔍 [FASE 2] Ajustar colspan según tipo
             headerCell.style.fontWeight = 'bold';
             headerCell.style.backgroundColor = '#f0f0f0';
             headerCell.style.padding = '8px';
@@ -210,48 +313,90 @@ export async function actualizarTablaArticulos(articulos) {
                     btnAgregarTitulo = 'Advertencia: Esta receta tiene ingredientes que ya no existen en el sistema';
                     btnAgregarClase = 'btn-agregar btn-warning-integridad icon-cart';
                 }
-                
-                tr.innerHTML = `
-                    <td>${articulo.numero}</td>
-                    <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
-                    <td style="text-align: center; font-weight: bold; color: ${articulo.stock_consolidado > 0 ? '#28a745' : '#dc3545'};">
-                        ${formatearStock(articulo.stock_consolidado || 0)}
-                    </td>
-                    <td>
-                        ${tieneReceta ? `
-                            <input type="number" class="cantidad-input" min="1" value="1" style="width: 50px; margin-right: 6px;">
-                            <button class="${btnAgregarClase}" 
-                                    data-numero="${articulo.numero}" 
-                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
-                                    data-integra="${esIntegra}"
-                                    style="${btnAgregarEstilo}"
-                                    title="${btnAgregarTitulo}">
-                                Ag. carro
-                            </button>
-                            <button class="btn-editar-receta icon-edit"
-                                    data-numero="${articulo.numero}"
-                                    data-modo="editar"
-                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
-                                    title="Editar receta">
-                                Editar
-                            </button>
-                            <button class="btn-desvincular-receta icon-trash"
-                                    data-numero="${articulo.numero}"
-                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
-                                    title="Quitar receta">
-                                Quitar
-                            </button>
-                        ` : `
-                            <button class="btn-editar-receta"
-                                    style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                    data-numero="${articulo.numero}"
-                                    data-modo="crear"
-                                    data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
-                                Vincular receta
-                            </button>
-                        `}
-                    </td>
-                `;
+
+                // 🔍 [FASE 2] Generar HTML diferente según tipo de carro
+                if (tipoCarro === 'interna') {
+                    // PRODUCCIÓN INTERNA: Checkbox + cantidad editable + botones de receta
+                    tr.innerHTML = `
+                        <td style="text-align: center;">
+                            ${tieneReceta ? `<input type="checkbox" class="seleccionar-articulo modal-articulos-interna-multiple" data-numero="${articulo.numero}" data-nombre="${articulo.nombre.replace(/'/g, "\\'")}" data-integra="${esIntegra}">` : ''}
+                        </td>
+                        <td>${articulo.numero}</td>
+                        <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+                        <td style="text-align: center; font-weight: bold; color: ${articulo.stock_consolidado > 0 ? '#28a745' : '#dc3545'};">
+                            ${formatearStock(articulo.stock_consolidado || 0)}
+                        </td>
+                        <td>
+                            ${tieneReceta ? `
+                                <input type="number" class="cantidad-multiple modal-articulos-interna-multiple" min="1" value="1" style="width: 60px; margin-right: 6px;" data-numero="${articulo.numero}">
+                                <button class="btn-editar-receta icon-edit"
+                                        data-numero="${articulo.numero}"
+                                        data-modo="editar"
+                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        title="Editar receta">
+                                    Editar
+                                </button>
+                                <button class="btn-desvincular-receta icon-trash"
+                                        data-numero="${articulo.numero}"
+                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        title="Quitar receta">
+                                    Quitar
+                                </button>
+                            ` : `
+                                <button class="btn-editar-receta"
+                                        style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                        data-numero="${articulo.numero}"
+                                        data-modo="crear"
+                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                    Vincular receta
+                                </button>
+                            `}
+                        </td>
+                    `;
+                } else {
+                    // PRODUCCIÓN EXTERNA: Comportamiento original
+                    tr.innerHTML = `
+                        <td>${articulo.numero}</td>
+                        <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+                        <td style="text-align: center; font-weight: bold; color: ${articulo.stock_consolidado > 0 ? '#28a745' : '#dc3545'};">
+                            ${formatearStock(articulo.stock_consolidado || 0)}
+                        </td>
+                        <td>
+                            ${tieneReceta ? `
+                                <input type="number" class="cantidad-input" min="1" value="1" style="width: 50px; margin-right: 6px;">
+                                <button class="${btnAgregarClase}" 
+                                        data-numero="${articulo.numero}" 
+                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        data-integra="${esIntegra}"
+                                        style="${btnAgregarEstilo}"
+                                        title="${btnAgregarTitulo}">
+                                    Ag. carro
+                                </button>
+                                <button class="btn-editar-receta icon-edit"
+                                        data-numero="${articulo.numero}"
+                                        data-modo="editar"
+                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        title="Editar receta">
+                                    Editar
+                                </button>
+                                <button class="btn-desvincular-receta icon-trash"
+                                        data-numero="${articulo.numero}"
+                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        title="Quitar receta">
+                                    Quitar
+                                </button>
+                            ` : `
+                                <button class="btn-editar-receta"
+                                        style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
+                                        data-numero="${articulo.numero}"
+                                        data-modo="crear"
+                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                    Vincular receta
+                                </button>
+                            `}
+                        </td>
+                    `;
+                }
                 tbody.appendChild(tr);
             });
         }
@@ -261,7 +406,8 @@ export async function actualizarTablaArticulos(articulos) {
 
         if (mostrarSoloProduccion) {
             if (produccion.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos de producción disponibles</td></tr>';
+                const colspanValue = tipoCarro === 'interna' ? 5 : 4;
+                tbody.innerHTML = `<tr><td colspan="${colspanValue}" class="text-center">No hay artículos de producción disponibles</td></tr>`;
             } else {
                 renderGroup('Artículos de producción', produccion);
             }
@@ -273,13 +419,23 @@ export async function actualizarTablaArticulos(articulos) {
                 renderGroup('Resto de los artículos', resto);
             }
             if (produccion.length === 0 && resto.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos disponibles</td></tr>';
+                const colspanValue = tipoCarro === 'interna' ? 5 : 4;
+                tbody.innerHTML = `<tr><td colspan="${colspanValue}" class="text-center">No hay artículos disponibles</td></tr>`;
             }
+        }
+
+        // 🔍 [FASE 2] Actualizar visibilidad del botón de agregar múltiples
+        actualizarVisibilidadBotonMultiple();
+
+        // 🔍 [OPTIMIZACIÓN] Agregar event listeners para auto-selección al modificar cantidad
+        if (tipoCarro === 'interna') {
+            agregarEventListenersAutoSeleccion();
         }
 
     } catch (error) {
         console.error('Error al actualizar tabla:', error);
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Error al cargar artículos</td></tr>';
+        const colspanValue = 4; // Valor por defecto en caso de error
+        tbody.innerHTML = `<tr><td colspan="${colspanValue}" class="text-center">Error al cargar artículos</td></tr>`;
     }
 }
 
@@ -1109,3 +1265,335 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
         mostrarError(error.message);
     }
 }
+
+// 🔍 [FASE 2] FUNCIONES PARA SELECCIÓN MÚLTIPLE (SOLO PRODUCCIÓN INTERNA)
+
+/**
+ * Actualiza la visibilidad del botón de agregar múltiples artículos
+ * Solo se muestra para carros de producción interna
+ */
+export function actualizarVisibilidadBotonMultiple() {
+    const btnAgregarMultiples = document.getElementById('btn-agregar-multiples');
+    if (!btnAgregarMultiples) return;
+
+    // Detectar si hay checkboxes de selección múltiple en la tabla
+    const checkboxes = document.querySelectorAll('.seleccionar-articulo');
+    
+    if (checkboxes.length > 0) {
+        btnAgregarMultiples.style.display = 'inline-block';
+        console.log('🔍 [FASE 2] Botón múltiple habilitado - checkboxes encontrados:', checkboxes.length);
+    } else {
+        btnAgregarMultiples.style.display = 'none';
+        console.log('🔍 [FASE 2] Botón múltiple oculto - no hay checkboxes');
+    }
+}
+
+/**
+ * Función principal para agregar múltiples artículos al carro
+ * Solo funciona para carros de producción interna
+ */
+export async function agregarMultiplesAlCarroInterno() {
+    try {
+        console.log('🔍 [FASE 2] Iniciando agregado múltiple...');
+
+        // Verificar que es un carro de producción interna
+        const carroId = localStorage.getItem('carroActivo');
+        if (!carroId) {
+            throw new Error('No hay un carro de producción activo');
+        }
+
+        let tipoCarro = 'interna';
+        try {
+            const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+            if (carroResponse.ok) {
+                const carroData = await carroResponse.json();
+                tipoCarro = carroData.tipo_carro || 'interna';
+            }
+        } catch (error) {
+            console.warn('Error al verificar tipo de carro:', error);
+        }
+
+        if (tipoCarro !== 'interna') {
+            throw new Error('La selección múltiple solo está disponible para producción interna');
+        }
+
+        // Obtener artículos seleccionados
+        const checkboxesSeleccionados = document.querySelectorAll('.seleccionar-articulo:checked');
+        
+        if (checkboxesSeleccionados.length === 0) {
+            throw new Error('Debe seleccionar al menos un artículo');
+        }
+
+        console.log(`🔍 [FASE 2] Artículos seleccionados: ${checkboxesSeleccionados.length}`);
+
+        // Validar cantidades y preparar datos
+        const articulosParaAgregar = [];
+        let hayErrores = false;
+        let articulosConAdvertencias = [];
+
+        checkboxesSeleccionados.forEach(checkbox => {
+            const numeroArticulo = checkbox.dataset.numero;
+            const nombreArticulo = checkbox.dataset.nombre;
+            const esIntegra = checkbox.dataset.integra === 'true';
+            
+            // Buscar el input de cantidad correspondiente
+            const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
+            
+            if (!inputCantidad) {
+                console.error(`No se encontró input de cantidad para artículo ${numeroArticulo}`);
+                hayErrores = true;
+                return;
+            }
+
+            const cantidad = parseFloat(inputCantidad.value);
+            
+            if (isNaN(cantidad) || cantidad <= 0) {
+                console.error(`Cantidad inválida para artículo ${numeroArticulo}: ${inputCantidad.value}`);
+                hayErrores = true;
+                return;
+            }
+
+            // Verificar integridad de receta
+            if (!esIntegra) {
+                articulosConAdvertencias.push(nombreArticulo);
+            }
+
+            articulosParaAgregar.push({
+                numero: numeroArticulo,
+                nombre: nombreArticulo,
+                cantidad: cantidad,
+                esIntegra: esIntegra
+            });
+        });
+
+        if (hayErrores) {
+            throw new Error('Hay errores en las cantidades. Verifique que todas sean números positivos.');
+        }
+
+        // Mostrar advertencia si hay artículos con problemas de integridad
+        if (articulosConAdvertencias.length > 0) {
+            const mensaje = `ADVERTENCIA: Los siguientes artículos tienen recetas con ingredientes que ya no existen:\n\n` +
+                          `${articulosConAdvertencias.join('\n')}\n\n` +
+                          `Esto puede causar errores en el cálculo de ingredientes necesarios.\n\n` +
+                          `¿Desea continuar agregando estos artículos al carro?`;
+            
+            if (!confirm(mensaje)) {
+                return;
+            }
+        }
+
+        // Obtener datos del colaborador
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            throw new Error('No hay colaborador seleccionado');
+        }
+        const colaborador = JSON.parse(colaboradorData);
+
+        // Deshabilitar botón durante el proceso
+        const btnAgregarMultiples = document.getElementById('btn-agregar-multiples');
+        if (btnAgregarMultiples) {
+            btnAgregarMultiples.disabled = true;
+            btnAgregarMultiples.textContent = 'Agregando...';
+        }
+
+        // Procesar cada artículo
+        let articulosAgregados = 0;
+        let articulosConError = [];
+
+        for (const articulo of articulosParaAgregar) {
+            try {
+                console.log(`🔍 [FASE 2] Agregando: ${articulo.nombre} (${articulo.cantidad})`);
+
+                const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        articulo_numero: articulo.numero,
+                        descripcion: articulo.nombre,
+                        cantidad: articulo.cantidad,
+                        usuarioId: colaborador.id
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    
+                    // Si el artículo ya existe, no es un error crítico
+                    if (errorData.error === 'Este artículo ya fue agregado al carro') {
+                        console.warn(`🔍 [FASE 2] Artículo ya existe: ${articulo.nombre}`);
+                        articulosConError.push(`${articulo.nombre} (ya existe en el carro)`);
+                    } else {
+                        throw new Error(errorData.error || 'Error desconocido');
+                    }
+                } else {
+                    articulosAgregados++;
+                    console.log(`🔍 [FASE 2] ✅ Agregado: ${articulo.nombre}`);
+                }
+
+            } catch (error) {
+                console.error(`🔍 [FASE 2] Error al agregar ${articulo.nombre}:`, error);
+                articulosConError.push(`${articulo.nombre} (${error.message})`);
+            }
+        }
+
+        // Restaurar botón
+        if (btnAgregarMultiples) {
+            btnAgregarMultiples.disabled = false;
+            btnAgregarMultiples.textContent = '➕ Agregar seleccionados al carro';
+        }
+
+        // Mostrar resultado
+        let mensaje = '';
+        if (articulosAgregados > 0) {
+            mensaje += `✅ ${articulosAgregados} artículo${articulosAgregados > 1 ? 's' : ''} agregado${articulosAgregados > 1 ? 's' : ''} correctamente`;
+        }
+        
+        if (articulosConError.length > 0) {
+            if (mensaje) mensaje += '\n\n';
+            mensaje += `⚠️ Problemas con ${articulosConError.length} artículo${articulosConError.length > 1 ? 's' : ''}:\n${articulosConError.join('\n')}`;
+        }
+
+        // Mostrar notificación
+        const notificationDiv = document.createElement('div');
+        notificationDiv.className = 'success-message';
+        notificationDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: ${articulosAgregados > 0 ? '#28a745' : '#ffc107'};
+            color: ${articulosAgregados > 0 ? 'white' : '#212529'};
+            padding: 15px 20px;
+            border-radius: 4px;
+            z-index: 10000;
+            max-width: 400px;
+            white-space: pre-line;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        `;
+        notificationDiv.textContent = mensaje;
+        document.body.appendChild(notificationDiv);
+
+        setTimeout(() => {
+            notificationDiv.remove();
+        }, 6000);
+
+        // Si se agregó al menos un artículo, cerrar modal y actualizar
+        if (articulosAgregados > 0) {
+            cerrarModalArticulos();
+
+            // Actualizar resumen automáticamente
+            try {
+                console.log('🔍 [FASE 2] Actualizando resumen después de agregado múltiple...');
+                
+                await mostrarArticulosDelCarro();
+                
+                const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+                mostrarResumenIngredientes(ingredientes);
+                
+                const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+                mostrarResumenMixes(mixes);
+                
+                const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+                if (articulos && articulos.length > 0) {
+                    mostrarResumenArticulos(articulos);
+                    const seccionArticulos = document.getElementById('resumen-articulos');
+                    if (seccionArticulos) {
+                        seccionArticulos.style.display = 'block';
+                    }
+                }
+                
+                console.log('🔍 [FASE 2] ✅ Resumen actualizado correctamente');
+            } catch (updateError) {
+                console.error('🔍 [FASE 2] ⚠️ Error al actualizar resumen:', updateError);
+            }
+        }
+
+    } catch (error) {
+        console.error('🔍 [FASE 2] Error en agregado múltiple:', error);
+        mostrarError(error.message);
+        
+        // Restaurar botón en caso de error
+        const btnAgregarMultiples = document.getElementById('btn-agregar-multiples');
+        if (btnAgregarMultiples) {
+            btnAgregarMultiples.disabled = false;
+            btnAgregarMultiples.textContent = '➕ Agregar seleccionados al carro';
+        }
+    }
+}
+
+/**
+ * 🔍 [OPTIMIZACIÓN] Agregar event listeners para auto-selección al modificar cantidad
+ * Solo para producción interna - cuando el usuario modifica la cantidad, se marca automáticamente el checkbox
+ */
+function agregarEventListenersAutoSeleccion() {
+    // Obtener todos los inputs de cantidad múltiple
+    const inputsCantidad = document.querySelectorAll('.cantidad-multiple.modal-articulos-interna-multiple');
+    
+    inputsCantidad.forEach(input => {
+        // Remover listeners previos para evitar duplicados
+        input.removeEventListener('input', manejarCambioEnCantidad);
+        input.removeEventListener('change', manejarCambioEnCantidad);
+        
+        // Agregar nuevos listeners
+        input.addEventListener('input', manejarCambioEnCantidad);
+        input.addEventListener('change', manejarCambioEnCantidad);
+    });
+    
+    console.log(`🔍 [OPTIMIZACIÓN] Event listeners agregados a ${inputsCantidad.length} inputs de cantidad`);
+}
+
+/**
+ * 🔍 [OPTIMIZACIÓN] Maneja el cambio en el campo de cantidad
+ * Activa automáticamente el checkbox correspondiente cuando se modifica la cantidad
+ */
+function manejarCambioEnCantidad(event) {
+    const input = event.target;
+    const numeroArticulo = input.dataset.numero;
+    
+    if (!numeroArticulo) {
+        console.warn('🔍 [OPTIMIZACIÓN] Input sin data-numero:', input);
+        return;
+    }
+    
+    // Buscar el checkbox correspondiente
+    const checkbox = document.querySelector(`.seleccionar-articulo[data-numero="${numeroArticulo}"]`);
+    
+    if (!checkbox) {
+        console.warn(`🔍 [OPTIMIZACIÓN] No se encontró checkbox para artículo ${numeroArticulo}`);
+        return;
+    }
+    
+    // Verificar si el valor es válido (mayor a 0)
+    const cantidad = parseFloat(input.value);
+    
+    if (!isNaN(cantidad) && cantidad > 0) {
+        // Solo marcar si no está ya marcado (evitar loops)
+        if (!checkbox.checked) {
+            checkbox.checked = true;
+            console.log(`🔍 [OPTIMIZACIÓN] Auto-seleccionado artículo ${numeroArticulo} (cantidad: ${cantidad})`);
+            
+            // Agregar clase visual para indicar selección automática
+            const fila = checkbox.closest('tr');
+            if (fila) {
+                fila.classList.add('selected-row');
+            }
+        }
+    } else if (cantidad === 0 || input.value === '') {
+        // Si la cantidad es 0 o está vacía, desmarcar el checkbox
+        if (checkbox.checked) {
+            checkbox.checked = false;
+            console.log(`🔍 [OPTIMIZACIÓN] Auto-desmarcado artículo ${numeroArticulo} (cantidad vacía/cero)`);
+            
+            // Remover clase visual
+            const fila = checkbox.closest('tr');
+            if (fila) {
+                fila.classList.remove('selected-row');
+            }
+        }
+    }
+}
+
+// Hacer la función disponible globalmente para el HTML
+window.agregarMultiplesAlCarroInterno = agregarMultiplesAlCarroInterno;

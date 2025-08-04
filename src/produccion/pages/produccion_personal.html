@@ -13,7 +13,9 @@
     <link rel="stylesheet" href="/css/modal-mix.css">
     <link rel="stylesheet" href="/css/modal-articulos.css">
     <link rel="stylesheet" href="/css/modal-articulos-fix.css">
+    <link rel="stylesheet" href="/css/modal-articulos-multiple.css">
     <link rel="stylesheet" href="/css/modal-ingreso-manual.css">
+    <link rel="stylesheet" href="/css/modal-guardado-ingredientes.css">
 </head>
 <body>
     <div class="container">
@@ -56,6 +58,7 @@
                             
                             <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="finalizarProduccion(localStorage.getItem('carroActivo'))">Asentar producción</button>
                             <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;" onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir etiquetas</button>
+                            <button id="guardado-ingredientes" class="btn btn-success" style="display: none;" onclick="abrirModalGuardadoIngredientes(localStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦 Guardado de ingredientes</button>
                         </div>
                         <div id="carro-actual" class="carro-info">
                             <p>No hay carro activo</p>
@@ -128,10 +131,18 @@
                 </div>
             </div>
 
+            <!-- 🔍 [FASE 2] Botón centralizado para selección múltiple (solo producción interna) -->
+            <div class="modal-actions-header" style="margin-bottom: 15px;">
+                <button id="btn-agregar-multiples" class="btn btn-success modal-articulos-interna-multiple" 
+                        style="display: none;" onclick="agregarMultiplesAlCarroInterno()">
+                    ➕ Agregar seleccionados al carro
+                </button>
+            </div>
+
             <!-- Tabla de artículos -->
             <table class="tabla-articulos">
                 <thead>
-                    <tr>
+                    <tr id="tabla-articulos-header">
                         <th>Código</th>
                         <th>Descripción</th>
                         <th>Stock</th>
@@ -403,6 +414,88 @@
 
                 <div class="modal-actions">
                     <button id="btn-guardar-vinculo" class="btn btn-success">Guardar Vínculo</button>
+                    <button class="btn btn-secondary close-modal">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Guardado de Ingredientes -->
+    <div id="modalGuardadoIngredientes" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📦 Guardado de Ingredientes</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="info-carro">
+                    <p><strong>Carro:</strong> <span id="info-carro-numero"></span></p>
+                    <p><strong>Estado:</strong> <span class="badge-confirmado">Producción Finalizada</span></p>
+                </div>
+                
+                <div class="filtros-sector">
+                    <label for="filtro-sector">Filtrar por sector:</label>
+                    <select id="filtro-sector">
+                        <option value="">Todos los sectores</option>
+                    </select>
+                </div>
+
+                <div class="tabla-ingredientes-container">
+                    <table id="tabla-ingredientes-guardado">
+                        <thead>
+                            <tr>
+                                <th>Ingrediente</th>
+                                <th>Sector</th>
+                                <th>Cantidad Necesaria</th>
+                                <th>Cantidad Ingresada</th>
+                                <th>Stock Actual</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-ingredientes-guardado-body">
+                            <!-- Los ingredientes se cargarán dinámicamente aquí -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="btn-imprimir-todas-etiquetas" class="btn btn-primary">🏷️ Imprimir todas las etiquetas</button>
+                    <button class="btn btn-secondary close-modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Ajuste de Kilos -->
+    <div id="modalAjusteKilos" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚖️ Ajustar Kilos</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="ingrediente-info">
+                    <h3 id="nombre-ingrediente-ajuste"></h3>
+                    <p><strong>Sector:</strong> <span id="sector-ingrediente-ajuste"></span></p>
+                </div>
+
+                <div class="form-group">
+                    <label for="kilos-actuales">Kilos actuales:</label>
+                    <input type="number" id="kilos-actuales" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label for="nuevos-kilos">Nuevos kilos:</label>
+                    <input type="number" id="nuevos-kilos" min="0" step="0.01" placeholder="Ingrese los nuevos kilos">
+                </div>
+
+                <div class="form-group">
+                    <label for="motivo-ajuste">Motivo del ajuste:</label>
+                    <textarea id="motivo-ajuste" rows="3" placeholder="Describa el motivo del ajuste (opcional)"></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="btn-confirmar-ajuste" class="btn btn-success">Confirmar Ajuste</button>
                     <button class="btn btn-secondary close-modal">Cancelar</button>
                 </div>
             </div>
