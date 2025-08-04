@@ -9,7 +9,9 @@ const state = {
     articulosReceta: [],
     ultimoArticuloEditado: null,
     existeReceta: false,
-    tipoCarro: 'interna'
+    tipoCarro: 'interna',
+    // Mejora solicitada por Martín - selección persistente en modal de artículos
+    selectedArticles: new Map() // Map<numero_articulo, {nombre, cantidad, esIntegra}>
 };
 
 let ingredientesDisponibles = [];
@@ -203,6 +205,11 @@ export function cerrarModalArticulos() {
     document.getElementById('filtro2').value = '';
     document.getElementById('filtro3').value = '';
     document.getElementById('codigo-barras').value = '';
+    
+    // Mejora solicitada por Martín - limpiar selecciones persistentes al cerrar modal
+    state.selectedArticles.clear();
+    actualizarResumenSeleccionados();
+    console.log('🔍 [SELECCIÓN PERSISTENTE] Selecciones limpiadas al cerrar modal');
 }
 
 // Función para actualizar la tabla de artículos
@@ -432,6 +439,11 @@ export async function actualizarTablaArticulos(articulos) {
             agregarEventListenersAutoSeleccion();
         }
 
+        // Mejora solicitada por Martín - restaurar selecciones después de actualizar tabla
+        if (tipoCarro === 'interna') {
+            restaurarSeleccionesPreservadas();
+        }
+
     } catch (error) {
         console.error('Error al actualizar tabla:', error);
         const colspanValue = 4; // Valor por defecto en caso de error
@@ -441,6 +453,9 @@ export async function actualizarTablaArticulos(articulos) {
 
 // Función para aplicar filtros
 export function aplicarFiltros(filtroIndex) {
+    // Mejora solicitada por Martín - preservar selecciones antes de filtrar
+    preservarSeleccionesActuales();
+    
     const filtro1 = document.getElementById('filtro1').value.toLowerCase();
     const filtro2 = document.getElementById('filtro2').value.toLowerCase();
     const filtro3 = document.getElementById('filtro3').value.toLowerCase();
@@ -477,6 +492,17 @@ export function aplicarFiltros(filtroIndex) {
 
     if (mostrarSoloProduccion) {
         resultados = resultados.filter(art => art.no_producido_por_lambda === false);
+    }
+
+    // Mejora solicitada por Martín - incluir artículos seleccionados aunque no coincidan con filtro
+    const articulosSeleccionados = Array.from(state.selectedArticles.keys());
+    const articulosSeleccionadosData = state.todosLosArticulos.filter(art => 
+        articulosSeleccionados.includes(art.numero) && !resultados.some(r => r.numero === art.numero)
+    );
+    
+    if (articulosSeleccionadosData.length > 0) {
+        console.log(`🔍 [SELECCIÓN PERSISTENTE] Agregando ${articulosSeleccionadosData.length} artículos seleccionados que no coinciden con filtro`);
+        resultados = [...articulosSeleccionadosData, ...resultados];
     }
 
     resultados.sort((a, b) => {
@@ -1221,6 +1247,44 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Mejora solicitada por Martín - Event listeners para checkboxes de selección múltiple
+    document.addEventListener('change', (e) => {
+        if (e.target.classList.contains('seleccionar-articulo')) {
+            const checkbox = e.target;
+            const numeroArticulo = checkbox.dataset.numero;
+            const nombreArticulo = checkbox.dataset.nombre;
+            const esIntegra = checkbox.dataset.integra === 'true';
+            
+            // Buscar input de cantidad correspondiente
+            const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
+            const cantidad = inputCantidad ? parseFloat(inputCantidad.value) || 1 : 1;
+            
+            if (checkbox.checked) {
+                // Agregar a selección persistente
+                actualizarSeleccionEnTiempoReal(numeroArticulo, nombreArticulo, esIntegra, cantidad);
+                
+                // Agregar clase visual
+                const fila = checkbox.closest('tr');
+                if (fila) {
+                    fila.classList.add('selected-row');
+                }
+                
+                console.log(`🔍 [CHECKBOX] Seleccionado: ${nombreArticulo} (${cantidad})`);
+            } else {
+                // Remover de selección persistente
+                removerSeleccionEnTiempoReal(numeroArticulo);
+                
+                // Remover clase visual
+                const fila = checkbox.closest('tr');
+                if (fila) {
+                    fila.classList.remove('selected-row');
+                }
+                
+                console.log(`🔍 [CHECKBOX] Deseleccionado: ${nombreArticulo}`);
+            }
+        }
+    });
 });
 
 // Función para desvincular receta
@@ -1580,6 +1644,10 @@ function manejarCambioEnCantidad(event) {
                 fila.classList.add('selected-row');
             }
         }
+        
+        // Mejora solicitada por Martín - actualizar resumen en tiempo real
+        actualizarSeleccionEnTiempoReal(numeroArticulo, checkbox.dataset.nombre, checkbox.dataset.integra === 'true', cantidad);
+        
     } else if (cantidad === 0 || input.value === '') {
         // Si la cantidad es 0 o está vacía, desmarcar el checkbox
         if (checkbox.checked) {
@@ -1592,6 +1660,287 @@ function manejarCambioEnCantidad(event) {
                 fila.classList.remove('selected-row');
             }
         }
+        
+        // Mejora solicitada por Martín - remover del resumen en tiempo real
+        removerSeleccionEnTiempoReal(numeroArticulo);
+    }
+}
+
+// Mejora solicitada por Martín - FUNCIONES PARA SELECCIÓN PERSISTENTE
+
+/**
+ * Preserva las selecciones actuales antes de aplicar filtros
+ * Guarda el estado de checkboxes y cantidades en el Map persistente
+ */
+function preservarSeleccionesActuales() {
+    try {
+        // Solo para producción interna
+        const carroId = localStorage.getItem('carroActivo');
+        if (!carroId) return;
+
+        // Obtener todos los checkboxes seleccionados
+        const checkboxesSeleccionados = document.querySelectorAll('.seleccionar-articulo:checked');
+        
+        checkboxesSeleccionados.forEach(checkbox => {
+            const numeroArticulo = checkbox.dataset.numero;
+            const nombreArticulo = checkbox.dataset.nombre;
+            const esIntegra = checkbox.dataset.integra === 'true';
+            
+            // Buscar la cantidad correspondiente
+            const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
+            const cantidad = inputCantidad ? parseFloat(inputCantidad.value) || 1 : 1;
+            
+            // Guardar en el Map persistente
+            state.selectedArticles.set(numeroArticulo, {
+                nombre: nombreArticulo,
+                cantidad: cantidad,
+                esIntegra: esIntegra
+            });
+            
+            console.log(`🔍 [SELECCIÓN PERSISTENTE] Preservado: ${nombreArticulo} (${cantidad})`);
+        });
+        
+        // Actualizar resumen visual
+        actualizarResumenSeleccionados();
+        
+        console.log(`🔍 [SELECCIÓN PERSISTENTE] Total preservado: ${state.selectedArticles.size} artículos`);
+        
+    } catch (error) {
+        console.error('🔍 [SELECCIÓN PERSISTENTE] Error al preservar selecciones:', error);
+    }
+}
+
+/**
+ * Restaura las selecciones después de regenerar la tabla
+ * Marca checkboxes y restaura cantidades desde el Map persistente
+ */
+function restaurarSeleccionesPreservadas() {
+    try {
+        if (state.selectedArticles.size === 0) return;
+        
+        console.log(`🔍 [SELECCIÓN PERSISTENTE] Restaurando ${state.selectedArticles.size} selecciones...`);
+        
+        state.selectedArticles.forEach((datos, numeroArticulo) => {
+            // Buscar checkbox correspondiente
+            const checkbox = document.querySelector(`.seleccionar-articulo[data-numero="${numeroArticulo}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                
+                // Agregar clase visual
+                const fila = checkbox.closest('tr');
+                if (fila) {
+                    fila.classList.add('selected-row');
+                }
+            }
+            
+            // Buscar input de cantidad correspondiente
+            const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
+            if (inputCantidad) {
+                inputCantidad.value = datos.cantidad;
+            }
+            
+            console.log(`🔍 [SELECCIÓN PERSISTENTE] Restaurado: ${datos.nombre} (${datos.cantidad})`);
+        });
+        
+    } catch (error) {
+        console.error('🔍 [SELECCIÓN PERSISTENTE] Error al restaurar selecciones:', error);
+    }
+}
+
+/**
+ * Actualiza el resumen visual de artículos seleccionados en el encabezado del modal
+ */
+function actualizarResumenSeleccionados() {
+    try {
+        // Buscar o crear contenedor del resumen
+        let contenedorResumen = document.getElementById('resumen-seleccionados');
+        if (!contenedorResumen) {
+            // Crear contenedor si no existe
+            contenedorResumen = document.createElement('div');
+            contenedorResumen.id = 'resumen-seleccionados';
+            contenedorResumen.className = 'resumen-seleccionados-container';
+            
+            // Insertar después del título del modal
+            const modalContent = document.querySelector('#modal-articulos .modal-content');
+            const titulo = modalContent.querySelector('h2');
+            if (titulo && modalContent) {
+                titulo.insertAdjacentElement('afterend', contenedorResumen);
+            }
+        }
+        
+        // Limpiar contenido anterior
+        contenedorResumen.innerHTML = '';
+        
+        if (state.selectedArticles.size === 0) {
+            contenedorResumen.style.display = 'none';
+            return;
+        }
+        
+        // Mostrar resumen
+        contenedorResumen.style.display = 'block';
+        
+        const titulo = document.createElement('h4');
+        titulo.textContent = `📋 Artículos Seleccionados (${state.selectedArticles.size})`;
+        titulo.style.cssText = `
+            margin: 10px 0 5px 0;
+            color: #007bff;
+            font-size: 14px;
+            font-weight: bold;
+        `;
+        contenedorResumen.appendChild(titulo);
+        
+        const lista = document.createElement('div');
+        lista.className = 'lista-seleccionados';
+        lista.style.cssText = `
+            max-height: 120px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 10px;
+        `;
+        
+        state.selectedArticles.forEach((datos, numeroArticulo) => {
+            const item = document.createElement('div');
+            item.className = 'item-seleccionado';
+            item.style.cssText = `
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 4px 8px;
+                margin: 2px 0;
+                background-color: white;
+                border-radius: 3px;
+                border-left: 3px solid ${datos.esIntegra ? '#28a745' : '#ffc107'};
+                font-size: 12px;
+            `;
+            
+            const info = document.createElement('span');
+            info.textContent = `${datos.nombre}`;
+            info.style.cssText = `
+                flex: 1;
+                margin-right: 8px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            `;
+            
+            const cantidad = document.createElement('span');
+            cantidad.textContent = `Cant: ${datos.cantidad}`;
+            cantidad.style.cssText = `
+                font-weight: bold;
+                color: #007bff;
+                margin-right: 8px;
+            `;
+            
+            const btnEliminar = document.createElement('button');
+            btnEliminar.textContent = '✕';
+            btnEliminar.style.cssText = `
+                background: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 20px;
+                height: 20px;
+                font-size: 10px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            `;
+            btnEliminar.title = 'Quitar de selección';
+            btnEliminar.onclick = () => eliminarSeleccion(numeroArticulo);
+            
+            item.appendChild(info);
+            item.appendChild(cantidad);
+            item.appendChild(btnEliminar);
+            lista.appendChild(item);
+        });
+        
+        contenedorResumen.appendChild(lista);
+        
+        console.log(`🔍 [SELECCIÓN PERSISTENTE] Resumen actualizado: ${state.selectedArticles.size} artículos`);
+        
+    } catch (error) {
+        console.error('🔍 [SELECCIÓN PERSISTENTE] Error al actualizar resumen:', error);
+    }
+}
+
+/**
+ * Elimina un artículo específico de la selección persistente
+ */
+function eliminarSeleccion(numeroArticulo) {
+    try {
+        const datos = state.selectedArticles.get(numeroArticulo);
+        if (datos) {
+            state.selectedArticles.delete(numeroArticulo);
+            console.log(`🔍 [SELECCIÓN PERSISTENTE] Eliminado: ${datos.nombre}`);
+            
+            // Desmarcar checkbox si está visible
+            const checkbox = document.querySelector(`.seleccionar-articulo[data-numero="${numeroArticulo}"]`);
+            if (checkbox) {
+                checkbox.checked = false;
+                const fila = checkbox.closest('tr');
+                if (fila) {
+                    fila.classList.remove('selected-row');
+                }
+            }
+            
+            // Actualizar resumen
+            actualizarResumenSeleccionados();
+        }
+    } catch (error) {
+        console.error('🔍 [SELECCIÓN PERSISTENTE] Error al eliminar selección:', error);
+    }
+}
+
+// Mejora solicitada por Martín - FUNCIONES PARA ACTUALIZACIÓN EN TIEMPO REAL
+
+/**
+ * Actualiza la selección en tiempo real cuando se marca un checkbox o se modifica una cantidad
+ * @param {string} numeroArticulo - Número del artículo
+ * @param {string} nombreArticulo - Nombre del artículo
+ * @param {boolean} esIntegra - Si la receta es íntegra
+ * @param {number} cantidad - Cantidad seleccionada
+ */
+function actualizarSeleccionEnTiempoReal(numeroArticulo, nombreArticulo, esIntegra, cantidad) {
+    try {
+        // Agregar o actualizar en el Map persistente
+        state.selectedArticles.set(numeroArticulo, {
+            nombre: nombreArticulo,
+            cantidad: cantidad,
+            esIntegra: esIntegra
+        });
+        
+        // Actualizar resumen visual inmediatamente
+        actualizarResumenSeleccionados();
+        
+        console.log(`🔍 [TIEMPO REAL] Actualizado: ${nombreArticulo} (${cantidad})`);
+        
+    } catch (error) {
+        console.error('🔍 [TIEMPO REAL] Error al actualizar selección:', error);
+    }
+}
+
+/**
+ * Remueve una selección en tiempo real cuando se desmarca o se vacía la cantidad
+ * @param {string} numeroArticulo - Número del artículo a remover
+ */
+function removerSeleccionEnTiempoReal(numeroArticulo) {
+    try {
+        const datos = state.selectedArticles.get(numeroArticulo);
+        if (datos) {
+            state.selectedArticles.delete(numeroArticulo);
+            
+            // Actualizar resumen visual inmediatamente
+            actualizarResumenSeleccionados();
+            
+            console.log(`🔍 [TIEMPO REAL] Removido: ${datos.nombre}`);
+        }
+        
+    } catch (error) {
+        console.error('🔍 [TIEMPO REAL] Error al remover selección:', error);
     }
 }
 
