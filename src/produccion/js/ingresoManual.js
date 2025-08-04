@@ -1367,16 +1367,37 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
   try {
     console.log('🏷️ INICIANDO IMPRESIÓN DE ETIQUETA DE INGREDIENTE');
     console.log('================================================================');
-    console.log('📋 Datos recibidos:', {
+    console.log('📋 Datos recibidos (parámetros originales):', {
       ingredienteId,
       ingredienteNombre,
       articuloNumero
     });
 
     // Validar datos de entrada
-    if (!ingredienteNombre || !articuloNumero) {
-      throw new Error('Faltan datos necesarios para imprimir la etiqueta');
+    if (!ingredienteId) {
+      throw new Error('ID del ingrediente es requerido para imprimir la etiqueta');
     }
+
+    // 🔧 CORRECCIÓN: Consultar los datos correctos del ingrediente
+    console.log('🔍 [ETIQUETA-DEBUG] Consultando datos del ingrediente para obtener nombre y código correctos...');
+    
+    const ingredienteData = await obtenerIngrediente(ingredienteId);
+    
+    if (!ingredienteData) {
+      throw new Error(`No se encontraron datos para el ingrediente ID: ${ingredienteId}`);
+    }
+
+    // ✅ USAR DATOS CORRECTOS DEL INGREDIENTE (no del artículo)
+    const nombreIngredienteCorrect = ingredienteData.nombre;
+    const codigoIngredienteCorrect = ingredienteData.codigo || ingredienteId.toString();
+    
+    console.log('🔍 [ETIQUETA-DEBUG] Comparación de datos:');
+    console.log('❌ DATOS INCORRECTOS (artículo):');
+    console.log(`   - Nombre del artículo: "${ingredienteNombre}"`);
+    console.log(`   - Código del artículo: "${articuloNumero}"`);
+    console.log('✅ DATOS CORRECTOS (ingrediente):');
+    console.log(`   - Nombre del ingrediente: "${nombreIngredienteCorrect}"`);
+    console.log(`   - Código del ingrediente: "${codigoIngredienteCorrect}"`);
 
     console.log('📡 Enviando solicitud al servidor de etiquetas...');
 
@@ -1387,8 +1408,8 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        nombre: ingredienteNombre,
-        codigo: articuloNumero // Usar el código del artículo como código de barras
+        nombre: nombreIngredienteCorrect, // ✅ CORREGIDO: Usar nombre del ingrediente
+        codigo: codigoIngredienteCorrect  // ✅ CORREGIDO: Usar código del ingrediente
       })
     });
 
@@ -1403,7 +1424,7 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
     console.log('✅ Respuesta exitosa del servidor:', result);
     
     // Mostrar confirmación visual
-    alert(`✅ Etiqueta del ingrediente "${ingredienteNombre}" enviada a imprimir correctamente`);
+    alert(`✅ Etiqueta del ingrediente "${nombreIngredienteCorrect}" enviada a imprimir correctamente\nCódigo: ${codigoIngredienteCorrect}`);
     
     console.log('✅ IMPRESIÓN DE ETIQUETA COMPLETADA EXITOSAMENTE');
     console.log('================================================================');

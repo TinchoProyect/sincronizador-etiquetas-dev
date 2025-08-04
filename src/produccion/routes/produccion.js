@@ -1641,26 +1641,32 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
         if (tipoCarro === 'interna') {
             // 🏭 CARROS INTERNOS: Solo movimientos de artículos (stock_ventas_movimientos)
             // 🔧 CORRECCIÓN CRÍTICA: NO multiplicar por cantidad porque el frontend ya lo hizo
+            // 🆕 CORRECCIÓN ETIQUETAS: Obtener ingrediente_id desde ingredientes_movimientos relacionados
             query = `
                 SELECT
                     svm.id,
                     svm.fecha,
                     ABS(svm.kilos) as kilos,
                     svm.carro_id,
-                    NULL as ingrediente_id,
+                    COALESCE(im.ingrediente_id, NULL) as ingrediente_id,
                     svm.articulo_numero,
                     a.nombre as articulo_nombre,
                     svm.codigo_barras,
-                    a.nombre as ingrediente_nombre,
+                    COALESCE(i.nombre, a.nombre) as ingrediente_nombre,
                     COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
                     'stock_ventas_movimientos' as fuente_datos
                 FROM stock_ventas_movimientos svm
                 LEFT JOIN articulos a ON a.numero = svm.articulo_numero
+                LEFT JOIN ingredientes_movimientos im ON im.carro_id = svm.carro_id 
+                    AND im.observaciones = svm.articulo_numero 
+                    AND im.tipo = 'ingreso'
+                    AND ABS(im.kilos - ABS(svm.kilos)) < 0.01
+                LEFT JOIN ingredientes i ON i.id = im.ingrediente_id
                 WHERE svm.carro_id = $1 
                   AND svm.tipo = 'ingreso a producción'
                 ORDER BY svm.fecha DESC
             `;
-            console.log('🏭 Usando consulta para CARRO INTERNO - CORRECCIÓN: sin doble multiplicación');
+            console.log('🏭 Usando consulta para CARRO INTERNO - CORRECCIÓN: con ingrediente_id para etiquetas');
         } else {
             // 🌐 CARROS EXTERNOS: Ambas fuentes (ingredientes_movimientos + stock_ventas_movimientos)
             query = `
