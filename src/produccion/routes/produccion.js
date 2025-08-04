@@ -23,7 +23,7 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna } = require('../controllers/articulos');
+const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad } = require('../controllers/articulos');
 
 // Ruta para alternar estado de producción externa (toggle)
 router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) => {
@@ -44,6 +44,24 @@ router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) 
     } catch (error) {
         console.error('Error en ruta PUT /articulos/:articuloId/toggle-produccion-externa:', error);
         res.status(500).json({ error: 'Error al actualizar el estado de producción externa' });
+    }
+});
+
+// Ruta para actualizar kilos por unidad de un artículo
+router.put('/articulos/:articuloId/kilos-unidad', async (req, res) => {
+    try {
+        const { articuloId } = req.params;
+        const { kilos_unidad } = req.body;
+
+        if (!articuloId) {
+            return res.status(400).json({ error: 'ID de artículo requerido' });
+        }
+
+        const resultado = await actualizarKilosUnidad(articuloId, kilos_unidad);
+        res.json(resultado);
+    } catch (error) {
+        console.error('Error en ruta PUT /articulos/:articuloId/kilos-unidad:', error);
+        res.status(500).json({ error: 'Error al actualizar kilos por unidad' });
     }
 });
 const {

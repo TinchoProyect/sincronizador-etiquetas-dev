@@ -22,7 +22,8 @@ async function obtenerArticulos(tipoCarro = null) {
                 a.codigo_barras,
                 COALESCE(src.stock_consolidado, 0) as stock_consolidado,
                 COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda,
-                COALESCE(src.solo_produccion_externa, false) as solo_produccion_externa
+                COALESCE(src.solo_produccion_externa, false) as solo_produccion_externa,
+                src.kilos_unidad
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
             ${whereClause}
@@ -186,9 +187,67 @@ async function actualizarProduccionExterna(articuloNumero, soloProduccionExterna
     }
 }
 
+/**
+ * Actualiza el campo kilos_unidad de un artículo
+ * @param {string} articuloNumero - Número del artículo
+ * @param {number} kilosUnidad - Nuevo valor del campo (puede ser null)
+ * @returns {Promise<Object>} Resultado de la actualización
+ */
+async function actualizarKilosUnidad(articuloNumero, kilosUnidad) {
+    try {
+        console.log('Actualizando kilos por unidad para artículo:', articuloNumero, 'Valor:', kilosUnidad);
+        
+        // Validar que kilosUnidad sea un número válido o null
+        const kilosUnidadValido = kilosUnidad === null || kilosUnidad === '' ? null : parseFloat(kilosUnidad);
+        if (kilosUnidadValido !== null && (isNaN(kilosUnidadValido) || kilosUnidadValido < 0)) {
+            throw new Error('El valor de kilos por unidad debe ser un número positivo o null');
+        }
+        
+        // Verificar que el artículo existe
+        const checkQuery = `
+            SELECT articulo_numero 
+            FROM public.stock_real_consolidado 
+            WHERE articulo_numero = $1
+        `;
+        const checkResult = await pool.query(checkQuery, [articuloNumero]);
+        
+        if (checkResult.rows.length === 0) {
+            // Si no existe en stock_real_consolidado, crear el registro
+            const insertQuery = `
+                INSERT INTO public.stock_real_consolidado (articulo_numero, kilos_unidad)
+                VALUES ($1, $2)
+                ON CONFLICT (articulo_numero) 
+                DO UPDATE SET kilos_unidad = $2
+            `;
+            await pool.query(insertQuery, [articuloNumero, kilosUnidadValido]);
+        } else {
+            // Actualizar el campo existente
+            const updateQuery = `
+                UPDATE public.stock_real_consolidado 
+                SET kilos_unidad = $1
+                WHERE articulo_numero = $2
+            `;
+            await pool.query(updateQuery, [kilosUnidadValido, articuloNumero]);
+        }
+
+        console.log('Campo kilos por unidad actualizado correctamente');
+        return { 
+            success: true, 
+            message: 'Campo kilos por unidad actualizado correctamente',
+            articulo_numero: articuloNumero,
+            kilos_unidad: kilosUnidadValido
+        };
+
+    } catch (error) {
+        console.error('Error al actualizar campo kilos por unidad:', error);
+        throw new Error(`Error al actualizar campo kilos por unidad: ${error.message}`);
+    }
+}
+
 module.exports = {
     obtenerArticulos,
     buscarArticuloPorCodigo,
     actualizarProduccionLambda,
-    actualizarProduccionExterna
+    actualizarProduccionExterna,
+    actualizarKilosUnidad
 };
