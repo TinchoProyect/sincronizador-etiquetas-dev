@@ -43,10 +43,14 @@ let inputCantidad = null;
 let btnConfirmar = null;
 let btnCancelar = null;
 let nombreIngredienteDisplay = null;
+let btnEditarKilos = null;
 
 let ingredienteSeleccionado = null;
 let articuloSeleccionado = null;
 let carroIdGlobal = null;
+
+// 🆕 Variable para almacenar el valor original de kilos_unidad
+let kilosUnidadOriginal = null;
 
 // 🔒 Variables para controlar el estado del botón y prevenir clics múltiples
 let procesamientoEnCurso = false;
@@ -151,6 +155,9 @@ function inicializarModal() {
       modal.insertBefore(nombreIngredienteDisplay, modal.firstChild);
     }
 
+    // 🆕 Crear y configurar el botón "Editar" para el campo kilos
+    crearBotonEditarKilos();
+
     // Agregar event listeners con manejo de errores
     try {
       inputBusqueda.addEventListener('input', manejarBusqueda);
@@ -183,10 +190,221 @@ function limpiarCamposModal() {
   inputCantidad.value = '1'; // Restablecer a valor por defecto
   listaResultados.innerHTML = '';
   articuloSeleccionado = null;
+  kilosUnidadOriginal = null; // 🆕 Limpiar valor original
   if (nombreIngredienteDisplay) nombreIngredienteDisplay.textContent = '';
+  
+  // 🆕 Resetear el estado del campo kilos y botón editar
+  resetearEstadoCampoKilos();
   
   // 🔒 Resetear el estado del botón al limpiar el modal
   reactivarBotonConfirmar();
+}
+
+// 🆕 Función para crear el botón "Editar" junto al campo kilos
+function crearBotonEditarKilos() {
+  try {
+    console.log('🔧 [BOTÓN_EDITAR] Creando botón "Editar" para campo kilos...');
+    
+    // Verificar si el botón ya existe
+    if (btnEditarKilos) {
+      console.log('ℹ️ [BOTÓN_EDITAR] Botón ya existe, no se crea duplicado');
+      return;
+    }
+    
+    // Buscar el contenedor del input kilos
+    const inputKilosContainer = inputKilos.parentElement;
+    if (!inputKilosContainer) {
+      console.warn('⚠️ [BOTÓN_EDITAR] No se encontró el contenedor del input kilos');
+      return;
+    }
+    
+    // Crear el botón "Editar"
+    btnEditarKilos = document.createElement('button');
+    btnEditarKilos.type = 'button';
+    btnEditarKilos.className = 'btn-editar-kilos';
+    btnEditarKilos.innerHTML = '✎ Editar';
+    btnEditarKilos.title = 'Habilitar edición manual del campo kilos';
+    
+    // Estilos inline para el botón (discreto pero visible)
+    btnEditarKilos.style.marginLeft = '8px';
+    btnEditarKilos.style.padding = '4px 8px';
+    btnEditarKilos.style.fontSize = '12px';
+    btnEditarKilos.style.backgroundColor = '#f8f9fa';
+    btnEditarKilos.style.border = '1px solid #dee2e6';
+    btnEditarKilos.style.borderRadius = '4px';
+    btnEditarKilos.style.cursor = 'pointer';
+    btnEditarKilos.style.color = '#6c757d';
+    
+    // Event listener para el botón
+    btnEditarKilos.addEventListener('click', habilitarEdicionKilos);
+    
+    // Insertar el botón después del input kilos
+    inputKilosContainer.appendChild(btnEditarKilos);
+    
+    console.log('✅ [BOTÓN_EDITAR] Botón "Editar" creado correctamente');
+    
+  } catch (error) {
+    console.error('❌ [BOTÓN_EDITAR] Error al crear botón "Editar":', error);
+  }
+}
+
+// 🆕 Función para habilitar la edición del campo kilos
+function habilitarEdicionKilos() {
+  try {
+    console.log('✎ [EDICIÓN_KILOS] Habilitando edición manual del campo kilos...');
+    
+    // Habilitar el input
+    inputKilos.disabled = false;
+    inputKilos.style.backgroundColor = '';
+    inputKilos.style.color = '';
+    inputKilos.style.cursor = '';
+    
+    // Ocultar el botón "Editar"
+    if (btnEditarKilos) {
+      btnEditarKilos.style.display = 'none';
+    }
+    
+    // Enfocar el input para facilitar la edición
+    inputKilos.focus();
+    inputKilos.select();
+    
+    console.log('✅ [EDICIÓN_KILOS] Campo kilos habilitado para edición manual');
+    
+  } catch (error) {
+    console.error('❌ [EDICIÓN_KILOS] Error al habilitar edición:', error);
+  }
+}
+
+// 🆕 Función para configurar el campo kilos según el valor de kilos_unidad
+function configurarCampoKilos(kilosUnidad) {
+  try {
+    console.log('⚙️ [CONFIG_KILOS] Configurando campo kilos:', {
+      kilosUnidad: kilosUnidad,
+      esNuloOCero: kilosUnidad === null || kilosUnidad === 0
+    });
+    
+    if (kilosUnidad === null || kilosUnidad === 0) {
+      // Caso: valor nulo o cero - mostrar "No está configurado"
+      inputKilos.value = 'No está configurado';
+      inputKilos.disabled = true;
+      inputKilos.style.backgroundColor = '#f8f9fa';
+      inputKilos.style.color = '#6c757d';
+      inputKilos.style.cursor = 'not-allowed';
+      
+      // Mostrar botón "Editar"
+      if (btnEditarKilos) {
+        btnEditarKilos.style.display = 'inline-block';
+        btnEditarKilos.innerHTML = '✎ Editar';
+      }
+      
+      console.log('📝 [CONFIG_KILOS] Campo configurado como "No está configurado"');
+      
+    } else {
+      // Caso: valor existe - mostrar valor y deshabilitar
+      inputKilos.value = kilosUnidad.toString();
+      inputKilos.disabled = true;
+      inputKilos.style.backgroundColor = '#f8f9fa';
+      inputKilos.style.color = '#495057';
+      inputKilos.style.cursor = 'not-allowed';
+      
+      // Mostrar botón "Editar"
+      if (btnEditarKilos) {
+        btnEditarKilos.style.display = 'inline-block';
+        btnEditarKilos.innerHTML = '✎ Editar';
+      }
+      
+      console.log('📝 [CONFIG_KILOS] Campo configurado con valor:', kilosUnidad);
+    }
+    
+  } catch (error) {
+    console.error('❌ [CONFIG_KILOS] Error al configurar campo kilos:', error);
+  }
+}
+
+// 🆕 Función para resetear el estado del campo kilos
+function resetearEstadoCampoKilos() {
+  try {
+    console.log('🔄 [RESET_KILOS] Reseteando estado del campo kilos...');
+    
+    // Resetear input kilos
+    inputKilos.value = '';
+    inputKilos.disabled = false;
+    inputKilos.style.backgroundColor = '';
+    inputKilos.style.color = '';
+    inputKilos.style.cursor = '';
+    
+    // Ocultar botón "Editar"
+    if (btnEditarKilos) {
+      btnEditarKilos.style.display = 'none';
+    }
+    
+    console.log('✅ [RESET_KILOS] Estado del campo kilos reseteado');
+    
+  } catch (error) {
+    console.error('❌ [RESET_KILOS] Error al resetear estado:', error);
+  }
+}
+
+// 🆕 Función para consultar kilos_unidad de un artículo
+async function consultarKilosUnidad(articuloNumero) {
+  try {
+    console.log('🔍 [KILOS_UNIDAD] Consultando kilos_unidad para artículo:', articuloNumero);
+    
+    const response = await fetch(`http://localhost:3002/api/produccion/articulos`);
+    if (!response.ok) {
+      throw new Error('Error al consultar artículos');
+    }
+    
+    const articulos = await response.json();
+    const articulo = articulos.find(art => art.numero === articuloNumero);
+    
+    if (articulo && articulo.kilos_unidad !== null && articulo.kilos_unidad !== undefined) {
+      console.log('✅ [KILOS_UNIDAD] Valor encontrado:', articulo.kilos_unidad);
+      return parseFloat(articulo.kilos_unidad);
+    } else {
+      console.log('⚠️ [KILOS_UNIDAD] Valor no encontrado o es null, usando 0');
+      return 0;
+    }
+  } catch (error) {
+    console.error('❌ [KILOS_UNIDAD] Error al consultar kilos_unidad:', error);
+    return 0; // Valor por defecto en caso de error
+  }
+}
+
+// 🆕 Función para actualizar kilos_unidad si cambió
+async function actualizarKilosUnidadSiCambio(articuloNumero, nuevoValor) {
+  try {
+    // Solo actualizar si el valor cambió
+    if (kilosUnidadOriginal !== null && Math.abs(kilosUnidadOriginal - nuevoValor) < 0.001) {
+      console.log('ℹ️ [KILOS_UNIDAD] Valor no cambió, no se actualiza');
+      return;
+    }
+    
+    console.log('🔄 [KILOS_UNIDAD] Actualizando valor:', {
+      articuloNumero,
+      valorOriginal: kilosUnidadOriginal,
+      nuevoValor: nuevoValor
+    });
+    
+    const response = await fetch(`http://localhost:3002/api/produccion/articulos/${articuloNumero}/kilos-unidad`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ kilos_unidad: nuevoValor })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Error al actualizar kilos_unidad');
+    }
+    
+    const result = await response.json();
+    console.log('✅ [KILOS_UNIDAD] Actualizado correctamente:', result);
+    
+  } catch (error) {
+    console.error('❌ [KILOS_UNIDAD] Error al actualizar:', error);
+    // No lanzar error para no interrumpir el flujo principal
+  }
 }
 
 // 🔒 Función para desactivar el botón "Confirmar" y prevenir clics múltiples
@@ -278,10 +496,32 @@ function manejarBusqueda() {
         // Mostrar nombre del artículo y stock disponible con 2 decimales
         const stockDisplay = art.stock_consolidado !== undefined ? Number(art.stock_consolidado).toFixed(2) : '0.00';
         li.textContent = `${art.nombre} — Stock: ${stockDisplay}`;
-        li.addEventListener('click', () => {
+        li.addEventListener('click', async () => {
           articuloSeleccionado = art;
           inputBusqueda.value = art.nombre;
           listaResultados.innerHTML = '';
+          
+          // 🆕 FUNCIONALIDAD MEJORADA: Consultar y configurar campo kilos según UX solicitada
+          try {
+            console.log('🔍 [ARTÍCULO_SELECCIONADO] Consultando kilos_unidad para:', art.numero);
+            const kilosUnidad = await consultarKilosUnidad(art.numero);
+            kilosUnidadOriginal = kilosUnidad; // Guardar valor original
+            
+            // 🆕 Configurar el campo kilos según el nuevo comportamiento UX
+            configurarCampoKilos(kilosUnidad);
+            
+            console.log('✅ [ARTÍCULO_SELECCIONADO] Campo kilos configurado:', {
+              articuloNumero: art.numero,
+              kilosUnidad: kilosUnidad,
+              valorOriginal: kilosUnidadOriginal,
+              comportamiento: kilosUnidad === null || kilosUnidad === 0 ? 'No configurado' : 'Valor existente'
+            });
+          } catch (error) {
+            console.error('❌ [ARTÍCULO_SELECCIONADO] Error al consultar kilos_unidad:', error);
+            // En caso de error, configurar como "No está configurado"
+            kilosUnidadOriginal = 0;
+            configurarCampoKilos(0);
+          }
         });
         listaResultados.appendChild(li);
       });
@@ -307,6 +547,12 @@ async function confirmarIngreso() {
   // Validaciones iniciales (antes de desactivar el botón)
   if (!articuloSeleccionado || !inputKilos.value) {
     alert('Seleccioná un artículo y completá los kilos.');
+    return;
+  }
+
+  // 🆕 Validación mejorada para manejar el texto "No está configurado"
+  if (inputKilos.value === 'No está configurado') {
+    alert('Debe configurar los kilos antes de confirmar. Haga clic en "Editar" para ingresar un valor.');
     return;
   }
 
@@ -576,6 +822,13 @@ async function confirmarIngreso() {
     });
 
     console.log('🔍 DEBUG - ingresosManualesDelCarro después de registrar:', ingresosManualesDelCarro);
+
+    // 🆕 FUNCIONALIDAD: Actualizar kilos_unidad si cambió
+    try {
+      await actualizarKilosUnidadSiCambio(articuloSeleccionado.numero, kilos);
+    } catch (error) {
+      console.warn('⚠️ [KILOS_UNIDAD] Error al actualizar, pero continuando con el flujo:', error);
+    }
 
     // Actualizar el informe de ingresos manuales con delay para evitar duplicados
     await actualizarInformeIngresosManuales(1500); // 1.5 segundos de delay
