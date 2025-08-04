@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presupuestos - Gestiones Lamda</title>
+    <link rel="stylesheet" href="/css/presupuestos.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Módulo de Presupuestos</h1>
+            <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
+        </header>
+
+        <main>
+            <div class="welcome-section">
+                <h2>Gestión de Presupuestos</h2>
+                <p>Visualización y sincronización de presupuestos desde Google Sheets</p>
+                
+                <!-- Indicador de estado del módulo -->
+                <div id="status-indicator" class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span id="status-text">Cargando módulo...</span>
+                </div>
+            </div>
+
+            <!-- Panel de estadísticas -->
+            <div class="stats-panel">
+                <div class="stat-card">
+                    <h3>Total Registros</h3>
+                    <span id="total-registros" class="stat-value">-</span>
+                </div>
+                <div class="stat-card">
+                    <h3>Categorías</h3>
+                    <span id="total-categorias" class="stat-value">-</span>
+                </div>
+                <div class="stat-card">
+                    <h3>Monto Total</h3>
+                    <span id="monto-total" class="stat-value">$-</span>
+                </div>
+                <div class="stat-card">
+                    <h3>Última Sync</h3>
+                    <span id="ultima-sync" class="stat-value">-</span>
+                </div>
+            </div>
+
+            <!-- Controles principales -->
+            <div class="controls-section">
+                <button id="btn-cargar-datos" class="btn-primary">
+                    📊 Cargar Presupuestos
+                </button>
+                <button id="btn-sincronizar" class="btn-secondary" disabled>
+                    🔄 Sincronizar Google Sheets
+                </button>
+                <button id="btn-configuracion" class="btn-secondary">
+                    ⚙️ Configuración
+                </button>
+            </div>
+
+            <!-- Filtros -->
+            <div class="filters-section">
+                <div class="filter-group">
+                    <label for="filtro-categoria">Filtrar por categoría:</label>
+                    <select id="filtro-categoria">
+                        <option value="">Todas las categorías</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="buscar-concepto">Buscar concepto:</label>
+                    <input type="text" id="buscar-concepto" placeholder="Escriba para buscar...">
+                </div>
+            </div>
+
+            <!-- Tabla de presupuestos -->
+            <div class="table-container">
+                <table id="tabla-presupuestos" class="presupuestos-table">
+                    <thead>
+                        <tr>
+                            <th>Categoría</th>
+                            <th>Concepto</th>
+                            <th>Monto</th>
+                            <th>Fecha Registro</th>
+                            <th>Última Sync</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-presupuestos">
+                        <tr>
+                            <td colspan="5" class="no-data">
+                                Haga clic en "Cargar Presupuestos" para ver los datos
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Loading indicator -->
+            <div id="loading-indicator" class="loading-indicator" style="display: none;">
+                <div class="spinner"></div>
+                <span>Cargando datos...</span>
+            </div>
+
+            <!-- Mensajes de estado -->
+            <div id="message-container" class="message-container"></div>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Gestiones Lamda - Módulo de Presupuestos v1.0</p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/presupuestos.js"></script>
+</body>
+</html>
