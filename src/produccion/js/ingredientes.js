@@ -1176,3 +1176,21 @@ function gestionarComposicionMix(id) {
     // Llamar a la función de mix.js para cargar la composición
     window.abrirEdicionMix(id);
 }
+
+
+//Funcion para gestionar la apertura reiterada de ventanas - Mari
+// Objeto para guardar referencias a las ventanas abiertas
+const ventanasAbiertas = {};
+
+// Función general para abrir o reutilizar ventanas
+function abrirVentana(url, nombreVentana) {
+    if (ventanasAbiertas[nombreVentana] && !ventanasAbiertas[nombreVentana].closed) {
+        // Si ya está abierta y no fue cerrada, simplemente la enfocamos
+        ventanasAbiertas[nombreVentana].focus();
+    } else {
+        // Si no existe o fue cerrada, la abrimos y guardamos la referencia
+        ventanasAbiertas[nombreVentana] = window.open(url, nombreVentana);
+    }
+}
+//Hago global la funcion abrirVentana 
+window.abrirVentana = abrirVentana;
