@@ -310,11 +310,19 @@
                     </ul>
                 </div>
                 
+                <!--Filtro por nombre Mari-->
+                <div style="margin-bottom: 20px; padding: 10px;">
+                    <label for="filtro-nombre">🔍 Filtrar por nombre:</label>
+                    <input type="text" id="filtro-nombre" placeholder="Ingrediente buscado">
+                </div>
+
+
                 <!-- Filtros por categoría -->
+                 <div>
                 <div id="filtros-categorias" class="filtros-categorias">
                     <!-- Los filtros se generarán dinámicamente aquí -->
                 </div>
-                
+                </div>
                 <table class="tabla-ingredientes">
                     <thead>
                         <tr>
@@ -699,6 +707,24 @@
                 mensajeDiv.remove();
             }, 5000);
         }
+
+        // Función para filtrar la tabla por nombre - Mari
+         document.getElementById('filtro-nombre').addEventListener('input', function () {
+             const filtro = this.value.toLowerCase().trim();
+             const filas = document.querySelectorAll('#tabla-ingredientes-body tr');
+
+            filas.forEach(fila => {
+                const nombre = fila.querySelector('td')?.textContent.toLowerCase() || '';
+                if (nombre.includes(filtro)) {
+                    fila.style.display = '';
+             } else {
+                    fila.style.display = 'none';
+             }
+            });
+        });
+
+        //Fin modificacioon mari
+
 
         // Hacer funciones disponibles globalmente
         window.tabActiva = () => tabActiva;

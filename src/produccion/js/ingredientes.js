@@ -10,6 +10,8 @@ let filtrosSectorActivos = new Set(); // Para rastrear filtros activos por secto
 let vistaActual = 'deposito'; // Para identificar la vista actual ('deposito' o 'usuario-X')
 let sectoresDisponibles = []; // Para almacenar la lista de sectores
 
+
+
 // ✅ NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
 let estadoFiltrosGuardado = null; // Para guardar temporalmente el estado de filtros
 
@@ -478,15 +480,28 @@ function inicializarFiltros(ingredientes) {
 async function actualizarTablaFiltrada() {
     // Solo aplicar filtros en la vista de depósito
     if (vistaActual === 'deposito') {
-        // ✅ Si NO hay ningún filtro activo en ninguna categoría, mostrar tabla vacía
-        if (filtrosActivos.size === 0 && filtrosTipoActivos.size === 0 && filtrosStockActivos.size === 0 && filtrosSectorActivos.size === 0) {
-            console.log('🔄 No hay filtros activos en ninguna categoría - mostrando tabla vacía');
+        const nombreFiltro = document.getElementById('filtro-nombre')?.value.trim().toLowerCase() || '';
+
+        if (
+            filtrosActivos.size === 0 &&
+            filtrosTipoActivos.size === 0 &&
+            filtrosStockActivos.size === 0 &&
+            filtrosSectorActivos.size === 0 &&
+            !nombreFiltro // ← esta línea permite filtrar si hay texto
+        ) {
+            console.log('🔄 No hay filtros activos ni texto de búsqueda - mostrando tabla vacía');
             await actualizarTablaIngredientes([]);
             return;
         }
 
+
+      
         // Aplicar filtros combinados (AND lógico entre tipos de filtros, OR dentro de cada tipo)
         const ingredientesFiltrados = ingredientesOriginales.filter(ing => {
+            // Filtro por nombre (input) - Mari
+            const nombreFiltro = document.getElementById('filtro-nombre').value.trim().toLowerCase();
+            const pasaNombre = !nombreFiltro || ing.nombre.toLowerCase().includes(nombreFiltro);
+           
             // Filtro por categoría (si hay filtros de categoría activos)
             const pasaCategoria = filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria);
             
@@ -524,9 +539,12 @@ async function actualizarTablaFiltrada() {
                     pasaSector = true;
                 }
             }
+
+            
+
             
             // El ingrediente pasa si cumple TODOS los tipos de filtros activos
-            return pasaCategoria && pasaTipo && pasaStock && pasaSector;
+            return pasaCategoria && pasaTipo && pasaStock && pasaSector && pasaNombre; //Modificacion Mari &&pasaNombre
         });
 
         // Log detallado de filtros activos
@@ -597,6 +615,8 @@ async function cargarIngredientes(usuarioId = null) {
         mostrarMensaje(error.message || 'No se pudieron cargar los datos');
     }
 }
+
+
 
 // Función para crear selector de sectores inline
 function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNombre) {
@@ -1029,6 +1049,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    //Filtro por nombre -Mari
+    document.getElementById('filtro-nombre').addEventListener('input', () => {
+    actualizarTablaFiltrada();
+    });
+
     
     // Cargar sectores disponibles al inicializar
     await cargarSectores();
@@ -1181,6 +1207,8 @@ function gestionarComposicionMix(id) {
 //Funcion para gestionar la apertura reiterada de ventanas - Mari
 // Objeto para guardar referencias a las ventanas abiertas
 const ventanasAbiertas = {};
+
+
 
 // Función general para abrir o reutilizar ventanas
 function abrirVentana(url, nombreVentana) {
