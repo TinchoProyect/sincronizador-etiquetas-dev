@@ -165,6 +165,28 @@ router.get('/resumen', validatePermissions('presupuestos.read'), sanitizarDatos,
 });
 
 /**
+ * @route GET /api/presupuestos/health
+ * @desc Health check del módulo de presupuestos
+ * @access Público
+ */
+router.get('/health', (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /health - Health check');
+    
+    res.json({
+        success: true,
+        module: 'presupuestos',
+        status: 'active',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        features: {
+            google_sheets: true,
+            sync: true,
+            auth: true
+        }
+    });
+});
+
+/**
  * @route GET /api/presupuestos/:id
  * @desc Obtener presupuesto por ID específico
  * @access Privado
@@ -172,6 +194,16 @@ router.get('/resumen', validatePermissions('presupuestos.read'), sanitizarDatos,
 router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
     const { id } = req.params;
     console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id - Obteniendo presupuesto ID: ${id}`);
+    
+    // Validar que no sea una ruta específica
+    if (id === 'health' || id === 'estadisticas' || id === 'configuracion' || id === 'resumen' || id.startsWith('sync/')) {
+        console.log(`⚠️ [PRESUPUESTOS] Ruta específica detectada como ID: ${id}`);
+        return res.status(400).json({
+            success: false,
+            error: 'Ruta no válida como ID de presupuesto',
+            timestamp: new Date().toISOString()
+        });
+    }
     
     try {
         await obtenerPresupuestoPorId(req, res);
@@ -365,28 +397,6 @@ router.get('/sync/estado', validatePermissions('presupuestos.read'), async (req,
             message: error.message
         });
     }
-});
-
-/**
- * @route GET /api/presupuestos/health
- * @desc Health check del módulo de presupuestos
- * @access Público
- */
-router.get('/health', (req, res) => {
-    console.log('🔍 [PRESUPUESTOS] Ruta GET /health - Health check');
-    
-    res.json({
-        success: true,
-        module: 'presupuestos',
-        status: 'active',
-        timestamp: new Date().toISOString(),
-        version: '1.0.0',
-        features: {
-            google_sheets: true,
-            sync: true,
-            auth: true
-        }
-    });
 });
 
 // Middleware para rutas no encontradas específico del módulo

@@ -36,15 +36,15 @@ const obtenerPresupuestos = async (req, res) => {
         let query = `
             SELECT 
                 id,
-                sheet_id,
-                sheet_name,
-                categoria,
-                concepto,
-                monto,
-                fecha_registro,
-                fecha_sincronizacion,
+                id_presupuesto_ext as sheet_id,
+                hoja_nombre as sheet_name,
+                tipo_comprobante as categoria,
+                nota as concepto,
+                descuento as monto,
+                fecha as fecha_registro,
+                fecha_actualizacion as fecha_sincronizacion,
                 activo
-            FROM presupuestos_datos 
+            FROM presupuestos 
             WHERE activo = true
         `;
         
@@ -122,7 +122,7 @@ const obtenerPresupuestos = async (req, res) => {
         // Consulta para total de registros (sin paginación)
         let countQuery = `
             SELECT COUNT(*) as total
-            FROM presupuestos_datos 
+            FROM presupuestos 
             WHERE activo = true
         `;
         
@@ -266,13 +266,13 @@ const obtenerEstadisticas = async (req, res) => {
         const query = `
             SELECT 
                 COUNT(*) as total_registros,
-                COUNT(DISTINCT categoria) as total_categorias,
-                SUM(monto) as monto_total,
-                AVG(monto) as monto_promedio,
-                MIN(monto) as monto_minimo,
-                MAX(monto) as monto_maximo,
-                MAX(fecha_sincronizacion) as ultima_sincronizacion
-            FROM presupuestos_datos 
+                COUNT(DISTINCT tipo_comprobante) as total_categorias,
+                SUM(descuento) as monto_total,
+                AVG(descuento) as monto_promedio,
+                MIN(descuento) as monto_minimo,
+                MAX(descuento) as monto_maximo,
+                MAX(fecha) as ultima_sincronizacion
+            FROM presupuestos 
             WHERE activo = true
         `;
         
@@ -282,13 +282,13 @@ const obtenerEstadisticas = async (req, res) => {
         // Obtener distribución por categorías
         const categoriasQuery = `
             SELECT 
-                categoria,
+                tipo_comprobante as categoria,
                 COUNT(*) as cantidad,
-                SUM(monto) as monto_categoria,
-                AVG(monto) as promedio_categoria
-            FROM presupuestos_datos 
+                SUM(descuento) as monto_categoria,
+                AVG(descuento) as promedio_categoria
+            FROM presupuestos 
             WHERE activo = true 
-            GROUP BY categoria 
+            GROUP BY tipo_comprobante 
             ORDER BY monto_categoria DESC
         `;
         
@@ -874,6 +874,82 @@ const obtenerResumen = async (req, res) => {
     }
 };
 
+/**
+ * Actualizar estado de presupuesto
+ */
+const actualizarEstadoPresupuesto = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { estado } = req.body;
+        
+        console.log(`🔍 [PRESUPUESTOS] Actualizando estado de presupuesto ID: ${id} a: ${estado}`);
+        
+        if (!id || isNaN(parseInt(id))) {
+            console.log('❌ [PRESUPUESTOS] ID inválido:', id);
+            return res.status(400).json({
+                success: false,
+                error: 'ID de presupuesto inválido',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        if (!estado || estado.trim() === '') {
+            console.log('❌ [PRESUPUESTOS] Estado requerido');
+            return res.status(400).json({
+                success: false,
+                error: 'El estado es requerido',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Verificar que el presupuesto existe
+        const existsQuery = `
+            SELECT id, estado FROM presupuestos 
+            WHERE id = $1 AND activo = true
+        `;
+        
+        const existsResult = await req.db.query(existsQuery, [parseInt(id)]);
+        
+        if (existsResult.rows.length === 0) {
+            console.log(`⚠️ [PRESUPUESTOS] Presupuesto no encontrado para actualizar estado: ID ${id}`);
+            return res.status(404).json({
+                success: false,
+                error: 'Presupuesto no encontrado',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Actualizar estado
+        const updateQuery = `
+            UPDATE presupuestos 
+            SET estado = $1, fecha_actualizacion = NOW()
+            WHERE id = $2 AND activo = true
+            RETURNING *
+        `;
+        
+        const updateResult = await req.db.query(updateQuery, [estado.trim(), parseInt(id)]);
+        const presupuestoActualizado = updateResult.rows[0];
+        
+        console.log(`✅ [PRESUPUESTOS] Estado actualizado: ${presupuestoActualizado.estado}`);
+        
+        res.json({
+            success: true,
+            data: presupuestoActualizado,
+            message: 'Estado de presupuesto actualizado exitosamente',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al actualizar estado:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al actualizar estado de presupuesto',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD completo');
 
 module.exports = {
@@ -881,6 +957,7 @@ module.exports = {
     obtenerPresupuestoPorId,
     crearPresupuesto,
     actualizarPresupuesto,
+    actualizarEstadoPresupuesto,
     eliminarPresupuesto,
     obtenerPresupuestosPorCategoria,
     obtenerEstadisticas,

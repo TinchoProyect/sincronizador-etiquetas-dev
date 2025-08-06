@@ -45,6 +45,9 @@ src/config/google-token.json
 src/config/google-credentials.json
 src/presupuestos/google-credentials.json.json
 
+DIAGNOSTICO_COMPLETO_FINAL.md
+DIAGNOSTICO_CONEXION_GOOGLE_SHEETS.md
+
 # -----------------------
 # ✅ Incluir archivos esenciales del proyecto
 # -----------------------

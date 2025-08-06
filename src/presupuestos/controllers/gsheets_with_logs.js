@@ -3,7 +3,7 @@ console.log('[PRESUPUESTOS-BACK] Cargando controlador de Google Sheets CON LOGS 
 // Importar servicios de Google Sheets CON LOGS DE DEPURACIÓN
 const { checkAuthStatus, loadCredentials, createOAuth2Client, generateAuthUrl, getTokenFromCode } = require('../../services/gsheets/auth_with_logs');
 const { extractSheetId, validateSheetAccess, detectDataStructure } = require('../../services/gsheets/client_with_logs');
-const { syncFromGoogleSheets, upsertPresupuesto, registrarLogSincronizacion } = require('../../services/gsheets/sync_complete_with_logs');
+const { syncCompleteFromGoogleSheets, syncWithTransaction } = require('../../services/gsheets/sync_orchestrator');
 
 /**
  * Controlador para la integración con Google Sheets CON LOGS DETALLADOS
@@ -306,9 +306,9 @@ const ejecutarSincronizacion = async (req, res) => {
         console.log('[PRESUPUESTOS-BACK] ID de la hoja:', config.hoja_id);
         console.log('[PRESUPUESTOS-BACK] ¿Es el archivo PresupuestosCopia?', config.hoja_url.includes('1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8'));
         
-        // Ejecutar sincronización CON LOGS DETALLADOS
-        console.log('[PRESUPUESTOS-BACK] 🚀 Ejecutando syncFromGoogleSheets con logs...');
-        const syncResult = await syncFromGoogleSheets(config, req.db);
+        // Ejecutar sincronización CON ORQUESTADOR COMPLETO
+        console.log('[PRESUPUESTOS-BACK] 🚀 Ejecutando sincronización completa con orquestador...');
+        const syncResult = await syncCompleteFromGoogleSheets(config, req.db);
         
         console.log(`[PRESUPUESTOS-BACK] ${syncResult.exitoso ? '✅' : '❌'} Sincronización completada`);
         console.log('[PRESUPUESTOS-BACK] Resultado detallado:', {
