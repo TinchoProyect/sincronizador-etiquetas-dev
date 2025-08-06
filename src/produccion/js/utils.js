@@ -221,68 +221,88 @@ export function agruparCarrosPorSemanasYMeses(carros) {
 }
 
 // Estilos CSS para la tabla de carros
+
 export const estilosTablaCarros = `
     .carros-lista {
         margin: 20px 0;
     }
-    .carros-table {
+
+    .tabla-carros-grupo {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 10px;
+        transition: max-height 0.3s ease, opacity 0.3s ease;
+        overflow: visible;
+        position: relative;
     }
+
     .carros-table th, .carros-table td {
         padding: 8px;
         border: 1px solid #ddd;
         text-align: left;
     }
+
     .carros-table th {
         background-color: #f5f5f5;
     }
+
     .carro-activo {
         background-color: #e8f5e9;
     }
+
     .carro-externo {
         background-color: #fff3cd;
         border-left: 4px solid #ffc107;
     }
+
     .carro-externo.carro-activo {
         background-color: #d4edda;
         border-left: 4px solid #28a745;
     }
+
     .carro-finalizado {
         background-color: #f8f9fa !important;
         opacity: 0.7;
         color: #6c757d;
     }
+
     .carro-finalizado td {
         font-style: italic;
     }
+
     .carro-finalizado.carro-activo {
         background-color: #e9ecef !important;
         opacity: 0.8;
     }
+
     .btn-group {
         display: flex;
         gap: 5px;
     }
-    .btn-seleccionar, .btn-deseleccionar, .btn-eliminar {
+
+    .btn-seleccionar,
+    .btn-deseleccionar,
+    .btn-eliminar {
         padding: 5px 10px;
         border: none;
         border-radius: 4px;
         cursor: pointer;
     }
+
     .btn-seleccionar {
         background-color: #4caf50;
         color: white;
     }
+
     .btn-deseleccionar {
         background-color: #f44336;
         color: white;
     }
+
     .btn-eliminar {
         background-color: #ff9800;
         color: white;
     }
+
     .no-carros {
         text-align: center;
         padding: 20px;
@@ -290,4 +310,8 @@ export const estilosTablaCarros = `
         border-radius: 4px;
         margin: 20px 0;
     }
+
+    
+
+ 
 `;

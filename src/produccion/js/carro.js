@@ -189,10 +189,14 @@ export async function actualizarEstadoCarro() {
                 if (esHoy) {
                     clasesFila += 'carro-hoy ';
                 }
-                
+
+
                 html += `
                     <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
-                        <td>${carro.id}</td>
+                       <td>
+  <div class=" ${esHoy ? 'celda-hoy' : ''}">${carro.id}</div>
+</td>
+
                         <td>${fecha}</td>
                         <td>${carro.total_articulos} artículos</td>
                         <td>

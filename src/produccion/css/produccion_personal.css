@@ -531,6 +531,62 @@
 /* ✅ ESTILOS PARA AGRUPACIÓN SEMANAL DE CARROS */
 
 /* Estilos para agrupación semanal de carros */
+
+   /* Resaltado especial para carros de hoy */
+.carro-hoy {
+    background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%);
+    border-left:4px solid #ffc107;
+    position:relative;
+    overflow: visible; /* Asegura que el ::before se pueda ver fuera del <tr> */
+}
+
+
+
+.carro-hoy.carro-activo {
+    background: linear-gradient(90deg, #d4edda 0%, #e8f5e9 100%);
+    border-left-color: #28a745;
+}
+
+.carro-hoy.carro-activo::before {
+    background-color: #28a745;
+    color: white;
+}
+/* Etiqueta "HOY" al lado del ID */
+
+    .celda-hoy-wrapper {
+        position: relative;
+        display: inline-block;
+        padding-left: 12px;
+    }
+
+    .celda-hoy::before {
+    content: "HOY";
+    position: absolute;
+    top: 50%;
+    left: -8px;
+    transform: translateY(-50%);
+    background-color: #ffc107;
+    color: #212529;
+    font-size: 7px;
+    font-weight: bold;
+    padding: 4px 4px;
+    border-radius: 4px;
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.15);
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    line-height: 1;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+
+
+    .carro-hoy.carro-activo .celda-hoy::before {
+        background-color: #28a745;
+        color: white;
+    }
+
+
 .grupo-semanal {
     margin-bottom: 25px;
     border-radius: 8px;
@@ -607,15 +663,20 @@
 .tabla-carros-grupo {
     width: 100%;
     border-collapse: collapse;
-    background-color: white;
+    
+
     transition: max-height 0.3s ease, opacity 0.3s ease;
+    overflow: visible;
+    position: relative;
 }
+
 
 .grupo-semanal.colapsado .tabla-carros-grupo {
     max-height: 0;
     opacity: 0;
     overflow: hidden;
 }
+
 
 .tabla-carros-grupo th,
 .tabla-carros-grupo td {
@@ -631,36 +692,7 @@
     font-size: 14px;
 }
 
-/* Resaltado especial para carros de hoy */
-.carro-hoy {
-    background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%);
-    border-left: 4px solid #ffc107;
-    position: relative;
-}
 
-.carro-hoy::before {
-    content: "HOY";
-    position: absolute;
-    left: -2px;
-    top: 50%;
-    transform: translateY(-50%) rotate(-90deg);
-    background-color: #ffc107;
-    color: #212529;
-    padding: 2px 6px;
-    font-size: 10px;
-    font-weight: bold;
-    border-radius: 0 0 4px 4px;
-}
-
-.carro-hoy.carro-activo {
-    background: linear-gradient(90deg, #d4edda 0%, #e8f5e9 100%);
-    border-left-color: #28a745;
-}
-
-.carro-hoy.carro-activo::before {
-    background-color: #28a745;
-    color: white;
-}
 
 /* Animaciones para grupos */
 @keyframes slideInGroup {
