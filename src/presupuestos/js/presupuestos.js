@@ -1,11 +1,11 @@
 /**
- * MÓDULO DE PRESUPUESTOS - FRONTEND COMPLETO
- * Gestiones Lamda - v2.0 con Google Sheets
+ * MÓDULO DE PRESUPUESTOS - FRONTEND
+ * Gestiones Lamda - v1.0
  * 
  * Maneja la lógica del frontend para el módulo de presupuestos
  */
 
-console.log('🔍 [PRESUPUESTOS-JS] Inicializando módulo frontend completo...');
+console.log('🔍 [PRESUPUESTOS-JS] Inicializando módulo frontend...');
 
 // Configuración global
 const CONFIG = {
@@ -24,9 +24,7 @@ let appState = {
         categoria: '',
         concepto: ''
     },
-    loading: false,
-    syncInProgress: false,
-    authStatus: null
+    loading: false
 };
 
 /**
@@ -38,7 +36,6 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
     checkModuleHealth();
-    checkAuthStatus();
 });
 
 /**
@@ -119,48 +116,6 @@ async function checkModuleHealth() {
         console.error('❌ [PRESUPUESTOS-JS] Error en health check:', error);
         updateStatusIndicator('error', 'Error de conexión con el módulo');
         showMessage('Error de conexión con el servidor', 'error');
-    }
-}
-
-/**
- * Verificar estado de autenticación con Google
- */
-async function checkAuthStatus() {
-    console.log('🔍 [PRESUPUESTOS-JS] Verificando estado de autenticación...');
-    
-    try {
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/auth/status`);
-        const data = await response.json();
-        
-        appState.authStatus = data;
-        updateSyncButtonState(data);
-        
-        console.log('✅ [PRESUPUESTOS-JS] Estado de autenticación verificado:', data);
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al verificar autenticación:', error);
-        updateSyncButtonState({ authenticated: false, error: true });
-    }
-}
-
-/**
- * Actualizar estado del botón de sincronización
- */
-function updateSyncButtonState(authStatus) {
-    const btnSincronizar = document.getElementById('btn-sincronizar');
-    if (!btnSincronizar) return;
-    
-    if (authStatus.error) {
-        btnSincronizar.textContent = '❌ Error de conexión';
-        btnSincronizar.disabled = true;
-        btnSincronizar.className = 'btn btn-secondary';
-    } else if (authStatus.authenticated) {
-        btnSincronizar.textContent = '🔄 Sincronizar Google Sheets';
-        btnSincronizar.disabled = false;
-        btnSincronizar.className = 'btn btn-primary';
-    } else {
-        btnSincronizar.textContent = '🔐 Autorizar Google Sheets';
-        btnSincronizar.disabled = false;
-        btnSincronizar.className = 'btn btn-warning';
     }
 }
 
@@ -251,331 +206,13 @@ async function handleCargarDatos() {
 }
 
 /**
- * Handler: Sincronizar con Google Sheets
+ * Handler: Sincronizar
  */
 async function handleSincronizar() {
-    console.log('🔍 [PRESUPUESTOS-JS] Iniciando proceso de sincronización...');
+    console.log('🔍 [PRESUPUESTOS-JS] Iniciando sincronización...');
     
-    if (appState.syncInProgress) {
-        console.log('⚠️ [PRESUPUESTOS-JS] Sincronización ya en progreso');
-        return;
-    }
-    
-    // Verificar si necesita autenticación
-    if (!appState.authStatus || !appState.authStatus.authenticated) {
-        await handleGoogleAuth();
-        return;
-    }
-    
-    // Ejecutar sincronización
-    await executeSyncronization();
-}
-
-/**
- * Manejar autenticación con Google
- */
-async function handleGoogleAuth() {
-    console.log('🔍 [PRESUPUESTOS-JS] Iniciando autenticación con Google...');
-    
-    try {
-        setSyncLoading(true, 'Iniciando autenticación...');
-        
-        // Solicitar URL de autorización
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/auth/iniciar`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        
-        console.log('🔍 [PRESUPUESTOS-JS] Respuesta del servidor:', data);
-        
-        // Verificar estructura de respuesta
-        const authUrl = data.data?.authUrl || data.authUrl;
-        
-        if (data.success && authUrl) {
-            console.log('✅ [PRESUPUESTOS-JS] URL de autorización obtenida:', authUrl);
-            // Mostrar modal con URL de autorización
-            showAuthModal(authUrl);
-        } else {
-            console.error('❌ [PRESUPUESTOS-JS] Respuesta inválida:', data);
-            throw new Error(data.message || 'Error al obtener URL de autorización');
-        }
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error en autenticación:', error);
-        showMessage('Error al iniciar autenticación con Google', 'error');
-    } finally {
-        setSyncLoading(false);
-    }
-}
-
-/**
- * Mostrar modal de autorización mejorado
- */
-function showAuthModal(authUrl) {
-    console.log('🔍 [PRESUPUESTOS-JS] Mostrando modal de autorización mejorado...');
-    
-    const modal = document.createElement('div');
-    modal.className = 'auth-modal';
-    modal.innerHTML = `
-        <div class="auth-modal-content">
-            <div class="auth-modal-header">
-                <h3>🔐 Autorización de Google Sheets</h3>
-                <button class="auth-modal-close" onclick="this.closest('.auth-modal').remove()">&times;</button>
-            </div>
-            <div class="auth-modal-body">
-                <p><strong>Paso 1:</strong> Haga clic en el siguiente enlace para autorizar el acceso:</p>
-                <a href="${authUrl}" target="_blank" class="auth-link">
-                    🔗 Autorizar acceso a Google Sheets
-                </a>
-                
-                <div class="auth-options">
-                    <div class="auth-option-section">
-                        <p><strong>Paso 2A (Recomendado):</strong> Pegue la URL completa que aparece después de autorizar:</p>
-                        <p class="auth-help">💡 <em>Ejemplo: http://localhost/?code=4/0AX4XfWh...&scope=...</em></p>
-                        <input type="text" id="auth-full-url" placeholder="http://localhost/?code=..." class="auth-input">
-                        <button onclick="procesarURLCompleta()" class="btn btn-success" style="margin-top: 10px;">
-                            🔍 Extraer código de la URL
-                        </button>
-                    </div>
-                    
-                    <div class="auth-divider">
-                        <span>O</span>
-                    </div>
-                    
-                    <div class="auth-option-section">
-                        <p><strong>Paso 2B (Alternativo):</strong> Pegue solo el código de autorización:</p>
-                        <input type="text" id="auth-code" placeholder="Pegue solo el código aquí..." class="auth-input">
-                    </div>
-                </div>
-                
-                <div class="auth-modal-actions">
-                    <button onclick="this.closest('.auth-modal').remove()" class="btn btn-secondary">Cancelar</button>
-                    <button onclick="completeAuth()" class="btn btn-primary">Completar Autorización</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Focus en el primer input (URL completa)
-    setTimeout(() => {
-        const input = document.getElementById('auth-full-url');
-        if (input) input.focus();
-    }, 100);
-}
-
-/**
- * Extraer código de autorización desde URL completa
- */
-function extraerCodigoDeURL(url) {
-    console.log('🔍 [PRESUPUESTOS-JS] Extrayendo código de URL:', url);
-    
-    try {
-        // Validar que la URL no esté vacía
-        if (!url || typeof url !== 'string') {
-            console.error('❌ [PRESUPUESTOS-JS] URL vacía o inválida');
-            throw new Error('URL vacía o inválida');
-        }
-        
-        // Limpiar la URL (remover espacios)
-        url = url.trim();
-        
-        // Verificar que contenga el parámetro code
-        if (!url.includes('code=')) {
-            console.error('❌ [PRESUPUESTOS-JS] URL no contiene parámetro code');
-            throw new Error('La URL no contiene el parámetro "code"');
-        }
-        
-        // Crear objeto URL para parsear parámetros
-        let urlObj;
-        try {
-            // Si la URL no tiene protocolo, agregarle uno temporal
-            if (!url.startsWith('http')) {
-                url = 'http://localhost' + (url.startsWith('/') ? '' : '/') + url;
-            }
-            urlObj = new URL(url);
-        } catch (parseError) {
-            console.error('❌ [PRESUPUESTOS-JS] Error al parsear URL:', parseError);
-            throw new Error('Formato de URL inválido');
-        }
-        
-        // Extraer el parámetro code
-        const code = urlObj.searchParams.get('code');
-        
-        if (!code) {
-            console.error('❌ [PRESUPUESTOS-JS] Parámetro code no encontrado en URL');
-            throw new Error('No se encontró el código de autorización en la URL');
-        }
-        
-        console.log('✅ [PRESUPUESTOS-JS] Código extraído exitosamente:', code.substring(0, 20) + '...');
-        return code;
-        
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al extraer código:', error.message);
-        throw error;
-    }
-}
-
-/**
- * Procesar URL completa y extraer código
- */
-function procesarURLCompleta() {
-    console.log('🔍 [PRESUPUESTOS-JS] Procesando URL completa...');
-    
-    const urlInput = document.getElementById('auth-full-url');
-    const codeInput = document.getElementById('auth-code');
-    
-    if (!urlInput || !codeInput) {
-        console.error('❌ [PRESUPUESTOS-JS] No se encontraron los campos de entrada');
-        showMessage('Error interno: campos no encontrados', 'error');
-        return;
-    }
-    
-    const fullUrl = urlInput.value.trim();
-    
-    if (!fullUrl) {
-        console.log('⚠️ [PRESUPUESTOS-JS] URL vacía');
-        showMessage('Por favor pegue la URL completa de redirección', 'warning');
-        urlInput.focus();
-        return;
-    }
-    
-    try {
-        // Extraer código de la URL
-        const extractedCode = extraerCodigoDeURL(fullUrl);
-        
-        // Colocar el código extraído en el campo correspondiente
-        codeInput.value = extractedCode;
-        
-        // Limpiar el campo de URL para evitar confusión
-        urlInput.value = '';
-        
-        // Mostrar mensaje de éxito
-        showMessage('✅ Código extraído exitosamente de la URL', 'success');
-        
-        // Focus en el botón de completar autorización
-        const completeButton = document.querySelector('.auth-modal-actions .btn-primary');
-        if (completeButton) {
-            completeButton.focus();
-        }
-        
-        console.log('✅ [PRESUPUESTOS-JS] Código extraído y colocado en el campo');
-        
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al procesar URL:', error.message);
-        showMessage(`Error al extraer código: ${error.message}`, 'error');
-        urlInput.focus();
-    }
-}
-
-/**
- * Completar autorización
- */
-async function completeAuth() {
-    const authCode = document.getElementById('auth-code')?.value?.trim();
-    
-    if (!authCode) {
-        showMessage('Por favor ingrese el código de autorización', 'warning');
-        return;
-    }
-    
-    console.log('🔍 [PRESUPUESTOS-JS] Completando autorización...');
-    
-    try {
-        setSyncLoading(true, 'Completando autorización...');
-        
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/auth/completar`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ code: authCode })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Cerrar modal
-            document.querySelector('.auth-modal')?.remove();
-            
-            // Actualizar estado de autenticación
-            appState.authStatus = { authenticated: true };
-            updateSyncButtonState(appState.authStatus);
-            
-            showMessage('Autorización completada exitosamente', 'success');
-            console.log('✅ [PRESUPUESTOS-JS] Autorización completada');
-            
-            // Ejecutar sincronización automáticamente
-            setTimeout(() => executeSyncronization(), 1000);
-        } else {
-            throw new Error(data.message || 'Error al completar autorización');
-        }
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al completar autorización:', error);
-        showMessage('Error al completar la autorización', 'error');
-    } finally {
-        setSyncLoading(false);
-    }
-}
-
-/**
- * Ejecutar sincronización
- */
-async function executeSyncronization() {
-    console.log('🔍 [PRESUPUESTOS-JS] Ejecutando sincronización...');
-    
-    try {
-        setSyncLoading(true, 'Sincronizando con Google Sheets...');
-        
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/ejecutar`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showMessage(`Sincronización exitosa: ${data.registros_procesados} registros`, 'success');
-            console.log('✅ [PRESUPUESTOS-JS] Sincronización completada:', data);
-            
-            // Recargar datos y estadísticas
-            await loadEstadisticas();
-            await handleCargarDatos();
-        } else {
-            throw new Error(data.message || 'Error en la sincronización');
-        }
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error en sincronización:', error);
-        showMessage('Error durante la sincronización', 'error');
-    } finally {
-        setSyncLoading(false);
-    }
-}
-
-/**
- * Controlar estado de loading de sincronización
- */
-function setSyncLoading(loading, message = '') {
-    appState.syncInProgress = loading;
-    
-    const btnSincronizar = document.getElementById('btn-sincronizar');
-    if (btnSincronizar) {
-        btnSincronizar.disabled = loading;
-        if (loading) {
-            btnSincronizar.textContent = `⏳ ${message}`;
-            btnSincronizar.className = 'btn btn-secondary';
-        } else {
-            updateSyncButtonState(appState.authStatus);
-        }
-    }
-    
-    console.log(`🔍 [PRESUPUESTOS-JS] Sync loading state: ${loading} - ${message}`);
+    // TODO: Implementar en Fase 2 (Google Sheets)
+    showMessage('Funcionalidad de sincronización disponible en la próxima fase', 'info');
 }
 
 /**
@@ -584,7 +221,8 @@ function setSyncLoading(loading, message = '') {
 function handleConfiguracion() {
     console.log('🔍 [PRESUPUESTOS-JS] Abriendo configuración...');
     
-    showMessage('Panel de configuración en desarrollo', 'info');
+    // TODO: Implementar en Fase 2 (Google Sheets)
+    showMessage('Panel de configuración disponible en la próxima fase', 'info');
 }
 
 /**
@@ -676,19 +314,10 @@ function updatePresupuestosTable(data) {
  * Actualizar filtro de categorías
  */
 function updateCategoriasFilter(categorias) {
-    // Validar que categorias sea un array
-    if (!Array.isArray(categorias)) {
-        console.log('⚠️ [PRESUPUESTOS-JS] Categorías no es un array válido:', categorias);
-        categorias = []; // Usar array vacío como fallback
-    }
-    
     console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de categorías: ${categorias.length} categorías`);
     
     const select = document.getElementById('filtro-categoria');
-    if (!select) {
-        console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento filtro-categoria');
-        return;
-    }
+    if (!select) return;
     
     // Limpiar opciones existentes (excepto la primera)
     while (select.children.length > 1) {
