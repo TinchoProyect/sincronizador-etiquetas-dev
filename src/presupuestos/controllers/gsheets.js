@@ -45,8 +45,17 @@ const iniciarAutenticacion = async (req, res) => {
     try {
         console.log('🔍 [PRESUPUESTOS] Iniciando proceso de autenticación Google...');
         
-        // Generar URL de autorización
-        const authUrl = generateAuthUrl();
+        // Importar funciones necesarias para crear cliente OAuth2
+        const { loadCredentials, createOAuth2Client } = require('../../services/gsheets/auth');
+        
+        console.log('🔍 [PRESUPUESTOS] Generando URL de autorización...');
+        
+        // Cargar credenciales y crear cliente OAuth2
+        const credentials = loadCredentials();
+        const oAuth2Client = createOAuth2Client(credentials);
+        
+        // Generar URL de autorización con el cliente
+        const authUrl = generateAuthUrl(oAuth2Client);
         
         console.log('✅ [PRESUPUESTOS] URL de autorización generada');
         
@@ -87,8 +96,15 @@ const completarAutenticacion = async (req, res) => {
             });
         }
         
-        // Obtener token desde código
-        const token = await getTokenFromCode(code);
+        // Importar funciones necesarias para crear cliente OAuth2
+        const { loadCredentials, createOAuth2Client } = require('../../services/gsheets/auth');
+        
+        // Cargar credenciales y crear cliente OAuth2
+        const credentials = loadCredentials();
+        const oAuth2Client = createOAuth2Client(credentials);
+        
+        // Obtener token desde código con el cliente OAuth2
+        const token = await getTokenFromCode(oAuth2Client, code);
         
         console.log('✅ [PRESUPUESTOS] Autenticación completada exitosamente');
         
