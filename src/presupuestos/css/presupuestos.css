@@ -516,3 +516,412 @@ footer {
         opacity: 1;
     }
 }
+
+/* ===================================
+   MODAL DE AUTORIZACIÓN GOOGLE SHEETS
+   =================================== */
+
+.auth-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    animation: fadeIn 0.3s ease;
+}
+
+.auth-modal-content {
+    background-color: var(--white);
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+}
+
+.auth-modal-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--light-gray);
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+}
+
+.auth-modal-header h3 {
+    margin: 0;
+    color: var(--primary-color);
+    font-size: 1.3em;
+}
+
+.auth-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: var(--dark-gray);
+    padding: 5px;
+    border-radius: 50%;
+    width: 35px;
+    height: 35px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.auth-modal-close:hover {
+    background-color: var(--danger-color);
+    color: var(--white);
+}
+
+.auth-modal-body {
+    padding: 25px;
+}
+
+.auth-modal-body p {
+    margin-bottom: 15px;
+    line-height: 1.6;
+    color: var(--text-color);
+}
+
+.auth-modal-body p strong {
+    color: var(--primary-color);
+}
+
+.auth-link {
+    display: inline-block;
+    background-color: var(--success-color);
+    color: var(--white);
+    padding: 12px 20px;
+    text-decoration: none;
+    border-radius: var(--border-radius);
+    margin: 10px 0 20px 0;
+    transition: var(--transition);
+    font-weight: 500;
+}
+
+.auth-link:hover {
+    background-color: #219a52;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.auth-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 1em;
+    margin: 10px 0 20px 0;
+    transition: var(--transition);
+}
+
+.auth-input:focus {
+    outline: none;
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.auth-modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.auth-modal-actions .btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 0.95em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.auth-modal-actions .btn-primary {
+    background-color: var(--primary-color);
+    color: var(--white);
+}
+
+.auth-modal-actions .btn-primary:hover {
+    background-color: #1a252f;
+}
+
+.auth-modal-actions .btn-secondary {
+    background-color: var(--dark-gray);
+    color: var(--white);
+}
+
+.auth-modal-actions .btn-secondary:hover {
+    background-color: #6c7b7d;
+}
+
+/* Botón de sincronización con estados */
+.btn-warning {
+    background-color: var(--warning-color);
+    color: var(--white);
+    padding: 12px 24px;
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 1em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-warning:hover:not(:disabled) {
+    background-color: #e67e22;
+    transform: translateY(-2px);
+}
+
+.btn-warning:disabled {
+    background-color: var(--dark-gray);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ===================================
+   ESTILOS PARA MODAL MEJORADO
+   =================================== */
+
+/* Contenedor de opciones de autorización */
+.auth-options {
+    margin: 20px 0;
+}
+
+.auth-option-section {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: var(--border-radius);
+    margin-bottom: 15px;
+    border: 2px solid transparent;
+    transition: var(--transition);
+}
+
+.auth-option-section:hover {
+    border-color: var(--secondary-color);
+    background-color: #f1f3f4;
+}
+
+.auth-option-section p {
+    margin-bottom: 10px;
+}
+
+.auth-option-section p strong {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Texto de ayuda */
+.auth-help {
+    font-size: 0.9em;
+    color: var(--dark-gray);
+    font-style: italic;
+    margin-bottom: 15px !important;
+    padding: 10px;
+    background-color: #e8f4f8;
+    border-left: 4px solid var(--secondary-color);
+    border-radius: 0 var(--border-radius) var(--border-radius) 0;
+}
+
+/* Divisor entre opciones */
+.auth-divider {
+    text-align: center;
+    margin: 20px 0;
+    position: relative;
+}
+
+.auth-divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-color: var(--border-color);
+    z-index: 1;
+}
+
+.auth-divider span {
+    background-color: var(--white);
+    padding: 0 15px;
+    color: var(--dark-gray);
+    font-weight: 500;
+    font-size: 0.9em;
+    position: relative;
+    z-index: 2;
+}
+
+/* Botón de éxito para extraer código */
+.btn-success {
+    background-color: var(--success-color);
+    color: var(--white);
+    padding: 10px 20px;
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 0.95em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-success:hover:not(:disabled) {
+    background-color: #219a52;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-success:disabled {
+    background-color: var(--dark-gray);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Inputs específicos para cada opción */
+#auth-full-url {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    background-color: #f8f9fa;
+    border: 2px dashed var(--border-color);
+}
+
+#auth-full-url:focus {
+    border-style: solid;
+    border-color: var(--secondary-color);
+    background-color: var(--white);
+}
+
+#auth-code {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    background-color: #fff9e6;
+    border: 2px solid #f39c12;
+}
+
+#auth-code:focus {
+    border-color: var(--warning-color);
+    box-shadow: 0 0 0 3px rgba(243, 156, 18, 0.1);
+}
+
+/* Estados de validación */
+.auth-input.valid {
+    border-color: var(--success-color);
+    background-color: #f0fff4;
+}
+
+.auth-input.invalid {
+    border-color: var(--danger-color);
+    background-color: #fff5f5;
+}
+
+/* Animaciones para feedback visual */
+.auth-option-section.processing {
+    border-color: var(--warning-color);
+    background-color: #fff9e6;
+    animation: pulse-border 1s infinite;
+}
+
+@keyframes pulse-border {
+    0% { border-color: var(--warning-color); }
+    50% { border-color: #e67e22; }
+    100% { border-color: var(--warning-color); }
+}
+
+.auth-option-section.success {
+    border-color: var(--success-color);
+    background-color: #f0fff4;
+}
+
+.auth-option-section.error {
+    border-color: var(--danger-color);
+    background-color: #fff5f5;
+}
+
+/* Responsive para modal mejorado */
+@media (max-width: 768px) {
+    .auth-modal-content {
+        width: 95%;
+        margin: 10px;
+        max-height: 95vh;
+    }
+    
+    .auth-modal-header {
+        padding: 15px;
+    }
+    
+    .auth-modal-body {
+        padding: 20px;
+    }
+    
+    .auth-option-section {
+        padding: 15px;
+        margin-bottom: 10px;
+    }
+    
+    .auth-help {
+        font-size: 0.85em;
+        padding: 8px;
+    }
+    
+    .auth-modal-actions {
+        flex-direction: column;
+    }
+    
+    .auth-modal-actions .btn {
+        width: 100%;
+        justify-content: center;
+        margin-bottom: 10px;
+    }
+    
+    .btn-success {
+        width: 100%;
+        justify-content: center;
+        margin-top: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-modal-content {
+        width: 98%;
+        margin: 5px;
+    }
+    
+    .auth-modal-header h3 {
+        font-size: 1.1em;
+    }
+    
+    .auth-option-section {
+        padding: 12px;
+    }
+    
+    .auth-input {
+        font-size: 0.9em;
+        padding: 10px;
+    }
+    
+    .auth-help {
+        font-size: 0.8em;
+    }
+}

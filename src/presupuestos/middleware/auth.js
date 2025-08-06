@@ -20,30 +20,50 @@ const requestLogger = (req, res, next) => {
 
 // Middleware para validar sesión básica (placeholder para futura integración)
 const validateSession = (req, res, next) => {
-    // TODO: Integrar con sistema de autenticación existente
-    console.log('🔐 [PRESUPUESTOS] Validando sesión de usuario...');
-    
-    // Por ahora, permitir todas las requests (desarrollo)
-    // En producción, aquí se validaría la sesión del usuario
-    req.user = {
-        id: 1,
-        nombre: 'Usuario Sistema',
-        rol: 'admin'
-    };
-    
-    console.log('✅ [PRESUPUESTOS] Usuario autenticado:', req.user.nombre);
-    next();
+    try {
+        console.log('🔐 [PRESUPUESTOS] Validando sesión de usuario...');
+        console.log('🔐 [PRESUPUESTOS] Request URL:', req.originalUrl);
+        console.log('🔐 [PRESUPUESTOS] Request Method:', req.method);
+        
+        // Por ahora, permitir todas las requests (desarrollo)
+        // En producción, aquí se validaría la sesión del usuario
+        req.user = {
+            id: 1,
+            nombre: 'Usuario Sistema',
+            rol: 'admin'
+        };
+        
+        console.log('✅ [PRESUPUESTOS] Usuario autenticado:', req.user.nombre);
+        next();
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en validateSession:', error);
+        // En caso de error, continuar de todas formas en desarrollo
+        req.user = {
+            id: 1,
+            nombre: 'Usuario Sistema',
+            rol: 'admin'
+        };
+        next();
+    }
 };
 
 // Middleware para validar permisos específicos del módulo
 const validatePermissions = (requiredPermission) => {
     return (req, res, next) => {
-        console.log(`🔒 [PRESUPUESTOS] Validando permiso: ${requiredPermission}`);
-        
-        // TODO: Implementar validación real de permisos
-        // Por ahora, permitir todos los permisos (desarrollo)
-        console.log('✅ [PRESUPUESTOS] Permiso concedido');
-        next();
+        try {
+            console.log(`🔒 [PRESUPUESTOS] Validando permiso: ${requiredPermission}`);
+            console.log(`🔒 [PRESUPUESTOS] Usuario actual:`, req.user?.nombre || 'No definido');
+            
+            // TODO: Implementar validación real de permisos
+            // Por ahora, permitir todos los permisos (desarrollo)
+            console.log('✅ [PRESUPUESTOS] Permiso concedido');
+            next();
+        } catch (error) {
+            console.error('❌ [PRESUPUESTOS] Error en validatePermissions:', error);
+            // En caso de error, continuar de todas formas en desarrollo
+            console.log('⚠️ [PRESUPUESTOS] Continuando sin validación de permisos (desarrollo)');
+            next();
+        }
     };
 };
 

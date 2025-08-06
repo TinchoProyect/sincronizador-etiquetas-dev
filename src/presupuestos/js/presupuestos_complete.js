@@ -290,17 +290,10 @@ async function handleGoogleAuth() {
         
         const data = await response.json();
         
-        console.log('🔍 [PRESUPUESTOS-JS] Respuesta del servidor:', data);
-        
-        // Verificar estructura de respuesta
-        const authUrl = data.data?.authUrl || data.authUrl;
-        
-        if (data.success && authUrl) {
-            console.log('✅ [PRESUPUESTOS-JS] URL de autorización obtenida:', authUrl);
+        if (data.success && data.authUrl) {
             // Mostrar modal con URL de autorización
-            showAuthModal(authUrl);
+            showAuthModal(data.authUrl);
         } else {
-            console.error('❌ [PRESUPUESTOS-JS] Respuesta inválida:', data);
             throw new Error(data.message || 'Error al obtener URL de autorización');
         }
     } catch (error) {
@@ -312,10 +305,10 @@ async function handleGoogleAuth() {
 }
 
 /**
- * Mostrar modal de autorización mejorado
+ * Mostrar modal de autorización
  */
 function showAuthModal(authUrl) {
-    console.log('🔍 [PRESUPUESTOS-JS] Mostrando modal de autorización mejorado...');
+    console.log('🔍 [PRESUPUESTOS-JS] Mostrando modal de autorización...');
     
     const modal = document.createElement('div');
     modal.className = 'auth-modal';
@@ -330,27 +323,8 @@ function showAuthModal(authUrl) {
                 <a href="${authUrl}" target="_blank" class="auth-link">
                     🔗 Autorizar acceso a Google Sheets
                 </a>
-                
-                <div class="auth-options">
-                    <div class="auth-option-section">
-                        <p><strong>Paso 2A (Recomendado):</strong> Pegue la URL completa que aparece después de autorizar:</p>
-                        <p class="auth-help">💡 <em>Ejemplo: http://localhost/?code=4/0AX4XfWh...&scope=...</em></p>
-                        <input type="text" id="auth-full-url" placeholder="http://localhost/?code=..." class="auth-input">
-                        <button onclick="procesarURLCompleta()" class="btn btn-success" style="margin-top: 10px;">
-                            🔍 Extraer código de la URL
-                        </button>
-                    </div>
-                    
-                    <div class="auth-divider">
-                        <span>O</span>
-                    </div>
-                    
-                    <div class="auth-option-section">
-                        <p><strong>Paso 2B (Alternativo):</strong> Pegue solo el código de autorización:</p>
-                        <input type="text" id="auth-code" placeholder="Pegue solo el código aquí..." class="auth-input">
-                    </div>
-                </div>
-                
+                <p><strong>Paso 2:</strong> Copie el código de autorización y péguelo aquí:</p>
+                <input type="text" id="auth-code" placeholder="Pegue el código aquí..." class="auth-input">
                 <div class="auth-modal-actions">
                     <button onclick="this.closest('.auth-modal').remove()" class="btn btn-secondary">Cancelar</button>
                     <button onclick="completeAuth()" class="btn btn-primary">Completar Autorización</button>
@@ -361,115 +335,11 @@ function showAuthModal(authUrl) {
     
     document.body.appendChild(modal);
     
-    // Focus en el primer input (URL completa)
+    // Focus en el input
     setTimeout(() => {
-        const input = document.getElementById('auth-full-url');
+        const input = document.getElementById('auth-code');
         if (input) input.focus();
     }, 100);
-}
-
-/**
- * Extraer código de autorización desde URL completa
- */
-function extraerCodigoDeURL(url) {
-    console.log('🔍 [PRESUPUESTOS-JS] Extrayendo código de URL:', url);
-    
-    try {
-        // Validar que la URL no esté vacía
-        if (!url || typeof url !== 'string') {
-            console.error('❌ [PRESUPUESTOS-JS] URL vacía o inválida');
-            throw new Error('URL vacía o inválida');
-        }
-        
-        // Limpiar la URL (remover espacios)
-        url = url.trim();
-        
-        // Verificar que contenga el parámetro code
-        if (!url.includes('code=')) {
-            console.error('❌ [PRESUPUESTOS-JS] URL no contiene parámetro code');
-            throw new Error('La URL no contiene el parámetro "code"');
-        }
-        
-        // Crear objeto URL para parsear parámetros
-        let urlObj;
-        try {
-            // Si la URL no tiene protocolo, agregarle uno temporal
-            if (!url.startsWith('http')) {
-                url = 'http://localhost' + (url.startsWith('/') ? '' : '/') + url;
-            }
-            urlObj = new URL(url);
-        } catch (parseError) {
-            console.error('❌ [PRESUPUESTOS-JS] Error al parsear URL:', parseError);
-            throw new Error('Formato de URL inválido');
-        }
-        
-        // Extraer el parámetro code
-        const code = urlObj.searchParams.get('code');
-        
-        if (!code) {
-            console.error('❌ [PRESUPUESTOS-JS] Parámetro code no encontrado en URL');
-            throw new Error('No se encontró el código de autorización en la URL');
-        }
-        
-        console.log('✅ [PRESUPUESTOS-JS] Código extraído exitosamente:', code.substring(0, 20) + '...');
-        return code;
-        
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al extraer código:', error.message);
-        throw error;
-    }
-}
-
-/**
- * Procesar URL completa y extraer código
- */
-function procesarURLCompleta() {
-    console.log('🔍 [PRESUPUESTOS-JS] Procesando URL completa...');
-    
-    const urlInput = document.getElementById('auth-full-url');
-    const codeInput = document.getElementById('auth-code');
-    
-    if (!urlInput || !codeInput) {
-        console.error('❌ [PRESUPUESTOS-JS] No se encontraron los campos de entrada');
-        showMessage('Error interno: campos no encontrados', 'error');
-        return;
-    }
-    
-    const fullUrl = urlInput.value.trim();
-    
-    if (!fullUrl) {
-        console.log('⚠️ [PRESUPUESTOS-JS] URL vacía');
-        showMessage('Por favor pegue la URL completa de redirección', 'warning');
-        urlInput.focus();
-        return;
-    }
-    
-    try {
-        // Extraer código de la URL
-        const extractedCode = extraerCodigoDeURL(fullUrl);
-        
-        // Colocar el código extraído en el campo correspondiente
-        codeInput.value = extractedCode;
-        
-        // Limpiar el campo de URL para evitar confusión
-        urlInput.value = '';
-        
-        // Mostrar mensaje de éxito
-        showMessage('✅ Código extraído exitosamente de la URL', 'success');
-        
-        // Focus en el botón de completar autorización
-        const completeButton = document.querySelector('.auth-modal-actions .btn-primary');
-        if (completeButton) {
-            completeButton.focus();
-        }
-        
-        console.log('✅ [PRESUPUESTOS-JS] Código extraído y colocado en el campo');
-        
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al procesar URL:', error.message);
-        showMessage(`Error al extraer código: ${error.message}`, 'error');
-        urlInput.focus();
-    }
 }
 
 /**
@@ -652,7 +522,9 @@ function updatePresupuestosTable(data) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="5" class="no-data">
-                    No se encontraron registros con los filtros aplicados
+                    ${appState.presupuestos.length === 0 ? 
+                        'Haga clic en "Cargar Presupuestos" para ver los datos' : 
+                        'No se encontraron registros con los filtros aplicados'}
                 </td>
             </tr>
         `;
@@ -845,4 +717,4 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente');
+console.log('✅ [PRESUPUESTOS-JS] Módulo frontend completo cargado');

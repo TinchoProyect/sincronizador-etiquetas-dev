@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-console.log('🔍 [PRESUPUESTOS] Configurando rutas del módulo...');
+console.log('🔍 [PRESUPUESTOS] Configurando rutas del módulo real...');
 
 // Importar controladores reales
 const {
@@ -28,15 +28,63 @@ const {
 // Importar middleware
 const { validateSession, validatePermissions } = require('../middleware/auth');
 const {
-    validarCrearPresupuesto,
-    validarActualizarPresupuesto,
     validarIdPresupuesto,
     validarFiltros,
     validarResumen,
     sanitizarDatos
 } = require('../middleware/validation');
 
-// Aplicar middleware de autenticación a todas las rutas
+/**
+ * @route GET /api/presupuestos/health
+ * @desc Health check del módulo de presupuestos
+ * @access Público - DEBE SER LA PRIMERA RUTA
+ */
+router.get('/health', (req, res) => {
+    console.log('🏥 [HEALTH] Iniciando health check del módulo de presupuestos...');
+    console.log('🏥 [HEALTH] Request recibido desde:', req.ip || 'IP desconocida');
+    console.log('🏥 [HEALTH] User-Agent:', req.get('User-Agent') || 'No especificado');
+    console.log('🏥 [HEALTH] Método:', req.method);
+    console.log('🏥 [HEALTH] URL completa:', req.originalUrl);
+    
+    try {
+        const healthData = {
+            success: true,
+            module: 'presupuestos',
+            status: 'active',
+            timestamp: new Date().toISOString(),
+            version: '2.0.0',
+            features: {
+                google_sheets: true,
+                sync: true,
+                auth: true,
+                presupuestos_completos: true,
+                estructura_real: true
+            },
+            server: {
+                uptime: process.uptime(),
+                memory: process.memoryUsage(),
+                node_version: process.version
+            }
+        };
+        
+        console.log('✅ [HEALTH] Health check exitoso');
+        console.log('✅ [HEALTH] Datos de respuesta:', JSON.stringify(healthData, null, 2));
+        
+        res.status(200).json(healthData);
+    } catch (error) {
+        console.error('❌ [HEALTH] Error en health check:', error);
+        
+        res.status(500).json({
+            success: false,
+            module: 'presupuestos',
+            status: 'error',
+            timestamp: new Date().toISOString(),
+            error: error.message
+        });
+    }
+});
+
+// Aplicar middleware de autenticación a todas las rutas EXCEPTO /health
 router.use(validateSession);
 
 /**
@@ -146,7 +194,7 @@ router.get('/configuracion', validatePermissions('presupuestos.config'), async (
 
 /**
  * @route GET /api/presupuestos/resumen
- * @desc Obtener resumen por categoría o fecha
+ * @desc Obtener resumen por cliente o estado
  * @access Privado
  */
 router.get('/resumen', validatePermissions('presupuestos.read'), sanitizarDatos, validarResumen, async (req, res) => {
@@ -163,49 +211,6 @@ router.get('/resumen', validatePermissions('presupuestos.read'), sanitizarDatos,
         });
     }
 });
-
-/**
- * @route GET /api/presupuestos/:id
- * @desc Obtener presupuesto por ID específico
- * @access Privado
- */
-router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
-    const { id } = req.params;
-    console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id - Obteniendo presupuesto ID: ${id}`);
-    
-    try {
-        await obtenerPresupuestoPorId(req, res);
-    } catch (error) {
-        console.error(`❌ [PRESUPUESTOS] Error en ruta GET /:id (${id}):`, error);
-        res.status(500).json({
-            success: false,
-            error: 'Error interno al obtener presupuesto por ID',
-            message: error.message
-        });
-    }
-});
-
-/**
- * @route PUT /api/presupuestos/:id/estado
- * @desc Actualizar estado de presupuesto
- * @access Privado
- */
-router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdPresupuesto, sanitizarDatos, async (req, res) => {
-    const { id } = req.params;
-    console.log(`🔍 [PRESUPUESTOS] Ruta PUT /:id/estado - Actualizando estado de presupuesto ID: ${id}`);
-    
-    try {
-        await actualizarEstadoPresupuesto(req, res);
-    } catch (error) {
-        console.error(`❌ [PRESUPUESTOS] Error en ruta PUT /:id/estado (${id}):`, error);
-        res.status(500).json({
-            success: false,
-            error: 'Error interno al actualizar estado',
-            message: error.message
-        });
-    }
-});
-
 
 /**
  * @route GET /api/presupuestos/sync/auth/status
@@ -368,25 +373,45 @@ router.get('/sync/estado', validatePermissions('presupuestos.read'), async (req,
 });
 
 /**
- * @route GET /api/presupuestos/health
- * @desc Health check del módulo de presupuestos
- * @access Público
+ * @route GET /api/presupuestos/:id
+ * @desc Obtener presupuesto por ID específico con detalles
+ * @access Privado
  */
-router.get('/health', (req, res) => {
-    console.log('🔍 [PRESUPUESTOS] Ruta GET /health - Health check');
+router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id - Obteniendo presupuesto ID: ${id}`);
     
-    res.json({
-        success: true,
-        module: 'presupuestos',
-        status: 'active',
-        timestamp: new Date().toISOString(),
-        version: '1.0.0',
-        features: {
-            google_sheets: true,
-            sync: true,
-            auth: true
-        }
-    });
+    try {
+        await obtenerPresupuestoPorId(req, res);
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] Error en ruta GET /:id (${id}):`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener presupuesto por ID',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route PUT /api/presupuestos/:id/estado
+ * @desc Actualizar estado de presupuesto
+ * @access Privado
+ */
+router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdPresupuesto, sanitizarDatos, async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔍 [PRESUPUESTOS] Ruta PUT /:id/estado - Actualizando estado de presupuesto ID: ${id}`);
+    
+    try {
+        await actualizarEstadoPresupuesto(req, res);
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] Error en ruta PUT /:id/estado (${id}):`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al actualizar estado',
+            message: error.message
+        });
+    }
 });
 
 // Middleware para rutas no encontradas específico del módulo
@@ -402,15 +427,14 @@ router.use('*', (req, res) => {
     });
 });
 
-console.log('✅ [PRESUPUESTOS] Rutas configuradas exitosamente');
-console.log('📋 [PRESUPUESTOS] Rutas CRUD disponibles:');
+console.log('✅ [PRESUPUESTOS] Rutas reales configuradas exitosamente');
+console.log('📋 [PRESUPUESTOS] Rutas de consulta disponibles:');
 console.log('   - GET /api/presupuestos (con filtros avanzados)');
-console.log('   - GET /api/presupuestos/:id');
-console.log('   - POST /api/presupuestos');
-console.log('   - PUT /api/presupuestos/:id');
-console.log('   - DELETE /api/presupuestos/:id');
-console.log('📊 [PRESUPUESTOS] Rutas de consulta:');
-console.log('   - GET /api/presupuestos/categoria/:categoria');
+console.log('   - GET /api/presupuestos/:id (con detalles)');
+console.log('   - GET /api/presupuestos/cliente/:cliente');
+console.log('   - GET /api/presupuestos/estado/:estado');
+console.log('   - PUT /api/presupuestos/:id/estado');
+console.log('📊 [PRESUPUESTOS] Rutas de análisis:');
 console.log('   - GET /api/presupuestos/estadisticas');
 console.log('   - GET /api/presupuestos/resumen');
 console.log('   - GET /api/presupuestos/configuracion');

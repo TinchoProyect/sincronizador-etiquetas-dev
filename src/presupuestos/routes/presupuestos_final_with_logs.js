@@ -1,0 +1,462 @@
+const express = require('express');
+const router = express.Router();
+
+console.log('[PRESUPUESTOS-BACK] Configurando rutas del módulo CON LOGS DE DEPURACIÓN COMPLETOS...');
+
+// Importar controladores CON LOGS DE DEPURACIÓN
+const {
+    obtenerPresupuestos,
+    obtenerPresupuestoPorId,
+    actualizarEstadoPresupuesto,
+    obtenerEstadisticas,
+    obtenerConfiguracion,
+    obtenerResumen
+} = require('../controllers/presupuestos_complete_with_logs');
+
+// Importar controladores de Google Sheets CON LOGS
+const {
+    verificarAutenticacion,
+    iniciarAutenticacion,
+    completarAutenticacion,
+    validarHoja,
+    configurarHoja,
+    ejecutarSincronizacion,
+    obtenerHistorial,
+    obtenerEstadoSync
+} = require('../controllers/gsheets_with_logs');
+
+// Importar middleware
+const { validateSession, validatePermissions } = require('../middleware/auth');
+const {
+    validarIdPresupuesto,
+    validarFiltros,
+    validarResumen,
+    sanitizarDatos
+} = require('../middleware/validation');
+
+/**
+ * @route GET /api/presupuestos/health
+ * @desc Health check del módulo de presupuestos
+ * @access Público - DEBE SER LA PRIMERA RUTA
+ */
+router.get('/health', (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] 🏥 Iniciando health check del módulo de presupuestos...');
+    console.log('[PRESUPUESTOS-BACK] Request recibido desde:', req.ip || 'IP desconocida');
+    console.log('[PRESUPUESTOS-BACK] User-Agent:', req.get('User-Agent') || 'No especificado');
+    console.log('[PRESUPUESTOS-BACK] Método:', req.method);
+    console.log('[PRESUPUESTOS-BACK] URL completa:', req.originalUrl);
+    
+    try {
+        const healthData = {
+            success: true,
+            module: 'presupuestos',
+            status: 'active',
+            timestamp: new Date().toISOString(),
+            version: '2.2.0-final-with-logs',
+            features: {
+                google_sheets: true,
+                sync: true,
+                auth: true,
+                presupuestos_completos: true,
+                estructura_real: true,
+                logs_detallados: true,
+                controladores_con_logs: true
+            },
+            server: {
+                uptime: process.uptime(),
+                memory: process.memoryUsage(),
+                node_version: process.version
+            }
+        };
+        
+        console.log('[PRESUPUESTOS-BACK] ✅ Health check exitoso');
+        console.log('[PRESUPUESTOS-BACK] Datos de respuesta:', JSON.stringify(healthData, null, 2));
+        
+        res.status(200).json(healthData);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en health check:', error);
+        
+        res.status(500).json({
+            success: false,
+            module: 'presupuestos',
+            status: 'error',
+            timestamp: new Date().toISOString(),
+            error: error.message
+        });
+    }
+});
+
+// Aplicar middleware de autenticación a todas las rutas EXCEPTO /health
+router.use(validateSession);
+
+/**
+ * @route GET /api/presupuestos
+ * @desc Obtener todos los presupuestos con filtros avanzados CON LOGS
+ * @access Privado
+ */
+router.get('/', validatePermissions('presupuestos.read'), sanitizarDatos, validarFiltros, async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] 🔍 RUTA GET / - OBTENIENDO TODOS LOS PRESUPUESTOS CON LOGS');
+    console.log('[PRESUPUESTOS-BACK] Esta es la ruta que llama el frontend con "Cargar Presupuestos"');
+    console.log('[PRESUPUESTOS-BACK] Usando controlador: presupuestos_complete_with_logs.js');
+    
+    try {
+        await obtenerPresupuestos(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta GET /:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de presupuestos',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/estadisticas
+ * @desc Obtener estadísticas generales de presupuestos CON LOGS
+ * @access Privado
+ */
+router.get('/estadisticas', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] 📊 RUTA GET /estadisticas - CALCULANDO ESTADÍSTICAS CON LOGS');
+    console.log('[PRESUPUESTOS-BACK] Esta ruta también es llamada por el frontend para mostrar estadísticas');
+    
+    try {
+        await obtenerEstadisticas(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta GET /estadisticas:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de estadísticas',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/cliente/:cliente
+ * @desc Obtener presupuestos por cliente específico
+ * @access Privado
+ */
+router.get('/cliente/:cliente', validatePermissions('presupuestos.read'), async (req, res) => {
+    const { cliente } = req.params;
+    console.log(`[PRESUPUESTOS-BACK] Ruta GET /cliente/${cliente} - Obteniendo presupuestos por cliente`);
+    
+    try {
+        // Usar el filtro de cliente en la función principal
+        req.query.id_cliente = cliente;
+        await obtenerPresupuestos(req, res);
+    } catch (error) {
+        console.error(`[PRESUPUESTOS-BACK] ❌ Error en ruta GET /cliente/${cliente}:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de cliente',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/estado/:estado
+ * @desc Obtener presupuestos por estado específico
+ * @access Privado
+ */
+router.get('/estado/:estado', validatePermissions('presupuestos.read'), async (req, res) => {
+    const { estado } = req.params;
+    console.log(`[PRESUPUESTOS-BACK] Ruta GET /estado/${estado} - Obteniendo presupuestos por estado`);
+    
+    try {
+        // Usar el filtro de estado en la función principal
+        req.query.estado = estado;
+        await obtenerPresupuestos(req, res);
+    } catch (error) {
+        console.error(`[PRESUPUESTOS-BACK] ❌ Error en ruta GET /estado/${estado}:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de estado',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/configuracion
+ * @desc Obtener configuración actual de Google Sheets
+ * @access Privado
+ */
+router.get('/configuracion', validatePermissions('presupuestos.config'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta GET /configuracion - Obteniendo configuración');
+    
+    try {
+        await obtenerConfiguracion(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta GET /configuracion:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de configuración',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/resumen
+ * @desc Obtener resumen por cliente o estado
+ * @access Privado
+ */
+router.get('/resumen', validatePermissions('presupuestos.read'), sanitizarDatos, validarResumen, async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta GET /resumen - Generando resumen');
+    
+    try {
+        await obtenerResumen(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta GET /resumen:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de resumen',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/auth/status
+ * @desc Verificar estado de autenticación con Google
+ * @access Privado
+ */
+router.get('/sync/auth/status', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta GET /sync/auth/status - Verificando autenticación Google');
+    
+    try {
+        await verificarAutenticacion(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta GET /sync/auth/status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en verificación de autenticación',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/auth/iniciar
+ * @desc Iniciar proceso de autenticación con Google
+ * @access Privado
+ */
+router.post('/sync/auth/iniciar', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta POST /sync/auth/iniciar - Iniciando autenticación Google');
+    
+    try {
+        await iniciarAutenticacion(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta POST /sync/auth/iniciar:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al iniciar autenticación',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/auth/completar
+ * @desc Completar autenticación con código de Google
+ * @access Privado
+ */
+router.post('/sync/auth/completar', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta POST /sync/auth/completar - Completando autenticación Google');
+    
+    try {
+        await completarAutenticacion(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta POST /sync/auth/completar:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al completar autenticación',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/validar-hoja
+ * @desc Validar acceso a hoja de Google Sheets
+ * @access Privado
+ */
+router.post('/sync/validar-hoja', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta POST /sync/validar-hoja - Validando hoja Google Sheets');
+    
+    try {
+        await validarHoja(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta POST /sync/validar-hoja:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al validar hoja',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/configurar
+ * @desc Configurar hoja de Google Sheets
+ * @access Privado
+ */
+router.post('/sync/configurar', validatePermissions('presupuestos.config'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta POST /sync/configurar - Configurando hoja Google Sheets');
+    
+    try {
+        await configurarHoja(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta POST /sync/configurar:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al configurar hoja',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/ejecutar
+ * @desc Ejecutar sincronización manual con Google Sheets CON LOGS DETALLADOS
+ * @access Privado
+ */
+router.post('/sync/ejecutar', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] 🚀 RUTA POST /sync/ejecutar - EJECUTANDO SINCRONIZACIÓN CON LOGS COMPLETOS');
+    console.log('[PRESUPUESTOS-BACK] Esta ruta usará los archivos con logs detallados');
+    console.log('[PRESUPUESTOS-BACK] Archivo objetivo: PresupuestosCopia (ID: 1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8)');
+    console.log('[PRESUPUESTOS-BACK] Controlador: gsheets_with_logs.js');
+    console.log('[PRESUPUESTOS-BACK] Servicio: sync_complete_with_logs.js');
+    
+    try {
+        await ejecutarSincronizacion(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta POST /sync/ejecutar:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al ejecutar sincronización',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/historial
+ * @desc Obtener historial de sincronizaciones
+ * @access Privado
+ */
+router.get('/sync/historial', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta GET /sync/historial - Obteniendo historial');
+    
+    try {
+        await obtenerHistorial(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta GET /sync/historial:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener historial',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/estado
+ * @desc Obtener estado general de sincronización
+ * @access Privado
+ */
+router.get('/sync/estado', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('[PRESUPUESTOS-BACK] Ruta GET /sync/estado - Obteniendo estado de sincronización');
+    
+    try {
+        await obtenerEstadoSync(req, res);
+    } catch (error) {
+        console.error('[PRESUPUESTOS-BACK] ❌ Error en ruta GET /sync/estado:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener estado',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/:id
+ * @desc Obtener presupuesto por ID específico con detalles
+ * @access Privado
+ */
+router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
+    const { id } = req.params;
+    console.log(`[PRESUPUESTOS-BACK] Ruta GET /:id - Obteniendo presupuesto ID: ${id}`);
+    
+    try {
+        await obtenerPresupuestoPorId(req, res);
+    } catch (error) {
+        console.error(`[PRESUPUESTOS-BACK] ❌ Error en ruta GET /:id (${id}):`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener presupuesto por ID',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route PUT /api/presupuestos/:id/estado
+ * @desc Actualizar estado de presupuesto
+ * @access Privado
+ */
+router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdPresupuesto, sanitizarDatos, async (req, res) => {
+    const { id } = req.params;
+    console.log(`[PRESUPUESTOS-BACK] Ruta PUT /:id/estado - Actualizando estado de presupuesto ID: ${id}`);
+    
+    try {
+        await actualizarEstadoPresupuesto(req, res);
+    } catch (error) {
+        console.error(`[PRESUPUESTOS-BACK] ❌ Error en ruta PUT /:id/estado (${id}):`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al actualizar estado',
+            message: error.message
+        });
+    }
+});
+
+// Middleware para rutas no encontradas específico del módulo
+router.use('*', (req, res) => {
+    console.log(`[PRESUPUESTOS-BACK] ⚠️ Ruta no encontrada: ${req.method} ${req.originalUrl}`);
+    
+    res.status(404).json({
+        success: false,
+        error: 'Ruta no encontrada en el módulo de presupuestos',
+        path: req.originalUrl,
+        method: req.method,
+        timestamp: new Date().toISOString()
+    });
+});
+
+console.log('[PRESUPUESTOS-BACK] ✅ RUTAS CON LOGS DE DEPURACIÓN COMPLETOS CONFIGURADAS EXITOSAMENTE');
+console.log('[PRESUPUESTOS-BACK] 📋 Rutas de consulta disponibles CON LOGS:');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos ⭐ CON LOGS (llamada por frontend)');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/estadisticas ⭐ CON LOGS (llamada por frontend)');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/:id (con detalles)');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/cliente/:cliente');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/estado/:estado');
+console.log('[PRESUPUESTOS-BACK]    - PUT /api/presupuestos/:id/estado');
+console.log('[PRESUPUESTOS-BACK] 📊 Rutas de análisis:');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/resumen');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/configuracion');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/health');
+console.log('[PRESUPUESTOS-BACK] 🔄 Rutas de sincronización CON LOGS:');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/sync/auth/status');
+console.log('[PRESUPUESTOS-BACK]    - POST /api/presupuestos/sync/auth/iniciar');
+console.log('[PRESUPUESTOS-BACK]    - POST /api/presupuestos/sync/auth/completar');
+console.log('[PRESUPUESTOS-BACK]    - POST /api/presupuestos/sync/validar-hoja');
+console.log('[PRESUPUESTOS-BACK]    - POST /api/presupuestos/sync/configurar');
+console.log('[PRESUPUESTOS-BACK]    - POST /api/presupuestos/sync/ejecutar ⭐ CON LOGS DETALLADOS');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/sync/historial');
+console.log('[PRESUPUESTOS-BACK]    - GET /api/presupuestos/sync/estado');
+
+module.exports = router;
