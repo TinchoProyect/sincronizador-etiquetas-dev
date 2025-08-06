@@ -13,7 +13,7 @@ const { requestLogger, errorHandler } = require('./middleware/auth');
 const { crearTablas } = require('./config/init-database');
 
 // Importar rutas CON LOGS DE DEPURACIÓN COMPLETOS
-const presupuestosRoutes = require('./routes/presupuestos_final_with_logs');
+const presupuestosRoutes = require('./routes/presupuestos');
 
 console.log('[PRESUPUESTOS-BACK] Configurando middleware...');
 

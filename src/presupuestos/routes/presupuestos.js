@@ -11,7 +11,7 @@ const {
     obtenerEstadisticas,
     obtenerConfiguracion,
     obtenerResumen
-} = require('../controllers/presupuestos_real');
+} = require('../controllers/presupuestos');
 
 // Importar controladores de Google Sheets
 const {
