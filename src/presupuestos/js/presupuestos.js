@@ -541,7 +541,8 @@ async function executeSyncronization() {
         const data = await response.json();
         
         if (data.success) {
-            showMessage(`Sincronización exitosa: ${data.registros_procesados} registros`, 'success');
+            const registrosProcesados = data.registros_procesados || data.data?.registros_procesados || 'N/A';
+            showMessage(`Sincronización exitosa: ${registrosProcesados} registros`, 'success');
             console.log('✅ [PRESUPUESTOS-JS] Sincronización completada:', data);
             
             // Recargar datos y estadísticas

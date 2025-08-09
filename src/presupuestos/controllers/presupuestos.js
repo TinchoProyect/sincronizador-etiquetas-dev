@@ -42,7 +42,7 @@ const obtenerPresupuestos = async (req, res) => {
                 nota as concepto,
                 descuento as monto,
                 fecha as fecha_registro,
-                fecha_actualizacion as fecha_sincronizacion,
+                COALESCE(fecha_entrega, fecha) as fecha_sincronizacion,
                 activo
             FROM presupuestos 
             WHERE activo = true
@@ -95,8 +95,17 @@ const obtenerPresupuestos = async (req, res) => {
         }
         
         // Ordenamiento
-        const validOrderFields = ['fecha_registro', 'fecha_sincronizacion', 'categoria', 'concepto', 'monto'];
-        const orderField = validOrderFields.includes(order_by) ? order_by : 'fecha_sincronizacion';
+        const validOrderFields = ['fecha', 'fecha_entrega', 'categoria', 'concepto', 'monto'];
+        let orderField;
+        if (order_by === 'fecha_sincronizacion') {
+            orderField = 'COALESCE(fecha_entrega, fecha)';
+        } else if (order_by === 'fecha_registro') {
+            orderField = 'fecha';
+        } else if (validOrderFields.includes(order_by)) {
+            orderField = order_by;
+        } else {
+            orderField = 'COALESCE(fecha_entrega, fecha)';
+        }
         const orderDirection = order_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
         
         query += ` ORDER BY ${orderField} ${orderDirection}, categoria, concepto`;
