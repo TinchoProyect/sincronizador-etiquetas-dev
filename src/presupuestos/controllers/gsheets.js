@@ -309,6 +309,10 @@ const ejecutarSincronizacion = async (req, res) => {
         res.json({
             success: syncResult.exitoso,
             data: syncResult,
+            registros_procesados: syncResult.registros_procesados,
+            registros_nuevos: syncResult.registros_nuevos,
+            registros_actualizados: syncResult.registros_actualizados,
+            exitoso: syncResult.exitoso,
             message: syncResult.exitoso ? 
                 'Sincronización completada exitosamente' : 
                 'Sincronización completada con errores',

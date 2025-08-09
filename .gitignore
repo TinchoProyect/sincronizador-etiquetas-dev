@@ -61,3 +61,7 @@ DIAGNOSTICO_CONEXION_GOOGLE_SHEETS.md
 !/migrations/**
 !*.sql
 
+
+# Google OAuth secrets
+**/google-token.json
+**/google-credentials*.json
