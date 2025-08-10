@@ -15,17 +15,20 @@ const CONFIG = {
     RETRY_DELAY: 1000
 };
 
-// Estado global de la aplicación - Orden por fecha DESC + paginación – 2024-12-19
+// Estado global de la aplicación - Orden por fecha DESC + paginación + Estado – 2024-12-19
 let appState = {
     presupuestos: [],
     categorias: [],
+    estados: [], // Nuevo: lista de estados distintos - Filtro por Estado – 2024-12-19
     estadisticas: null,
     filtros: {
         categoria: '',
         concepto: '',
         // Nuevos filtros de cliente - Filtro cliente + Typeahead + Fechas – 2024-12-19
         clienteId: '',
-        clienteName: ''
+        clienteName: '',
+        // Nuevo filtro por estado - Filtro por Estado – 2024-12-19
+        estado: []
     },
     // Nuevos parámetros de paginación
     pagination: {
@@ -55,6 +58,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     checkModuleHealth();
     checkAuthStatus();
+    loadEstados(); // Cargar estados al inicializar - Filtro por Estado – 2024-12-19
 });
 
 /**
@@ -101,6 +105,7 @@ function setupEventListeners() {
     // Filtros
     const filtroCategoria = document.getElementById('filtro-categoria');
     const buscarCliente = document.getElementById('buscar-cliente');
+    const filtroEstado = document.getElementById('filtro-estado'); // Nuevo filtro por estado – 2024-12-19
     
     if (filtroCategoria) {
         filtroCategoria.addEventListener('change', handleFiltroCategoria);
@@ -110,6 +115,12 @@ function setupEventListeners() {
     if (buscarCliente) {
         buscarCliente.addEventListener('input', debounce(handleBuscarCliente, 300));
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-cliente');
+    }
+    
+    // Nuevo event listener para filtro por estado - Filtro por Estado – 2024-12-19
+    if (filtroEstado) {
+        filtroEstado.addEventListener('change', handleFiltroEstado);
+        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-estado');
     }
     
     console.log('✅ [PRESUPUESTOS-JS] Event listeners configurados');
@@ -204,6 +215,32 @@ async function loadEstadisticas() {
 }
 
 /**
+ * Cargar estados distintos - Filtro por Estado – 2024-12-19
+ */
+async function loadEstados() {
+    console.log('🔍 [PRESUPUESTOS-JS] Cargando estados distintos...');
+    
+    try {
+        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/estados`);
+        const data = await response.json();
+        
+        if (data.success) {
+            appState.estados = data.estados || [];
+            updateEstadosFilter(appState.estados);
+            console.log(`✅ [PRESUPUESTOS-JS] Estados cargados: ${appState.estados.length} estados`);
+            console.log('🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados:', appState.estados.length, 'estados');
+        } else {
+            throw new Error(data.message || 'Error al cargar estados');
+        }
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS-JS] Error al cargar estados:', error);
+        // No mostrar mensaje de error para no molestar al usuario
+        appState.estados = [];
+        updateEstadosFilter([]);
+    }
+}
+
+/**
  * Actualizar display de estadísticas
  */
 function updateStatsDisplay(stats) {
@@ -261,6 +298,13 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 queryParams.append('clienteName', appState.filtros.clienteName);
             } else if (appState.filtros.concepto) {
                 queryParams.append('concepto', appState.filtros.concepto);
+            }
+            // Agregar filtro por estado - Filtro por Estado – 2024-12-19
+            if (appState.filtros.estado && appState.filtros.estado.length > 0) {
+                appState.filtros.estado.forEach(estado => {
+                    queryParams.append('estado', estado);
+                });
+                console.log(`🔍 [PRESUPUESTOS-JS] Aplicando filtros: { estado: [${appState.filtros.estado.join(', ')}] }`);
             }
         }
         
@@ -933,6 +977,7 @@ async function executeSyncronization() {
             
             // Recargar datos y estadísticas
             await loadEstadisticas();
+            await loadEstados(); // Recargar estados después de sincronización - Filtro por Estado – 2024-12-19
             await handleCargarDatos(1);
             
             // Log de confirmación del flujo nuevo
@@ -1007,6 +1052,19 @@ function handleFiltroCategoria(event) {
     console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por categoría: ${categoria || 'todas'}`);
     
     appState.filtros.categoria = categoria;
+    applyFilters();
+}
+
+/**
+ * Handler: Filtro por estado - Filtro por Estado – 2024-12-19
+ */
+function handleFiltroEstado(event) {
+    const select = event.target;
+    const selectedOptions = Array.from(select.selectedOptions).map(option => option.value);
+    
+    console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por estado: [${selectedOptions.join(', ')}]`);
+    
+    appState.filtros.estado = selectedOptions;
     applyFilters();
 }
 
@@ -1139,7 +1197,7 @@ function handleBuscarConcepto(event) {
 }
 
 /**
- * Aplicar filtros con paginación - Orden por fecha DESC + paginación – 2024-12-19
+ * Aplicar filtros con paginación - Orden por fecha DESC + paginación + Estado – 2024-12-19
  */
 function applyFilters() {
     console.log('🔍 [PRESUPUESTOS-JS] Aplicando filtros:', appState.filtros);
@@ -1168,7 +1226,7 @@ function updatePresupuestosTable(data) {
     if (data.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="4" class="no-data">
+                <td colspan="5" class="no-data">
                     No se encontraron registros con los filtros aplicados
                 </td>
             </tr>
@@ -1186,9 +1244,12 @@ function updatePresupuestosTable(data) {
             <td>${escapeHtml(item.categoria || 'Sin tipo')}</td>
             <td>${escapeHtml(item.concepto || 'Sin cliente')}</td>
             <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
+            <td class="text-center">
+                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(item.estado || 'Sin estado')}</span>
+            </td>
         </tr>
         <tr class="detalles-row" id="detalles-${item.id}" style="display: none;">
-            <td colspan="4" class="detalles-container">
+            <td colspan="5" class="detalles-container">
                 <div class="loading-detalles">Cargando detalles...</div>
             </td>
         </tr>
@@ -1231,6 +1292,50 @@ function updateCategoriasFilter(categorias) {
     });
     
     console.log('✅ [PRESUPUESTOS-JS] Filtro de categorías actualizado');
+}
+
+/**
+ * Actualizar filtro de estados - Filtro por Estado – 2024-12-19
+ */
+function updateEstadosFilter(estados) {
+    // Validar que estados sea un array
+    if (!Array.isArray(estados)) {
+        console.log('⚠️ [PRESUPUESTOS-JS] Estados no es un array válido:', estados);
+        estados = []; // Usar array vacío como fallback
+    }
+    
+    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados: ${estados.length} estados`);
+    
+    const select = document.getElementById('filtro-estado');
+    if (!select) {
+        console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento filtro-estado');
+        return;
+    }
+    
+    // Limpiar opciones existentes (excepto la primera)
+    while (select.children.length > 1) {
+        select.removeChild(select.lastChild);
+    }
+    
+    // Agregar nuevas opciones
+    if (estados.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '(Sin estados)';
+        option.disabled = true;
+        select.appendChild(option);
+    } else {
+        estados.forEach(estado => {
+            if (estado) {
+                const option = document.createElement('option');
+                option.value = estado;
+                option.textContent = estado;
+                select.appendChild(option);
+            }
+        });
+    }
+    
+    console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado');
 }
 
 /**

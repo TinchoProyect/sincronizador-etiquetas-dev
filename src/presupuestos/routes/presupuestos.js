@@ -9,6 +9,7 @@ const {
     obtenerSugerenciasClientes,
     obtenerPresupuestoPorId,
     obtenerDetallesPresupuesto,
+    obtenerEstados,
     actualizarEstadoPresupuesto,
     obtenerEstadisticas,
     obtenerConfiguracion,
@@ -138,6 +139,26 @@ router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), as
         res.status(500).json({
             success: false,
             error: 'Error interno en la ruta de sugerencias de clientes',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/estados
+ * @desc Obtener estados distintos de presupuestos - Filtro por Estado – 2024-12-19
+ * @access Privado
+ */
+router.get('/estados', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /estados - Obteniendo estados distintos');
+    
+    try {
+        await obtenerEstados(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /estados:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de estados',
             message: error.message
         });
     }

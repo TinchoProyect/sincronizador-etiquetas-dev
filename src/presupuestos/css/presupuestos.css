@@ -269,6 +269,88 @@ main {
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
+/* Estilos específicos para filtro de estado multiselección */
+#filtro-estado {
+    min-height: 100px;
+    background-color: var(--white);
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 8px;
+    font-size: 0.95em;
+    transition: var(--transition);
+}
+
+#filtro-estado:focus {
+    outline: none;
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+#filtro-estado option {
+    padding: 6px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+    transition: var(--transition);
+}
+
+#filtro-estado option:hover {
+    background-color: var(--light-gray);
+}
+
+#filtro-estado option:checked {
+    background-color: var(--secondary-color);
+    color: var(--white);
+    font-weight: 500;
+}
+
+.filter-help {
+    font-size: 0.8em;
+    color: var(--dark-gray);
+    font-style: italic;
+    margin-top: 4px;
+    display: block;
+}
+
+/* Indicador visual para estados seleccionados */
+.estados-seleccionados {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.estado-tag {
+    background-color: var(--secondary-color);
+    color: var(--white);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.estado-tag .remove-tag {
+    background: none;
+    border: none;
+    color: var(--white);
+    cursor: pointer;
+    font-size: 0.9em;
+    padding: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.estado-tag .remove-tag:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
 /* Table container */
 .table-container {
     background-color: var(--white);

@@ -72,6 +72,13 @@
                     <input type="text" id="buscar-cliente" placeholder="Número (ej: 123) o nombre del cliente...">
                     <small class="filter-help">💡 Ingrese 3 cifras para buscar por ID o texto para buscar por nombre</small>
                 </div>
+                <div class="filter-group">
+                    <label for="filtro-estado">Filtrar por estado:</label>
+                    <select id="filtro-estado" multiple size="4">
+                        <option value="" disabled>Cargando estados...</option>
+                    </select>
+                    <small class="filter-help">💡 Mantenga Ctrl/Cmd para seleccionar múltiples estados</small>
+                </div>
             </div>
 
             <!-- Tabla de presupuestos -->
@@ -83,11 +90,12 @@
                             <th>Tipo de Comprobante</th>
                             <th>Cliente</th>
                             <th>Fecha Registro</th>
+                            <th>Estado</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-presupuestos">
                         <tr>
-                            <td colspan="4" class="no-data">
+                            <td colspan="5" class="no-data">
                                 Haga clic en "Cargar Presupuestos" para ver los datos
                             </td>
                         </tr>

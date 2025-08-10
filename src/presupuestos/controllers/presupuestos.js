@@ -12,7 +12,7 @@ const obtenerPresupuestos = async (req, res) => {
     try {
         console.log('🔍 [PRESUPUESTOS] Iniciando obtención de presupuestos...');
         
-        // Extraer parámetros de filtrado y paginación - Filtro cliente + Typeahead + Fechas – 2024-12-19
+        // Extraer parámetros de filtrado y paginación - Filtro cliente + Typeahead + Fechas + Estado – 2024-12-19
         const {
             categoria,
             concepto,
@@ -24,6 +24,8 @@ const obtenerPresupuestos = async (req, res) => {
             // Nuevos parámetros de filtro de cliente
             clienteId,
             clienteName,
+            // Nuevo parámetro de filtro por estado
+            estado,
             // Parámetros de paginación nuevos
             page = 1,
             pageSize = 100,
@@ -49,7 +51,7 @@ const obtenerPresupuestos = async (req, res) => {
         const finalOrder = order || order_dir || 'desc';
         
         console.log('📋 [PRESUPUESTOS] Filtros aplicados:', {
-            categoria, concepto, clienteId, clienteName, fecha_desde, fecha_hasta, 
+            categoria, concepto, clienteId, clienteName, estado, fecha_desde, fecha_hasta, 
             monto_min, monto_max, sheet_id, 
             page: currentPage, pageSize: itemsPerPage, sortBy: finalSortBy, order: finalOrder
         });
@@ -127,6 +129,26 @@ const obtenerPresupuestos = async (req, res) => {
             paramCount++;
             query += ` AND p.id_presupuesto_ext = $${paramCount}`;
             params.push(sheet_id);
+        }
+        
+        // Filtro por estado - Filtro por Estado – 2024-12-19
+        if (estado) {
+            // Soportar múltiples estados (array o string separado por comas)
+            let estadosArray = [];
+            if (Array.isArray(estado)) {
+                estadosArray = estado;
+            } else if (typeof estado === 'string') {
+                estadosArray = estado.split(',').map(e => e.trim()).filter(e => e.length > 0);
+            }
+            
+            if (estadosArray.length > 0) {
+                const estadosPlaceholders = estadosArray.map((_, index) => `$${paramCount + index + 1}`).join(', ');
+                paramCount += estadosArray.length;
+                query += ` AND p.estado IN (${estadosPlaceholders})`;
+                params.push(...estadosArray);
+                
+                console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Filtro estado: [${estadosArray.join(', ')}]`);
+            }
         }
         
         // Ordenamiento - Orden por fecha DESC + paginación – 2024-12-19
@@ -355,6 +377,23 @@ const obtenerPresupuestos = async (req, res) => {
             countParams.push(sheet_id);
         }
         
+        // Aplicar mismo filtro de estado para el conteo - Filtro por Estado – 2024-12-19
+        if (estado) {
+            let estadosArray = [];
+            if (Array.isArray(estado)) {
+                estadosArray = estado;
+            } else if (typeof estado === 'string') {
+                estadosArray = estado.split(',').map(e => e.trim()).filter(e => e.length > 0);
+            }
+            
+            if (estadosArray.length > 0) {
+                const estadosPlaceholders = estadosArray.map((_, index) => `$${countParamCount + index + 1}`).join(', ');
+                countParamCount += estadosArray.length;
+                countQuery += ` AND p.estado IN (${estadosPlaceholders})`;
+                countParams.push(...estadosArray);
+            }
+        }
+        
         const countResult = await req.db.query(countQuery, countParams);
         const totalRecords = parseInt(countResult.rows[0].total);
         
@@ -534,7 +573,7 @@ const obtenerPresupuestos = async (req, res) => {
                 order: finalOrder
             },
             filters: {
-                categoria, concepto, clienteId, clienteName, fecha_desde, fecha_hasta,
+                categoria, concepto, clienteId, clienteName, estado, fecha_desde, fecha_hasta,
                 monto_min, monto_max, sheet_id
             },
             categorias: categorias,
@@ -1415,6 +1454,51 @@ const obtenerDetallesPresupuesto = async (req, res) => {
 };
 
 /**
+ * Obtener estados distintos de presupuestos - Filtro por Estado – 2024-12-19
+ */
+const obtenerEstados = async (req, res) => {
+    try {
+        console.log('🔍 [PRESUPUESTOS] Obteniendo estados distintos...');
+        
+        const query = `
+            SELECT DISTINCT estado
+            FROM public.presupuestos 
+            WHERE activo = true 
+            AND estado IS NOT NULL 
+            AND TRIM(estado) != ''
+            ORDER BY estado ASC
+        `;
+        
+        const result = await req.db.query(query);
+        
+        // Filtrar y limpiar estados
+        const estados = result.rows
+            .map(row => row.estado.trim())
+            .filter(estado => estado.length > 0)
+            .sort();
+        
+        console.log(`🔍 [PRESUPUESTOS] Ruta GET /estados - estados distintos: ${estados.length}`);
+        console.log('📊 [PRESUPUESTOS] Estados encontrados:', estados);
+        
+        res.json({
+            success: true,
+            estados: estados,
+            total: estados.length,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al obtener estados:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener estados',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
+/**
  * Actualizar estado de presupuesto
  */
 const actualizarEstadoPresupuesto = async (req, res) => {
@@ -1497,6 +1581,7 @@ module.exports = {
     obtenerSugerenciasClientes,
     obtenerPresupuestoPorId,
     obtenerDetallesPresupuesto,
+    obtenerEstados,
     crearPresupuesto,
     actualizarPresupuesto,
     actualizarEstadoPresupuesto,
