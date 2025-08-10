@@ -33,7 +33,7 @@
                     <span id="total-registros" class="stat-value">-</span>
                 </div>
                 <div class="stat-card">
-                    <h3>Categorías</h3>
+                    <h3>Tipos de comprobante</h3>
                     <span id="total-categorias" class="stat-value">-</span>
                 </div>
                 <div class="stat-card">
@@ -62,14 +62,15 @@
             <!-- Filtros -->
             <div class="filters-section">
                 <div class="filter-group">
-                    <label for="filtro-categoria">Filtrar por categoría:</label>
+                    <label for="filtro-categoria">Filtrar por tipo de comprobante:</label>
                     <select id="filtro-categoria">
-                        <option value="">Todas las categorías</option>
+                        <option value="">Todos los tipos</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label for="buscar-concepto">Buscar concepto:</label>
-                    <input type="text" id="buscar-concepto" placeholder="Escriba para buscar...">
+                    <label for="buscar-cliente">Buscar cliente:</label>
+                    <input type="text" id="buscar-cliente" placeholder="Número (ej: 123) o nombre del cliente...">
+                    <small class="filter-help">💡 Ingrese 3 cifras para buscar por ID o texto para buscar por nombre</small>
                 </div>
             </div>
 
@@ -78,16 +79,15 @@
                 <table id="tabla-presupuestos" class="presupuestos-table">
                     <thead>
                         <tr>
-                            <th>Categoría</th>
-                            <th>Concepto</th>
-                            <th>Monto</th>
+                            <th width="60">Detalles</th>
+                            <th>Tipo de Comprobante</th>
+                            <th>Cliente</th>
                             <th>Fecha Registro</th>
-                            <th>Última Sync</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-presupuestos">
                         <tr>
-                            <td colspan="5" class="no-data">
+                            <td colspan="4" class="no-data">
                                 Haga clic en "Cargar Presupuestos" para ver los datos
                             </td>
                         </tr>

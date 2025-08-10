@@ -6,7 +6,7 @@ console.log('[DATABASE] Inicializando servicio de base de datos...');
  */
 
 /**
- * UPSERT de presupuesto individual
+ * UPSERT de presupuesto individual - FIX FECHAS FUTURAS
  * @param {Object} presupuesto - Datos de presupuesto transformados y validados
  * @param {Object} db - Conexión a base de datos
  * @returns {Object} Resultado de la operación
@@ -14,64 +14,100 @@ console.log('[DATABASE] Inicializando servicio de base de datos...');
 async function upsertPresupuesto(presupuesto, db) {
     console.log(`[DATABASE] UPSERT presupuesto: ${presupuesto.id_ext}`);
     
+    // Diagnóstico de fecha antes de insertar
+    console.log(`[DATABASE] [DEBUG-FECHA-DB] Fecha a insertar: ${presupuesto.fecha} (tipo: ${typeof presupuesto.fecha})`);
+    
     try {
+        // Validar fecha antes de insertar
+        let fechaValidada = presupuesto.fecha;
+        
+        if (fechaValidada && fechaValidada instanceof Date) {
+            // Verificar que la fecha no sea futura (más de 1 año adelante)
+            const now = new Date();
+            const oneYearFromNow = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+            
+            if (fechaValidada > oneYearFromNow) {
+                console.error(`[DATABASE] [DEBUG-FECHA-DB] FECHA FUTURA DETECTADA EN DB: ${fechaValidada.toISOString()} > ${oneYearFromNow.toISOString()}`);
+                console.error(`[DATABASE] [DEBUG-FECHA-DB] Rechazando presupuesto ${presupuesto.id_ext} por fecha futura`);
+                
+                return {
+                    success: false,
+                    operation: 'ERROR',
+                    id_ext: presupuesto.id_ext,
+                    error: `Fecha futura detectada: ${fechaValidada.toISOString()}. Presupuesto rechazado.`,
+                    sqlState: 'FECHA_FUTURA',
+                    detail: 'La fecha del presupuesto es más de 1 año en el futuro'
+                };
+            }
+            
+            // Convertir a formato DATE para PostgreSQL (YYYY-MM-DD)
+            const year = fechaValidada.getUTCFullYear();
+            const month = String(fechaValidada.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(fechaValidada.getUTCDate()).padStart(2, '0');
+            const fechaFormatted = `${year}-${month}-${day}`;
+            
+            console.log(`[DATABASE] [DEBUG-FECHA-DB] Fecha formateada para PostgreSQL: ${fechaFormatted}`);
+            fechaValidada = fechaFormatted;
+        }
+        
         const query = `
             INSERT INTO public.presupuestos (
-                id_ext, fecha, cliente, agente, fecha_entrega, 
-                factura_efectivo, nota, estado, informe_generado, 
-                cliente_nuevo_id, estado_imprime_pdf, punto_entrega, descuento
+                id_presupuesto_ext, id_cliente, fecha, agente, fecha_entrega, 
+                tipo_comprobante, nota, estado, activo, descuento
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            ON CONFLICT (id_ext) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)
+            ON CONFLICT (id_presupuesto_ext) 
             DO UPDATE SET 
                 fecha = EXCLUDED.fecha,
-                cliente = EXCLUDED.cliente,
+                id_cliente = EXCLUDED.id_cliente,
                 agente = EXCLUDED.agente,
                 fecha_entrega = EXCLUDED.fecha_entrega,
-                factura_efectivo = EXCLUDED.factura_efectivo,
+                tipo_comprobante = EXCLUDED.tipo_comprobante,
                 nota = EXCLUDED.nota,
                 estado = EXCLUDED.estado,
-                informe_generado = EXCLUDED.informe_generado,
-                cliente_nuevo_id = EXCLUDED.cliente_nuevo_id,
-                estado_imprime_pdf = EXCLUDED.estado_imprime_pdf,
-                punto_entrega = EXCLUDED.punto_entrega,
                 descuento = EXCLUDED.descuento,
                 fecha_actualizacion = NOW()
-            RETURNING id, id_ext, 
+            RETURNING id, id_presupuesto_ext, fecha,
                 CASE WHEN xmax = 0 THEN 'INSERTED' ELSE 'UPDATED' END as operation;
         `;
         
         const values = [
             presupuesto.id_ext,
-            presupuesto.fecha,
-            presupuesto.cliente,
+            presupuesto.cliente?.toString() || null,
+            fechaValidada,
             presupuesto.agente,
             presupuesto.fecha_entrega,
-            presupuesto.factura_efectivo,
+            presupuesto.factura_efectivo || 'Factura',
             presupuesto.nota,
-            presupuesto.estado,
-            presupuesto.informe_generado,
-            presupuesto.cliente_nuevo_id,
-            presupuesto.estado_imprime_pdf,
-            presupuesto.punto_entrega,
-            presupuesto.descuento
+            presupuesto.estado || 'Pendiente',
+            presupuesto.descuento || 0
         ];
+        
+        console.log(`[DATABASE] [DEBUG-FECHA-DB] Valores a insertar:`, {
+            id_ext: values[0],
+            cliente: values[1],
+            fecha: values[2],
+            agente: values[3],
+            tipo_comprobante: values[5]
+        });
         
         const result = await db.query(query, values);
         const row = result.rows[0];
         
-        console.log(`[DATABASE] ✅ Presupuesto ${row.operation}: ${row.id_ext} (ID: ${row.id})`);
+        console.log(`[DATABASE] [DEBUG-FECHA-DB] Fecha insertada en BD: ${row.fecha}`);
+        console.log(`[DATABASE] ✅ Presupuesto ${row.operation}: ${row.id_presupuesto_ext} (ID: ${row.id})`);
         
         return {
             success: true,
             operation: row.operation,
             id: row.id,
-            id_ext: row.id_ext,
+            id_ext: row.id_presupuesto_ext,
             data: row
         };
         
     } catch (error) {
         console.error(`[DATABASE] ❌ Error UPSERT presupuesto ${presupuesto.id_ext}:`, error.message);
+        console.error(`[DATABASE] [DEBUG-FECHA-DB] Error SQL:`, error.code, error.detail);
         
         return {
             success: false,

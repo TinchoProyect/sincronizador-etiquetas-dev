@@ -15,14 +15,30 @@ const CONFIG = {
     RETRY_DELAY: 1000
 };
 
-// Estado global de la aplicación
+// Estado global de la aplicación - Orden por fecha DESC + paginación – 2024-12-19
 let appState = {
     presupuestos: [],
     categorias: [],
     estadisticas: null,
     filtros: {
         categoria: '',
-        concepto: ''
+        concepto: '',
+        // Nuevos filtros de cliente - Filtro cliente + Typeahead + Fechas – 2024-12-19
+        clienteId: '',
+        clienteName: ''
+    },
+    // Nuevos parámetros de paginación
+    pagination: {
+        currentPage: 1,
+        pageSize: 100,
+        totalPages: 0,
+        totalRecords: 0,
+        hasNext: false,
+        hasPrev: false
+    },
+    sorting: {
+        sortBy: 'fecha',
+        order: 'desc'
     },
     loading: false,
     syncInProgress: false,
@@ -68,7 +84,7 @@ function setupEventListeners() {
     const btnConfiguracion = document.getElementById('btn-configuracion');
     
     if (btnCargarDatos) {
-        btnCargarDatos.addEventListener('click', handleCargarDatos);
+        btnCargarDatos.addEventListener('click', () => handleCargarDatos(1));
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: btn-cargar-datos');
     }
     
@@ -84,16 +100,16 @@ function setupEventListeners() {
     
     // Filtros
     const filtroCategoria = document.getElementById('filtro-categoria');
-    const buscarConcepto = document.getElementById('buscar-concepto');
+    const buscarCliente = document.getElementById('buscar-cliente');
     
     if (filtroCategoria) {
         filtroCategoria.addEventListener('change', handleFiltroCategoria);
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-categoria');
     }
     
-    if (buscarConcepto) {
-        buscarConcepto.addEventListener('input', debounce(handleBuscarConcepto, 300));
-        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-concepto');
+    if (buscarCliente) {
+        buscarCliente.addEventListener('input', debounce(handleBuscarCliente, 300));
+        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-cliente');
     }
     
     console.log('✅ [PRESUPUESTOS-JS] Event listeners configurados');
@@ -213,10 +229,10 @@ function updateStatsDisplay(stats) {
 }
 
 /**
- * Handler: Cargar datos
+ * Handler: Cargar datos con paginación - Orden por fecha DESC + paginación – 2024-12-19
  */
-async function handleCargarDatos() {
-    console.log('🔍 [PRESUPUESTOS-JS] Iniciando carga de datos...');
+async function handleCargarDatos(page = 1, maintainFilters = false) {
+    console.log(`🔍 [PRESUPUESTOS-JS] Iniciando carga de datos - Página: ${page}...`);
     
     if (appState.loading) {
         console.log('⚠️ [PRESUPUESTOS-JS] Ya hay una operación en curso');
@@ -226,19 +242,382 @@ async function handleCargarDatos() {
     setLoading(true);
     
     try {
-        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/`);
+        // Construir parámetros de consulta con paginación y ordenamiento
+        const queryParams = new URLSearchParams({
+            page: page,
+            pageSize: appState.pagination.pageSize,
+            sortBy: appState.sorting.sortBy,
+            order: appState.sorting.order
+        });
+        
+        // Agregar filtros si están activos y se deben mantener
+        if (maintainFilters || page > 1) {
+            if (appState.filtros.categoria) {
+                queryParams.append('categoria', appState.filtros.categoria);
+            }
+            if (appState.filtros.clienteId) {
+                queryParams.append('clienteId', appState.filtros.clienteId);
+            } else if (appState.filtros.clienteName) {
+                queryParams.append('clienteName', appState.filtros.clienteName);
+            } else if (appState.filtros.concepto) {
+                queryParams.append('concepto', appState.filtros.concepto);
+            }
+        }
+        
+        // AUDITORÍA DE FECHAS - Activar logs si está habilitado
+        const auditoriaDeFechas = localStorage.getItem('DEBUG_FECHAS') === 'true' || 
+                                 new URLSearchParams(window.location.search).get('debug_fechas') === 'true';
+        
+        if (auditoriaDeFechas) {
+            queryParams.append('debug_fechas', 'true');
+        }
+        
+        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/?${queryParams.toString()}`);
         const data = await response.json();
         
+        // AUDITORÍA DE FECHAS - PASO 4: Recepción en el frontend
+        if (auditoriaDeFechas && data.success && data.data && data.data.length > 0) {
+            const requestId = data.auditRequestId || 'NO-ID';
+            console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 4: RECEPCIÓN EN FRONTEND (${requestId}) =====`);
+            
+            // Analizar fechas recibidas desde la API (muestra máximo 10 registros)
+            const fechasRecibidas = data.data.filter(item => item.fecha_registro);
+            const muestraRecepcion = fechasRecibidas.slice(0, 10);
+            
+            if (fechasRecibidas.length > 0) {
+                const fechasOrdenadas = fechasRecibidas
+                    .map(item => ({ ...item, fechaObj: new Date(item.fecha_registro) }))
+                    .sort((a, b) => a.fechaObj - b.fechaObj);
+                
+                const fechaMinima = fechasOrdenadas[0];
+                const fechaMaxima = fechasOrdenadas[fechasOrdenadas.length - 1];
+                
+                // Detectar tipos y formatos recibidos en el navegador
+                const tiposRecibidos = new Set();
+                const formatosRecibidos = new Set();
+                const fechasFuturasRecibidas = [];
+                const ahora = new Date();
+                const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
+                
+                fechasRecibidas.forEach(item => {
+                    const fechaValue = item.fecha_registro;
+                    const tipoDetectado = typeof fechaValue;
+                    tiposRecibidos.add(tipoDetectado);
+                    
+                    // Detectar formato específico en recepción
+                    if (fechaValue instanceof Date) {
+                        formatosRecibidos.add('Date object');
+                    } else if (typeof fechaValue === 'string') {
+                        if (fechaValue.includes('T') && fechaValue.includes('Z')) {
+                            formatosRecibidos.add('ISO UTC (YYYY-MM-DDTHH:mm:ss.sssZ)');
+                        } else if (fechaValue.includes('T')) {
+                            formatosRecibidos.add('ISO con hora (YYYY-MM-DDTHH:mm:ss)');
+                        } else if (fechaValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                            formatosRecibidos.add('YYYY-MM-DD (solo fecha)');
+                        } else if (fechaValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                            formatosRecibidos.add('DD/MM/YYYY');
+                        } else {
+                            formatosRecibidos.add('Otro formato string');
+                        }
+                    } else if (typeof fechaValue === 'number') {
+                        formatosRecibidos.add('Timestamp numérico');
+                    }
+                    
+                    // Detectar fechas futuras en recepción
+                    const fechaObj = new Date(fechaValue);
+                    if (fechaObj > unAñoFuturo) {
+                        fechasFuturasRecibidas.push({ id: item.id, fecha: fechaValue, fechaObj });
+                    }
+                });
+                
+                // PASO 4: RESUMEN DE RECEPCIÓN EN FRONTEND
+                console.log(`[AUDITORÍA-FECHAS] 📥 RESUMEN PASO 4 - RECEPCIÓN FRONTEND (${requestId}):`);
+                console.log(`[AUDITORÍA-FECHAS] - Total registros recibidos: ${data.data.length}`);
+                console.log(`[AUDITORÍA-FECHAS] - Fecha mínima recibida: ${fechaMinima.fecha_registro} (ID: ${fechaMinima.id})`);
+                console.log(`[AUDITORÍA-FECHAS] - Fecha máxima recibida: ${fechaMaxima.fecha_registro} (ID: ${fechaMaxima.id})`);
+                console.log(`[AUDITORÍA-FECHAS] - Tipos recibidos en navegador: ${Array.from(tiposRecibidos).join(', ')}`);
+                console.log(`[AUDITORÍA-FECHAS] - Formatos recibidos en navegador: ${Array.from(formatosRecibidos).join(', ')}`);
+                console.log(`[AUDITORÍA-FECHAS] - Fechas futuras recibidas: ${fechasFuturasRecibidas.length}`);
+                
+                // Ejemplos de fechas futuras recibidas (máximo 5)
+                if (fechasFuturasRecibidas.length > 0) {
+                    console.log(`[AUDITORÍA-FECHAS] ⚠️ EJEMPLOS DE FECHAS FUTURAS RECIBIDAS (hasta 5):`);
+                    fechasFuturasRecibidas.slice(0, 5).forEach((item, idx) => {
+                        console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, fecha_futura_recibida="${item.fecha}", año=${item.fechaObj.getFullYear()}`);
+                    });
+                }
+                
+                // Ejemplos de lo que se recibió (máximo 10)
+                console.log(`[AUDITORÍA-FECHAS] 📥 EJEMPLOS PASO 4 - VALORES RECIBIDOS (hasta 10):`);
+                muestraRecepcion.forEach((item, idx) => {
+                    const fechaValue = item.fecha_registro;
+                    console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, valor_recibido="${fechaValue}", tipo=${typeof fechaValue}, formato_detectado=${
+                        fechaValue instanceof Date ? 'Date object' :
+                        typeof fechaValue === 'string' && fechaValue.includes('T') ? 'ISO con hora' :
+                        typeof fechaValue === 'string' && fechaValue.match(/^\d{4}-\d{2}-\d{2}$/) ? 'YYYY-MM-DD' :
+                        'Otro'
+                    }`);
+                });
+                
+                // Guardar datos para análisis de pasos posteriores
+                window.auditFechasData = {
+                    requestId,
+                    paso4: {
+                        totalRecibidos: data.data.length,
+                        fechaMinima: fechaMinima.fecha_registro,
+                        fechaMaxima: fechaMaxima.fecha_registro,
+                        tiposRecibidos: Array.from(tiposRecibidos),
+                        formatosRecibidos: Array.from(formatosRecibidos),
+                        fechasFuturasRecibidas: fechasFuturasRecibidas.length,
+                        ejemplosFechasFuturas: fechasFuturasRecibidas.slice(0, 5),
+                        muestraRecibida: muestraRecepcion.slice(0, 10)
+                    }
+                };
+            }
+        }
+        
         if (data.success) {
-            appState.presupuestos = data.data;
+            appState.presupuestos = data.data || data.items || [];
             appState.categorias = data.categorias || [];
             
-            updatePresupuestosTable(data.data);
-            updateCategoriasFilter(data.categorias);
-            loadEstadisticas(); // Actualizar estadísticas
+            // Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
+            // Diagnóstico estricto - loguear primeros 5 items del frontend
+            if (appState.presupuestos.length > 0) {
+                console.log('[DEBUG-FECHA-FE] Diagnóstico de fechas en primeros 5 registros del frontend:');
+                appState.presupuestos.slice(0, 5).forEach(item => {
+                    console.log('[DEBUG-FECHA-FE]', { 
+                        id: item.id, 
+                        fechaRaw: item.fecha_registro, 
+                        typeof: typeof item.fecha_registro 
+                    });
+                });
+            }
             
-            showMessage(`Datos cargados: ${data.total} registros`, 'success');
-            console.log(`✅ [PRESUPUESTOS-JS] Datos cargados: ${data.total} registros`);
+            // Actualizar estado de paginación - Orden por fecha DESC + paginación – 2024-12-19
+            appState.pagination = {
+                currentPage: data.page || page,
+                pageSize: data.pageSize || appState.pagination.pageSize,
+                totalPages: data.pagination?.pages || Math.ceil((data.total || 0) / (data.pageSize || appState.pagination.pageSize)),
+                totalRecords: data.total || 0,
+                hasNext: data.pagination?.hasNext || false,
+                hasPrev: data.pagination?.hasPrev || false
+            };
+            
+            // AUDITORÍA DE FECHAS - PASO 5: Transformaciones en frontend (si las hay)
+            if (auditoriaDeFechas && appState.presupuestos.length > 0) {
+                const requestId = window.auditFechasData?.requestId || 'NO-ID';
+                console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 5: TRANSFORMACIONES EN FRONTEND (${requestId}) =====`);
+                
+                // En este punto, verificamos si hay transformaciones entre la recepción y el procesamiento
+                // Como estamos usando los datos tal como llegan del backend sin transformaciones adicionales,
+                // documentamos que no hay transformaciones en el frontend
+                console.log(`[AUDITORÍA-FECHAS] 📋 ANÁLISIS PASO 5 - TRANSFORMACIONES FRONTEND (${requestId}):`);
+                console.log(`[AUDITORÍA-FECHAS] - Motivo: Sin transformaciones - datos procesados tal como se reciben`);
+                console.log(`[AUDITORÍA-FECHAS] - Proceso: Los valores de fecha se mantienen en su formato original`);
+                console.log(`[AUDITORÍA-FECHAS] - Parseo: Sin parseo adicional de fechas aplicado`);
+                console.log(`[AUDITORÍA-FECHAS] - Conversión: Sin conversión de zona horaria`);
+                console.log(`[AUDITORÍA-FECHAS] ✅ No se detectaron transformaciones en el procesamiento frontend`);
+                
+                // Actualizar datos de auditoría
+                if (window.auditFechasData) {
+                    window.auditFechasData.paso5 = {
+                        transformacionesDetectadas: false,
+                        motivo: 'Sin transformaciones - datos procesados tal como se reciben',
+                        procesoAplicado: 'Ninguno',
+                        parseoAplicado: 'Ninguno',
+                        conversionAplicada: 'Ninguna'
+                    };
+                }
+            }
+            
+            // AUDITORÍA DE FECHAS - PASO 6: Ordenamiento en frontend (si ordena)
+            if (auditoriaDeFechas && appState.presupuestos.length > 0) {
+                const requestId = window.auditFechasData?.requestId || 'NO-ID';
+                console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 6: ORDENAMIENTO EN FRONTEND (${requestId}) =====`);
+                
+                // Analizar el ordenamiento aplicado
+                const sortBy = appState.sorting.sortBy;
+                const order = appState.sorting.order;
+                
+                console.log(`[AUDITORÍA-FECHAS] 📋 ANÁLISIS PASO 6 - ORDENAMIENTO FRONTEND (${requestId}):`);
+                console.log(`[AUDITORÍA-FECHAS] - Campo de ordenamiento: ${sortBy}`);
+                console.log(`[AUDITORÍA-FECHAS] - Dirección de ordenamiento: ${order}`);
+                console.log(`[AUDITORÍA-FECHAS] - Método de ordenamiento: Realizado en el servidor (ORDER BY en SQL)`);
+                console.log(`[AUDITORÍA-FECHAS] - Comparación en frontend: No se realiza - datos ya ordenados por el servidor`);
+                console.log(`[AUDITORÍA-FECHAS] - Criterio de comparación: ${sortBy === 'fecha' ? 'Fecha como DATE en PostgreSQL' : 'Otro campo'}`);
+                
+                if (sortBy === 'fecha' || sortBy === 'fecha_registro') {
+                    // Verificar que los datos estén efectivamente ordenados
+                    const fechasConDatos = appState.presupuestos.filter(item => item.fecha_registro);
+                    if (fechasConDatos.length > 1) {
+                        const primeraFecha = new Date(fechasConDatos[0].fecha_registro);
+                        const ultimaFecha = new Date(fechasConDatos[fechasConDatos.length - 1].fecha_registro);
+                        
+                        const ordenCorrecto = order === 'desc' ? 
+                            primeraFecha >= ultimaFecha : 
+                            primeraFecha <= ultimaFecha;
+                        
+                        console.log(`[AUDITORÍA-FECHAS] - Verificación de orden: ${ordenCorrecto ? '✅ Correcto' : '❌ Incorrecto'}`);
+                        console.log(`[AUDITORÍA-FECHAS] - Primera fecha mostrada: ${fechasConDatos[0].fecha_registro} (ID: ${fechasConDatos[0].id})`);
+                        console.log(`[AUDITORÍA-FECHAS] - Última fecha mostrada: ${fechasConDatos[fechasConDatos.length - 1].fecha_registro} (ID: ${fechasConDatos[fechasConDatos.length - 1].id})`);
+                        
+                        // Actualizar datos de auditoría
+                        if (window.auditFechasData) {
+                            window.auditFechasData.paso6 = {
+                                campoOrdenamiento: sortBy,
+                                direccionOrdenamiento: order,
+                                metodoOrdenamiento: 'Servidor (ORDER BY SQL)',
+                                ordenCorrecto: ordenCorrecto,
+                                primeraFecha: fechasConDatos[0].fecha_registro,
+                                ultimaFecha: fechasConDatos[fechasConDatos.length - 1].fecha_registro
+                            };
+                        }
+                    }
+                } else {
+                    console.log(`[AUDITORÍA-FECHAS] - Ordenamiento por campo no-fecha: ${sortBy}`);
+                    console.log(`[AUDITORÍA-FECHAS] ✅ Ordenamiento no afecta las fechas directamente`);
+                }
+            }
+            
+            // AUDITORÍA DE FECHAS - PASO 7: Previo a renderizar en la grilla
+            if (auditoriaDeFechas && appState.presupuestos.length > 0) {
+                const requestId = window.auditFechasData?.requestId || 'NO-ID';
+                console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 7: PREVIO A RENDERIZAR EN LA GRILLA (${requestId}) =====`);
+                
+                // Analizar fechas que se van a mostrar (muestra máximo 10 registros)
+                const fechasParaMostrar = appState.presupuestos.filter(item => item.fecha_registro);
+                const muestraRender = fechasParaMostrar.slice(0, 10);
+                
+                if (fechasParaMostrar.length > 0) {
+                    const fechasOrdenadas = fechasParaMostrar
+                        .map(item => ({ ...item, fechaObj: new Date(item.fecha_registro) }))
+                        .sort((a, b) => a.fechaObj - b.fechaObj);
+                    
+                    const fechaMinima = fechasOrdenadas[0];
+                    const fechaMaxima = fechasOrdenadas[fechasOrdenadas.length - 1];
+                    
+                    // Detectar tipos y formatos previo al render
+                    const tiposParaMostrar = new Set();
+                    const formatosParaMostrar = new Set();
+                    const fechasFuturasParaMostrar = [];
+                    const ahora = new Date();
+                    const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
+                    
+                    fechasParaMostrar.forEach(item => {
+                        const fechaValue = item.fecha_registro;
+                        const tipoDetectado = typeof fechaValue;
+                        tiposParaMostrar.add(tipoDetectado);
+                        
+                        // Detectar formato específico previo al render
+                        if (fechaValue instanceof Date) {
+                            formatosParaMostrar.add('Date object');
+                        } else if (typeof fechaValue === 'string') {
+                            if (fechaValue.includes('T') && fechaValue.includes('Z')) {
+                                formatosParaMostrar.add('ISO UTC (YYYY-MM-DDTHH:mm:ss.sssZ)');
+                            } else if (fechaValue.includes('T')) {
+                                formatosParaMostrar.add('ISO con hora (YYYY-MM-DDTHH:mm:ss)');
+                            } else if (fechaValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                formatosParaMostrar.add('YYYY-MM-DD (solo fecha)');
+                            } else if (fechaValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                                formatosParaMostrar.add('DD/MM/YYYY');
+                            } else {
+                                formatosParaMostrar.add('Otro formato string');
+                            }
+                        } else if (typeof fechaValue === 'number') {
+                            formatosParaMostrar.add('Timestamp numérico');
+                        }
+                        
+                        // Detectar fechas futuras previo al render
+                        const fechaObj = new Date(fechaValue);
+                        if (fechaObj > unAñoFuturo) {
+                            fechasFuturasParaMostrar.push({ id: item.id, fecha: fechaValue, fechaObj });
+                        }
+                    });
+                    
+                    // PASO 7: RESUMEN PREVIO AL RENDER
+                    console.log(`[AUDITORÍA-FECHAS] 🎨 RESUMEN PASO 7 - PREVIO AL RENDER (${requestId}):`);
+                    console.log(`[AUDITORÍA-FECHAS] - Total registros a mostrar: ${appState.presupuestos.length}`);
+                    console.log(`[AUDITORÍA-FECHAS] - Fecha mínima a mostrar: ${fechaMinima.fecha_registro} (ID: ${fechaMinima.id})`);
+                    console.log(`[AUDITORÍA-FECHAS] - Fecha máxima a mostrar: ${fechaMaxima.fecha_registro} (ID: ${fechaMaxima.id})`);
+                    console.log(`[AUDITORÍA-FECHAS] - Tipos previo al render: ${Array.from(tiposParaMostrar).join(', ')}`);
+                    console.log(`[AUDITORÍA-FECHAS] - Formatos previo al render: ${Array.from(formatosParaMostrar).join(', ')}`);
+                    console.log(`[AUDITORÍA-FECHAS] - Fechas futuras previo al render: ${fechasFuturasParaMostrar.length}`);
+                    
+                    // Ejemplos de fechas futuras previo al render (máximo 5)
+                    if (fechasFuturasParaMostrar.length > 0) {
+                        console.log(`[AUDITORÍA-FECHAS] ⚠️ EJEMPLOS DE FECHAS FUTURAS PREVIO AL RENDER (hasta 5):`);
+                        fechasFuturasParaMostrar.slice(0, 5).forEach((item, idx) => {
+                            console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, fecha_futura_render="${item.fecha}", año=${item.fechaObj.getFullYear()}`);
+                        });
+                    }
+                    
+                    // Ejemplos de lo que se va a mostrar con formateo (máximo 10)
+                    console.log(`[AUDITORÍA-FECHAS] 🎨 EJEMPLOS PASO 7 - VALORES FINALES A MOSTRAR (hasta 10):`);
+                    muestraRender.forEach((item, idx) => {
+                        const fechaOriginal = item.fecha_registro;
+                        const fechaFormateada = formatDateDDMMYYYY(fechaOriginal);
+                        console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, valor_original="${fechaOriginal}", valor_final_mostrado="${fechaFormateada}", transformacion=${
+                            fechaOriginal === fechaFormateada ? 'Sin cambios' : 'Formateado para UI'
+                        }`);
+                    });
+                    
+                    // Comparar con pasos anteriores para detectar transformaciones
+                    const datosRecepcion = window.auditFechasData?.paso4;
+                    if (datosRecepcion) {
+                        const transformacionDetectada = (
+                            tiposParaMostrar.size !== datosRecepcion.tiposRecibidos.length ||
+                            formatosParaMostrar.size !== datosRecepcion.formatosRecibidos.length ||
+                            fechasFuturasParaMostrar.length !== datosRecepcion.fechasFuturasRecibidas
+                        );
+                        
+                        if (transformacionDetectada) {
+                            console.log(`[AUDITORÍA-FECHAS] ⚠️ TRANSFORMACIÓN DETECTADA ENTRE PASO 4 Y PASO 7:`);
+                            console.log(`[AUDITORÍA-FECHAS] - Cambio en tipos: ${datosRecepcion.tiposRecibidos.join(', ')} → ${Array.from(tiposParaMostrar).join(', ')}`);
+                            console.log(`[AUDITORÍA-FECHAS] - Cambio en formatos: ${datosRecepcion.formatosRecibidos.join(', ')} → ${Array.from(formatosParaMostrar).join(', ')}`);
+                            console.log(`[AUDITORÍA-FECHAS] - Cambio en fechas futuras: ${datosRecepcion.fechasFuturasRecibidas} → ${fechasFuturasParaMostrar.length}`);
+                        } else {
+                            console.log(`[AUDITORÍA-FECHAS] ✅ No se detectaron transformaciones entre Paso 4 y Paso 7`);
+                        }
+                    }
+                    
+                    // Actualizar datos de auditoría para el paso 7
+                    if (window.auditFechasData) {
+                        window.auditFechasData.paso7 = {
+                            totalRegistrosMostrar: appState.presupuestos.length,
+                            fechaMinima: fechaMinima.fecha_registro,
+                            fechaMaxima: fechaMaxima.fecha_registro,
+                            tiposPrevioRender: Array.from(tiposParaMostrar),
+                            formatosPrevioRender: Array.from(formatosParaMostrar),
+                            fechasFuturasPrevioRender: fechasFuturasParaMostrar.length,
+                            ejemplosFechasFuturas: fechasFuturasParaMostrar.slice(0, 5),
+                            muestraFinal: muestraRender.slice(0, 10)
+                        };
+                    }
+                    
+                    // RESUMEN FINAL DE TODA LA AUDITORÍA
+                    console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== RESUMEN FINAL DE AUDITORÍA (${requestId}) =====`);
+                    console.log(`[AUDITORÍA-FECHAS] 📊 RESUMEN COMPLETO DE TRAZABILIDAD:`);
+                    console.log(`[AUDITORÍA-FECHAS] - Request ID: ${requestId}`);
+                    console.log(`[AUDITORÍA-FECHAS] - Pasos completados: 7 (BD → Transformaciones Backend → Serialización → Recepción → Transformaciones Frontend → Ordenamiento → Render)`);
+                    console.log(`[AUDITORÍA-FECHAS] - Registros procesados: ${appState.presupuestos.length}`);
+                    console.log(`[AUDITORÍA-FECHAS] - Fechas futuras detectadas: ${fechasFuturasParaMostrar.length > 0 ? 'SÍ (' + fechasFuturasParaMostrar.length + ')' : 'NO'}`);
+                    console.log(`[AUDITORÍA-FECHAS] - Transformaciones detectadas: ${transformacionDetectada ? 'SÍ' : 'NO'}`);
+                    console.log(`[AUDITORÍA-FECHAS] - Formato final mostrado: DD/MM/YYYY (formatDateDDMMYYYY)`);
+                    console.log(`[AUDITORÍA-FECHAS] - Ordenamiento efectivo: ${appState.sorting.sortBy} ${appState.sorting.order.toUpperCase()}`);
+                    console.log(`[AUDITORÍA-FECHAS] ✅ Auditoría completa de extremo a extremo finalizada`);
+                }
+            }
+            
+            updatePresupuestosTable(appState.presupuestos);
+            updateCategoriasFilter(appState.categorias);
+            updatePaginationControls(); // Nueva función para controles de paginación
+            
+            if (page === 1) {
+                loadEstadisticas(); // Solo actualizar estadísticas en la primera página
+            }
+            
+            showMessage(`Datos cargados: ${appState.presupuestos.length} de ${appState.pagination.totalRecords} registros (Página ${appState.pagination.currentPage} de ${appState.pagination.totalPages})`, 'success');
+            console.log(`✅ [PRESUPUESTOS-JS] Datos cargados: ${appState.presupuestos.length} registros - Página ${appState.pagination.currentPage}/${appState.pagination.totalPages}`);
         } else {
             throw new Error(data.message || 'Error al cargar datos');
         }
@@ -523,15 +902,16 @@ async function completeAuth() {
 }
 
 /**
- * Ejecutar sincronización
+ * Ejecutar sincronización con corrección de fechas
  */
 async function executeSyncronization() {
-    console.log('🔍 [PRESUPUESTOS-JS] Ejecutando sincronización...');
+    console.log('🔍 [PRESUPUESTOS-JS] Ejecutando corrección de fechas (nuevo flujo)...');
     
     try {
-        setSyncLoading(true, 'Sincronizando con Google Sheets...');
+        setSyncLoading(true, 'Corrigiendo fechas y sincronizando...');
         
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/ejecutar`, {
+        // USAR EL NUEVO ENDPOINT DE CORRECCIÓN DE FECHAS
+        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/corregir-fechas`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -541,19 +921,50 @@ async function executeSyncronization() {
         const data = await response.json();
         
         if (data.success) {
-            const registrosProcesados = data.registros_procesados || data.data?.registros_procesados || 'N/A';
-            showMessage(`Sincronización exitosa: ${registrosProcesados} registros`, 'success');
-            console.log('✅ [PRESUPUESTOS-JS] Sincronización completada:', data);
+            const fechasCorregidas = data.resumen?.fechasCorregidas || data.fechasCorregidas || 0;
+            const fechasFuturas = data.resumen?.fechasFuturas || data.fechasFuturas || 0;
+            const duracion = data.duracionSegundos || 'N/A';
+            
+            console.log('✅ [PRESUPUESTOS-JS] Corrección de fechas completada:', data);
+            console.log(`📊 [PRESUPUESTOS-JS] Fechas corregidas: ${fechasCorregidas}, Fechas futuras restantes: ${fechasFuturas}`);
+            
+            // Mostrar mensaje detallado
+            showMessage(`✅ Corrección completada: ${fechasCorregidas} fechas corregidas, ${fechasFuturas} fechas futuras (${duracion}s)`, 'success');
             
             // Recargar datos y estadísticas
             await loadEstadisticas();
-            await handleCargarDatos();
+            await handleCargarDatos(1);
+            
+            // Log de confirmación del flujo nuevo
+            console.log('🔄 [PRESUPUESTOS-JS] FLUJO NUEVO EJECUTADO - Corrección de fechas aplicada');
+            
         } else {
-            throw new Error(data.message || 'Error en la sincronización');
+            // Manejar errores específicos del backend
+            console.error('❌ [PRESUPUESTOS-JS] Error del servidor:', data);
+            
+            if (data.code === 'CONFIG_MISSING') {
+                showMessage(`⚠️ Configuración faltante: ${data.message}`, 'warning');
+                // Aquí se podría mostrar un modal para configurar
+            } else if (data.code === 'INVALID_SHEET_URL') {
+                showMessage(`❌ URL inválida: ${data.message}`, 'error');
+            } else if (data.code === 'CORRECTION_FAILED') {
+                showMessage(`❌ Corrección falló: ${data.message}`, 'error');
+                if (data.errores && data.errores.length > 0) {
+                    console.error('Errores detallados:', data.errores);
+                }
+            } else {
+                showMessage(`❌ Error: ${data.message || 'Error desconocido'}`, 'error');
+            }
         }
     } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error en sincronización:', error);
-        showMessage('Error durante la sincronización', 'error');
+        console.error('❌ [PRESUPUESTOS-JS] Error en corrección de fechas:', error);
+        
+        // Manejar errores de red/conexión
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            showMessage('❌ Error de conexión con el servidor', 'error');
+        } else {
+            showMessage(`❌ Error durante la corrección de fechas: ${error.message}`, 'error');
+        }
     } finally {
         setSyncLoading(false);
     }
@@ -600,41 +1011,146 @@ function handleFiltroCategoria(event) {
 }
 
 /**
- * Handler: Buscar concepto
+ * Handler: Buscar cliente con typeahead - Filtro cliente + Typeahead + Fechas – 2024-12-19
+ */
+function handleBuscarCliente(event) {
+    const query = event.target.value;
+    console.log(`🔍 [PRESUPUESTOS-JS] Buscando cliente: ${query}`);
+    
+    // Limpiar filtros de cliente anteriores
+    appState.filtros.clienteId = '';
+    appState.filtros.clienteName = '';
+    appState.filtros.concepto = '';
+    
+    if (query.trim() === '') {
+        hideSugerenciasClientes();
+        applyFilters();
+        return;
+    }
+    
+    // Si el texto cumple /^\d{1,3}$/ → filtrar por cliente_id exacto
+    if (/^\d{1,3}$/.test(query.trim())) {
+        appState.filtros.clienteId = query.trim();
+        hideSugerenciasClientes();
+        applyFilters();
+    } else {
+        // Si es texto → filtrar por nombre y mostrar sugerencias
+        appState.filtros.clienteName = query.trim();
+        showSugerenciasClientes(query.trim());
+        applyFilters();
+    }
+}
+
+/**
+ * Mostrar sugerencias de clientes
+ */
+async function showSugerenciasClientes(query) {
+    if (query.length < 2) {
+        hideSugerenciasClientes();
+        return;
+    }
+    
+    try {
+        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/clientes/sugerencias?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        if (data.success && data.data.length > 0) {
+            renderSugerenciasClientes(data.data);
+        } else {
+            hideSugerenciasClientes();
+        }
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS-JS] Error al obtener sugerencias:', error);
+        hideSugerenciasClientes();
+    }
+}
+
+/**
+ * Renderizar sugerencias de clientes
+ */
+function renderSugerenciasClientes(sugerencias) {
+    let container = document.getElementById('sugerencias-clientes');
+    
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'sugerencias-clientes';
+        container.className = 'sugerencias-container';
+        
+        const input = document.getElementById('buscar-cliente');
+        if (input && input.parentNode) {
+            input.parentNode.appendChild(container);
+        }
+    }
+    
+    container.innerHTML = sugerencias.map(cliente => `
+        <div class="sugerencia-item" data-cliente-id="${cliente.id}" data-cliente-text="${escapeHtml(cliente.text)}">
+            <span class="cliente-id">${cliente.id.toString().padStart(3, '0')}</span>
+            <span class="cliente-nombre">${escapeHtml(cliente.nombre || '')} ${escapeHtml(cliente.apellido || '')}</span>
+            <span class="cliente-presupuestos">${cliente.total_presupuestos} presupuestos</span>
+        </div>
+    `).join('');
+    
+    container.style.display = 'block';
+    
+    // Agregar event listeners
+    container.querySelectorAll('.sugerencia-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const clienteId = item.dataset.clienteId;
+            const clienteText = item.dataset.clienteText;
+            
+            // Actualizar input y filtros
+            const input = document.getElementById('buscar-cliente');
+            if (input) {
+                input.value = clienteText;
+            }
+            
+            appState.filtros.clienteId = clienteId;
+            appState.filtros.clienteName = '';
+            appState.filtros.concepto = '';
+            
+            hideSugerenciasClientes();
+            applyFilters();
+        });
+    });
+}
+
+/**
+ * Ocultar sugerencias de clientes
+ */
+function hideSugerenciasClientes() {
+    const container = document.getElementById('sugerencias-clientes');
+    if (container) {
+        container.style.display = 'none';
+    }
+}
+
+/**
+ * Handler: Buscar concepto (legacy)
  */
 function handleBuscarConcepto(event) {
     const concepto = event.target.value;
     console.log(`🔍 [PRESUPUESTOS-JS] Buscando concepto: ${concepto}`);
     
+    // Limpiar filtros de cliente
+    appState.filtros.clienteId = '';
+    appState.filtros.clienteName = '';
     appState.filtros.concepto = concepto;
     applyFilters();
 }
 
 /**
- * Aplicar filtros
+ * Aplicar filtros con paginación - Orden por fecha DESC + paginación – 2024-12-19
  */
 function applyFilters() {
     console.log('🔍 [PRESUPUESTOS-JS] Aplicando filtros:', appState.filtros);
     
-    let filteredData = [...appState.presupuestos];
+    // Resetear a la primera página cuando se aplican filtros
+    appState.pagination.currentPage = 1;
     
-    // Filtro por categoría
-    if (appState.filtros.categoria) {
-        filteredData = filteredData.filter(item => 
-            item.categoria && item.categoria.toLowerCase() === appState.filtros.categoria.toLowerCase()
-        );
-    }
+    // Recargar datos con filtros desde el servidor
+    handleCargarDatos(1, true);
     
-    // Filtro por concepto
-    if (appState.filtros.concepto) {
-        const searchTerm = appState.filtros.concepto.toLowerCase();
-        filteredData = filteredData.filter(item =>
-            item.concepto && item.concepto.toLowerCase().includes(searchTerm)
-        );
-    }
-    
-    updatePresupuestosTable(filteredData);
-    console.log(`✅ [PRESUPUESTOS-JS] Filtros aplicados: ${filteredData.length} registros mostrados`);
+    console.log(`✅ [PRESUPUESTOS-JS] Filtros aplicados - recargando desde servidor`);
 }
 
 /**
@@ -652,7 +1168,7 @@ function updatePresupuestosTable(data) {
     if (data.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="no-data">
+                <td colspan="4" class="no-data">
                     No se encontraron registros con los filtros aplicados
                 </td>
             </tr>
@@ -661,16 +1177,24 @@ function updatePresupuestosTable(data) {
     }
     
     tbody.innerHTML = data.map(item => `
-        <tr class="slide-up">
-            <td>${escapeHtml(item.categoria || 'Sin categoría')}</td>
-            <td>${escapeHtml(item.concepto || 'Sin concepto')}</td>
-            <td class="text-right">$${formatNumber(item.monto || 0)}</td>
-            <td>${formatDate(item.fecha_registro)}</td>
-            <td>${formatDate(item.fecha_sincronizacion)}</td>
+        <tr class="slide-up" data-presupuesto-id="${item.id}">
+            <td class="text-center">
+                <button class="btn-expand" onclick="toggleDetalles(${item.id})" title="Ver detalles de artículos">
+                    <span class="expand-icon">+</span>
+                </button>
+            </td>
+            <td>${escapeHtml(item.categoria || 'Sin tipo')}</td>
+            <td>${escapeHtml(item.concepto || 'Sin cliente')}</td>
+            <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
+        </tr>
+        <tr class="detalles-row" id="detalles-${item.id}" style="display: none;">
+            <td colspan="4" class="detalles-container">
+                <div class="loading-detalles">Cargando detalles...</div>
+            </td>
         </tr>
     `).join('');
     
-    console.log('✅ [PRESUPUESTOS-JS] Tabla actualizada');
+    console.log('✅ [PRESUPUESTOS-JS] Tabla actualizada con botones de expansión');
 }
 
 /**
@@ -820,7 +1344,47 @@ function formatNumber(num) {
     }).format(num);
 }
 
-// Formatear fechas
+// Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
+// Función para parsear fecha ISO sin UTC
+function parseISO(iso) {
+    if (!iso || iso === '1970-01-01') return null;
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+// Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
+// Función para formatear fecha sin UTC y sin hora
+function fmt(iso) {
+    if (!iso || iso === '1970-01-01') return '—';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+}
+
+// Formatear fechas en formato dd/mm/yyyy (sin hora) - Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
+function formatDateDDMMYYYY(dateString) {
+    if (!dateString) return 'N/A';
+    
+    // Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
+    // Usar función fmt segura para fechas YYYY-MM-DD
+    if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        return fmt(dateString);
+    }
+    
+    // Fallback para otros formatos (mantener compatibilidad)
+    try {
+        const date = new Date(dateString);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        
+        return `${day}/${month}/${year}`;
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS-JS] Error al formatear fecha:', error);
+        return 'Fecha inválida';
+    }
+}
+
+// Formatear fechas (función original mantenida para compatibilidad)
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
     
@@ -839,6 +1403,172 @@ function formatDate(dateString) {
     }
 }
 
+// Formatear fechas en formato dd/mm/yyyy hh:mm según requerimientos
+function formatDateDDMMYYYYWithTime(dateString) {
+    if (!dateString) return 'N/A';
+    
+    // Para fechas YYYY-MM-DD (solo fecha), agregar hora por defecto
+    if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [y, m, d] = dateString.split('-');
+        return `${d}/${m}/${y} 00:00`;
+    }
+    
+    // Para fechas con hora
+    try {
+        const date = new Date(dateString);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS-JS] Error al formatear fecha con hora:', error);
+        return 'Fecha inválida';
+    }
+}
+
+/**
+ * Toggle detalles de un presupuesto
+ */
+async function toggleDetalles(presupuestoId) {
+    console.log(`🔍 [PRESUPUESTOS-JS] Expandiendo detalles para presupuesto ID: ${presupuestoId}`);
+    
+    const detallesRow = document.getElementById(`detalles-${presupuestoId}`);
+    const expandButton = document.querySelector(`[onclick="toggleDetalles(${presupuestoId})"]`);
+    const expandIcon = expandButton?.querySelector('.expand-icon');
+    
+    if (!detallesRow) {
+        console.error('❌ [PRESUPUESTOS-JS] No se encontró la fila de detalles');
+        return;
+    }
+    
+    // Si ya está visible, ocultarlo
+    if (detallesRow.style.display !== 'none') {
+        detallesRow.style.display = 'none';
+        if (expandIcon) expandIcon.textContent = '+';
+        console.log('✅ [PRESUPUESTOS-JS] Detalles ocultados');
+        return;
+    }
+    
+    // Mostrar la fila y cargar detalles
+    detallesRow.style.display = 'table-row';
+    if (expandIcon) expandIcon.textContent = '-';
+    
+    try {
+        // Verificar si ya se cargaron los detalles
+        const container = detallesRow.querySelector('.detalles-container');
+        if (container.dataset.loaded === 'true') {
+            console.log('✅ [PRESUPUESTOS-JS] Detalles ya cargados, mostrando');
+            return;
+        }
+        
+        // Mostrar loading
+        container.innerHTML = '<div class="loading-detalles">🔄 Cargando detalles de artículos...</div>';
+        
+        // Hacer petición AJAX
+        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/${presupuestoId}/detalles`);
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log(`✅ [PRESUPUESTOS-JS] Detalles cargados: ${data.data.total_articulos} artículos`);
+            
+            // Renderizar detalles
+            container.innerHTML = renderDetallesArticulos(data.data);
+            container.dataset.loaded = 'true';
+        } else {
+            throw new Error(data.message || 'Error al cargar detalles');
+        }
+        
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS-JS] Error al cargar detalles:', error);
+        
+        const container = detallesRow.querySelector('.detalles-container');
+        container.innerHTML = `
+            <div class="error-detalles">
+                ❌ Error al cargar detalles: ${error.message}
+                <button onclick="toggleDetalles(${presupuestoId})" class="btn-retry">Reintentar</button>
+            </div>
+        `;
+        
+        showMessage('Error al cargar detalles del presupuesto', 'error');
+    }
+}
+
+/**
+ * Renderizar detalles de artículos
+ */
+function renderDetallesArticulos(data) {
+    console.log('🔍 [PRESUPUESTOS-JS] Renderizando detalles de artículos...');
+    
+    const { presupuesto, detalles, totales, total_articulos } = data;
+    
+    if (!detalles || detalles.length === 0) {
+        return `
+            <div class="detalles-content">
+                <div class="detalles-header">
+                    <h4>📋 Detalles del Presupuesto ${presupuesto.id_presupuesto}</h4>
+                    <span class="tipo-comprobante">${presupuesto.tipo_comprobante}</span>
+                </div>
+                <div class="no-articulos">
+                    <p>📦 No se encontraron artículos para este presupuesto</p>
+                </div>
+            </div>
+        `;
+    }
+    
+    return `
+        <div class="detalles-content">
+            <div class="detalles-header">
+                <h4>📋 Detalles del Presupuesto ${presupuesto.id_presupuesto}</h4>
+                <div class="detalles-info">
+                    <span class="tipo-comprobante">${presupuesto.tipo_comprobante}</span>
+                    <span class="total-articulos">${total_articulos} artículo${total_articulos !== 1 ? 's' : ''}</span>
+                </div>
+            </div>
+            
+            <div class="detalles-table-container">
+                <table class="detalles-table">
+                    <thead>
+                        <tr>
+                            <th>Artículo</th>
+                            <th>Cantidad</th>
+                            <th>Neto</th>
+                            <th>IVA</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${detalles.map(item => `
+                            <tr>
+                                <td class="articulo-cell">
+                                    <span class="articulo-descripcion">${escapeHtml(item.descripcion_articulo || item.articulo || 'N/A')}</span>
+                                    ${item.articulo && item.descripcion_articulo !== item.articulo ? 
+                                        `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
+                                </td>
+                                <td class="text-center">${formatNumber(item.cantidad || 0)}</td>
+                                <td class="text-right">$${formatNumber(item.neto || 0)}</td>
+                                <td class="text-right">$${formatNumber(item.iva || 0)}</td>
+                                <td class="text-right total-cell">$${formatNumber(item.total || 0)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                    <tfoot>
+                        <tr class="totales-row">
+                            <td><strong>TOTALES</strong></td>
+                            <td class="text-center"><strong>${formatNumber(totales.cantidad_total)}</strong></td>
+                            <td class="text-right"><strong>$${formatNumber(totales.neto_total)}</strong></td>
+                            <td class="text-right"><strong>$${formatNumber(totales.iva_total)}</strong></td>
+                            <td class="text-right total-cell"><strong>$${formatNumber(totales.total_general)}</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
 // Escapar HTML
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -846,4 +1576,126 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente');
+/**
+ * Actualizar controles de paginación - Orden por fecha DESC + paginación – 2024-12-19
+ */
+function updatePaginationControls() {
+    console.log('🔍 [PRESUPUESTOS-JS] Actualizando controles de paginación...');
+    
+    // Buscar o crear contenedor de paginación
+    let paginationContainer = document.getElementById('pagination-controls');
+    if (!paginationContainer) {
+        // Crear contenedor si no existe
+        paginationContainer = document.createElement('div');
+        paginationContainer.id = 'pagination-controls';
+        paginationContainer.className = 'pagination-controls';
+        
+        // Insertar después de la tabla
+        const tableContainer = document.querySelector('.table-container');
+        if (tableContainer) {
+            tableContainer.parentNode.insertBefore(paginationContainer, tableContainer.nextSibling);
+        }
+    }
+    
+    const { currentPage, totalPages, totalRecords, pageSize, hasNext, hasPrev } = appState.pagination;
+    
+    if (totalRecords === 0) {
+        paginationContainer.innerHTML = '';
+        return;
+    }
+    
+    paginationContainer.innerHTML = `
+        <div class="pagination-info">
+            <span class="records-info">
+                Mostrando ${((currentPage - 1) * pageSize) + 1} - ${Math.min(currentPage * pageSize, totalRecords)} de ${totalRecords} registros
+            </span>
+            <div class="page-size-selector">
+                <label for="page-size-select">Registros por página:</label>
+                <select id="page-size-select" onchange="changePageSize(this.value)">
+                    <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+                    <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+                    <option value="200" ${pageSize === 200 ? 'selected' : ''}>200</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="pagination-buttons">
+            <button class="btn-pagination" onclick="goToPage(1)" ${!hasPrev ? 'disabled' : ''} title="Primera página">
+                ⏮️ Primera
+            </button>
+            <button class="btn-pagination" onclick="goToPage(${currentPage - 1})" ${!hasPrev ? 'disabled' : ''} title="Página anterior">
+                ⏪ Anterior
+            </button>
+            
+            <div class="page-info">
+                <span>Página ${currentPage} de ${totalPages}</span>
+                <input type="number" id="page-input" min="1" max="${totalPages}" value="${currentPage}" 
+                       onchange="goToPage(this.value)" onkeypress="handlePageInputKeypress(event)" 
+                       title="Ir a página específica" class="page-input">
+            </div>
+            
+            <button class="btn-pagination" onclick="goToPage(${currentPage + 1})" ${!hasNext ? 'disabled' : ''} title="Página siguiente">
+                Siguiente ⏩
+            </button>
+            <button class="btn-pagination" onclick="goToPage(${totalPages})" ${!hasNext ? 'disabled' : ''} title="Última página">
+                Última ⏭️
+            </button>
+        </div>
+    `;
+    
+    console.log(`✅ [PRESUPUESTOS-JS] Controles de paginación actualizados - Página ${currentPage}/${totalPages}`);
+}
+
+/**
+ * Ir a página específica - Orden por fecha DESC + paginación – 2024-12-19
+ */
+function goToPage(page) {
+    const pageNum = parseInt(page);
+    
+    if (isNaN(pageNum) || pageNum < 1 || pageNum > appState.pagination.totalPages) {
+        console.log(`⚠️ [PRESUPUESTOS-JS] Página inválida: ${page}`);
+        showMessage('Número de página inválido', 'warning');
+        return;
+    }
+    
+    if (pageNum === appState.pagination.currentPage) {
+        console.log(`⚠️ [PRESUPUESTOS-JS] Ya estás en la página ${pageNum}`);
+        return;
+    }
+    
+    console.log(`🔍 [PRESUPUESTOS-JS] Navegando a página: ${pageNum}`);
+    handleCargarDatos(pageNum, true);
+}
+
+/**
+ * Cambiar tamaño de página - Orden por fecha DESC + paginación – 2024-12-19
+ */
+function changePageSize(newSize) {
+    const size = parseInt(newSize);
+    
+    if (isNaN(size) || size < 1) {
+        console.log(`⚠️ [PRESUPUESTOS-JS] Tamaño de página inválido: ${newSize}`);
+        return;
+    }
+    
+    console.log(`🔍 [PRESUPUESTOS-JS] Cambiando tamaño de página a: ${size}`);
+    
+    // Actualizar estado
+    appState.pagination.pageSize = size;
+    appState.pagination.currentPage = 1; // Resetear a primera página
+    
+    // Recargar datos
+    handleCargarDatos(1, true);
+}
+
+/**
+ * Manejar tecla Enter en input de página - Orden por fecha DESC + paginación – 2024-12-19
+ */
+function handlePageInputKeypress(event) {
+    if (event.key === 'Enter') {
+        const page = event.target.value;
+        goToPage(page);
+    }
+}
+
+console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación');

@@ -154,59 +154,96 @@ function transformDetalles(rawDetalles) {
 }
 
 /**
- * Parsear fecha desde diferentes formatos
+ * Parsear fecha con corrección definitiva DD/MM/YYYY
  * @param {*} dateValue - Valor de fecha desde Google Sheets
- * @returns {Date|null} Fecha parseada o null
+ * @returns {string|null} Fecha en formato YYYY-MM-DD para PostgreSQL DATE o null
  */
 function parseDate(dateValue) {
     if (!dateValue) return null;
     
     try {
-        // Si ya es una fecha
-        if (dateValue instanceof Date) {
-            return dateValue;
+        // OPCIÓN A (RECOMENDADA): Serial de Google Sheets
+        if (typeof dateValue === 'number') {
+            // Google Sheets usa el mismo sistema que Excel: 1 = 1900-01-01
+            // Pero Google Sheets corrige el bug del año bisiesto de Excel
+            const SHEETS_EPOCH = new Date(1899, 11, 30); // 30 de diciembre de 1899
+            const parsed = new Date(SHEETS_EPOCH.getTime() + dateValue * 24 * 60 * 60 * 1000);
+            
+            // Validar rango razonable
+            if (parsed.getFullYear() < 1900 || parsed.getFullYear() > 2030) {
+                return null;
+            }
+            
+            // Formatear como DATE para PostgreSQL
+            const year = parsed.getFullYear();
+            const month = String(parsed.getMonth() + 1).padStart(2, '0');
+            const day = String(parsed.getDate()).padStart(2, '0');
+            
+            return `${year}-${month}-${day}`;
         }
         
-        // Si es un string
+        // OPCIÓN B: String DD/MM/YYYY (patrón fijo, sin new Date())
         if (typeof dateValue === 'string') {
             const trimmed = dateValue.trim();
             
-            // Formato ISO
-            if (trimmed.match(/^\d{4}-\d{2}-\d{2}/)) {
-                return new Date(trimmed);
+            // Tratar 1970-01-01 como sin fecha
+            if (trimmed === '1970-01-01' || trimmed === '01/01/1970') {
+                return null;
             }
             
-            // Formato DD/MM/YYYY
-            if (trimmed.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
-                const [day, month, year] = trimmed.split('/');
-                return new Date(year, month - 1, day);
-            }
-            
-            // Formato MM/DD/YYYY
-            if (trimmed.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
-                const parsed = new Date(trimmed);
-                if (!isNaN(parsed.getTime())) {
-                    return parsed;
+            // Formato DD/MM/YYYY estricto
+            const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if (ddmmyyyyMatch) {
+                const day = parseInt(ddmmyyyyMatch[1], 10);
+                const month = parseInt(ddmmyyyyMatch[2], 10);
+                const year = parseInt(ddmmyyyyMatch[3], 10);
+                
+                // Validar rangos
+                if (year < 1900 || year > 2030 || month < 1 || month > 12 || day < 1 || day > 31) {
+                    return null;
                 }
+                
+                // Validar fecha válida (no 31/02, etc.)
+                const testDate = new Date(year, month - 1, day);
+                if (testDate.getFullYear() !== year || testDate.getMonth() !== month - 1 || testDate.getDate() !== day) {
+                    return null;
+                }
+                
+                // Formatear como DATE para PostgreSQL
+                const monthStr = String(month).padStart(2, '0');
+                const dayStr = String(day).padStart(2, '0');
+                
+                return `${year}-${monthStr}-${dayStr}`;
             }
             
-            // Intentar parseo directo
-            const parsed = new Date(trimmed);
-            if (!isNaN(parsed.getTime())) {
-                return parsed;
+            // Formato ISO YYYY-MM-DD
+            const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (isoMatch) {
+                const year = parseInt(isoMatch[1], 10);
+                const month = parseInt(isoMatch[2], 10);
+                const day = parseInt(isoMatch[3], 10);
+                
+                // Validar rangos
+                if (year < 1900 || year > 2030 || month < 1 || month > 12 || day < 1 || day > 31) {
+                    return null;
+                }
+                
+                return trimmed; // Ya está en formato correcto
             }
         }
         
-        // Si es un número (timestamp)
-        if (typeof dateValue === 'number') {
-            return new Date(dateValue);
+        // Si es Date object
+        if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+            const year = dateValue.getFullYear();
+            const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+            const day = String(dateValue.getDate()).padStart(2, '0');
+            
+            return `${year}-${month}-${day}`;
         }
         
-        console.warn(`[TRANSFORMER] ⚠️ No se pudo parsear fecha: ${dateValue}`);
         return null;
         
     } catch (error) {
-        console.error(`[TRANSFORMER] ❌ Error parseando fecha ${dateValue}:`, error.message);
         return null;
     }
 }

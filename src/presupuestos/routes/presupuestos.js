@@ -6,7 +6,9 @@ console.log('🔍 [PRESUPUESTOS] Configurando rutas del módulo...');
 // Importar controladores reales
 const {
     obtenerPresupuestos,
+    obtenerSugerenciasClientes,
     obtenerPresupuestoPorId,
+    obtenerDetallesPresupuesto,
     actualizarEstadoPresupuesto,
     obtenerEstadisticas,
     obtenerConfiguracion,
@@ -24,6 +26,23 @@ const {
     obtenerHistorial,
     obtenerEstadoSync
 } = require('../controllers/gsheets');
+
+// Importar controlador de Full Refresh Sync
+const {
+    executeFullRefresh,
+    getSyncStatus,
+    executeDryRun,
+    getSyncHistory,
+    getDatabaseStats
+} = require('../controllers/sync_full_refresh');
+
+// Importar controlador de Corrección de Fechas
+const {
+    ejecutarCorreccion,
+    obtenerEstadisticasFechas,
+    obtenerHistorialCorrecciones,
+    validarConfiguracion
+} = require('../controllers/sync_fechas_fix');
 
 // Importar middleware
 const { validateSession, validatePermissions } = require('../middleware/auth');
@@ -99,6 +118,26 @@ router.get('/estado/:estado', validatePermissions('presupuestos.read'), async (r
         res.status(500).json({
             success: false,
             error: 'Error interno en la ruta de estado',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/clientes/sugerencias
+ * @desc Obtener sugerencias de clientes para typeahead - Filtro cliente + Typeahead + Fechas – 2024-12-19
+ * @access Privado
+ */
+router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/sugerencias - Obteniendo sugerencias de clientes');
+    
+    try {
+        await obtenerSugerenciasClientes(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /clientes/sugerencias:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de sugerencias de clientes',
             message: error.message
         });
     }
@@ -184,6 +223,27 @@ router.get('/health', (req, res) => {
             auth: true
         }
     });
+});
+
+/**
+ * @route GET /api/presupuestos/:id/detalles
+ * @desc Obtener detalles de artículos de un presupuesto
+ * @access Privado
+ */
+router.get('/:id/detalles', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id/detalles - Obteniendo detalles de presupuesto ID: ${id}`);
+    
+    try {
+        await obtenerDetallesPresupuesto(req, res);
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] Error en ruta GET /:id/detalles (${id}):`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener detalles del presupuesto',
+            message: error.message
+        });
+    }
 });
 
 /**
@@ -399,6 +459,190 @@ router.get('/sync/estado', validatePermissions('presupuestos.read'), async (req,
     }
 });
 
+// ===== RUTAS DE FULL REFRESH SYNC =====
+
+/**
+ * @route POST /api/presupuestos/sync/full-refresh
+ * @desc Ejecutar sincronización Full Refresh (borrar y recargar)
+ * @access Privado
+ */
+router.post('/sync/full-refresh', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/full-refresh - Ejecutando Full Refresh');
+    
+    try {
+        await executeFullRefresh(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /sync/full-refresh:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al ejecutar Full Refresh',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/status
+ * @desc Obtener estado actual de sincronización Full Refresh
+ * @access Privado
+ */
+router.get('/sync/status', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/status - Obteniendo estado Full Refresh');
+    
+    try {
+        await getSyncStatus(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /sync/status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener estado Full Refresh',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/dry-run
+ * @desc Ejecutar simulación de sincronización (sin cambios)
+ * @access Privado
+ */
+router.post('/sync/dry-run', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/dry-run - Ejecutando Dry Run');
+    
+    try {
+        await executeDryRun(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /sync/dry-run:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al ejecutar Dry Run',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/history
+ * @desc Obtener historial detallado de sincronizaciones Full Refresh
+ * @access Privado
+ */
+router.get('/sync/history', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/history - Obteniendo historial Full Refresh');
+    
+    try {
+        await getSyncHistory(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /sync/history:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener historial Full Refresh',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/stats
+ * @desc Obtener estadísticas actuales de la base de datos
+ * @access Privado
+ */
+router.get('/sync/stats', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/stats - Obteniendo estadísticas BD');
+    
+    try {
+        await getDatabaseStats(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /sync/stats:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener estadísticas BD',
+            message: error.message
+        });
+    }
+});
+
+// ===== RUTAS DE CORRECCIÓN DE FECHAS =====
+
+/**
+ * @route POST /api/presupuestos/sync/corregir-fechas
+ * @desc Ejecutar corrección definitiva de fechas DD/MM/YYYY
+ * @access Privado
+ */
+router.post('/sync/corregir-fechas', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/corregir-fechas - Ejecutando corrección de fechas');
+    
+    try {
+        await ejecutarCorreccion(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /sync/corregir-fechas:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al corregir fechas',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/estadisticas-fechas
+ * @desc Obtener estadísticas actuales de fechas
+ * @access Privado
+ */
+router.get('/sync/estadisticas-fechas', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/estadisticas-fechas - Obteniendo estadísticas de fechas');
+    
+    try {
+        await obtenerEstadisticasFechas(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /sync/estadisticas-fechas:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener estadísticas de fechas',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/historial-correcciones
+ * @desc Obtener historial de correcciones de fechas
+ * @access Privado
+ */
+router.get('/sync/historial-correcciones', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/historial-correcciones - Obteniendo historial de correcciones');
+    
+    try {
+        await obtenerHistorialCorrecciones(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /sync/historial-correcciones:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener historial de correcciones',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/validar-configuracion
+ * @desc Validar configuración antes de corrección
+ * @access Privado
+ */
+router.post('/sync/validar-configuracion', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/validar-configuracion - Validando configuración');
+    
+    try {
+        await validarConfiguracion(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /sync/validar-configuracion:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al validar configuración',
+            message: error.message
+        });
+    }
+});
+
 // Middleware para rutas no encontradas específico del módulo
 router.use('*', (req, res) => {
     console.log(`⚠️ [PRESUPUESTOS] Ruta no encontrada: ${req.method} ${req.originalUrl}`);
@@ -416,6 +660,7 @@ console.log('✅ [PRESUPUESTOS] Rutas configuradas exitosamente');
 console.log('📋 [PRESUPUESTOS] Rutas CRUD disponibles:');
 console.log('   - GET /api/presupuestos (con filtros avanzados)');
 console.log('   - GET /api/presupuestos/:id');
+console.log('   - GET /api/presupuestos/:id/detalles');
 console.log('   - POST /api/presupuestos');
 console.log('   - PUT /api/presupuestos/:id');
 console.log('   - DELETE /api/presupuestos/:id');
@@ -434,5 +679,16 @@ console.log('   - POST /api/presupuestos/sync/configurar');
 console.log('   - POST /api/presupuestos/sync/ejecutar');
 console.log('   - GET /api/presupuestos/sync/historial');
 console.log('   - GET /api/presupuestos/sync/estado');
+console.log('🔄 [PRESUPUESTOS] Rutas de Full Refresh Sync:');
+console.log('   - POST /api/presupuestos/sync/full-refresh');
+console.log('   - GET /api/presupuestos/sync/status');
+console.log('   - POST /api/presupuestos/sync/dry-run');
+console.log('   - GET /api/presupuestos/sync/history');
+console.log('   - GET /api/presupuestos/sync/stats');
+console.log('📅 [PRESUPUESTOS] Rutas de Corrección de Fechas:');
+console.log('   - POST /api/presupuestos/sync/corregir-fechas');
+console.log('   - GET /api/presupuestos/sync/estadisticas-fechas');
+console.log('   - GET /api/presupuestos/sync/historial-correcciones');
+console.log('   - POST /api/presupuestos/sync/validar-configuracion');
 
 module.exports = router;
