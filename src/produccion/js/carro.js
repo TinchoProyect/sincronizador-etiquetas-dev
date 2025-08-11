@@ -193,9 +193,9 @@ export async function actualizarEstadoCarro() {
 
                 html += `
                     <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
-                       <td>
-  <div class=" ${esHoy ? 'celda-hoy' : ''}">${carro.id}</div>
-</td>
+                        <td>
+                            <div class=" ${esHoy ? 'celda-hoy' : ''}">${carro.id}</div>
+                        </td>
 
                         <td>${fecha}</td>
                         <td>${carro.total_articulos} artículos</td>
@@ -1422,7 +1422,13 @@ export async function mostrarArticulosDelCarro() {
                     Agregar artículo al carro
                 </button>
             </div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
             <h3>Artículos en el carro</h3>
+                <button id="btn-temporizador-global" class="btn btn-outline-primary btn-sm">
+                 ⏱ Modo medición
+                </button>
+            </div>
+
             <div class="seccion-articulos">
         `;
 
@@ -1450,8 +1456,13 @@ export async function mostrarArticulosDelCarro() {
                     </div>
                     <div class="articulo-controls">
                         <button class="toggle-ingredientes">Ver</button>
-                        ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
+                        <button class="btn-temporizador-articulo"  data-articulo-id="${art.numero}"  style="display:none">
+                             ⏱ Iniciar
+                        </button>
+                         ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
+
                     </div>
+
                 </div>
             `;
 
@@ -1535,7 +1546,44 @@ export async function mostrarArticulosDelCarro() {
             document.getElementById('lista-articulos').innerHTML = '<p>No se pueden mostrar los artículos del carro</p>';
         }
     }
+
+    //Boton modo medicion EventListenet - Mari
+    // Activar botón de temporizador global una vez que está en el DOM
+
+
+    const contenedor = document.getElementById('lista-articulos');
+        if (contenedor) {
+             contenedor.innerHTML = html;
+
+            // 🔄 Sincronizar estado del modo medición después de renderizar
+            const botonGlobal = document.getElementById('btn-temporizador-global');
+            if (botonGlobal) {
+                const activo = botonGlobal.classList.contains('activo');
+                document.querySelectorAll('.btn-temporizador-articulo')
+                    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
+                } else {
+                    console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
+            }
+        }
+
+
 }
+// Delegación de eventos para el botón "Modo medición"-Mari
+// Funciona aunque re-denderices la lista
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'btn-temporizador-global') {
+    const botonGlobal = e.target;
+    const estaActivo = botonGlobal.classList.toggle('activo');
+    botonGlobal.textContent = estaActivo ? '🛑 Salir de medición' : '⏱ Modo medición';
+
+    // Mostrar/ocultar los ⏱ por artículo
+    document.querySelectorAll('.btn-temporizador-articulo')
+      .forEach(b => b.style.display = estaActivo ? 'inline-block' : 'none');
+  }
+});
+
+
+
 
 /**
  * Genera los botones de relación para un artículo específico
@@ -1559,6 +1607,8 @@ function generarBotonesRelacion(articuloCodigo, tieneRelacion, relacion) {
         `;
     }
 }
+
+
 
 /**
  * Genera la fila del artículo vinculado (visualmente atenuada)
@@ -2349,3 +2399,65 @@ export {
     cerrarModalEditarVinculo,
     procesarGuardadoVinculo
 };
+ 
+//TEMPORARIZACION - Mari
+// Estado en memoria: un cronómetro por (carroId:articulo)
+/*const temporizadores = {};
+function formatearTiempo(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${m}:${ss}`;
+}
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.classList.contains('btn-temporizador-articulo')) return;
+
+  const btn = e.target;
+  const numero = btn.dataset.numero;
+  const carroId = window.carroIdGlobal; // ya lo usás en tu código
+  if (!carroId) { return; }
+
+  const key = `${carroId}:${numero}`;
+  let t = temporizadores[key];
+
+  // Iniciar
+  if (!t || !t.running) {
+    t = temporizadores[key] = {
+      running: true,
+      start: Date.now(),
+      interval: null
+    };
+
+    // UI
+    const actualizar = () => {
+      const ms = Date.now() - t.start;
+      btn.textContent = `⏹ ${formatearTiempo(ms)} ×`; // un solo botón que muestra tiempo + "×" para detener
+    };
+    actualizar();
+    t.interval = setInterval(update = actualizar, 1000);
+    btn.classList.add('running');
+
+    // (opcional) ping al backend para “inicio”
+    // await fetch(`/api/produccion/carro/${carroId}/articulo/${encodeURIComponent(numero)}/iniciar`, { method: 'POST' });
+
+    return;
+  }
+
+  // Detener
+  if (t.running) {
+    t.running = false;
+    clearInterval(t.interval);
+    const elapsed = Date.now() - t.start;
+
+    // UI final
+    btn.textContent = `✅ ${formatearTiempo(elapsed)}`;
+    btn.classList.remove('running');
+    btn.classList.add('finished');
+    btn.disabled = true;
+
+    // (opcional) enviar tiempo al backend – lo integramos después
+    // await fetch(`/api/produccion/carro/${carroId}/articulo/${encodeURIComponent(numero)}/finalizar`, { method: 'POST', body: JSON.stringify({ elapsedMs: elapsed }), headers: {'Content-Type': 'application/json'}});
+  }
+});
+*/
