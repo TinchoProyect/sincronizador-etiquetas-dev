@@ -50,16 +50,23 @@ function seleccionarUsuario(usuario) {
 document.addEventListener('DOMContentLoaded', () => {
     cargarUsuariosProduccion();
 
-    // Setear fecha corte hoy si está vacio
+    // Setear fecha corte hoy si está vacio para ambas vistas
     const fechaCorteInput = document.getElementById('fecha-corte');
+    const fechaCorteArticulosInput = document.getElementById('fecha-corte-articulos');
+    const hoy = new Date().toISOString().slice(0, 10);
+    
     if (fechaCorteInput && !fechaCorteInput.value) {
-        const hoy = new Date().toISOString().slice(0, 10);
         fechaCorteInput.value = hoy;
     }
+    if (fechaCorteArticulosInput && !fechaCorteArticulosInput.value) {
+        fechaCorteArticulosInput.value = hoy;
+    }
 
+    // Cargar ambas vistas
     cargarPedidosPorCliente();
+    cargarPedidosArticulos();
 
-    // Listeners
+    // Listeners para vista por cliente
     const refreshBtn = document.getElementById('refresh-pedidos');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
@@ -71,6 +78,47 @@ document.addEventListener('DOMContentLoaded', () => {
     if (buscarClienteInput) {
         buscarClienteInput.addEventListener('input', () => {
             filtrarPedidosPorCliente();
+        });
+    }
+
+    // Listeners para vista de artículos consolidados
+    const refreshArticulosBtn = document.getElementById('refresh-articulos');
+    if (refreshArticulosBtn) {
+        refreshArticulosBtn.addEventListener('click', () => {
+            cargarPedidosArticulos();
+        });
+    }
+
+    const buscarArticuloInput = document.getElementById('buscar-articulo');
+    if (buscarArticuloInput) {
+        buscarArticuloInput.addEventListener('input', () => {
+            filtrarPedidosArticulos();
+        });
+    }
+
+    const filtroEstadoSelect = document.getElementById('filtro-estado-articulos');
+    if (filtroEstadoSelect) {
+        filtroEstadoSelect.addEventListener('change', () => {
+            filtrarPedidosArticulos();
+        });
+    }
+
+    // Sincronizar fechas entre vistas
+    if (fechaCorteInput) {
+        fechaCorteInput.addEventListener('change', () => {
+            if (fechaCorteArticulosInput) {
+                fechaCorteArticulosInput.value = fechaCorteInput.value;
+            }
+            cargarPedidosArticulos();
+        });
+    }
+
+    if (fechaCorteArticulosInput) {
+        fechaCorteArticulosInput.addEventListener('change', () => {
+            if (fechaCorteInput) {
+                fechaCorteInput.value = fechaCorteArticulosInput.value;
+            }
+            cargarPedidosPorCliente();
         });
     }
 
@@ -425,4 +473,189 @@ async function cargarUsuariosParaModal() {
         mensaje.textContent = error.message;
         mensaje.className = 'mensaje-error';
     }
+}
+
+// ==========================================
+// FUNCIONES PARA VISTA DE ARTÍCULOS CONSOLIDADOS
+// ==========================================
+
+/**
+ * Cargar artículos consolidados desde presupuestos confirmados
+ * Reutiliza los mismos flujos que la vista por cliente para descripción y stock
+ */
+async function cargarPedidosArticulos() {
+    const contenedor = document.getElementById('articulos-container');
+    const totalesDiv = document.getElementById('totales-articulos');
+    const fechaCorte = document.getElementById('fecha-corte-articulos').value;
+    
+    contenedor.innerHTML = '<p class="mensaje-info">Cargando artículos...</p>';
+    totalesDiv.innerHTML = '';
+
+    try {
+        // Usar el nuevo endpoint que reutiliza los flujos existentes
+        const response = await fetch(`${base}/pedidos-articulos?fecha=${fechaCorte}`);
+        if (!response.ok) {
+            throw new Error(`Error al cargar artículos: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Error en la respuesta del servidor');
+        }
+        
+        // Guardar datos originales para filtrado
+        window.articulosOriginales = data.data;
+        window.totalesOriginales = data.totales;
+        
+        renderPedidosArticulos(data.data, data.totales);
+    } catch (error) {
+        contenedor.innerHTML = `<p class="mensaje-error">${error.message}</p>`;
+        totalesDiv.innerHTML = '';
+    }
+}
+
+/**
+ * Renderizar tabla de artículos consolidados
+ * Usa los mismos estilos y estructura que la vista por cliente
+ */
+function renderPedidosArticulos(articulos, totales) {
+    const contenedor = document.getElementById('articulos-container');
+    const totalesDiv = document.getElementById('totales-articulos');
+    
+    // Renderizar totales por estado
+    if (totales) {
+        totalesDiv.innerHTML = `
+            <span class="indicador-estado indicador-faltantes">Faltantes: ${totales.faltantes}</span>
+            <span class="indicador-estado indicador-parcial" style="margin-left: 10px;">Parciales: ${totales.parciales}</span>
+            <span class="indicador-estado indicador-completo" style="margin-left: 10px;">Completos: ${totales.completos}</span>
+            <span style="margin-left: 20px; color: #666;">Total: ${articulos.length} artículos</span>
+        `;
+    }
+    
+    if (!articulos || articulos.length === 0) {
+        contenedor.innerHTML = '<p class="mensaje-info">No hay artículos para la fecha seleccionada.</p>';
+        return;
+    }
+
+    // Crear tabla con la misma estructura que la vista por cliente
+    const tabla = document.createElement('table');
+    tabla.className = 'articulos-tabla';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr>
+            <th>Artículo</th>
+            <th>Descripción</th>
+            <th>Pedido Total</th>
+            <th>Stock Disponible</th>
+            <th>Faltante</th>
+            <th>Estado</th>
+        </tr>
+    `;
+    tabla.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    articulos.forEach(articulo => {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-articulo-numero', articulo.articulo_numero);
+        tr.setAttribute('data-estado', articulo.estado.toLowerCase());
+
+        const tdArticulo = document.createElement('td');
+        tdArticulo.textContent = articulo.articulo_numero;
+        tr.appendChild(tdArticulo);
+
+        const tdDescripcion = document.createElement('td');
+        tdDescripcion.textContent = articulo.descripcion || '-';
+        tr.appendChild(tdDescripcion);
+
+        const tdPedidoTotal = document.createElement('td');
+        tdPedidoTotal.textContent = articulo.pedido_total;
+        tr.appendChild(tdPedidoTotal);
+
+        const tdStockDisponible = document.createElement('td');
+        tdStockDisponible.textContent = articulo.stock_disponible;
+        tr.appendChild(tdStockDisponible);
+
+        const tdFaltante = document.createElement('td');
+        tdFaltante.textContent = articulo.faltante;
+        tdFaltante.className = articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa';
+        tr.appendChild(tdFaltante);
+
+        const tdEstado = document.createElement('td');
+        const indicador = document.createElement('span');
+        indicador.className = 'indicador-estado ' + calcularIndicadorEstadoArticulo(articulo);
+        indicador.textContent = articulo.estado;
+        tdEstado.appendChild(indicador);
+        tr.appendChild(tdEstado);
+
+        tbody.appendChild(tr);
+    });
+
+    tabla.appendChild(tbody);
+    contenedor.innerHTML = '';
+    contenedor.appendChild(tabla);
+}
+
+/**
+ * Calcular clase CSS para indicador de estado de artículo
+ * Reutiliza la misma lógica que la vista por cliente
+ */
+function calcularIndicadorEstadoArticulo(articulo) {
+    switch (articulo.estado.toUpperCase()) {
+        case 'COMPLETO':
+            return 'indicador-completo';
+        case 'PARCIAL':
+            return 'indicador-parcial';
+        case 'FALTANTE':
+            return 'indicador-faltantes';
+        default:
+            return 'indicador-faltantes';
+    }
+}
+
+/**
+ * Filtrar artículos por texto y estado
+ * Aplica filtros sobre los datos originales y re-renderiza
+ */
+function filtrarPedidosArticulos() {
+    if (!window.articulosOriginales) {
+        return;
+    }
+
+    const filtroTexto = document.getElementById('buscar-articulo').value.toLowerCase();
+    const filtroEstado = document.getElementById('filtro-estado-articulos').value;
+    
+    let articulosFiltrados = window.articulosOriginales;
+
+    // Filtro por texto (artículo o descripción)
+    if (filtroTexto.trim()) {
+        articulosFiltrados = articulosFiltrados.filter(art => 
+            art.articulo_numero.toLowerCase().includes(filtroTexto) ||
+            (art.descripcion && art.descripcion.toLowerCase().includes(filtroTexto))
+        );
+    }
+
+    // Filtro por estado
+    if (filtroEstado && filtroEstado !== 'todos') {
+        articulosFiltrados = articulosFiltrados.filter(art => 
+            art.estado.toLowerCase() === filtroEstado.toLowerCase()
+        );
+    }
+
+    // Recalcular totales para los artículos filtrados
+    const totalesFiltrados = articulosFiltrados.reduce((acc, art) => {
+        switch (art.estado.toUpperCase()) {
+            case 'COMPLETO':
+                acc.completos++;
+                break;
+            case 'PARCIAL':
+                acc.parciales++;
+                break;
+            case 'FALTANTE':
+                acc.faltantes++;
+                break;
+        }
+        return acc;
+    }, { faltantes: 0, parciales: 0, completos: 0 });
+
+    renderPedidosArticulos(articulosFiltrados, totalesFiltrados);
 }

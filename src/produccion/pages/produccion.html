@@ -383,6 +383,34 @@
         </div>
     </section>
 
+    <!-- Nueva sección: Artículos de Pedidos Confirmados -->
+    <section class="pedidos-por-cliente-section">
+        <div class="pedidos-header">
+            <h2>Artículos de Pedidos Confirmados</h2>
+            <div class="pedidos-controls">
+                <label for="fecha-corte-articulos">Fecha limite:</label>
+                <input type="date" id="fecha-corte-articulos" name="fecha-corte-articulos" />
+                <input type="text" id="buscar-articulo" placeholder="Buscar artículo..." />
+                <select id="filtro-estado-articulos">
+                    <option value="todos">Todos los estados</option>
+                    <option value="faltante">Solo faltantes</option>
+                    <option value="parcial">Solo parciales</option>
+                    <option value="completo">Solo completos</option>
+                </select>
+                <button id="refresh-articulos" class="admin-button">Actualizar</button>
+            </div>
+        </div>
+        
+        <!-- Totales por estado -->
+        <div id="totales-articulos" class="totales-estado" style="padding: 10px; margin-bottom: 10px; background-color: #e9ecef; border-radius: 4px; text-align: center; font-weight: bold;">
+            <!-- Los totales se cargarán dinámicamente -->
+        </div>
+        
+        <div id="articulos-container" class="pedidos-container">
+            <!-- Aquí se renderizará la tabla de artículos consolidados -->
+        </div>
+    </section>
+
     <!-- Modal para asignar faltantes -->
     <div id="modal-asignar-faltantes" class="modal-overlay" style="display:none;">
         <div class="modal-content">

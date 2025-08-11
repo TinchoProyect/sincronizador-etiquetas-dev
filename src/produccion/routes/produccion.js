@@ -26,7 +26,7 @@ const {
 const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad } = require('../controllers/articulos');
 
 // Controladores para pedidos por cliente
-const { obtenerPedidosPorCliente, asignarFaltantes } = require('../controllers/pedidosPorCliente');
+const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes } = require('../controllers/pedidosPorCliente');
 const { imprimirPresupuestoCliente } = require('../controllers/impresionPresupuestos');
 
 // Ruta para alternar estado de producción externa (toggle)
@@ -2225,6 +2225,24 @@ router.get('/pedidos-por-cliente', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Error interno en ruta de pedidos por cliente',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Ruta para obtener artículos consolidados (vista por artículo)
+ */
+router.get('/pedidos-articulos', async (req, res) => {
+    try {
+        console.log('🔍 [PROD_ART] Ruta GET /pedidos-articulos');
+        await obtenerPedidosArticulos(req, res);
+    } catch (error) {
+        console.error('❌ [PROD_ART] Error en ruta /pedidos-articulos:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de artículos consolidados',
             message: error.message,
             timestamp: new Date().toISOString()
         });

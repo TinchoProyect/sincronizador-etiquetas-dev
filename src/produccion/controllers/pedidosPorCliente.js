@@ -402,7 +402,179 @@ const asignarFaltantes = async (req, res) => {
     }
 };
 
+/**
+ * Obtiene artículos consolidados desde presupuestos confirmados (vista por artículo)
+ */
+const obtenerPedidosArticulos = async (req, res) => {
+    try {
+        console.log('🔍 [PROD_ART] Iniciando consulta de artículos consolidados...');
+        
+        const { 
+            fecha = new Date().toISOString().split('T')[0], 
+            q, // filtro de búsqueda por texto
+            estado_filtro, // todos, faltantes, completos, parciales
+            debug
+        } = req.query;
+        
+        // Validaciones (reusar las mismas)
+        if (fecha && !fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            console.log('❌ [PROD_ART] Fecha inválida:', fecha);
+            return res.status(400).json({
+                success: false,
+                error: 'Fecha inválida. Use formato YYYY-MM-DD',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        console.log('📋 [PROD_ART] Parámetros:', { fecha, q, estado_filtro, debug });
+        
+        // Detectar modo de JOIN (reusar helper existente)
+        const joinInfo = await detectarModoJoin(pool);
+        console.log(`[PROD_ART] Modo JOIN detectado:`, joinInfo);
+
+        if (!joinInfo.modo) {
+            return res.status(500).json({
+                success: false,
+                message: 'No se pudo determinar el modo de JOIN para presupuestos_detalles'
+            });
+        }
+
+        // Construir JOIN dinámicamente (reusar lógica existente)
+        let joinClause;
+        if (joinInfo.modo === 'ext') {
+            joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = pc.id_presupuesto_ext';
+        } else {
+            joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = pc.id';
+        }
+        
+        // Query consolidada por artículo (derivada de la consulta existente)
+        const query = `
+            WITH presupuestos_confirmados AS (
+                SELECT 
+                    p.id,
+                    p.id_presupuesto_ext,
+                    p.id_cliente,
+                    p.fecha,
+                    CAST(p.id_cliente AS integer) as cliente_id_int
+                FROM public.presupuestos p
+                WHERE p.activo = true 
+                  AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
+                  AND p.fecha::date <= $2::date
+            ),
+            articulos_consolidados AS (
+                SELECT 
+                    pd.articulo as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0)) as pedido_total
+                FROM presupuestos_confirmados pc
+                ${joinClause}
+                WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
+                GROUP BY pd.articulo
+            )
+            SELECT 
+                ac.articulo_numero,
+                COALESCE(
+                    NULLIF(TRIM(a.nombre), ''),
+                    ac.articulo_numero
+                ) as descripcion,
+                ac.pedido_total,
+                COALESCE(src.stock_consolidado, 0) as stock_disponible,
+                GREATEST(0, ac.pedido_total - COALESCE(src.stock_consolidado, 0)) as faltante,
+                CASE 
+                    WHEN GREATEST(0, ac.pedido_total - COALESCE(src.stock_consolidado, 0)) = 0 THEN 'COMPLETO'
+                    WHEN COALESCE(src.stock_consolidado, 0) > 0 THEN 'PARCIAL'
+                    ELSE 'FALTANTE'
+                END as estado
+            FROM articulos_consolidados ac
+            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+            LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
+            ORDER BY ac.articulo_numero;
+        `;
+        
+        const params = ['presupuesto/orden', fecha];
+        console.log('🔍 [PROD_ART] Ejecutando consulta con parámetros:', params);
+        
+        const result = await pool.query(query, params);
+        
+        // Aplicar filtros adicionales
+        let articulos = result.rows;
+        
+        // Filtro por texto (q)
+        if (q && q.trim()) {
+            const filtroTexto = q.trim().toLowerCase();
+            articulos = articulos.filter(art => 
+                art.articulo_numero.toLowerCase().includes(filtroTexto) ||
+                art.descripcion.toLowerCase().includes(filtroTexto)
+            );
+        }
+        
+        // Filtro por estado
+        if (estado_filtro && estado_filtro !== 'todos') {
+            articulos = articulos.filter(art => 
+                art.estado.toLowerCase() === estado_filtro.toLowerCase()
+            );
+        }
+        
+        // Calcular totales
+        const totales = articulos.reduce((acc, art) => {
+            switch (art.estado) {
+                case 'COMPLETO':
+                    acc.completos++;
+                    break;
+                case 'PARCIAL':
+                    acc.parciales++;
+                    break;
+                case 'FALTANTE':
+                    acc.faltantes++;
+                    break;
+            }
+            return acc;
+        }, { faltantes: 0, parciales: 0, completos: 0 });
+        
+        // Preparar respuesta
+        let response = {
+            success: true,
+            data: articulos,
+            totales: totales,
+            total_articulos: articulos.length,
+            filtros: { fecha, q, estado_filtro },
+            timestamp: new Date().toISOString()
+        };
+
+        // Agregar información de debug si se solicita
+        if (debug === 'true') {
+            console.log(`[PROD_ART] Generando información de debug...`);
+            
+            response.debug = {
+                modo_join_usado: joinInfo.modo,
+                fuente_descripcion: 'articulos.nombre (tabla articulos)',
+                fuente_stock: 'stock_real_consolidado.stock_consolidado',
+                estrategia_mapeo_articulo: 'Por codigo_barras (presupuestos_detalles.articulo = articulos.codigo_barras = stock_real_consolidado.codigo_barras)',
+                total_antes_filtros: result.rows.length,
+                filtros_aplicados: {
+                    texto: q ? `"${q}"` : 'ninguno',
+                    estado: estado_filtro || 'todos'
+                }
+            };
+        }
+        
+        console.log(`✅ [PROD_ART] Consulta exitosa: ${articulos.length} artículos encontrados`);
+        console.log(`📊 [PROD_ART] Totales: ${totales.faltantes} faltantes, ${totales.parciales} parciales, ${totales.completos} completos`);
+        
+        res.json(response);
+        
+    } catch (error) {
+        console.error('❌ [PROD_ART] Error al obtener artículos consolidados:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 module.exports = {
     obtenerPedidosPorCliente,
+    obtenerPedidosArticulos,
     asignarFaltantes
 };
