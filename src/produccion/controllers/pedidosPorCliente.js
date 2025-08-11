@@ -140,7 +140,6 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     JSON_BUILD_OBJECT(
                         'articulo_numero', ac.articulo_numero,
                         'descripcion', COALESCE(
-                            NULLIF(TRIM(src.descripcion), ''),
                             NULLIF(TRIM(a.nombre), ''),
                             ac.articulo_numero
                         ),
@@ -152,8 +151,8 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 ) as articulos
             FROM articulos_consolidados ac
             LEFT JOIN public.clientes c ON c.cliente_id = ac.cliente_id_int
-            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = ac.articulo_numero
-            LEFT JOIN public.articulos a ON a.numero = ac.articulo_numero
+            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+            LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
             GROUP BY ac.cliente_id_int, c.nombre, c.apellido
             ORDER BY cliente_nombre;
         `;
@@ -267,7 +266,10 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     estados_normalizados: estadosResult.rows,
                     conteos_join: joinCounts,
                     estado_buscado: estado,
-                    fecha_limite: fecha
+                    fecha_limite: fecha,
+                    fuente_descripcion: 'articulos.nombre (tabla articulos)',
+                    fuente_stock: 'stock_real_consolidado.stock_consolidado',
+                    estrategia_mapeo_articulo: 'Por codigo_barras (presupuestos_detalles.articulo = articulos.codigo_barras = stock_real_consolidado.codigo_barras)'
                 };
 
             } catch (debugError) {

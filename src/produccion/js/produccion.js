@@ -129,7 +129,7 @@ function renderPedidosCliente(pedidos) {
 
         const header = document.createElement('div');
         header.className = 'cliente-header';
-        header.textContent = cliente.cliente_nombre + ' (' + cliente.total_articulos + ' artículos)';
+        header.textContent = cliente.cliente_nombre + ' [ID: ' + cliente.cliente_id + '] (' + cliente.total_articulos + ' artículos)';
         header.addEventListener('click', () => toggleAcordeon(cliente.cliente_id));
         clienteDiv.appendChild(header);
 
