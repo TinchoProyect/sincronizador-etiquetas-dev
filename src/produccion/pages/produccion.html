@@ -79,6 +79,284 @@
         .admin-button:hover {
             background-color:var(--secondary-color-dark, #5092a7);
         }
+
+        /* Estilos para la sección de pedidos por cliente */
+        .pedidos-por-cliente-section {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .pedidos-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .pedidos-header h2 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .pedidos-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .pedidos-controls label {
+            font-weight: bold;
+            color: var(--text-color);
+        }
+
+        .pedidos-controls input[type="date"],
+        .pedidos-controls input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .pedidos-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background-color: white;
+        }
+
+        .cliente-acordeon {
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .cliente-acordeon:last-child {
+            border-bottom: none;
+        }
+
+        .cliente-header {
+            padding: 15px;
+            background-color: #e9ecef;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+
+        .cliente-header:hover {
+            background-color: #dee2e6;
+        }
+
+        .cliente-contenido {
+            display: none;
+            padding: 0;
+        }
+
+        .articulos-tabla {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .articulos-tabla th,
+        .articulos-tabla td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .articulos-tabla th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: var(--text-color);
+        }
+
+        .cantidad-faltante {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .cantidad-completa {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .indicador-estado {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .indicador-completo {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .indicador-parcial {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .indicador-faltantes {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Estilos para el modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            border-radius: 8px;
+            padding: 0;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6c757d;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-close:hover {
+            color: #dc3545;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-body label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--text-color);
+        }
+
+        .modal-body select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .faltantes-lista {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+            border-radius: 0 0 8px 8px;
+            text-align: right;
+        }
+
+        .mensaje-exito {
+            color: #28a745;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .mensaje-error {
+            color: #dc3545;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .mensaje-info {
+            color: #0c5460;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .pedidos-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .pedidos-controls {
+                justify-content: center;
+            }
+
+            .articulos-tabla {
+                font-size: 12px;
+            }
+
+            .articulos-tabla th,
+            .articulos-tabla td {
+                padding: 8px 4px;
+            }
+
+            .admin-button {
+                padding: 6px 10px;
+                font-size: 12px;
+                margin: 2px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -88,23 +366,62 @@
             <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
         </header>
 
-        <main>
-            <div class="admin-buttons">
-                <a href="ingredientes.html" class="admin-button">
-                    Gestionar Ingredientes
-                </a>
-                <a href="articulos.html" class="admin-button" style="margin-left: 10px;">
-                    Gestión de Artículos
-                </a>
+<main>
+    <!-- Bloque Pedidos por Cliente - Presupuestos Confirmados -->
+    <section class="pedidos-por-cliente-section">
+        <div class="pedidos-header">
+            <h2>Pedidos por Cliente - Presupuestos Confirmados</h2>
+            <div class="pedidos-controls">
+                <label for="fecha-corte">Fecha limite:</label>
+                <input type="date" id="fecha-corte" name="fecha-corte" />
+                <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." />
+                <button id="refresh-pedidos" class="admin-button">Actualizar</button>
             </div>
+        </div>
+        <div id="pedidos-container" class="pedidos-container">
+            <!-- Aquí se renderizarán los pedidos por cliente -->
+        </div>
+    </section>
 
-            <div class="welcome-section">
-                <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
-                <div id="lista-colaboradores"  class="lista-colaboradores">
-                    <!-- Los colaboradores se cargarán dinámicamente aquí -->
-                </div>
+    <!-- Modal para asignar faltantes -->
+    <div id="modal-asignar-faltantes" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Asignar Faltantes a Produccion</h3>
+                <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalAsignar()">&times;</button>
             </div>
-        </main>
+            <div class="modal-body">
+                <label for="usuario-asignar">Usuario:</label>
+                <select id="usuario-asignar" name="usuario-asignar">
+                    <!-- Opciones cargadas dinámicamente -->
+                </select>
+                <div id="articulos-faltantes-lista" class="faltantes-lista">
+                    <!-- Lista de artículos faltantes para asignar -->
+                </div>
+                <div id="modal-mensaje" class="mensaje-info"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirmar-asignacion" class="admin-button">Asignar a Produccion</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-buttons">
+        <a href="ingredientes.html" class="admin-button">
+            Gestionar Ingredientes
+        </a>
+        <a href="articulos.html" class="admin-button" style="margin-left: 10px;">
+            Gestión de Artículos
+        </a>
+    </div>
+
+    <div class="welcome-section">
+        <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
+        <div id="lista-colaboradores"  class="lista-colaboradores">
+            <!-- Los colaboradores se cargarán dinámicamente aquí -->
+        </div>
+    </div>
+</main>
 
         <footer>
             <p>&copy; 2024 Gestiones Lamda</p>

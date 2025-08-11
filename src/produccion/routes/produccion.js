@@ -25,6 +25,10 @@ const {
 } = require('../controllers/carro');
 const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad } = require('../controllers/articulos');
 
+// Controladores para pedidos por cliente
+const { obtenerPedidosPorCliente, asignarFaltantes } = require('../controllers/pedidosPorCliente');
+const { imprimirPresupuestoCliente } = require('../controllers/impresionPresupuestos');
+
 // Ruta para alternar estado de producción externa (toggle)
 router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) => {
     try {
@@ -2202,6 +2206,64 @@ router.delete('/relacion-articulo/por-articulo/:articuloCodigo', async (req, res
         } else {
             res.status(500).json({ error: error.message });
         }
+    }
+});
+
+// ==========================================
+// RUTAS PARA PEDIDOS POR CLIENTE
+// ==========================================
+
+/**
+ * Ruta para obtener pedidos consolidados por cliente
+ */
+router.get('/pedidos-por-cliente', async (req, res) => {
+    try {
+        console.log('🔍 [PROD_PED] Ruta GET /pedidos-por-cliente');
+        await obtenerPedidosPorCliente(req, res);
+    } catch (error) {
+        console.error('❌ [PROD_PED] Error en ruta /pedidos-por-cliente:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de pedidos por cliente',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Ruta para asignar faltantes a carro de producción
+ */
+router.post('/asignar-faltantes', async (req, res) => {
+    try {
+        console.log('🔍 [PROD_PED] Ruta POST /asignar-faltantes');
+        await asignarFaltantes(req, res);
+    } catch (error) {
+        console.error('❌ [PROD_PED] Error en ruta /asignar-faltantes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de asignación de faltantes',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Ruta para impresión de presupuestos por cliente
+ */
+router.get('/impresion-presupuesto', async (req, res) => {
+    try {
+        console.log('🔍 [PROD_PED] Ruta GET /impresion-presupuesto');
+        await imprimirPresupuestoCliente(req, res);
+    } catch (error) {
+        console.error('❌ [PROD_PED] Error en ruta /impresion-presupuesto:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de impresión',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
