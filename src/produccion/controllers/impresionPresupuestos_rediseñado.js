@@ -43,7 +43,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
         
         console.log('📋 [REMITO-R] Parámetros impresión:', { cliente_id, fecha_desde, fecha_hasta, formato });
         
-        // 🔧 CONSULTA CORREGIDA: Usar misma lógica que el frontend
+        // 🔧 CONSULTA MEJORADA: Obtener descripciones reales de artículos
         const query = `
             WITH presupuestos_cliente AS (
                 SELECT 
@@ -73,13 +73,16 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                     'articulo_numero', pd.articulo,
                                     'descripcion', COALESCE(
                                         NULLIF(TRIM(a.nombre), ''),
-                                        pd.articulo
+                                        NULLIF(TRIM(a.descripcion), ''),
+                                        NULLIF(TRIM(src.descripcion), ''),
+                                        'Artículo ' || pd.articulo
                                     ),
                                     'cantidad', COALESCE(pd.cantidad, 0)
                                 ) ORDER BY pd.articulo
                             )
                             FROM public.presupuestos_detalles pd
-                            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                            LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+                            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
                             WHERE pd.id_presupuesto_ext = pc.id_presupuesto_ext
                         )
                     ) ORDER BY pc.fecha DESC
@@ -542,72 +545,59 @@ function generarPDF_Rediseñado(res, clienteData) {
         const fechaArchivo = new Date().toISOString().split('T')[0].replace(/-/g, '');
         const nombreArchivo = `remito-r-cliente-${clienteData.cliente_id}-${fechaArchivo}.pdf`;
         
-        // Configurar headers de respuesta para ABRIR EN NAVEGADOR (no descargar)
+        // Configurar headers de respuesta
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${nombreArchivo}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
         
-        // Crear documento PDF ELEGANTE - UNA SOLA PÁGINA FORZADA
+        // Crear documento PDF compacto
         const doc = new PDFDocument({ 
-            margin: 40,
-            size: 'A4',
-            bufferPages: true // Importante para controlar páginas
+            margin: 30,
+            size: 'A4'
         });
         
         // Pipe del documento a la respuesta
         doc.pipe(res);
         
-        // ENCABEZADO ELEGANTE Y PROFESIONAL
-        // Logo LAMDA con estilo elegante
-        doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
+        // ENCABEZADO MODERNO Y MINIMALISTA
+        // Logo LAMDA
+        doc.fontSize(20).font('Helvetica-Light').text('LAMDA', 50, 50);
         
-        // Letra R en recuadro elegante con bordes redondeados
-        doc.roundedRect(130, 45, 35, 35, 3).stroke();
-        doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
+        // Letra R en recuadro
+        doc.rect(120, 45, 30, 30).stroke();
+        doc.fontSize(24).font('Helvetica-Bold').text('R', 130, 52);
         
-        // Fecha y hora elegante
-        doc.fontSize(10).font('Helvetica').fillColor('#666666')
-           .text(`${fechaHoy} - ${horaHoy}`, 420, 55);
-        doc.fillColor('black'); // Resetear color
+        // Fecha y hora
+        doc.fontSize(9).font('Helvetica').text(`${fechaHoy} - ${horaHoy}`, 450, 55);
         
-        // Línea separadora elegante
-        doc.strokeColor('#cccccc').lineWidth(0.5)
-           .moveTo(50, 90).lineTo(545, 90).stroke()
-           .strokeColor('black').lineWidth(1); // Resetear
+        // Línea separadora
+        doc.moveTo(50, 85).lineTo(545, 85).stroke();
         
-        // DATOS DEL PEDIDO - ELEGANTES
-        doc.fontSize(11).font('Helvetica').text(`N° de Cliente:`, 50, 105);
-        doc.fontSize(24).font('Helvetica-Bold').fillColor('#2c3e50')
-           .text(`${clienteData.cliente_id}`, 140, 100);
-        doc.fontSize(11).font('Helvetica').fillColor('black')
-           .text(clienteData.cliente_nombre, 50, 125);
+        // DATOS DEL PEDIDO - COMPACTOS
+        doc.fontSize(12).font('Helvetica-Bold').text(`N° de Cliente: ${clienteData.cliente_id}`, 50, 100);
+        doc.fontSize(10).font('Helvetica').text(clienteData.cliente_nombre, 50, 115);
         
-        // Códigos de presupuesto elegantes (lado derecho)
-        let presupuestoY = 105;
+        // Códigos de presupuesto (lado derecho)
+        let presupuestoY = 100;
         clienteData.presupuestos.forEach(presupuesto => {
-            doc.fontSize(9).font('Helvetica').fillColor('#7f8c8d')
-               .text(presupuesto.id_presupuesto_ext, 450, presupuestoY);
+            doc.fontSize(9).font('Helvetica').text(presupuesto.id_presupuesto_ext, 450, presupuestoY);
             presupuestoY += 12;
         });
-        doc.fillColor('black'); // Resetear color
         
-        // TABLA DE ARTÍCULOS ELEGANTE Y LIMPIA
-        const tablaY = 150;
-        const colWidths = [85, 340, 65]; // Código, Descripción, Cantidad
-        const rowHeight = 22; // Aumentado para mejor espaciado
+        // TABLA DE ARTÍCULOS - COMPACTA
+        const tablaY = 140;
+        const colWidths = [80, 350, 60]; // Código, Descripción, Cantidad
+        const rowHeight = 15;
         
-        // Encabezados elegantes con fondo suave y bordes completos
-        doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-        doc.fillColor('black').fontSize(9).font('Helvetica-Bold');
-        
-        // Encabezados con bordes completos (solo para la fila de títulos)
+        // Encabezados
+        doc.fontSize(8).font('Helvetica-Bold');
         doc.rect(50, tablaY, colWidths[0], rowHeight).stroke();
-        doc.text('CÓDIGO', 55, tablaY + 8);
+        doc.text('CÓDIGO', 55, tablaY + 4);
         
         doc.rect(50 + colWidths[0], tablaY, colWidths[1], rowHeight).stroke();
-        doc.text('DESCRIPCIÓN DEL ARTÍCULO', 55 + colWidths[0], tablaY + 8);
+        doc.text('DESCRIPCIÓN DEL ARTÍCULO', 55 + colWidths[0], tablaY + 4);
         
         doc.rect(50 + colWidths[0] + colWidths[1], tablaY, colWidths[2], rowHeight).stroke();
-        doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 8);
+        doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 4);
         
         // Consolidar artículos
         const articulosConsolidados = new Map();
@@ -630,113 +620,96 @@ function generarPDF_Rediseñado(res, clienteData) {
             }
         });
         
-        // Filas de artículos LIMPIAS - SOLO BORDES INFERIORES Y LATERALES
+        // Filas de artículos
         let currentY = tablaY + rowHeight;
+        doc.fontSize(8).font('Helvetica');
         
         if (articulosConsolidados.size > 0) {
             Array.from(articulosConsolidados.values())
                 .sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero))
-                .forEach((articulo, index) => {
-                    // Alternar colores de fondo para elegancia
-                    if (index % 2 === 1) {
-                        doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                .forEach(articulo => {
+                    // Verificar espacio disponible
+                    if (currentY > 650) {
+                        doc.addPage();
+                        currentY = 50;
                     }
-                    doc.fillColor('black');
                     
-                    // CÓDIGO - Solo bordes laterales e inferior
-                    // Borde izquierdo
-                    doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-                    // Borde derecho
-                    doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                    // Borde inferior
-                    doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                    // Código
+                    doc.rect(50, currentY, colWidths[0], rowHeight).stroke();
+                    doc.text(articulo.articulo_numero, 55, currentY + 4, { width: colWidths[0] - 10 });
                     
-                    doc.fontSize(9).font('Helvetica').fillColor('#495057')
-                       .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
-                    
-                    // DESCRIPCIÓN - Solo bordes laterales e inferior (más espaciado)
-                    // Borde derecho
-                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                    // Borde inferior
-                    doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                    
+                    // Descripción (truncar si es muy larga)
+                    doc.rect(50 + colWidths[0], currentY, colWidths[1], rowHeight).stroke();
                     let descripcion = articulo.descripcion;
-                    if (descripcion.length > 35) {
-                        descripcion = descripcion.substring(0, 32) + '...';
+                    if (descripcion.length > 70) {
+                        descripcion = descripcion.substring(0, 67) + '...';
                     }
-                    doc.fontSize(14).font('Helvetica').fillColor('black')
-                       .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                    doc.text(descripcion, 55 + colWidths[0], currentY + 4, { width: colWidths[1] - 10 });
                     
-                    // CANTIDAD - Solo bordes laterales e inferior
-                    // Borde derecho
-                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                    // Borde inferior
-                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                    
-                    doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
-                       .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                           width: colWidths[2] - 10, 
-                           align: 'center' 
-                       });
+                    // Cantidad
+                    doc.rect(50 + colWidths[0] + colWidths[1], currentY, colWidths[2], rowHeight).stroke();
+                    doc.text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
+                        width: colWidths[2] - 10, 
+                        align: 'center' 
+                    });
                     
                     currentY += rowHeight;
                 });
         } else {
-            // Fila vacía con bordes limpios
-            doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-            doc.fillColor('black');
-            
-            // Solo bordes laterales e inferior
-            doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-            doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-            doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-            doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-            
-            doc.fontSize(12).font('Helvetica').fillColor('#6c757d')
-               .text('No hay artículos registrados', 55, currentY + 8, { 
-                   width: colWidths[0] + colWidths[1] + colWidths[2] - 10, 
-                   align: 'center' 
-               });
+            doc.rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).stroke();
+            doc.text('No hay artículos registrados', 55, currentY + 4, { 
+                width: colWidths[0] + colWidths[1] + colWidths[2] - 10, 
+                align: 'center' 
+            });
             currentY += rowHeight;
         }
         
-        // CONTROL DE ENTREGA ELEGANTE Y SIMPLIFICADO
-        const controlY = Math.min(currentY + 15, 720); // Limitar posición para evitar segunda página
-        const controlHeight = 35; // Compacto
+        // CONTROL DE ENTREGA REDISEÑADO
+        const controlY = currentY + 20;
+        const controlHeight = 80;
         
-        // Recuadro principal elegante
-        doc.fillColor('black').strokeColor('#dee2e6').lineWidth(1)
-           .roundedRect(50, controlY, 490, controlHeight, 3).stroke();
+        // Recuadro principal
+        doc.rect(50, controlY, 490, controlHeight).stroke();
         
-        // Título elegante
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#495057')
+        // Título
+        doc.fontSize(10).font('Helvetica-Bold')
            .text('CONTROL DE ENTREGA', 50, controlY + 8, { width: 490, align: 'center' });
         
-        // Solo dos campos elegantes en una fila
-        const campoY = controlY + 22;
+        // Campos en dos columnas
+        const campoY = controlY + 25;
+        const campoHeight = 15;
         
-        // Nombre de quien recibe elegante
-        doc.fontSize(8).font('Helvetica').fillColor('#6c757d')
+        // Nombre de quien recibe
+        doc.fontSize(8).font('Helvetica-Bold')
            .text('Nombre legible de quien recibe:', 60, campoY);
-        doc.strokeColor('#dee2e6').lineWidth(0.5)
-           .moveTo(60, campoY + 8).lineTo(280, campoY + 8).stroke();
+        doc.moveTo(60, campoY + campoHeight).lineTo(290, campoY + campoHeight).stroke();
         
-        // Firma elegante
-        doc.text('Firma (opcional):', 300, campoY);
-        doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
+        // Firma
+        doc.text('Firma (opcional):', 310, campoY);
+        doc.moveTo(310, campoY + campoHeight).lineTo(530, campoY + campoHeight).stroke();
         
-        // Pie de página elegante - POSICIÓN FIJA PARA EVITAR SEGUNDA PÁGINA
-        const pieY = Math.min(controlY + controlHeight + 10, 780);
-        doc.fontSize(7).font('Helvetica').fillColor('#adb5bd')
+        // Entregado por
+        doc.text('Entregado por:', 60, campoY + 25);
+        doc.moveTo(60, campoY + 25 + campoHeight).lineTo(530, campoY + 25 + campoHeight).stroke();
+        
+        // Nota importante
+        doc.fontSize(7).font('Helvetica')
+           .text('IMPORTANTE: Este comprobante se usa para armar el pedido y controlarlo en destino. ' +
+                 'Al entregar, se puede sacar una foto del papel con el nombre escrito por quien recibe.',
+                 60, controlY + controlHeight - 15, { 
+                     width: 470, 
+                     align: 'justify' 
+                 });
+        
+        // Pie de página minimalista
+        doc.fontSize(7).font('Helvetica').fillColor('gray')
            .text(`Sistema LAMDA - ${new Date().toLocaleString('es-AR')}`,
-                 50, pieY, { 
+                 50, doc.page.height - 25, { 
                      width: 490, 
                      align: 'center' 
                  });
         
-        // FORZAR FINALIZACIÓN EN UNA SOLA PÁGINA
-        doc.fillColor('black'); // Resetear color
+        // Finalizar documento
         doc.end();
         
         console.log(`✅ [REMITO-R] PDF rediseñado generado: ${nombreArchivo}`);
