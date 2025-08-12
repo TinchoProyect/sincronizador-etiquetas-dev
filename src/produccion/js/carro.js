@@ -1534,6 +1534,16 @@ export async function mostrarArticulosDelCarro() {
         const contenedor = document.getElementById('lista-articulos');
         if (contenedor) {
             contenedor.innerHTML = html;
+             //Boton modo medicion EventListenet - Mari
+            // Activar botón de temporizador global una vez que está en el DOM            // 🔄 Sincronizar estado del modo medición después de renderizar
+            const botonGlobal = document.getElementById('btn-temporizador-global');
+            if (botonGlobal) {
+                const activo = botonGlobal.classList.contains('activo');
+                document.querySelectorAll('.btn-temporizador-articulo')
+                    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
+                } else {
+                    console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
+            }
         } else {
             console.error('No se encontró el contenedor lista-articulos');
         }
@@ -1547,24 +1557,9 @@ export async function mostrarArticulosDelCarro() {
         }
     }
 
-    //Boton modo medicion EventListenet - Mari
-    // Activar botón de temporizador global una vez que está en el DOM
+   
 
 
-    const contenedor = document.getElementById('lista-articulos');
-        if (contenedor) {
-             contenedor.innerHTML = html;
-
-            // 🔄 Sincronizar estado del modo medición después de renderizar
-            const botonGlobal = document.getElementById('btn-temporizador-global');
-            if (botonGlobal) {
-                const activo = botonGlobal.classList.contains('activo');
-                document.querySelectorAll('.btn-temporizador-articulo')
-                    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
-                } else {
-                    console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
-            }
-        }
 
 
 }
