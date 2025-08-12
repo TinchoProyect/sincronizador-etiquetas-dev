@@ -39,19 +39,29 @@ desktop.ini
 /sincronizar-etiquetas.bat
 
 # -----------------------
+# ⛔ Ignorar credenciales sensibles de Google OAuth
+# -----------------------
+src/config/google-token.json
+src/config/google-credentials.json
+src/presupuestos/google-credentials.json.json
+
+DIAGNOSTICO_COMPLETO_FINAL.md
+DIAGNOSTICO_CONEXION_GOOGLE_SHEETS.md
+
+# -----------------------
 # ✅ Incluir archivos esenciales del proyecto
 # -----------------------
-# Incluir archivos de configuración
 !package.json
 !package-lock.json
-
-# Incluir carpetas esenciales
 !/src/
 !/src/**
 !/pages/
 !/pages/**
 !/migrations/
 !/migrations/**
-
-# Incluir archivos SQL de migración en la raíz
 !*.sql
+
+
+# Google OAuth secrets
+**/google-token.json
+**/google-credentials*.json

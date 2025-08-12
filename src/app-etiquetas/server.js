@@ -49,6 +49,29 @@ app.use('/api/produccion', createProxyMiddleware({
   changeOrigin: true
 }));
 
+// 🧾 [PRESUPUESTOS] Configurar proxy para el módulo de presupuestos
+console.log('🔍 [PRESUPUESTOS] Configurando proxy para módulo de presupuestos...');
+app.use('/api/presupuestos', createProxyMiddleware({
+  target: 'http://localhost:3003',
+  changeOrigin: true,
+  onError: (err, req, res) => {
+    console.error('❌ [PRESUPUESTOS] Error en proxy:', err.message);
+    res.status(503).json({ 
+      error: 'Servicio de presupuestos no disponible',
+      message: 'Verifique que el servidor de presupuestos esté ejecutándose en puerto 3003'
+    });
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`🔍 [PRESUPUESTOS] Proxy request: ${req.method} ${req.url} -> http://localhost:3003${req.url}`);
+  }
+}));
+
+// 🧾 [PRESUPUESTOS] Ruta para servir la página principal del módulo
+app.get('/presupuestos', (req, res) => {
+  console.log('🔍 [PRESUPUESTOS] Sirviendo página principal del módulo');
+  res.redirect('http://localhost:3003');
+});
+
 // Configurar conexión a la base de datos
 const pool = new Pool({
   user: 'postgres',

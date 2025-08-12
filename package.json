@@ -4,24 +4,27 @@
   "description": "Sistema de sincronización e impresión de etiquetas",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
+    "start": "concurrently \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
     "dev": "cd src/app-etiquetas && vite",
     "sync": "node src/actualizaArticulos/syncEtiquetas.js",
     "print": "node src/scripts/imprimirEtiqueta.js",
-    "produccion": "node src/produccion/app.js"
+    "produccion": "node src/produccion/app.js",
+    "presupuestos": "node src/presupuestos/app.js"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "googleapis": "^144.0.0",
     "http-proxy-middleware": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
+    "pdfkit": "^0.17.1",
     "pg": "^8.16.0",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
+    "concurrently": "^9.2.0",
     "vite": "^4.0.0"
   },
   "keywords": [],

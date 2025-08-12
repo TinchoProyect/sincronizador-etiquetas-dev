@@ -1,0 +1,40 @@
+{
+  "name": "lamda-presupuestos",
+  "version": "1.0.0",
+  "description": "Módulo de presupuestos para el sistema de gestión LAMDA",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Tests no implementados en Fase 1\" && exit 0"
+  },
+  "keywords": [
+    "presupuestos",
+    "lamda",
+    "google-sheets",
+    "express",
+    "postgresql"
+  ],
+  "author": "Sistema LAMDA",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "pg": "^8.11.3",
+    "googleapis": "^128.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "local"
+  },
+  "bugs": {
+    "url": "local"
+  },
+  "homepage": "http://localhost:3003"
+}
