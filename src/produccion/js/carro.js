@@ -3,6 +3,11 @@
 import { mostrarError, estilosTablaCarros, agruparCarrosPorSemanas, agruparCarrosPorSemanasYMeses } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
 import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
+import { initTemporizadores, syncTimerButtonsVisibility } from './temporizador_carro.js';
+
+
+
+initTemporizadores();
 
 // Hacer la función disponible globalmente
 window.editarIngredienteCompuesto = async (mixId) => {
@@ -1456,7 +1461,7 @@ export async function mostrarArticulosDelCarro() {
                     </div>
                     <div class="articulo-controls">
                         <button class="toggle-ingredientes">Ver</button>
-                        <button class="btn-temporizador-articulo"  data-articulo-id="${art.numero}"  style="display:none">
+                        <button class="btn-temporizador-articulo"  data-numero="${art.numero}"  style="display:none">
                              ⏱ Iniciar
                         </button>
                          ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
@@ -1535,8 +1540,12 @@ export async function mostrarArticulosDelCarro() {
         if (contenedor) {
             contenedor.innerHTML = html;
              //Boton modo medicion EventListenet - Mari
-            // Activar botón de temporizador global una vez que está en el DOM            // 🔄 Sincronizar estado del modo medición después de renderizar
+            // Activar botón de temporizador global una vez que está en el DOM         
+                // 🔄 Sincronizar estado del modo medición después de renderizar
             const botonGlobal = document.getElementById('btn-temporizador-global');
+            // Sincronizar visibilidad según estado actual del botón global
+            syncTimerButtonsVisibility();
+
             if (botonGlobal) {
                 const activo = botonGlobal.classList.contains('activo');
                 document.querySelectorAll('.btn-temporizador-articulo')
@@ -1563,19 +1572,7 @@ export async function mostrarArticulosDelCarro() {
 
 
 }
-// Delegación de eventos para el botón "Modo medición"-Mari
-// Funciona aunque re-denderices la lista
-document.addEventListener('click', (e) => {
-  if (e.target && e.target.id === 'btn-temporizador-global') {
-    const botonGlobal = e.target;
-    const estaActivo = botonGlobal.classList.toggle('activo');
-    botonGlobal.textContent = estaActivo ? '🛑 Salir de medición' : '⏱ Modo medición';
 
-    // Mostrar/ocultar los ⏱ por artículo
-    document.querySelectorAll('.btn-temporizador-articulo')
-      .forEach(b => b.style.display = estaActivo ? 'inline-block' : 'none');
-  }
-});
 
 
 
@@ -2395,64 +2392,4 @@ export {
     procesarGuardadoVinculo
 };
  
-//TEMPORARIZACION - Mari
-// Estado en memoria: un cronómetro por (carroId:articulo)
-/*const temporizadores = {};
-function formatearTiempo(ms) {
-  const s = Math.floor(ms / 1000);
-  const m = String(Math.floor(s / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return `${m}:${ss}`;
-}
 
-document.addEventListener('click', async (e) => {
-  if (!e.target.classList.contains('btn-temporizador-articulo')) return;
-
-  const btn = e.target;
-  const numero = btn.dataset.numero;
-  const carroId = window.carroIdGlobal; // ya lo usás en tu código
-  if (!carroId) { return; }
-
-  const key = `${carroId}:${numero}`;
-  let t = temporizadores[key];
-
-  // Iniciar
-  if (!t || !t.running) {
-    t = temporizadores[key] = {
-      running: true,
-      start: Date.now(),
-      interval: null
-    };
-
-    // UI
-    const actualizar = () => {
-      const ms = Date.now() - t.start;
-      btn.textContent = `⏹ ${formatearTiempo(ms)} ×`; // un solo botón que muestra tiempo + "×" para detener
-    };
-    actualizar();
-    t.interval = setInterval(update = actualizar, 1000);
-    btn.classList.add('running');
-
-    // (opcional) ping al backend para “inicio”
-    // await fetch(`/api/produccion/carro/${carroId}/articulo/${encodeURIComponent(numero)}/iniciar`, { method: 'POST' });
-
-    return;
-  }
-
-  // Detener
-  if (t.running) {
-    t.running = false;
-    clearInterval(t.interval);
-    const elapsed = Date.now() - t.start;
-
-    // UI final
-    btn.textContent = `✅ ${formatearTiempo(elapsed)}`;
-    btn.classList.remove('running');
-    btn.classList.add('finished');
-    btn.disabled = true;
-
-    // (opcional) enviar tiempo al backend – lo integramos después
-    // await fetch(`/api/produccion/carro/${carroId}/articulo/${encodeURIComponent(numero)}/finalizar`, { method: 'POST', body: JSON.stringify({ elapsedMs: elapsed }), headers: {'Content-Type': 'application/json'}});
-  }
-});
-*/

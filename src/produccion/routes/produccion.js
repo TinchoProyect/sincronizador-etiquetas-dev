@@ -1,7 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const { dbMiddleware } = require('../middleware');
 
+
+
+const tiemposCtrl = require('../controllers/tiemposCarro'); // nuevo controlador- temporizador- Mari
+//Temporizacion -Mari
+router.post('/carro/:carroId/articulo/:numero/iniciar', tiemposCtrl.iniciarTemporizadorArticulo);
+router.post('/carro/:carroId/articulo/:numero/finalizar', tiemposCtrl.finalizarTemporizadorArticulo);
+router.get('/carro/:carroId/tiempo-total', tiemposCtrl.obtenerTiempoTotalCarro);
+
+
+const { dbMiddleware } = require('../middleware');
 // Aplicar middleware de base de datos a todas las rutas
 router.use(dbMiddleware);
 const { 
