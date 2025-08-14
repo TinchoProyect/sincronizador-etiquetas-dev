@@ -357,6 +357,194 @@
             text-align: center;
         }
 
+        /* Estilos para secciones colapsables */
+        .collapsible-section {
+            padding: 0;
+            margin: 20px 0;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            overflow: hidden;
+        }
+
+        .section-toggle {
+            width: 100%;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: none;
+            padding: 20px;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: all 0.3s ease;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .section-toggle:hover {
+            background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section-toggle h2 {
+            margin: 0;
+            color: var(--primary-color);
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .toggle-icon {
+            font-size: 1.2em;
+            color: var(--primary-color);
+            transition: transform 0.3s ease;
+            font-weight: bold;
+        }
+
+        .section-toggle[aria-expanded="true"] .toggle-icon {
+            transform: rotate(90deg);
+        }
+
+        .collapsible-content {
+            padding: 20px;
+            background-color: #f8f9fa;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        .collapsible-content.expanding {
+            animation: expandSection 0.3s ease-out;
+        }
+
+        .collapsible-content.collapsing {
+            animation: collapseSection 0.3s ease-in;
+        }
+
+        @keyframes expandSection {
+            from {
+                opacity: 0;
+                max-height: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 1000px;
+                padding-top: 20px;
+                padding-bottom: 20px;
+            }
+        }
+
+        @keyframes collapseSection {
+            from {
+                opacity: 1;
+                max-height: 1000px;
+                padding-top: 20px;
+                padding-bottom: 20px;
+            }
+            to {
+                opacity: 0;
+                max-height: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+            }
+        }
+
+        /* Ajustes para el header dentro del contenido colapsable */
+        .collapsible-content .pedidos-header {
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        /* Estilos para la sección de resumen */
+        .summary-section {
+            margin: 30px 0;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .summary-header {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .summary-header h3 {
+            margin: 0;
+            color: var(--primary-color);
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .summary-container {
+            min-height: 60px;
+        }
+
+        .summary-message {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .summary-message span {
+            font-size: 1.1em;
+        }
+
+        .summary-table {
+            margin: 0;
+            background-color: white;
+        }
+
+        .summary-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: var(--text-color);
+            font-size: 0.9em;
+        }
+
+        .summary-table td {
+            font-size: 0.9em;
+            padding: 10px 12px;
+        }
+
+        /* Estilos compactos para el resumen */
+        .summary-table .articulos-tabla th,
+        .summary-table .articulos-tabla td {
+            padding: 8px 10px;
+        }
+
+        /* Destacar filas de faltantes y parciales en el resumen */
+        .summary-table tr.faltante-row {
+            background-color: rgba(248, 215, 218, 0.3);
+        }
+
+        .summary-table tr.parcial-row {
+            background-color: rgba(255, 243, 205, 0.3);
+        }
+
+        .summary-table tr.faltante-row:hover {
+            background-color: rgba(248, 215, 218, 0.5);
+        }
+
+        .summary-table tr.parcial-row:hover {
+            background-color: rgba(255, 243, 205, 0.5);
+        }
+
+        /* Separador entre grupos en el resumen */
+        .summary-group-separator {
+            height: 2px;
+            background-color: #dee2e6;
+            margin: 0;
+        }
+
+        .summary-group-separator td {
+            padding: 0;
+            border: none;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .pedidos-header {
@@ -425,49 +613,97 @@
     <!-- Separador Visual -->
     <div class="section-separator"></div>
 
+    <!-- Resumen de Faltantes y Parciales -->
+    <section class="summary-section">
+        <div class="summary-header">
+            <h3>⚠️ Resumen de Faltantes y Parciales</h3>
+        </div>
+        <div id="summary-container" class="summary-container">
+            <div id="summary-loading" class="summary-message">
+                <span>Cargando resumen...</span>
+            </div>
+            <div id="summary-empty" class="summary-message" style="display: none;">
+                <span>✅ Sin faltantes ni parciales</span>
+            </div>
+            <div id="summary-content" style="display: none;">
+                <table class="articulos-tabla summary-table">
+                    <thead>
+                        <tr>
+                            <th>Artículo</th>
+                            <th>Descripción</th>
+                            <th>Pedido Total</th>
+                            <th>Stock Disponible</th>
+                            <th>Faltante</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summary-tbody">
+                        <!-- Filas se cargarán dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
     <!-- Sección de Informes de Presupuestos -->
     <section class="reports-section">
         <!-- Bloque Pedidos por Cliente - Presupuestos Confirmados -->
-        <section class="pedidos-por-cliente-section">
-            <div class="pedidos-header">
+        <section class="pedidos-por-cliente-section collapsible-section">
+            <!-- Botón de Toggle -->
+            <button class="section-toggle" onclick="toggleSection('pedidos-section')" aria-expanded="false">
+                <span class="toggle-icon">▶</span>
                 <h2>Pedidos por Cliente - Presupuestos Confirmados</h2>
-                <div class="pedidos-controls">
-                    <label for="fecha-corte">Fecha limite:</label>
-                    <input type="date" id="fecha-corte" name="fecha-corte" />
-                    <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." />
-                    <button id="refresh-pedidos" class="admin-button">Actualizar</button>
+            </button>
+            
+            <!-- Contenido Colapsable -->
+            <div id="pedidos-section" class="collapsible-content" style="display: none;">
+                <div class="pedidos-header">
+                    <div class="pedidos-controls">
+                        <label for="fecha-corte">Fecha limite:</label>
+                        <input type="date" id="fecha-corte" name="fecha-corte" />
+                        <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." />
+                        <button id="refresh-pedidos" class="admin-button">Actualizar</button>
+                    </div>
                 </div>
-            </div>
-            <div id="pedidos-container" class="pedidos-container">
-                <!-- Aquí se renderizarán los pedidos por cliente -->
+                <div id="pedidos-container" class="pedidos-container">
+                    <!-- Aquí se renderizarán los pedidos por cliente -->
+                </div>
             </div>
         </section>
 
         <!-- Nueva sección: Artículos de Pedidos Confirmados -->
-        <section class="pedidos-por-cliente-section">
-            <div class="pedidos-header">
+        <section class="pedidos-por-cliente-section collapsible-section">
+            <!-- Botón de Toggle -->
+            <button class="section-toggle" onclick="toggleSection('articulos-section')" aria-expanded="false">
+                <span class="toggle-icon">▶</span>
                 <h2>Artículos de Pedidos Confirmados</h2>
-                <div class="pedidos-controls">
-                    <label for="fecha-corte-articulos">Fecha limite:</label>
-                    <input type="date" id="fecha-corte-articulos" name="fecha-corte-articulos" />
-                    <input type="text" id="buscar-articulo" placeholder="Buscar artículo..." />
-                    <select id="filtro-estado-articulos">
-                        <option value="todos">Todos los estados</option>
-                        <option value="faltante">Solo faltantes</option>
-                        <option value="parcial">Solo parciales</option>
-                        <option value="completo">Solo completos</option>
-                    </select>
-                    <button id="refresh-articulos" class="admin-button">Actualizar</button>
+            </button>
+            
+            <!-- Contenido Colapsable -->
+            <div id="articulos-section" class="collapsible-content" style="display: none;">
+                <div class="pedidos-header">
+                    <div class="pedidos-controls">
+                        <label for="fecha-corte-articulos">Fecha limite:</label>
+                        <input type="date" id="fecha-corte-articulos" name="fecha-corte-articulos" />
+                        <input type="text" id="buscar-articulo" placeholder="Buscar artículo..." />
+                        <select id="filtro-estado-articulos">
+                            <option value="todos">Todos los estados</option>
+                            <option value="faltante">Solo faltantes</option>
+                            <option value="parcial">Solo parciales</option>
+                            <option value="completo">Solo completos</option>
+                        </select>
+                        <button id="refresh-articulos" class="admin-button">Actualizar</button>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Totales por estado -->
-            <div id="totales-articulos" class="totales-estado" style="padding: 10px; margin-bottom: 10px; background-color: #e9ecef; border-radius: 4px; text-align: center; font-weight: bold;">
-                <!-- Los totales se cargarán dinámicamente -->
-            </div>
-            
-            <div id="articulos-container" class="pedidos-container">
-                <!-- Aquí se renderizará la tabla de artículos consolidados -->
+                
+                <!-- Totales por estado -->
+                <div id="totales-articulos" class="totales-estado" style="padding: 10px; margin-bottom: 10px; background-color: #e9ecef; border-radius: 4px; text-align: center; font-weight: bold;">
+                    <!-- Los totales se cargarán dinámicamente -->
+                </div>
+                
+                <div id="articulos-container" class="pedidos-container">
+                    <!-- Aquí se renderizará la tabla de artículos consolidados -->
+                </div>
             </div>
         </section>
 
@@ -502,5 +738,468 @@
     </div>
 
     <script src="/js/produccion.js"></script>
+    
+    <!-- Script para funcionalidad de secciones colapsables -->
+    <script>
+        function toggleSection(sectionId) {
+            const content = document.getElementById(sectionId);
+            const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
+            const icon = button.querySelector('.toggle-icon');
+            
+            if (content.style.display === 'none' || content.style.display === '') {
+                // Expandir sección
+                content.style.display = 'block';
+                content.classList.add('expanding');
+                content.classList.remove('collapsing');
+                button.setAttribute('aria-expanded', 'true');
+                
+                // Remover clase de animación después de completarse
+                setTimeout(() => {
+                    content.classList.remove('expanding');
+                }, 300);
+                
+            } else {
+                // Colapsar sección
+                content.classList.add('collapsing');
+                content.classList.remove('expanding');
+                button.setAttribute('aria-expanded', 'false');
+                
+                // Ocultar después de la animación
+                setTimeout(() => {
+                    content.style.display = 'none';
+                    content.classList.remove('collapsing');
+                }, 300);
+            }
+        }
+
+        // Función para inicializar el estado de las secciones al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            // Asegurar que todas las secciones estén colapsadas al inicio
+            const collapsibleSections = document.querySelectorAll('.collapsible-content');
+            const toggleButtons = document.querySelectorAll('.section-toggle');
+            
+            collapsibleSections.forEach(section => {
+                section.style.display = 'none';
+            });
+            
+            toggleButtons.forEach(button => {
+                button.setAttribute('aria-expanded', 'false');
+            });
+            
+            console.log('Secciones colapsables inicializadas correctamente');
+        });
+
+        // Función para expandir una sección específica (útil para llamadas externas)
+        function expandSection(sectionId) {
+            const content = document.getElementById(sectionId);
+            const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
+            
+            if (content && content.style.display === 'none') {
+                toggleSection(sectionId);
+            }
+        }
+
+        // Función para colapsar una sección específica (útil para llamadas externas)
+        function collapseSection(sectionId) {
+            const content = document.getElementById(sectionId);
+            const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
+            
+            if (content && content.style.display !== 'none') {
+                toggleSection(sectionId);
+            }
+        }
+
+        // ===== FUNCIONALIDAD DEL RESUMEN DE FALTANTES Y PARCIALES =====
+        
+        // Variable global para compartir datos entre resumen y panel principal
+        let datosArticulosCompartidos = null;
+        let ultimaActualizacion = 0;
+
+        // Función para normalizar estados (corregir variantes tipográficas)
+        function normalizarEstado(estado) {
+            if (!estado) return '';
+            
+            return estado.toString()
+                .trim()
+                .toUpperCase()
+                .replace(/FALLANTE/g, 'FALTANTE') // Corregir "FALLANTE" → "FALTANTE"
+                .replace(/[ÁÀÄÂ]/g, 'A')
+                .replace(/[ÉÈËÊ]/g, 'E')
+                .replace(/[ÍÌÏÎ]/g, 'I')
+                .replace(/[ÓÒÖÔ]/g, 'O')
+                .replace(/[ÚÙÜÛ]/g, 'U');
+        }
+
+        // Función para parsear número de forma segura
+        function parseNumeroSeguro(valor) {
+            if (valor === null || valor === undefined || valor === '') return 0;
+            const numero = Number(valor);
+            return isNaN(numero) ? 0 : numero;
+        }
+
+        // Función para extraer datos directamente del DOM del panel principal
+        function obtenerDatosDesdeDOM() {
+            const articulos = [];
+            
+            try {
+                // Buscar la tabla de artículos en el panel principal
+                const tabla = document.querySelector('#articulos-container .articulos-tabla tbody');
+                if (!tabla) {
+                    console.debug('⚠️ No se encontró tabla de artículos en el DOM');
+                    return [];
+                }
+                
+                const filas = tabla.querySelectorAll('tr');
+                console.debug('🔍 Encontradas', filas.length, 'filas en la tabla');
+                
+                filas.forEach((fila, index) => {
+                    const celdas = fila.querySelectorAll('td');
+                    if (celdas.length >= 6) {
+                        // Extraer datos de cada celda
+                        const codigo = celdas[0]?.textContent?.trim() || '';
+                        const descripcion = celdas[1]?.textContent?.trim() || '';
+                        const pedidoTotal = parseNumeroSeguro(celdas[2]?.textContent?.trim());
+                        const stockDisponible = parseNumeroSeguro(celdas[3]?.textContent?.trim());
+                        const faltante = parseNumeroSeguro(celdas[4]?.textContent?.trim());
+                        
+                        // Extraer estado del badge/indicador
+                        const estadoElement = celdas[5]?.querySelector('.indicador-estado');
+                        const estado = estadoElement?.textContent?.trim() || '';
+                        
+                        // Log del primer elemento para debug
+                        if (index === 0) {
+                            console.debug('🔍 Primer artículo extraído:', {
+                                codigo, descripcion, pedidoTotal, stockDisponible, faltante, estado
+                            });
+                        }
+                        
+                        articulos.push({
+                            codigo,
+                            descripcion,
+                            pedido_total: pedidoTotal,
+                            stock_disponible: stockDisponible,
+                            faltante,
+                            estado: normalizarEstado(estado)
+                        });
+                    }
+                });
+                
+                console.debug('📊 Artículos extraídos del DOM:', articulos.length);
+                return articulos;
+                
+            } catch (error) {
+                console.error('❌ Error al extraer datos del DOM:', error);
+                return [];
+            }
+        }
+
+        // Función para obtener datos (primero intenta DOM, luego API como fallback)
+        async function obtenerDatosArticulosConFiltros() {
+            // Primero intentar extraer del DOM
+            const datosDOM = obtenerDatosDesdeDOM();
+            if (datosDOM.length > 0) {
+                console.debug('✅ Usando datos del DOM:', datosDOM.length, 'artículos');
+                datosArticulosCompartidos = datosDOM;
+                ultimaActualizacion = Date.now();
+                return datosDOM;
+            }
+            
+            // Fallback: consulta API
+            try {
+                const fechaCorte = document.getElementById('fecha-corte-articulos')?.value || '';
+                const busqueda = document.getElementById('buscar-articulo')?.value || '';
+                const filtroEstado = document.getElementById('filtro-estado-articulos')?.value || 'todos';
+                
+                let url = '/api/produccion/articulos-pedidos-confirmados';
+                const params = new URLSearchParams();
+                
+                if (fechaCorte) params.append('fecha', fechaCorte);
+                if (busqueda) params.append('buscar', busqueda);
+                if (filtroEstado && filtroEstado !== 'todos') params.append('estado', filtroEstado);
+                
+                if (params.toString()) {
+                    url += '?' + params.toString();
+                }
+                
+                console.debug('🔍 Fallback: Fetching desde API:', url);
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Error HTTP: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.debug('📊 Dataset API recibido:', data.length, 'artículos');
+                
+                datosArticulosCompartidos = data;
+                ultimaActualizacion = Date.now();
+                
+                return data;
+            } catch (error) {
+                console.error('❌ Error al obtener datos de artículos:', error);
+                return [];
+            }
+        }
+
+        // Función para filtrar faltantes y parciales con lógica mejorada
+        function filtrarFaltantesYParciales(articulos) {
+            if (!Array.isArray(articulos)) {
+                console.debug('⚠️ Dataset no es array:', typeof articulos);
+                return { faltantes: [], parciales: [] };
+            }
+
+            const faltantes = [];
+            const parciales = [];
+            
+            articulos.forEach((art, index) => {
+                // Normalizar estado
+                const estadoNormalizado = normalizarEstado(art.estado);
+                
+                // Parsear valores numéricos
+                const faltante = parseNumeroSeguro(art.faltante || art.cantidad_faltante);
+                const stockDisponible = parseNumeroSeguro(art.stock_disponible || art.stock);
+                const pedidoTotal = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida);
+                
+                // Log de depuración para el primer elemento
+                if (index === 0) {
+                    console.debug('🔍 Ejemplo artículo:', {
+                        original: art.estado,
+                        normalizado: estadoNormalizado,
+                        faltante: faltante,
+                        stock: stockDisponible,
+                        pedido: pedidoTotal
+                    });
+                }
+                
+                // Clasificar según estado normalizado
+                if (estadoNormalizado === 'FALTANTE') {
+                    faltantes.push({
+                        ...art,
+                        estado: estadoNormalizado,
+                        faltante: faltante,
+                        stock_disponible: stockDisponible,
+                        pedido_total: pedidoTotal
+                    });
+                } else if (estadoNormalizado === 'PARCIAL') {
+                    parciales.push({
+                        ...art,
+                        estado: estadoNormalizado,
+                        faltante: faltante,
+                        stock_disponible: stockDisponible,
+                        pedido_total: pedidoTotal
+                    });
+                }
+                
+                // Clasificación alternativa por lógica numérica (backup)
+                else if (faltante > 0) {
+                    if (stockDisponible === 0) {
+                        // Sin stock = FALTANTE
+                        faltantes.push({
+                            ...art,
+                            estado: 'FALTANTE',
+                            faltante: faltante,
+                            stock_disponible: stockDisponible,
+                            pedido_total: pedidoTotal
+                        });
+                    } else if (stockDisponible > 0 && stockDisponible < pedidoTotal) {
+                        // Stock parcial = PARCIAL
+                        parciales.push({
+                            ...art,
+                            estado: 'PARCIAL',
+                            faltante: faltante,
+                            stock_disponible: stockDisponible,
+                            pedido_total: pedidoTotal
+                        });
+                    }
+                }
+            });
+
+            console.debug('📈 Resultados filtrado:', {
+                total: articulos.length,
+                faltantes: faltantes.length,
+                parciales: parciales.length,
+                ejemploFaltantes: faltantes.slice(0, 2).map(f => ({ codigo: f.codigo || f.articulo, estado: f.estado })),
+                ejemploParciales: parciales.slice(0, 2).map(p => ({ codigo: p.codigo || p.articulo, estado: p.estado }))
+            });
+
+            return { faltantes, parciales };
+        }
+
+        // Función para renderizar una fila de artículo en el resumen
+        function renderizarFilaResumen(articulo, tipo) {
+            const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
+            const rowClass = tipo === 'FALTANTE' ? 'faltante-row' : 'parcial-row';
+            
+            return `
+                <tr class="${rowClass}">
+                    <td>${articulo.codigo || articulo.articulo || '-'}</td>
+                    <td>${articulo.descripcion || articulo.nombre || '-'}</td>
+                    <td>${articulo.pedido_total || articulo.cantidad_pedida || 0}</td>
+                    <td>${articulo.stock_disponible || articulo.stock || 0}</td>
+                    <td class="cantidad-faltante">${articulo.faltante || articulo.cantidad_faltante || 0}</td>
+                    <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
+                </tr>
+            `;
+        }
+
+        // Función para actualizar el resumen (sincronizada con panel principal)
+        async function actualizarResumen() {
+            const loadingEl = document.getElementById('summary-loading');
+            const emptyEl = document.getElementById('summary-empty');
+            const contentEl = document.getElementById('summary-content');
+            const tbodyEl = document.getElementById('summary-tbody');
+
+            // Mostrar loading
+            loadingEl.style.display = 'block';
+            emptyEl.style.display = 'none';
+            contentEl.style.display = 'none';
+
+            try {
+                // Obtener datos con los mismos filtros que el panel principal
+                const articulos = await obtenerDatosArticulosConFiltros();
+                const { faltantes, parciales } = filtrarFaltantesYParciales(articulos);
+
+                // Ocultar loading
+                loadingEl.style.display = 'none';
+
+                if (faltantes.length === 0 && parciales.length === 0) {
+                    // Mostrar mensaje de sin faltantes ni parciales
+                    emptyEl.style.display = 'block';
+                    contentEl.style.display = 'none';
+                    console.debug('✅ Sin faltantes ni parciales encontrados');
+                } else {
+                    // Mostrar tabla con datos
+                    emptyEl.style.display = 'none';
+                    contentEl.style.display = 'block';
+
+                    let html = '';
+                    
+                    // Agregar faltantes primero (orden solicitado)
+                    if (faltantes.length > 0) {
+                        faltantes.forEach(articulo => {
+                            html += renderizarFilaResumen(articulo, 'FALTANTE');
+                        });
+                    }
+
+                    // Agregar separador visual si hay ambos tipos
+                    if (faltantes.length > 0 && parciales.length > 0) {
+                        html += '<tr class="summary-group-separator"><td colspan="6"></td></tr>';
+                    }
+
+                    // Agregar parciales después
+                    if (parciales.length > 0) {
+                        parciales.forEach(articulo => {
+                            html += renderizarFilaResumen(articulo, 'PARCIAL');
+                        });
+                    }
+
+                    tbodyEl.innerHTML = html;
+                    console.debug('✅ Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
+                }
+
+            } catch (error) {
+                console.error('❌ Error al actualizar resumen:', error);
+                loadingEl.style.display = 'none';
+                emptyEl.innerHTML = '<span style="color: #dc3545;">❌ Error al cargar resumen</span>';
+                emptyEl.style.display = 'block';
+                contentEl.style.display = 'none';
+            }
+        }
+
+        // Función para observar cambios en la tabla del panel principal
+        function configurarObservadorTabla() {
+            const articulosContainer = document.getElementById('articulos-container');
+            if (!articulosContainer) {
+                console.debug('⚠️ No se encontró articulos-container para observar');
+                return;
+            }
+
+            // Crear observer para detectar cambios en el contenido de la tabla
+            const observer = new MutationObserver((mutations) => {
+                let tablaModificada = false;
+                
+                mutations.forEach((mutation) => {
+                    // Detectar si se agregaron/removieron nodos o cambió el contenido
+                    if (mutation.type === 'childList' || mutation.type === 'subtree') {
+                        tablaModificada = true;
+                    }
+                });
+                
+                if (tablaModificada) {
+                    console.debug('🔄 Detectado cambio en tabla principal, actualizando resumen...');
+                    setTimeout(actualizarResumen, 300); // Delay corto para que se complete el renderizado
+                }
+            });
+
+            // Observar cambios en el contenedor de artículos y sus descendientes
+            observer.observe(articulosContainer, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+
+            console.debug('✅ Observer de tabla configurado');
+        }
+
+        // Función para sincronizar con todos los controles del panel principal
+        function sincronizarConInformePrincipal() {
+            // Sincronizar con cambios en fecha límite
+            const fechaCorteArticulos = document.getElementById('fecha-corte-articulos');
+            if (fechaCorteArticulos) {
+                fechaCorteArticulos.addEventListener('change', () => {
+                    console.debug('🔄 Cambio en fecha límite, actualizando resumen...');
+                    setTimeout(actualizarResumen, 500); // Delay para sincronización
+                });
+            }
+
+            // Sincronizar con búsqueda de artículos
+            const buscarArticulo = document.getElementById('buscar-articulo');
+            if (buscarArticulo) {
+                buscarArticulo.addEventListener('input', () => {
+                    console.debug('🔄 Cambio en búsqueda, actualizando resumen...');
+                    setTimeout(actualizarResumen, 800); // Delay para evitar muchas llamadas
+                });
+            }
+
+            // Sincronizar con filtro de estado
+            const filtroEstadoArticulos = document.getElementById('filtro-estado-articulos');
+            if (filtroEstadoArticulos) {
+                filtroEstadoArticulos.addEventListener('change', () => {
+                    console.debug('🔄 Cambio en filtro estado, actualizando resumen...');
+                    setTimeout(actualizarResumen, 500);
+                });
+            }
+
+            // Sincronizar con botón actualizar
+            const refreshArticulos = document.getElementById('refresh-articulos');
+            if (refreshArticulos) {
+                refreshArticulos.addEventListener('click', () => {
+                    console.debug('🔄 Click en actualizar, sincronizando resumen...');
+                    setTimeout(actualizarResumen, 1200); // Esperar que se actualice el panel principal
+                });
+            }
+
+            // Configurar observer para detectar cambios automáticamente en la tabla
+            configurarObservadorTabla();
+        }
+
+        // Inicializar el resumen cuando se carga la página
+        document.addEventListener('DOMContentLoaded', function() {
+            console.debug('🚀 Inicializando resumen de faltantes y parciales...');
+            
+            // Inicializar después de que se carguen los controles del panel
+            setTimeout(() => {
+                actualizarResumen();
+                sincronizarConInformePrincipal();
+            }, 2000); // Delay mayor para asegurar que el panel principal esté listo
+        });
+
+        // Función pública para actualizar el resumen (llamada externa)
+        window.actualizarResumenFaltantes = function() {
+            console.debug('🔄 Actualización externa del resumen solicitada');
+            actualizarResumen();
+        };
+
+    </script>
 </body>
 </html>
