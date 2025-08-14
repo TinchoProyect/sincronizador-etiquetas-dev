@@ -21,6 +21,7 @@
     "node-fetch": "^3.3.2",
     "pdfkit": "^0.17.1",
     "pg": "^8.16.0",
+    "puppeteer": "^24.16.1",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
