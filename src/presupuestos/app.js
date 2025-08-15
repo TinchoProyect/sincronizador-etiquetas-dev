@@ -14,6 +14,7 @@ const { crearTablas } = require('./config/init-database');
 
 // Importar rutas CON LOGS DE DEPURACIÓN COMPLETOS
 const presupuestosRoutes = require('./routes/presupuestos');
+const gsheetsRoutes = require('./routes/gsheets');
 
 console.log('[PRESUPUESTOS-BACK] Configurando middleware...');
 
@@ -59,6 +60,17 @@ app.get('/', (req, res) => {
 
 // Rutas API CON LOGS DE DEPURACIÓN COMPLETOS
 app.use('/api/presupuestos', presupuestosRoutes);
+
+// Rutas del panel nuevo de Google Sheets (solo si está habilitado)
+const { GSHEETS_PANEL_ENABLED } = require('../config/feature-flags');
+if (GSHEETS_PANEL_ENABLED) {
+    console.log('[PRESUPUESTOS-BACK] ✅ Panel nuevo de Google Sheets habilitado');
+    app.use('/api/gsheets', gsheetsRoutes);
+    console.log('[PRESUPUESTOS-BACK] ✅ Rutas Google Sheets montadas en /api/gsheets');
+} else {
+    console.log('[PRESUPUESTOS-BACK] ⚠️ Panel nuevo de Google Sheets deshabilitado por feature flag');
+}
+
 console.log('[PRESUPUESTOS-BACK] ✅ Rutas API CON LOGS COMPLETOS montadas en /api/presupuestos');
 
 // Ruta de health check general del servidor

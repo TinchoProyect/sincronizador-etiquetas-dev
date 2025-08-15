@@ -1,7 +1,21 @@
 const { google } = require('googleapis');
 const { getAuthenticatedClient } = require('./auth');
+const { USE_SA_SHEETS } = require('../../config/feature-flags');
 
 console.log('🔍 [PRESUPUESTOS] Configurando cliente Google Sheets API...');
+
+// Adapter injection para Service Account
+let adapter = null;
+if (USE_SA_SHEETS) {
+    try {
+        const ServiceAccountAdapter = require('../../presupuestos/adapters/GoogleSheetsServiceAccountAdapter');
+        adapter = new ServiceAccountAdapter();
+        console.log('✅ [PRESUPUESTOS] Service Account adapter cargado en client');
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al cargar Service Account adapter en client:', error.message);
+        console.log('⚠️ [PRESUPUESTOS] Fallback a OAuth2 en client');
+    }
+}
 
 /**
  * Cliente para interactuar con Google Sheets API
@@ -30,6 +44,12 @@ async function getSheetsInstance() {
  * Extraer ID de hoja desde URL
  */
 function extractSheetId(url) {
+    // Usar Service Account si está habilitado
+    if (USE_SA_SHEETS && adapter) {
+        return adapter.extractSheetId(url);
+    }
+    
+    // Código OAuth2 original
     console.log('🔍 [PRESUPUESTOS] Extrayendo ID de hoja desde URL...');
     
     try {
@@ -142,6 +162,13 @@ async function readSheetRange(sheetId, range, sheetName = null) {
  * Leer datos con encabezados
  */
 async function readSheetWithHeaders(sheetId, range, sheetName = null) {
+    // Usar Service Account si está habilitado
+    if (USE_SA_SHEETS && adapter) {
+        console.log('🔍 [PRESUPUESTOS] Usando Service Account adapter para leer datos...');
+        return await adapter.readSheetWithHeaders(sheetId, range, sheetName);
+    }
+    
+    // Código OAuth2 original
     console.log(`🔍 [PRESUPUESTOS] Leyendo datos con encabezados: ${range}`);
     
     // 🔍 LOG PUNTO 4: Intento de acceso a la hoja Presupuestos
@@ -226,6 +253,13 @@ async function readSheetWithHeaders(sheetId, range, sheetName = null) {
  * Validar acceso a hoja
  */
 async function validateSheetAccess(sheetId) {
+    // Usar Service Account si está habilitado
+    if (USE_SA_SHEETS && adapter) {
+        console.log('🔍 [PRESUPUESTOS] Usando Service Account adapter para validar acceso...');
+        return await adapter.validateSheetAccess(sheetId);
+    }
+    
+    // Código OAuth2 original
     console.log(`🔍 [PRESUPUESTOS] Validando acceso a hoja: ${sheetId}`);
     
     try {
@@ -301,6 +335,13 @@ async function getSheetMetadata(sheetId, sheetName = null) {
  * Detectar estructura de datos automáticamente
  */
 async function detectDataStructure(sheetId, sheetName = null, sampleRows = 10) {
+    // Usar Service Account si está habilitado
+    if (USE_SA_SHEETS && adapter) {
+        console.log('🔍 [PRESUPUESTOS] Usando Service Account adapter para detectar estructura...');
+        return await adapter.detectDataStructure(sheetId, sheetName, sampleRows);
+    }
+    
+    // Código OAuth2 original
     console.log(`🔍 [PRESUPUESTOS] Detectando estructura de datos...`);
     
     try {

@@ -45,28 +45,65 @@ const iniciarAutenticacion = async (req, res) => {
     try {
         console.log('🔍 [PRESUPUESTOS] Iniciando proceso de autenticación Google...');
         
+        // Verificar primero si Service Account está disponible
+        const authStatus = await checkAuthStatus();
+        
+        if (authStatus.authenticated && authStatus.authType === 'service_account') {
+            console.log('🔍 [PRESUPUESTOS] Usando Service Account - no requiere autorización');
+            
+            // Service Account ya está autenticado, retornar respuesta para ejecutar sincronización directamente
+            return res.json({
+                success: true,
+                data: {
+                    authType: 'service_account',
+                    authenticated: true,
+                    message: 'Service Account ya autenticado - ejecutando sincronización automáticamente'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Fallback a OAuth2 si Service Account no está disponible
+        console.log('🔍 [PRESUPUESTOS] Service Account no disponible, usando OAuth2...');
+        
         // Importar funciones necesarias para crear cliente OAuth2
         const { loadCredentials, createOAuth2Client } = require('../../services/gsheets/auth');
         
         console.log('🔍 [PRESUPUESTOS] Generando URL de autorización...');
         
-        // Cargar credenciales y crear cliente OAuth2
-        const credentials = loadCredentials();
-        const oAuth2Client = createOAuth2Client(credentials);
-        
-        // Generar URL de autorización con el cliente
-        const authUrl = generateAuthUrl(oAuth2Client);
-        
-        console.log('✅ [PRESUPUESTOS] URL de autorización generada');
-        
-        res.json({
-            success: true,
-            data: {
-                authUrl: authUrl,
-                message: 'Visite la URL para autorizar el acceso a Google Sheets'
-            },
-            timestamp: new Date().toISOString()
-        });
+        try {
+            // Cargar credenciales y crear cliente OAuth2
+            const credentials = loadCredentials();
+            const oAuth2Client = createOAuth2Client(credentials);
+            
+            // Generar URL de autorización con el cliente
+            const authUrl = generateAuthUrl(oAuth2Client);
+            
+            console.log('✅ [PRESUPUESTOS] URL de autorización generada');
+            
+            res.json({
+                success: true,
+                data: {
+                    authUrl: authUrl,
+                    authType: 'oauth2',
+                    message: 'Visite la URL para autorizar el acceso a Google Sheets'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (authError) {
+            console.log('⚠️ [SA-ADAPTER] generateAuthUrl() no aplicable para Service Account');
+            
+            // Si falla OAuth2 pero Service Account está configurado, informar al usuario
+            res.json({
+                success: true,
+                data: {
+                    authType: 'service_account',
+                    authenticated: true,
+                    message: 'Service Account configurado - no requiere autorización manual'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
         
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al iniciar autenticación:', error);

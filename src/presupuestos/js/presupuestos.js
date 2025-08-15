@@ -690,7 +690,14 @@ async function handleSincronizar() {
         return;
     }
     
-    // Ejecutar sincronización
+    // Si Service Account está disponible, ejecutar sincronización directamente
+    if (appState.authStatus.authType === 'service_account') {
+        console.log('🔍 [PRESUPUESTOS-JS] Service Account detectado - ejecutando sincronización directamente');
+        await executeSyncronization();
+        return;
+    }
+    
+    // Ejecutar sincronización para OAuth2
     await executeSyncronization();
 }
 
@@ -715,7 +722,25 @@ async function handleGoogleAuth() {
         
         console.log('🔍 [PRESUPUESTOS-JS] Respuesta del servidor:', data);
         
-        // Verificar estructura de respuesta
+        // Verificar si Service Account está disponible
+        if (data.success && data.data?.authType === 'service_account' && data.data?.authenticated) {
+            console.log('✅ [PRESUPUESTOS-JS] Service Account detectado - ejecutando sincronización directamente');
+            
+            // Actualizar estado de autenticación
+            appState.authStatus = { 
+                authenticated: true, 
+                authType: 'service_account' 
+            };
+            updateSyncButtonState(appState.authStatus);
+            
+            showMessage('Service Account configurado - ejecutando sincronización automáticamente', 'success');
+            
+            // Ejecutar sincronización directamente
+            setTimeout(() => executeSyncronization(), 1000);
+            return;
+        }
+        
+        // Verificar estructura de respuesta para OAuth2
         const authUrl = data.data?.authUrl || data.authUrl;
         
         if (data.success && authUrl) {
