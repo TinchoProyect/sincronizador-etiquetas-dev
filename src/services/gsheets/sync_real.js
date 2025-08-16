@@ -11,6 +11,23 @@ console.log('🔍 [PRESUPUESTOS] Configurando servicio de sincronización para p
  * Sincronizar datos desde Google Sheets
  */
 async function syncFromGoogleSheets(config, db) {
+    // Leer flag dinámicamente desde variables de entorno
+    const syncEngineEnabled = process.env.SYNC_ENGINE_ENABLED === 'true';
+    
+    if (!syncEngineEnabled) {
+        console.log(`[SYNC] Motor de sincronización deshabilitado por flag SYNC_ENGINE_ENABLED=${process.env.SYNC_ENGINE_ENABLED}`);
+        return { 
+            exitoso: true, 
+            registros_procesados: 0, 
+            registros_nuevos: 0, 
+            registros_actualizados: 0, 
+            errores: [], 
+            skipped: 'disabled' 
+        };
+    }
+    
+    console.log(`[SYNC] ✅ Motor de sincronización habilitado (SYNC_ENGINE_ENABLED=${process.env.SYNC_ENGINE_ENABLED})`);
+    
     console.log('🔄 [PRESUPUESTOS] ===== INICIANDO SINCRONIZACIÓN DESDE GOOGLE SHEETS =====');
     console.log('📋 [PRESUPUESTOS] Configuración recibida:', {
         hoja_url: config.hoja_url,

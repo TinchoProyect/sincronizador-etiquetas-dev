@@ -97,9 +97,18 @@ function setupEventListeners() {
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: btn-sincronizar');
     }
     
+    // Configuración: usar el modal de sync_config_modal.js
     if (btnConfiguracion) {
-        btnConfiguracion.addEventListener('click', handleConfiguracion);
-        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: btn-configuracion');
+        // El event listener se bindea en bindSyncConfigUI() del modal
+        console.log('✅ [PRESUPUESTOS-JS] Botón configuración encontrado - será bindeado por sync_config_modal.js');
+    }
+    
+    // Bindear eventos del modal de configuración
+    if (typeof bindSyncConfigUI === 'function') {
+        bindSyncConfigUI();
+        console.log('✅ [PRESUPUESTOS-JS] Modal de configuración bindeado');
+    } else {
+        console.log('⚠️ [PRESUPUESTOS-JS] bindSyncConfigUI no disponible - modal no bindeado');
     }
     
     // Filtros

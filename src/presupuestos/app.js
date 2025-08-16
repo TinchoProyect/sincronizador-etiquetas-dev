@@ -12,6 +12,9 @@ const { dbMiddleware } = require('./config/database');
 const { requestLogger, errorHandler } = require('./middleware/auth');
 const { crearTablas } = require('./config/init-database');
 
+// Importar scheduler de sincronización automática
+const { start: startAutoSync, getHealth: getAutoSyncHealth } = require('./scheduler/auto_sync');
+
 // Importar rutas CON LOGS DE DEPURACIÓN COMPLETOS
 const presupuestosRoutes = require('./routes/presupuestos');
 const gsheetsRoutes = require('./routes/gsheets');
@@ -142,6 +145,36 @@ const inicializarServidor = async () => {
             console.log('[PRESUPUESTOS-BACK] 🎯 INTEGRADO AL SISTEMA PRINCIPAL LAMDA');
             console.log(`[PRESUPUESTOS-BACK] 📊 BD: ${dbResult.total_presupuestos} presupuestos existentes`);
             console.log('[PRESUPUESTOS-BACK] 🎉 ================================');
+            
+            // INICIAR SCHEDULER DE SINCRONIZACIÓN AUTOMÁTICA
+            try {
+                console.log('[PRESUPUESTOS-BACK] 🔄 Verificando scheduler de sincronización automática...');
+                
+                // Verificar feature flag
+                const { AUTO_SYNC_ENABLED } = require('./config/feature-flags');
+                
+                if (AUTO_SYNC_ENABLED) {
+                    console.log('[PRESUPUESTOS-BACK] 🔄 Iniciando scheduler de sincronización automática...');
+                    
+                    // Usar la misma instancia de base de datos que el resto del módulo
+                    const { pool } = require('./config/database');
+                    
+                    // Iniciar scheduler con la instancia compartida de BD
+                    startAutoSync(pool);
+                    
+                    console.log('[PRESUPUESTOS-BACK] ✅ Scheduler de sincronización automática iniciado');
+                    console.log('[PRESUPUESTOS-BACK] ⏰ Intervalo de verificación: 60 segundos');
+                    console.log('[PRESUPUESTOS-BACK] 🔧 Estado del scheduler: /api/presupuestos/sync/health');
+                    console.log('[PRESUPUESTOS-BACK] 🔗 Usando instancia compartida de base de datos');
+                } else {
+                    console.log('[PRESUPUESTOS-BACK] ⚠️ Scheduler de sincronización automática deshabilitado por feature flag');
+                    console.log('[PRESUPUESTOS-BACK] 💡 Para habilitar: AUTO_SYNC_ENABLED=true');
+                }
+                
+            } catch (schedulerError) {
+                console.error('[PRESUPUESTOS-BACK] ❌ Error al iniciar scheduler:', schedulerError);
+                console.error('[PRESUPUESTOS-BACK] ⚠️ El servidor continuará sin sincronización automática');
+            }
         });
         
         return server;

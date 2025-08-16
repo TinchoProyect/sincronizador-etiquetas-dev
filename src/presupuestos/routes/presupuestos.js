@@ -45,6 +45,13 @@ const {
     validarConfiguracion
 } = require('../controllers/sync_fechas_fix');
 
+// Importar controlador de Configuración de Autosync
+const {
+    obtenerConfiguracionSync,
+    actualizarConfiguracionSync,
+    obtenerEstadoSalud
+} = require('../controllers/sync_config');
+
 // Importar middleware
 const { validateSession, validatePermissions } = require('../middleware/auth');
 const {
@@ -664,6 +671,68 @@ router.post('/sync/validar-configuracion', validatePermissions('presupuestos.syn
     }
 });
 
+// ===== RUTAS DE CONFIGURACIÓN DE AUTOSYNC =====
+
+/**
+ * @route GET /api/presupuestos/sync/config
+ * @desc Obtener configuración actual de autosync
+ * @access Privado
+ */
+router.get('/sync/config', validatePermissions('presupuestos.config'), async (req, res) => {
+    console.log('[SYNC_CONFIG] Ruta GET /sync/config - Obteniendo configuración de autosync');
+    
+    try {
+        await obtenerConfiguracionSync(req, res);
+    } catch (error) {
+        console.error('[SYNC_CONFIG] ❌ Error en ruta GET /sync/config:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener configuración de autosync',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route PATCH /api/presupuestos/sync/config
+ * @desc Actualizar configuración de autosync
+ * @access Privado
+ */
+router.patch('/sync/config', validatePermissions('presupuestos.config'), async (req, res) => {
+    console.log('[SYNC_CONFIG] Ruta PATCH /sync/config - Actualizando configuración de autosync');
+    
+    try {
+        await actualizarConfiguracionSync(req, res);
+    } catch (error) {
+        console.error('[SYNC_CONFIG] ❌ Error en ruta PATCH /sync/config:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al actualizar configuración de autosync',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/sync/health
+ * @desc Obtener estado de salud del autosync
+ * @access Privado
+ */
+router.get('/sync/health', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('[SYNC_CONFIG] Ruta GET /sync/health - Obteniendo estado de salud del autosync');
+    
+    try {
+        await obtenerEstadoSalud(req, res);
+    } catch (error) {
+        console.error('[SYNC_CONFIG] ❌ Error en ruta GET /sync/health:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener estado de salud del autosync',
+            message: error.message
+        });
+    }
+});
+
 // Middleware para rutas no encontradas específico del módulo
 router.use('*', (req, res) => {
     console.log(`⚠️ [PRESUPUESTOS] Ruta no encontrada: ${req.method} ${req.originalUrl}`);
@@ -711,5 +780,9 @@ console.log('   - POST /api/presupuestos/sync/corregir-fechas');
 console.log('   - GET /api/presupuestos/sync/estadisticas-fechas');
 console.log('   - GET /api/presupuestos/sync/historial-correcciones');
 console.log('   - POST /api/presupuestos/sync/validar-configuracion');
+console.log('⚙️ [PRESUPUESTOS] Rutas de Configuración de Autosync:');
+console.log('   - GET /api/presupuestos/sync/config');
+console.log('   - PATCH /api/presupuestos/sync/config');
+console.log('   - GET /api/presupuestos/sync/health');
 
 module.exports = router;
