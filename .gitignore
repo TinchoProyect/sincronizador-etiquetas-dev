@@ -77,3 +77,21 @@ DIAGNOSTICO_CONEXION_GOOGLE_SHEETS.md
 *.pem
 *.key
 *.p12
+# secretos / credenciales
+*.env
+*.env.*
+*credentials*.json
+src/**/google-credentials.json
+*.key
+*.pem
+*.p12
+
+# scripts / pruebas / diagnósticos locales
+test_*.*
+*.bat
+debug_*.*
+DIAGNOSTICO_*.md
+SOLUCION_IMPLEMENTADA.md
+
+# logs
+*.log
