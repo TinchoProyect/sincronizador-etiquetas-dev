@@ -26,7 +26,7 @@ const {
 const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad } = require('../controllers/articulos');
 
 // Controladores para pedidos por cliente
-const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes } = require('../controllers/pedidosPorCliente');
+const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes, actualizarPackMapping } = require('../controllers/pedidosPorCliente');
 const { imprimirPresupuestoCliente } = require('../controllers/impresionPresupuestos');
 
 // Ruta para alternar estado de producción externa (toggle)
@@ -2279,6 +2279,24 @@ router.get('/impresion-presupuesto', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Error interno en ruta de impresión',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Ruta para actualizar mapeo de pack
+ */
+router.patch('/pack-map', async (req, res) => {
+    try {
+        console.log('🧩 [PACK-MAP] Ruta PATCH /pack-map');
+        await actualizarPackMapping(req, res);
+    } catch (error) {
+        console.error('❌ [PACK-MAP] Error en ruta /pack-map:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de mapeo pack',
             message: error.message,
             timestamp: new Date().toISOString()
         });

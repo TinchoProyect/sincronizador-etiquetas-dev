@@ -126,6 +126,7 @@
         .pedidos-container {
             max-height: 400px;
             overflow-y: auto;
+            overflow-x: auto;
             border: 1px solid #dee2e6;
             border-radius: 4px;
             background-color: white;
@@ -159,6 +160,7 @@
         .articulos-tabla {
             width: 100%;
             border-collapse: collapse;
+            min-width: 800px;
         }
 
         .articulos-tabla th,
@@ -545,6 +547,162 @@
             border: none;
         }
 
+        /* Estilos para el botón Pack y modal */
+        .pack-button {
+            background-color: #6f42c1;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.3s ease;
+        }
+
+        .pack-button:hover {
+            background-color: #5a2d91;
+        }
+
+        .modal-pack-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-pack-content {
+            background-color: white;
+            border-radius: 8px;
+            padding: 0;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-pack-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .modal-pack-header h3 {
+            margin: 0;
+            color: #6f42c1;
+        }
+
+        .modal-pack-body {
+            padding: 20px;
+        }
+
+        .modal-pack-body label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--text-color);
+        }
+
+        .modal-pack-body input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .modal-pack-body input:read-only {
+            background-color: #f8f9fa;
+            color: #6c757d;
+        }
+
+        .modal-pack-footer {
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+            border-radius: 0 0 8px 8px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .pack-save-button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .pack-save-button:hover {
+            background-color: #218838;
+        }
+
+        .pack-remove-button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .pack-remove-button:hover {
+            background-color: #c82333;
+        }
+
+        .pack-cancel-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .pack-cancel-button:hover {
+            background-color: #5a6268;
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1100;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast.error {
+            background-color: #dc3545;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .pedidos-header {
@@ -578,6 +736,20 @@
             .reports-section::before {
                 font-size: 1.1em;
                 margin-bottom: 15px;
+            }
+
+            .modal-pack-content {
+                width: 95%;
+                max-width: none;
+            }
+
+            .modal-pack-footer {
+                flex-direction: column;
+            }
+
+            .pack-button {
+                padding: 2px 6px;
+                font-size: 10px;
             }
         }
     </style>
@@ -635,6 +807,7 @@
                             <th>Stock Disponible</th>
                             <th>Faltante</th>
                             <th>Estado</th>
+                            <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="summary-tbody">
@@ -726,6 +899,33 @@
                 </div>
                 <div class="modal-footer">
                     <button id="confirmar-asignacion" class="admin-button">Asignar a Produccion</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para configurar pack -->
+        <div id="modal-pack" class="modal-pack-overlay" style="display:none;">
+            <div class="modal-pack-content">
+                <div class="modal-pack-header">
+                    <h3>Configurar Pack</h3>
+                    <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalPack()">&times;</button>
+                </div>
+                <div class="modal-pack-body">
+                    <label for="pack-padre-codigo">Código Padre (solo lectura):</label>
+                    <input type="text" id="pack-padre-codigo" readonly>
+                    
+                    <label for="pack-hijo-codigo">Código Hijo:</label>
+                    <input type="text" id="pack-hijo-codigo" placeholder="Ingrese código del artículo hijo">
+                    
+                    <label for="pack-unidades">Unidades por Pack:</label>
+                    <input type="number" id="pack-unidades" min="1" placeholder="Ingrese cantidad de unidades">
+                    
+                    <div id="pack-mensaje" class="mensaje-info" style="display:none;"></div>
+                </div>
+                <div class="modal-pack-footer">
+                    <button id="pack-guardar" class="pack-save-button">Guardar</button>
+                    <button id="pack-quitar" class="pack-remove-button" style="display:none;">Quitar mapeo</button>
+                    <button class="pack-cancel-button" onclick="cerrarModalPack()">Cancelar</button>
                 </div>
             </div>
         </div>
@@ -1029,15 +1229,19 @@
         function renderizarFilaResumen(articulo, tipo) {
             const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
             const rowClass = tipo === 'FALTANTE' ? 'faltante-row' : 'parcial-row';
+            const codigoArticulo = articulo.codigo || articulo.articulo || articulo.articulo_numero || '-';
             
             return `
                 <tr class="${rowClass}">
-                    <td>${articulo.codigo || articulo.articulo || '-'}</td>
+                    <td>${codigoArticulo}</td>
                     <td>${articulo.descripcion || articulo.nombre || '-'}</td>
                     <td>${articulo.pedido_total || articulo.cantidad_pedida || 0}</td>
                     <td>${articulo.stock_disponible || articulo.stock || 0}</td>
                     <td class="cantidad-faltante">${articulo.faltante || articulo.cantidad_faltante || 0}</td>
                     <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
+                    <td>
+                        <button class="pack-button" onclick="abrirModalPack('${codigoArticulo}')">🧩 Pack</button>
+                    </td>
                 </tr>
             `;
         }
@@ -1083,7 +1287,7 @@
 
                     // Agregar separador visual si hay ambos tipos
                     if (faltantes.length > 0 && parciales.length > 0) {
-                        html += '<tr class="summary-group-separator"><td colspan="6"></td></tr>';
+                        html += '<tr class="summary-group-separator"><td colspan="7"></td></tr>';
                     }
 
                     // Agregar parciales después
@@ -1199,6 +1403,210 @@
             console.debug('🔄 Actualización externa del resumen solicitada');
             actualizarResumen();
         };
+
+        // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
+        
+        // Función para abrir modal pack (disponible globalmente)
+        window.abrirModalPack = function(codigoPadre) {
+            const modal = document.getElementById('modal-pack');
+            const padreCodigo = document.getElementById('pack-padre-codigo');
+            const hijoCodigo = document.getElementById('pack-hijo-codigo');
+            const unidades = document.getElementById('pack-unidades');
+            const mensaje = document.getElementById('pack-mensaje');
+            const quitarBtn = document.getElementById('pack-quitar');
+            
+            if (!modal || !padreCodigo) return;
+            
+            // Limpiar formulario
+            padreCodigo.value = codigoPadre;
+            hijoCodigo.value = '';
+            unidades.value = '';
+            mensaje.style.display = 'none';
+            mensaje.innerHTML = '';
+            quitarBtn.style.display = 'none';
+            
+            // Mostrar modal
+            modal.style.display = 'flex';
+            
+            console.debug('🧩 Modal pack abierto para:', codigoPadre);
+        };
+
+        // Función para cerrar modal pack (disponible globalmente)
+        window.cerrarModalPack = function() {
+            const modal = document.getElementById('modal-pack');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        };
+
+        // Función para mostrar mensajes en el modal pack
+        function mostrarMensajePack(texto, tipo) {
+            const mensaje = document.getElementById('pack-mensaje');
+            if (!mensaje) return;
+            
+            mensaje.innerHTML = texto;
+            mensaje.className = tipo === 'error' ? 'mensaje-error' : 
+                               tipo === 'success' ? 'mensaje-exito' : 'mensaje-info';
+            mensaje.style.display = 'block';
+        }
+
+        // Función para mostrar toast notifications
+        function mostrarToast(texto, tipo = 'success') {
+            // Crear elemento toast
+            const toast = document.createElement('div');
+            toast.className = `toast ${tipo === 'error' ? 'error' : ''}`;
+            toast.textContent = texto;
+            
+            // Agregar al DOM
+            document.body.appendChild(toast);
+            
+            // Mostrar con animación
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+            
+            // Ocultar y remover después de 3 segundos
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Configurar event listeners para el modal pack cuando se carga la página
+        document.addEventListener('DOMContentLoaded', function() {
+            const packGuardar = document.getElementById('pack-guardar');
+            const packQuitar = document.getElementById('pack-quitar');
+            
+            if (packGuardar) {
+                packGuardar.addEventListener('click', async function() {
+                    const padreCodigo = document.getElementById('pack-padre-codigo');
+                    const hijoCodigo = document.getElementById('pack-hijo-codigo');
+                    const unidades = document.getElementById('pack-unidades');
+                    
+                    if (!padreCodigo || !hijoCodigo || !unidades) return;
+                    
+                    // Validaciones
+                    if (!hijoCodigo.value.trim()) {
+                        mostrarMensajePack('Por favor ingrese el código del artículo hijo', 'error');
+                        return;
+                    }
+                    
+                    if (!unidades.value || parseInt(unidades.value) <= 0) {
+                        mostrarMensajePack('Por favor ingrese una cantidad válida de unidades', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const payload = {
+                            padre_codigo_barras: padreCodigo.value.trim(),
+                            hijo_codigo_barras: hijoCodigo.value.trim(),
+                            unidades: parseInt(unidades.value)
+                        };
+                        
+                        console.log('📤 Guardando mapeo pack:', payload);
+                        
+                        const response = await fetch('/api/produccion/pack-map', {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success) {
+                            mostrarMensajePack('✅ Mapeo pack guardado correctamente', 'success');
+                            mostrarToast('Mapeo pack guardado correctamente', 'success');
+                            
+                            // Mostrar botón quitar
+                            const quitarBtn = document.getElementById('pack-quitar');
+                            if (quitarBtn) {
+                                quitarBtn.style.display = 'inline-block';
+                            }
+                            
+                            setTimeout(() => {
+                                window.cerrarModalPack();
+                                // Actualizar resumen y panel principal
+                                if (typeof window.actualizarResumenFaltantes === 'function') {
+                                    setTimeout(window.actualizarResumenFaltantes, 800);
+                                }
+                            }, 2000);
+                        } else {
+                            mostrarMensajePack(`❌ ${data.error || 'Error al guardar mapeo pack'}`, 'error');
+                        }
+                        
+                    } catch (error) {
+                        console.error('❌ Error al guardar mapeo pack:', error);
+                        mostrarMensajePack('❌ Error de conexión', 'error');
+                    }
+                });
+            }
+            
+            if (packQuitar) {
+                packQuitar.addEventListener('click', async function() {
+                    const padreCodigo = document.getElementById('pack-padre-codigo');
+                    
+                    if (!padreCodigo) return;
+                    
+                    if (!confirm('¿Está seguro de que desea quitar el mapeo de pack para este artículo?')) {
+                        return;
+                    }
+                    
+                    try {
+                        const payload = {
+                            padre_codigo_barras: padreCodigo.value.trim(),
+                            hijo_codigo_barras: null,
+                            unidades: null
+                        };
+                        
+                        console.log('📤 Quitando mapeo pack:', payload);
+                        
+                        const response = await fetch('/api/produccion/pack-map', {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success) {
+                            mostrarMensajePack('✅ Mapeo pack eliminado correctamente', 'success');
+                            mostrarToast('Mapeo pack eliminado correctamente', 'success');
+                            
+                            // Ocultar botón quitar y limpiar campos
+                            const quitarBtn = document.getElementById('pack-quitar');
+                            const hijoCodigo = document.getElementById('pack-hijo-codigo');
+                            const unidades = document.getElementById('pack-unidades');
+                            
+                            if (quitarBtn) quitarBtn.style.display = 'none';
+                            if (hijoCodigo) hijoCodigo.value = '';
+                            if (unidades) unidades.value = '';
+                            
+                            setTimeout(() => {
+                                window.cerrarModalPack();
+                                // Actualizar resumen y panel principal
+                                if (typeof window.actualizarResumenFaltantes === 'function') {
+                                    setTimeout(window.actualizarResumenFaltantes, 800);
+                                }
+                            }, 2000);
+                        } else {
+                            mostrarMensajePack(`❌ ${data.error || 'Error al quitar mapeo pack'}`, 'error');
+                        }
+                        
+                    } catch (error) {
+                        console.error('❌ Error al quitar mapeo pack:', error);
+                        mostrarMensajePack('❌ Error de conexión', 'error');
+                    }
+                });
+            }
+        });
 
     </script>
 </body>
