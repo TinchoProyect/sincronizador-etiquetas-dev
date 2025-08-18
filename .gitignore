@@ -7,7 +7,6 @@ node_modules/
 # -----------------------
 # ⛔ Archivos temporales
 # -----------------------
-*.log
 *.tmp
 *.bak
 *.backup
@@ -16,7 +15,6 @@ node_modules/
 temp/
 */temp/
 temp-*.json
-logs/
 
 # -----------------------
 # ⛔ Archivos del sistema
@@ -65,3 +63,35 @@ DIAGNOSTICO_CONEXION_GOOGLE_SHEETS.md
 # Google OAuth secrets
 **/google-token.json
 **/google-credentials*.json
+
+# Service Account y datos sensibles
+/secrets/
+.env
+.env.*
+/diagnosticos/
+/reports/
+/logs/
+/debug/
+/tmp/
+*.log
+*.pem
+*.key
+*.p12
+# secretos / credenciales
+*.env
+*.env.*
+*credentials*.json
+src/**/google-credentials.json
+*.key
+*.pem
+*.p12
+
+# scripts / pruebas / diagnósticos locales
+test_*.*
+*.bat
+debug_*.*
+DIAGNOSTICO_*.md
+SOLUCION_IMPLEMENTADA.md
+
+# logs
+*.log

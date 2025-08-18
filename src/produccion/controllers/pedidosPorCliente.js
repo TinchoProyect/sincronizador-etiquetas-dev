@@ -447,7 +447,7 @@ const obtenerPedidosArticulos = async (req, res) => {
             joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = pc.id';
         }
         
-        // Query consolidada por artículo (derivada de la consulta existente)
+        // Query consolidada por artículo con lógica pack-aware
         const query = `
             WITH presupuestos_confirmados AS (
                 SELECT 
@@ -477,15 +477,40 @@ const obtenerPedidosArticulos = async (req, res) => {
                     ac.articulo_numero
                 ) as descripcion,
                 ac.pedido_total,
-                COALESCE(src.stock_consolidado, 0) as stock_disponible,
-                GREATEST(0, ac.pedido_total - COALESCE(src.stock_consolidado, 0)) as faltante,
                 CASE 
-                    WHEN GREATEST(0, ac.pedido_total - COALESCE(src.stock_consolidado, 0)) = 0 THEN 'COMPLETO'
-                    WHEN COALESCE(src.stock_consolidado, 0) > 0 THEN 'PARCIAL'
+                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                    THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                    ELSE COALESCE(src.stock_consolidado, 0)
+                END as stock_disponible,
+                GREATEST(0, ac.pedido_total - 
+                    CASE 
+                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                        THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                        ELSE COALESCE(src.stock_consolidado, 0)
+                    END
+                ) as faltante,
+                CASE 
+                    WHEN GREATEST(0, ac.pedido_total - 
+                        CASE 
+                            WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                            THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                            ELSE COALESCE(src.stock_consolidado, 0)
+                        END
+                    ) = 0 THEN 'COMPLETO'
+                    WHEN CASE 
+                            WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                            THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                            ELSE COALESCE(src.stock_consolidado, 0)
+                        END > 0 THEN 'PARCIAL'
                     ELSE 'FALTANTE'
-                END as estado
+                END as estado,
+                src.es_pack,
+                src.pack_hijo_codigo,
+                src.pack_unidades,
+                hijo.stock_consolidado as stock_hijo
             FROM articulos_consolidados ac
             LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+            LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
             LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
             ORDER BY ac.articulo_numero;
         `;
@@ -557,6 +582,26 @@ const obtenerPedidosArticulos = async (req, res) => {
             };
         }
         
+        // Log de conversiones pack aplicadas
+        const articulosPack = articulos.filter(art => art.es_pack === true);
+        if (articulosPack.length > 0) {
+            console.log(`🧩 [PACK] Conversiones aplicadas a ${articulosPack.length} artículos pack:`);
+            articulosPack.forEach(art => {
+                const stockOriginal = art.stock_hijo || 0;
+                const stockConvertido = art.stock_disponible;
+                console.log(`🧩 [PACK] ${art.articulo_numero}: hijo=${art.pack_hijo_codigo} stock=${stockOriginal} unidades=${art.pack_unidades} → effective=${stockConvertido}`);
+            });
+        }
+
+        // Limpiar campos internos del response
+        articulos = articulos.map(art => {
+            const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
+            return articuloLimpio;
+        });
+
+        // Actualizar response con datos limpios
+        response.data = articulos;
+        
         console.log(`✅ [PROD_ART] Consulta exitosa: ${articulos.length} artículos encontrados`);
         console.log(`📊 [PROD_ART] Totales: ${totales.faltantes} faltantes, ${totales.parciales} parciales, ${totales.completos} completos`);
         
@@ -573,8 +618,124 @@ const obtenerPedidosArticulos = async (req, res) => {
     }
 };
 
+/**
+ * Actualiza el mapeo de pack para un artículo
+ */
+const actualizarPackMapping = async (req, res) => {
+    try {
+        console.log('🧩 [PACK-MAP] Iniciando actualización de mapeo pack...');
+        
+        const { padre_codigo_barras, hijo_codigo_barras, unidades } = req.body;
+        
+        // Validación padre_codigo_barras requerido
+        if (!padre_codigo_barras || typeof padre_codigo_barras !== 'string' || !padre_codigo_barras.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: 'padre_codigo_barras es requerido y debe ser un string válido'
+            });
+        }
+        
+        console.log('📋 [PACK-MAP] Datos recibidos:', { padre_codigo_barras, hijo_codigo_barras, unidades });
+        
+        // Determinar si es guardar o quitar mapeo
+        const esQuitarMapeo = hijo_codigo_barras === null || hijo_codigo_barras === undefined;
+        
+        if (esQuitarMapeo) {
+            // QUITAR MAPEO
+            console.log('🗑️ [PACK-MAP] Quitando mapeo pack...');
+            
+            const query = `
+                UPDATE public.stock_real_consolidado
+                SET es_pack = FALSE,
+                    pack_hijo_codigo = NULL,
+                    pack_unidades = NULL
+                WHERE codigo_barras = $1
+            `;
+            
+            const result = await pool.query(query, [padre_codigo_barras.trim()]);
+            
+            console.log(`✅ [PACK-MAP] Mapeo eliminado para ${padre_codigo_barras} - Filas afectadas: ${result.rowCount}`);
+            
+            return res.json({ success: true, message: 'Mapeo pack eliminado correctamente' });
+            
+        } else {
+            // GUARDAR/ACTUALIZAR MAPEO
+            console.log('💾 [PACK-MAP] Guardando/actualizando mapeo pack...');
+            
+            // Validaciones para guardar
+            if (!hijo_codigo_barras || typeof hijo_codigo_barras !== 'string' || !hijo_codigo_barras.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'hijo_codigo_barras es requerido y debe ser un string válido'
+                });
+            }
+            
+            if (!unidades || !Number.isInteger(Number(unidades)) || Number(unidades) <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'unidades debe ser un entero mayor a 0'
+                });
+            }
+            
+            const unidadesInt = parseInt(unidades);
+            const hijoCodigoTrim = hijo_codigo_barras.trim();
+            
+            // Verificar que existe el hijo en stock_real_consolidado
+            const verificarHijoQuery = `
+                SELECT codigo_barras 
+                FROM public.stock_real_consolidado 
+                WHERE codigo_barras = $1
+            `;
+            
+            const hijoResult = await pool.query(verificarHijoQuery, [hijoCodigoTrim]);
+            
+            if (hijoResult.rows.length === 0) {
+                console.log(`❌ [PACK-MAP] Hijo no encontrado: ${hijoCodigoTrim}`);
+                return res.status(400).json({
+                    success: false,
+                    error: `El artículo hijo '${hijoCodigoTrim}' no existe en stock_real_consolidado`
+                });
+            }
+            
+            console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`);
+            
+            // Actualizar mapeo pack
+            const updateQuery = `
+                UPDATE public.stock_real_consolidado
+                SET es_pack = TRUE,
+                    pack_hijo_codigo = $2,
+                    pack_unidades = $3
+                WHERE codigo_barras = $1
+            `;
+            
+            const result = await pool.query(updateQuery, [padre_codigo_barras.trim(), hijoCodigoTrim, unidadesInt]);
+            
+            console.log(`✅ [PACK-MAP] Mapeo guardado: ${padre_codigo_barras} → ${hijoCodigoTrim} (${unidadesInt} unidades) - Filas afectadas: ${result.rowCount}`);
+            
+            return res.json({ 
+                success: true, 
+                message: 'Mapeo pack guardado correctamente',
+                mapeo: {
+                    padre: padre_codigo_barras.trim(),
+                    hijo: hijoCodigoTrim,
+                    unidades: unidadesInt
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ [PACK-MAP] Error al actualizar mapeo pack:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor',
+            message: error.message
+        });
+    }
+};
+
 module.exports = {
     obtenerPedidosPorCliente,
     obtenerPedidosArticulos,
-    asignarFaltantes
+    asignarFaltantes,
+    actualizarPackMapping
 };

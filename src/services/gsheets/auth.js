@@ -1,8 +1,22 @@
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
+const { USE_SA_SHEETS } = require('../../config/feature-flags');
 
 console.log('🔍 [PRESUPUESTOS] Configurando autenticación Google Sheets API...');
+
+// Adapter injection para Service Account
+let adapter = null;
+if (USE_SA_SHEETS) {
+    try {
+        const ServiceAccountAdapter = require('../../presupuestos/adapters/GoogleSheetsServiceAccountAdapter');
+        adapter = new ServiceAccountAdapter();
+        console.log('✅ [PRESUPUESTOS] Service Account adapter cargado');
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al cargar Service Account adapter:', error.message);
+        console.log('⚠️ [PRESUPUESTOS] Fallback a OAuth2');
+    }
+}
 
 /**
  * Servicio de autenticación para Google Sheets API
@@ -111,6 +125,12 @@ function saveToken(token) {
  * Generar URL de autorización
  */
 function generateAuthUrl(oAuth2Client) {
+    // Usar Service Account si está habilitado
+    if (USE_SA_SHEETS && adapter) {
+        console.log('🔍 [PRESUPUESTOS] Usando Service Account - no requiere autorización');
+        return adapter.generateAuthUrl().catch(() => 'Service Account configurado - no requiere autorización manual');
+    }
+    
     console.log('🔍 [PRESUPUESTOS] Generando URL de autorización...');
     
     const authUrl = oAuth2Client.generateAuthUrl({
@@ -129,6 +149,12 @@ function generateAuthUrl(oAuth2Client) {
  * Obtener token desde código de autorización
  */
 async function getTokenFromCode(oAuth2Client, code) {
+    // Usar Service Account si está habilitado
+    if (USE_SA_SHEETS && adapter) {
+        console.log('🔍 [PRESUPUESTOS] Usando Service Account - no requiere código');
+        return adapter.getTokenFromCode(code).catch(() => ({ type: 'service_account', status: 'ready' }));
+    }
+    
     console.log('🔍 [PRESUPUESTOS] Obteniendo token desde código de autorización...');
     
     try {
@@ -270,6 +296,13 @@ async function getAuthenticatedClient() {
  * Verificar estado de autenticación
  */
 async function checkAuthStatus() {
+    // Usar Service Account si está habilitado
+    if (USE_SA_SHEETS && adapter) {
+        console.log('🔍 [PRESUPUESTOS] Verificando estado con Service Account...');
+        return await adapter.checkAuthStatus();
+    }
+    
+    // Código OAuth2 original
     console.log('🔍 [PRESUPUESTOS] Verificando estado de autenticación...');
     
     try {
