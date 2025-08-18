@@ -144,14 +144,29 @@ const obtenerPedidosPorCliente = async (req, res) => {
                             ac.articulo_numero
                         ),
                         'pedido_total', ac.pedido_total,
-                        'stock_disponible', COALESCE(src.stock_consolidado, 0),
-                        'faltante', GREATEST(0, ac.pedido_total - COALESCE(src.stock_consolidado, 0)),
-                        'presupuestos_detalle', ac.presupuestos_detalle
+                        'stock_disponible', CASE 
+                            WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                            THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                            ELSE COALESCE(src.stock_consolidado, 0)
+                        END,
+                        'faltante', GREATEST(0, ac.pedido_total - 
+                            CASE 
+                                WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                                ELSE COALESCE(src.stock_consolidado, 0)
+                            END
+                        ),
+                        'presupuestos_detalle', ac.presupuestos_detalle,
+                        'es_pack', src.es_pack,
+                        'pack_hijo_codigo', src.pack_hijo_codigo,
+                        'pack_unidades', src.pack_unidades,
+                        'stock_hijo', hijo.stock_consolidado
                     ) ORDER BY ac.articulo_numero
                 ) as articulos
             FROM articulos_consolidados ac
             LEFT JOIN public.clientes c ON c.cliente_id = ac.cliente_id_int
             LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+            LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
             LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
             GROUP BY ac.cliente_id_int, c.nombre, c.apellido
             ORDER BY cliente_nombre;
@@ -173,7 +188,24 @@ const obtenerPedidosPorCliente = async (req, res) => {
 
         // Si hay resultados, procesarlos
         if (result.rows.length > 0) {
-            // Calcular indicador de estado para cada cliente
+            // Log de conversiones pack aplicadas (antes de limpiar campos)
+            let totalArticulosPack = 0;
+            result.rows.forEach(cliente => {
+                const articulosPack = cliente.articulos.filter(art => art.es_pack === true);
+                totalArticulosPack += articulosPack.length;
+                
+                articulosPack.forEach(art => {
+                    const stockOriginal = art.stock_hijo || 0;
+                    const stockConvertido = art.stock_disponible;
+                    console.log(`🧩 [PACK] ${art.articulo_numero}: hijo=${art.pack_hijo_codigo} stock=${stockOriginal} unidades=${art.pack_unidades} → effective=${stockConvertido}`);
+                });
+            });
+            
+            if (totalArticulosPack > 0) {
+                console.log(`🧩 [PACK] Conversiones aplicadas a ${totalArticulosPack} artículos pack en pedidos por cliente`);
+            }
+            
+            // Calcular indicador de estado para cada cliente y limpiar campos internos
             const clientesConIndicador = result.rows.map(cliente => {
                 const articulos = cliente.articulos;
                 let completos = 0;
@@ -199,8 +231,15 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     indicador_estado = 'COMPLETO';
                 }
                 
+                // Limpiar campos internos de pack de cada artículo
+                const articulosLimpios = articulos.map(art => {
+                    const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
+                    return articuloLimpio;
+                });
+                
                 return {
                     ...cliente,
+                    articulos: articulosLimpios,
                     indicador_estado
                 };
             });
