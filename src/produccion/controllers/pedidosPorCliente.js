@@ -641,20 +641,33 @@ const actualizarPackMapping = async (req, res) => {
         const esQuitarMapeo = hijo_codigo_barras === null || hijo_codigo_barras === undefined;
         
         if (esQuitarMapeo) {
-            // QUITAR MAPEO
+            // QUITAR MAPEO - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
             console.log('🗑️ [PACK-MAP] Quitando mapeo pack...');
             
             const query = `
                 UPDATE public.stock_real_consolidado
                 SET es_pack = FALSE,
                     pack_hijo_codigo = NULL,
-                    pack_unidades = NULL
-                WHERE codigo_barras = $1
+                    pack_unidades = NULL,
+                    codigo_barras = COALESCE(codigo_barras, $1)
+                WHERE codigo_barras = $1 
+                   OR articulo_numero = (
+                       SELECT numero FROM public.articulos 
+                       WHERE codigo_barras = $1 
+                       LIMIT 1
+                   )
             `;
             
             const result = await pool.query(query, [padre_codigo_barras.trim()]);
             
-            console.log(`✅ [PACK-MAP] Mapeo eliminado para ${padre_codigo_barras} - Filas afectadas: ${result.rowCount}`);
+            console.log(`🧩 [PACK-MAP] padre=${padre_codigo_barras} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
+            
+            if (result.rowCount === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'padre no encontrado en stock_real_consolidado'
+                });
+            }
             
             return res.json({ success: true, message: 'Mapeo pack eliminado correctamente' });
             
@@ -679,6 +692,7 @@ const actualizarPackMapping = async (req, res) => {
             
             const unidadesInt = parseInt(unidades);
             const hijoCodigoTrim = hijo_codigo_barras.trim();
+            const padreCodigoTrim = padre_codigo_barras.trim();
             
             // Verificar que existe el hijo en stock_real_consolidado
             const verificarHijoQuery = `
@@ -699,24 +713,37 @@ const actualizarPackMapping = async (req, res) => {
             
             console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`);
             
-            // Actualizar mapeo pack
+            // Actualizar mapeo pack - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
             const updateQuery = `
                 UPDATE public.stock_real_consolidado
                 SET es_pack = TRUE,
                     pack_hijo_codigo = $2,
-                    pack_unidades = $3
-                WHERE codigo_barras = $1
+                    pack_unidades = $3,
+                    codigo_barras = COALESCE(codigo_barras, $1)
+                WHERE codigo_barras = $1 
+                   OR articulo_numero = (
+                       SELECT numero FROM public.articulos 
+                       WHERE codigo_barras = $1 
+                       LIMIT 1
+                   )
             `;
             
-            const result = await pool.query(updateQuery, [padre_codigo_barras.trim(), hijoCodigoTrim, unidadesInt]);
+            const result = await pool.query(updateQuery, [padreCodigoTrim, hijoCodigoTrim, unidadesInt]);
             
-            console.log(`✅ [PACK-MAP] Mapeo guardado: ${padre_codigo_barras} → ${hijoCodigoTrim} (${unidadesInt} unidades) - Filas afectadas: ${result.rowCount}`);
+            console.log(`🧩 [PACK-MAP] padre=${padreCodigoTrim} hijo=${hijoCodigoTrim} unidades=${unidadesInt} (rowCount=${result.rowCount})`);
+            
+            if (result.rowCount === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'padre no encontrado en stock_real_consolidado'
+                });
+            }
             
             return res.json({ 
                 success: true, 
                 message: 'Mapeo pack guardado correctamente',
                 mapeo: {
-                    padre: padre_codigo_barras.trim(),
+                    padre: padreCodigoTrim,
                     hijo: hijoCodigoTrim,
                     unidades: unidadesInt
                 }
