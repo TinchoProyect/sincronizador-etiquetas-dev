@@ -28,7 +28,53 @@ import { abrirModalIngresoManual } from './ingresoManual.js';
 import { actualizarVisibilidadBotones } from './carroPreparado.js';
 import { imprimirOrdenProduccion } from './ordenProduccion.js';
 import { abrirModalGuardadoIngredientes } from './guardadoIngredientes.js';
+//Temporizacion - Mari
+
+import {
+  startEtapa1, stopEtapa1, startEtapa2, stopEtapa2,
+  startEtapa3, stopEtapa3, showEtapa3Button
+} from './temporizador_carro.js';
+
+
+
+
+
 window.carroIdGlobal = null;
+
+
+// ✅ Carro listo: corta etapa 1, inicia etapa 2 y luego marca el carro como preparado
+window.carroPreparadoConTemporizador = async (carroId) => {
+  try{
+    const colab = JSON.parse(localStorage.getItem('colaboradorActivo')||'{}');
+    if (!carroId || !colab?.id) return;
+
+    await stopEtapa1(carroId, colab.id).catch(()=>{});
+    await startEtapa2(carroId, colab.id);
+
+    await marcarCarroPreparado(carroId); // tu función existente
+  }catch(err){
+    console.error(err);
+    alert('No se pudo iniciar la Etapa 2 o marcar el carro como preparado.');
+  }
+};
+
+// ✅ Asentar producción: corta etapa 2, inicia etapa 3 y luego finaliza producción
+window.asentarProduccionConTemporizador = async (carroId) => {
+  try{
+    const colab = JSON.parse(localStorage.getItem('colaboradorActivo')||'{}');
+    if (!carroId || !colab?.id) return;
+
+    await stopEtapa2(carroId, colab.id).catch(()=>{});
+    await startEtapa3(carroId, colab.id);
+    showEtapa3Button(true);
+
+    await finalizarProduccion(carroId); // tu función existente
+  }catch(err){
+    console.error(err);
+    alert('No se pudo iniciar la Etapa 3 o asentar la producción.');
+  }
+};
+
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
 // Envolver las funciones originales para agregar la actualización de botones
@@ -299,3 +345,6 @@ async function cargarResumenIngredientes() {
         }
     }
 }
+
+
+

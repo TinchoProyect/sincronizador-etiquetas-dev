@@ -2,6 +2,68 @@
 const pool = require('../config/database');
 const { validarPropiedadCarro } = require('./carro'); // ya existe en tu código
 
+
+// ---------- util ----------
+function _colsEtapa(n){
+  n = +n;
+  if (n===1) return { ini:'etapa1_inicio', fin:'etapa1_fin', dur:'etapa1_duracion_ms' };
+  if (n===2) return { ini:'etapa2_inicio', fin:'etapa2_fin', dur:'etapa2_duracion_ms' };
+  if (n===3) return { ini:'etapa3_inicio', fin:'etapa3_fin', dur:'etapa3_duracion_ms' };
+  throw new Error('Etapa inválida');
+}
+
+// ---------- etapas carro ----------
+exports.iniciarEtapaCarro = async (req, res) => {
+  const { carroId, etapa } = req.params;
+  const usuarioId = req.query.usuarioId || (req.body && req.body.usuarioId);
+
+  try {
+    const esValido = await validarPropiedadCarro(carroId, usuarioId);
+    if (!esValido) return res.status(403).json({ error:'El carro no pertenece al usuario especificado' });
+
+    const c = _colsEtapa(etapa);
+    const q = `
+      UPDATE carros_produccion
+         SET ${c.ini} = COALESCE(${c.ini}, CURRENT_TIMESTAMP),
+             ${c.fin} = NULL,
+             ${c.dur} = NULL
+       WHERE id = $1
+       RETURNING id, ${c.ini} as inicio
+    `;
+    const r = await pool.query(q, [carroId]);
+    if (!r.rowCount) return res.status(404).json({ error:'Carro no encontrado' });
+    res.json({ ok:true, ...r.rows[0] });
+  } catch (err) {
+    console.error('iniciarEtapaCarro:', err);
+    res.status(500).json({ error:'Error al iniciar etapa' });
+  }
+};
+
+exports.finalizarEtapaCarro = async (req, res) => {
+  const { carroId, etapa } = req.params;
+  const usuarioId = req.query.usuarioId || (req.body && req.body.usuarioId);
+
+  try {
+    const esValido = await validarPropiedadCarro(carroId, usuarioId);
+    if (!esValido) return res.status(403).json({ error:'El carro no pertenece al usuario especificado' });
+
+    const c = _colsEtapa(etapa);
+    const q = `
+      UPDATE carros_produccion
+         SET ${c.fin} = CURRENT_TIMESTAMP,
+             ${c.dur} = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${c.ini})) * 1000
+       WHERE id = $1 AND ${c.ini} IS NOT NULL
+       RETURNING id, ${c.dur} as duracion_ms
+    `;
+    const r = await pool.query(q, [carroId]);
+    if (!r.rowCount) return res.status(400).json({ error:'La etapa no estaba iniciada' });
+    res.json({ ok:true, ...r.rows[0] });
+  } catch (err) {
+    console.error('finalizarEtapaCarro:', err);
+    res.status(500).json({ error:'Error al finalizar etapa' });
+  }
+};
+
 // POST /api/produccion/carro/:carroId/articulo/:numero/iniciar?usuarioId=...
 exports.iniciarTemporizadorArticulo = async (req, res) => {
   const { carroId, numero } = req.params;

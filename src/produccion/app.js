@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const produccionRoutes = require('./routes/produccion');
 const usuariosRoutes = require('../usuarios/rutas');
 
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -15,11 +16,17 @@ const io = new Server(httpServer, {
     }
 });
 
+
 // Almacén de sesiones de inventario activas
 const inventarioSesiones = new Map();
 
 // ✅ Middleware para interpretar JSON en los requests
 app.use(express.json());
+
+//Temporizacion -Mari
+const tiemposRouter = require('./routes/tiemposCarro');
+app.use('/api/tiempos', tiemposRouter);
+
 
 // Configuración de archivos estáticos y rutas base
 app.use(express.static(__dirname));

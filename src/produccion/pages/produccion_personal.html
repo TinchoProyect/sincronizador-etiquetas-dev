@@ -47,6 +47,19 @@
                         <div class="workspace-actions">
                             <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
                             <button id="carro-preparado" class="btn btn-success" style="display: none;" onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">Carro listo para producir</button>
+                            <!--Temporizacion - Mari-->
+                            <!-- ⏱ Botón global ya existente: se crea y maneja desde el render de artículos -->
+
+                            <!-- ▶️ Etapa 1: aparece SOLO cuando activás "Modo medición" -->
+                            <button id="btn-etapa1" class="btn btn-outline-primary" style="display: none;">▶️ Iniciar etapa 1</button>
+
+                            <!-- ✅ Cambiamos el onclick para cerrar etapa1 si corresponde e iniciar etapa2 -->
+                            <button id="carro-preparado" class="btn btn-success" style="display: none;"
+                            onclick="carroPreparadoConTemporizador(localStorage.getItem('carroActivo'))">
+                             Carro listo para producir
+                            </button>
+                           
+                            
                             <button id="imprimir-orden-produccion" class="btn btn-info" style="display: none;" onclick="imprimirOrdenProduccion()">📄 Imprimir orden de producción</button>
                             
                             <!-- Campo para kilos producidos (solo para carros de producción externa) -->
@@ -56,9 +69,22 @@
                                 <small class="help-text">Ingrese la cantidad real de kilos producidos</small>
                             </div>
                             
-                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="finalizarProduccion(localStorage.getItem('carroActivo'))">Asentar producción</button>
+                            <!-- ✅ Cambiado: wrapper que cierra Etapa 2 e inicia Etapa 3 -->
+                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;"
+                                onclick="asentarProduccionConTemporizador(localStorage.getItem('carroActivo'))">
+                                Asentar producción
+                            </button>
                             <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;" onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir etiquetas</button>
                             <button id="guardado-ingredientes" class="btn btn-success" style="display: none;" onclick="abrirModalGuardadoIngredientes(localStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦 Guardado de ingredientes</button>
+                            
+                            <!-- ⏱ Badge Etapa 2 -->
+                             <span id="badge-etapa2" style="display:none; margin-left:8px; padding:4px 10px; border-radius:16px; background:#f0f0f0;">
+                                Etapa 2: 00:00
+                            </span>
+
+
+                             <!-- ⏱ Etapa 3: solo visible cuando Etapa 3 está activa -->
+                            <button id="btn-etapa3" class="btn btn-outline-warning" style="display:none;">⏸️ Pausar etapa 3</button>
                         </div>
                         <div id="carro-actual" class="carro-info">
                             <p>No hay carro activo</p>
