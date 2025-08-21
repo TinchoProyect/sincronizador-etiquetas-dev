@@ -50,6 +50,26 @@ export function formatearTiempo(ms) {
 }
 function _key(carroId, numero){ return `${carroId}:${numero}`; }
 
+// === Helpers para pintar el tiempo final en el mismo botón ===
+function _showElapsedOnButton(btn, elapsedMs, etiqueta = '') {
+  if (!btn) return;
+  btn.disabled = true;                 // lo dejamos bloqueado
+  btn.classList.add('finished');       // por si querés estilizarlo en CSS
+  const t = formatearTiempo(elapsedMs);
+  btn.textContent = `✅ ${t}${etiqueta ? ` ${etiqueta}` : ''}`;
+  btn.title = `Tiempo total${etiqueta ? ` (${etiqueta})` : ''}: ${t}`;
+}
+
+// Muestra el tiempo final en el badge (span) de la Etapa 2
+function _showElapsedOnBadge(el, elapsedMs, etiqueta = '') {
+  if (!el) return;
+  const t = formatearTiempo(elapsedMs);
+  el.textContent = `✅ ${t}${etiqueta ? ` ${etiqueta}` : ''}`;
+  el.classList.add('finished');          // opcional, por si querés estilizar
+  el.title = `Tiempo total${etiqueta ? ` (${etiqueta})` : ''}: ${t}`;
+}
+
+
 /* ================== ESTADO LOCAL DE ETAPAS (UI) ================== */
 const etapas = new Map(); // carroId -> {1:{running,start,interval}, 2:{...}, 3:{...}}
 function _ensure(carroId){
@@ -66,9 +86,9 @@ function _tickEtapa1(carroId){
 }
 function _tickEtapa2(carroId){
   const st = _ensure(carroId)[2];
-  const badge = document.getElementById('badge-etapa2');
-  if (!badge || !st.start) return;
-  badge.textContent = `Etapa 2: ${formatearTiempo(Date.now() - st.start)}`;
+  const pill = document.getElementById('badge-etapa2');
+  if (!pill || !st.start) return;
+  pill.textContent = `⏱ ${formatearTiempo(Date.now() - st.start)} (Etapa 2)`;
 }
 function _tickEtapa3(carroId){
   const st = _ensure(carroId)[3];
@@ -107,35 +127,61 @@ export async function startEtapa1(carroId, uid){
   s.interval = setInterval(()=>_tickEtapa1(carroId), 1000);
   _tickEtapa1(carroId);
   _showEtapa1(true);
+  const btn = document.getElementById('btn-etapa1');
+  if (btn) { btn.classList.add('running'); btn.classList.remove('finished'); }
 }
 export async function stopEtapa1(carroId, uid){
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/1/finalizar`, uid);
-  const s = _ensure(carroId)[1];
+ const s = _ensure(carroId)[1];
+  const elapsedMs = s.start ? (Date.now() - s.start) : 0;
+
   s.running = false;
   clearInterval(s.interval);
+
   const btn = document.getElementById('btn-etapa1');
-  if (btn) btn.textContent = '▶️ Iniciar etapa 1';
+  // Mostrar el tiempo final en el botón (y dejarlo deshabilitado)
+  if (btn) _showElapsedOnButton(btn, elapsedMs, '(Etapa 1)');
+  if (btn) { btn.classList.remove('running'); btn.classList.add('finished'); }
 }
 
 export async function startEtapa2(carroId, uid){
   console.log('[MEDICION] startEtapa2', carroId, uid);
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/iniciar`, uid);
 
+
   const s = _ensure(carroId)[2];
   s.running = true; s.start = Date.now();
   clearInterval(s.interval);
   s.interval = setInterval(()=>_tickEtapa2(carroId), 1000);
+
+  const pill = document.getElementById('badge-etapa2');
+  if (pill){
+    pill.style.display = 'inline-block';
+    pill.classList.add('etapa-pill');
+    pill.classList.remove('finished');
+    pill.classList.add('running');
+  }
   _tickEtapa2(carroId);
-  _showEtapa2(true);
-}
+  }
 export async function stopEtapa2(carroId, uid){
    console.log('[MEDICION] stopEtapa2', carroId, uid);
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/finalizar`, uid);
 
   const s = _ensure(carroId)[2];
+  const elapsedMs = s.start ? (Date.now() - s.start) : 0;
+
   s.running = false;
   clearInterval(s.interval);
-  _showEtapa2(false);
+
+  const pill = document.getElementById('badge-etapa2');
+  if (pill){
+    const elapsed = s.start ? (Date.now() - s.start) : 0;
+    pill.textContent = `✅ ${formatearTiempo(elapsed)} (Etapa 2)`;
+    pill.style.display = 'inline-block';
+    pill.classList.add('etapa-pill');
+    pill.classList.remove('running');
+    pill.classList.add('finished');   // 🔸 ahora queda opaca al detenerse
+  }
 }
 
 export async function startEtapa3(carroId, uid){
@@ -146,16 +192,23 @@ export async function startEtapa3(carroId, uid){
   s.interval = setInterval(()=>_tickEtapa3(carroId), 1000);
   _tickEtapa3(carroId);
   showEtapa3Button(true);
+  const btn = document.getElementById('btn-etapa3');
+  if (btn) { btn.classList.add('running'); btn.classList.remove('finished'); }
 }
 export async function stopEtapa3(carroId, uid){
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/3/finalizar`, uid);
   const s = _ensure(carroId)[3];
+  const elapsedMs = s.start ? (Date.now() - s.start) : 0;
+
   s.running = false;
   clearInterval(s.interval);
-  const btn = document.getElementById('btn-etapa3');
-  if (btn) btn.textContent = '▶️ Reanudar etapa 3';
-}
 
+  const btn = document.getElementById('btn-etapa3');
+  // Mostrar el tiempo final en el botón (y dejarlo deshabilitado)
+  if (btn) _showElapsedOnButton(btn, elapsedMs, '(Etapa 3)');
+  if (btn) { btn.classList.remove('running'); btn.classList.add('finished'); 
+  }
+}
 /* ================== INICIALIZACIÓN Y LISTENERS ================== */
 export function initTemporizadores() {
   if (_inicializado) return;
@@ -290,10 +343,32 @@ export function syncTimerButtonsVisibility() {
   // Etapa 1 sólo si hay carro y está el modo activo
   const carroId = localStorage.getItem('carroActivo');
   _showEtapa1(!!(activo && carroId));
+  
+  
+  // Etapa 2: visible solo si está corriendo o si quedó finalizada
+{
+  const carroId = localStorage.getItem('carroActivo');
+  const s2 = carroId ? _ensure(carroId)[2] : null;
+  const badge = document.getElementById('badge-etapa2');
 
-  // Etapa 2 badge si venía corriendo (en esta versión se pierde al refrescar)
-  _showEtapa2(false);
+  if (badge) {
+    const running  = !!(s2 && s2.running);
+    const finished = badge.classList.contains('finished'); // set en stopEtapa2
+    const show = running || finished;
 
+    _showEtapa2(show);
+
+    // Si no debe mostrarse, limpiamos texto para evitar "Etapa 2: 00:00"
+    if (!show) {
+      badge.textContent = '';
+      // NO quitamos 'finished' aquí para que si terminó siga visible tras re-render.
+      // (se limpia al volver a iniciar en startEtapa2)
+    }
+  }
+}
+
+
+  
   // Etapa 3 se oculta si no está corriendo
   showEtapa3Button(false);
 }
