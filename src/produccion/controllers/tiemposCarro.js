@@ -30,7 +30,7 @@ exports.iniciarEtapaCarro = async (req, res) => {
 
     // inicia si no estaba iniciada; limpia fin y duración
     const q = `
-      UPDATE carros
+      UPDATE carros_produccion
          SET ${map.inicio} = COALESCE(${map.inicio}, CURRENT_TIMESTAMP),
              ${map.fin}    = NULL,
              ${map.dur}    = NULL
@@ -50,6 +50,8 @@ exports.iniciarEtapaCarro = async (req, res) => {
 exports.finalizarEtapaCarro = async (req, res) => {
   const { carroId, etapa } = req.params;
   const usuarioId = req.query.usuarioId || (req.body && req.body.usuarioId);
+  if (!usuarioId) return res.status(400).json({ error: 'usuarioId requerido' });
+
 
   try {
     const esValido = await validarPropiedadCarro(carroId, usuarioId);
@@ -59,12 +61,12 @@ exports.finalizarEtapaCarro = async (req, res) => {
     if (!map) return res.status(400).json({ error: 'Etapa inválida' });
 
     // Validar que tenga inicio
-    const r0 = await pool.query(`SELECT ${map.inicio} AS inicio FROM carros WHERE id=$1`, [carroId]);
+    const r0 = await pool.query(`SELECT ${map.inicio} AS inicio FROM carros_produccion WHERE id=$1`, [carroId]);
     if (r0.rowCount === 0) return res.status(404).json({ error: 'Carro no encontrado' });
     if (!r0.rows[0].inicio) return res.status(400).json({ error: 'La etapa no fue iniciada' });
 
     const q = `
-      UPDATE carros
+      UPDATE carros_produccion
          SET ${map.fin}  = CURRENT_TIMESTAMP,
              ${map.dur}  = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${map.inicio})) * 1000
        WHERE id = $1
@@ -145,6 +147,8 @@ exports.finalizarEtapaCarro = async (req, res) => {
 exports.iniciarTemporizadorArticulo = async (req, res) => {
   const { carroId, numero } = req.params;
   const { usuarioId } = req.query;
+  if (!usuarioId) return res.status(400).json({ error: 'usuarioId requerido' });
+
 
   try {
     // 1) Validar que el carro pertenece al usuario
