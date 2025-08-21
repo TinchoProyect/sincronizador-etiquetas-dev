@@ -1392,15 +1392,25 @@ const obtenerDetallesPresupuesto = async (req, res) => {
         const presupuesto = presupuestoResult.rows[0];
         
         // Obtener detalles de artículos usando id_presupuesto_ext con JOIN a stock para descripción - Ajuste según relaciones confirmadas - 2024-12-19
+        // CORRECCIÓN DE CÁLCULOS NETO/IVA/TOTAL según reglas de negocio - 2024-12-19
+        // MAPEO CORREGIDO: K=camp2, L=camp3, M=camp4, N=camp5
         const detallesQuery = `
             SELECT 
                 pd.id,
                 pd.articulo,
                 COALESCE(src.descripcion, pd.articulo) as descripcion_articulo,
                 pd.cantidad,
-                pd.valor1 as neto,
-                pd.iva1 as iva,
-                pd.precio1 as total
+                pd.valor1,
+                pd.precio1,
+                pd.iva1,
+                pd.camp2,
+                -- Cálculos FINALMENTE CORREGIDOS según análisis de datos reales
+                -- NETO = cantidad * valor1 (neto unitario)
+                ROUND(pd.cantidad * COALESCE(pd.valor1, 0), 2) as neto_linea,
+                -- IVA = cantidad * iva1 (IVA unitario directo de BD)
+                ROUND(pd.cantidad * COALESCE(pd.iva1, 0), 2) as iva_linea,
+                -- TOTAL = cantidad * precio1 (total unitario con IVA incluido)
+                ROUND(pd.cantidad * COALESCE(pd.precio1, 0), 2) as total_linea
             FROM public.presupuestos_detalles pd
             LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = pd.articulo
             WHERE pd.id_presupuesto_ext = $1
@@ -1411,12 +1421,23 @@ const obtenerDetallesPresupuesto = async (req, res) => {
         
         console.log(`✅ [PRESUPUESTOS] Detalles encontrados: ${detallesResult.rows.length} artículos para presupuesto ${presupuesto.id_presupuesto_ext}`);
         
-        // Calcular totales
-        const totales = detallesResult.rows.reduce((acc, item) => {
-            acc.cantidad_total += parseFloat(item.cantidad || 0);
-            acc.neto_total += parseFloat(item.neto || 0);
-            acc.iva_total += parseFloat(item.iva || 0);
-            acc.total_general += parseFloat(item.total || 0);
+        // Mapear resultados con nombres que consume la UI - CORREGIDO
+        const detallesConCalculos = detallesResult.rows.map(item => ({
+            id: item.id,
+            articulo: item.articulo,
+            descripcion_articulo: item.descripcion_articulo,
+            cantidad: parseFloat(item.cantidad || 0),
+            neto: parseFloat(item.neto_linea || 0),
+            iva: parseFloat(item.iva_linea || 0),
+            total: parseFloat(item.total_linea || 0)
+        }));
+        
+        // Calcular totales con redondeo por renglón antes de acumular
+        const totales = detallesConCalculos.reduce((acc, item) => {
+            acc.cantidad_total += item.cantidad;
+            acc.neto_total += item.neto;
+            acc.iva_total += item.iva;
+            acc.total_general += item.total;
             return acc;
         }, {
             cantidad_total: 0,
@@ -1424,6 +1445,23 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             iva_total: 0,
             total_general: 0
         });
+        
+        // Redondear totales finales
+        totales.cantidad_total = Math.round(totales.cantidad_total * 100) / 100;
+        totales.neto_total = Math.round(totales.neto_total * 100) / 100;
+        totales.iva_total = Math.round(totales.iva_total * 100) / 100;
+        totales.total_general = Math.round(totales.total_general * 100) / 100;
+        
+        // Verificar que totalFinal = totalNeto + totalIVA
+        const sumaCalculada = Math.round((totales.neto_total + totales.iva_total) * 100) / 100;
+        const diferencia = Math.abs(totales.total_general - sumaCalculada);
+        
+        if (diferencia > 0.01) {
+            console.log(`⚠️ [PRESUPUESTOS] Diferencia en totales detectada: ${diferencia.toFixed(2)}`);
+        }
+        
+        // Log de control por presupuesto según especificación
+        console.log(`[DETALLE] sumNeto= ${totales.neto_total.toFixed(2)} sumIVA= ${totales.iva_total.toFixed(2)} sumTotal= ${totales.total_general.toFixed(2)}`);
         
         console.log('📊 [PRESUPUESTOS] Totales calculados:', totales);
         
@@ -1435,9 +1473,9 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                     id_presupuesto: presupuesto.id_presupuesto_ext,
                     tipo_comprobante: presupuesto.tipo_comprobante
                 },
-                detalles: detallesResult.rows,
+                detalles: detallesConCalculos,
                 totales: totales,
-                total_articulos: detallesResult.rows.length
+                total_articulos: detallesConCalculos.length
             },
             timestamp: new Date().toISOString()
         });

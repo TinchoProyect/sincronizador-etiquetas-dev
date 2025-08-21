@@ -1643,6 +1643,11 @@ function renderDetallesArticulos(data) {
     
     const { presupuesto, detalles, totales, total_articulos } = data;
     
+    // Log de control por presupuesto según especificación
+    if (totales) {
+        console.log("[DETALLE]", "sumNeto=", totales.neto_total.toFixed(2), "sumIVA=", totales.iva_total.toFixed(2), "sumTotal=", totales.total_general.toFixed(2));
+    }
+    
     if (!detalles || detalles.length === 0) {
         return `
             <div class="detalles-content">
