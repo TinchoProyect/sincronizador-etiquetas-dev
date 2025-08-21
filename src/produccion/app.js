@@ -26,7 +26,7 @@ app.use(express.json());
 //Temporizacion -Mari
 const tiemposRouter = require('./routes/tiemposCarro');
 app.use('/api/tiempos', tiemposRouter);
-
+app.use('/api/produccion', produccionRoutes);
 
 // Configuración de archivos estáticos y rutas base
 app.use(express.static(__dirname));

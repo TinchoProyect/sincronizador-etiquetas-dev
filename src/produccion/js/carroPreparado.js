@@ -396,6 +396,8 @@ async function mostrarInformesIngredientesVinculados() {
 
 // Función para marcar un carro como preparado
 export async function marcarCarroPreparado(carroId) {
+
+    
     if (!carroId) {
         console.error('No hay carro seleccionado');
         return;
@@ -454,6 +456,7 @@ export async function marcarCarroPreparado(carroId) {
 
 // Función para finalizar la producción de un carro
 export async function finalizarProduccion(carroId) {
+    
     if (!carroId) {
         console.error('No hay carro seleccionado');
         return;

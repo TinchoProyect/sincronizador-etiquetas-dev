@@ -2,7 +2,13 @@ const express = require('express');
 const router = express.Router();
 
 
+//Temporizacion - Mari
+const tiemposCtrl = require('../controllers/tiemposCarro');
 
+// ✅ alias (mantener compatibilidad con front viejo)
+router.post('/carro/:carroId/articulo/:numero/iniciar',  tiemposCtrl.iniciarTemporizadorArticulo);
+router.post('/carro/:carroId/articulo/:numero/finalizar', tiemposCtrl.finalizarTemporizadorArticulo);
+router.get('/carro/:carroId/tiempo-total', tiemposCtrl.obtenerTiempoTotalCarro);
 
 
 

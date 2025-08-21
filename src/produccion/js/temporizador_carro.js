@@ -1,6 +1,36 @@
 // /js/temporizador_carro.js  (ES module)
 let _inicializado = false;
 
+// ==== Fallback para APIs: prueba /api/tiempos y si no existe, /api/produccion ====
+const _API_BASES = [
+  (p) => `http://localhost:3002/api/tiempos${p}`,
+  (p) => `http://localhost:3002/api/produccion${p}`,
+];
+
+async function _postFirstAvailable(path, query, data) {
+  const q = query ? `?${new URLSearchParams(query).toString()}` : '';
+  let lastErr;
+  for (const mk of _API_BASES) {
+    const url = mk(path) + q;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: data ? { 'Content-Type': 'application/json' } : undefined,
+        body: data ? JSON.stringify(data) : undefined
+      });
+      if (res.ok) return res;
+      if (res.status === 404) { lastErr = res; continue; } // probá el siguiente base
+      const txt = await res.text();
+      throw new Error(`${res.status} ${txt}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('No se encontró endpoint en ningún base');
+}
+// ==== fin helper ====
+
+
 /* ================== TEMPORIZADORES POR ARTÍCULO ================== */
 const temporizadores = new Map(); // key => { running, start, interval }
 
@@ -88,7 +118,9 @@ export async function stopEtapa1(carroId, uid){
 }
 
 export async function startEtapa2(carroId, uid){
+  console.log('[MEDICION] startEtapa2', carroId, uid);
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/iniciar`, uid);
+
   const s = _ensure(carroId)[2];
   s.running = true; s.start = Date.now();
   clearInterval(s.interval);
@@ -97,7 +129,9 @@ export async function startEtapa2(carroId, uid){
   _showEtapa2(true);
 }
 export async function stopEtapa2(carroId, uid){
+   console.log('[MEDICION] stopEtapa2', carroId, uid);
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/finalizar`, uid);
+
   const s = _ensure(carroId)[2];
   s.running = false;
   clearInterval(s.interval);
@@ -169,10 +203,12 @@ export function initTemporizadores() {
       t.interval = setInterval(actualizar, 1000);
       btn.classList.add('running');
 
+     // 🔗 Backend: INICIO (con fallback de base URL)
       try {
-        await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${encodeURIComponent(numero)}/iniciar?usuarioId=${usuarioId}`, {
-          method: 'POST'
-        });
+        await _postFirstAvailable(
+          `/carro/${carroId}/articulo/${encodeURIComponent(numero)}/iniciar`,
+          { usuarioId }
+        );
       } catch (err) {
         console.error('No se pudo registrar inicio de artículo:', err);
       }
@@ -190,12 +226,13 @@ export function initTemporizadores() {
       btn.classList.add('finished');
       btn.disabled = true;
 
+      // 🔗 Backend: FIN (con elapsedMs y fallback de base URL)
       try {
-        await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${encodeURIComponent(numero)}/finalizar?usuarioId=${usuarioId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ elapsedMs: elapsed })
-        });
+        await _postFirstAvailable(
+          `/carro/${carroId}/articulo/${encodeURIComponent(numero)}/finalizar`,
+          { usuarioId },
+          { elapsedMs: elapsed } // podés pasar null si no querés enviar el elapsed
+        );
       } catch (err) {
         console.error('No se pudo registrar fin de artículo:', err);
       }
