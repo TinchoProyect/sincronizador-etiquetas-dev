@@ -254,11 +254,12 @@ async function loadEstados() {
  */
 function updateStatsDisplay(stats) {
     console.log('🔍 [PRESUPUESTOS-JS] Actualizando display de estadísticas...');
+    console.log('[PRESUP/KPIS] stats=', stats);
     
     const elements = {
         'total-registros': stats.total_registros || 0,
         'total-categorias': stats.total_categorias || 0,
-        'monto-total': `$${formatNumber(stats.monto_total || 0)}`,
+        'monto-total': '—', // <- no mostramos $0,00
         'ultima-sync': stats.ultima_sincronizacion ? 
             formatDate(stats.ultima_sincronizacion) : 'Nunca'
     };

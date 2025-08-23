@@ -750,7 +750,10 @@ const obtenerEstadisticas = async (req, res) => {
                 0 as monto_promedio,
                 0 as monto_minimo,
                 0 as monto_maximo,
-                MAX(fecha) as ultima_sincronizacion
+                COALESCE(
+                    (SELECT MAX(fecha_sync) FROM public.presupuestos_sync_log WHERE exitoso = true),
+                    (SELECT MAX(fecha) FROM public.presupuestos WHERE activo = true)
+                ) as ultima_sincronizacion
             FROM public.presupuestos 
             WHERE activo = true
         `;
