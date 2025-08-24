@@ -1,25 +1,27 @@
 console.log('🔍 [PRESUPUESTOS] Cargando controlador de Google Sheets...');
 
-// Importar servicios de Google Sheets
-const { checkAuthStatus, generateAuthUrl, getTokenFromCode } = require('../../services/gsheets/auth');
-const { extractSheetId, validateSheetAccess, detectDataStructure } = require('../../services/gsheets/client');
+// Importar SOLO Service Account - SIN OAuth2
+const GoogleSheetsServiceAccountAdapter = require('../adapters/GoogleSheetsServiceAccountAdapter');
 const { syncFromGoogleSheets, validarConfiguracionSync, obtenerHistorialSincronizacion } = require('../../services/gsheets/sync_real');
 
+// Inicializar adapter Service Account
+const adapter = new GoogleSheetsServiceAccountAdapter();
+
 /**
- * Controlador para la integración con Google Sheets
- * Maneja autenticación, configuración y sincronización
+ * Controlador para la integración con Google Sheets usando SOLO Service Account
+ * NO maneja OAuth2 - solo Service Account
  */
 
 /**
- * Verificar estado de autenticación con Google
+ * Verificar estado de autenticación con Google (Service Account)
  */
 const verificarAutenticacion = async (req, res) => {
     try {
-        console.log('🔍 [PRESUPUESTOS] Verificando estado de autenticación Google...');
+        console.log('🔍 [PRESUPUESTOS] Verificando estado de autenticación Service Account...');
         
-        const authStatus = await checkAuthStatus();
+        const authStatus = await adapter.checkAuthStatus();
         
-        console.log(`${authStatus.authenticated ? '✅' : '⚠️'} [PRESUPUESTOS] Estado de autenticación:`, authStatus.authenticated);
+        console.log(`${authStatus.authenticated ? '✅' : '⚠️'} [PRESUPUESTOS] Estado SA:`, authStatus.authenticated);
         
         res.json({
             success: true,
@@ -28,10 +30,10 @@ const verificarAutenticacion = async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ [PRESUPUESTOS] Error al verificar autenticación:', error);
+        console.error('❌ [PRESUPUESTOS] Error al verificar autenticación SA:', error);
         res.status(500).json({
             success: false,
-            error: 'Error al verificar autenticación con Google',
+            error: 'Error al verificar autenticación Service Account',
             message: error.message,
             timestamp: new Date().toISOString()
         });
@@ -39,77 +41,42 @@ const verificarAutenticacion = async (req, res) => {
 };
 
 /**
- * Iniciar proceso de autenticación con Google
+ * Iniciar proceso de autenticación (Service Account - siempre autenticado)
  */
 const iniciarAutenticacion = async (req, res) => {
     try {
-        console.log('🔍 [PRESUPUESTOS] Iniciando proceso de autenticación Google...');
+        console.log('🔍 [PRESUPUESTOS] Service Account - verificando estado...');
         
-        // Verificar primero si Service Account está disponible
-        const authStatus = await checkAuthStatus();
+        const authStatus = await adapter.checkAuthStatus();
         
-        if (authStatus.authenticated && authStatus.authType === 'service_account') {
-            console.log('🔍 [PRESUPUESTOS] Usando Service Account - no requiere autorización');
+        if (authStatus.authenticated) {
+            console.log('✅ [PRESUPUESTOS] Service Account ya autenticado');
             
-            // Service Account ya está autenticado, retornar respuesta para ejecutar sincronización directamente
             return res.json({
                 success: true,
                 data: {
                     authType: 'service_account',
                     authenticated: true,
-                    message: 'Service Account ya autenticado - ejecutando sincronización automáticamente'
+                    message: 'Service Account autenticado - listo para sincronizar'
                 },
                 timestamp: new Date().toISOString()
             });
-        }
-        
-        // Fallback a OAuth2 si Service Account no está disponible
-        console.log('🔍 [PRESUPUESTOS] Service Account no disponible, usando OAuth2...');
-        
-        // Importar funciones necesarias para crear cliente OAuth2
-        const { loadCredentials, createOAuth2Client } = require('../../services/gsheets/auth');
-        
-        console.log('🔍 [PRESUPUESTOS] Generando URL de autorización...');
-        
-        try {
-            // Cargar credenciales y crear cliente OAuth2
-            const credentials = loadCredentials();
-            const oAuth2Client = createOAuth2Client(credentials);
+        } else {
+            console.log('❌ [PRESUPUESTOS] Service Account no configurado');
             
-            // Generar URL de autorización con el cliente
-            const authUrl = generateAuthUrl(oAuth2Client);
-            
-            console.log('✅ [PRESUPUESTOS] URL de autorización generada');
-            
-            res.json({
-                success: true,
-                data: {
-                    authUrl: authUrl,
-                    authType: 'oauth2',
-                    message: 'Visite la URL para autorizar el acceso a Google Sheets'
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (authError) {
-            console.log('⚠️ [SA-ADAPTER] generateAuthUrl() no aplicable para Service Account');
-            
-            // Si falla OAuth2 pero Service Account está configurado, informar al usuario
-            res.json({
-                success: true,
-                data: {
-                    authType: 'service_account',
-                    authenticated: true,
-                    message: 'Service Account configurado - no requiere autorización manual'
-                },
+            return res.status(500).json({
+                success: false,
+                error: 'Service Account no configurado correctamente',
+                message: 'Verifique GOOGLE_SA_KEY_FILE en .env',
                 timestamp: new Date().toISOString()
             });
         }
         
     } catch (error) {
-        console.error('❌ [PRESUPUESTOS] Error al iniciar autenticación:', error);
+        console.error('❌ [PRESUPUESTOS] Error en Service Account:', error);
         res.status(500).json({
             success: false,
-            error: 'Error al iniciar autenticación con Google',
+            error: 'Error en Service Account',
             message: error.message,
             timestamp: new Date().toISOString()
         });
@@ -117,52 +84,17 @@ const iniciarAutenticacion = async (req, res) => {
 };
 
 /**
- * Completar autenticación con código de autorización
+ * Completar autenticación (NO APLICABLE para Service Account)
  */
 const completarAutenticacion = async (req, res) => {
-    try {
-        const { code } = req.body;
-        
-        console.log('🔍 [PRESUPUESTOS] Completando autenticación con código...');
-        
-        if (!code) {
-            return res.status(400).json({
-                success: false,
-                error: 'Código de autorización requerido',
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        // Importar funciones necesarias para crear cliente OAuth2
-        const { loadCredentials, createOAuth2Client } = require('../../services/gsheets/auth');
-        
-        // Cargar credenciales y crear cliente OAuth2
-        const credentials = loadCredentials();
-        const oAuth2Client = createOAuth2Client(credentials);
-        
-        // Obtener token desde código con el cliente OAuth2
-        const token = await getTokenFromCode(oAuth2Client, code);
-        
-        console.log('✅ [PRESUPUESTOS] Autenticación completada exitosamente');
-        
-        res.json({
-            success: true,
-            data: {
-                message: 'Autenticación completada exitosamente',
-                tokenExpiry: token.expiry_date
-            },
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS] Error al completar autenticación:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Error al completar autenticación',
-            message: error.message,
-            timestamp: new Date().toISOString()
-        });
-    }
+    console.log('⚠️ [PRESUPUESTOS] completarAutenticacion no aplicable para Service Account');
+    
+    res.status(400).json({
+        success: false,
+        error: 'Service Account no requiere completar autenticación',
+        message: 'Use verificarAutenticacion() para verificar estado',
+        timestamp: new Date().toISOString()
+    });
 };
 
 /**
@@ -182,12 +114,12 @@ const validarHoja = async (req, res) => {
             });
         }
         
-        // Extraer ID de la hoja
-        const hojaId = extractSheetId(hoja_url);
+        // Extraer ID de la hoja usando adapter
+        const hojaId = adapter.extractSheetId(hoja_url);
         console.log('📋 [PRESUPUESTOS] ID de hoja extraído:', hojaId);
         
-        // Validar acceso
-        const validation = await validateSheetAccess(hojaId);
+        // Validar acceso usando adapter
+        const validation = await adapter.validateSheetAccess(hojaId);
         
         if (validation.hasAccess) {
             console.log('✅ [PRESUPUESTOS] Acceso validado:', validation.sheetTitle);
@@ -244,8 +176,8 @@ const configurarHoja = async (req, res) => {
             });
         }
         
-        // Extraer ID de la hoja
-        const hojaId = extractSheetId(hoja_url);
+        // Extraer ID de la hoja usando adapter
+        const hojaId = adapter.extractSheetId(hoja_url);
         
         // Validar configuración
         const configToValidate = {
@@ -424,8 +356,8 @@ const obtenerEstadoSync = async (req, res) => {
         
         const lastSyncResult = await req.db.query(lastSyncQuery);
         
-        // Verificar estado de autenticación
-        const authStatus = await checkAuthStatus();
+        // Verificar estado de autenticación usando adapter
+        const authStatus = await adapter.checkAuthStatus();
         
         const estado = {
             configurado: configResult.rows.length > 0,

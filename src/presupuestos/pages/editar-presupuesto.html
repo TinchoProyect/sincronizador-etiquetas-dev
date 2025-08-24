@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar Presupuesto - Gestiones Lamda</title>
+    <link rel="stylesheet" href="/css/presupuestos.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        .form-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .form-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        
+        .form-section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .form-group {
+            flex: 1;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        
+        .form-group input:disabled {
+            background-color: #f8f9fa;
+            color: #6c757d;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .btn:hover {
+            opacity: 0.9;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .presupuesto-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .presupuesto-info h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .info-label {
+            font-weight: 500;
+            color: #6c757d;
+        }
+        
+        .info-value {
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>✏️ Editar Presupuesto</h1>
+            <a href="/pages/presupuestos.html" class="back-button">← Volver a Presupuestos</a>
+        </header>
+
+        <main>
+            <div class="form-container">
+                <!-- Mensajes -->
+                <div id="message-container"></div>
+                
+                <!-- Información del Presupuesto (solo lectura) -->
+                <div class="presupuesto-info">
+                    <h4>📋 Información del Presupuesto</h4>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">ID:</span>
+                            <span class="info-value" id="info-id">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Cliente:</span>
+                            <span class="info-value" id="info-cliente">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Fecha:</span>
+                            <span class="info-value" id="info-fecha">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Estado:</span>
+                            <span class="info-value" id="info-estado">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Tipo:</span>
+                            <span class="info-value" id="info-tipo">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Detalles:</span>
+                            <span class="info-value" id="info-detalles">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <form id="form-editar-presupuesto">
+                    <!-- Campos Editables -->
+                    <div class="form-section">
+                        <h3>✏️ Campos Editables</h3>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="agente">Agente</label>
+                                <input type="text" id="agente" name="agente" 
+                                       placeholder="Nombre del agente">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="punto_entrega">Punto de Entrega</label>
+                                <input type="text" id="punto_entrega" name="punto_entrega" 
+                                       placeholder="Ej: Sucursal Centro">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="descuento">Descuento (%)</label>
+                                <input type="number" id="descuento" name="descuento" 
+                                       min="0" max="100" step="0.01" placeholder="0.00">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="fecha_entrega">Fecha de Entrega</label>
+                                <input type="date" id="fecha_entrega" name="fecha_entrega">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="nota">Nota</label>
+                                <textarea id="nota" name="nota" rows="3" 
+                                          placeholder="Observaciones adicionales"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Acciones -->
+                    <div class="form-actions">
+                        <a href="/pages/presupuestos.html" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" id="btn-guardar" class="btn btn-primary">
+                            <span class="loading-spinner"></span>
+                            💾 Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Gestiones Lamda - Editar Presupuesto</p>
+        </footer>
+    </div>
+
+    <script src="/js/presupuestosEdit.js"></script>
+</body>
+</html>
