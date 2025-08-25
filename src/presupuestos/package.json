@@ -8,13 +8,7 @@
     "dev": "nodemon app.js",
     "test": "echo \"Tests no implementados en Fase 1\" && exit 0"
   },
-  "keywords": [
-    "presupuestos",
-    "lamda",
-    "google-sheets",
-    "express",
-    "postgresql"
-  ],
+  "keywords": ["presupuestos", "lamda", "google-sheets", "express", "postgresql"],
   "author": "Sistema LAMDA",
   "license": "ISC",
   "dependencies": {
@@ -26,15 +20,6 @@
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
-  "engines": {
-    "node": ">=14.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "local"
-  },
-  "bugs": {
-    "url": "local"
-  },
+  "engines": { "node": ">=14.0.0" },
   "homepage": "http://localhost:3003"
 }

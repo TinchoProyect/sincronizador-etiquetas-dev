@@ -689,6 +689,103 @@ const obtenerSugerenciasClientes = async (req, res) => {
 };
 
 /**
+ * Obtener sugerencias de artículos para autocompletar en detalles
+ */
+const obtenerSugerenciasArticulos = async (req, res) => {
+    try {
+        const { q } = req.query;
+        
+        console.log(`🔍 [PRESUPUESTOS] Obteniendo sugerencias de artículos para: "${q}"`);
+        
+        if (!q || q.trim().length < 1) {
+            return res.json({
+                success: true,
+                data: [],
+                message: 'Escribí para buscar artículos...',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const searchTerm = q.trim();
+        let query = '';
+        let params = [];
+        
+        // Detectar si es búsqueda por código de barras (solo dígitos, 8-14 caracteres)
+        if (/^\d{8,14}$/.test(searchTerm)) {
+            // Búsqueda directa por código de barras
+            query = `
+                SELECT 
+                    codigo_barras,
+                    articulo_numero,
+                    descripcion,
+                    COALESCE(stock_consolidado, 0) as stock_consolidado
+                FROM public.stock_real_consolidado
+                WHERE codigo_barras = $1
+                LIMIT 1
+            `;
+            params = [searchTerm];
+        } else {
+            // Búsqueda por descripción o articulo_numero
+            query = `
+                SELECT 
+                    codigo_barras,
+                    articulo_numero,
+                    descripcion,
+                    COALESCE(stock_consolidado, 0) as stock_consolidado
+                FROM public.stock_real_consolidado
+                WHERE LOWER(descripcion) LIKE LOWER($1)
+                   OR LOWER(articulo_numero) LIKE LOWER($1)
+                ORDER BY 
+                    CASE 
+                        WHEN LOWER(articulo_numero) LIKE LOWER($1) THEN 1
+                        WHEN LOWER(descripcion) LIKE LOWER($2) THEN 2
+                        ELSE 3
+                    END,
+                    descripcion
+                LIMIT 10
+            `;
+            params = [`%${searchTerm}%`, `${searchTerm}%`];
+        }
+        
+        console.log('📋 [PRESUPUESTOS] Query artículos:', query);
+        console.log('📋 [PRESUPUESTOS] Parámetros:', params);
+        
+        const result = await req.db.query(query, params);
+        
+        // Formatear sugerencias
+        const sugerencias = result.rows.map(articulo => {
+            return {
+                codigo_barras: articulo.codigo_barras,
+                articulo_numero: articulo.articulo_numero,
+                descripcion: articulo.descripcion,
+                stock_consolidado: parseFloat(articulo.stock_consolidado || 0),
+                // Formato para mostrar: "Descripción — [articulo_numero] (stock: X)"
+                text: `${articulo.descripcion} — [${articulo.articulo_numero}] (stock: ${Math.floor(articulo.stock_consolidado || 0)})`
+            };
+        });
+        
+        console.log(`✅ [PRESUPUESTOS] Sugerencias de artículos encontradas: ${sugerencias.length}`);
+        
+        res.json({
+            success: true,
+            data: sugerencias,
+            query: searchTerm,
+            total: sugerencias.length,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de artículos:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener sugerencias de artículos',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
+/**
  * Obtener presupuestos por categoría
  */
 const obtenerPresupuestosPorCategoria = async (req, res) => {
@@ -698,18 +795,19 @@ const obtenerPresupuestosPorCategoria = async (req, res) => {
         
         const query = `
             SELECT 
-                id,
-                sheet_id,
-                sheet_name,
-                categoria,
-                concepto,
-                monto,
-                fecha_registro,
-                fecha_sincronizacion,
-                activo
-            FROM presupuestos_datos 
-            WHERE activo = true AND LOWER(categoria) = LOWER($1)
-            ORDER BY fecha_sincronizacion DESC, concepto
+                p.id,
+                p.id_presupuesto_ext as sheet_id,
+                'Presupuestos' as sheet_name,
+                p.tipo_comprobante as categoria,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
+                0 as monto,
+                p.fecha as fecha_registro,
+                p.fecha as fecha_sincronizacion,
+                p.activo
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            WHERE p.activo = true AND LOWER(p.tipo_comprobante) = LOWER($1)
+            ORDER BY p.fecha DESC, concepto
         `;
         
         const result = await req.db.query(query, [categoria]);
@@ -750,7 +848,10 @@ const obtenerEstadisticas = async (req, res) => {
                 0 as monto_promedio,
                 0 as monto_minimo,
                 0 as monto_maximo,
-                MAX(fecha) as ultima_sincronizacion
+                COALESCE(
+                    (SELECT MAX(fecha_sync) FROM public.presupuestos_sync_log WHERE exitoso = true),
+                    (SELECT MAX(fecha) FROM public.presupuestos WHERE activo = true)
+                ) as ultima_sincronizacion
             FROM public.presupuestos 
             WHERE activo = true
         `;
@@ -867,28 +968,35 @@ const obtenerPresupuestoPorId = async (req, res) => {
         
         console.log(`🔍 [PRESUPUESTOS] Obteniendo presupuesto por ID: ${id}`);
         
-        if (!id || isNaN(parseInt(id))) {
+        // Validar formato de ID: numérico (legacy) o UUIDv7 con prefijo P-
+        const isNumericId = /^\d+$/.test(id);
+        const isUUIDv7Id = /^P-[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+        
+        if (!isNumericId && !isUUIDv7Id) {
             console.log('❌ [PRESUPUESTOS] ID inválido proporcionado:', id);
             return res.status(400).json({
                 success: false,
-                error: 'ID de presupuesto inválido',
+                error: 'ID de presupuesto inválido (debe ser numérico o P-{UUIDv7})',
                 timestamp: new Date().toISOString()
             });
         }
         
         const query = `
             SELECT 
-                id,
-                sheet_id,
-                sheet_name,
-                categoria,
-                concepto,
-                monto,
-                fecha_registro,
-                fecha_sincronizacion,
-                activo
-            FROM presupuestos_datos 
-            WHERE id = $1 AND activo = true
+                p.id,
+                p.id_presupuesto_ext,
+                p.id_cliente,
+                p.fecha,
+                p.agente,
+                p.tipo_comprobante as categoria,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
+                0 as monto,
+                p.fecha as fecha_registro,
+                p.activo,
+                p.estado
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            WHERE p.id = $1 AND p.activo = true
         `;
         
         const result = await req.db.query(query, [parseInt(id)]);
@@ -953,11 +1061,12 @@ const crearPresupuesto = async (req, res) => {
         
         // Verificar duplicados
         const duplicateQuery = `
-            SELECT id FROM presupuestos_datos 
-            WHERE LOWER(concepto) = LOWER($1) 
-            AND LOWER(categoria) = LOWER($2) 
-            AND sheet_id = $3 
-            AND activo = true
+            SELECT p.id FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            WHERE LOWER(COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente')) = LOWER($1) 
+            AND LOWER(p.tipo_comprobante) = LOWER($2) 
+            AND p.id_presupuesto_ext = $3 
+            AND p.activo = true
         `;
         
         const duplicateResult = await req.db.query(duplicateQuery, [
@@ -977,9 +1086,9 @@ const crearPresupuesto = async (req, res) => {
         
         // Insertar nuevo presupuesto
         const insertQuery = `
-            INSERT INTO presupuestos_datos 
-            (sheet_id, sheet_name, categoria, concepto, monto, fecha_registro, fecha_sincronizacion, activo)
-            VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), true)
+            INSERT INTO public.presupuestos 
+            (id_presupuesto_ext, tipo_comprobante, id_cliente, fecha, agente, activo)
+            VALUES ($1, $2, '999', NOW(), 'Manual', true)
             RETURNING *
         `;
         
@@ -1036,8 +1145,10 @@ const actualizarPresupuesto = async (req, res) => {
         
         // Verificar que el presupuesto existe
         const existsQuery = `
-            SELECT id, concepto FROM presupuestos_datos 
-            WHERE id = $1 AND activo = true
+            SELECT p.id, COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto 
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            WHERE p.id = $1 AND p.activo = true
         `;
         
         const existsResult = await req.db.query(existsQuery, [parseInt(id)]);
@@ -1092,7 +1203,7 @@ const actualizarPresupuesto = async (req, res) => {
         params.push(parseInt(id));
         
         const updateQuery = `
-            UPDATE presupuestos_datos 
+            UPDATE public.presupuestos 
             SET ${updates.join(', ')}
             WHERE id = $${paramCount} AND activo = true
             RETURNING *
@@ -1144,8 +1255,10 @@ const eliminarPresupuesto = async (req, res) => {
         
         // Verificar que el presupuesto existe
         const existsQuery = `
-            SELECT id, concepto FROM presupuestos_datos 
-            WHERE id = $1 AND activo = true
+            SELECT p.id, COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto 
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            WHERE p.id = $1 AND p.activo = true
         `;
         
         const existsResult = await req.db.query(existsQuery, [parseInt(id)]);
@@ -1163,10 +1276,10 @@ const eliminarPresupuesto = async (req, res) => {
         
         // Soft delete
         const deleteQuery = `
-            UPDATE presupuestos_datos 
-            SET activo = false, fecha_sincronizacion = NOW()
+            UPDATE public.presupuestos 
+            SET activo = false
             WHERE id = $1
-            RETURNING id, concepto
+            RETURNING id, 'Presupuesto eliminado' as concepto
         `;
         
         const deleteResult = await req.db.query(deleteQuery, [parseInt(id)]);
@@ -1225,9 +1338,9 @@ const obtenerResumen = async (req, res) => {
                     MIN(monto) as monto_minimo,
                     MAX(monto) as monto_maximo,
                     MIN(fecha_registro) as fecha_primer_registro,
-                    MAX(fecha_sincronizacion) as ultima_actualizacion
-                FROM presupuestos_datos 
-                WHERE activo = true
+                    MAX(p.fecha) as ultima_actualizacion
+                FROM public.presupuestos p
+                WHERE p.activo = true
             `;
             
             // Filtros adicionales
@@ -1261,9 +1374,9 @@ const obtenerResumen = async (req, res) => {
                     COUNT(*) as total_registros,
                     SUM(monto) as monto_total,
                     AVG(monto) as monto_promedio,
-                    COUNT(DISTINCT categoria) as categorias_distintas
-                FROM presupuestos_datos 
-                WHERE activo = true
+                    COUNT(DISTINCT p.tipo_comprobante) as categorias_distintas
+                FROM public.presupuestos p
+                WHERE p.activo = true
             `;
             
             // Filtros adicionales
@@ -1310,9 +1423,9 @@ const obtenerResumen = async (req, res) => {
                 COUNT(*) as total_registros,
                 SUM(monto) as monto_total,
                 AVG(monto) as monto_promedio,
-                COUNT(DISTINCT categoria) as total_categorias
-            FROM presupuestos_datos 
-            WHERE activo = true
+                COUNT(DISTINCT p.tipo_comprobante) as total_categorias
+            FROM public.presupuestos p
+            WHERE p.activo = true
             ${fecha_desde ? `AND fecha_registro >= '${fecha_desde}'` : ''}
             ${fecha_hasta ? `AND fecha_registro <= '${fecha_hasta}'` : ''}
             ${categoria ? `AND LOWER(categoria) LIKE LOWER('%${categoria}%')` : ''}
@@ -1362,11 +1475,12 @@ const obtenerDetallesPresupuesto = async (req, res) => {
         
         console.log(`🔍 [PRESUPUESTOS] Obteniendo detalles de artículos para presupuesto ID: ${id}`);
         
-        if (!id || isNaN(parseInt(id))) {
-            console.log('❌ [PRESUPUESTOS] ID inválido proporcionado:', id);
+        // Validación de ID ya se hace en middleware validarIdPresupuesto
+        if (!id) {
+            console.log('❌ [PRESUPUESTOS] ID faltante:', id);
             return res.status(400).json({
                 success: false,
-                error: 'ID de presupuesto inválido',
+                error: 'ID de presupuesto requerido',
                 timestamp: new Date().toISOString()
             });
         }
@@ -1617,6 +1731,7 @@ console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD
 module.exports = {
     obtenerPresupuestos,
     obtenerSugerenciasClientes,
+    obtenerSugerenciasArticulos,
     obtenerPresupuestoPorId,
     obtenerDetallesPresupuesto,
     obtenerEstados,

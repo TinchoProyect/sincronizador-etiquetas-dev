@@ -7,6 +7,7 @@ console.log('🔍 [PRESUPUESTOS] Configurando rutas del módulo...');
 const {
     obtenerPresupuestos,
     obtenerSugerenciasClientes,
+    obtenerSugerenciasArticulos,
     obtenerPresupuestoPorId,
     obtenerDetallesPresupuesto,
     obtenerEstados,
@@ -52,6 +53,15 @@ const {
     obtenerEstadoSalud
 } = require('../controllers/sync_config');
 
+// Importar controlador de escritura
+const {
+    crearPresupuesto: crearPresupuestoWrite,
+    editarPresupuesto: editarPresupuestoWrite,
+    eliminarPresupuesto: eliminarPresupuestoWrite,
+    reintentarPresupuesto,
+    obtenerEstadoPresupuesto
+} = require('../controllers/presupuestosWrite');
+
 // Importar middleware
 const { validateSession, validatePermissions } = require('../middleware/auth');
 const {
@@ -62,6 +72,9 @@ const {
     validarResumen,
     sanitizarDatos
 } = require('../middleware/validation');
+
+// ⚠️ Idempotencia desactivada temporalmente (causaba cuelgue antes del handler)
+// const { idempotencyMiddleware } = require('../middleware/idempotency');
 
 // Aplicar middleware de autenticación a todas las rutas
 router.use(validateSession);
@@ -95,7 +108,6 @@ router.get('/cliente/:cliente', validatePermissions('presupuestos.read'), async 
     console.log(`🔍 [PRESUPUESTOS] Ruta GET /cliente/${cliente} - Obteniendo presupuestos por cliente`);
     
     try {
-        // Usar el filtro de cliente en la función principal
         req.query.id_cliente = cliente;
         await obtenerPresupuestos(req, res);
     } catch (error) {
@@ -118,7 +130,6 @@ router.get('/estado/:estado', validatePermissions('presupuestos.read'), async (r
     console.log(`🔍 [PRESUPUESTOS] Ruta GET /estado/${estado} - Obteniendo presupuestos por estado`);
     
     try {
-        // Usar el filtro de estado en la función principal
         req.query.estado = estado;
         await obtenerPresupuestos(req, res);
     } catch (error) {
@@ -133,7 +144,7 @@ router.get('/estado/:estado', validatePermissions('presupuestos.read'), async (r
 
 /**
  * @route GET /api/presupuestos/clientes/sugerencias
- * @desc Obtener sugerencias de clientes para typeahead - Filtro cliente + Typeahead + Fechas – 2024-12-19
+ * @desc Obtener sugerencias de clientes para typeahead
  * @access Privado
  */
 router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), async (req, res) => {
@@ -152,8 +163,28 @@ router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), as
 });
 
 /**
+ * @route GET /api/presupuestos/articulos/sugerencias
+ * @desc Obtener sugerencias de artículos para autocompletar en detalles
+ * @access Privado
+ */
+router.get('/articulos/sugerencias', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /articulos/sugerencias - Obteniendo sugerencias de artículos');
+    
+    try {
+        await obtenerSugerenciasArticulos(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /articulos/sugerencias:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en la ruta de sugerencias de artículos',
+            message: error.message
+        });
+    }
+});
+
+/**
  * @route GET /api/presupuestos/estados
- * @desc Obtener estados distintos de presupuestos - Filtro por Estado – 2024-12-19
+ * @desc Obtener estados distintos de presupuestos
  * @access Privado
  */
 router.get('/estados', validatePermissions('presupuestos.read'), async (req, res) => {
@@ -283,7 +314,6 @@ router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuest
     const { id } = req.params;
     console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id - Obteniendo presupuesto ID: ${id}`);
     
-    // Validar que no sea una ruta específica
     if (id === 'health' || id === 'estadisticas' || id === 'configuracion' || id === 'resumen' || id.startsWith('sync/')) {
         console.log(`⚠️ [PRESUPUESTOS] Ruta específica detectada como ID: ${id}`);
         return res.status(400).json({
@@ -326,6 +356,146 @@ router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdP
     }
 });
 
+// ===== RUTAS DE ESCRITURA (NUEVAS) =====
+
+/**
+ * @route POST /api/presupuestos
+ * @desc Crear presupuesto con encabezado + detalles (flujo en dos fases)
+ * @access Privado
+ */
+router.post('/',
+    validatePermissions('presupuestos.create'),
+    // idempotencyMiddleware, // ⛔️ desactivado temporalmente
+    validarCrearPresupuesto,
+    sanitizarDatos,
+    async (req, res) => {
+        console.log('🔍 [PRESUPUESTOS-WRITE] Ruta POST / - Creando nuevo presupuesto');
+        try {
+            await crearPresupuestoWrite(req, res);
+        } catch (error) {
+            console.error('❌ [PRESUPUESTOS-WRITE] Error en ruta POST /:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Error interno al crear presupuesto',
+                message: error.message
+            });
+        }
+    }
+);
+
+/**
+ * @route PUT /api/presupuestos/:id
+ * @desc Editar presupuesto existente (solo datos permitidos)
+ * @access Privado
+ */
+router.put('/:id',
+    validatePermissions('presupuestos.update'),
+    (req, res, next) => {
+        console.log('🔍 [PUT-DEBUG] ===== INICIO PUT REQUEST =====');
+        console.log('🔍 [PUT-DEBUG] URL:', req.originalUrl);
+        console.log('🔍 [PUT-DEBUG] Method:', req.method);
+        console.log('🔍 [PUT-DEBUG] Headers:', JSON.stringify(req.headers, null, 2));
+        console.log('🔍 [PUT-DEBUG] Params:', JSON.stringify(req.params, null, 2));
+        console.log('🔍 [PUT-DEBUG] Body (raw):', JSON.stringify(req.body, null, 2));
+        console.log('🔍 [PUT-DEBUG] Body keys:', Object.keys(req.body || {}));
+        console.log('🔍 [PUT-DEBUG] ===== FIN LOGGING =====');
+        next();
+    },
+    validarIdPresupuesto,
+    sanitizarDatos,
+    validarActualizarPresupuesto,
+    async (req, res) => {
+        const { id } = req.params;
+        console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta PUT /:id - Editando presupuesto ID: ${id}`);
+        
+        try {
+            await editarPresupuestoWrite(req, res);
+        } catch (error) {
+            console.error(`❌ [PRESUPUESTOS-WRITE] Error en ruta PUT /:id (${id}):`, error);
+            res.status(500).json({
+                success: false,
+                error: 'Error interno al editar presupuesto',
+                message: error.message
+            });
+        }
+    }
+);
+
+/**
+ * @route DELETE /api/presupuestos/:id
+ * @desc Eliminar presupuesto (baja lógica)
+ * @access Privado
+ */
+router.delete('/:id',
+    validatePermissions('presupuestos.delete'),
+    validarIdPresupuesto,
+    async (req, res) => {
+        const { id } = req.params;
+        console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta DELETE /:id - Eliminando presupuesto ID: ${id}`);
+        
+        try {
+            await eliminarPresupuestoWrite(req, res);
+        } catch (error) {
+            console.error(`❌ [PRESUPUESTOS-WRITE] Error en ruta DELETE /:id (${id}):`, error);
+            res.status(500).json({
+                success: false,
+                error: 'Error interno al eliminar presupuesto',
+                message: error.message
+            });
+        }
+    }
+);
+
+/**
+ * @route POST /api/presupuestos/:id/retry
+ * @desc Reintentar operación con idempotencia
+ * @access Privado
+ */
+router.post('/:id/retry',
+    validatePermissions('presupuestos.update'),
+    validarIdPresupuesto,
+    // idempotencyMiddleware, // ⛔️ desactivado temporalmente
+    async (req, res) => {
+        const { id } = req.params;
+        console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta POST /:id/retry - Reintentando presupuesto ID: ${id}`);
+        
+        try {
+            await reintentarPresupuesto(req, res);
+        } catch (error) {
+            console.error(`❌ [PRESUPUESTOS-WRITE] Error en ruta POST /:id/retry (${id}):`, error);
+            res.status(500).json({
+                success: false,
+                error: 'Error interno al reintentar presupuesto',
+                message: error.message
+            });
+        }
+    }
+);
+
+/**
+ * @route GET /api/presupuestos/:id/status
+ * @desc Obtener estado de presupuesto
+ * @access Privado
+ */
+router.get('/:id/status',
+    validatePermissions('presupuestos.read'),
+    validarIdPresupuesto,
+    async (req, res) => {
+        const { id } = req.params;
+        console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta GET /:id/status - Obteniendo estado de presupuesto ID: ${id}`);
+        
+        try {
+            await obtenerEstadoPresupuesto(req, res);
+        } catch (error) {
+            console.error(`❌ [PRESUPUESTOS-WRITE] Error en ruta GET /:id/status (${id}):`, error);
+            res.status(500).json({
+                success: false,
+                error: 'Error interno al obtener estado del presupuesto',
+                message: error.message
+            });
+        }
+    }
+);
 
 /**
  * @route GET /api/presupuestos/sync/auth/status

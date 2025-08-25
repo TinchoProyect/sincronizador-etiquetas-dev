@@ -148,6 +148,17 @@ const ejecutarCorreccion = async (req, res) => {
         if (resultado.exito) {
             console.log('[SYNC-FECHAS-FIX][END] Corrección exitosa - fechas_futuras=', resultado.fechasFuturas);
             
+            // PASO 6: Registrar log de sincronización exitosa con hora local de Argentina
+            try {
+                await req.db.query(
+                    `INSERT INTO public.presupuestos_sync_log (fecha_sync, exitoso, origen)
+                     VALUES (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires', true, 'service_account')`
+                );
+                console.log('[SYNC-FECHAS-FIX] ✅ Log de sincronización registrado con hora local');
+            } catch (logError) {
+                console.warn('[SYNC-FECHAS-FIX] ⚠️ presupuestos_sync_log no disponible. Continúo.', logError.code || logError.message);
+            }
+            
             res.json({
                 success: true,
                 message: 'Corrección de fechas completada exitosamente',

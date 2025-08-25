@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Presupuestos - Gestiones Lamda</title>
     <link rel="stylesheet" href="/css/presupuestos.css">
+    <link rel="stylesheet" href="../css/action-buttons.css">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
 <body>
@@ -48,15 +49,22 @@
 
             <!-- Controles principales -->
             <div class="controls-section">
-                <button id="btn-cargar-datos" class="btn-primary">
-                    📊 Cargar Presupuestos
-                </button>
-                <button id="btn-sincronizar" class="btn-secondary" disabled>
-                    🔄 Sincronizar Google Sheets
-                </button>
-                <button id="btn-configuracion" class="btn-secondary">
-                    ⚙️ Configuración
-                </button>
+                <div class="controls-left">
+                    <button id="btn-cargar-datos" class="btn-primary">
+                        📊 Cargar Presupuestos
+                    </button>
+                    <button id="btn-sincronizar" class="btn-secondary" disabled>
+                        🔄 Sincronizar Google Sheets
+                    </button>
+                    <button id="btn-configuracion" class="btn-secondary">
+                        ⚙️ Configuración
+                    </button>
+                </div>
+                <div class="controls-right">
+                    <button id="btn-nuevo-presupuesto" class="btn-success">
+                        ➕ Nuevo Presupuesto
+                    </button>
+                </div>
             </div>
 
             <!-- Filtros -->
@@ -91,11 +99,12 @@
                             <th>Cliente</th>
                             <th>Fecha Registro</th>
                             <th>Estado</th>
+                            <th width="120">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-presupuestos">
                         <tr>
-                            <td colspan="5" class="no-data">
+                            <td colspan="6" class="no-data">
                                 Haga clic en "Cargar Presupuestos" para ver los datos
                             </td>
                         </tr>

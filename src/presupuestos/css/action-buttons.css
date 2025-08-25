@@ -1,0 +1,156 @@
+/**
+ * ESTILOS PARA BOTONES DE ACCIÓN - PRESUPUESTOS
+ * Gestiones Lamda - v2.0
+ * 
+ * Estilos para los botones de editar y anular presupuestos
+ */
+
+/* Contenedor de botones de acción */
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Botones de acción base */
+.btn-action {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+}
+
+.btn-action:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-action:active {
+    transform: translateY(0);
+}
+
+.btn-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Botón de editar */
+.btn-edit {
+    background-color: #e3f2fd;
+    border-color: #2196f3;
+    color: #1976d2;
+}
+
+.btn-edit:hover {
+    background-color: #bbdefb;
+    border-color: #1976d2;
+}
+
+.btn-edit:active {
+    background-color: #90caf9;
+}
+
+/* Botón de anular/eliminar */
+.btn-delete {
+    background-color: #ffebee;
+    border-color: #f44336;
+    color: #d32f2f;
+}
+
+.btn-delete:hover {
+    background-color: #ffcdd2;
+    border-color: #d32f2f;
+}
+
+.btn-delete:active {
+    background-color: #ef9a9a;
+}
+
+/* Responsive para pantallas pequeñas */
+@media (max-width: 768px) {
+    .action-buttons {
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .btn-action {
+        width: 100%;
+        min-width: auto;
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+}
+
+/* Estados de loading para botones */
+.btn-action.loading {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.btn-action.loading::before {
+    content: "⏳";
+    margin-right: 4px;
+}
+
+/* Tooltips mejorados */
+.btn-action[title] {
+    position: relative;
+}
+
+.btn-action[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-bottom: 4px;
+}
+
+.btn-action[title]:hover::before {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: #333;
+    z-index: 1000;
+}
+
+/* Animaciones */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.btn-action.success {
+    animation: pulse 0.3s ease-in-out;
+    background-color: #e8f5e8;
+    border-color: #4caf50;
+    color: #2e7d32;
+}
+
+.btn-action.error {
+    animation: pulse 0.3s ease-in-out;
+    background-color: #ffebee;
+    border-color: #f44336;
+    color: #d32f2f;
+}

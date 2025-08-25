@@ -1,371 +1,455 @@
 console.log('🔍 [PRESUPUESTOS] Configurando middleware de validación...');
 
 /**
- * Middleware de validación para el módulo de presupuestos
- * Valida datos de entrada y parámetros de las requests
+ * Helpers de normalización
  */
-
-/**
- * Validar datos para crear presupuesto
- */
-const validarCrearPresupuesto = (req, res, next) => {
-    console.log('🔍 [PRESUPUESTOS] Validando datos para crear presupuesto...');
-    
-    const { concepto, monto, categoria } = req.body;
-    const errores = [];
-    
-    // Validar concepto
-    if (!concepto || typeof concepto !== 'string' || concepto.trim().length === 0) {
-        errores.push('El concepto es requerido y debe ser un texto válido');
-        console.log('❌ [PRESUPUESTOS] Concepto inválido:', concepto);
-    } else if (concepto.trim().length > 255) {
-        errores.push('El concepto no puede exceder 255 caracteres');
-        console.log('❌ [PRESUPUESTOS] Concepto muy largo:', concepto.length);
-    }
-    
-    // Validar monto
-    if (monto === undefined || monto === null) {
-        errores.push('El monto es requerido');
-        console.log('❌ [PRESUPUESTOS] Monto faltante');
-    } else if (isNaN(parseFloat(monto))) {
-        errores.push('El monto debe ser un número válido');
-        console.log('❌ [PRESUPUESTOS] Monto no numérico:', monto);
-    } else if (parseFloat(monto) < 0) {
-        errores.push('El monto no puede ser negativo');
-        console.log('❌ [PRESUPUESTOS] Monto negativo:', monto);
-    }
-    
-    // Validar categoría (opcional)
-    if (categoria && typeof categoria !== 'string') {
-        errores.push('La categoría debe ser un texto válido');
-        console.log('❌ [PRESUPUESTOS] Categoría inválida:', categoria);
-    } else if (categoria && categoria.length > 100) {
-        errores.push('La categoría no puede exceder 100 caracteres');
-        console.log('❌ [PRESUPUESTOS] Categoría muy larga:', categoria.length);
-    }
-    
-    if (errores.length > 0) {
-        console.log('❌ [PRESUPUESTOS] Errores de validación:', errores);
-        return res.status(400).json({
-            success: false,
-            error: 'Datos de entrada inválidos',
-            errores: errores,
-            timestamp: new Date().toISOString()
-        });
-    }
-    
-    console.log('✅ [PRESUPUESTOS] Validación de creación exitosa');
-    next();
+const toStr = (v) => (v === undefined || v === null) ? '' : String(v);
+const isYYYYMMDD = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s).getTime());
+const toNum = (v) => {
+  if (v === '' || v === null || v === undefined) return NaN;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
 };
 
 /**
- * Validar datos para actualizar presupuesto
- */
-const validarActualizarPresupuesto = (req, res, next) => {
-    console.log('🔍 [PRESUPUESTOS] Validando datos para actualizar presupuesto...');
-    
-    const { concepto, monto, categoria } = req.body;
-    const errores = [];
-    
-    // Al menos un campo debe estar presente
-    if (concepto === undefined && monto === undefined && categoria === undefined) {
-        errores.push('Debe proporcionar al menos un campo para actualizar');
-        console.log('❌ [PRESUPUESTOS] No hay campos para actualizar');
-    }
-    
-    // Validar concepto si está presente
-    if (concepto !== undefined) {
-        if (typeof concepto !== 'string' || concepto.trim().length === 0) {
-            errores.push('El concepto debe ser un texto válido');
-            console.log('❌ [PRESUPUESTOS] Concepto inválido:', concepto);
-        } else if (concepto.trim().length > 255) {
-            errores.push('El concepto no puede exceder 255 caracteres');
-            console.log('❌ [PRESUPUESTOS] Concepto muy largo:', concepto.length);
-        }
-    }
-    
-    // Validar monto si está presente
-    if (monto !== undefined) {
-        if (isNaN(parseFloat(monto))) {
-            errores.push('El monto debe ser un número válido');
-            console.log('❌ [PRESUPUESTOS] Monto no numérico:', monto);
-        } else if (parseFloat(monto) < 0) {
-            errores.push('El monto no puede ser negativo');
-            console.log('❌ [PRESUPUESTOS] Monto negativo:', monto);
-        }
-    }
-    
-    // Validar categoría si está presente
-    if (categoria !== undefined) {
-        if (typeof categoria !== 'string') {
-            errores.push('La categoría debe ser un texto válido');
-            console.log('❌ [PRESUPUESTOS] Categoría inválida:', categoria);
-        } else if (categoria.length > 100) {
-            errores.push('La categoría no puede exceder 100 caracteres');
-            console.log('❌ [PRESUPUESTOS] Categoría muy larga:', categoria.length);
-        }
-    }
-    
-    if (errores.length > 0) {
-        console.log('❌ [PRESUPUESTOS] Errores de validación:', errores);
-        return res.status(400).json({
-            success: false,
-            error: 'Datos de entrada inválidos',
-            errores: errores,
-            timestamp: new Date().toISOString()
-        });
-    }
-    
-    console.log('✅ [PRESUPUESTOS] Validación de actualización exitosa');
-    next();
-};
-
-/**
- * Validar ID de presupuesto
- */
-const validarIdPresupuesto = (req, res, next) => {
-    console.log('🔍 [PRESUPUESTOS] Validando ID de presupuesto...');
-    
-    const { id } = req.params;
-    
-    if (!id) {
-        console.log('❌ [PRESUPUESTOS] ID faltante');
-        return res.status(400).json({
-            success: false,
-            error: 'ID de presupuesto requerido',
-            timestamp: new Date().toISOString()
-        });
-    }
-    
-    const idNumerico = parseInt(id);
-    
-    if (isNaN(idNumerico) || idNumerico <= 0) {
-        console.log('❌ [PRESUPUESTOS] ID inválido:', id);
-        return res.status(400).json({
-            success: false,
-            error: 'ID de presupuesto debe ser un número entero positivo',
-            timestamp: new Date().toISOString()
-        });
-    }
-    
-    console.log(`✅ [PRESUPUESTOS] ID válido: ${idNumerico}`);
-    req.params.id = idNumerico; // Normalizar a número
-    next();
-};
-
-/**
- * Validar parámetros de filtrado
- */
-const validarFiltros = (req, res, next) => {
-    console.log('🔍 [PRESUPUESTOS] Validando filtros de consulta...');
-    
-    const {
-        limit,
-        offset,
-        monto_min,
-        monto_max,
-        fecha_desde,
-        fecha_hasta,
-        order_by,
-        order_dir
-    } = req.query;
-    
-    const errores = [];
-    
-    // Validar limit
-    if (limit !== undefined) {
-        const limitNum = parseInt(limit);
-        if (isNaN(limitNum) || limitNum <= 0 || limitNum > 1000) {
-            errores.push('El límite debe ser un número entre 1 y 1000');
-            console.log('❌ [PRESUPUESTOS] Límite inválido:', limit);
-        }
-    }
-    
-    // Validar offset
-    if (offset !== undefined) {
-        const offsetNum = parseInt(offset);
-        if (isNaN(offsetNum) || offsetNum < 0) {
-            errores.push('El offset debe ser un número mayor o igual a 0');
-            console.log('❌ [PRESUPUESTOS] Offset inválido:', offset);
-        }
-    }
-    
-    // Validar montos
-    if (monto_min !== undefined) {
-        const montoMinNum = parseFloat(monto_min);
-        if (isNaN(montoMinNum)) {
-            errores.push('El monto mínimo debe ser un número válido');
-            console.log('❌ [PRESUPUESTOS] Monto mínimo inválido:', monto_min);
-        }
-    }
-    
-    if (monto_max !== undefined) {
-        const montoMaxNum = parseFloat(monto_max);
-        if (isNaN(montoMaxNum)) {
-            errores.push('El monto máximo debe ser un número válido');
-            console.log('❌ [PRESUPUESTOS] Monto máximo inválido:', monto_max);
-        }
-    }
-    
-    // Validar fechas
-    if (fecha_desde !== undefined) {
-        const fechaDesde = new Date(fecha_desde);
-        if (isNaN(fechaDesde.getTime())) {
-            errores.push('La fecha desde debe ser una fecha válida (YYYY-MM-DD)');
-            console.log('❌ [PRESUPUESTOS] Fecha desde inválida:', fecha_desde);
-        }
-    }
-    
-    if (fecha_hasta !== undefined) {
-        const fechaHasta = new Date(fecha_hasta);
-        if (isNaN(fechaHasta.getTime())) {
-            errores.push('La fecha hasta debe ser una fecha válida (YYYY-MM-DD)');
-            console.log('❌ [PRESUPUESTOS] Fecha hasta inválida:', fecha_hasta);
-        }
-    }
-    
-    // Validar ordenamiento
-    if (order_by !== undefined) {
-        const validOrderFields = ['fecha_registro', 'fecha_sincronizacion', 'categoria', 'concepto', 'monto'];
-        if (!validOrderFields.includes(order_by)) {
-            errores.push(`El campo de ordenamiento debe ser uno de: ${validOrderFields.join(', ')}`);
-            console.log('❌ [PRESUPUESTOS] Campo de ordenamiento inválido:', order_by);
-        }
-    }
-    
-    if (order_dir !== undefined) {
-        if (!['ASC', 'DESC', 'asc', 'desc'].includes(order_dir)) {
-            errores.push('La dirección de ordenamiento debe ser ASC o DESC');
-            console.log('❌ [PRESUPUESTOS] Dirección de ordenamiento inválida:', order_dir);
-        }
-    }
-    
-    if (errores.length > 0) {
-        console.log('❌ [PRESUPUESTOS] Errores de validación de filtros:', errores);
-        return res.status(400).json({
-            success: false,
-            error: 'Parámetros de filtrado inválidos',
-            errores: errores,
-            timestamp: new Date().toISOString()
-        });
-    }
-    
-    console.log('✅ [PRESUPUESTOS] Validación de filtros exitosa');
-    next();
-};
-
-/**
- * Validar parámetros de resumen
- */
-const validarResumen = (req, res, next) => {
-    console.log('🔍 [PRESUPUESTOS] Validando parámetros de resumen...');
-    
-    const { tipo, fecha_desde, fecha_hasta } = req.query;
-    const errores = [];
-    
-    // Validar tipo de resumen
-    if (tipo && !['categoria', 'fecha'].includes(tipo)) {
-        errores.push('El tipo de resumen debe ser "categoria" o "fecha"');
-        console.log('❌ [PRESUPUESTOS] Tipo de resumen inválido:', tipo);
-    }
-    
-    // Validar fechas si están presentes
-    if (fecha_desde !== undefined) {
-        const fechaDesde = new Date(fecha_desde);
-        if (isNaN(fechaDesde.getTime())) {
-            errores.push('La fecha desde debe ser una fecha válida (YYYY-MM-DD)');
-            console.log('❌ [PRESUPUESTOS] Fecha desde inválida:', fecha_desde);
-        }
-    }
-    
-    if (fecha_hasta !== undefined) {
-        const fechaHasta = new Date(fecha_hasta);
-        if (isNaN(fechaHasta.getTime())) {
-            errores.push('La fecha hasta debe ser una fecha válida (YYYY-MM-DD)');
-            console.log('❌ [PRESUPUESTOS] Fecha hasta inválida:', fecha_hasta);
-        }
-    }
-    
-    // Validar que fecha_desde sea anterior a fecha_hasta
-    if (fecha_desde && fecha_hasta) {
-        const fechaDesde = new Date(fecha_desde);
-        const fechaHasta = new Date(fecha_hasta);
-        
-        if (fechaDesde > fechaHasta) {
-            errores.push('La fecha desde debe ser anterior a la fecha hasta');
-            console.log('❌ [PRESUPUESTOS] Rango de fechas inválido:', { fecha_desde, fecha_hasta });
-        }
-    }
-    
-    if (errores.length > 0) {
-        console.log('❌ [PRESUPUESTOS] Errores de validación de resumen:', errores);
-        return res.status(400).json({
-            success: false,
-            error: 'Parámetros de resumen inválidos',
-            errores: errores,
-            timestamp: new Date().toISOString()
-        });
-    }
-    
-    console.log('✅ [PRESUPUESTOS] Validación de resumen exitosa');
-    next();
-};
-
-/**
- * Sanitizar datos de entrada
+ * Sanitizar datos de entrada (body + query)
  */
 const sanitizarDatos = (req, res, next) => {
-    console.log('🔍 [PRESUPUESTOS] Sanitizando datos de entrada...');
-    
-    // Sanitizar body
-    if (req.body) {
-        if (req.body.concepto && typeof req.body.concepto === 'string') {
-            req.body.concepto = req.body.concepto.trim();
-        }
-        
-        if (req.body.categoria && typeof req.body.categoria === 'string') {
-            req.body.categoria = req.body.categoria.trim();
-        }
-        
-        if (req.body.sheet_name && typeof req.body.sheet_name === 'string') {
-            req.body.sheet_name = req.body.sheet_name.trim();
-        }
-        
-        if (req.body.monto !== undefined) {
-            req.body.monto = parseFloat(req.body.monto);
-        }
+  try {
+    // Body
+    if (req.body && typeof req.body === 'object') {
+      // Campos de encabezado
+      if (req.body.id_cliente !== undefined) {
+        req.body.id_cliente = toStr(req.body.id_cliente).trim();
+      }
+      if (req.body.agente !== undefined) {
+        req.body.agente = toStr(req.body.agente).trim();
+      }
+      if (req.body.tipo_comprobante !== undefined) {
+        req.body.tipo_comprobante = toStr(req.body.tipo_comprobante).trim();
+      }
+      if (req.body.punto_entrega !== undefined) {
+        req.body.punto_entrega = toStr(req.body.punto_entrega).trim();
+      }
+      if (req.body.nota !== undefined) {
+        req.body.nota = toStr(req.body.nota).trim();
+      }
+      if (req.body.fecha !== undefined) {
+        req.body.fecha = toStr(req.body.fecha).trim();
+      }
+      if (req.body.fecha_entrega !== undefined) {
+        req.body.fecha_entrega = toStr(req.body.fecha_entrega).trim();
+      }
+      if (req.body.descuento !== undefined) {
+        const d = toNum(req.body.descuento);
+        req.body.descuento = Number.isFinite(d) ? d : req.body.descuento;
+      }
+
+      // Detalles
+      if (Array.isArray(req.body.detalles)) {
+        req.body.detalles = req.body.detalles.map((it) => {
+          const item = { ...it };
+          if (item.articulo !== undefined) item.articulo = toStr(item.articulo).trim();
+          if (item.cantidad !== undefined) {
+            const n = toNum(item.cantidad);
+            item.cantidad = Number.isFinite(n) ? n : item.cantidad;
+          }
+          if (item.valor1 !== undefined) {
+            const n = toNum(item.valor1);
+            item.valor1 = Number.isFinite(n) ? n : item.valor1;
+          }
+          if (item.precio1 !== undefined) {
+            const n = toNum(item.precio1);
+            item.precio1 = Number.isFinite(n) ? n : item.precio1;
+          }
+          if (item.iva1 !== undefined) {
+            const n = toNum(item.iva1);
+            item.iva1 = Number.isFinite(n) ? n : item.iva1;
+          }
+          // Campos opcionales: diferencia, camp1..camp6
+          ['diferencia','camp1','camp2','camp3','camp4','camp5','camp6'].forEach((k) => {
+            if (item[k] !== undefined) {
+              const n = toNum(item[k]);
+              item[k] = Number.isFinite(n) ? n : item[k];
+            }
+          });
+          return item;
+        });
+      }
     }
-    
-    // Sanitizar query params
-    if (req.query) {
-        if (req.query.categoria && typeof req.query.categoria === 'string') {
-            req.query.categoria = req.query.categoria.trim();
-        }
-        
-        if (req.query.concepto && typeof req.query.concepto === 'string') {
-            req.query.concepto = req.query.concepto.trim();
-        }
-        
-        if (req.query.limit) {
-            req.query.limit = parseInt(req.query.limit) || 100;
-        }
-        
-        if (req.query.offset) {
-            req.query.offset = parseInt(req.query.offset) || 0;
-        }
+
+    // Query
+    if (req.query && typeof req.query === 'object') {
+      if (req.query.limit !== undefined) req.query.limit = parseInt(req.query.limit, 10);
+      if (req.query.offset !== undefined) req.query.offset = parseInt(req.query.offset, 10);
+      ['estado','agente','order_by','order_dir'].forEach((k) => {
+        if (req.query[k] !== undefined) req.query[k] = toStr(req.query[k]).trim();
+      });
+      ['fecha_desde','fecha_hasta'].forEach((k) => {
+        if (req.query[k] !== undefined) req.query[k] = toStr(req.query[k]).trim();
+      });
+      if (req.query.id_cliente !== undefined) {
+        req.query.id_cliente = toStr(req.query.id_cliente).trim();
+      }
     }
-    
+
     console.log('✅ [PRESUPUESTOS] Datos sanitizados');
     next();
+  } catch (e) {
+    console.error('❌ [PRESUPUESTOS] Error sanitizando datos:', e.message);
+    res.status(400).json({
+      success: false,
+      error: 'Error sanitizando datos de entrada',
+      message: e.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+};
+
+/**
+ * Validar datos para crear presupuesto (validación LIGHT, a prueba de cuelgues)
+ * Requerido: id_cliente (string/num no vacío), detalles (array con al menos 1 item)
+ * Para cada detalle: articulo (string no vacío), cantidad (>0)
+ * Campos opcionales no bloquean (agente, fechas, etc.)
+ */
+const validarCrearPresupuesto = (req, res, next) => {
+  console.log('🔍 [PRESUPUESTOS] Validando datos para crear presupuesto...');
+  try {
+    const {
+      id_cliente,
+      fecha,
+      fecha_entrega,
+      agente,            // opcional
+      tipo_comprobante,  // opcional
+      punto_entrega,     // opcional
+      descuento,         // opcional (0..100)
+      nota,              // opcional
+      detalles,
+    } = req.body || {};
+
+    const errores = [];
+
+    // id_cliente (requerido)
+    if (id_cliente === undefined || id_cliente === null || String(id_cliente).trim() === '') {
+      errores.push("El campo 'id_cliente' es obligatorio.");
+    }
+
+    // fechas (opcionales, si vienen deben ser YYYY-MM-DD válidas)
+    if (fecha && !isYYYYMMDD(String(fecha))) {
+      errores.push("El campo 'fecha' debe tener formato YYYY-MM-DD.");
+    }
+    if (fecha_entrega && !isYYYYMMDD(String(fecha_entrega))) {
+      errores.push("El campo 'fecha_entrega' debe tener formato YYYY-MM-DD.");
+    }
+
+    // descuento (opcional 0..100)
+    if (descuento !== undefined && descuento !== null && descuento !== '') {
+      const d = toNum(descuento);
+      if (!Number.isFinite(d)) {
+        errores.push("El campo 'descuento' debe ser numérico.");
+      } else if (d < 0 || d > 100) {
+        errores.push("El campo 'descuento' debe estar entre 0 y 100.");
+      }
+    }
+
+    // agente (opcional, si viene debe ser string razonable)
+    if (agente !== undefined && agente !== null && agente !== '') {
+      if (typeof agente !== 'string') {
+        errores.push("El campo 'agente' debe ser texto.");
+      } else if (agente.length > 100) {
+        errores.push("El campo 'agente' no puede exceder 100 caracteres.");
+      }
+    }
+
+    // tipo_comprobante / punto_entrega / nota (opcionales: solo chequear tipo si vienen)
+    [['tipo_comprobante', tipo_comprobante], ['punto_entrega', punto_entrega], ['nota', nota]].forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '' && typeof v !== 'string') {
+        errores.push(`El campo '${k}' debe ser texto.`);
+      }
+    });
+
+    // detalles (requerido: array con al menos 1)
+    if (!Array.isArray(detalles) || detalles.length === 0) {
+      errores.push("Debe enviar al menos un ítem en 'detalles'.");
+    } else {
+      detalles.forEach((item, idx) => {
+        const prefix = `Detalle #${idx + 1}:`;
+        if (!item || typeof item !== 'object') {
+          errores.push(`${prefix} Formato inválido.`);
+          return;
+        }
+        // articulo (string no vacío) — acá llega el código de barras
+        if (item.articulo === undefined || item.articulo === null || String(item.articulo).trim() === '') {
+          errores.push(`${prefix} El campo 'articulo' es obligatorio.`);
+        }
+        // cantidad (>0)
+        const cant = toNum(item.cantidad);
+        if (!Number.isFinite(cant) || cant <= 0) {
+          errores.push(`${prefix} 'cantidad' debe ser un número > 0.`);
+        }
+        // valor1 / iva1 / precio1 (opcionales, si vienen deben ser numéricos)
+        ['valor1','iva1','precio1'].forEach((k) => {
+          if (item[k] !== undefined && item[k] !== null && item[k] !== '') {
+            const n = toNum(item[k]);
+            if (!Number.isFinite(n)) {
+              errores.push(`${prefix} '${k}' debe ser numérico.`);
+            }
+          }
+        });
+      });
+    }
+
+    if (errores.length > 0) {
+      console.log('❌ [PRESUPUESTOS] Errores de validación:', errores);
+      return res.status(400).json({
+        success: false,
+        error: 'Datos de entrada inválidos para crear presupuesto',
+        errores,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    console.log('✅ [PRESUPUESTOS] Validación de creación exitosa');
+    return next();
+  } catch (e) {
+    console.error('❌ [PRESUPUESTOS] Excepción durante validación de creación:', e);
+    return res.status(400).json({
+      success: false,
+      error: 'Error validando datos de creación',
+      message: e.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+};
+
+/**
+ * Validar datos para actualizar presupuesto (PATCH/PUT)
+ * Campos permitidos: agente, nota, punto_entrega, descuento, fecha_entrega
+ */
+const validarActualizarPresupuesto = (req, res, next) => {
+  console.log('🔍 [PRESUPUESTOS] Validando datos para actualizar presupuesto...');
+  try {
+    const allow = ['agente', 'nota', 'punto_entrega', 'descuento', 'fecha_entrega'];
+    const body = req.body || {};
+    const keys = Object.keys(body);
+    const errores = [];
+
+    if (keys.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No hay campos para actualizar',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Solo permitir campos válidos
+    const invalid = keys.filter(k => !allow.includes(k));
+    if (invalid.length > 0) {
+      errores.push(`Campos no permitidos: ${invalid.join(', ')}`);
+    }
+
+    // Validaciones light
+    if (body.agente !== undefined && body.agente !== null && body.agente !== '') {
+      if (typeof body.agente !== 'string') errores.push("El campo 'agente' debe ser texto.");
+      else if (body.agente.length > 100) errores.push("El campo 'agente' no puede exceder 100 caracteres.");
+    }
+    if (body.nota !== undefined && body.nota !== null && typeof body.nota !== 'string') {
+      errores.push("El campo 'nota' debe ser texto.");
+    }
+    if (body.punto_entrega !== undefined && body.punto_entrega !== null && typeof body.punto_entrega !== 'string') {
+      errores.push("El campo 'punto_entrega' debe ser texto.");
+    }
+    if (body.descuento !== undefined && body.descuento !== null && body.descuento !== '') {
+      const d = toNum(body.descuento);
+      if (!Number.isFinite(d)) errores.push("El campo 'descuento' debe ser numérico.");
+      else if (d < 0 || d > 100) errores.push("El descuento debe estar entre 0 y 100.");
+    }
+    if (body.fecha_entrega !== undefined && body.fecha_entrega !== null && body.fecha_entrega !== '') {
+      if (!isYYYYMMDD(String(body.fecha_entrega))) {
+        errores.push("El campo 'fecha_entrega' debe tener formato YYYY-MM-DD.");
+      }
+    }
+
+    if (errores.length > 0) {
+      console.log('❌ [PRESUPUESTOS] Errores de validación (update):', errores);
+      return res.status(400).json({
+        success: false,
+        error: 'Datos de entrada inválidos para actualizar presupuesto',
+        errores,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    console.log('✅ [PRESUPUESTOS] Validación de actualización exitosa');
+    return next();
+  } catch (e) {
+    console.error('❌ [PRESUPUESTOS] Excepción durante validación de actualización:', e);
+    return res.status(400).json({
+      success: false,
+      error: 'Error validando datos de actualización',
+      message: e.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+};
+
+/**
+ * Validar ID de presupuesto en params
+ */
+const validarIdPresupuesto = (req, res, next) => {
+  console.log('🔍 [PRESUPUESTOS] Validando ID de presupuesto...');
+  try {
+    const { id } = req.params || {};
+    if (!id && id !== 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de presupuesto requerido',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    const n = parseInt(id, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de presupuesto debe ser un entero positivo',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    req.params.id = n;
+    console.log(`✅ [PRESUPUESTOS] ID válido: ${n}`);
+    return next();
+  } catch (e) {
+    console.error('❌ [PRESUPUESTOS] Excepción validando ID:', e);
+    return res.status(400).json({
+      success: false,
+      error: 'Error validando ID de presupuesto',
+      message: e.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+};
+
+/**
+ * Validar filtros (GET list)
+ */
+const validarFiltros = (req, res, next) => {
+  console.log('🔍 [PRESUPUESTOS] Validando filtros de consulta...');
+  try {
+    const q = req.query || {};
+    const errores = [];
+
+    if (q.limit !== undefined) {
+      const n = parseInt(q.limit, 10);
+      if (!Number.isFinite(n) || n <= 0 || n > 1000) {
+        errores.push('El límite debe ser un número entre 1 y 1000');
+      }
+    }
+    if (q.offset !== undefined) {
+      const n = parseInt(q.offset, 10);
+      if (!Number.isFinite(n) || n < 0) {
+        errores.push('El offset debe ser un número mayor o igual a 0');
+      }
+    }
+    if (q.fecha_desde && !isYYYYMMDD(String(q.fecha_desde))) {
+      errores.push('La fecha desde debe ser YYYY-MM-DD');
+    }
+    if (q.fecha_hasta && !isYYYYMMDD(String(q.fecha_hasta))) {
+      errores.push('La fecha hasta debe ser YYYY-MM-DD');
+    }
+    if (q.fecha_desde && q.fecha_hasta) {
+      const d = new Date(q.fecha_desde);
+      const h = new Date(q.fecha_hasta);
+      if (d > h) errores.push('La fecha desde debe ser anterior o igual a la fecha hasta');
+    }
+    if (q.order_dir && !['ASC','DESC','asc','desc'].includes(String(q.order_dir))) {
+      errores.push('La dirección de ordenamiento debe ser ASC o DESC');
+    }
+    // Dejamos order_by abierto a campos típicos del módulo
+    if (q.order_by) {
+      const allowed = ['fecha','estado','fecha_actualizacion','id_cliente','agente','id'];
+      if (!allowed.includes(String(q.order_by))) {
+        errores.push(`order_by debe ser uno de: ${allowed.join(', ')}`);
+      }
+    }
+
+    if (errores.length > 0) {
+      console.log('❌ [PRESUPUESTOS] Errores de validación de filtros:', errores);
+      return res.status(400).json({
+        success: false,
+        error: 'Parámetros de filtrado inválidos',
+        errores,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    console.log('✅ [PRESUPUESTOS] Validación de filtros exitosa');
+    return next();
+  } catch (e) {
+    console.error('❌ [PRESUPUESTOS] Excepción validando filtros:', e);
+    return res.status(400).json({
+      success: false,
+      error: 'Error validando filtros',
+      message: e.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+};
+
+/**
+ * Validar parámetros de resumen (si existiera un endpoint de resumen)
+ * Mantener light para no bloquear.
+ */
+const validarResumen = (req, res, next) => {
+  console.log('🔍 [PRESUPUESTOS] Validando parámetros de resumen...');
+  try {
+    const { tipo, fecha_desde, fecha_hasta } = req.query || {};
+    const errores = [];
+
+    if (tipo && !['categoria', 'fecha'].includes(tipo)) {
+      errores.push('El tipo de resumen debe ser "categoria" o "fecha"');
+    }
+    if (fecha_desde && !isYYYYMMDD(String(fecha_desde))) {
+      errores.push('La fecha desde debe ser YYYY-MM-DD');
+    }
+    if (fecha_hasta && !isYYYYMMDD(String(fecha_hasta))) {
+      errores.push('La fecha hasta debe ser YYYY-MM-DD');
+    }
+    if (fecha_desde && fecha_hasta) {
+      const d = new Date(fecha_desde);
+      const h = new Date(fecha_hasta);
+      if (d > h) errores.push('La fecha desde debe ser anterior o igual a la fecha hasta');
+    }
+
+    if (errores.length > 0) {
+      console.log('❌ [PRESUPUESTOS] Errores de validación de resumen:', errores);
+      return res.status(400).json({
+        success: false,
+        error: 'Parámetros de resumen inválidos',
+        errores,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    console.log('✅ [PRESUPUESTOS] Validación de resumen exitosa');
+    return next();
+  } catch (e) {
+    console.error('❌ [PRESUPUESTOS] Excepción validando resumen:', e);
+    return res.status(400).json({
+      success: false,
+      error: 'Error validando parámetros de resumen',
+      message: e.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 };
 
 console.log('✅ [PRESUPUESTOS] Middleware de validación configurado');
 
 module.exports = {
-    validarCrearPresupuesto,
-    validarActualizarPresupuesto,
-    validarIdPresupuesto,
-    validarFiltros,
-    validarResumen,
-    sanitizarDatos
+  sanitizarDatos,
+  validarCrearPresupuesto,
+  validarActualizarPresupuesto,
+  validarIdPresupuesto,
+  validarFiltros,
+  validarResumen,
 };
