@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Configurar autocompletar para artículos
     setupArticuloAutocomplete();
+    precargarArticulosAll().catch(()=>{});
 
     console.log('✅ [PRESUPUESTOS-CREATE] Página inicializada correctamente');
 });
@@ -236,14 +237,23 @@ async function handleSubmit(event) {
 
             inputs.forEach(input => {
                 const name = input.name || '';
+
                 if (name.includes('[articulo]')) {
-                    detalle.articulo = (input.value || '').toString().trim();
+                    // ✅ CAMBIO ÚNICO: priorizar el código real (dataset.codigoBarras) si existe
+                    const real = (input.dataset && input.dataset.codigoBarras)
+                        ? input.dataset.codigoBarras
+                        : (input.value || '');
+                    detalle.articulo = real.toString().trim();
+
                 } else if (name.includes('[cantidad]')) {
                     detalle.cantidad = parseFloat(input.value) || 0;
+
                 } else if (name.includes('[valor1]')) {
                     detalle.valor1 = parseFloat(input.value) || 0;
+
                 } else if (name.includes('[precio1]')) {
                     detalle.precio1 = parseFloat(input.value) || 0;
+
                 } else if (name.includes('[iva1]')) {
                     detalle.iva1 = parseFloat(input.value) || 0;
                 }
@@ -321,7 +331,6 @@ async function handleSubmit(event) {
             console.error('❌ [PRESUPUESTOS-CREATE] Response status:', response.status);
             console.error('❌ [PRESUPUESTOS-CREATE] Response headers:', [...response.headers.entries()]);
 
-            // Intentar obtener más información del error
             if (response.status >= 500) {
                 throw new Error('Error interno del servidor (500)');
             } else if (response.status >= 400) {
@@ -334,23 +343,15 @@ async function handleSubmit(event) {
         console.log('📥 [PRESUPUESTOS-CREATE] Respuesta recibida:', result);
 
         if (response.ok && result && result.success) {
-            // Éxito - Mostrar mensaje según criterios de aceptación
-            mostrarMensaje(
-                `✅ Presupuesto guardado en BD (PENDIENTE)`,
-                'success'
-            );
+            mostrarMensaje(`✅ Presupuesto guardado en BD (PENDIENTE)`, 'success');
 
             console.log(`✅ [PRESUPUESTOS-CREATE] Presupuesto creado: ${result.data?.id_presupuesto || 'N/A'} - Estado: ${result.data?.estado || 'N/A'}`);
 
-            // Redirigir después de 2 segundos para refrescar la tabla
             setTimeout(() => {
-                window.location.href = '/pages/presupuestos.html';   // ruta correcta del listado
-               // o si querés evitar que el Back del navegador vuelva al formulario:
-               // window.location.replace('/pages/presupuestos.html');
-             }, 1200);
+                window.location.href = '/pages/presupuestos.html';
+            }, 1200);
 
         } else {
-            // Error del servidor
             const errorMsg = result?.error || result?.message || `Error HTTP ${response.status}: ${response.statusText}`;
             console.error(`❌ [PRESUPUESTOS-CREATE] Error del servidor: ${errorMsg}`);
             throw new Error(errorMsg);
@@ -360,20 +361,15 @@ async function handleSubmit(event) {
         console.error('❌ [PRESUPUESTOS-CREATE] Error al crear presupuesto:', error);
 
         let errorMessage = 'Error desconocido';
-
         if (error.name === 'AbortError') {
             errorMessage = 'Timeout: El servidor tardó demasiado en responder';
         } else if (error.message) {
             errorMessage = error.message;
         }
 
-        mostrarMensaje(
-            `❌ Error al crear presupuesto: ${errorMessage}`,
-            'error'
-        );
+        mostrarMensaje(`❌ Error al crear presupuesto: ${errorMessage}`, 'error');
 
     } finally {
-        // CRÍTICO: Siempre re-habilitar el botón y ocultar spinner
         console.log('🔄 [PRESUPUESTOS-CREATE] Ejecutando finally - re-habilitando botón...');
 
         try {
@@ -381,14 +377,12 @@ async function handleSubmit(event) {
                 btnGuardar.disabled = false;
                 console.log('✅ [PRESUPUESTOS-CREATE] Botón re-habilitado');
             }
-
             if (spinner) {
                 spinner.style.display = 'none';
                 console.log('✅ [PRESUPUESTOS-CREATE] Spinner ocultado');
             }
         } catch (finallyError) {
             console.error('❌ [PRESUPUESTOS-CREATE] Error en finally:', finallyError);
-            // Forzar re-habilitación como último recurso
             setTimeout(() => {
                 const btn = document.getElementById('btn-guardar');
                 const spn = btn?.querySelector('.loading-spinner');
@@ -399,7 +393,6 @@ async function handleSubmit(event) {
         }
     }
 }
-
 /**
  * Mostrar mensaje al usuario
  */
@@ -757,7 +750,52 @@ function normalizarTexto(texto) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
 }
+// === Cache opcional de artículos + helpers ===
+window.__articulosCache = window.__articulosCache || [];
+window.__articulosCacheLoaded = window.__articulosCacheLoaded || false;
 
+async function precargarArticulosAll() {
+  if (window.__articulosCacheLoaded) return window.__articulosCache;
+  const urls = [
+    '/api/presupuestos/articulos?all=1',
+    '/api/presupuestos/articulos?limit=5000',
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const body = await res.json();
+      const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+      if (Array.isArray(arr) && arr.length) {
+        window.__articulosCache = arr;
+        window.__articulosCacheLoaded = true;
+        console.log('[PRESUP][AC] cache precargada:', arr.length);
+        return arr;
+      }
+    } catch (e) {}
+  }
+  return window.__articulosCache;
+}
+
+function filtrarArticulosLocal(query, items) {
+  const q = normalizarTexto(query);
+  const out = (items || []).filter(a => {
+    const d = normalizarTexto(a.description ?? a.descripcion ?? '');
+    const n = normalizarTexto(a.articulo_numero ?? '');
+    const c = normalizarTexto(a.codigo_barras ?? '');
+    return d.includes(q) || n.includes(q) || c.includes(q);
+  });
+  // Orden: stock>0 primero, luego por descripción
+  out.sort((A, B) => {
+    const pa = Number(A.stock_consolidado || 0) > 0 ? 0 : 1;
+    const pb = Number(B.stock_consolidado || 0) > 0 ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    const la = (A.description ?? A.descripcion ?? '').toString();
+    const lb = (B.description ?? B.descripcion ?? '').toString();
+    return la.localeCompare(lb);
+  });
+  return out;
+}
 // ===== FUNCIONES DE AUTOCOMPLETAR DE ARTÍCULOS =====
 
 /**
@@ -796,50 +834,45 @@ function setupArticuloAutocomplete() {
  * Manejar input de artículo con debounce
  */
 const handleArticuloInput = debounce(async function(event) {
-    const input = event.target;
-    const query = (input.value || '').trim();
+  const input = event.target;
+  const query = (input.value || '').trim();
 
-    console.log(`🔍 [ARTICULOS] Búsqueda de artículo: "${query}"`);
+  console.log(`[ARTICULOS] Búsqueda de artículo: "${query}"`);
 
-    // Limpiar sugerencias si query muy corto
-    if (query.length < 2) {
-        ocultarSugerenciasArticulo();
-        return;
+  if (query.length < 2) {
+    ocultarSugerenciasArticulo();
+    return;
+  }
+
+  try {
+    mostrarLoadingArticulo(input);
+
+    let items = [];
+    // 1) Si hay cache completa, filtrar localmente (trae TODAS las coincidencias)
+    if (window.__articulosCacheLoaded && Array.isArray(window.__articulosCache) && window.__articulosCache.length) {
+      items = filtrarArticulosLocal(query, window.__articulosCache);
+    } else {
+      // 2) Fallback: pedir al endpoint existente por query
+      const isFileProtocol = window.location.protocol === 'file:';
+      if (isFileProtocol) {
+        const sim = await simularBusquedaArticulos(query);
+        items = filtrarArticulosLocal(query, sim.data || []);
+      } else {
+        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(query)}`);
+        if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+        const body = await response.json();
+        const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+        items = filtrarArticulosLocal(query, arr);
+      }
     }
 
-    try {
-        // Mostrar loading
-        mostrarLoadingArticulo(input);
+    console.log(`[ARTICULOS] Sugerencias preparadas: ${items.length} artículos`);
+    mostrarSugerenciasArticulo(input, items);
 
-        // Detectar si estamos en modo desarrollo (file://) o producción
-        const isFileProtocol = window.location.protocol === 'file:';
-
-        let result;
-
-        if (isFileProtocol) {
-            // Modo desarrollo: usar datos simulados
-            console.log('🔧 [ARTICULOS] Modo desarrollo - usando datos simulados');
-            result = await simularBusquedaArticulos(query);
-        } else {
-            // Modo producción: hacer request real al endpoint
-            const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(query)}`);
-
-            if (!response.ok) {
-                throw new Error(`Error ${response.status}: ${response.statusText}`);
-            }
-
-            result = await response.json();
-        }
-
-        console.log(`📦 [ARTICULOS] Sugerencias recibidas: ${result.data.length} artículos`);
-
-        // Mostrar sugerencias
-        mostrarSugerenciasArticulo(input, result.data);
-
-    } catch (error) {
-        console.error('❌ [ARTICULOS] Error al buscar artículos:', error);
-        mostrarErrorArticulo(input, 'Error al buscar artículos');
-    }
+  } catch (error) {
+    console.error('Error al buscar artículos:', error);
+    mostrarErrorArticulo(input, 'Error al buscar artículos');
+  }
 }, 300);
 
 /**
@@ -964,47 +997,58 @@ function mostrarLoadingArticulo(input) {
  * Mostrar sugerencias de artículos
  */
 function mostrarSugerenciasArticulo(input, articulos) {
-    const container = getOrCreateSugerenciasContainer();
+  const container = getOrCreateSugerenciasContainer();
 
-    if (!Array.isArray(articulos) || articulos.length === 0) {
-        container.innerHTML = '<div class="articulo-sin-resultados">No se encontraron artículos</div>';
-        container.style.display = 'block';
-        posicionarSugerenciasArticulo(input, container);
-        return;
-    }
-
-    // Limitar a 8 resultados máximo
-    const articulosLimitados = articulos.slice(0, 8);
-
-    const html = articulosLimitados.map((articulo) => {
-        const stockClass = (articulo.stock_consolidado ?? 0) <= 0 ? 'sin-stock' : '';
-        const etiquetas = articulo.etiquetas && articulo.etiquetas.length > 0
-            ? `<span class="articulo-etiquetas">${articulo.etiquetas.join(' ')}</span>`
-            : '';
-
-        return `
-            <div class="articulo-sugerencia-item"
-                 data-codigo-barras="${articulo.codigo_barras}"
-                 data-articulo-numero="${articulo.articulo_numero}"
-                 data-description="${articulo.description}"
-                 data-stock="${articulo.stock_consolidado}"
-                 onclick="seleccionarArticuloPorClick(this, event)">
-                <div class="articulo-description">${articulo.description}</div>
-                <div class="articulo-details">
-                    <span class="articulo-numero">[${articulo.articulo_numero}]</span>
-                    <span class="articulo-stock ${stockClass}">
-                        Stock: ${Math.floor(articulo.stock_consolidado || 0)}
-                    </span>
-                    ${etiquetas}
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    container.innerHTML = html;
+  if (!Array.isArray(articulos) || articulos.length === 0) {
+    container.innerHTML = '<div class="articulo-sin-resultados">No se encontraron artículos</div>';
     container.style.display = 'block';
-    container.dataset.selectedIndex = '-1';
     posicionarSugerenciasArticulo(input, container);
+    return;
+  }
+
+  // Re-asegurar orden por si vinieron sin ordenar
+  articulos.sort((A, B) => {
+    const pa = Number(A.stock_consolidado || 0) > 0 ? 0 : 1;
+    const pb = Number(B.stock_consolidado || 0) > 0 ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    const la = (A.description ?? A.descripcion ?? '').toString();
+    const lb = (B.description ?? B.descripcion ?? '').toString();
+    return la.localeCompare(lb);
+  });
+
+  // Mostrar más de 8 (50 máx) para no cortar resultados
+  const articulosLimitados = articulos.slice(0, 50);
+
+  const html = articulosLimitados.map((articulo) => {
+    const stockClass = (articulo.stock_consolidado ?? 0) <= 0 ? 'sin-stock' : 'con-stock';
+    const label = (articulo.description ?? articulo.descripcion ?? '').toString();
+    const safeLabel = label.replace(/"/g, '&quot;');
+
+    const etiquetas = (articulo.etiquetas && articulo.etiquetas.length > 0)
+      ? `<span class="articulo-etiquetas">${articulo.etiquetas.join(' ')}</span>`
+      : '';
+
+    return `
+      <div class="articulo-sugerencia-item"
+           data-codigo-barras="${articulo.codigo_barras || ''}"
+           data-articulo-numero="${articulo.articulo_numero || ''}"
+           data-description="${safeLabel}"
+           data-stock="${articulo.stock_consolidado || 0}"
+           onclick="seleccionarArticuloPorClick(this, event)">
+        <div class="articulo-description">${label}</div>
+        <div class="articulo-details">
+          <span class="articulo-numero">[${articulo.articulo_numero || ''}]</span>
+          <span class="articulo-stock ${stockClass}">Stock: ${Math.floor(articulo.stock_consolidado || 0)}</span>
+          ${etiquetas}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = html;
+  container.style.display = 'block';
+  container.dataset.selectedIndex = '-1';
+  posicionarSugerenciasArticulo(input, container);
 }
 
 /**
@@ -1121,39 +1165,24 @@ function seleccionarArticuloPorClick(element, event) {
  * Seleccionar artículo
  */
 function seleccionarArticulo(input, element) {
-    const codigoBarras = element.dataset.codigoBarras;
-    const articuloNumero = element.dataset.articuloNumero;
-    const description = element.dataset.description;
-    const stock = parseFloat(element.dataset.stock || 0);
+  const codigoBarras = (element.dataset.codigoBarras || '').toString();
+  const articuloNumero = (element.dataset.articuloNumero || '').toString();
+  const description = (element.dataset.description || '').toString();
+  const stock = parseFloat(element.dataset.stock || 0);
 
-    // Actualizar input con código de barras
-    input.value = codigoBarras;
+  // Mostrar DESCRIPCIÓN en el input (valor visible)
+  input.value = description;
+  // Guardar el valor real (código de barras) para el submit
+  input.dataset.codigoBarras = codigoBarras;
 
-    // Log de selección
-    console.log(`✅ [ARTICULOS] Artículo seleccionado: ${description} [${articuloNumero}] (Stock: ${stock})`);
+  console.log(`[ARTICULOS] Seleccionado: ${description} [${articuloNumero}] (Stock: ${stock})`);
 
-    // Encontrar la fila del detalle para actualizar otros campos si es necesario
-    const row = input.closest('tr');
-    if (row) {
-        // Disparar evento para integraciones futuras
-        input.dispatchEvent(new CustomEvent('articulo:selected', {
-            detail: {
-                codigo_barras: codigoBarras,
-                articulo_numero: articuloNumero,
-                description: description,
-                stock_consolidado: stock
-            }
-        }));
-    }
+  // Ocultar sugerencias
+  ocultarSugerenciasArticulo();
 
-    // Ocultar sugerencias
-    ocultarSugerenciasArticulo();
-
-    // Enfocar siguiente campo (cantidad)
-    const cantidadInput = row?.querySelector('input[name*="[cantidad]"]');
-    if (cantidadInput) {
-        setTimeout(() => cantidadInput.focus(), 100);
-    }
+  // Enfocar cantidad
+  const row = input.closest('tr');
+  const cantidadInput = row?.querySelector('input[name*="[cantidad]"]');
+  if (cantidadInput) setTimeout(() => cantidadInput.focus(), 100);
 }
-
 console.log('✅ [PRESUPUESTOS-CREATE] Módulo de creación cargado correctamente');

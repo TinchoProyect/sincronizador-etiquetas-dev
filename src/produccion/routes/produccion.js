@@ -2302,5 +2302,55 @@ router.patch('/pack-map', async (req, res) => {
         });
     }
 });
+// === Reporte: artículos de pedidos confirmados ===
+// Devuelve un ARRAY (aunque esté vacío), porque el front espera un array.
+// Más adelante lo reemplazamos por la consulta real a BD.
+router.get('/articulos-pedidos-confirmados', async (req, res) => {
+  try {
+    const { fecha, buscar = '', estado } = req.query;
+    // TODO: implementar consulta real usando filtros (fecha/buscar/estado).
+    // Por ahora devolvemos lista vacía para quitar el 404 y permitir que la UI funcione.
+    return res.json([]);
+  } catch (err) {
+    console.error('[produccion] GET /articulos-pedidos-confirmados >', err);
+    // El front también tolera array en error -> respondemos [] para no romper la UI
+    return res.status(500).json([]);
+  }
+});
+// === Pack map (placeholder) ===
+// Recibe: { padre_codigo_barras, hijo_codigo_barras, unidades }
+// Si viene hijo/unidades => upsert; si vienen null => delete.
+// Devolvemos success:true para destrabar el front hasta implementar la persistencia real.
+router.patch('/pack-map', async (req, res) => {
+  try {
+    const { padre_codigo_barras, hijo_codigo_barras, unidades } = req.body || {};
+
+    if (!padre_codigo_barras || typeof padre_codigo_barras !== 'string') {
+      return res.status(400).json({ success: false, error: 'padre_codigo_barras requerido' });
+    }
+
+    const action = (hijo_codigo_barras && (unidades !== null && unidades !== undefined))
+      ? 'upsert'
+      : 'delete';
+
+    return res.json({
+      success: true,
+      data: {
+        action,
+        padre_codigo_barras,
+        hijo_codigo_barras: hijo_codigo_barras ?? null,
+        unidades: (unidades !== null && unidades !== undefined)
+          ? Number(unidades)
+          : null
+      },
+      message: action === 'delete'
+        ? 'Mapeo pack eliminado (placeholder)'
+        : 'Mapeo pack guardado (placeholder)'
+    });
+  } catch (err) {
+    console.error('[produccion] PATCH /pack-map >', err);
+    return res.status(500).json({ success: false, error: 'Error interno' });
+  }
+});
 
 module.exports = router;
