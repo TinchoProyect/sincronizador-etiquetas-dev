@@ -15,6 +15,39 @@ const CONFIG = {
     RETRY_DELAY: 1000
 };
 
+// ===== ENDPOINTS SEGUROS (NO TOCAR ORDEN) =====
+try { window.CONFIG = window.CONFIG || {}; } catch (_) { /* ignore en no-browser */ }
+
+const API_BASE = (
+  (typeof window !== 'undefined' &&
+   window.CONFIG &&
+   typeof window.CONFIG.API_BASE_URL === 'string' &&
+   window.CONFIG.API_BASE_URL.trim())
+    ? window.CONFIG.API_BASE_URL
+    : (typeof CONFIG !== 'undefined' &&
+       typeof CONFIG.API_BASE_URL === 'string' &&
+       CONFIG.API_BASE_URL.trim()
+          ? CONFIG.API_BASE_URL
+          : '/api/presupuestos')
+).replace(/\/+$/, '');
+
+const URLS = {
+  HEALTH: API_BASE + '/health',
+  AUTH_STATUS: API_BASE + '/sync/auth/status',
+  ESTADISTICAS: API_BASE + '/estadisticas',
+  ESTADOS: API_BASE + '/estados',
+  CORREGIR_FECHAS: API_BASE + '/sync/corregir-fechas',
+  LIST: (qs) => API_BASE + '/?' + (qs || ''),
+  DETALLES: (id) => API_BASE + '/' + id + '/detalles',
+  PRESUPUESTO: (id) => API_BASE + '/' + id,
+  CLIENTES_SUG: (q) => API_BASE + '/clientes/sugerencias?q=' + encodeURIComponent(q || '')
+};
+
+console.log('[PRESUPUESTOS-JS] API_BASE →', API_BASE);
+console.log('[PRESUPUESTOS-JS] URL corregir-fechas →', URLS.CORREGIR_FECHAS);
+
+
+
 // Estado global de la aplicación - Orden por fecha DESC + paginación + Estado – 2024-12-19
 let appState = {
     presupuestos: [],
@@ -148,7 +181,7 @@ async function checkModuleHealth() {
     console.log('🔍 [PRESUPUESTOS-JS] Verificando salud del módulo...');
     
     try {
-        const response = await fetch(`${CONFIG.API_BASE_URL}/health`);
+        const response = await fetch(URLS.HEALTH);
         const data = await response.json();
         
         if (data.success) {
@@ -171,7 +204,7 @@ async function checkAuthStatus() {
     console.log('🔍 [PRESUPUESTOS-JS] Verificando estado de autenticación...');
     
     try {
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/auth/status`);
+        const response = await fetch(URLS.AUTH_STATUS);
         const data = await response.json();
         
         appState.authStatus = data;
@@ -213,7 +246,7 @@ async function loadEstadisticas() {
     console.log('🔍 [PRESUPUESTOS-JS] Cargando estadísticas...');
     
     try {
-        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/estadisticas`);
+        const response = await fetchWithRetry(URLS.ESTADISTICAS);
         const data = await response.json();
         
         if (data.success) {
@@ -236,7 +269,7 @@ async function loadEstados() {
     console.log('🔍 [PRESUPUESTOS-JS] Cargando estados distintos...');
     
     try {
-        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/estados`);
+        const response = await fetchWithRetry(URLS.ESTADOS);
         const data = await response.json();
         
         if (data.success) {
@@ -332,7 +365,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
             queryParams.append('debug_fechas', 'true');
         }
         
-        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/?${queryParams.toString()}`);
+        const response = await fetchWithRetry(URLS.LIST(queryParams.toString()));
         const data = await response.json();
         
         // AUDITORÍA DE FECHAS - PASO 4: Recepción en el frontend
@@ -543,7 +576,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
             if (auditoriaDeFechas && appState.presupuestos.length > 0) {
                 const requestId = window.auditFechasData?.requestId || 'NO-ID';
                 console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 7: PREVIO A RENDERIZAR EN LA GRILLA (${requestId}) =====`);
-                
+                let transformacionDetectada = false;
                 // Analizar fechas que se van a mostrar (muestra máximo 10 registros)
                 const fechasParaMostrar = appState.presupuestos.filter(item => item.fecha_registro);
                 const muestraRender = fechasParaMostrar.slice(0, 10);
@@ -624,7 +657,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                     // Comparar con pasos anteriores para detectar transformaciones
                     const datosRecepcion = window.auditFechasData?.paso4;
                     if (datosRecepcion) {
-                        const transformacionDetectada = (
+                        transformacionDetectada = (
                             tiposParaMostrar.size !== datosRecepcion.tiposRecibidos.length ||
                             formatosParaMostrar.size !== datosRecepcion.formatosRecibidos.length ||
                             fechasFuturasParaMostrar.length !== datosRecepcion.fechasFuturasRecibidas
@@ -716,7 +749,7 @@ async function executeSyncronization() {
         setSyncLoading(true, 'Corrigiendo fechas y sincronizando...');
         
         // USAR EL NUEVO ENDPOINT DE CORRECCIÓN DE FECHAS
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/corregir-fechas`, {
+        const response = await fetch(URLS.CORREGIR_FECHAS, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -870,7 +903,7 @@ async function showSugerenciasClientes(query) {
     }
     
     try {
-        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/clientes/sugerencias?q=${encodeURIComponent(query)}`);
+        const response = await fetchWithRetry(URLS.CLIENTES_SUG(query));
         const data = await response.json();
         
         if (data.success && data.data.length > 0) {
@@ -1344,7 +1377,7 @@ async function toggleDetalles(presupuestoId) {
         container.innerHTML = '<div class="loading-detalles">🔄 Cargando detalles de artículos...</div>';
         
         // Hacer petición AJAX
-        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/${presupuestoId}/detalles`);
+        const response = await fetchWithRetry(URLS.DETALLES(presupuestoId));
         const data = await response.json();
         
         if (data.success) {
@@ -1618,7 +1651,7 @@ async function anularPresupuesto(presupuestoId) {
         showMessage('⏳ Anulando presupuesto...', 'info');
         
         // Hacer petición DELETE
-        const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/${presupuestoId}`, {
+        const response = await fetchWithRetry(URLS.PRESUPUESTO(presupuestoId), {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
