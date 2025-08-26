@@ -597,192 +597,233 @@ const obtenerPresupuestos = async (req, res) => {
  * Obtener sugerencias de clientes para typeahead - Filtro cliente + Typeahead + Fechas – 2024-12-19
  */
 const obtenerSugerenciasClientes = async (req, res) => {
-    try {
-        const { q } = req.query;
-        
-        console.log(`🔍 [PRESUPUESTOS] Obteniendo sugerencias de clientes para: "${q}"`);
-        
-        if (!q || q.trim().length < 1) {
-            return res.json({
-                success: true,
-                data: [],
-                message: 'Query muy corto para sugerencias',
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        const searchTerm = q.trim();
-        let query = '';
-        let params = [];
-        
-        // Si el texto cumple /^\d{1,3}$/ → filtrar por cliente_id exacto
-        if (/^\d{1,3}$/.test(searchTerm)) {
-            query = `
-                SELECT DISTINCT
-                    c.cliente_id,
-                    c.nombre,
-                    c.apellido,
-                    c.otros,
-                    COUNT(p.id) as total_presupuestos
-                FROM public.clientes c
-                LEFT JOIN public.presupuestos p ON p.id_cliente = CAST(c.cliente_id AS text) AND p.activo = true
-                WHERE c.cliente_id = $1
-                GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros
-                ORDER BY total_presupuestos DESC, c.nombre
-                LIMIT 10
-            `;
-            params = [parseInt(searchTerm)];
-        } else {
-            // Si es texto → filtrar por LOWER(nombre || ' ' || COALESCE(apellido,'')) ILIKE '%q%'
-            query = `
-                SELECT DISTINCT
-                    c.cliente_id,
-                    c.nombre,
-                    c.apellido,
-                    c.otros,
-                    COUNT(p.id) as total_presupuestos
-                FROM public.clientes c
-                LEFT JOIN public.presupuestos p ON p.id_cliente = CAST(c.cliente_id AS text) AND p.activo = true
-                WHERE LOWER(c.nombre || ' ' || COALESCE(c.apellido,'')) LIKE LOWER($1)
-                   OR LOWER(c.otros) LIKE LOWER($1)
-                GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros
-                ORDER BY total_presupuestos DESC, c.nombre
-                LIMIT 10
-            `;
-            params = [`%${searchTerm}%`];
-        }
-        
-        console.log('📋 [PRESUPUESTOS] Query sugerencias:', query);
-        console.log('📋 [PRESUPUESTOS] Parámetros:', params);
-        
-        const result = await req.db.query(query, params);
-        
-        // Formatear sugerencias como <cliente_id> — <nombre> <apellido>
-        const sugerencias = result.rows.map(cliente => ({
-            id: cliente.cliente_id,
-            text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
-            nombre: cliente.nombre,
-            apellido: cliente.apellido,
-            otros: cliente.otros,
-            total_presupuestos: parseInt(cliente.total_presupuestos)
-        }));
-        
-        console.log(`✅ [PRESUPUESTOS] Sugerencias encontradas: ${sugerencias.length} clientes`);
-        
-        res.json({
-            success: true,
-            data: sugerencias,
-            query: searchTerm,
-            total: sugerencias.length,
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de clientes:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Error al obtener sugerencias de clientes',
-            message: error.message,
-            timestamp: new Date().toISOString()
-        });
+  try {
+    const qRaw = (req.query.q || '').trim();
+    if (!qRaw) {
+      return res.json({
+        success: true,
+        data: [],
+        message: 'Query muy corto para sugerencias',
+        timestamp: new Date().toISOString()
+      });
     }
+
+    const limitParam = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 100) : 10;
+
+    // ¿Buscan por ID numérico corto?
+    if (/^\d{1,6}$/.test(qRaw)) {
+      const query = `
+        SELECT DISTINCT
+          c.cliente_id,
+          c.nombre,
+          c.apellido,
+          c.otros,
+          COUNT(p.id) AS total_presupuestos
+        FROM public.clientes c
+        LEFT JOIN public.presupuestos p
+          ON p.id_cliente = CAST(c.cliente_id AS text) AND p.activo = true
+        WHERE c.cliente_id = $1
+        GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros
+        ORDER BY total_presupuestos DESC, c.nombre
+        LIMIT $2
+      `;
+      const params = [parseInt(qRaw, 10), limit];
+
+      const result = await req.db.query(query, params);
+      const sugerencias = result.rows.map(cliente => ({
+        id: cliente.cliente_id,
+        text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
+        nombre: cliente.nombre,
+        apellido: cliente.apellido,
+        otros: cliente.otros,
+        total_presupuestos: parseInt(cliente.total_presupuestos)
+      }));
+
+      return res.json({
+        success: true,
+        data: sugerencias,
+        query: qRaw,
+        total: sugerencias.length,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Texto libre → múltiples términos (AND), buscando en nombre + apellido + otros
+    const tokens = qRaw
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    let p = 0;
+    const params = [];
+    const andConds = tokens.map(t => {
+      p += 1; const ph = `$${p}`; params.push(`%${t}%`);
+      return `(LOWER(c.nombre) ILIKE ${ph} OR LOWER(c.apellido) ILIKE ${ph} OR LOWER(c.otros) ILIKE ${ph})`;
+    });
+
+    p += 1; params.push(limit);
+
+    const query = `
+      SELECT DISTINCT
+        c.cliente_id,
+        c.nombre,
+        c.apellido,
+        c.otros,
+        COUNT(pres.id) AS total_presupuestos
+      FROM public.clientes c
+      LEFT JOIN public.presupuestos pres
+        ON pres.id_cliente = CAST(c.cliente_id AS text) AND pres.activo = true
+      WHERE ${andConds.join(' AND ')}
+      GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros
+      ORDER BY total_presupuestos DESC, c.nombre
+      LIMIT $${p}
+    `;
+
+    const result = await req.db.query(query, params);
+
+    const sugerencias = result.rows.map(cliente => ({
+      id: cliente.cliente_id,
+      text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
+      nombre: cliente.nombre,
+      apellido: cliente.apellido,
+      otros: cliente.otros,
+      total_presupuestos: parseInt(cliente.total_presupuestos)
+    }));
+
+    return res.json({
+      success: true,
+      data: sugerencias,
+      query: qRaw,
+      total: sugerencias.length,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de clientes:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error al obtener sugerencias de clientes',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 };
 
 /**
  * Obtener sugerencias de artículos para autocompletar en detalles
  */
 const obtenerSugerenciasArticulos = async (req, res) => {
-    try {
-        const { q } = req.query;
-        
-        console.log(`🔍 [PRESUPUESTOS] Obteniendo sugerencias de artículos para: "${q}"`);
-        
-        if (!q || q.trim().length < 1) {
-            return res.json({
-                success: true,
-                data: [],
-                message: 'Escribí para buscar artículos...',
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        const searchTerm = q.trim();
-        let query = '';
-        let params = [];
-        
-        // Detectar si es búsqueda por código de barras (solo dígitos, 8-14 caracteres)
-        if (/^\d{8,14}$/.test(searchTerm)) {
-            // Búsqueda directa por código de barras
-            query = `
-                SELECT 
-                    codigo_barras,
-                    articulo_numero,
-                    descripcion,
-                    COALESCE(stock_consolidado, 0) as stock_consolidado
-                FROM public.stock_real_consolidado
-                WHERE codigo_barras = $1
-                LIMIT 1
-            `;
-            params = [searchTerm];
-        } else {
-            // Búsqueda por descripción o articulo_numero
-            query = `
-                SELECT 
-                    codigo_barras,
-                    articulo_numero,
-                    descripcion,
-                    COALESCE(stock_consolidado, 0) as stock_consolidado
-                FROM public.stock_real_consolidado
-                WHERE LOWER(descripcion) LIKE LOWER($1)
-                   OR LOWER(articulo_numero) LIKE LOWER($1)
-                ORDER BY 
-                    CASE 
-                        WHEN LOWER(articulo_numero) LIKE LOWER($1) THEN 1
-                        WHEN LOWER(descripcion) LIKE LOWER($2) THEN 2
-                        ELSE 3
-                    END,
-                    descripcion
-                LIMIT 10
-            `;
-            params = [`%${searchTerm}%`, `${searchTerm}%`];
-        }
-        
-        console.log('📋 [PRESUPUESTOS] Query artículos:', query);
-        console.log('📋 [PRESUPUESTOS] Parámetros:', params);
-        
-        const result = await req.db.query(query, params);
-        
-        // Formatear sugerencias
-        const sugerencias = result.rows.map(articulo => {
-            return {
-                codigo_barras: articulo.codigo_barras,
-                articulo_numero: articulo.articulo_numero,
-                descripcion: articulo.descripcion,
-                stock_consolidado: parseFloat(articulo.stock_consolidado || 0),
-                // Formato para mostrar: "Descripción — [articulo_numero] (stock: X)"
-                text: `${articulo.descripcion} — [${articulo.articulo_numero}] (stock: ${Math.floor(articulo.stock_consolidado || 0)})`
-            };
-        });
-        
-        console.log(`✅ [PRESUPUESTOS] Sugerencias de artículos encontradas: ${sugerencias.length}`);
-        
-        res.json({
-            success: true,
-            data: sugerencias,
-            query: searchTerm,
-            total: sugerencias.length,
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de artículos:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Error al obtener sugerencias de artículos',
-            message: error.message,
-            timestamp: new Date().toISOString()
-        });
+  try {
+    const qRaw = (req.query.q || '').trim();
+    if (!qRaw) {
+      return res.json({
+        success: true,
+        data: [],
+        message: 'Escribí para buscar artículos...',
+        timestamp: new Date().toISOString()
+      });
     }
+
+    // limit: default 50, máximo 200
+    const limitParam = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 200) : 50;
+
+    // Tokenización (múltiples palabras) – tolerante a espacios y acentos (solo para logs);
+    // en SQL usamos ILIKE para insensibilidad de mayúsc/minúsc.
+    const tokens = qRaw
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    // Si parece código de barras (solo dígitos 8–14), lo priorizamos como igualdad exacta
+    const isBarcode = /^\d{8,14}$/.test(qRaw);
+
+    // Armado dinámico del WHERE con placeholders
+    const fields = ['src.descripcion', 'src.articulo_numero', 'src.codigo_barras'];
+    const whereParts = [];
+    const params = [];
+    let p = 0;
+
+    if (isBarcode) {
+      p += 1;
+      whereParts.push(`src.codigo_barras = $${p}`);
+      params.push(qRaw);
+    }
+
+    if (tokens.length) {
+      const andGroup = tokens.map(t => {
+        p += 1;
+        const ph = `$${p}`;
+        params.push(`%${t}%`);
+        return `(${fields.map(f => `${f} ILIKE ${ph}`).join(' OR ')})`;
+      });
+      // Si ya agregamos el OR de código de barras exacto, incluimos AND-group aparte
+      if (isBarcode) {
+        whereParts.push(`(${andGroup.join(' AND ')})`);
+      } else {
+        whereParts.push(...andGroup);
+      }
+    }
+
+    // Si no hay condiciones, devolvemos vacío (no debería ocurrir porque qRaw existe)
+    if (!whereParts.length) {
+      return res.json({ success: true, data: [], query: qRaw, total: 0, timestamp: new Date().toISOString() });
+    }
+
+    const whereClause = isBarcode
+      ? `WHERE (${whereParts[0]}) OR (${whereParts.slice(1).join(' AND ') || 'FALSE'})`
+      : `WHERE ${whereParts.join(' AND ')}`;
+
+    const sql = `
+      SELECT
+        src.codigo_barras,
+        src.articulo_numero,
+        src.descripcion,
+        COALESCE(src.stock_consolidado, 0) AS stock_consolidado
+      FROM public.stock_real_consolidado src
+      ${whereClause}
+      ORDER BY
+        CASE WHEN COALESCE(src.stock_consolidado,0) > 0 THEN 0 ELSE 1 END ASC,
+        src.descripcion ASC
+      LIMIT $${p + 1}
+    `;
+    params.push(limit);
+
+    console.log('📋 [PRESUPUESTOS] Query artículos:', sql);
+    console.log('📋 [PRESUPUESTOS] Parámetros:', params);
+
+    const result = await req.db.query(sql, params);
+
+    const sugerencias = result.rows.map(a => ({
+      codigo_barras: a.codigo_barras,
+      articulo_numero: a.articulo_numero,
+      descripcion: a.descripcion,
+      stock_consolidado: parseFloat(a.stock_consolidado || 0),
+      text: `${a.descripcion} — [${a.articulo_numero}] (stock: ${Math.floor(a.stock_consolidado || 0)})`
+    }));
+
+    console.log(`✅ [PRESUPUESTOS] Sugerencias de artículos encontradas: ${sugerencias.length} (limit=${limit})`);
+
+    return res.json({
+      success: true,
+      data: sugerencias,
+      query: qRaw,
+      total: sugerencias.length,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de artículos:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error al obtener sugerencias de artículos',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 };
 
 /**
