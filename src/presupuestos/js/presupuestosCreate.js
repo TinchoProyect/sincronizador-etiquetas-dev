@@ -44,7 +44,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Configurar autocompletar para artículos
     setupArticuloAutocomplete();
-    precargarArticulosAll().catch(()=>{});
+// precarga deshabilitada: la API de sugerencias exige ?q=; evitamos 400 innecesarios
+// precargarArticulosAll().catch(()=>{});
 
     console.log('✅ [PRESUPUESTOS-CREATE] Página inicializada correctamente');
 });
@@ -755,37 +756,23 @@ window.__articulosCache = window.__articulosCache || [];
 window.__articulosCacheLoaded = window.__articulosCacheLoaded || false;
 
 async function precargarArticulosAll() {
-  if (window.__articulosCacheLoaded) return window.__articulosCache;
-  const urls = [
-    '/api/presupuestos/articulos?all=1',
-    '/api/presupuestos/articulos?limit=5000',
-  ];
-  for (const url of urls) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const body = await res.json();
-      const arr = Array.isArray(body) ? body : (body.data || body.items || []);
-      if (Array.isArray(arr) && arr.length) {
-        window.__articulosCache = arr;
-        window.__articulosCacheLoaded = true;
-        console.log('[PRESUP][AC] cache precargada:', arr.length);
-        return arr;
-      }
-    } catch (e) {}
-  }
-  return window.__articulosCache;
+  // Precarga global deshabilitada: la API de sugerencias requiere ?q=
+  // Devolvemos vacío para no generar errores ni peticiones innecesarias.
+  return [];
 }
 
 function filtrarArticulosLocal(query, items) {
-  const q = normalizarTexto(query);
+  const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
+
   const out = (items || []).filter(a => {
-    const d = normalizarTexto(a.description ?? a.descripcion ?? '');
-    const n = normalizarTexto(a.articulo_numero ?? '');
-    const c = normalizarTexto(a.codigo_barras ?? '');
-    return d.includes(q) || n.includes(q) || c.includes(q);
+    const blob = normalizarTexto(
+      [a.description ?? a.descripcion ?? '', a.articulo_numero ?? '', a.codigo_barras ?? ''].join(' ')
+    );
+    // AND: todos los términos deben estar
+    return terms.every(t => blob.includes(t));
   });
-  // Orden: stock>0 primero, luego por descripción
+
+  // Orden: stock>0 primero, luego descripción
   out.sort((A, B) => {
     const pa = Number(A.stock_consolidado || 0) > 0 ? 0 : 1;
     const pb = Number(B.stock_consolidado || 0) > 0 ? 0 : 1;
@@ -794,7 +781,9 @@ function filtrarArticulosLocal(query, items) {
     const lb = (B.description ?? B.descripcion ?? '').toString();
     return la.localeCompare(lb);
   });
-  return out;
+
+  // Limite visual (podés subirlo a 100 si querés)
+  return out.slice(0, 50);
 }
 // ===== FUNCIONES DE AUTOCOMPLETAR DE ARTÍCULOS =====
 
@@ -839,7 +828,7 @@ const handleArticuloInput = debounce(async function(event) {
 
   console.log(`[ARTICULOS] Búsqueda de artículo: "${query}"`);
 
-  if (query.length < 2) {
+  if (query.length < 1) {
     ocultarSugerenciasArticulo();
     return;
   }
@@ -858,7 +847,7 @@ const handleArticuloInput = debounce(async function(event) {
         const sim = await simularBusquedaArticulos(query);
         items = filtrarArticulosLocal(query, sim.data || []);
       } else {
-        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(query)}&limit=200`);
         if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
         const body = await response.json();
         const arr = Array.isArray(body) ? body : (body.data || body.items || []);
