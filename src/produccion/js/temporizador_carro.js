@@ -209,27 +209,49 @@ export async function stopEtapa3(carroId, uid){
   if (btn) { btn.classList.remove('running'); btn.classList.add('finished'); 
   }
 }
+
+// Oculta **todos** los temporizadores de una: artículos + E1 + E2 + E3
+function _hideAllTimers() {
+  // botones por artículo
+  document.querySelectorAll('.btn-temporizador-articulo')
+    .forEach(b => b.style.display = 'none');
+
+  // etapas
+  _showEtapa1(false);
+  _showEtapa2(false);
+  showEtapa3Button(false);
+}
+
 /* ================== INICIALIZACIÓN Y LISTENERS ================== */
 export function initTemporizadores() {
   if (_inicializado) return;
   _inicializado = true;
 
-  // Botón global "Modo medición"
-  document.addEventListener('click', (e) => {
-    if (e.target && e.target.id === 'btn-temporizador-global') {
-      const botonGlobal = e.target;
-      const activo = botonGlobal.classList.toggle('activo');
-      botonGlobal.textContent = activo ? '🛑 Salir de medición' : '⏱ Modo medición';
+// Botón global "Modo medición"
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'btn-temporizador-global') {
+    const botonGlobal = e.target;
+    const activo = botonGlobal.classList.toggle('activo');
+    botonGlobal.textContent = activo ? '🛑 Salir de medición' : '⏱ Modo medición';
 
-      // Mostrar/ocultar ⏱ por artículo
+    if (activo) {
+      // Mostrar controles de artículo
       document.querySelectorAll('.btn-temporizador-articulo')
-        .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
+        .forEach(b => b.style.display = 'inline-block');
 
-      // Etapa 1 sólo en modo medición
+      // Etapa 1 solo si hay carro activo
       const carroId = localStorage.getItem('carroActivo');
-      _showEtapa1(!!(activo && carroId));
+      _showEtapa1(!!carroId);
+
+      // E2/E3 se muestran cuando empiecen (startEtapa2/startEtapa3), aquí no hacemos nada
+    } else {
+      // 👉 Al salir del modo: ocultamos TODO
+      _hideAllTimers();
     }
-  });
+  }
+});
+
+  
 
   // Temporizador por artículo
   document.addEventListener('click', async (e) => {
@@ -337,15 +359,28 @@ export function syncTimerButtonsVisibility() {
   const activo = botonGlobal && botonGlobal.classList.contains('activo');
 
   // ⏱ por artículo
-  document.querySelectorAll('.btn-temporizador-articulo')
-    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
+  /*document.querySelectorAll('.btn-temporizador-articulo')
+    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');*/
 
   // Etapa 1 sólo si hay carro y está el modo activo
-  const carroId = localStorage.getItem('carroActivo');
-  _showEtapa1(!!(activo && carroId));
+/* const carroId = localStorage.getItem('carroActivo');
+  _showEtapa1(!!(activo && carroId));*/
   
   
   // Etapa 2: visible solo si está corriendo o si quedó finalizada
+  if (!activo) {
+    _hideAllTimers();       // 👉 si no está activo, ocultar todo siempre
+    return;
+  }
+
+  // Si está activo:
+  document.querySelectorAll('.btn-temporizador-articulo')
+    .forEach(b => b.style.display = 'inline-block');
+
+  const carroId = localStorage.getItem('carroActivo');
+  _showEtapa1(!!carroId);
+
+  // E2/E3 las muestran sus start/stop correspondientes
 {
   const carroId = localStorage.getItem('carroActivo');
   const s2 = carroId ? _ensure(carroId)[2] : null;
@@ -367,8 +402,8 @@ export function syncTimerButtonsVisibility() {
   }
 }
 
-
-  
   // Etapa 3 se oculta si no está corriendo
   showEtapa3Button(false);
+
+  
 }
