@@ -827,6 +827,130 @@ const obtenerSugerenciasArticulos = async (req, res) => {
 };
 
 /**
+ * Obtener precio neto (valor1) e IVA para un artículo según la lista del cliente.
+ * Mapas de listas:
+ * 1 -> precio_neg | 2 -> mayorista | 3 -> especial_brus | 4 -> consumidor_final | 5 -> lista_5
+ * Si no se encuentra, devolver 0s (pedido explícito).
+ */
+const obtenerPrecioArticuloCliente = async (req, res) => {
+  try {
+    const idCliente = parseInt(req.query.cliente_id, 10) || 0;
+    const codigoBarras = (req.query.codigo_barras || '').trim();
+    let descripcion = (req.query.descripcion || '').trim();
+
+    if (!codigoBarras && !descripcion) {
+      return res.status(400).json({
+        success: false,
+        error: 'Falta codigo_barras o descripcion',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // 1) Lista de precios del cliente (default 1)
+    let lista = 1;
+    if (idCliente > 0) {
+      try {
+        const rLista = await req.db.query(
+          'SELECT lista_precios FROM public.clientes WHERE cliente_id = $1 LIMIT 1',
+          [idCliente]
+        );
+        if (rLista.rows.length) {
+          const n = parseInt(rLista.rows[0].lista_precios, 10);
+          if (Number.isFinite(n) && n >= 1 && n <= 5) lista = n;
+        }
+      } catch (e) {
+        console.warn('[PRECIOS] No se pudo leer lista_precios del cliente, usando 1 por defecto');
+      }
+    }
+
+    // 2) Si no vino descripción y sí código de barras, resolverla
+    if (!descripcion && codigoBarras) {
+      const rDesc = await req.db.query(
+        'SELECT descripcion FROM public.stock_real_consolidado WHERE codigo_barras = $1 LIMIT 1',
+        [codigoBarras]
+      );
+      if (rDesc.rows.length) descripcion = rDesc.rows[0].descripcion;
+    }
+
+    if (!descripcion) {
+      return res.json({
+        success: true,
+        data: { valor1: 0, iva: 0, lista_precios: lista },
+        message: 'Artículo no encontrado',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // 3) Buscar precios por descripción (igual exacto → fallback ILIKE)
+    let rPrecio = await req.db.query(`
+      SELECT 
+        COALESCE(iva,0)              AS iva,
+        COALESCE(precio_neg,0)       AS precio_neg,
+        COALESCE(mayorista,0)        AS mayorista,
+        COALESCE(especial_brus,0)    AS especial_brus,
+        COALESCE(consumidor_final,0) AS consumidor_final,
+        COALESCE(lista_5,0)          AS lista_5
+      FROM public.precios_articulos
+      WHERE LOWER(descripcion) = LOWER($1)
+      LIMIT 1
+    `, [descripcion]);
+
+    if (rPrecio.rows.length === 0) {
+      rPrecio = await req.db.query(`
+        SELECT 
+          COALESCE(iva,0)              AS iva,
+          COALESCE(precio_neg,0)       AS precio_neg,
+          COALESCE(mayorista,0)        AS mayorista,
+          COALESCE(especial_brus,0)    AS especial_brus,
+          COALESCE(consumidor_final,0) AS consumidor_final,
+          COALESCE(lista_5,0)          AS lista_5
+        FROM public.precios_articulos
+        WHERE descripcion ILIKE $1
+        ORDER BY LENGTH(descripcion) ASC
+        LIMIT 1
+      `, [descripcion]);
+    }
+
+    if (rPrecio.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: { valor1: 0, iva: 0, lista_precios: lista },
+        message: 'Sin precio para la descripción',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const p = rPrecio.rows[0];
+    const valor =
+      lista === 1 ? p.precio_neg :
+      lista === 2 ? p.mayorista :
+      lista === 3 ? p.especial_brus :
+      lista === 4 ? p.consumidor_final :
+      lista === 5 ? p.lista_5 : p.precio_neg;
+
+    return res.json({
+      success: true,
+      data: {
+        valor1: Number(valor) || 0,
+        iva: Number(p.iva) || 0,
+        lista_precios: lista,
+        descripcion_resuelta: descripcion
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ [PRESUPUESTOS] Error en obtenerPrecioArticuloCliente:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error interno al obtener precio/IVA',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+
+/**
  * Obtener presupuestos por categoría
  */
 const obtenerPresupuestosPorCategoria = async (req, res) => {
@@ -1783,5 +1907,6 @@ module.exports = {
     obtenerPresupuestosPorCategoria,
     obtenerEstadisticas,
     obtenerConfiguracion,
-    obtenerResumen
+    obtenerResumen,
+    obtenerPrecioArticuloCliente   // <-- NUEVO
 };

@@ -14,8 +14,10 @@ const {
     actualizarEstadoPresupuesto,
     obtenerEstadisticas,
     obtenerConfiguracion,
-    obtenerResumen
+    obtenerResumen,
+    obtenerPrecioArticuloCliente   // <-- NUEVO
 } = require('../controllers/presupuestos');
+
 
 // Importar controladores de Google Sheets
 const {
@@ -168,6 +170,8 @@ router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), as
  * @access Privado
  */
 router.get('/articulos/sugerencias', validatePermissions('presupuestos.read'), async (req, res) => {
+
+
     console.log('🔍 [PRESUPUESTOS] Ruta GET /articulos/sugerencias - Obteniendo sugerencias de artículos');
     
     try {
@@ -180,6 +184,26 @@ router.get('/articulos/sugerencias', validatePermissions('presupuestos.read'), a
             message: error.message
         });
     }
+});
+
+    /**
+ * @route GET /api/presupuestos/precios
+ * @desc Devolver valor (neto) e IVA del artículo según lista del cliente
+ * @query cliente_id, codigo_barras (opcional), descripcion (opcional)
+ * @access Privado
+ */
+router.get('/precios', validatePermissions('presupuestos.read'), async (req, res) => {
+  console.log('🔍 [PRESUPUESTOS] Ruta GET /precios - Buscando precio/IVA');
+  try {
+    await obtenerPrecioArticuloCliente(req, res);
+  } catch (error) {
+    console.error('❌ [PRESUPUESTOS] Error en ruta GET /precios:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error interno al obtener precio/IVA',
+      message: error.message
+    });
+  }
 });
 
 /**

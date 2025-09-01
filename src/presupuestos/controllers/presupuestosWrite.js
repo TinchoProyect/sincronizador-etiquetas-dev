@@ -155,23 +155,46 @@ const crearPresupuesto = async (req, res) => {
             const presupuestoBD = headerResult.rows[0];
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Encabezado registrado: ID=${presupuestoBD.id}`);
 
-            // Generar IDs para detalles y normalizar datos
-            const detallesNormalizados = detalles.map((detalle) => ({
-                id: generateDetalleId(),
-                id_presupuesto_ext: presupuestoId,
-                articulo: detalle.articulo || '',
-                cantidad: normalizeNumber(detalle.cantidad || 0),
-                valor1: normalizeNumber(detalle.valor1 || 0),
-                precio1: normalizeNumber(detalle.precio1 || 0),
-                iva1: normalizeNumber(detalle.iva1 || 0),
-                diferencia: normalizeNumber(detalle.diferencia || 0),
-                camp1: normalizeNumber(detalle.camp1 || 0),
-                camp2: normalizeNumber(detalle.camp2 || 0),
-                camp3: normalizeNumber(detalle.camp3 || 0),
-                camp4: normalizeNumber(detalle.camp4 || 0),
-                camp5: normalizeNumber(detalle.camp5 || 0),
-                camp6: normalizeNumber(detalle.camp6 || 0)
-            }));
+            // Helpers numéricos locales para cálculos
+            function round2(valor) {
+                const n = Number(valor);
+                return Math.round((n + Number.EPSILON) * 100) / 100;
+            }
+            function toAlicuotaDecimal(valor) {
+                const v = parseFloat(valor);
+                if (!Number.isFinite(v) || v < 0) return 0;
+                return v > 1 ? v / 100 : v;
+            }
+
+            // Generar IDs para detalles y CALCULAR campos según mapa A–N
+            const detallesNormalizados = (Array.isArray(detalles) ? detalles : []).map((detalle) => {
+                const cantidad = normalizeNumber(detalle.cantidad || 0);          // D
+                const netoUnit = normalizeNumber(detalle.valor1 || 0);            // E
+                const alicDec = toAlicuotaDecimal(detalle.iva1 || 0);             // K (decimal)
+                const ivaUnit = round2(netoUnit * alicDec);                        // G = E × K
+                const brutoUnit = round2(netoUnit + ivaUnit);                      // F = E + G
+
+                const netoTotal = round2(cantidad * netoUnit);                     // L = D × E
+                const ivaTotal = round2(cantidad * ivaUnit);                       // N = D × G
+                const brutoTotal = round2(netoTotal + ivaTotal);                   // M = L + N
+
+                return {
+                    id: generateDetalleId(),
+                    id_presupuesto_ext: presupuestoId,
+                    articulo: (detalle.articulo || '').toString().trim(),
+                    cantidad: cantidad,
+                    valor1: netoUnit,                                              // E
+                    precio1: brutoUnit,                                            // F
+                    iva1: ivaUnit,                                                 // G (monto unitario)
+                    diferencia: round2(brutoUnit - round2(netoUnit / 1.20)),                                                  // H (placeholder)
+                    camp1: netoUnit,                                               // I = E
+                    camp2: brutoUnit,                                              // J = F
+                    camp3: alicDec,                                                // K (decimal)
+                    camp4: netoTotal,                                              // L
+                    camp5: brutoTotal,                                             // M
+                    camp6: ivaTotal                                                // N
+                };
+            });
 
             // Insertar detalles
             const insertDetalleQuery = `
@@ -189,13 +212,14 @@ const crearPresupuesto = async (req, res) => {
                     detalle.valor1,
                     detalle.precio1,
                     detalle.iva1,
-                    detalle.diferencia,
-                    detalle.camp1,
-                    detalle.camp2,
-                    detalle.camp3,
-                    detalle.camp4,
-                    detalle.camp5,
-                    detalle.camp6
+                    // mapeo correcto de columnas H–N
+                    detalle.diferencia, // diferencia (H)
+                    detalle.precio1,    // camp1 = F (bruto unitario)
+                    detalle.camp3,      // camp2 = K (alícuota decimal)
+                    detalle.camp4,      // camp3 = L (neto total)
+                    detalle.camp5,      // camp4 = M (bruto total)
+                    detalle.camp6,      // camp5 = N (IVA total)
+                    0                   // camp6 = 0 (descartado)
                 ]);
             }
 
@@ -269,6 +293,8 @@ const crearPresupuesto = async (req, res) => {
         markWriteEnd();
     }
 };
+
+
 
 /**
  * Editar presupuesto existente (solo datos permitidos)
