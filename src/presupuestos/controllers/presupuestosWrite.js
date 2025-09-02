@@ -81,7 +81,7 @@ const crearPresupuesto = async (req, res) => {
             agente,
             tipo_comprobante,
             nota,
-            estado = 'PENDIENTE',
+            estado,
             punto_entrega,
             descuento = 0,
             detalles = []
@@ -117,6 +117,7 @@ const crearPresupuesto = async (req, res) => {
         const fechaNormalizada = normalizeDate(fecha || new Date());
         const fechaEntregaNormalizada = fecha_entrega ? normalizeDate(fecha_entrega) : null;
         const descuentoNormalizado = normalizeNumber(descuento);
+        const estadoNormalizado = (typeof estado === 'string' && estado.trim()) ? estado.trim() : 'Presupuesto/Orden';
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - IDs/fechas listos:`, {
             presupuestoId, fechaNormalizada, fechaEntregaNormalizada, descuentoNormalizado
@@ -134,8 +135,8 @@ const crearPresupuesto = async (req, res) => {
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                 nota, estado, punto_entrega, descuento, activo, hoja_nombre, hoja_url)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDIENTE', $8, $9, true, 'Presupuestos', $10)
+                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11)
                 RETURNING *
             `;
 
@@ -145,8 +146,9 @@ const crearPresupuesto = async (req, res) => {
                 fechaNormalizada,
                 fechaEntregaNormalizada,
                 agente || '',
-                tipo_comprobante || 'PRESUPUESTO',
+                tipo_comprobante || 'Factura',
                 nota || '',
+                estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
                 process.env.SPREADSHEET_URL || ''
@@ -233,7 +235,7 @@ const crearPresupuesto = async (req, res) => {
                 data: {
                     id: presupuestoBD.id,
                     id_presupuesto: presupuestoId,
-                    estado: 'PENDIENTE',
+                    estado: presupuestoBD.estado,
                     detalles_count: detallesNormalizados.length,
                     created_at: presupuestoBD.fecha_actualizacion
                 },

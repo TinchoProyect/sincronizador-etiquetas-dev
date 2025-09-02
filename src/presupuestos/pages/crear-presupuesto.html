@@ -281,6 +281,7 @@
                 <div id="message-container"></div>
                 
                 <form id="form-crear-presupuesto">
+                    <input type="hidden" id="informe_generado" name="informe_generado" value="Pendiente">
                     <!-- Datos del Presupuesto -->
                     <div class="form-section">
                         <h3>📋 Datos del Presupuesto</h3>
@@ -303,11 +304,26 @@
                             <div class="form-group">
                                 <label for="tipo_comprobante">Tipo de Comprobante</label>
                                 <select id="tipo_comprobante" name="tipo_comprobante">
-                                    <option value="PRESUPUESTO">PRESUPUESTO</option>
-                                    <option value="FACTURA">FACTURA</option>
-                                    <option value="EFECTIVO">EFECTIVO</option>
+                                <option value="Factura" selected>Factura</option>
+                                <option value="Remito-Efectivo">Remito-Efectivo</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label for="estado">Estado *</label>
+                                <select id="estado" name="estado" required>
+                                    <option value="Muestra de Fraccionados">Muestra de Fraccionados</option>
+                                    <option value="Presupuesto/Orden" selected>Presupuesto/Orden</option>
+                                    <option value="Confirmado">Confirmado</option>
+                                    <option value="Lunes - Reparto 001 (Centro/Villa Elvira)">Lunes - Reparto 001 (Centro/Villa Elvira)</option>
+                                    <option value="Martes - Reparto 002 (Los Hornos)">Martes - Reparto 002 (Los Hornos)</option>
+                                    <option value="Miércoles - Reparto 003 (Norte)">Miércoles - Reparto 003 (Norte)</option>
+                                    <option value="Jueves - Reparto 004 (Centro/Berisso-Ensenada)">Jueves - Reparto 004 (Centro/Berisso-Ensenada)</option>
+                                    <option value="Viernes - Reparto 005 (El Retiro)">Viernes - Reparto 005 (El Retiro)</option>
+                                    <option value="Retira por Deposito">Retira por Deposito</option>
+                                    <option value="Entregado">Entregado</option>
+                                    <option value="Consignado">Consignado</option>
+                                </select>
+                                </div>
                         </div>
                         
                         <div class="form-row">

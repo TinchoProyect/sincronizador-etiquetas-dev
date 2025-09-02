@@ -22,17 +22,55 @@ function getClienteIdActivo() {
   return m ? m[0] : '0';
 }
 
-// Inicialización
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📋 [PRESUPUESTOS-CREATE] Inicializando página de creación...');
 
-    // Establecer fecha actual por defecto (si existe el input)
+    // --- FECHA base primero (evita TDZ) ---
     const fechaInput = document.getElementById('fecha');
     const today = new Date().toISOString().split('T')[0];
     if (fechaInput) {
         fechaInput.value = fechaInput.value || today;
     } else {
         console.warn('⚠️ [PRESUPUESTOS-CREATE] Input #fecha no encontrado; se enviará fecha del día desde JS');
+    }
+
+    // === 1.3 Defaults visibles (solo si corresponde) ===
+    const tipoSel = document.getElementById('tipo_comprobante');
+    if (tipoSel && (tipoSel.value === 'Presupuesto' || !tipoSel.value)) {
+    tipoSel.value = 'Factura';
+    }
+
+    const agenteInput = document.getElementById('agente');
+    if (agenteInput && !agenteInput.value.trim()) {
+        agenteInput.value = 'Martin';
+    }
+
+    const puntoInput = document.getElementById('punto_entrega');
+    if (puntoInput && !puntoInput.value.trim()) {
+        puntoInput.value = 'Sin dirección';
+    }
+
+    const estadoSel = document.getElementById('estado');
+    if (estadoSel && !estadoSel.value) {
+        estadoSel.value = 'Presupuesto/Orden';
+    }
+
+    const fechaEntregaInput = document.getElementById('fecha_entrega');
+    // usar misma fecha que 'fecha' si está vacío
+    if (fechaEntregaInput && !fechaEntregaInput.value) {
+        fechaEntregaInput.value = (fechaInput ? (fechaInput.value || today) : today);
+    }
+
+    // Mantener fecha_entrega = fecha mientras el usuario no la toque
+    if (fechaInput && fechaEntregaInput) {
+        fechaInput.addEventListener('change', () => {
+            if (!fechaEntregaInput.dataset.touched) {
+                fechaEntregaInput.value = fechaInput.value;
+            }
+        });
+        fechaEntregaInput.addEventListener('input', () => {
+            fechaEntregaInput.dataset.touched = '1';
+        });
     }
 
     // Agregar primera fila de detalle (si existe la tabla)
@@ -56,8 +94,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Configurar autocompletar para artículos
     setupArticuloAutocomplete();
-// precarga deshabilitada: la API de sugerencias exige ?q=; evitamos 400 innecesarios
-// precargarArticulosAll().catch(()=>{});
+    // precarga deshabilitada: la API de sugerencias exige ?q=; evitamos 400 innecesarios
+    // precargarArticulosAll().catch(()=>{});
 
     console.log('✅ [PRESUPUESTOS-CREATE] Página inicializada correctamente');
 });
@@ -191,7 +229,6 @@ function calcularPrecio(detalleId) {
 
 // ===== Helpers numéricos + utilidades (NUEVO) =====
 
-
 // === Formateo moneda ARS ===
 const fmtARS = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -241,12 +278,73 @@ function getDetalleIdFromInput(input) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+/* === 1.4 Totales en vivo (subtotal, descuento, total) === */
+function setTextInto(selectors, text) {
+  let wrote = false;
+  (selectors || []).forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        el.value = text;
+      } else {
+        el.textContent = text;
+      }
+      wrote = true;
+    });
+  });
+  return wrote;
+}
+
+function getDescuentoPorcentaje() {
+  const el = document.getElementById('descuento');
+  const raw = el ? parseFloat(el.value) : 0;
+  const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+  return [pct, el];
+}
+
+function recalcTotales() {
+  const tbody = document.getElementById('detalles-tbody');
+  if (!tbody) return;
+
+  let subtotalBruto = 0;
+  tbody.querySelectorAll('tr').forEach(row => {
+    const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
+    const pvu  = parseFloat(row.querySelector('input[name*="[precio1]"]')?.value) || 0; // precio unit. con IVA
+    subtotalBruto += cant * pvu;
+  });
+
+  const [pct] = getDescuentoPorcentaje();
+  const montoDesc = subtotalBruto * (pct / 100);
+  const totalFinal = subtotalBruto - montoDesc;
+
+  // Actualiza displays (tolerante: IDs o data-attrs)
+  setTextInto(['#total-bruto', '[data-total="bruto"]'], formatARS(subtotalBruto));
+  setTextInto(['#total-descuento', '[data-total="descuento"]'], formatARS(montoDesc));
+  setTextInto(['#total-final', '[data-total="final"]'], formatARS(totalFinal));
+}
+
+// Listener de inputs de detalle + descuento
 document.addEventListener('input', (e) => {
   const name = e.target?.name || '';
-  if (!/\[(cantidad|valor1|iva1)\]/.test(name)) return;
-  const id = getDetalleIdFromInput(e.target);
-  if (id != null) calcularPrecio(id);
+  if (/\[(cantidad|valor1|iva1)\]/.test(name)) {
+    const id = getDetalleIdFromInput(e.target);
+    if (id != null) calcularPrecio(id);
+    recalcTotales();
+    return;
+  }
+  if (e.target?.id === 'descuento') {
+    recalcTotales();
+  }
 });
+
+// Observa altas/bajas de filas para mantener totales
+(() => {
+  const tbody = document.getElementById('detalles-tbody');
+  if (!tbody) return;
+  new MutationObserver(() => recalcTotales()).observe(tbody, { childList: true });
+})();
+
+// Recalc inicial
+document.addEventListener('DOMContentLoaded', recalcTotales);
 
 
 /**
@@ -260,9 +358,6 @@ function generateUUID() {
     });
 }
 
-/**
- * Manejar envío del formulario
- */
 async function handleSubmit(event) {
     event.preventDefault();
 
@@ -303,18 +398,37 @@ async function handleSubmit(event) {
             fechaForm = new Date().toISOString().split('T')[0];
         }
 
-        const data = {
-            id_cliente: idCliente,
-            fecha: fechaForm,
-            fecha_entrega: formData.get('fecha_entrega') || null,
-            agente: (formData.get('agente') || '').toString(),
-            tipo_comprobante: (formData.get('tipo_comprobante') || 'PRESUPUESTO').toString(),
-            nota: (formData.get('nota') || '').toString(),
-            punto_entrega: (formData.get('punto_entrega') || '').toString(),
-            descuento: parseFloat(formData.get('descuento')) || 0,
-            detalles: []
-        };
+        // ---- valores pre-leídos con defaults seguros ----
+        const estadoValorRaw = (formData.get('estado') || 'Presupuesto/Orden').toString();
+        let tipoComprobanteValor = (formData.get('tipo_comprobante') || 'Factura').toString();
+        if (/^PRESUPUESTO$/i.test(tipoComprobanteValor)) tipoComprobanteValor = 'Factura'; // saneo explícito
+        const agenteValor = ((formData.get('agente') || '').toString().trim()) || 'Martin';
+        const puntoEntregaValor = ((formData.get('punto_entrega') || '').toString().trim()) || 'Sin dirección';
 
+        let fechaEntregaValor = (formData.get('fecha_entrega') || '').toString().trim();
+        if (!fechaEntregaValor) fechaEntregaValor = fechaForm; // default = misma fecha
+
+        // descuento ingresado como % (0..100) -> guardar proporción (0..1)
+        let descuentoPct = parseFloat(formData.get('descuento'));
+        descuentoPct = Number.isFinite(descuentoPct) ? Math.min(Math.max(descuentoPct, 0), 100) : 0;
+        const descuentoValor = parseFloat((descuentoPct / 100).toFixed(2)); // ej 5 -> 0.05
+        const informeGeneradoValor = (document.getElementById('informe_generado')?.value || 'Pendiente').toString();
+
+
+        // ---- payload final ----
+        const data = {
+        id_cliente: idCliente,
+        fecha: fechaForm,
+        fecha_entrega: fechaEntregaValor,
+        agente: agenteValor,
+        tipo_comprobante: tipoComprobanteValor,
+        estado: estadoValorRaw,
+        informe_generado: informeGeneradoValor,
+        nota: (formData.get('nota') || '').toString(),
+        punto_entrega: puntoEntregaValor,
+        descuento: descuentoValor, // proporción 0..1
+        detalles: []
+        };
         // Recopilar detalles
         const tbody = document.getElementById('detalles-tbody');
         if (!tbody) throw new Error('No se encontró la tabla de detalles');
@@ -328,7 +442,7 @@ async function handleSubmit(event) {
                 const name = input.name || '';
 
                 if (name.includes('[articulo]')) {
-                    // ✅ CAMBIO ÚNICO: priorizar el código real (dataset.codigoBarras) si existe
+                    // priorizar el código real (dataset.codigoBarras) si existe
                     const real = (input.dataset && input.dataset.codigoBarras)
                         ? input.dataset.codigoBarras
                         : (input.value || '');
@@ -348,8 +462,6 @@ async function handleSubmit(event) {
                 }
             });
 
-           
-
             if (detalle.articulo && detalle.cantidad > 0) {
                 data.detalles.push(detalle);
             }
@@ -360,7 +472,8 @@ async function handleSubmit(event) {
             throw new Error('Debe agregar al menos un artículo válido');
         }
 
-        console.log('📋 [PRESUPUESTOS-CREATE] Datos a enviar:', data);
+        // LogData para ver defaults efectivos (incluye estado)
+        console.log('🧾 [PRESUPUESTOS-CREATE] LogData (payload):', data);
 
         // Generar Idempotency-Key
         const idempotencyKey = generateUUID();
@@ -475,6 +588,7 @@ async function handleSubmit(event) {
         }
     }
 }
+
 /**
  * Mostrar mensaje al usuario
  */
