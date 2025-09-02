@@ -28,6 +28,24 @@ exports.iniciarEtapaCarro = async (req, res) => {
     const map = mapEtapa(etapa);
     if (!map) return res.status(400).json({ error: 'Etapa inválida' });
 
+    // Chequeamos preparado y fin de etapa
+    const r0 = await pool.query(
+      `SELECT fecha_preparado, ${map.inicio} AS inicio, ${map.fin} AS fin
+         FROM carros_produccion WHERE id = $1`,
+      [carroId]
+    );
+    if (!r0.rowCount) return res.status(404).json({ error: 'Carro no encontrado' });
+    const row = r0.rows[0];
+
+   // Si ya está preparado, NO permitir E1 ni E2; PERO SÍ permitir E3 (asentar)
+    if (row.fecha_preparado && etapa !== '3') {
+      return res.status(409).json({ error: 'El carro ya fue preparado. No se puede reiniciar medición.' });
+    }
+
+    if (row.fin) {
+      return res.status(409).json({ error: 'La etapa ya fue finalizada. No se puede reiniciar.' });
+    }
+
     // inicia si no estaba iniciada; limpia fin y duración
     const q = `
       UPDATE carros_produccion
@@ -61,9 +79,31 @@ exports.finalizarEtapaCarro = async (req, res) => {
     if (!map) return res.status(400).json({ error: 'Etapa inválida' });
 
     // Validar que tenga inicio
-    const r0 = await pool.query(`SELECT ${map.inicio} AS inicio FROM carros_produccion WHERE id=$1`, [carroId]);
-    if (r0.rowCount === 0) return res.status(404).json({ error: 'Carro no encontrado' });
-    if (!r0.rows[0].inicio) return res.status(400).json({ error: 'La etapa no fue iniciada' });
+      const r0 = await pool.query(
+        `SELECT fecha_preparado, ${map.inicio} AS inicio, ${map.fin} AS fin
+          FROM carros_produccion WHERE id = $1`,
+        [carroId]
+      );
+      if (r0.rowCount === 0) return res.status(404).json({ error: 'Carro no encontrado' });
+
+      const { inicio, fin } = r0.rows[0];
+      if (!inicio) return res.status(400).json({ error: 'La etapa no fue iniciada' });
+
+      // Idempotente: si ya estaba finalizada, devolvemos OK sin romper
+      if (fin) {
+        const r1 = await pool.query(
+          `SELECT ${map.dur} AS duracion_ms FROM carros_produccion WHERE id=$1`,
+          [carroId]
+        );
+        return res.json({
+          ok: true,
+          carro_id: carroId,
+          etapa,
+          duracion_ms: r1.rows[0]?.duracion_ms || 0,
+          ya_finalizada: true
+        });
+      }
+
 
     const q = `
       UPDATE carros_produccion
@@ -82,66 +122,6 @@ exports.finalizarEtapaCarro = async (req, res) => {
 
 
 
-// ---------- util ----------
-/*function _colsEtapa(n){
-  n = +n;
-  if (n===1) return { ini:'etapa1_inicio', fin:'etapa1_fin', dur:'etapa1_duracion_ms' };
-  if (n===2) return { ini:'etapa2_inicio', fin:'etapa2_fin', dur:'etapa2_duracion_ms' };
-  if (n===3) return { ini:'etapa3_inicio', fin:'etapa3_fin', dur:'etapa3_duracion_ms' };
-  throw new Error('Etapa inválida');
-}
-
-// ---------- etapas carro ----------
-exports.iniciarEtapaCarro = async (req, res) => {
-  const { carroId, etapa } = req.params;
-  const usuarioId = req.query.usuarioId || (req.body && req.body.usuarioId);
-
-  try {
-    const esValido = await validarPropiedadCarro(carroId, usuarioId);
-    if (!esValido) return res.status(403).json({ error:'El carro no pertenece al usuario especificado' });
-
-    const c = _colsEtapa(etapa);
-    const q = `
-      UPDATE carros_produccion
-         SET ${c.ini} = COALESCE(${c.ini}, CURRENT_TIMESTAMP),
-             ${c.fin} = NULL,
-             ${c.dur} = NULL
-       WHERE id = $1
-       RETURNING id, ${c.ini} as inicio
-    `;
-    const r = await pool.query(q, [carroId]);
-    if (!r.rowCount) return res.status(404).json({ error:'Carro no encontrado' });
-    res.json({ ok:true, ...r.rows[0] });
-  } catch (err) {
-    console.error('iniciarEtapaCarro:', err);
-    res.status(500).json({ error:'Error al iniciar etapa' });
-  }
-};
-
-exports.finalizarEtapaCarro = async (req, res) => {
-  const { carroId, etapa } = req.params;
-  const usuarioId = req.query.usuarioId || (req.body && req.body.usuarioId);
-
-  try {
-    const esValido = await validarPropiedadCarro(carroId, usuarioId);
-    if (!esValido) return res.status(403).json({ error:'El carro no pertenece al usuario especificado' });
-
-    const c = _colsEtapa(etapa);
-    const q = `
-      UPDATE carros_produccion
-         SET ${c.fin} = CURRENT_TIMESTAMP,
-             ${c.dur} = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${c.ini})) * 1000
-       WHERE id = $1 AND ${c.ini} IS NOT NULL
-       RETURNING id, ${c.dur} as duracion_ms
-    `;
-    const r = await pool.query(q, [carroId]);
-    if (!r.rowCount) return res.status(400).json({ error:'La etapa no estaba iniciada' });
-    res.json({ ok:true, ...r.rows[0] });
-  } catch (err) {
-    console.error('finalizarEtapaCarro:', err);
-    res.status(500).json({ error:'Error al finalizar etapa' });
-  }
-};*/
 
 // POST /api/produccion/carro/:carroId/articulo/:numero/iniciar?usuarioId=...
 exports.iniciarTemporizadorArticulo = async (req, res) => {
@@ -260,5 +240,34 @@ exports.obtenerTiempoTotalCarro = async (req, res) => {
   } catch (err) {
     console.error('Error obtenerTiempoTotalCarro:', err);
     return res.status(500).json({ error: 'No se pudo obtener el tiempo total' });
+  }
+};
+
+/* Reactivacion MODO Medicion tras medicion*/
+
+exports.estadoEtapasCarro = async (req, res) => {
+  const { carroId } = req.params;
+  const usuarioId = req.query.usuarioId || (req.body && req.body.usuarioId);
+
+  try {
+    const esValido = await validarPropiedadCarro(carroId, usuarioId);
+    if (!esValido) return res.status(403).json({ error: 'El carro no pertenece al usuario especificado' });
+
+    const q = `
+      SELECT
+        fecha_preparado IS NOT NULL AS preparado,
+        etapa1_inicio, etapa1_fin, etapa1_duracion_ms,
+        etapa2_inicio, etapa2_fin, etapa2_duracion_ms,
+        etapa3_inicio, etapa3_fin, etapa3_duracion_ms
+      FROM carros_produccion
+      WHERE id = $1
+    `;
+    const r = await pool.query(q, [carroId]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Carro no encontrado' });
+
+    return res.json({ ok: true, carro_id: carroId, ...r.rows[0] });
+  } catch (err) {
+    console.error('Error estadoEtapasCarro:', err);
+    return res.status(500).json({ error: 'No se pudo obtener el estado de etapas' });
   }
 };

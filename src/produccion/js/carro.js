@@ -3,7 +3,12 @@
 import { mostrarError, estilosTablaCarros, agruparCarrosPorSemanas, agruparCarrosPorSemanasYMeses } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
 import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
-import { initTemporizadores, syncTimerButtonsVisibility } from './temporizador_carro.js';
+import {
+  initTemporizadores,
+  syncTimerButtonsVisibility,
+  importarEstadoLocal,
+ 
+} from './temporizador_carro.js';
 
 
 
@@ -101,25 +106,35 @@ export async function actualizarEstadoCarro() {
             return;
         }
 
-        // Verificar permisos para mostrar botón de producción externa
-        let botonProduccionExterna = '';
-        try {
-            const response = await fetch(`/api/roles/${colaborador.rol_id}/permisos`);
-            if (response.ok) {
-                const permisos = await response.json();
-                const tienePermisoExterno = permisos.some(p => p.nombre === 'ProduccionesExternas');
-                
+      // Verificar permisos para mostrar botón de producción externa
+            let botonProduccionExterna = '';
+            try {
+            if (colaborador.rol_id != null) {
+                const respPerm = await fetch(
+                `http://localhost:3002/api/roles/${encodeURIComponent(colaborador.rol_id)}/permisos`
+                );
+                if (respPerm.ok) {
+                const permisos = await respPerm.json();
+                const tienePermisoExterno = Array.isArray(permisos) &&
+                    permisos.some(p => p.nombre === 'ProduccionesExternas');
+
                 if (tienePermisoExterno) {
                     botonProduccionExterna = `
-                        <button onclick="crearNuevoCarro('externa')" class="btn btn-primary" style="margin-left: 10px;">
-                            🚚 Crear Carro de Producción Externa
-                        </button>
+                    <button onclick="crearNuevoCarro('externa')" class="btn btn-primary" style="margin-left: 10px;">
+                        🚚 Crear Carro de Producción Externa
+                    </button>
                     `;
                 }
+                } else {
+                console.debug('[ROLES] permisos HTTP', respPerm.status);
+                }
+            } else {
+                console.debug('[ROLES] colaborador.rol_id es null/undefined');
             }
-        } catch (error) {
-            console.error('Error al verificar permisos:', error);
-        }
+            } catch (error) {
+            console.debug('[ROLES] error obteniendo permisos:', error);
+            }
+
 
         // Agrupar carros por semanas y meses (nueva funcionalidad mixta)
         const gruposMixtos = agruparCarrosPorSemanasYMeses(carros);
@@ -730,79 +745,112 @@ window.eliminarCarro = eliminarCarro;
 
 // Función para seleccionar un carro
 export async function seleccionarCarro(carroId) {
-    try {
-        console.log(`Seleccionando carro ID: ${carroId}`);
-        
-        const colaboradorData = localStorage.getItem('colaboradorActivo');
-        if (!colaboradorData) {
-            throw new Error('No hay colaborador seleccionado');
-        }
+  try {
+    console.log(`Seleccionando carro ID: ${carroId}`);
 
-        const colaborador = JSON.parse(colaboradorData);
-        
-        // Validar que el carro pertenezca al usuario antes de seleccionarlo
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
-        if (!response.ok) {
-            throw new Error('No se puede seleccionar este carro');
-        }
-
-        // Limpiar datos del carro anterior
-        limpiarIngresosManualesDelCarro();
-
-        // Establecer como carro activo en localStorage
-        localStorage.setItem('carroActivo', carroId);
-
-        // Asignar también en variable global
-        window.carroIdGlobal = carroId;
-
-        console.log('Actualizando interfaz después de seleccionar carro...');
-        
-        // Actualizar la interfaz
-        await actualizarEstadoCarro();
-        await mostrarArticulosDelCarro();
-        
-        // Cargar y mostrar resumen de ingredientes
-        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-        mostrarResumenIngredientes(ingredientes);
-        
-        // Cargar y mostrar resumen de mixes
-        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
-        mostrarResumenMixes(mixes);
-        
-        // Cargar y mostrar resumen de artículos externos (si aplica)
-        const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
-        if (articulos && articulos.length > 0) {
-            mostrarResumenArticulos(articulos);
-            const seccionArticulos = document.getElementById('resumen-articulos');
-            if (seccionArticulos) {
-                seccionArticulos.style.display = 'block';
-            }
-        } else {
-            const seccionArticulos = document.getElementById('resumen-articulos');
-            if (seccionArticulos) {
-                seccionArticulos.style.display = 'none';
-            }
-        }
-        
-        // Actualizar ingresos manuales realizados para el carro seleccionado
-        if (typeof window.actualizarInformeIngresosManuales === 'function') {
-            console.log('Actualizando ingresos manuales después de seleccionar carro...');
-            await window.actualizarInformeIngresosManuales();
-        }
-        
-        // Actualizar la visibilidad de los botones según el estado del carro
-        if (typeof window.actualizarVisibilidadBotones === 'function') {
-            console.log('Actualizando visibilidad de botones después de seleccionar carro...');
-            await window.actualizarVisibilidadBotones();
-        } else {
-            console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
-        }
-        
-    } catch (error) {
-        console.error('Error al seleccionar carro:', error);
-        mostrarError(error.message);
+    // --- Usuario / validaciones ---
+    const colaboradorData = localStorage.getItem('colaboradorActivo');
+    if (!colaboradorData) {
+      throw new Error('No hay colaborador seleccionado');
     }
+    const colaborador = JSON.parse(colaboradorData);
+    const usuarioId = colaborador.id;
+
+    // Validar pertenencia del carro
+    const validarResp = await fetch(
+      `http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${usuarioId}`
+    );
+    if (!validarResp.ok) {
+      throw new Error('No se puede seleccionar este carro');
+    }
+
+    // --- Establecer carro activo temprano (para que rehidratación lo lea si lo necesita) ---
+    localStorage.setItem('carroActivo', String(carroId));
+    window.carroIdGlobal = carroId;
+
+    // --- Intento de rehidratación de etapas (no bloqueante) ---
+    try {
+      const resp = await fetch(
+        `http://localhost:3002/api/produccion/carro/${carroId}/etapas/estado?usuarioId=${usuarioId}`
+      );
+      if (resp.ok) {
+        const estado = await resp.json();
+       importarEstadoLocal(carroId, estado);           // guarda snapshot
+        const botonGlobal = document.getElementById('btn-temporizador-global');
+        if (botonGlobal && botonGlobal.classList.contains('activo')) {
+            rehidratarDesdeEstado(carroId);               // si el modo ya estaba activo, pinta
+        }
+        // Guardar snapshot local para rehidratación futura
+        if (typeof importarEstadoLocal === 'function') {
+          importarEstadoLocal(carroId, estado);
+        } else if (window.importarEstadoLocal) {
+          window.importarEstadoLocal(carroId, estado);
+        }
+
+        // Si Modo medición está activo, rehidratar UI ahora
+        //const botonGlobal = document.getElementById('btn-temporizador-global');
+        const activo = !!(botonGlobal && botonGlobal.classList.contains('activo'));
+        if (activo) {
+            if (typeof window._rehidratarDesdeEstado === 'function') {
+                window._rehidratarDesdeEstado(carroId);  // rehidrata si está definida global
+            } else if (typeof syncTimerButtonsVisibility === 'function') {
+                syncTimerButtonsVisibility();            // al menos refresca visibilidad
+            }
 }
+      } else {
+        console.warn('No se pudo obtener estado de etapas para rehidratar (HTTP):', resp.status);
+      }
+    } catch (e) {
+      console.warn('No se pudo obtener estado de etapas para rehidratar:', e);
+    }
+
+    // --- Limpiar datos del carro anterior (ingresos manuales, etc.) ---
+    limpiarIngresosManualesDelCarro();
+
+    console.log('Actualizando interfaz después de seleccionar carro...');
+
+    // --- UI / datos ---
+    await actualizarEstadoCarro();
+    await mostrarArticulosDelCarro();
+
+    // Resumen de ingredientes
+    const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
+    mostrarResumenIngredientes(ingredientes);
+
+    // Resumen de mixes
+    const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
+    mostrarResumenMixes(mixes);
+
+    // Resumen de artículos (externos)
+    const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
+    const seccionArticulos = document.getElementById('resumen-articulos');
+    if (articulos && articulos.length > 0) {
+      mostrarResumenArticulos(articulos);
+      if (seccionArticulos) seccionArticulos.style.display = 'block';
+    } else {
+      if (seccionArticulos) seccionArticulos.style.display = 'none';
+    }
+
+    // Informe de ingresos manuales (si existe)
+    if (typeof window.actualizarInformeIngresosManuales === 'function') {
+      console.log('Actualizando ingresos manuales después de seleccionar carro...');
+      await window.actualizarInformeIngresosManuales();
+    }
+
+    // Visibilidad de botones según estado
+    if (typeof window.actualizarVisibilidadBotones === 'function') {
+      console.log('Actualizando visibilidad de botones después de seleccionar carro...');
+      await window.actualizarVisibilidadBotones();
+    } else {
+      console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
+    }
+
+  } catch (error) {
+    console.error('Error al seleccionar carro:', error);
+    mostrarError(error.message);
+  }
+}
+
 
 
 // Función para deseleccionar el carro actual
@@ -1380,6 +1428,15 @@ export async function mostrarArticulosDelCarro() {
         if (!carroId) {
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
             return;
+        }
+
+        const colab = JSON.parse(localStorage.getItem('colaboradorActivo') || '{}');
+        if (carroId && colab.id) {
+        // Traemos estado real, lo guardamos local y luego pintamos
+        fetch(`http://localhost:3002/api/tiempos/carro/${carroId}/etapas/estado?usuarioId=${colab.id}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(est => { if (est) importarEstadoLocal(carroId, est); })
+            .finally(() => rehidratarDesdeEstado(carroId));
         }
 
         const colaboradorData = localStorage.getItem('colaboradorActivo');

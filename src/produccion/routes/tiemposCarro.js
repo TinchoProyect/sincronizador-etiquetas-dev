@@ -12,4 +12,6 @@ router.get('/carro/:carroId/tiempo-total', tiemposCtrl.obtenerTiempoTotalCarro);
 router.post('/carro/:carroId/etapa/:etapa/iniciar', iniciarEtapaCarro);   // etapa ∈ {1,2,3}
 router.post('/carro/:carroId/etapa/:etapa/finalizar', finalizarEtapaCarro);
 
+router.get('/carro/:carroId/etapas/estado', tiemposCtrl.estadoEtapasCarro);
+
 module.exports = router;
