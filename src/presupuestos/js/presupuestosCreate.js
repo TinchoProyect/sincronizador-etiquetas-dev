@@ -22,6 +22,35 @@ function getClienteIdActivo() {
   return m ? m[0] : '0';
 }
 
+// === Modo IVA según tipo de comprobante ===
+function isRemitoActivo() {
+  const sel = document.getElementById('tipo_comprobante');
+  return !!sel && sel.value === 'Remito-Efectivo';
+}
+function ivaObjetivoDesdeBase(baseIva) {
+  const b = Number(baseIva) || 0;
+  return isRemitoActivo() ? (b / 2) : b;
+}
+function applyIvaModeToRow(row) {
+  if (!row) return;
+  const ivaInput = row.querySelector('input[name*="[iva1]"]');
+  if (!ivaInput) return;
+
+  // Si no hay base guardada, uso el valor actual como base
+  const base = Number(ivaInput.dataset.ivaBase ?? ivaInput.value ?? 0);
+  const target = ivaObjetivoDesdeBase(base);
+
+  setNumeric(ivaInput, target, 2, target);
+
+  const cantOrIva = row.querySelector('input[name*="[cantidad]"]') || ivaInput;
+  const detalleId = getDetalleIdFromInput(cantOrIva);
+  if (detalleId != null) calcularPrecio(detalleId);
+}
+function applyIvaModeToAllRows() {
+  document.querySelectorAll('#detalles-tbody tr').forEach(applyIvaModeToRow);
+  recalcTotales();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📋 [PRESUPUESTOS-CREATE] Inicializando página de creación...');
 
@@ -37,7 +66,42 @@ document.addEventListener('DOMContentLoaded', function() {
     // === 1.3 Defaults visibles (solo si corresponde) ===
     const tipoSel = document.getElementById('tipo_comprobante');
     if (tipoSel && (tipoSel.value === 'Presupuesto' || !tipoSel.value)) {
-    tipoSel.value = 'Factura';
+        tipoSel.value = 'Factura';
+    }
+
+    // === Helpers IVA (Remito-Efectivo = mitad) ===
+    function esRemitoActivo() {
+        return !!tipoSel && tipoSel.value === 'Remito-Efectivo';
+    }
+    function objetivoIVA(baseIva) {
+        const b = Number(baseIva) || 0;
+        return esRemitoActivo() ? (b / 2) : b;
+    }
+    function asegurarBaseIVA(ivaInput) {
+        if (!ivaInput) return;
+        if (ivaInput.dataset.ivaBase == null || ivaInput.dataset.ivaBase === '') {
+            ivaInput.dataset.ivaBase = String(Number(ivaInput.value) || 0);
+        }
+    }
+    function applyIvaModeToRow(row) {
+        if (!row) return;
+        const ivaInput = row.querySelector('input[name*="[iva1]"]');
+        if (!ivaInput) return;
+        asegurarBaseIVA(ivaInput);
+        const target = objetivoIVA(ivaInput.dataset.ivaBase);
+        ivaInput.value = Number(target).toFixed(2);
+        ivaInput.dispatchEvent(new Event('input', { bubbles: true }));
+        ivaInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    function applyIvaModeToAllRows() {
+        document.querySelectorAll('#detalles-tbody tr').forEach(applyIvaModeToRow);
+        if (typeof recalcTotales === 'function') recalcTotales();
+    }
+    if (tipoSel) {
+        tipoSel.addEventListener('change', () => {
+            console.log('[PRESUPUESTOS-CREATE] Tipo comprobante →', tipoSel.value);
+            applyIvaModeToAllRows();
+        });
     }
 
     const agenteInput = document.getElementById('agente');
@@ -77,9 +141,31 @@ document.addEventListener('DOMContentLoaded', function() {
     const tbody = document.getElementById('detalles-tbody');
     if (tbody) {
         agregarDetalle();
+        // observar altas de filas para setear base IVA y aplicar modo actual
+        new MutationObserver((muts) => {
+            muts.forEach(m => {
+                m.addedNodes.forEach(n => {
+                    if (n.nodeType === 1) {
+                        const ivaInput = n.querySelector('input[name*="[iva1]"]');
+                        if (ivaInput) asegurarBaseIVA(ivaInput);
+                        applyIvaModeToRow(n);
+                    }
+                });
+            });
+        }).observe(tbody, { childList: true });
     } else {
         console.error('❌ [PRESUPUESTOS-CREATE] No se encontró #detalles-tbody. No se pueden agregar filas de detalle.');
     }
+
+    // Al editar IVA a mano, actualizar la base solo si es input del usuario
+    document.addEventListener('input', (e) => {
+        const name = e.target?.name || '';
+        if (/\[iva1\]/.test(name) && e.isTrusted) {
+            const ivaInput = e.target;
+            const val = Number(ivaInput.value) || 0;
+            ivaInput.dataset.ivaBase = String(esRemitoActivo() ? (val * 2) : val);
+        }
+    }, true);
 
     // Configurar formulario
     const form = document.getElementById('form-crear-presupuesto');
@@ -97,8 +183,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // precarga deshabilitada: la API de sugerencias exige ?q=; evitamos 400 innecesarios
     // precargarArticulosAll().catch(()=>{});
 
+    // Aplicar IVA según tipo de comprobante al iniciar
+    applyIvaModeToAllRows();
+
     console.log('✅ [PRESUPUESTOS-CREATE] Página inicializada correctamente');
 });
+
 
 /**
  * Agregar nueva fila de detalle
@@ -1415,7 +1505,14 @@ function seleccionarArticulo(input, element) {
 
     // setear si hay datos
     if (Number.isFinite(valor) && valor1Input) setNumeric(valor1Input, valor, 2, 0);
-    if (Number.isFinite(iva)   && iva1Input)   setNumeric(iva1Input, iva, 2, 21);
+    if (Number.isFinite(iva) && iva1Input) {
+        // guardar la base real del IVA que vino del backend
+        iva1Input.dataset.ivaBase = String(iva);
+        // mostrar mitad si el tipo es Remito-Efectivo
+        const tipoSel = document.getElementById('tipo_comprobante');
+        const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+        setNumeric(iva1Input, visibleIva, 2, 21);
+        }
 
     if (detalleId != null) calcularPrecio(detalleId);
     setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
