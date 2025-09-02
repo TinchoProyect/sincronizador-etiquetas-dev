@@ -1347,60 +1347,77 @@ function seleccionarArticuloPorClick(element, event) {
  */
 function seleccionarArticulo(input, element) {
   const codigoBarras   = (element.dataset.codigoBarras   || '').toString();
-  const articuloNumero = (element.dataset.articuloNumero || '').toString();
+  const articuloNumero = (element.dataset.articuloNumero || '').toString(); // lo guardo, pero no lo uso en la query
   const description    = (element.dataset.description    || '').toString();
   const stock          = parseFloat(element.dataset.stock || 0);
 
-  // 1) Mostrar al usuario y guardar el código real para el submit
+  // mostrar al usuario + guardar códigos reales para el submit
   input.value = description;
   input.dataset.codigoBarras = codigoBarras;
+  input.dataset.articuloNumero = articuloNumero;
 
   console.log(`[ARTICULOS] Seleccionado: ${description} [${articuloNumero}] (Stock: ${stock})`);
-
-  // 2) Ocultar sugerencias
   ocultarSugerenciasArticulo();
 
-  // 3) Ubicar fila e inputs
+  // ubicar fila/inputs
   const row           = input.closest('tr');
   const cantidadInput = row?.querySelector('input[name*="[cantidad]"]');
   const valor1Input   = row?.querySelector('input[name*="[valor1]"]');
   const iva1Input     = row?.querySelector('input[name*="[iva1]"]');
   const detalleId     = getDetalleIdFromInput(cantidadInput || input);
 
-  // 4) Defaults seguros
-  if (cantidadInput && (!cantidadInput.value || parseFloat(cantidadInput.value) <= 0)) {
-    setCantidad(cantidadInput, 1);
-  }
-  if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) {
-    setNumeric(iva1Input, 21, 2, 21);
-  }
-  if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) {
-    setNumeric(valor1Input, 0, 2, 0);
-  }
+  // defaults
+  if (cantidadInput && (!cantidadInput.value || parseFloat(cantidadInput.value) <= 0)) setCantidad(cantidadInput, 1);
+  if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value))))   setNumeric(iva1Input, 21, 2, 21);
+  if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) setNumeric(valor1Input, 0, 2, 0);
 
-  // 5) Recalcular con lo que hay
   if (detalleId != null) calcularPrecio(detalleId);
 
-  // 6) Llamar backend de precios
+  // --- pedir precios ---
   const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
-  const params = new URLSearchParams();
-  params.set('cliente_id', String(clienteId));
-  if (codigoBarras) params.set('codigo_barras', codigoBarras);
-  if (description)  params.set('descripcion', description);
 
-  fetch(`/api/presupuestos/precios?${params.toString()}`)
-    .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-    .then(({ success, data }) => {
-      const valor = Number(data?.valor1);
-      const iva   = Number(data?.iva);
-      if (Number.isFinite(valor) && valor1Input) setNumeric(valor1Input, valor, 2, 0);
-      if (Number.isFinite(iva)   && iva1Input)   setNumeric(iva1Input, iva, 2, 21);
-    })
-    .catch(err => {
-      console.warn('⚠️ [ARTICULOS] No se pudo obtener precio/IVA del backend:', err);
-    })
-    .finally(() => {
-      if (detalleId != null) calcularPrecio(detalleId); // fuerza precio1 con valores finales
-      setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
-    });
+  const fetchPrecios = async (params) => {
+    const url = `/api/presupuestos/precios?${params.toString()}`;
+    console.log('[ARTICULOS] GET precios ->', url);
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
+
+  (async () => {
+    let valor, iva;
+
+    // 1) por código de barras
+    try {
+      const p = new URLSearchParams();
+      p.set('cliente_id', String(clienteId));
+      if (codigoBarras) p.set('codigo_barras', codigoBarras);
+      let body = await fetchPrecios(p);
+      valor = Number(body?.data?.valor1);
+      iva   = Number(body?.data?.iva);
+    } catch (e1) {
+      console.warn('⚠️ [ARTICULOS] No respondió por código de barras. Probando por descripción…', e1);
+    }
+
+    // 2) fallback por descripción (si aún no tengo datos válidos)
+    if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
+      try {
+        const p2 = new URLSearchParams();
+        p2.set('cliente_id', String(clienteId));
+        if (description) p2.set('descripcion', description);
+        const body2 = await fetchPrecios(p2);
+        valor = Number(body2?.data?.valor1);
+        iva   = Number(body2?.data?.iva);
+      } catch (e2) {
+        console.warn('⚠️ [ARTICULOS] Tampoco por descripción:', e2);
+      }
+    }
+
+    // setear si hay datos
+    if (Number.isFinite(valor) && valor1Input) setNumeric(valor1Input, valor, 2, 0);
+    if (Number.isFinite(iva)   && iva1Input)   setNumeric(iva1Input, iva, 2, 21);
+
+    if (detalleId != null) calcularPrecio(detalleId);
+    setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
+  })();
 }

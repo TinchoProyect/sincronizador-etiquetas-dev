@@ -158,6 +158,29 @@ const crearPresupuesto = async (req, res) => {
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Encabezado registrado: ID=${presupuestoBD.id}`);
 
             // Helpers numéricos locales para cálculos
+
+           // Busca el costo unitario por código de barras (detalle.articulo)
+async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
+    const cb = (codigoBarras ?? '').toString().trim();
+    if (!cb) return 0;
+    const sql = `
+        SELECT pa.costo
+        FROM articulos a
+        JOIN precios_articulos pa ON pa.articulo = a.numero
+        WHERE TRIM(a.codigo_barras)::text = $1
+        LIMIT 1
+    `;
+    try {
+        const r = await pgClient.query(sql, [cb]);
+        const costo = r.rows?.[0]?.costo;
+        return normalizeNumber(costo);
+    } catch (e) {
+        console.warn('⚠️ [PRESUPUESTOS-WRITE] ' + requestId + ' - lookup costo falló para barcode ' + cb + ': ' + e.message);
+        return 0;
+    }
+}
+
+
             function round2(valor) {
                 const n = Number(valor);
                 return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -169,36 +192,43 @@ const crearPresupuesto = async (req, res) => {
             }
 
             // Generar IDs para detalles y CALCULAR campos según mapa A–N
-            const detallesNormalizados = (Array.isArray(detalles) ? detalles : []).map((detalle) => {
-                const cantidad = normalizeNumber(detalle.cantidad || 0);          // D
-                const netoUnit = normalizeNumber(detalle.valor1 || 0);            // E
-                const alicDec = toAlicuotaDecimal(detalle.iva1 || 0);             // K (decimal)
-                const ivaUnit = round2(netoUnit * alicDec);                        // G = E × K
-                const brutoUnit = round2(netoUnit + ivaUnit);                      // F = E + G
 
-                const netoTotal = round2(cantidad * netoUnit);                     // L = D × E
-                const ivaTotal = round2(cantidad * ivaUnit);                       // N = D × G
-                const brutoTotal = round2(netoTotal + ivaTotal);                   // M = L + N
+            // === construir detallesNormalizados (usa obtenerCostoUnitarioPorBarcode) ===
+            const detallesNormalizados = [];
+            const detallesInput = Array.isArray(detalles) ? detalles : [];
 
-                return {
-                    id: generateDetalleId(),
-                    id_presupuesto_ext: presupuestoId,
-                    articulo: (detalle.articulo || '').toString().trim(),
-                    cantidad: cantidad,
-                    valor1: netoUnit,                                              // E
-                    precio1: brutoUnit,                                            // F
-                    iva1: ivaUnit,                                                 // G (monto unitario)
-                    diferencia: round2(brutoUnit - round2(netoUnit / 1.20)),                                                  // H (placeholder)
-                    camp1: netoUnit,                                               // I = E
-                    camp2: brutoUnit,                                              // J = F
-                    camp3: alicDec,                                                // K (decimal)
-                    camp4: netoTotal,                                              // L
-                    camp5: brutoTotal,                                             // M
-                    camp6: ivaTotal                                                // N
-                };
+            for (const det of detallesInput) {
+            const cantidad = normalizeNumber(det.cantidad || 0);          // D
+            const netoUnit = normalizeNumber(det.valor1 || 0);            // E
+            const alicDec  = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
+            const ivaUnit  = round2(netoUnit * alicDec);                  // G = E × K
+            const brutoUnit = round2(netoUnit + ivaUnit);                 // F = E + G
+
+            const netoTotal  = round2(cantidad * netoUnit);               // L
+            const ivaTotal   = round2(cantidad * ivaUnit);                // N
+            const brutoTotal = round2(netoTotal + ivaTotal);              // M
+
+            const barcode   = (det.articulo || '').toString().trim();
+            const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+
+            detallesNormalizados.push({
+                id: generateDetalleId(),
+                id_presupuesto_ext: presupuestoId,
+                articulo: barcode,
+                cantidad,
+                valor1: netoUnit,                 // E
+                precio1: brutoUnit,               // F (con IVA)
+                iva1: ivaUnit,                    // G (monto unitario)
+                diferencia: round2(brutoUnit - costoUnit), // H = Precio1 - Costo
+                camp1: netoUnit,                  // I
+                camp2: brutoUnit,                 // J
+                camp3: alicDec,                   // K
+                camp4: netoTotal,                 // L
+                camp5: brutoTotal,                // M
+                camp6: ivaTotal                   // N
             });
+            }
 
-            // Insertar detalles
             const insertDetalleQuery = `
                 INSERT INTO presupuestos_detalles 
                 (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, 
