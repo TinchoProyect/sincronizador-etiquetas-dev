@@ -342,16 +342,30 @@ async function cargarPresupuesto() {
  * Normalizar detalle del backend al formato esperado por el frontend
  */
   function normalizarDetalle(d) {
-    // mapeos tolerantes a nombres distintos que pueden venir del back
-    const ivaRaw = d?.iva1 ?? d?.iva ?? d?.iva_porcentaje ?? 0;
-    const ivaPct = toNum(ivaRaw);
-    const ivaDecimal = ivaPct > 1 ? ivaPct / 100 : ivaPct; // 21 -> 0.21, 0.21 queda igual
-
+    // dentro de normalizarDetalle(d)
     const netoRaw = d?.valor1 ?? d?.neto ?? d?.valor_neto ?? d?.precio_neto ?? 0;
     const neto = toNum(netoRaw);
 
     const pvuRaw = d?.precio1 ?? d?.pvu ?? d?.precio_final;
-    const pvu = toNum(pvuRaw) || (neto * (1 + ivaDecimal));
+    const pvu = toNum(pvuRaw);
+
+    // 1) Usar camp2 primero (en tu BD viene 0.21)
+    const camp2 = toNum(d?.camp2);
+    let ivaDecimal;
+
+    if (camp2 > 0) {
+      // si viniera "21" lo pasamos a decimal, si viniera "0.21" lo dejamos igual
+      ivaDecimal = camp2 <= 1 ? camp2 : camp2 / 100;
+    } else {
+      // 2) Fallbacks seguros
+      const ivaRaw = toNum(d?.iva1 ?? d?.iva ?? d?.iva_porcentaje ?? 0);
+      if (ivaRaw <= 1)          ivaDecimal = ivaRaw;                 // ya es decimal
+      else if (ivaRaw <= 100)   ivaDecimal = ivaRaw / 100;           // porcentaje
+      else                      ivaDecimal = neto ? ivaRaw / neto : 0; // importe IVA
+    }
+
+    // precio unitario con IVA
+    const precioUnit = pvu || (neto * (1 + ivaDecimal));
 
     return {
       // códigos
@@ -362,8 +376,8 @@ async function cargarPresupuesto() {
       // números
       cantidad: toNum(d?.cantidad),
       valor1: neto,            // neto sin IVA
-      iva1: ivaDecimal,        // decimal (0.21)
-      precio1: pvu             // unitario con IVA
+      iva1: ivaDecimal,        // 👈 SIEMPRE decimal (0.21)
+      precio1: precioUnit      // unitario con IVA
     };
   }
 
@@ -452,9 +466,9 @@ async function renderDetallesDesdeBD(){
 
   // Procesar cada detalle de forma asíncrona
   for (const det of detallesData) {
-    // det.iva1 viene decimal (0.21) desde normalizarDetalle => convertir a %
-    const ivaPctBase = (det.iva1 > 1 ? det.iva1 : det.iva1*100) || 0;
-    const ivaPctVisible = esRemito()? (ivaPctBase/2) : ivaPctBase;
+    // usar siempre decimal → %
+    const ivaPctBase = ((det.iva1 || 0) * 100);
+    const ivaPctVisible = esRemito() ? (ivaPctBase / 2) : ivaPctBase;
 
     agregarDetalle();
     const idx = detalleCounter; // el que acaba de agregarse
