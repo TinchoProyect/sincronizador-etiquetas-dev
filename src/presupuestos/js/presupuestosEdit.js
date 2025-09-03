@@ -11,6 +11,45 @@
   let selectedIndex = -1;
   let detalleCounter = 0; // Contador para IDs de detalles
 
+  // Cache para descripciones de artículos por código de barras
+  const descripcionCache = new Map();
+
+  /**
+   * Buscar descripción de artículo por código de barras
+   */
+  async function buscarDescripcionPorCodigo(codigoBarras) {
+    if (!codigoBarras || !codigoBarras.trim()) return null;
+
+    // Verificar cache primero
+    if (descripcionCache.has(codigoBarras)) {
+      console.log(`📋 [PRESUPUESTOS-EDIT] Descripción cacheada para código: ${codigoBarras}`);
+      return descripcionCache.get(codigoBarras);
+    }
+
+    try {
+      console.log(`🔍 [PRESUPUESTOS-EDIT] Buscando descripción para código: ${codigoBarras}`);
+      const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=1`);
+      const result = await response.json();
+
+      if (response.ok && result.success && result.data && result.data.length > 0) {
+        const articulo = result.data[0];
+        const descripcion = articulo.descripcion || articulo.nombre || '';
+        // Guardar en cache
+        descripcionCache.set(codigoBarras, descripcion);
+        console.log(`✅ [PRESUPUESTOS-EDIT] Descripción encontrada: ${descripcion}`);
+        return descripcion;
+      } else {
+        console.log(`⚠️ [PRESUPUESTOS-EDIT] No se encontró descripción para código: ${codigoBarras}`);
+        // Guardar null en cache para evitar búsquedas repetidas
+        descripcionCache.set(codigoBarras, null);
+        return null;
+      }
+    } catch (error) {
+      console.error(`❌ [PRESUPUESTOS-EDIT] Error al buscar descripción para código ${codigoBarras}:`, error);
+      return null;
+    }
+  }
+
   // Exponer funciones para compatibilidad
   window.agregarDetalle = agregarDetalle;
   window.removerDetalle = removerDetalle;
@@ -402,7 +441,7 @@ function llenarCamposEditables() {
 /**
  * Renderizar detalles desde BD usando la nueva estructura
  */
-function renderDetallesDesdeBD(){
+async function renderDetallesDesdeBD(){
   const tbody = document.getElementById('detalles-tbody');
   if(!tbody) return;
   tbody.innerHTML = '';
@@ -411,7 +450,8 @@ function renderDetallesDesdeBD(){
   const tipoSel = document.getElementById('tipo_comprobante');
   const esRemito = () => tipoSel && tipoSel.value === 'Remito-Efectivo';
 
-  detallesData.forEach(det=>{
+  // Procesar cada detalle de forma asíncrona
+  for (const det of detallesData) {
     // det.iva1 viene decimal (0.21) desde normalizarDetalle => convertir a %
     const ivaPctBase = (det.iva1 > 1 ? det.iva1 : det.iva1*100) || 0;
     const ivaPctVisible = esRemito()? (ivaPctBase/2) : ivaPctBase;
@@ -428,7 +468,26 @@ function renderDetallesDesdeBD(){
 
     // Mostrar DESCRIPCIÓN al usuario y guardar CODIGO DE BARRAS en dataset (igual que Crear)
     if (artInput){
-      artInput.value = det.descripcion || det.codigo_barras || '';
+      let descripcionVisible = det.descripcion || '';
+
+      // Si no hay descripción pero sí hay código de barras, buscar descripción
+      if (!descripcionVisible && det.codigo_barras) {
+        console.log(`🔍 [PRESUPUESTOS-EDIT] Buscando descripción para código: ${det.codigo_barras}`);
+        const descripcionEncontrada = await buscarDescripcionPorCodigo(det.codigo_barras);
+        if (descripcionEncontrada) {
+          descripcionVisible = descripcionEncontrada;
+          console.log(`✅ [PRESUPUESTOS-EDIT] Descripción encontrada: ${descripcionVisible}`);
+        } else {
+          // Si no se encuentra descripción, mostrar el código de barras
+          descripcionVisible = det.codigo_barras;
+          console.log(`⚠️ [PRESUPUESTOS-EDIT] Usando código de barras como descripción: ${descripcionVisible}`);
+        }
+      } else if (!descripcionVisible) {
+        // Si no hay ni descripción ni código, usar código de barras como fallback
+        descripcionVisible = det.codigo_barras || '';
+      }
+
+      artInput.value = descripcionVisible;
       artInput.dataset.codigoBarras = det.codigo_barras || '';
       artInput.dataset.articuloNumero = det.articulo_numero || '';
     }
@@ -447,7 +506,7 @@ function renderDetallesDesdeBD(){
     if (precio1El) precio1El.value = (+pvu).toFixed(2);
 
     calcularPrecio(idx); // también actualiza displays y subtotal
-  });
+  }
 
   recalcTotales();
 }
