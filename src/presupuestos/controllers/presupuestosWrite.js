@@ -473,11 +473,11 @@ const editarPresupuesto = async (req, res) => {
 };
 
 /**
- * Eliminar presupuesto (baja lógica)
+ * Eliminar presupuesto (borrado físico completo con detalles)
  */
 const eliminarPresupuesto = async (req, res) => {
     const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    console.log(`🔍 [PRESUPUESTOS-WRITE] ${requestId} - Iniciando eliminación de presupuesto...`);
+    console.log(`🔍 [PRESUPUESTOS-WRITE] ${requestId} - Iniciando eliminación física de presupuesto...`);
 
     if (isSyncRunning()) {
         console.log(`⏳ [PRESUPUESTOS-WRITE] ${requestId} - Rechazado: SYNC en curso`);
@@ -490,6 +490,9 @@ const eliminarPresupuesto = async (req, res) => {
         });
     }
 
+    let client; // pg client para transacción
+    markWriteStart();
+
     try {
         const { id } = req.params;
 
@@ -500,20 +503,23 @@ const eliminarPresupuesto = async (req, res) => {
 
         if (isNumericId) {
             checkQuery = `
-                SELECT * FROM presupuestos 
-                WHERE (id = $1 OR id_presupuesto_ext = $2) 
+                SELECT id, id_presupuesto_ext, id_cliente, fecha, estado, tipo_comprobante
+                FROM presupuestos
+                WHERE (id = $1 OR id_presupuesto_ext = $2)
                 AND activo = true
             `;
             queryParams = [parseInt(id), id];
         } else {
             checkQuery = `
-                SELECT * FROM presupuestos 
-                WHERE id_presupuesto_ext = $1 
+                SELECT id, id_presupuesto_ext, id_cliente, fecha, estado, tipo_comprobante
+                FROM presupuestos
+                WHERE id_presupuesto_ext = $1
                 AND activo = true
             `;
             queryParams = [id];
         }
 
+        // Verificar que el presupuesto existe
         const checkResult = await req.db.query(checkQuery, queryParams);
 
         if (checkResult.rows.length === 0) {
@@ -529,41 +535,106 @@ const eliminarPresupuesto = async (req, res) => {
         const presupuesto = checkResult.rows[0];
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto encontrado: ${presupuesto.id_presupuesto_ext}`);
 
-        const deleteQuery = `
-            UPDATE presupuestos 
-            SET activo = false, estado = 'ANULADO', fecha_actualizacion = NOW()
-            WHERE id = $1
-            RETURNING *
-        `;
+        // ===== Transacción para borrado físico completo =====
+        client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            // Evitar esperas largas por bloqueos
+            await client.query("SET LOCAL lock_timeout TO '5s'");
+            await client.query("SET LOCAL statement_timeout TO '15s'");
 
-        const deleteResult = await req.db.query(deleteQuery, [presupuesto.id]);
-        const presupuestoEliminado = deleteResult.rows[0];
+            // 1. Borrar detalles del presupuesto (por id_presupuesto)
+            const deleteDetallesQuery = `
+                DELETE FROM presupuestos_detalles
+                WHERE id_presupuesto = $1
+            `;
+            const detallesResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
+            const detallesEliminados = detallesResult.rowCount;
 
-        console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto marcado como ANULADO en BD`);
+            console.log(`🗑️ [PRESUPUESTOS-WRITE] ${requestId} - Detalles eliminados: ${detallesEliminados} registros`);
 
-        res.json({
-            success: true,
-            data: {
-                id: presupuestoEliminado.id,
-                id_presupuesto: presupuestoEliminado.id_presupuesto_ext,
-                estado: 'ANULADO',
-                eliminado: true
-            },
-            message: 'Presupuesto eliminado exitosamente',
-            requestId,
-            timestamp: new Date().toISOString()
-        });
+            // 2. Borrar el presupuesto principal
+            const deletePresupuestoQuery = `
+                DELETE FROM presupuestos
+                WHERE id = $1
+            `;
+            const presupuestoResult = await client.query(deletePresupuestoQuery, [presupuesto.id]);
+            const presupuestoEliminado = presupuestoResult.rowCount;
+
+            if (presupuestoEliminado === 0) {
+                throw new Error('No se pudo eliminar el presupuesto principal');
+            }
+
+            // Confirmar transacción
+            await client.query('COMMIT');
+
+            console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Eliminación física completada:`);
+            console.log(`   - Presupuesto: ${presupuesto.id_presupuesto_ext} (ID: ${presupuesto.id})`);
+            console.log(`   - Detalles eliminados: ${detallesEliminados} registros`);
+
+            // Respuesta exitosa
+            res.json({
+                success: true,
+                data: {
+                    id: presupuesto.id,
+                    id_presupuesto: presupuesto.id_presupuesto_ext,
+                    detalles_eliminados: detallesEliminados,
+                    eliminado_completo: true
+                },
+                message: `Presupuesto y ${detallesEliminados} detalles eliminados exitosamente`,
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (dbErr) {
+            // Rollback si algo falló dentro de la transacción
+            try { await client.query('ROLLBACK'); } catch (_) {}
+            console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error en transacción:`, dbErr);
+
+            // Códigos útiles: 55P03 (lock_not_available), 57014 (query_canceled por timeout)
+            const msg = (dbErr && dbErr.message) ? dbErr.message : '';
+            if (dbErr.code === '55P03' || /lock timeout/i.test(msg)) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'Recurso bloqueado por proceso de sincronización. Intente nuevamente en breve.',
+                    code: 'LOCK_TIMEOUT',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            if (dbErr.code === '57014' || /statement timeout/i.test(msg)) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'La operación superó el tiempo máximo permitido. Intente nuevamente.',
+                    code: 'STATEMENT_TIMEOUT',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            return res.status(500).json({
+                success: false,
+                error: 'Error interno al eliminar presupuesto',
+                message: msg,
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        } finally {
+            if (client) client.release();
+        }
 
     } catch (error) {
-        console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error al eliminar:`, error);
+        console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error general:`, error);
 
         res.status(500).json({
             success: false,
-            error: 'Error al eliminar presupuesto',
+            error: 'Error interno al eliminar presupuesto',
             message: error.message,
             requestId,
             timestamp: new Date().toISOString()
         });
+    } finally {
+        markWriteEnd();
     }
 };
 

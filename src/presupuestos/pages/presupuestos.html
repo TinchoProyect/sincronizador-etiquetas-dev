@@ -122,6 +122,38 @@
             <div id="message-container" class="message-container"></div>
         </main>
 
+        <!-- Modal de Confirmación de Eliminación -->
+        <div id="delete-confirm-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🗑️ Confirmar Eliminación</h3>
+                    <button class="modal-close" onclick="closeDeleteConfirmModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="delete-warning">
+                        <p><strong>¿Está seguro de que desea eliminar este presupuesto?</strong></p>
+                        <p>Esta acción eliminará permanentemente:</p>
+                        <ul>
+                            <li>El presupuesto completo</li>
+                            <li>Todos los detalles de artículos asociados</li>
+                        </ul>
+                        <p class="warning-text">⚠️ Esta acción no se puede deshacer.</p>
+                    </div>
+                    <div id="delete-presupuesto-info" class="presupuesto-info">
+                        <!-- Información del presupuesto se cargará aquí -->
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeDeleteConfirmModal()">
+                        Cancelar
+                    </button>
+                    <button type="button" id="btn-confirm-delete" class="btn btn-danger" onclick="confirmDeletePresupuesto()">
+                        🗑️ Eliminar Presupuesto
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Modal de Configuración de Sincronización -->
         <div id="sync-config-modal" class="modal-overlay" style="display: none;">
             <div class="modal-content">

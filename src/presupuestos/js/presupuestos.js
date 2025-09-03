@@ -1633,23 +1633,112 @@ function editarPresupuesto(presupuestoId) {
 }
 
 /**
- * Anular presupuesto
+ * Mostrar modal de confirmación de eliminación
  */
-async function anularPresupuesto(presupuestoId) {
-    console.log(`🔍 [PRESUPUESTOS-JS] Iniciando anulación de presupuesto ID: ${presupuestoId}`);
-    
-    // Confirmar con el usuario
-    const confirmacion = confirm('¿Está seguro de que desea anular este presupuesto?\n\nEsta acción marcará el presupuesto como ANULADO en la base de datos y en Google Sheets.');
-    
-    if (!confirmacion) {
-        console.log('⚠️ [PRESUPUESTOS-JS] Anulación cancelada por el usuario');
+function showDeleteConfirmModal(presupuestoId) {
+    console.log(`🔍 [PRESUPUESTOS-JS] Mostrando modal de confirmación para presupuesto ID: ${presupuestoId}`);
+
+    // Buscar información del presupuesto en los datos actuales
+    const presupuesto = appState.presupuestos.find(p => p.id === presupuestoId);
+    if (!presupuesto) {
+        console.error('❌ [PRESUPUESTOS-JS] Presupuesto no encontrado en datos locales');
+        showMessage('Error: Presupuesto no encontrado', 'error');
         return;
     }
-    
+
+    // Llenar información del presupuesto en el modal
+    const infoContainer = document.getElementById('delete-presupuesto-info');
+    if (infoContainer) {
+        infoContainer.innerHTML = `
+            <div class="presupuesto-details">
+                <h4>Información del Presupuesto</h4>
+                <div class="detail-row">
+                    <span class="label">ID:</span>
+                    <span class="value">${presupuesto.id}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Tipo:</span>
+                    <span class="value">${escapeHtml(presupuesto.categoria || 'Sin tipo')}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Cliente:</span>
+                    <span class="value">${escapeHtml(presupuesto.concepto || 'Sin cliente')}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Fecha:</span>
+                    <span class="value">${formatDateDDMMYYYYWithTime(presupuesto.fecha_registro)}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Estado:</span>
+                    <span class="value">${escapeHtml(presupuesto.estado || 'Sin estado')}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Actualizar el texto de advertencia para reflejar borrado físico
+    const warningText = document.querySelector('.warning-text');
+    if (warningText) {
+        warningText.textContent = '⚠️ Esta acción eliminará permanentemente el presupuesto y todos sus detalles de la base de datos. No se puede deshacer.';
+    }
+
+    // Actualizar el texto del botón
+    const confirmBtn = document.getElementById('btn-confirm-delete');
+    if (confirmBtn) {
+        confirmBtn.textContent = '🗑️ Eliminar Permanentemente';
+    }
+
+    // Guardar el ID del presupuesto a eliminar
+    window.presupuestoToDelete = presupuestoId;
+
+    // Mostrar modal
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('✅ [PRESUPUESTOS-JS] Modal de confirmación mostrado');
+    }
+}
+
+/**
+ * Cerrar modal de confirmación de eliminación
+ */
+function closeDeleteConfirmModal() {
+    console.log('🔍 [PRESUPUESTOS-JS] Cerrando modal de confirmación');
+
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        window.presupuestoToDelete = null;
+        console.log('✅ [PRESUPUESTOS-JS] Modal de confirmación cerrado');
+    }
+}
+
+/**
+ * Confirmar eliminación del presupuesto
+ */
+async function confirmDeletePresupuesto() {
+    const presupuestoId = window.presupuestoToDelete;
+    if (!presupuestoId) {
+        console.error('❌ [PRESUPUESTOS-JS] No hay presupuesto para eliminar');
+        return;
+    }
+
+    console.log(`🔍 [PRESUPUESTOS-JS] Confirmando eliminación de presupuesto ID: ${presupuestoId}`);
+
+    // Cerrar modal
+    closeDeleteConfirmModal();
+
     try {
         // Mostrar loading
-        showMessage('⏳ Anulando presupuesto...', 'info');
-        
+        showMessage('⏳ Eliminando presupuesto...', 'info');
+
+        // Deshabilitar botón de confirmación para evitar doble envío
+        const btnConfirm = document.getElementById('btn-confirm-delete');
+        if (btnConfirm) {
+            btnConfirm.disabled = true;
+            btnConfirm.textContent = '⏳ Eliminando...';
+        }
+
         // Hacer petición DELETE
         const response = await fetchWithRetry(URLS.PRESUPUESTO(presupuestoId), {
             method: 'DELETE',
@@ -1657,25 +1746,42 @@ async function anularPresupuesto(presupuestoId) {
                 'Content-Type': 'application/json'
             }
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok && data.success) {
-            console.log('✅ [PRESUPUESTOS-JS] Presupuesto anulado exitosamente');
-            
-            showMessage('✅ Presupuesto anulado exitosamente', 'success');
-            
+            console.log('✅ [PRESUPUESTOS-JS] Presupuesto eliminado exitosamente');
+
+            showMessage('✅ Presupuesto eliminado exitosamente', 'success');
+
             // Recargar la lista de presupuestos
             await handleCargarDatos(appState.pagination.currentPage, true);
-            
+
         } else {
             throw new Error(data.error || data.message || 'Error desconocido');
         }
-        
+
     } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al anular presupuesto:', error);
-        showMessage(`❌ Error al anular presupuesto: ${error.message}`, 'error');
+        console.error('❌ [PRESUPUESTOS-JS] Error al eliminar presupuesto:', error);
+        showMessage(`❌ Error al eliminar presupuesto: ${error.message}`, 'error');
+    } finally {
+        // Rehabilitar botón
+        const btnConfirm = document.getElementById('btn-confirm-delete');
+        if (btnConfirm) {
+            btnConfirm.disabled = false;
+            btnConfirm.textContent = '🗑️ Eliminar Presupuesto';
+        }
     }
+}
+
+/**
+ * Anular presupuesto (legacy - ahora usa modal)
+ */
+async function anularPresupuesto(presupuestoId) {
+    console.log(`🔍 [PRESUPUESTOS-JS] Iniciando proceso de eliminación para presupuesto ID: ${presupuestoId}`);
+
+    // Mostrar modal de confirmación en lugar del confirm() nativo
+    showDeleteConfirmModal(presupuestoId);
 }
 
 console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación');
