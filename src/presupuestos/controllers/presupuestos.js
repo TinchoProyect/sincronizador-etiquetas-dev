@@ -1862,8 +1862,8 @@ const actualizarEstadoPresupuesto = async (req, res) => {
         
         // Actualizar estado
         const updateQuery = `
-            UPDATE presupuestos 
-            SET estado = $1, fecha_actualizacion = NOW()
+            UPDATE presupuestos
+            SET estado = $1
             WHERE id = $2 AND activo = true
             RETURNING *
         `;

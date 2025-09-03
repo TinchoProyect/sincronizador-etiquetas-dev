@@ -337,8 +337,16 @@ router.get('/:id/detalles', validatePermissions('presupuestos.read'), validarIdP
 router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
     const { id } = req.params;
     console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id - Obteniendo presupuesto ID: ${id}`);
-    
-    if (id === 'health' || id === 'estadisticas' || id === 'configuracion' || id === 'resumen' || id.startsWith('sync/')) {
+
+    // Convertir ID a string para validaciones seguras
+    const idStr = String(id);
+
+    // Validar rutas específicas que no deben ser tratadas como IDs de presupuesto
+    const rutasEspecificas = ['health', 'estadisticas', 'configuracion', 'resumen'];
+    const esRutaEspecifica = rutasEspecificas.includes(idStr.toLowerCase());
+    const esRutaSync = idStr.toLowerCase().startsWith('sync/');
+
+    if (esRutaEspecifica || esRutaSync) {
         console.log(`⚠️ [PRESUPUESTOS] Ruta específica detectada como ID: ${id}`);
         return res.status(400).json({
             success: false,
@@ -346,7 +354,7 @@ router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuest
             timestamp: new Date().toISOString()
         });
     }
-    
+
     try {
         await obtenerPresupuestoPorId(req, res);
     } catch (error) {
