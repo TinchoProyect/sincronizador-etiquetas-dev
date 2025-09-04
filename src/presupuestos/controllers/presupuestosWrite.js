@@ -81,7 +81,7 @@ const crearPresupuesto = async (req, res) => {
             agente,
             tipo_comprobante,
             nota,
-            estado = 'PENDIENTE',
+            estado,
             punto_entrega,
             descuento = 0,
             detalles = []
@@ -117,6 +117,7 @@ const crearPresupuesto = async (req, res) => {
         const fechaNormalizada = normalizeDate(fecha || new Date());
         const fechaEntregaNormalizada = fecha_entrega ? normalizeDate(fecha_entrega) : null;
         const descuentoNormalizado = normalizeNumber(descuento);
+        const estadoNormalizado = (typeof estado === 'string' && estado.trim()) ? estado.trim() : 'Presupuesto/Orden';
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - IDs/fechas listos:`, {
             presupuestoId, fechaNormalizada, fechaEntregaNormalizada, descuentoNormalizado
@@ -134,8 +135,8 @@ const crearPresupuesto = async (req, res) => {
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                 nota, estado, punto_entrega, descuento, activo, hoja_nombre, hoja_url)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDIENTE', $8, $9, true, 'Presupuestos', $10)
+                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11)
                 RETURNING *
             `;
 
@@ -145,8 +146,9 @@ const crearPresupuesto = async (req, res) => {
                 fechaNormalizada,
                 fechaEntregaNormalizada,
                 agente || '',
-                tipo_comprobante || 'PRESUPUESTO',
+                tipo_comprobante || 'Factura',
                 nota || '',
+                estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
                 process.env.SPREADSHEET_URL || ''
@@ -155,25 +157,78 @@ const crearPresupuesto = async (req, res) => {
             const presupuestoBD = headerResult.rows[0];
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Encabezado registrado: ID=${presupuestoBD.id}`);
 
-            // Generar IDs para detalles y normalizar datos
-            const detallesNormalizados = detalles.map((detalle) => ({
+            // Helpers numéricos locales para cálculos
+
+           // Busca el costo unitario por código de barras (detalle.articulo)
+async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
+    const cb = (codigoBarras ?? '').toString().trim();
+    if (!cb) return 0;
+    const sql = `
+        SELECT pa.costo
+        FROM articulos a
+        JOIN precios_articulos pa ON pa.articulo = a.numero
+        WHERE TRIM(a.codigo_barras)::text = $1
+        LIMIT 1
+    `;
+    try {
+        const r = await pgClient.query(sql, [cb]);
+        const costo = r.rows?.[0]?.costo;
+        return normalizeNumber(costo);
+    } catch (e) {
+        console.warn('⚠️ [PRESUPUESTOS-WRITE] ' + requestId + ' - lookup costo falló para barcode ' + cb + ': ' + e.message);
+        return 0;
+    }
+}
+
+
+            function round2(valor) {
+                const n = Number(valor);
+                return Math.round((n + Number.EPSILON) * 100) / 100;
+            }
+            function toAlicuotaDecimal(valor) {
+                const v = parseFloat(valor);
+                if (!Number.isFinite(v) || v < 0) return 0;
+                return v > 1 ? v / 100 : v;
+            }
+
+            // Generar IDs para detalles y CALCULAR campos según mapa A–N
+
+            // === construir detallesNormalizados (usa obtenerCostoUnitarioPorBarcode) ===
+            const detallesNormalizados = [];
+            const detallesInput = Array.isArray(detalles) ? detalles : [];
+
+            for (const det of detallesInput) {
+            const cantidad = normalizeNumber(det.cantidad || 0);          // D
+            const netoUnit = normalizeNumber(det.valor1 || 0);            // E
+            const alicDec  = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
+            const ivaUnit  = round2(netoUnit * alicDec);                  // G = E × K
+            const brutoUnit = round2(netoUnit + ivaUnit);                 // F = E + G
+
+            const netoTotal  = round2(cantidad * netoUnit);               // L
+            const ivaTotal   = round2(cantidad * ivaUnit);                // N
+            const brutoTotal = round2(netoTotal + ivaTotal);              // M
+
+            const barcode   = (det.articulo || '').toString().trim();
+            const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+
+            detallesNormalizados.push({
                 id: generateDetalleId(),
                 id_presupuesto_ext: presupuestoId,
-                articulo: detalle.articulo || '',
-                cantidad: normalizeNumber(detalle.cantidad || 0),
-                valor1: normalizeNumber(detalle.valor1 || 0),
-                precio1: normalizeNumber(detalle.precio1 || 0),
-                iva1: normalizeNumber(detalle.iva1 || 0),
-                diferencia: normalizeNumber(detalle.diferencia || 0),
-                camp1: normalizeNumber(detalle.camp1 || 0),
-                camp2: normalizeNumber(detalle.camp2 || 0),
-                camp3: normalizeNumber(detalle.camp3 || 0),
-                camp4: normalizeNumber(detalle.camp4 || 0),
-                camp5: normalizeNumber(detalle.camp5 || 0),
-                camp6: normalizeNumber(detalle.camp6 || 0)
-            }));
+                articulo: barcode,
+                cantidad,
+                valor1: netoUnit,                 // E
+                precio1: brutoUnit,               // F (con IVA)
+                iva1: ivaUnit,                    // G (monto unitario)
+                diferencia: round2(brutoUnit - costoUnit), // H = Precio1 - Costo
+                camp1: netoUnit,                  // I
+                camp2: brutoUnit,                 // J
+                camp3: alicDec,                   // K
+                camp4: netoTotal,                 // L
+                camp5: brutoTotal,                // M
+                camp6: ivaTotal                   // N
+            });
+            }
 
-            // Insertar detalles
             const insertDetalleQuery = `
                 INSERT INTO presupuestos_detalles 
                 (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, 
@@ -189,13 +244,14 @@ const crearPresupuesto = async (req, res) => {
                     detalle.valor1,
                     detalle.precio1,
                     detalle.iva1,
-                    detalle.diferencia,
-                    detalle.camp1,
-                    detalle.camp2,
-                    detalle.camp3,
-                    detalle.camp4,
-                    detalle.camp5,
-                    detalle.camp6
+                    // mapeo correcto de columnas H–N
+                    detalle.diferencia, // diferencia (H)
+                    detalle.precio1,    // camp1 = F (bruto unitario)
+                    detalle.camp3,      // camp2 = K (alícuota decimal)
+                    detalle.camp4,      // camp3 = L (neto total)
+                    detalle.camp5,      // camp4 = M (bruto total)
+                    detalle.camp6,      // camp5 = N (IVA total)
+                    0                   // camp6 = 0 (descartado)
                 ]);
             }
 
@@ -209,7 +265,7 @@ const crearPresupuesto = async (req, res) => {
                 data: {
                     id: presupuestoBD.id,
                     id_presupuesto: presupuestoId,
-                    estado: 'PENDIENTE',
+                    estado: presupuestoBD.estado,
                     detalles_count: detallesNormalizados.length,
                     created_at: presupuestoBD.fecha_actualizacion
                 },
@@ -270,8 +326,10 @@ const crearPresupuesto = async (req, res) => {
     }
 };
 
+
+
 /**
- * Editar presupuesto existente (solo datos permitidos)
+ * Editar presupuesto existente (cabecera + detalles opcionales)
  */
 const editarPresupuesto = async (req, res) => {
     const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -288,118 +346,294 @@ const editarPresupuesto = async (req, res) => {
         });
     }
 
+    let client; // pg client para transacción
+    markWriteStart();
+
     try {
         const { id } = req.params;
-        const { agente, nota, punto_entrega, descuento, fecha_entrega } = req.body;
+        const { agente, nota, punto_entrega, descuento, fecha_entrega, detalles } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
 
-        // Verificar que el presupuesto existe y está en estado editable
-        const isNumericId = /^\d+$/.test(id);
-        let checkQuery, queryParams;
-
-        if (isNumericId) {
-            checkQuery = `
-                SELECT * FROM presupuestos 
-                WHERE (id = $1 OR id_presupuesto_ext = $2) 
-                AND activo = true 
-                AND estado IN ('CONFIRMADO', 'PENDIENTE', 'Entregado', 'Lunes - Reparto 001 (Centro/Villa Elvira)')
-            `;
-            queryParams = [parseInt(id), id];
-        } else {
-            checkQuery = `
-                SELECT * FROM presupuestos 
-                WHERE id_presupuesto_ext = $1 
-                AND activo = true 
-                AND estado IN ('CONFIRMADO', 'PENDIENTE')
-            `;
-            queryParams = [id];
+        // Helpers numéricos locales para cálculos (copiados del POST)
+        function round2(valor) {
+            const n = Number(valor);
+            return Math.round((n + Number.EPSILON) * 100) / 100;
+        }
+        function toAlicuotaDecimal(valor) {
+            const v = parseFloat(valor);
+            if (!Number.isFinite(v) || v < 0) return 0;
+            return v > 1 ? v / 100 : v;
         }
 
-        const checkResult = await req.db.query(checkQuery, queryParams);
+        // Busca el costo unitario por código de barras (copiado del POST)
+        async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
+            const cb = (codigoBarras ?? '').toString().trim();
+            if (!cb) return 0;
+            const sql = `
+                SELECT pa.costo
+                FROM articulos a
+                JOIN precios_articulos pa ON pa.articulo = a.numero
+                WHERE TRIM(a.codigo_barras)::text = $1
+                LIMIT 1
+            `;
+            try {
+                const r = await pgClient.query(sql, [cb]);
+                const costo = r.rows?.[0]?.costo;
+                return normalizeNumber(costo);
+            } catch (e) {
+                console.warn('⚠️ [PRESUPUESTOS-WRITE] ' + requestId + ' - lookup costo falló para barcode ' + cb + ': ' + e.message);
+                return 0;
+            }
+        }
 
-        if (checkResult.rows.length === 0) {
-            console.log(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto no encontrado o no editable`);
-            return res.status(404).json({
-                success: false,
-                error: 'Presupuesto no encontrado o no se puede editar',
+        // ===== Transacción para cabecera + detalles =====
+        client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            // Evitar esperas largas por bloqueos
+            await client.query("SET LOCAL lock_timeout TO '5s'");
+            await client.query("SET LOCAL statement_timeout TO '15s'");
+
+            // Resolver identificador: numérico vs externo
+            const isNumericId = /^\d+$/.test(id);
+            let campo, valor;
+            
+            if (isNumericId) {
+                campo = 'id (numérico)';
+                valor = parseInt(id);
+            } else {
+                campo = 'id_presupuesto_ext (externo)';
+                valor = id;
+            }
+
+            console.log(`[PUT] Resolver ID`, { raw: id, campo, valor });
+
+            // Buscar presupuesto usando el campo resuelto
+            let checkQuery, queryParams;
+
+            if (isNumericId) {
+                checkQuery = `
+                    SELECT * FROM presupuestos 
+                    WHERE (id = $1 OR id_presupuesto_ext = $2) 
+                    AND activo = true
+                `;
+                queryParams = [parseInt(id), id];
+            } else {
+                checkQuery = `
+                    SELECT * FROM presupuestos 
+                    WHERE id_presupuesto_ext = $1 
+                    AND activo = true
+                `;
+                queryParams = [id];
+            }
+
+            const checkResult = await client.query(checkQuery, queryParams);
+
+            if (checkResult.rows.length === 0) {
+                console.warn(`[PUT] No se encontró presupuesto`, { campo, valor });
+                return res.status(404).json({
+                    success: false,
+                    error: 'Presupuesto no encontrado o no se puede editar',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            const presupuesto = checkResult.rows[0];
+            console.log(`[PUT] Presupuesto encontrado`, { id: presupuesto.id });
+
+            // Construir actualización dinámica de cabecera
+            const updates = [];
+            const params = [];
+            let paramCount = 0;
+
+            if (agente !== undefined) {
+                paramCount++;
+                updates.push(`agente = $${paramCount}`);
+                params.push(agente);
+            }
+
+            if (nota !== undefined) {
+                paramCount++;
+                updates.push(`nota = $${paramCount}`);
+                params.push(nota);
+            }
+
+            if (punto_entrega !== undefined) {
+                paramCount++;
+                updates.push(`punto_entrega = $${paramCount}`);
+                params.push(punto_entrega);
+            }
+
+            if (descuento !== undefined) {
+                paramCount++;
+                updates.push(`descuento = $${paramCount}`);
+                params.push(normalizeNumber(descuento));
+            }
+
+            if (fecha_entrega !== undefined) {
+                paramCount++;
+                updates.push(`fecha_entrega = $${paramCount}`);
+                params.push(fecha_entrega ? normalizeDate(fecha_entrega) : null);
+            }
+
+            // Actualizar cabecera si hay campos
+            let presupuestoActualizado = presupuesto;
+            if (updates.length > 0) {
+                paramCount++;
+                params.push(presupuesto.id);
+
+                const updateQuery = `
+                    UPDATE presupuestos 
+                    SET ${updates.join(', ')}
+                    WHERE id = $${paramCount}
+                    RETURNING *
+                `;
+
+                const updateResult = await client.query(updateQuery, params);
+                presupuestoActualizado = updateResult.rows[0];
+                console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada`);
+            }
+
+            // Determinar si actualizar detalles
+            if (Array.isArray(detalles)) {
+                console.log(`[PUT-DET] reemplazando detalles → count=${detalles.length}`);
+
+                // Validar detalles antes de procesar
+                for (const det of detalles) {
+                    const barcode = (det.articulo || '').toString().trim();
+                    if (!barcode) {
+                        throw new Error(`Detalle sin código de barras válido: ${JSON.stringify(det)}`);
+                    }
+                }
+
+                // 1. Eliminar detalles existentes
+                const deleteDetallesQuery = `
+                    DELETE FROM presupuestos_detalles
+                    WHERE id_presupuesto = $1
+                `;
+                const deleteResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
+                const detallesEliminados = deleteResult.rowCount;
+
+                // 2. Construir detalles normalizados (misma lógica que POST)
+                const detallesNormalizados = [];
+                const detallesInput = Array.isArray(detalles) ? detalles : [];
+
+                for (const det of detallesInput) {
+                    const cantidad = normalizeNumber(det.cantidad || 0);          // D
+                    const netoUnit = normalizeNumber(det.valor1 || 0);            // E
+                    const alicDec  = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
+                    const ivaUnit  = round2(netoUnit * alicDec);                  // G = E × K
+                    const brutoUnit = round2(netoUnit + ivaUnit);                 // F = E + G
+
+                    const netoTotal  = round2(cantidad * netoUnit);               // L
+                    const ivaTotal   = round2(cantidad * ivaUnit);                // N
+                    const brutoTotal = round2(netoTotal + ivaTotal);              // M
+
+                    const barcode   = (det.articulo || '').toString().trim();
+                    const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+
+                    detallesNormalizados.push({
+                        id: generateDetalleId(),
+                        id_presupuesto_ext: presupuesto.id_presupuesto_ext,
+                        articulo: barcode,
+                        cantidad,
+                        valor1: netoUnit,                 // E
+                        precio1: brutoUnit,               // F (con IVA)
+                        iva1: ivaUnit,                    // G (monto unitario)
+                        diferencia: round2(brutoUnit - costoUnit), // H = Precio1 - Costo
+                        camp1: netoUnit,                  // I
+                        camp2: brutoUnit,                 // J
+                        camp3: alicDec,                   // K
+                        camp4: netoTotal,                 // L
+                        camp5: brutoTotal,                // M
+                        camp6: ivaTotal                   // N
+                    });
+                }
+
+                if (detallesNormalizados.length > 0) {
+                    console.log(`[PUT-DET] ejemplo primer detalle normalizado`, detallesNormalizados[0]);
+                }
+
+                // 3. Insertar nuevos detalles (misma query que POST)
+                const insertDetalleQuery = `
+                    INSERT INTO presupuestos_detalles 
+                    (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, 
+                     diferencia, camp1, camp2, camp3, camp4, camp5, camp6)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                `;
+                for (const detalle of detallesNormalizados) {
+                    await client.query(insertDetalleQuery, [
+                        presupuesto.id,
+                        detalle.id_presupuesto_ext,
+                        detalle.articulo,
+                        detalle.cantidad,
+                        detalle.valor1,
+                        detalle.precio1,
+                        detalle.iva1,
+                        // mapeo correcto de columnas H–N (igual que POST)
+                        detalle.diferencia, // diferencia (H)
+                        detalle.precio1,    // camp1 = F (bruto unitario)
+                        detalle.camp3,      // camp2 = K (alícuota decimal)
+                        detalle.camp4,      // camp3 = L (neto total)
+                        detalle.camp5,      // camp4 = M (bruto total)
+                        detalle.camp6,      // camp5 = N (IVA total)
+                        0                   // camp6 = 0 (descartado)
+                    ]);
+                }
+
+                console.log(`[PUT-DET] eliminados=${detallesEliminados} insertados=${detallesNormalizados.length}`);
+            }
+
+            await client.query('COMMIT');
+
+            console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Transacción completada`);
+
+            res.json({
+                success: true,
+                data: presupuestoActualizado,
+                message: 'Presupuesto actualizado exitosamente',
                 requestId,
                 timestamp: new Date().toISOString()
             });
-        }
 
-        const presupuesto = checkResult.rows[0];
-        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto encontrado: ${presupuesto.id_presupuesto_ext}`);
+        } catch (dbErr) {
+            // Rollback si algo falló dentro de la transacción
+            try { await client.query('ROLLBACK'); } catch (_) {}
+            console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error en transacción:`, dbErr);
 
-        // Construir actualización dinámica
-        const updates = [];
-        const params = [];
-        let paramCount = 0;
+            // Códigos útiles: 55P03 (lock_not_available), 57014 (query_canceled por timeout)
+            const msg = (dbErr && dbErr.message) ? dbErr.message : '';
+            if (dbErr.code === '55P03' || /lock timeout/i.test(msg)) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'Recurso bloqueado por proceso de sincronización. Intente nuevamente en breve.',
+                    code: 'LOCK_TIMEOUT',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            if (dbErr.code === '57014' || /statement timeout/i.test(msg)) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'La operación superó el tiempo máximo permitido. Intente nuevamente.',
+                    code: 'STATEMENT_TIMEOUT',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
 
-        if (agente !== undefined) {
-            paramCount++;
-            updates.push(`agente = $${paramCount}`);
-            params.push(agente);
-        }
-
-        if (nota !== undefined) {
-            paramCount++;
-            updates.push(`nota = $${paramCount}`);
-            params.push(nota);
-        }
-
-        if (punto_entrega !== undefined) {
-            paramCount++;
-            updates.push(`punto_entrega = $${paramCount}`);
-            params.push(punto_entrega);
-        }
-
-        if (descuento !== undefined) {
-            paramCount++;
-            updates.push(`descuento = $${paramCount}`);
-            params.push(normalizeNumber(descuento));
-        }
-
-        if (fecha_entrega !== undefined) {
-            paramCount++;
-            updates.push(`fecha_entrega = $${paramCount}`);
-            params.push(fecha_entrega ? normalizeDate(fecha_entrega) : null);
-        }
-
-        if (updates.length === 0) {
-            console.log(`⚠️ [PRESUPUESTOS-WRITE] ${requestId} - No hay campos para actualizar`);
-            return res.status(400).json({
+            return res.status(500).json({
                 success: false,
-                error: 'No se proporcionaron campos válidos para actualizar',
+                error: 'Error interno al actualizar presupuesto',
+                message: msg,
                 requestId,
                 timestamp: new Date().toISOString()
             });
+        } finally {
+            if (client) client.release();
         }
-
-        // Actualizar en BD
-        paramCount++;
-        params.push(presupuesto.id);
-
-        const updateQuery = `
-            UPDATE presupuestos 
-            SET ${updates.join(', ')}
-            WHERE id = $${paramCount}
-            RETURNING *
-        `;
-
-        const updateResult = await req.db.query(updateQuery, params);
-        const presupuestoActualizado = updateResult.rows[0];
-
-        console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto actualizado en BD`);
-        console.log(`⚠️ [PRESUPUESTOS-WRITE] ${requestId} - Actualización en Sheets pendiente de implementar`);
-
-        res.json({
-            success: true,
-            data: presupuestoActualizado,
-            message: 'Presupuesto actualizado exitosamente',
-            requestId,
-            timestamp: new Date().toISOString()
-        });
 
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error al editar:`, error);
@@ -411,15 +645,17 @@ const editarPresupuesto = async (req, res) => {
             requestId,
             timestamp: new Date().toISOString()
         });
+    } finally {
+        markWriteEnd();
     }
 };
 
 /**
- * Eliminar presupuesto (baja lógica)
+ * Eliminar presupuesto (borrado físico completo con detalles)
  */
 const eliminarPresupuesto = async (req, res) => {
     const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    console.log(`🔍 [PRESUPUESTOS-WRITE] ${requestId} - Iniciando eliminación de presupuesto...`);
+    console.log(`🔍 [PRESUPUESTOS-WRITE] ${requestId} - Iniciando eliminación física de presupuesto...`);
 
     if (isSyncRunning()) {
         console.log(`⏳ [PRESUPUESTOS-WRITE] ${requestId} - Rechazado: SYNC en curso`);
@@ -432,6 +668,9 @@ const eliminarPresupuesto = async (req, res) => {
         });
     }
 
+    let client; // pg client para transacción
+    markWriteStart();
+
     try {
         const { id } = req.params;
 
@@ -442,20 +681,23 @@ const eliminarPresupuesto = async (req, res) => {
 
         if (isNumericId) {
             checkQuery = `
-                SELECT * FROM presupuestos 
-                WHERE (id = $1 OR id_presupuesto_ext = $2) 
+                SELECT id, id_presupuesto_ext, id_cliente, fecha, estado, tipo_comprobante
+                FROM presupuestos
+                WHERE (id = $1 OR id_presupuesto_ext = $2)
                 AND activo = true
             `;
             queryParams = [parseInt(id), id];
         } else {
             checkQuery = `
-                SELECT * FROM presupuestos 
-                WHERE id_presupuesto_ext = $1 
+                SELECT id, id_presupuesto_ext, id_cliente, fecha, estado, tipo_comprobante
+                FROM presupuestos
+                WHERE id_presupuesto_ext = $1
                 AND activo = true
             `;
             queryParams = [id];
         }
 
+        // Verificar que el presupuesto existe
         const checkResult = await req.db.query(checkQuery, queryParams);
 
         if (checkResult.rows.length === 0) {
@@ -471,41 +713,106 @@ const eliminarPresupuesto = async (req, res) => {
         const presupuesto = checkResult.rows[0];
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto encontrado: ${presupuesto.id_presupuesto_ext}`);
 
-        const deleteQuery = `
-            UPDATE presupuestos 
-            SET activo = false, estado = 'ANULADO', fecha_actualizacion = NOW()
-            WHERE id = $1
-            RETURNING *
-        `;
+        // ===== Transacción para borrado físico completo =====
+        client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            // Evitar esperas largas por bloqueos
+            await client.query("SET LOCAL lock_timeout TO '5s'");
+            await client.query("SET LOCAL statement_timeout TO '15s'");
 
-        const deleteResult = await req.db.query(deleteQuery, [presupuesto.id]);
-        const presupuestoEliminado = deleteResult.rows[0];
+            // 1. Borrar detalles del presupuesto (por id_presupuesto)
+            const deleteDetallesQuery = `
+                DELETE FROM presupuestos_detalles
+                WHERE id_presupuesto = $1
+            `;
+            const detallesResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
+            const detallesEliminados = detallesResult.rowCount;
 
-        console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto marcado como ANULADO en BD`);
+            console.log(`🗑️ [PRESUPUESTOS-WRITE] ${requestId} - Detalles eliminados: ${detallesEliminados} registros`);
 
-        res.json({
-            success: true,
-            data: {
-                id: presupuestoEliminado.id,
-                id_presupuesto: presupuestoEliminado.id_presupuesto_ext,
-                estado: 'ANULADO',
-                eliminado: true
-            },
-            message: 'Presupuesto eliminado exitosamente',
-            requestId,
-            timestamp: new Date().toISOString()
-        });
+            // 2. Borrar el presupuesto principal
+            const deletePresupuestoQuery = `
+                DELETE FROM presupuestos
+                WHERE id = $1
+            `;
+            const presupuestoResult = await client.query(deletePresupuestoQuery, [presupuesto.id]);
+            const presupuestoEliminado = presupuestoResult.rowCount;
+
+            if (presupuestoEliminado === 0) {
+                throw new Error('No se pudo eliminar el presupuesto principal');
+            }
+
+            // Confirmar transacción
+            await client.query('COMMIT');
+
+            console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Eliminación física completada:`);
+            console.log(`   - Presupuesto: ${presupuesto.id_presupuesto_ext} (ID: ${presupuesto.id})`);
+            console.log(`   - Detalles eliminados: ${detallesEliminados} registros`);
+
+            // Respuesta exitosa
+            res.json({
+                success: true,
+                data: {
+                    id: presupuesto.id,
+                    id_presupuesto: presupuesto.id_presupuesto_ext,
+                    detalles_eliminados: detallesEliminados,
+                    eliminado_completo: true
+                },
+                message: `Presupuesto y ${detallesEliminados} detalles eliminados exitosamente`,
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (dbErr) {
+            // Rollback si algo falló dentro de la transacción
+            try { await client.query('ROLLBACK'); } catch (_) {}
+            console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error en transacción:`, dbErr);
+
+            // Códigos útiles: 55P03 (lock_not_available), 57014 (query_canceled por timeout)
+            const msg = (dbErr && dbErr.message) ? dbErr.message : '';
+            if (dbErr.code === '55P03' || /lock timeout/i.test(msg)) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'Recurso bloqueado por proceso de sincronización. Intente nuevamente en breve.',
+                    code: 'LOCK_TIMEOUT',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            if (dbErr.code === '57014' || /statement timeout/i.test(msg)) {
+                return res.status(503).json({
+                    success: false,
+                    error: 'La operación superó el tiempo máximo permitido. Intente nuevamente.',
+                    code: 'STATEMENT_TIMEOUT',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            return res.status(500).json({
+                success: false,
+                error: 'Error interno al eliminar presupuesto',
+                message: msg,
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        } finally {
+            if (client) client.release();
+        }
 
     } catch (error) {
-        console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error al eliminar:`, error);
+        console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error general:`, error);
 
         res.status(500).json({
             success: false,
-            error: 'Error al eliminar presupuesto',
+            error: 'Error interno al eliminar presupuesto',
             message: error.message,
             requestId,
             timestamp: new Date().toISOString()
         });
+    } finally {
+        markWriteEnd();
     }
 };
 

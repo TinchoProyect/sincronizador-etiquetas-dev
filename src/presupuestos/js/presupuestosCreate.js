@@ -6,15 +6,55 @@ let clienteSeleccionado = null;
 let currentRequest = null;
 let selectedIndex = -1;
 
-// Exponer funciones usadas por atributos inline (onclick) si el script se carga como módulo global
+// Exponer funciones usadas por atributos inline (onclick)
 window.agregarDetalle = agregarDetalle;
 window.removerDetalle = removerDetalle;
+window.seleccionarArticuloPorClick = seleccionarArticuloPorClick;
+window.seleccionarArticulo = seleccionarArticulo;
+window.seleccionarClientePorClick = seleccionarClientePorClick;
 
-// Inicialización
+function getClienteIdActivo() {
+  if (clienteSeleccionado && clienteSeleccionado.cliente_id) {
+    return String(clienteSeleccionado.cliente_id);
+  }
+  const raw = (document.getElementById('id_cliente')?.value || '').trim();
+  const m = raw.match(/^\d+/);
+  return m ? m[0] : '0';
+}
+
+// === Modo IVA según tipo de comprobante ===
+function isRemitoActivo() {
+  const sel = document.getElementById('tipo_comprobante');
+  return !!sel && sel.value === 'Remito-Efectivo';
+}
+function ivaObjetivoDesdeBase(baseIva) {
+  const b = Number(baseIva) || 0;
+  return isRemitoActivo() ? (b / 2) : b;
+}
+function applyIvaModeToRow(row) {
+  if (!row) return;
+  const ivaInput = row.querySelector('input[name*="[iva1]"]');
+  if (!ivaInput) return;
+
+  // Si no hay base guardada, uso el valor actual como base
+  const base = Number(ivaInput.dataset.ivaBase ?? ivaInput.value ?? 0);
+  const target = ivaObjetivoDesdeBase(base);
+
+  setNumeric(ivaInput, target, 2, target);
+
+  const cantOrIva = row.querySelector('input[name*="[cantidad]"]') || ivaInput;
+  const detalleId = getDetalleIdFromInput(cantOrIva);
+  if (detalleId != null) calcularPrecio(detalleId);
+}
+function applyIvaModeToAllRows() {
+  document.querySelectorAll('#detalles-tbody tr').forEach(applyIvaModeToRow);
+  recalcTotales();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📋 [PRESUPUESTOS-CREATE] Inicializando página de creación...');
 
-    // Establecer fecha actual por defecto (si existe el input)
+    // --- FECHA base primero (evita TDZ) ---
     const fechaInput = document.getElementById('fecha');
     const today = new Date().toISOString().split('T')[0];
     if (fechaInput) {
@@ -23,13 +63,109 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('⚠️ [PRESUPUESTOS-CREATE] Input #fecha no encontrado; se enviará fecha del día desde JS');
     }
 
+    // === 1.3 Defaults visibles (solo si corresponde) ===
+    const tipoSel = document.getElementById('tipo_comprobante');
+    if (tipoSel && (tipoSel.value === 'Presupuesto' || !tipoSel.value)) {
+        tipoSel.value = 'Factura';
+    }
+
+    // === Helpers IVA (Remito-Efectivo = mitad) ===
+    function esRemitoActivo() {
+        return !!tipoSel && tipoSel.value === 'Remito-Efectivo';
+    }
+    function objetivoIVA(baseIva) {
+        const b = Number(baseIva) || 0;
+        return esRemitoActivo() ? (b / 2) : b;
+    }
+    function asegurarBaseIVA(ivaInput) {
+        if (!ivaInput) return;
+        if (ivaInput.dataset.ivaBase == null || ivaInput.dataset.ivaBase === '') {
+            ivaInput.dataset.ivaBase = String(Number(ivaInput.value) || 0);
+        }
+    }
+    function applyIvaModeToRow(row) {
+        if (!row) return;
+        const ivaInput = row.querySelector('input[name*="[iva1]"]');
+        if (!ivaInput) return;
+        asegurarBaseIVA(ivaInput);
+        const target = objetivoIVA(ivaInput.dataset.ivaBase);
+        ivaInput.value = Number(target).toFixed(2);
+        ivaInput.dispatchEvent(new Event('input', { bubbles: true }));
+        ivaInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    function applyIvaModeToAllRows() {
+        document.querySelectorAll('#detalles-tbody tr').forEach(applyIvaModeToRow);
+        if (typeof recalcTotales === 'function') recalcTotales();
+    }
+    if (tipoSel) {
+        tipoSel.addEventListener('change', () => {
+            console.log('[PRESUPUESTOS-CREATE] Tipo comprobante →', tipoSel.value);
+            applyIvaModeToAllRows();
+        });
+    }
+
+    const agenteInput = document.getElementById('agente');
+    if (agenteInput && !agenteInput.value.trim()) {
+        agenteInput.value = 'Martin';
+    }
+
+    const puntoInput = document.getElementById('punto_entrega');
+    if (puntoInput && !puntoInput.value.trim()) {
+        puntoInput.value = 'Sin dirección';
+    }
+
+    const estadoSel = document.getElementById('estado');
+    if (estadoSel && !estadoSel.value) {
+        estadoSel.value = 'Presupuesto/Orden';
+    }
+
+    const fechaEntregaInput = document.getElementById('fecha_entrega');
+    // usar misma fecha que 'fecha' si está vacío
+    if (fechaEntregaInput && !fechaEntregaInput.value) {
+        fechaEntregaInput.value = (fechaInput ? (fechaInput.value || today) : today);
+    }
+
+    // Mantener fecha_entrega = fecha mientras el usuario no la toque
+    if (fechaInput && fechaEntregaInput) {
+        fechaInput.addEventListener('change', () => {
+            if (!fechaEntregaInput.dataset.touched) {
+                fechaEntregaInput.value = fechaInput.value;
+            }
+        });
+        fechaEntregaInput.addEventListener('input', () => {
+            fechaEntregaInput.dataset.touched = '1';
+        });
+    }
+
     // Agregar primera fila de detalle (si existe la tabla)
     const tbody = document.getElementById('detalles-tbody');
     if (tbody) {
         agregarDetalle();
+        // observar altas de filas para setear base IVA y aplicar modo actual
+        new MutationObserver((muts) => {
+            muts.forEach(m => {
+                m.addedNodes.forEach(n => {
+                    if (n.nodeType === 1) {
+                        const ivaInput = n.querySelector('input[name*="[iva1]"]');
+                        if (ivaInput) asegurarBaseIVA(ivaInput);
+                        applyIvaModeToRow(n);
+                    }
+                });
+            });
+        }).observe(tbody, { childList: true });
     } else {
         console.error('❌ [PRESUPUESTOS-CREATE] No se encontró #detalles-tbody. No se pueden agregar filas de detalle.');
     }
+
+    // Al editar IVA a mano, actualizar la base solo si es input del usuario
+    document.addEventListener('input', (e) => {
+        const name = e.target?.name || '';
+        if (/\[iva1\]/.test(name) && e.isTrusted) {
+            const ivaInput = e.target;
+            const val = Number(ivaInput.value) || 0;
+            ivaInput.dataset.ivaBase = String(esRemitoActivo() ? (val * 2) : val);
+        }
+    }, true);
 
     // Configurar formulario
     const form = document.getElementById('form-crear-presupuesto');
@@ -44,11 +180,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Configurar autocompletar para artículos
     setupArticuloAutocomplete();
-// precarga deshabilitada: la API de sugerencias exige ?q=; evitamos 400 innecesarios
-// precargarArticulosAll().catch(()=>{});
+    // precarga deshabilitada: la API de sugerencias exige ?q=; evitamos 400 innecesarios
+    // precargarArticulosAll().catch(()=>{});
+
+    // Aplicar IVA según tipo de comprobante al iniciar
+    applyIvaModeToAllRows();
 
     console.log('✅ [PRESUPUESTOS-CREATE] Página inicializada correctamente');
 });
+
 
 /**
  * Agregar nueva fila de detalle
@@ -67,37 +207,49 @@ function agregarDetalle() {
     row.id = `detalle-${detalleCounter}`;
 
     row.innerHTML = `
-        <td>
-            <input type="text" name="detalles[${detalleCounter}][articulo]"
-                   placeholder="Código o descripción del artículo" required>
-        </td>
-        <td>
-            <input type="number" name="detalles[${detalleCounter}][cantidad]"
-                   min="0.01" step="0.01" placeholder="1" required
-                   onchange="calcularPrecio(${detalleCounter})">
-        </td>
-        <td>
-            <input type="number" name="detalles[${detalleCounter}][valor1]"
-                   min="0" step="0.01" placeholder="0.00" required
-                   onchange="calcularPrecio(${detalleCounter})">
-        </td>
-        <td>
-            <input type="number" name="detalles[${detalleCounter}][iva1]"
-                   min="0" max="100" step="0.01" placeholder="21.00"
-                   onchange="calcularPrecio(${detalleCounter})">
-        </td>
-        <td>
-            <input type="number" name="detalles[${detalleCounter}][precio1]"
-                   step="0.01" placeholder="0.00" readonly class="precio-calculado">
-        </td>
-        <td>
-            <button type="button" class="btn-remove-detalle"
-                    onclick="removerDetalle(${detalleCounter})"
-                    ${tbody.children.length === 0 ? 'disabled' : ''}>
-                🗑️
-            </button>
-        </td>
-    `;
+                <td>
+                    <input type="text" name="detalles[${detalleCounter}][articulo]"
+                        placeholder="Código o descripción del artículo" required>
+                </td>
+                <td>
+                    <input type="number" name="detalles[${detalleCounter}][cantidad]"
+                        min="0.01" step="0.01" placeholder="1" required
+                        onchange="calcularPrecio(${detalleCounter})">
+                </td>
+                <td>
+                    <input type="number" name="detalles[${detalleCounter}][valor1]"
+                        min="0" step="0.01" placeholder="0.00" required
+                        onchange="calcularPrecio(${detalleCounter})">
+                </td>
+                <td>
+                    <input type="number" name="detalles[${detalleCounter}][iva1]"
+                        min="0" max="100" step="0.01" placeholder="21.00"
+                        onchange="calcularPrecio(${detalleCounter})">
+                </td>
+                <td>
+                    <!-- Hidden numérico que se envía al backend -->
+                    <input type="hidden" name="detalles[${detalleCounter}][precio1]" class="precio1-hidden">
+                    <!-- Display formateado para el usuario -->
+                    <input type="text" class="precio-calculado" data-precio-display="${detalleCounter}" value="$ 0,00" readonly>
+                </td>
+
+                <!-- NUEVA CELDA: Subtotal (solo visual) -->
+                <td>
+                    <input type="text"
+                        class="subtotal-display"
+                        data-subtotal-display="${detalleCounter}"
+                        value="$ 0,00"
+                        readonly>
+                </td>
+
+                <td>
+                    <button type="button" class="btn-remove-detalle"
+                            onclick="removerDetalle(${detalleCounter})"
+                            ${tbody.children.length === 0 ? 'disabled' : ''}>
+                    🗑️
+                    </button>
+                </td>
+                `;
 
     tbody.appendChild(row);
 
@@ -157,9 +309,133 @@ function calcularPrecio(detalleId) {
 
     // El precio1 es el precio unitario con IVA (no total)
     precio1Input.value = precioUnitario.toFixed(2);
+    updatePrecioDisplay(detalleId, precioUnitario);
+    // NEW: subtotal visible = precio unitario c/IVA * cantidad
+    const subtotal = precioUnitario * cantidad;
+    updateSubtotalDisplay(detalleId, subtotal);
 
     console.log(`💰 [PRESUPUESTOS-CREATE] Precio calculado para detalle ${detalleId}: ${precioUnitario.toFixed(2)}`);
 }
+
+// ===== Helpers numéricos + utilidades (NUEVO) =====
+
+// === Formateo moneda ARS ===
+const fmtARS = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+function formatARS(n) {
+  const x = Number(n);
+  return Number.isFinite(x) ? fmtARS.format(x) : '$ 0,00';
+}
+
+// Actualiza el input de display (el visible) para un detalle dado
+function updatePrecioDisplay(detalleId, precioUnitario) {
+  const display = document.querySelector(`input[data-precio-display="${detalleId}"]`);
+  if (display) {
+    display.value = formatARS(precioUnitario);
+  }
+}
+
+function updateSubtotalDisplay(detalleId, subtotal) {
+  const display = document.querySelector(`input[data-subtotal-display="${detalleId}"]`);
+  if (display) {
+    display.value = formatARS(subtotal);
+  }
+}
+
+function dispatchRecalc(el) {
+  try {
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (_) {}
+}
+
+function setNumeric(el, val, dec = 2, fallback = 0) {
+  const n = Number(val);
+  el.value = Number.isFinite(n) ? n.toFixed(dec) : Number(fallback).toFixed(dec);
+  dispatchRecalc(el);
+}
+
+function setCantidad(el, val) {
+  setNumeric(el, val, 2, 1);
+}
+
+function getDetalleIdFromInput(input) {
+  const m = (input.name || '').match(/\[(\d+)\]\[/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/* === 1.4 Totales en vivo (subtotal, descuento, total) === */
+function setTextInto(selectors, text) {
+  let wrote = false;
+  (selectors || []).forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        el.value = text;
+      } else {
+        el.textContent = text;
+      }
+      wrote = true;
+    });
+  });
+  return wrote;
+}
+
+function getDescuentoPorcentaje() {
+  const el = document.getElementById('descuento');
+  const raw = el ? parseFloat(el.value) : 0;
+  const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+  return [pct, el];
+}
+
+function recalcTotales() {
+  const tbody = document.getElementById('detalles-tbody');
+  if (!tbody) return;
+
+  let subtotalBruto = 0;
+  tbody.querySelectorAll('tr').forEach(row => {
+    const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
+    const pvu  = parseFloat(row.querySelector('input[name*="[precio1]"]')?.value) || 0; // precio unit. con IVA
+    subtotalBruto += cant * pvu;
+  });
+
+  const [pct] = getDescuentoPorcentaje();
+  const montoDesc = subtotalBruto * (pct / 100);
+  const totalFinal = subtotalBruto - montoDesc;
+
+  // Actualiza displays (tolerante: IDs o data-attrs)
+  setTextInto(['#total-bruto', '[data-total="bruto"]'], formatARS(subtotalBruto));
+  setTextInto(['#total-descuento', '[data-total="descuento"]'], formatARS(montoDesc));
+  setTextInto(['#total-final', '[data-total="final"]'], formatARS(totalFinal));
+}
+
+// Listener de inputs de detalle + descuento
+document.addEventListener('input', (e) => {
+  const name = e.target?.name || '';
+  if (/\[(cantidad|valor1|iva1)\]/.test(name)) {
+    const id = getDetalleIdFromInput(e.target);
+    if (id != null) calcularPrecio(id);
+    recalcTotales();
+    return;
+  }
+  if (e.target?.id === 'descuento') {
+    recalcTotales();
+  }
+});
+
+// Observa altas/bajas de filas para mantener totales
+(() => {
+  const tbody = document.getElementById('detalles-tbody');
+  if (!tbody) return;
+  new MutationObserver(() => recalcTotales()).observe(tbody, { childList: true });
+})();
+
+// Recalc inicial
+document.addEventListener('DOMContentLoaded', recalcTotales);
+
 
 /**
  * Generar UUID v4 para Idempotency-Key
@@ -172,9 +448,6 @@ function generateUUID() {
     });
 }
 
-/**
- * Manejar envío del formulario
- */
 async function handleSubmit(event) {
     event.preventDefault();
 
@@ -215,18 +488,37 @@ async function handleSubmit(event) {
             fechaForm = new Date().toISOString().split('T')[0];
         }
 
-        const data = {
-            id_cliente: idCliente,
-            fecha: fechaForm,
-            fecha_entrega: formData.get('fecha_entrega') || null,
-            agente: (formData.get('agente') || '').toString(),
-            tipo_comprobante: (formData.get('tipo_comprobante') || 'PRESUPUESTO').toString(),
-            nota: (formData.get('nota') || '').toString(),
-            punto_entrega: (formData.get('punto_entrega') || '').toString(),
-            descuento: parseFloat(formData.get('descuento')) || 0,
-            detalles: []
-        };
+        // ---- valores pre-leídos con defaults seguros ----
+        const estadoValorRaw = (formData.get('estado') || 'Presupuesto/Orden').toString();
+        let tipoComprobanteValor = (formData.get('tipo_comprobante') || 'Factura').toString();
+        if (/^PRESUPUESTO$/i.test(tipoComprobanteValor)) tipoComprobanteValor = 'Factura'; // saneo explícito
+        const agenteValor = ((formData.get('agente') || '').toString().trim()) || 'Martin';
+        const puntoEntregaValor = ((formData.get('punto_entrega') || '').toString().trim()) || 'Sin dirección';
 
+        let fechaEntregaValor = (formData.get('fecha_entrega') || '').toString().trim();
+        if (!fechaEntregaValor) fechaEntregaValor = fechaForm; // default = misma fecha
+
+        // descuento ingresado como % (0..100) -> guardar proporción (0..1)
+        let descuentoPct = parseFloat(formData.get('descuento'));
+        descuentoPct = Number.isFinite(descuentoPct) ? Math.min(Math.max(descuentoPct, 0), 100) : 0;
+        const descuentoValor = parseFloat((descuentoPct / 100).toFixed(2)); // ej 5 -> 0.05
+        const informeGeneradoValor = (document.getElementById('informe_generado')?.value || 'Pendiente').toString();
+
+
+        // ---- payload final ----
+        const data = {
+        id_cliente: idCliente,
+        fecha: fechaForm,
+        fecha_entrega: fechaEntregaValor,
+        agente: agenteValor,
+        tipo_comprobante: tipoComprobanteValor,
+        estado: estadoValorRaw,
+        informe_generado: informeGeneradoValor,
+        nota: (formData.get('nota') || '').toString(),
+        punto_entrega: puntoEntregaValor,
+        descuento: descuentoValor, // proporción 0..1
+        detalles: []
+        };
         // Recopilar detalles
         const tbody = document.getElementById('detalles-tbody');
         if (!tbody) throw new Error('No se encontró la tabla de detalles');
@@ -240,7 +532,7 @@ async function handleSubmit(event) {
                 const name = input.name || '';
 
                 if (name.includes('[articulo]')) {
-                    // ✅ CAMBIO ÚNICO: priorizar el código real (dataset.codigoBarras) si existe
+                    // priorizar el código real (dataset.codigoBarras) si existe
                     const real = (input.dataset && input.dataset.codigoBarras)
                         ? input.dataset.codigoBarras
                         : (input.value || '');
@@ -260,15 +552,6 @@ async function handleSubmit(event) {
                 }
             });
 
-            // Agregar campos adicionales con valores por defecto
-            detalle.diferencia = 0;
-            detalle.camp1 = 0;
-            detalle.camp2 = 0;
-            detalle.camp3 = 0;
-            detalle.camp4 = 0;
-            detalle.camp5 = 0;
-            detalle.camp6 = 0;
-
             if (detalle.articulo && detalle.cantidad > 0) {
                 data.detalles.push(detalle);
             }
@@ -279,7 +562,8 @@ async function handleSubmit(event) {
             throw new Error('Debe agregar al menos un artículo válido');
         }
 
-        console.log('📋 [PRESUPUESTOS-CREATE] Datos a enviar:', data);
+        // LogData para ver defaults efectivos (incluye estado)
+        console.log('🧾 [PRESUPUESTOS-CREATE] LogData (payload):', data);
 
         // Generar Idempotency-Key
         const idempotencyKey = generateUUID();
@@ -394,6 +678,7 @@ async function handleSubmit(event) {
         }
     }
 }
+
 /**
  * Mostrar mensaje al usuario
  */
@@ -1040,9 +1325,6 @@ function mostrarSugerenciasArticulo(input, articulos) {
   posicionarSugerenciasArticulo(input, container);
 }
 
-/**
- * Mostrar error para artículos
- */
 function mostrarErrorArticulo(input, mensaje) {
     const container = getOrCreateSugerenciasContainer();
     container.innerHTML = `<div class="articulo-sin-resultados">${mensaje}</div>`;
@@ -1154,24 +1436,85 @@ function seleccionarArticuloPorClick(element, event) {
  * Seleccionar artículo
  */
 function seleccionarArticulo(input, element) {
-  const codigoBarras = (element.dataset.codigoBarras || '').toString();
-  const articuloNumero = (element.dataset.articuloNumero || '').toString();
-  const description = (element.dataset.description || '').toString();
-  const stock = parseFloat(element.dataset.stock || 0);
+  const codigoBarras   = (element.dataset.codigoBarras   || '').toString();
+  const articuloNumero = (element.dataset.articuloNumero || '').toString(); // lo guardo, pero no lo uso en la query
+  const description    = (element.dataset.description    || '').toString();
+  const stock          = parseFloat(element.dataset.stock || 0);
 
-  // Mostrar DESCRIPCIÓN en el input (valor visible)
+  // mostrar al usuario + guardar códigos reales para el submit
   input.value = description;
-  // Guardar el valor real (código de barras) para el submit
   input.dataset.codigoBarras = codigoBarras;
+  input.dataset.articuloNumero = articuloNumero;
 
   console.log(`[ARTICULOS] Seleccionado: ${description} [${articuloNumero}] (Stock: ${stock})`);
-
-  // Ocultar sugerencias
   ocultarSugerenciasArticulo();
 
-  // Enfocar cantidad
-  const row = input.closest('tr');
+  // ubicar fila/inputs
+  const row           = input.closest('tr');
   const cantidadInput = row?.querySelector('input[name*="[cantidad]"]');
-  if (cantidadInput) setTimeout(() => cantidadInput.focus(), 100);
+  const valor1Input   = row?.querySelector('input[name*="[valor1]"]');
+  const iva1Input     = row?.querySelector('input[name*="[iva1]"]');
+  const detalleId     = getDetalleIdFromInput(cantidadInput || input);
+
+  // defaults
+  if (cantidadInput && (!cantidadInput.value || parseFloat(cantidadInput.value) <= 0)) setCantidad(cantidadInput, 1);
+  if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value))))   setNumeric(iva1Input, 21, 2, 21);
+  if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) setNumeric(valor1Input, 0, 2, 0);
+
+  if (detalleId != null) calcularPrecio(detalleId);
+
+  // --- pedir precios ---
+  const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+
+  const fetchPrecios = async (params) => {
+    const url = `/api/presupuestos/precios?${params.toString()}`;
+    console.log('[ARTICULOS] GET precios ->', url);
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
+
+  (async () => {
+    let valor, iva;
+
+    // 1) por código de barras
+    try {
+      const p = new URLSearchParams();
+      p.set('cliente_id', String(clienteId));
+      if (codigoBarras) p.set('codigo_barras', codigoBarras);
+      let body = await fetchPrecios(p);
+      valor = Number(body?.data?.valor1);
+      iva   = Number(body?.data?.iva);
+    } catch (e1) {
+      console.warn('⚠️ [ARTICULOS] No respondió por código de barras. Probando por descripción…', e1);
+    }
+
+    // 2) fallback por descripción (si aún no tengo datos válidos)
+    if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
+      try {
+        const p2 = new URLSearchParams();
+        p2.set('cliente_id', String(clienteId));
+        if (description) p2.set('descripcion', description);
+        const body2 = await fetchPrecios(p2);
+        valor = Number(body2?.data?.valor1);
+        iva   = Number(body2?.data?.iva);
+      } catch (e2) {
+        console.warn('⚠️ [ARTICULOS] Tampoco por descripción:', e2);
+      }
+    }
+
+    // setear si hay datos
+    if (Number.isFinite(valor) && valor1Input) setNumeric(valor1Input, valor, 2, 0);
+    if (Number.isFinite(iva) && iva1Input) {
+        // guardar la base real del IVA que vino del backend
+        iva1Input.dataset.ivaBase = String(iva);
+        // mostrar mitad si el tipo es Remito-Efectivo
+        const tipoSel = document.getElementById('tipo_comprobante');
+        const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+        setNumeric(iva1Input, visibleIva, 2, 21);
+        }
+
+    if (detalleId != null) calcularPrecio(detalleId);
+    setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
+  })();
 }
-console.log('✅ [PRESUPUESTOS-CREATE] Módulo de creación cargado correctamente');

@@ -224,12 +224,12 @@ const validarCrearPresupuesto = (req, res, next) => {
 
 /**
  * Validar datos para actualizar presupuesto (PATCH/PUT)
- * Campos permitidos: agente, nota, punto_entrega, descuento, fecha_entrega
+ * Campos permitidos: agente, nota, punto_entrega, descuento, fecha_entrega, detalles
  */
 const validarActualizarPresupuesto = (req, res, next) => {
   console.log('🔍 [PRESUPUESTOS] Validando datos para actualizar presupuesto...');
   try {
-    const allow = ['agente', 'nota', 'punto_entrega', 'descuento', 'fecha_entrega'];
+    const allow = ['agente', 'nota', 'punto_entrega', 'descuento', 'fecha_entrega', 'detalles'];
     const body = req.body || {};
     const keys = Object.keys(body);
     const errores = [];
@@ -270,8 +270,46 @@ const validarActualizarPresupuesto = (req, res, next) => {
       }
     }
 
+    // Validar detalles (opcional)
+    if (body.detalles !== undefined) {
+      if (!Array.isArray(body.detalles)) {
+        errores.push("El campo 'detalles' debe ser un array.");
+      } else {
+        body.detalles.forEach((item, idx) => {
+          const prefix = `Detalle #${idx + 1}:`;
+          if (!item || typeof item !== 'object') {
+            errores.push(`${prefix} Formato inválido.`);
+            return;
+          }
+          
+          // articulo: string no vacío (código de barras, trim)
+          if (item.articulo === undefined || item.articulo === null || String(item.articulo).trim() === '') {
+            errores.push(`${prefix} El campo 'articulo' es obligatorio.`);
+          }
+          
+          // cantidad: número finito ≥ 0
+          const cant = toNum(item.cantidad);
+          if (!Number.isFinite(cant) || cant < 0) {
+            errores.push(`${prefix} 'cantidad' debe ser un número ≥ 0.`);
+          }
+          
+          // valor1: número finito ≥ 0 (neto unitario)
+          const valor1 = toNum(item.valor1);
+          if (!Number.isFinite(valor1) || valor1 < 0) {
+            errores.push(`${prefix} 'valor1' debe ser un número ≥ 0.`);
+          }
+          
+          // iva1: número finito en % o decimal (0–100 o 0–1)
+          const iva1 = toNum(item.iva1);
+          if (!Number.isFinite(iva1) || iva1 < 0 || iva1 > 100) {
+            errores.push(`${prefix} 'iva1' debe ser un número entre 0 y 100.`);
+          }
+        });
+      }
+    }
+
     if (errores.length > 0) {
-      console.log('❌ [PRESUPUESTOS] Errores de validación (update):', errores);
+      console.warn('[VALIDATION-UPDATE] errores:', errores);
       return res.status(400).json({
         success: false,
         error: 'Datos de entrada inválidos para actualizar presupuesto',
