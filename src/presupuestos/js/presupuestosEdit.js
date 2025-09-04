@@ -429,17 +429,24 @@ function llenarInformacionPresupuesto() {
 function llenarCamposEditables() {
     console.log('[EDIT] Llenando campos editables...');
 
-    // Normalizar descuento a número
-    const descuentoNormalizado = parseFloat(presupuestoData.descuento) || 0;
+    // nota
+    document.getElementById('nota').value = presupuestoData.nota ?? '';
 
+    // punto de entrega
+    document.getElementById('punto_entrega').value = 
+        (presupuestoData.punto_entrega && presupuestoData.punto_entrega.trim()) ? presupuestoData.punto_entrega : 'Sin dirección';
+
+    // descuento: si viene 0.05 mostrar 5
+    const d = Number(presupuestoData.descuento);
+    document.getElementById('descuento').value = 
+        Number.isFinite(d) ? (d <= 1 ? d * 100 : d) : 0;
+
+    // Otros campos
     document.getElementById('id_cliente').value = presupuestoData.id_cliente || '';
     document.getElementById('fecha').value = presupuestoData.fecha ? presupuestoData.fecha.split('T')[0] : '';
     document.getElementById('tipo_comprobante').value = presupuestoData.tipo_comprobante || 'Factura';
     document.getElementById('estado').value = presupuestoData.estado || 'Presupuesto/Orden';
     document.getElementById('agente').value = presupuestoData.agente || '';
-    document.getElementById('punto_entrega').value = presupuestoData.punto_entrega || '';
-    document.getElementById('descuento').value = descuentoNormalizado;
-    document.getElementById('nota').value = presupuestoData.nota || '';
 
     // Fecha de entrega (convertir formato si es necesario)
     if (presupuestoData.fecha_entrega) {
@@ -675,7 +682,15 @@ async function handleSubmit(event) {
         data.estado = formData.get('estado');
         data.agente = formData.get('agente');
         data.punto_entrega = formData.get('punto_entrega');
-        data.descuento = parseFloat(formData.get('descuento')) || 0;
+        
+        // Normalizar descuento (aceptar 5 o 0.05) y mandarlo siempre como decimal
+        const descUI = Number(formData.get('descuento')) || 0;
+        const descuento = Number.isFinite(descUI)
+            ? (descUI > 1 ? descUI / 100 : descUI)
+            : 0;
+        data.descuento = +descuento.toFixed(4);
+        console.log(`[EDIT] Descuento normalizado ->`, { input: descUI, output: data.descuento });
+        
         data.fecha_entrega = formData.get('fecha_entrega') || null;
         data.nota = formData.get('nota');
 
@@ -716,24 +731,34 @@ async function handleSubmit(event) {
             }
         }
 
-        // Reemplazar descripción visible por código de barras antes de serializar
+        // Serializar detalles del DOM con el mismo formato que espera el POST
+        const detalles = [];
         rows.forEach(row => {
             const artInput = row.querySelector('input[name*="[articulo]"]');
+            const cantInput = row.querySelector('input[name*="[cantidad]"]');
+            const valorInput = row.querySelector('input[name*="[valor1]"]');
+            const ivaInput = row.querySelector('input[name*="[iva1]"]');
+
             if (artInput && artInput.dataset.codigoBarras) {
-                // Guardar descripción visible para restaurar después
-                artInput.dataset.descripcionVisible = artInput.value;
-                // Enviar código al backend
-                artInput.value = artInput.dataset.codigoBarras.trim();
+                detalles.push({
+                    articulo: artInput.dataset.codigoBarras.trim(),  // Código de barras
+                    cantidad: parseFloat(cantInput.value) || 0,      // Cantidad
+                    valor1: parseFloat(valorInput.value) || 0,       // Neto unitario
+                    iva1: parseFloat(ivaInput.value) || 0            // IVA (% o decimal, backend normaliza)
+                });
             }
         });
 
-        // Enviar actualización del presupuesto (sin detalles, solo campos editables)
+        console.log(`[PUT-FRONT] detalles serializados:`, detalles.length, detalles[0]);
+
+        // Enviar actualización del presupuesto (cabecera + detalles)
         const updateData = {
             agente: data.agente,
             punto_entrega: data.punto_entrega,
             descuento: data.descuento,
             fecha_entrega: data.fecha_entrega,
-            nota: data.nota
+            nota: data.nota,
+            detalles: detalles
         };
 
         // Enviar PUT para actualizar presupuesto

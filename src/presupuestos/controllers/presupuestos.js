@@ -1,6 +1,79 @@
 console.log('🔍 [PRESUPUESTOS] Cargando controlador de presupuestos...');
 
 /**
+ * Resuelve un presupuesto por ID o id_presupuesto_ext
+ * @param {Object} client - Cliente de PostgreSQL
+ * @param {string} idParam - ID del parámetro (numérico o string)
+ * @returns {Object|null} Registro del presupuesto o null si no existe
+ */
+async function resolvePresupuesto(client, idParam) {
+  // Si es todo dígitos, lo tratamos como id (integer); si no, como ext
+  const isNumeric = /^\d+$/.test(idParam);
+  const { rows } = await client.query(
+    `SELECT id, id_presupuesto_ext
+       FROM public.presupuestos
+      WHERE ${isNumeric ? 'id = $1' : 'id_presupuesto_ext = $1'}
+      LIMIT 1`,
+    [isNumeric ? Number(idParam) : idParam]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Función auxiliar para analizar datos de fechas
+ * Extrae tipos, formatos y fechas futuras de un array de filas
+ * @param {Array} rows - Filas con campo fecha_registro
+ * @returns {Object} Objeto con tiposDetectados, formatosDetectados, fechasFuturas, ejemplosFechasFuturas
+ */
+function analyzeDateData(rows) {
+  const tiposDetectados = new Set();
+  const formatosDetectados = new Set();
+  const fechasFuturas = [];
+  const ahora = new Date();
+  const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
+
+  rows.forEach(row => {
+    const fechaValue = row.fecha_registro;
+    if (!fechaValue) return;
+
+    const tipoDetectado = typeof fechaValue;
+    tiposDetectados.add(tipoDetectado);
+
+    // Detectar formato específico
+    if (fechaValue instanceof Date) {
+      formatosDetectados.add('Date object');
+    } else if (typeof fechaValue === 'string') {
+      if (fechaValue.includes('T') && fechaValue.includes('Z')) {
+        formatosDetectados.add('ISO UTC (YYYY-MM-DDTHH:mm:ss.sssZ)');
+      } else if (fechaValue.includes('T')) {
+        formatosDetectados.add('ISO con hora (YYYY-MM-DDTHH:mm:ss)');
+      } else if (fechaValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        formatosDetectados.add('YYYY-MM-DD (solo fecha)');
+      } else if (fechaValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+        formatosDetectados.add('DD/MM/YYYY');
+      } else {
+        formatosDetectados.add('Otro formato string');
+      }
+    } else if (typeof fechaValue === 'number') {
+      formatosDetectados.add('Timestamp numérico');
+    }
+
+    // Detectar fechas futuras (más de 1 año)
+    const fechaObj = new Date(fechaValue);
+    if (fechaObj > unAñoFuturo) {
+      fechasFuturas.push({ id: row.id, fecha: fechaValue, fechaObj });
+    }
+  });
+
+  return {
+    tiposDetectados: Array.from(tiposDetectados),
+    formatosDetectados: Array.from(formatosDetectados),
+    fechasFuturas: fechasFuturas.length,
+    ejemplosFechasFuturas: fechasFuturas.slice(0, 5)
+  };
+}
+
+/**
  * Controlador principal para la gestión de presupuestos
  * Maneja la lógica de negocio del módulo con CRUD completo
  */
@@ -221,51 +294,14 @@ const obtenerPresupuestos = async (req, res) => {
             const fechasValidas = muestraFechas.filter(row => row.fecha_registro);
             
             if (fechasValidas.length > 0) {
+                const { tiposDetectados, formatosDetectados, fechasFuturas, ejemplosFechasFuturas } = analyzeDateData(fechasValidas);
                 // Ordenar fechas para análisis
                 const fechasOrdenadas = fechasValidas
                     .map(row => ({ ...row, fechaObj: new Date(row.fecha_registro) }))
                     .sort((a, b) => a.fechaObj - b.fechaObj);
-                
+
                 const fechaMinima = fechasOrdenadas[0];
                 const fechaMaxima = fechasOrdenadas[fechasOrdenadas.length - 1];
-                
-                // Detectar tipos, formatos y fechas futuras
-                const tiposDetectados = new Set();
-                const formatosDetectados = new Set();
-                const fechasFuturas = [];
-                const ahora = new Date();
-                const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
-                
-                fechasValidas.forEach(row => {
-                    const fechaValue = row.fecha_registro;
-                    const tipoDetectado = typeof fechaValue;
-                    tiposDetectados.add(tipoDetectado);
-                    
-                    // Detectar formato específico
-                    if (fechaValue instanceof Date) {
-                        formatosDetectados.add('Date object');
-                    } else if (typeof fechaValue === 'string') {
-                        if (fechaValue.includes('T') && fechaValue.includes('Z')) {
-                            formatosDetectados.add('ISO UTC (YYYY-MM-DDTHH:mm:ss.sssZ)');
-                        } else if (fechaValue.includes('T')) {
-                            formatosDetectados.add('ISO con hora (YYYY-MM-DDTHH:mm:ss)');
-                        } else if (fechaValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                            formatosDetectados.add('YYYY-MM-DD (solo fecha)');
-                        } else if (fechaValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-                            formatosDetectados.add('DD/MM/YYYY');
-                        } else {
-                            formatosDetectados.add('Otro formato string');
-                        }
-                    } else if (typeof fechaValue === 'number') {
-                        formatosDetectados.add('Timestamp numérico');
-                    }
-                    
-                    // Detectar fechas futuras (más de 1 año)
-                    const fechaObj = new Date(fechaValue);
-                    if (fechaObj > unAñoFuturo) {
-                        fechasFuturas.push({ id: row.id, fecha: fechaValue, fechaObj });
-                    }
-                });
                 
                 // PASO 1: RESUMEN DE LECTURA DESDE BD
                 console.log(`[AUDITORÍA-FECHAS] 📊 RESUMEN PASO 1 - LECTURA BD (${requestId}):`);
@@ -1152,15 +1188,15 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 p.id_presupuesto_ext,
                 p.id_cliente,
                 p.fecha,
+                p.fecha_entrega,
                 p.agente,
-                p.tipo_comprobante as categoria,
-                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
-                0 as monto,
-                p.fecha as fecha_registro,
-                p.activo,
-                p.estado
+                p.tipo_comprobante,
+                p.estado,
+                COALESCE(p.nota, '') AS nota,
+                COALESCE(p.punto_entrega, 'Sin dirección') AS punto_entrega,
+                COALESCE(p.descuento, 0) AS descuento,
+                p.activo
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
             WHERE p.id = $1 AND p.activo = true
         `;
         
@@ -1176,7 +1212,12 @@ const obtenerPresupuestoPorId = async (req, res) => {
         }
         
         const presupuesto = result.rows[0];
-        console.log(`✅ [PRESUPUESTOS] Presupuesto encontrado: ${presupuesto.concepto}`);
+        console.log(`[GET/:id] resp`, { 
+            id: presupuesto.id, 
+            descuento: presupuesto.descuento, 
+            nota: presupuesto.nota, 
+            punto_entrega: presupuesto.punto_entrega 
+        });
         
         res.json({
             success: true,
@@ -1295,11 +1336,11 @@ const actualizarPresupuesto = async (req, res) => {
     try {
         const { id } = req.params;
         const { categoria, concepto, monto } = req.body;
-        
+
         console.log(`🔍 [PRESUPUESTOS] Actualizando presupuesto ID: ${id}`);
         console.log('📋 [PRESUPUESTOS] Nuevos datos:', { categoria, concepto, monto });
-        
-        if (!id || isNaN(parseInt(id))) {
+
+        if (!id || id.trim() === '') {
             console.log('❌ [PRESUPUESTOS] ID inválido:', id);
             return res.status(400).json({
                 success: false,
@@ -1307,18 +1348,11 @@ const actualizarPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
-        // Verificar que el presupuesto existe
-        const existsQuery = `
-            SELECT p.id, COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto 
-            FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
-            WHERE p.id = $1 AND p.activo = true
-        `;
-        
-        const existsResult = await req.db.query(existsQuery, [parseInt(id)]);
-        
-        if (existsResult.rows.length === 0) {
+
+        // Usar resolvePresupuesto para encontrar el presupuesto por id o id_presupuesto_ext
+        const presupuesto = await resolvePresupuesto(req.db, id);
+
+        if (!presupuesto) {
             console.log(`⚠️ [PRESUPUESTOS] Presupuesto no encontrado para actualizar: ID ${id}`);
             return res.status(404).json({
                 success: false,
@@ -1326,30 +1360,30 @@ const actualizarPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // Construir consulta de actualización dinámica
         const updates = [];
         const params = [];
         let paramCount = 0;
-        
+
         if (categoria !== undefined) {
             paramCount++;
-            updates.push(`categoria = $${paramCount}`);
+            updates.push(`tipo_comprobante = $${paramCount}`);
             params.push((categoria || 'Sin categoría').trim());
         }
-        
+
         if (concepto !== undefined && concepto.trim() !== '') {
             paramCount++;
             updates.push(`concepto = $${paramCount}`);
             params.push(concepto.trim());
         }
-        
+
         if (monto !== undefined && !isNaN(parseFloat(monto))) {
             paramCount++;
             updates.push(`monto = $${paramCount}`);
             params.push(parseFloat(monto));
         }
-        
+
         if (updates.length === 0) {
             console.log('⚠️ [PRESUPUESTOS] No hay campos válidos para actualizar');
             return res.status(400).json({
@@ -1358,37 +1392,37 @@ const actualizarPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // Agregar fecha de sincronización
         paramCount++;
         updates.push(`fecha_sincronizacion = NOW()`);
-        
-        // Agregar ID para WHERE
+
+        // Agregar ID numérico para WHERE
         paramCount++;
-        params.push(parseInt(id));
-        
+        params.push(presupuesto.id);
+
         const updateQuery = `
-            UPDATE public.presupuestos 
+            UPDATE public.presupuestos
             SET ${updates.join(', ')}
             WHERE id = $${paramCount} AND activo = true
             RETURNING *
         `;
-        
+
         console.log('📋 [PRESUPUESTOS] Query de actualización:', updateQuery);
         console.log('📋 [PRESUPUESTOS] Parámetros:', params);
-        
+
         const updateResult = await req.db.query(updateQuery, params);
         const presupuestoActualizado = updateResult.rows[0];
-        
+
         console.log(`✅ [PRESUPUESTOS] Presupuesto actualizado: ${presupuestoActualizado.concepto}`);
-        
+
         res.json({
             success: true,
             data: presupuestoActualizado,
             message: 'Presupuesto actualizado exitosamente',
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al actualizar presupuesto:', error);
         res.status(500).json({
