@@ -39,6 +39,16 @@ const _load = id => {
 };
 const _save = (id, snap) => { try { localStorage.setItem(_ST_KEY(id), JSON.stringify(snap)); } catch {} };
 
+// --- snapshot por ARTÍCULO (igual idea que etapas) ---
+const _ART_KEY = id => `timers_articulos_${id}`;
+const _loadArt = (id) => {
+  try { return JSON.parse(localStorage.getItem(_ART_KEY(id))) || {}; }
+  catch { return {}; }
+};
+const _saveArt = (id, snap) => {
+  try { localStorage.setItem(_ART_KEY(id), JSON.stringify(snap)); } catch {}
+};
+
 
 
 // Importa estado del backend → snapshot local por artículo
@@ -491,9 +501,19 @@ export function initTemporizadores() {
     if (!e.target.classList.contains('btn-temporizador-articulo')) return;
 
     const btn = e.target;
+    if (btn.disabled || btn.classList.contains('finished')) return; // ⛔ ya finalizado
+
     const numero  = btn.dataset.numero;
     const carroId = window.carroIdGlobal;
     if (!carroId || !numero) return;
+
+    // usa la misma lógica de “terminado” que en etapas, pero para artículos
+    const sArt = (_loadArt(carroId) || {})[numero];
+    if (sArt && !sArt.running && (sArt.elapsed || 0) > 0) {
+      // Ya estaba finalizado (rehidratado desde el back) → no permitir reinicio
+      _showElapsedOnButton(btn, sArt.elapsed);
+      return;
+    }
 
     const k = _key(carroId, numero);
     let t = temporizadores.get(k);
@@ -502,6 +522,9 @@ export function initTemporizadores() {
     if (!t || !t.running) {
       t = { running: true, start: Date.now(), interval: null };
       temporizadores.set(k, t);
+
+        // 🔸 snapshot: marcamos corriendo (misma idea que etapas)
+    _updateArtSnap(carroId, numero, { running: true, start: t.start, elapsed: 0 });
 
       const actualizar = () => {
         const ms = Date.now() - t.start;
@@ -528,10 +551,12 @@ export function initTemporizadores() {
       clearInterval(t.interval);
       const elapsed = Date.now() - t.start;
 
-      btn.textContent = `✅ ${formatearTiempo(elapsed)}`;
-      btn.classList.remove('running');
-      btn.classList.add('finished');
-      btn.disabled = true;
+      // 🔸 snapshot: guardamos final (como en etapas)
+    _updateArtSnap(carroId, numero, { running: false, start: null, elapsed });
+
+    _showElapsedOnButton(btn, elapsed);
+    btn.classList.remove('running');
+    btn.classList.add('finished');
 
       try {
         await _postFirstAvailable(
