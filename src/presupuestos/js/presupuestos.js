@@ -7,6 +7,18 @@
 
 console.log('🔍 [PRESUPUESTOS-JS] Inicializando módulo frontend completo...');
 
+// Autocarga inicial de la grilla al abrir la pantalla
+const AUTOLOAD_ON_START = true;
+function autoCargarAlAbrir() {
+  if (window.__presupuestosAutocargados) return;
+  const btn = document.getElementById('btn-cargar-datos');
+  if (!btn) return;
+  window.__presupuestosAutocargados = true;
+  console.log('[PRESUPUESTOS-JS] Autocarga inicial → disparando click en btn-cargar-datos');
+  // Pequeño defer para asegurar que los listeners ya están bindeados
+  setTimeout(() => btn.dispatchEvent(new Event('click')), 0);
+}
+
 // Configuración global
 const CONFIG = {
     API_BASE_URL: '/api/presupuestos',
@@ -172,6 +184,7 @@ function setupEventListeners() {
     }
     
     console.log('✅ [PRESUPUESTOS-JS] Event listeners configurados');
+    if (AUTOLOAD_ON_START) autoCargarAlAbrir();
 }
 
 /**
@@ -319,6 +332,9 @@ function updateStatsDisplay(stats) {
  */
 async function handleCargarDatos(page = 1, maintainFilters = false) {
     console.log(`🔍 [PRESUPUESTOS-JS] Iniciando carga de datos - Página: ${page}...`);
+    
+    // Si vino por autocarga, permitimos que el usuario vuelva a recargar manualmente
+    window.__presupuestosAutocargados = false;
     
     if (appState.loading) {
         console.log('⚠️ [PRESUPUESTOS-JS] Ya hay una operación en curso');
