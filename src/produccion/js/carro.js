@@ -7,7 +7,10 @@ import {
   initTemporizadores,
   syncTimerButtonsVisibility,
   importarEstadoLocal,
- 
+  rehidratarDesdeEstado,
+  clearTimersForCarro,
+  clearTimersForNoCar,
+
 } from './temporizador_carro.js';
 
 
@@ -859,6 +862,10 @@ export async function deseleccionarCarro() {
     
     localStorage.removeItem('carroActivo');
     window.carroIdGlobal = null;
+
+    // 🔹 LIMPIEZA VISUAL INMEDIATA (modo medición puede seguir activo)
+    clearTimersForNoCar();
+    syncTimerButtonsVisibility();
     
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
@@ -924,10 +931,15 @@ export async function eliminarCarro(carroId) {
 
         // Si el carro eliminado era el activo, limpiarlo
         const carroActivo = localStorage.getItem('carroActivo');
-        if (carroActivo === carroId.toString()) {
+        if (carroActivo === String(carroId)) {
             localStorage.removeItem('carroActivo');
+            window.carroIdGlobal = null;
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
-        }
+
+            // 🔹 LIMPIEZA VISUAL INMEDIATA
+            clearTimersForNoCar();
+            syncTimerButtonsVisibility();
+            }
 
         // Actualizar la lista de carros
         await actualizarEstadoCarro();

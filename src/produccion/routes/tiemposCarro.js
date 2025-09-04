@@ -14,4 +14,7 @@ router.post('/carro/:carroId/etapa/:etapa/finalizar', finalizarEtapaCarro);
 
 router.get('/carro/:carroId/etapas/estado', tiemposCtrl.estadoEtapasCarro);
 
+router.get('/carro/:carroId/articulos/estado', tiemposCtrl.estadoTemporizadoresArticulos);
+
+
 module.exports = router;

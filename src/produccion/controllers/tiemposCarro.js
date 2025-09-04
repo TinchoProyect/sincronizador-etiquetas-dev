@@ -271,3 +271,27 @@ exports.estadoEtapasCarro = async (req, res) => {
     return res.status(500).json({ error: 'No se pudo obtener el estado de etapas' });
   }
 };
+
+
+// GET /api/tiempos/carro/:carroId/articulos/estado?usuarioId=...
+exports.estadoTemporizadoresArticulos = async (req, res) => {
+  const { carroId } = req.params;
+  const usuarioId = req.query.usuarioId || (req.body && req.body.usuarioId);
+
+  try {
+    const esValido = await validarPropiedadCarro(carroId, usuarioId);
+    if (!esValido) return res.status(403).json({ error: 'El carro no pertenece al usuario especificado' });
+
+    const q = `
+      SELECT articulo_numero, tiempo_inicio, tiempo_fin, duracion_ms
+      FROM carros_articulos
+      WHERE carro_id = $1
+      ORDER BY articulo_numero
+    `;
+    const r = await pool.query(q, [carroId]);
+    return res.json(r.rows);
+  } catch (err) {
+    console.error('Error estadoTemporizadoresArticulos:', err);
+    return res.status(500).json({ error: 'No se pudo obtener el estado de artículos' });
+  }
+};
