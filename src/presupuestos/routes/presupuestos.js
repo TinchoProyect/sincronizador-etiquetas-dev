@@ -45,7 +45,9 @@ const {
     ejecutarCorreccion,
     obtenerEstadisticasFechas,
     obtenerHistorialCorrecciones,
-    validarConfiguracion
+    validarConfiguracion,
+    ejecutarPushAltas,
+    ejecutarSincronizacionBidireccional
 } = require('../controllers/sync_fechas_fix');
 
 // Importar controlador de Configuración de Autosync
@@ -873,6 +875,46 @@ router.post('/sync/validar-configuracion', validatePermissions('presupuestos.syn
     }
 });
 
+/**
+ * @route POST /api/presupuestos/sync/push-altas
+ * @desc Ejecutar push ligero de ALTAS locales a Google Sheets
+ * @access Privado
+ */
+router.post('/sync/push-altas', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/push-altas - Ejecutando push de ALTAS locales');
+    
+    try {
+        await ejecutarPushAltas(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /sync/push-altas:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al ejecutar push de ALTAS',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/bidireccional
+ * @desc Ejecutar sincronización bidireccional (push + pull) con regla "gana el último cambio"
+ * @access Privado
+ */
+router.post('/sync/bidireccional', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/bidireccional - Ejecutando sincronización bidireccional');
+    
+    try {
+        await ejecutarSincronizacionBidireccional(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /sync/bidireccional:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al ejecutar sincronización bidireccional',
+            message: error.message
+        });
+    }
+});
+
 // ===== RUTAS DE CONFIGURACIÓN DE AUTOSYNC =====
 
 /**
@@ -982,6 +1024,8 @@ console.log('   - POST /api/presupuestos/sync/corregir-fechas');
 console.log('   - GET /api/presupuestos/sync/estadisticas-fechas');
 console.log('   - GET /api/presupuestos/sync/historial-correcciones');
 console.log('   - POST /api/presupuestos/sync/validar-configuracion');
+console.log('   - POST /api/presupuestos/sync/push-altas');
+console.log('   - POST /api/presupuestos/sync/bidireccional');
 console.log('⚙️ [PRESUPUESTOS] Rutas de Configuración de Autosync:');
 console.log('   - GET /api/presupuestos/sync/config');
 console.log('   - PATCH /api/presupuestos/sync/config');

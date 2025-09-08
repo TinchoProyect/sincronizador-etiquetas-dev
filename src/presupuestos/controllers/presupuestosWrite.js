@@ -230,10 +230,10 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
             }
 
             const insertDetalleQuery = `
-                INSERT INTO presupuestos_detalles 
-                (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, 
-                 diferencia, camp1, camp2, camp3, camp4, camp5, camp6)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                INSERT INTO presupuestos_detalles
+                (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
+                 diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
             `;
             for (const detalle of detallesNormalizados) {
                 await client.query(insertDetalleQuery, [
@@ -244,14 +244,14 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
                     detalle.valor1,
                     detalle.precio1,
                     detalle.iva1,
-                    // mapeo correcto de columnas H–N
+                    // Corrección de mapeo según especificación del usuario
                     detalle.diferencia, // diferencia (H)
-                    detalle.precio1,    // camp1 = F (bruto unitario)
-                    detalle.camp3,      // camp2 = K (alícuota decimal)
-                    detalle.camp4,      // camp3 = L (neto total)
-                    detalle.camp5,      // camp4 = M (bruto total)
-                    detalle.camp6,      // camp5 = N (IVA total)
-                    0                   // camp6 = 0 (descartado)
+                    detalle.camp1,      // camp1 ↔ Camp2
+                    detalle.camp2,      // camp2 ↔ Camp3
+                    detalle.camp3,      // camp3 ↔ Camp4
+                    detalle.camp4,      // camp4 ↔ Camp5 (columna M)
+                    detalle.camp5,      // camp5 ↔ Camp6 (columna N)
+                    detalle.camp6       // camp6 ↔ Condicion (columna O)
                 ]);
             }
 
@@ -558,10 +558,10 @@ const editarPresupuesto = async (req, res) => {
 
                 // 3. Insertar nuevos detalles (misma query que POST)
                 const insertDetalleQuery = `
-                    INSERT INTO presupuestos_detalles 
-                    (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, 
-                     diferencia, camp1, camp2, camp3, camp4, camp5, camp6)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                    INSERT INTO presupuestos_detalles
+                    (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
+                     diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                 `;
                 for (const detalle of detallesNormalizados) {
                     await client.query(insertDetalleQuery, [
@@ -572,14 +572,14 @@ const editarPresupuesto = async (req, res) => {
                         detalle.valor1,
                         detalle.precio1,
                         detalle.iva1,
-                        // mapeo correcto de columnas H–N (igual que POST)
+                        // Corrección de mapeo según especificación del usuario
                         detalle.diferencia, // diferencia (H)
-                        detalle.precio1,    // camp1 = F (bruto unitario)
-                        detalle.camp3,      // camp2 = K (alícuota decimal)
-                        detalle.camp4,      // camp3 = L (neto total)
-                        detalle.camp5,      // camp4 = M (bruto total)
-                        detalle.camp6,      // camp5 = N (IVA total)
-                        0                   // camp6 = 0 (descartado)
+                        detalle.camp1,      // camp1 ↔ Camp2
+                        detalle.camp2,      // camp2 ↔ Camp3
+                        detalle.camp3,      // camp3 ↔ Camp4
+                        detalle.camp4,      // camp4 ↔ Camp5 (columna M)
+                        detalle.camp5,      // camp5 ↔ Camp6 (columna N)
+                        detalle.camp6       // camp6 ↔ Condicion (columna O)
                     ]);
                 }
 
