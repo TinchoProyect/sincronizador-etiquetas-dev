@@ -49,6 +49,8 @@ const URLS = {
   ESTADISTICAS: API_BASE + '/estadisticas',
   ESTADOS: API_BASE + '/estados',
   CORREGIR_FECHAS: API_BASE + '/sync/corregir-fechas',
+  PUSH_ALTAS: API_BASE + '/sync/push-altas',
+  SYNC_BIDIRECCIONAL: API_BASE + '/sync/bidireccional',
   LIST: (qs) => API_BASE + '/?' + (qs || ''),
   DETALLES: (id) => API_BASE + '/' + id + '/detalles',
   PRESUPUESTO: (id) => API_BASE + '/' + id,
@@ -755,70 +757,60 @@ async function handleSincronizar() {
 }
 
 
-/**
- * Ejecutar sincronización con corrección de fechas
- */
 async function executeSyncronization() {
-    console.log('🔍 [PRESUPUESTOS-JS] Ejecutando corrección de fechas (nuevo flujo)...');
+    console.log('[SYNC-BIDI] Ejecutando sincronización bidireccional...');
     
     try {
-        setSyncLoading(true, 'Corrigiendo fechas y sincronizando...');
-        
-        // USAR EL NUEVO ENDPOINT DE CORRECCIÓN DE FECHAS
-        const response = await fetch(URLS.CORREGIR_FECHAS, {
+        setSyncLoading(true, 'Sincronizando con Google Sheets (push + pull)...');
+        console.log(`[SYNC-BIDI][FRONT] endpoint=${URLS.SYNC_BIDIRECCIONAL}`);
+
+        // USAR EL ENDPOINT BIDIRECCIONAL
+        const response = await fetch(URLS.SYNC_BIDIRECCIONAL, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
         });
-        
+
         const data = await response.json();
-        
-        if (data.success) {
-            const fechasCorregidas = data.resumen?.fechasCorregidas || data.fechasCorregidas || 0;
-            const fechasFuturas = data.resumen?.fechasFuturas || data.fechasFuturas || 0;
-            const duracion = data.duracionSegundos || 'N/A';
-            
-            console.log('✅ [PRESUPUESTOS-JS] Corrección de fechas completada:', data);
-            console.log(`📊 [PRESUPUESTOS-JS] Fechas corregidas: ${fechasCorregidas}, Fechas futuras restantes: ${fechasFuturas}`);
-            
-            // Mostrar mensaje detallado
-            showMessage(`✅ Corrección completada: ${fechasCorregidas} fechas corregidas, ${fechasFuturas} fechas futuras (${duracion}s)`, 'success');
-            
-            // Recargar datos y estadísticas
+        console.log('[SYNC-BIDI][FRONT][RESP]', data);
+
+        if (response.ok && data.success) {
+            const pushEnviados    = data.push?.enviados ?? 0;
+            const pullRecibidos   = data.pull?.recibidos ?? 0;
+            const pullActualizados= data.pull?.actualizados ?? 0;
+            const pullOmitidos    = data.pull?.omitidos ?? 0;
+
+            console.log('[SYNC-BIDI] ✅ Sincronización bidireccional completada:', data);
+            console.log(`[SYNC-BIDI] 📤 Push: ${pushEnviados} enviados`);
+            console.log(`[SYNC-BIDI] 📥 Pull: ${pullRecibidos} recibidos, ${pullActualizados} actualizados, ${pullOmitidos} omitidos`);
+
+            const totalCambios = pushEnviados + pullRecibidos + pullActualizados;
+            if (totalCambios > 0) {
+                showMessage(`✅ Sincronización completada: ${pushEnviados} enviados, ${pullRecibidos} nuevos, ${pullActualizados} actualizados`, 'success');
+            } else {
+                showMessage('✅ Sincronización completada: No hay cambios para sincronizar', 'success');
+            }
+
+            // Recargar métricas y datos
             await loadEstadisticas();
-            await loadEstados(); // Recargar estados después de sincronización - Filtro por Estado – 2024-12-19
+            await loadEstados();
             await handleCargarDatos(1);
-            
-            // Log de confirmación del flujo nuevo
-            console.log('🔄 [PRESUPUESTOS-JS] FLUJO NUEVO EJECUTADO - Corrección de fechas aplicada');
-            
+
         } else {
-            // Manejar errores específicos del backend
-            console.error('❌ [PRESUPUESTOS-JS] Error del servidor:', data);
-            
+            console.error('[SYNC-BIDI] ❌ Error del servidor:', data);
             if (data.code === 'CONFIG_MISSING') {
                 showMessage(`⚠️ Configuración faltante: ${data.message}`, 'warning');
-                // Aquí se podría mostrar un modal para configurar
-            } else if (data.code === 'INVALID_SHEET_URL') {
-                showMessage(`❌ URL inválida: ${data.message}`, 'error');
-            } else if (data.code === 'CORRECTION_FAILED') {
-                showMessage(`❌ Corrección falló: ${data.message}`, 'error');
-                if (data.errores && data.errores.length > 0) {
-                    console.error('Errores detallados:', data.errores);
-                }
+            } else if (data.code === 'SYNC_BIDI_ERROR') {
+                showMessage(`❌ Error de sincronización: ${data.message}`, 'error');
             } else {
                 showMessage(`❌ Error: ${data.message || 'Error desconocido'}`, 'error');
             }
         }
     } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error en corrección de fechas:', error);
-        
-        // Manejar errores de red/conexión
+        console.error('[SYNC-BIDI] ❌ Error en sincronización bidireccional:', error);
         if (error.name === 'TypeError' && error.message.includes('fetch')) {
             showMessage('❌ Error de conexión con el servidor', 'error');
         } else {
-            showMessage(`❌ Error durante la corrección de fechas: ${error.message}`, 'error');
+            showMessage(`❌ Error durante la sincronización: ${error.message}`, 'error');
         }
     } finally {
         setSyncLoading(false);

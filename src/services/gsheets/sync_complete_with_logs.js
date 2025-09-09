@@ -279,12 +279,13 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
             const iva1 = row[detallesData.headers[6]] || 0;
             const diferencia = row[detallesData.headers[7]] || 0;
             const condicion = row[detallesData.headers[8]] || null;
-            const camp1 = row[detallesData.headers[9]] || 0;
-            const camp2 = row[detallesData.headers[10]] || 0;
-            const camp3 = row[detallesData.headers[11]] || 0;
-            const camp4 = row[detallesData.headers[12]] || 0;
-            const camp5 = row[detallesData.headers[13]] || 0;
-            const camp6 = row[detallesData.headers[14]] || 0;
+            // Corrección de mapeo según especificación del usuario
+            const camp1 = parseFloat(row[detallesData.headers[9]]) || 0;   // camp1 ↔ Camp2 (columna J)
+            const camp2 = parseFloat(row[detallesData.headers[10]]) || 0;  // camp2 ↔ Camp3 (columna K)
+            const camp3 = parseFloat(row[detallesData.headers[11]]) || 0;  // camp3 ↔ Camp4 (columna L)
+            const camp4 = parseFloat(row[detallesData.headers[12]]) || 0;  // camp4 ↔ Camp5 (columna M)
+            const camp5 = parseFloat(row[detallesData.headers[13]]) || 0;  // camp5 ↔ Camp6 (columna N)
+            const camp6 = parseFloat(row[detallesData.headers[14]]) || 0;  // camp6 ↔ Condicion (columna O)
             
             console.log(`[PRESUPUESTOS-BACK] Procesando detalle fila ${i + 2}:`, {
                 id_detalle_presupuesto,
@@ -467,12 +468,12 @@ async function upsertPresupuesto(db, presupuestoData, config) {
         // Insertar detalles
         for (const detalle of detalles) {
             const insertDetalleQuery = `
-                INSERT INTO presupuestos_detalles 
+                INSERT INTO presupuestos_detalles
                 (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1,
-                 iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                 iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
             `;
-            
+
             await db.query(insertDetalleQuery, [
                 presupuestoId,
                 detalle.id_presupuesto_ext,

@@ -333,6 +333,7 @@ const validarActualizarPresupuesto = (req, res, next) => {
 
 /**
  * Validar ID de presupuesto en params
+ * Acepta tanto IDs numéricos (enteros positivos) como IDs externos (strings)
  */
 const validarIdPresupuesto = (req, res, next) => {
   console.log('🔍 [PRESUPUESTOS] Validando ID de presupuesto...');
@@ -345,17 +346,44 @@ const validarIdPresupuesto = (req, res, next) => {
         timestamp: new Date().toISOString(),
       });
     }
-    const n = parseInt(id, 10);
-    if (!Number.isFinite(n) || n <= 0) {
+
+    // Convertir a string para validaciones
+    const idStr = String(id).trim();
+    
+    // Validar que no esté vacío
+    if (idStr === '') {
       return res.status(400).json({
         success: false,
-        error: 'ID de presupuesto debe ser un entero positivo',
+        error: 'ID de presupuesto no puede estar vacío',
         timestamp: new Date().toISOString(),
       });
     }
-    req.params.id = n;
-    console.log(`✅ [PRESUPUESTOS] ID válido: ${n}`);
-    return next();
+
+    // Si es numérico, validar como entero positivo
+    const n = parseInt(idStr, 10);
+    if (Number.isFinite(n) && n > 0 && idStr === String(n)) {
+      // Es un ID numérico válido
+      req.params.id = n;
+      console.log(`✅ [PRESUPUESTOS] ID numérico válido: ${n}`);
+      return next();
+    }
+
+    // Si no es numérico, validar como ID externo (string)
+    // Los IDs externos pueden contener letras, números y guiones
+    if (/^[a-zA-Z0-9\-_]+$/.test(idStr) && idStr.length >= 1 && idStr.length <= 50) {
+      // Es un ID externo válido
+      req.params.id = idStr;
+      console.log(`✅ [PRESUPUESTOS] ID externo válido: ${idStr}`);
+      return next();
+    }
+
+    // Si llegamos aquí, el ID no es válido
+    return res.status(400).json({
+      success: false,
+      error: 'ID de presupuesto debe ser un entero positivo o un ID externo válido (alfanumérico, guiones y guiones bajos, 1-50 caracteres)',
+      timestamp: new Date().toISOString(),
+    });
+
   } catch (e) {
     console.error('❌ [PRESUPUESTOS] Excepción validando ID:', e);
     return res.status(400).json({

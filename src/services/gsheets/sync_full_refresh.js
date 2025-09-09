@@ -641,6 +641,22 @@ async function executeFullRefresh(db, dataLoaded, config) {
                     RETURNING id
                 `;
                 
+
+                // ===== DEBUG PRE-INSERT (PRESUPUESTO) — solo primeros 3 y últimos 3 =====
+                        try {
+                        const N = presupuestosData.rows.length;
+                        if (i < 3 || i >= N - 3) {
+                            console.log('[DEBUG][PRES-INSERT] id=%o id_cliente=%o fecha=%o fecha_entrega=%o agente=%o tipo=%o estado=%o desc=%o activo=%o lastMod=%o',
+                            presupuesto.id_presupuesto_ext, presupuesto.id_cliente, presupuesto.fecha, presupuesto.fecha_entrega,
+                            presupuesto.agente, presupuesto.tipo_comprobante, presupuesto.estado, presupuesto.descuento,
+                            presupuesto.activo, presupuesto.lastModified
+                            );
+                        }
+                        } catch(e) { /* silencio */ }
+                // ===== FIN DEBUG PRE-INSERT (PRESUPUESTO) =====
+
+
+
                 const insertResult = await db.query(insertQuery, [
                     presupuesto.id_presupuesto_ext,
                     presupuesto.id_cliente,
@@ -697,12 +713,12 @@ async function executeFullRefresh(db, dataLoaded, config) {
                 }
                 
                 const insertQuery = `
-                    INSERT INTO presupuestos_detalles 
+                    INSERT INTO presupuestos_detalles
                     (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1,
-                     iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                     iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                 `;
-                
+
                 await db.query(insertQuery, [
                     presupuestoId,
                     detalle.id_presupuesto_ext,
@@ -866,7 +882,7 @@ function parsePresupuestoRow(row, headers, config) {
 }
 
 /**
- * Parsear fila de detalle
+ * Parsear fila de detalle con mapeo corregido según especificación del usuario
  */
 function parseDetalleRow(row, headers) {
     return {
@@ -877,12 +893,13 @@ function parseDetalleRow(row, headers) {
         precio1: parseFloat(row[headers[5]]) || 0,
         iva1: parseFloat(row[headers[6]]) || 0,
         diferencia: parseFloat(row[headers[7]]) || 0,
-        camp1: parseFloat(row[headers[9]]) || 0,
-        camp2: parseFloat(row[headers[10]]) || 0,
-        camp3: parseFloat(row[headers[11]]) || 0,
-        camp4: parseFloat(row[headers[12]]) || 0,
-        camp5: parseFloat(row[headers[13]]) || 0,
-        camp6: parseFloat(row[headers[14]]) || 0
+        // Corrección de mapeo según especificación del usuario
+        camp1: parseFloat(row[headers[9]]) || 0,   // camp1 ↔ Camp2 (columna J)
+        camp2: parseFloat(row[headers[10]]) || 0,  // camp2 ↔ Camp3 (columna K)
+        camp3: parseFloat(row[headers[11]]) || 0,  // camp3 ↔ Camp4 (columna L)
+        camp4: parseFloat(row[headers[12]]) || 0,  // camp4 ↔ Camp5 (columna M)
+        camp5: parseFloat(row[headers[13]]) || 0,  // camp5 ↔ Camp6 (columna N)
+        camp6: parseFloat(row[headers[14]]) || 0   // camp6 ↔ Condicion (columna O)
     };
 }
 

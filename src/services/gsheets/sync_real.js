@@ -97,10 +97,10 @@ async function syncFromGoogleSheets(config, db) {
         console.log('🔍 [GSHEETS-DEBUG] PUNTO 4B: Intentando leer hoja "DetallesPresupuestos"');
         console.log('🔍 [GSHEETS-DEBUG] Parámetros para hoja DetallesPresupuestos:', {
             sheetId: sheetId,
-            rango: 'A:I', // IDDetallePresupuesto hasta Condicion
+            rango: 'A:P', // IDDetallePresupuesto hasta LastModified
             hoja_nombre: 'DetallesPresupuestos'
         });
-        
+
         const detallesData = await readSheetWithHeaders(sheetId, 'A:N', 'DetallesPresupuestos');
         
         console.log('🔍 [GSHEETS-DEBUG] PUNTO 5B: Datos de hoja "DetallesPresupuestos" leídos');
@@ -199,10 +199,14 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
     console.log('🔍 [GSHEETS-DEBUG] PUNTO 6: Iniciando mapeo de ambas hojas');
     
     const presupuestosMap = new Map();
+    let presupuestosOmitidos = 0;
+    let detallesOmitidos = 0;
+    let detallesHuerfanos = 0;
     
     // PASO 1: Procesar hoja "Presupuestos"
     console.log('🔍 [GSHEETS-DEBUG] PUNTO 6A: Procesando hoja "Presupuestos"');
     console.log('📋 [PRESUPUESTOS] Encabezados Presupuestos:', presupuestosData.headers);
+    console.log('📋 [PRESUPUESTOS] Total filas a procesar:', presupuestosData.rows.length);
     
     for (let i = 0; i < presupuestosData.rows.length; i++) {
         const row = presupuestosData.rows[i];
@@ -224,23 +228,33 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
             const descuento = row[presupuestosData.headers[12]] || 0;          // Descuento
             
             console.log(`🔍 [GSHEETS-DEBUG] Procesando presupuesto fila ${i + 2}:`, {
-                id_presupuesto_ext,
-                id_cliente,
-                agente,
-                estado
+                id_presupuesto_ext: `"${id_presupuesto_ext}"`,
+                id_cliente: `"${id_cliente}"`,
+                agente: `"${agente}"`,
+                estado: `"${estado}"`
             });
             
-            // Validar datos esenciales
-            if (!id_presupuesto_ext || !id_cliente) {
-                console.log(`⚠️ [PRESUPUESTOS] Fila ${i + 2}: ID presupuesto o cliente vacío, omitiendo`);
+            // CORRECCIÓN: Validación menos restrictiva - solo verificar que no estén completamente vacíos
+            const id_presupuesto_clean = String(id_presupuesto_ext || '').trim();
+            const id_cliente_clean = String(id_cliente || '').trim();
+            
+            if (!id_presupuesto_clean) {
+                console.log(`⚠️ [PRESUPUESTOS] Fila ${i + 2}: ID presupuesto vacío, omitiendo`);
+                console.log(`   Datos de la fila:`, row);
+                presupuestosOmitidos++;
                 continue;
             }
             
-            const presupuestoKey = id_presupuesto_ext.toString().trim();
+            // CORRECCIÓN: Permitir id_cliente vacío pero con warning
+            if (!id_cliente_clean) {
+                console.log(`⚠️ [PRESUPUESTOS] Fila ${i + 2}: ID cliente vacío para presupuesto ${id_presupuesto_clean}, usando 'SIN_CLIENTE'`);
+            }
+            
+            const presupuestoKey = id_presupuesto_clean;
             
             const presupuesto = {
-                id_presupuesto_ext: id_presupuesto_ext.toString().trim(),
-                id_cliente: id_cliente.toString().trim(),
+                id_presupuesto_ext: id_presupuesto_clean,
+                id_cliente: id_cliente_clean || 'SIN_CLIENTE',
                 fecha: parseDate(fecha),
                 fecha_entrega: parseDate(fecha_entrega),
                 agente: agente,
@@ -262,68 +276,82 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
                 detalles: []
             });
             
+            console.log(`✅ [PRESUPUESTOS] Presupuesto ${presupuestoKey} agregado al mapa`);
+            
         } catch (mappingError) {
             console.error(`❌ [PRESUPUESTOS] Error mapeando presupuesto fila ${i + 2}:`, mappingError.message);
+            console.error(`   Datos de la fila:`, row);
+            presupuestosOmitidos++;
         }
     }
     
     console.log(`✅ [PRESUPUESTOS] Presupuestos base creados: ${presupuestosMap.size}`);
+    console.log(`⚠️ [PRESUPUESTOS] Presupuestos omitidos: ${presupuestosOmitidos}`);
     
     // PASO 2: Procesar hoja "DetallesPresupuestos"
     console.log('🔍 [GSHEETS-DEBUG] PUNTO 6B: Procesando hoja "DetallesPresupuestos"');
     console.log('📋 [PRESUPUESTOS] Encabezados DetallesPresupuestos:', detallesData.headers);
+    console.log('📋 [PRESUPUESTOS] Total filas de detalles a procesar:', detallesData.rows.length);
+    
+    // CORRECCIÓN: Mostrar todos los IDs de presupuestos disponibles para debugging
+    const presupuestosDisponibles = Array.from(presupuestosMap.keys());
+    console.log('📋 [PRESUPUESTOS] IDs de presupuestos disponibles:', presupuestosDisponibles.slice(0, 10), presupuestosDisponibles.length > 10 ? `... y ${presupuestosDisponibles.length - 10} más` : '');
     
     for (let i = 0; i < detallesData.rows.length; i++) {
         const row = detallesData.rows[i];
         
         try {
-            // Mapeo según especificación: IDDetallePresupuesto, IdPresupuesto, Articulo, Cantidad, Valor1, Precio1, IVA1, Diferencia, Condicion, Camp1, Camp2, Camp3, Camp4, Camp5, Camp6
-            const id_detalle_presupuesto = row[detallesData.headers[0]] || ''; // IDDetallePresupuesto
-            const id_presupuesto = row[detallesData.headers[1]] || '';         // IdPresupuesto
-            const articulo = row[detallesData.headers[2]] || '';               // Articulo
-            const cantidad = row[detallesData.headers[3]] || 0;                // Cantidad
-            const valor1 = row[detallesData.headers[4]] || 0;                  // Valor1
-            const precio1 = row[detallesData.headers[5]] || 0;                 // Precio1
-            const iva1 = row[detallesData.headers[6]] || 0;                    // IVA1
-            const diferencia = row[detallesData.headers[7]] || 0;              // Diferencia
-            const condicion = row[detallesData.headers[8]] || null;            // Condicion
-            const camp1 = row[detallesData.headers[9]] || 0;                   // Camp1
-            const camp2 = row[detallesData.headers[10]] || 0;                  // Camp2
-            const camp3 = row[detallesData.headers[11]] || 0;                  // Camp3
-            const camp4 = row[detallesData.headers[12]] || 0;                  // Camp4
-            const camp5 = row[detallesData.headers[13]] || 0;                  // Camp5
-            const camp6 = row[detallesData.headers[14]] || 0;                  // Camp6
+            // Mapeo según especificación del informe: IDDetallePresupuesto, IdPresupuesto, Articulo, Cantidad, Valor1, Precio1, IVA1, Diferencia, Condicion, Camp1, Camp2, Camp3, Camp4, Camp5, Camp6, LastModified
+            const id_detalle_presupuesto = row[detallesData.headers[0]] || ''; // IDDetallePresupuesto (A)
+            const id_presupuesto = row[detallesData.headers[1]] || '';         // IdPresupuesto (B)
+            const articulo = row[detallesData.headers[2]] || '';               // Articulo (C)
+            const cantidad = row[detallesData.headers[3]] || 0;                // Cantidad (D)
+            const valor1 = row[detallesData.headers[4]] || 0;                  // Valor1 (E)
+            const precio1 = row[detallesData.headers[5]] || 0;                 // Precio1 (F)
+            const iva1 = row[detallesData.headers[6]] || 0;                    // IVA1 (G)
+            const diferencia = row[detallesData.headers[7]] || 0;              // Diferencia (H)
+            const condicion = row[detallesData.headers[8]] || null;            // Condicion (I)
+            // CORRECCIÓN: Mapeo correcto según especificación del usuario
+            const camp1 = row[detallesData.headers[9]] || 0;                   // Camp2 (J) -> camp1
+            const camp2 = row[detallesData.headers[10]] || 0;                  // Camp3 (K) -> camp2
+            const camp3 = row[detallesData.headers[11]] || 0;                  // Camp4 (L) -> camp3
+            const camp4 = row[detallesData.headers[12]] || 0;                  // Camp5 (M) -> camp4
+            const camp5 = row[detallesData.headers[13]] || 0;                  // Camp6 (N) -> camp5
+            const camp6 = row[detallesData.headers[8]] || 0;                   // Condicion (I) -> camp6
+            const lastModified = row[detallesData.headers[15]] || null;        // LastModified (P)
             
             console.log(`🔍 [GSHEETS-DEBUG] Procesando detalle fila ${i + 2}:`, {
-                id_detalle_presupuesto,
-                id_presupuesto,
-                articulo,
+                id_detalle_presupuesto: `"${id_detalle_presupuesto}"`,
+                id_presupuesto: `"${id_presupuesto}"`,
+                articulo: `"${articulo}"`,
                 cantidad,
-                valor1,
-                precio1,
-                iva1,
-                diferencia,
-                camp1,
-                camp2,
-                camp3,
-                camp4,
-                camp5,
-                camp6
+                precio1
             });
             
-            // Validar datos esenciales
-            if (!id_presupuesto || !articulo) {
-                console.log(`⚠️ [PRESUPUESTOS] Detalle fila ${i + 2}: ID presupuesto o artículo vacío, omitiendo`);
+            // CORRECCIÓN: Validación menos restrictiva y mejor logging
+            const id_presupuesto_clean = String(id_presupuesto || '').trim();
+            const articulo_clean = String(articulo || '').trim();
+            
+            if (!id_presupuesto_clean) {
+                console.log(`⚠️ [PRESUPUESTOS] Detalle fila ${i + 2}: ID presupuesto vacío, omitiendo`);
+                console.log(`   Datos de la fila:`, row);
+                detallesOmitidos++;
                 continue;
             }
             
-            const presupuestoKey = id_presupuesto.toString().trim();
+            if (!articulo_clean) {
+                console.log(`⚠️ [PRESUPUESTOS] Detalle fila ${i + 2}: Artículo vacío para presupuesto ${id_presupuesto_clean}, omitiendo`);
+                detallesOmitidos++;
+                continue;
+            }
             
-            // Buscar el presupuesto correspondiente
+            const presupuestoKey = id_presupuesto_clean;
+            
+            // CORRECCIÓN: Mejor logging para presupuestos no encontrados
             if (presupuestosMap.has(presupuestoKey)) {
                 const detalle = {
                     id_presupuesto_ext: presupuestoKey,
-                    articulo: articulo.toString().trim(),
+                    articulo: articulo_clean,
                     cantidad: parseFloat(cantidad) || 0,
                     valor1: parseFloat(valor1) || 0,
                     precio1: parseFloat(precio1) || 0,
@@ -338,28 +366,60 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
                 };
                 
                 presupuestosMap.get(presupuestoKey).detalles.push(detalle);
-                console.log(`✅ [PRESUPUESTOS] Detalle agregado a presupuesto ${presupuestoKey}: ${articulo}`);
+                console.log(`✅ [PRESUPUESTOS] Detalle agregado a presupuesto ${presupuestoKey}: ${articulo_clean}`);
             } else {
-                console.log(`⚠️ [PRESUPUESTOS] Detalle fila ${i + 2}: Presupuesto ${presupuestoKey} no encontrado, omitiendo detalle`);
+                console.log(`❌ [PRESUPUESTOS] Detalle fila ${i + 2}: Presupuesto "${presupuestoKey}" NO ENCONTRADO, omitiendo detalle`);
+                console.log(`   Artículo: "${articulo_clean}"`);
+                console.log(`   ¿Existe presupuesto con ID similar?`, presupuestosDisponibles.find(id => id.includes(presupuestoKey) || presupuestoKey.includes(id)));
+                detallesHuerfanos++;
             }
             
         } catch (mappingError) {
             console.error(`❌ [PRESUPUESTOS] Error mapeando detalle fila ${i + 2}:`, mappingError.message);
+            console.error(`   Datos de la fila:`, row);
+            detallesOmitidos++;
         }
     }
     
     const presupuestosArray = Array.from(presupuestosMap.values());
     
-    // PASO 3: Log de resultado final
+    // PASO 3: Log de resultado final MEJORADO
     console.log('🔍 [GSHEETS-DEBUG] PUNTO 7: Resultado final del mapeo');
     console.log(`✅ [PRESUPUESTOS] Mapeo de DOS hojas completado: ${presupuestosArray.length} presupuestos únicos`);
     
     let totalDetalles = 0;
-    presupuestosArray.forEach(p => totalDetalles += p.detalles.length);
-    console.log(`📊 [PRESUPUESTOS] Total detalles mapeados: ${totalDetalles}`);
+    let presupuestosSinDetalles = 0;
+    presupuestosArray.forEach(p => {
+        totalDetalles += p.detalles.length;
+        if (p.detalles.length === 0) {
+            presupuestosSinDetalles++;
+        }
+    });
+    
+    console.log(`📊 [PRESUPUESTOS] ESTADÍSTICAS FINALES:`);
+    console.log(`   - Total detalles mapeados: ${totalDetalles}`);
+    console.log(`   - Presupuestos sin detalles: ${presupuestosSinDetalles}`);
+    console.log(`   - Presupuestos omitidos: ${presupuestosOmitidos}`);
+    console.log(`   - Detalles omitidos: ${detallesOmitidos}`);
+    console.log(`   - Detalles huérfanos: ${detallesHuerfanos}`);
+    
+    // CORRECCIÓN: Mostrar distribución de detalles por presupuesto
+    const distribucionDetalles = {};
+    presupuestosArray.forEach(p => {
+        const count = p.detalles.length;
+        distribucionDetalles[count] = (distribucionDetalles[count] || 0) + 1;
+    });
+    console.log(`📊 [PRESUPUESTOS] Distribución de detalles:`, distribucionDetalles);
     
     // Log detallado de los primeros 2 presupuestos para debugging
-    console.log('🔍 [GSHEETS-DEBUG] Primeros 2 presupuestos mapeados:', presupuestosArray.slice(0, 2));
+    console.log('🔍 [GSHEETS-DEBUG] Primeros 2 presupuestos mapeados:', 
+        presupuestosArray.slice(0, 2).map(p => ({
+            id: p.presupuesto.id_presupuesto_ext,
+            cliente: p.presupuesto.id_cliente,
+            detalles_count: p.detalles.length,
+            detalles: p.detalles.map(d => ({ articulo: d.articulo, cantidad: d.cantidad }))
+        }))
+    );
     
     if (presupuestosArray.length === 0) {
         console.log('🔍 [GSHEETS-DEBUG] ❌ RESULTADO FINAL: 0 presupuestos después del mapeo');
@@ -369,6 +429,12 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
             presupuestosHeaders: presupuestosData.headers,
             detallesHeaders: detallesData.headers
         });
+    } else if (totalDetalles === 0) {
+        console.log('🔍 [GSHEETS-DEBUG] ⚠️ ADVERTENCIA: Se mapearon presupuestos pero 0 detalles');
+        console.log('🔍 [GSHEETS-DEBUG] Posibles causas:');
+        console.log('   - Los IDs de presupuesto no coinciden entre hojas');
+        console.log('   - Los detalles tienen campos esenciales vacíos');
+        console.log('   - Error en el mapeo de columnas');
     }
     
     return presupuestosArray;
@@ -568,30 +634,43 @@ async function upsertPresupuesto(db, presupuestoData, config) {
         }
         
         // Insertar detalles
-        for (const detalle of detalles) {
-            const insertDetalleQuery = `
-                INSERT INTO presupuestos_detalles 
-                (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1,
-                 iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-            `;
+        console.log(`🔍 [PRESUPUESTOS] Insertando ${detalles.length} detalles para presupuesto ${presupuesto.id_presupuesto_ext}`);
+        
+        for (let i = 0; i < detalles.length; i++) {
+            const detalle = detalles[i];
             
-            await db.query(insertDetalleQuery, [
-                presupuestoId,
-                detalle.id_presupuesto_ext,
-                detalle.articulo,
-                detalle.cantidad,
-                detalle.valor1,
-                detalle.precio1,
-                detalle.iva1,
-                detalle.diferencia,
-                detalle.camp1,
-                detalle.camp2,
-                detalle.camp3,
-                detalle.camp4,
-                detalle.camp5,
-                detalle.camp6
-            ]);
+            try {
+                const insertDetalleQuery = `
+                    INSERT INTO presupuestos_detalles 
+                    (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1,
+                     iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+                `;
+                
+                const result = await db.query(insertDetalleQuery, [
+                    presupuestoId,
+                    detalle.id_presupuesto_ext,
+                    detalle.articulo,
+                    detalle.cantidad,
+                    detalle.valor1,
+                    detalle.precio1,
+                    detalle.iva1,
+                    detalle.diferencia,
+                    detalle.camp1,
+                    detalle.camp2,
+                    detalle.camp3,
+                    detalle.camp4,
+                    detalle.camp5,
+                    detalle.camp6
+                ]);
+                
+                console.log(`✅ [PRESUPUESTOS] Detalle ${i + 1}/${detalles.length} insertado: ${detalle.articulo}`);
+                
+            } catch (detalleError) {
+                console.error(`❌ [PRESUPUESTOS] Error insertando detalle ${i + 1}:`, detalleError.message);
+                console.error(`   Detalle:`, detalle);
+                throw detalleError;
+            }
         }
         
         console.log(`✅ [PRESUPUESTOS] Presupuesto procesado: ${detalles.length} detalles`);

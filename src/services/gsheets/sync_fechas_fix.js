@@ -2,6 +2,10 @@ console.log('[SYNC-FECHAS-FIX] Inicializando servicio de corrección de fechas..
 
 const { readSheetWithHeaders, validateSheetAccess } = require('./client_with_logs');
 const { parseDate } = require('./transformer');
+const crypto = require('crypto');
+
+// Función para normalizar LastModified a formato ISO-8601 UTC (igual que AppSheet)
+const toUtcIso = (d) => new Date(d || Date.now()).toISOString();
 
 /**
  * SERVICIO DE CORRECCIÓN DE FECHAS
@@ -37,6 +41,10 @@ async function ejecutarCorreccionFechas(config, db) {
         errores: []
     };
     
+    // Contadores para métricas (scope de toda la función)
+    let conteoActivoFalse = 0;
+    let conteoSinLastModified = 0;
+    
     try {
         // PASO 1: Validar acceso a Google Sheets
         console.log('[SYNC-FECHAS-FIX] Validando acceso a Google Sheets...');
@@ -47,8 +55,87 @@ async function ejecutarCorreccionFechas(config, db) {
         
         // PASO 2: Leer datos desde Google Sheets
         console.log('[SYNC-FECHAS-FIX] Leyendo datos desde Google Sheets...');
-        const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:M', 'Presupuestos');
-        const detallesData = await readSheetWithHeaders(config.hoja_id, 'A:N', 'DetallesPresupuestos');
+        let presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        let detallesData = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
+        // ===== DEBUG READ (solo últimos 5) =====
+                try {
+                const lastN = 5;
+
+                // Presupuestos
+                const pRows = Array.isArray(presupuestosData?.rows) ? presupuestosData.rows : [];
+                console.log('[DEBUG][PRES-READ] total=%s', pRows.length);
+                pRows.slice(-lastN).forEach((r, k, arr) => {
+                    const H = presupuestosData.headers;
+                    console.log('[DEBUG][PRES-READ] %s/%s -> { id:%o, fecha:%o, id_cliente:%o, agente:%o, lastMod:%o, activo:%o }',
+                    pRows.length - arr.length + k + 1, pRows.length,
+                    r[H[0]], r[H[1]], r[H[2]], r[H[3]], r[H[13]], r[H[14]]
+                    );
+                });
+
+                // Detalles
+                const dRows = Array.isArray(detallesData?.rows) ? detallesData.rows : [];
+                console.log('[DEBUG][DET-READ] total=%s', dRows.length);
+                dRows.slice(-lastN).forEach((r, k, arr) => {
+                    const H = detallesData.headers;
+                    console.log('[DEBUG][DET-READ] %s/%s -> { idPres:%o, art:%o, cant:%o, val1:%o, precio1:%o, iva1:%o, camp1:%o, camp2:%o, camp3:%o, camp4:%o, camp5:%o, camp6:%o, lastMod:%o }',
+                    dRows.length - arr.length + k + 1, dRows.length,
+                    r[H[1]], r[H[2]], r[H[3]], r[H[4]], r[H[5]], r[H[6]],
+                    r[H[9]], r[H[10]], r[H[11]], r[H[12]], r[H[13]], r[H[14]],
+                    r[H[15]]
+                    );
+                });
+                } catch(e) {
+                console.warn('[DEBUG][READ] error mostrando muestra:', e?.message || e);
+                }
+                // ===== FIN DEBUG READ =====
+
+        // 1) Traer IDs inactivos locales
+        const rsInactivos = await db.query(`
+          SELECT id_presupuesto_ext
+          FROM public.presupuestos
+          WHERE activo = false
+        `);
+        const inactivosSet = new Set(rsInactivos.rows.map(r => (r.id_presupuesto_ext || '').toString().trim()));
+
+        // 2) Filtrar cabeceras del pull
+        const idCol = presupuestosData.headers[0]; // 'IDPresupuesto'
+        const presupuestosRowsFiltradas = presupuestosData.rows.filter(row => !inactivosSet.has((row[idCol] || '').toString().trim()));
+
+        // 3) Filtrar detalles del pull en base a los que quedaron en cabeceras
+        const idsCabeceraVigentes = new Set(presupuestosRowsFiltradas.map(row => (row[idCol] || '').toString().trim()));
+        const idPresCol = detallesData.headers[1]; // 'IdPresupuesto'
+        const detallesRowsFiltradas = detallesData.rows.filter(row => idsCabeceraVigentes.has((row[idPresCol] || '').toString().trim()));
+
+        // 4) Reemplazar colecciones para el resto del flujo
+        presupuestosData.rows = presupuestosRowsFiltradas;
+        detallesData.rows = detallesRowsFiltradas;
+
+        // Log de control
+        console.log(`[SYNC-FECHAS-FIX] Excluidos por baja lógica local: ${inactivosSet.size} IDs. ` +
+                    `Quedan ${presupuestosData.rows.length} presupuestos y ${detallesData.rows.length} detalles a insertar.`);
+        
+        // Push de ALTAS locales a Sheets
+        const insertedIds = await pushAltasLocalesASheets(presupuestosData, config, db);
+        await pushDetallesLocalesASheets(insertedIds, config, db);
+        
+        // Releer hojas para incorporar lo que se acaba de escribir
+        presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        detallesData = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
+
+        // Reaplicar filtro de inactivos locales
+        const rsInactivos2 = await db.query(`
+          SELECT id_presupuesto_ext
+          FROM public.presupuestos
+          WHERE activo = false
+        `);
+        const inactivosSet2 = new Set(rsInactivos2.rows.map(r => (r.id_presupuesto_ext || '').toString().trim()));
+        const idCol2    = presupuestosData.headers[0];   // 'IDPresupuesto'
+        const idPres2   = detallesData.headers[1];       // 'IdPresupuesto'
+        presupuestosData.rows = presupuestosData.rows.filter(row => !inactivosSet2.has((row[idCol2] || '').toString().trim()));
+        const idsCab2 = new Set(presupuestosData.rows.map(row => (row[idCol2] || '').toString().trim()));
+        detallesData.rows = detallesData.rows.filter(row => idsCab2.has((row[idPres2] || '').toString().trim()));
+
+        console.log(`[SYNC-FECHAS-FIX] Releído tras push. Quedan ${presupuestosData.rows.length} cabezeras y ${detallesData.rows.length} detalles.`);
         
         resultado.datosLeidos.presupuestos = presupuestosData.rows.length;
         resultado.datosLeidos.detalles = detallesData.rows.length;
@@ -86,11 +173,27 @@ async function ejecutarCorreccionFechas(config, db) {
                         INSERT INTO presupuestos 
                         (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
                          nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
-                         activo, hoja_nombre, hoja_url, usuario_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, $13, $14, $15)
+                         activo, fecha_actualizacion, hoja_nombre, hoja_url, usuario_id)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, true), COALESCE($14, NOW()), $15, $16, $17)
                         RETURNING id
                     `;
                     
+
+                        // ===== DEBUG PRE-INSERT (PRESUPUESTO) — solo primeros 3 y últimos 3 =====
+                                try {
+                                const N = presupuestosData.rows.length;
+                                if (i < 3 || i >= N - 3) {
+                                    console.log('[DEBUG][PRES-INSERT] id=%o id_cliente=%o fecha=%o fecha_entrega=%o agente=%o tipo=%o estado=%o desc=%o activo=%o lastMod=%o',
+                                    presupuesto.id_presupuesto_ext, presupuesto.id_cliente, presupuesto.fecha, presupuesto.fecha_entrega,
+                                    presupuesto.agente, presupuesto.tipo_comprobante, presupuesto.estado, presupuesto.descuento,
+                                    presupuesto.activo, presupuesto.lastModified
+                                    );
+                                }
+                                } catch(e) { /* silencio */ }
+                        // ===== FIN DEBUG PRE-INSERT (PRESUPUESTO) =====
+
+
+
                     const insertResult = await db.query(insertQuery, [
                         presupuesto.id_presupuesto_ext,
                         presupuesto.id_cliente,
@@ -104,13 +207,18 @@ async function ejecutarCorreccionFechas(config, db) {
                         presupuesto.cliente_nuevo_id,
                         presupuesto.punto_entrega,
                         presupuesto.descuento,
+                        presupuesto.activo,
+                        presupuesto.lastModified,
                         presupuesto.hoja_nombre,
                         presupuesto.hoja_url,
                         presupuesto.usuario_id
                     ]);
                     
                     const newId = insertResult.rows[0].id;
-                    presupuestosMap.set(presupuesto.id_presupuesto_ext, newId);
+                    presupuestosMap.set(presupuesto.id_presupuesto_ext, {
+                        id: newId,
+                        lastModified: presupuesto.lastModified
+                    });
                     resultado.datosInsertados.presupuestos++;
                     
                     if (presupuesto._fechaCorregida) {
@@ -118,6 +226,12 @@ async function ejecutarCorreccionFechas(config, db) {
                     }
                     if (presupuesto._fechaNula) {
                         resultado.fechasNulas++;
+                    }
+                    if (presupuesto._activoFalse) {
+                        conteoActivoFalse++;
+                    }
+                    if (presupuesto._sinLastModified) {
+                        conteoSinLastModified++;
                     }
                     
                 } catch (rowError) {
@@ -130,14 +244,16 @@ async function ejecutarCorreccionFechas(config, db) {
                 const row = detallesData.rows[i];
                 
                 try {
-                    const detalle = procesarDetalle(row, detallesData.headers);
+                    const presupuestoInfo = presupuestosMap.get(row[detallesData.headers[1]]);
+                    const presupuestoLastModified = presupuestoInfo ? presupuestoInfo.lastModified : null;
+                    
+                    const detalle = procesarDetalle(row, detallesData.headers, presupuestoLastModified);
                     
                     if (!detalle.id_presupuesto_ext || !detalle.articulo) {
                         continue;
                     }
                     
-                    const presupuestoId = presupuestosMap.get(detalle.id_presupuesto_ext);
-                    if (!presupuestoId) {
+                    if (!presupuestoInfo) {
                         resultado.errores.push(`Detalle fila ${i + 2}: Presupuesto ${detalle.id_presupuesto_ext} no encontrado`);
                         continue;
                     }
@@ -145,12 +261,27 @@ async function ejecutarCorreccionFechas(config, db) {
                     const insertQuery = `
                         INSERT INTO presupuestos_detalles 
                         (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1,
-                         iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                         iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15, $16, NOW()))
                     `;
                     
+                    // ===== DEBUG PRE-INSERT (DETALLE) — solo últimos 5 =====
+                            try {
+                            const lastN = 5;
+                            if (i >= detallesData.rows.length - lastN) {
+                                console.log('[DEBUG][DET-INSERT] idPresDB=%o idPresExt=%o art=%o cant=%o val1=%o precio1=%o iva1=%o dif=%o c1=%o c2=%o c3=%o c4=%o c5=%o c6=%o lastModDet=%o lastModPres=%o',
+                                presupuestoInfo.id, detalle.id_presupuesto_ext, detalle.articulo, detalle.cantidad, detalle.valor1,
+                                detalle.precio1, detalle.iva1, detalle.diferencia, detalle.camp1, detalle.camp2, detalle.camp3,
+                                detalle.camp4, detalle.camp5, detalle.camp6, detalle.lastModifiedDetalle, detalle.presupuestoLastModified
+                                );
+                            }
+                            } catch(e) { /* silencio */ }
+                    // ===== FIN DEBUG PRE-INSERT (DETALLE) =====
+
+
+
                     await db.query(insertQuery, [
-                        presupuestoId,
+                        presupuestoInfo.id,
                         detalle.id_presupuesto_ext,
                         detalle.articulo,
                         detalle.cantidad,
@@ -163,7 +294,9 @@ async function ejecutarCorreccionFechas(config, db) {
                         detalle.camp3,
                         detalle.camp4,
                         detalle.camp5,
-                        detalle.camp6
+                        detalle.camp6,
+                        detalle.lastModifiedDetalle,
+                        detalle.presupuestoLastModified
                     ]);
                     
                     resultado.datosInsertados.detalles++;
@@ -228,6 +361,16 @@ async function ejecutarCorreccionFechas(config, db) {
         
         // Mostrar resumen
         mostrarResumenOperacion(resultado);
+        
+        // Log breve con conteos adicionales (protegido para no romper la respuesta)
+        try {
+            console.log(
+                `[SYNC-FECHAS-FIX] Conteos adicionales: {total: ${resultado.datosInsertados.presupuestos}, ` +
+                `conActivoFalse: ${conteoActivoFalse ?? 0}, sinLastModified: ${conteoSinLastModified ?? 0}}`
+            );
+        } catch (e) {
+            console.warn('[SYNC-FECHAS-FIX] Omitiendo log de conteos:', e?.message);
+        }
     }
     
     return resultado;
@@ -285,9 +428,58 @@ function analizarMuestraFechas(rows, headers) {
 }
 
 /**
+ * Helper para parsear LastModified
+ */
+function parseLastModified(value) {
+    if (!value || value === '') return null;
+    
+    try {
+        // Intentar parseo directo con new Date()
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+            return date.toISOString();
+        }
+        
+        // Intentar formato dd/mm/yyyy hh:mm[:ss]
+        const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+        const match = value.match(ddmmyyyyRegex);
+        
+        if (match) {
+            const [, day, month, year, hour, minute, second = '00'] = match;
+            const parsedDate = new Date(year, month - 1, day, hour, minute, second);
+            
+            if (!isNaN(parsedDate.getTime())) {
+                return parsedDate.toISOString();
+            }
+        }
+        
+        return null;
+    } catch (error) {
+        return null;
+    }
+}
+
+/**
  * Procesar fila de presupuesto con corrección de fechas
  */
 function procesarPresupuesto(row, headers, config) {
+    // Procesar columna Activo (columna O = headers[14])
+    const activoValue = row[headers[14]];
+    let activo = true; // default
+    if (activoValue !== undefined && activoValue !== null && activoValue !== '') {
+        const activoStr = activoValue.toString().toLowerCase();
+        if (activoStr === 'false' || activoStr === '0') {
+            activo = false;
+        } else if (activoStr === 'true' || activoStr === '1') {
+            activo = true;
+        }
+        // Si es otro valor, mantener default true
+    }
+    
+    // Procesar columna LastModified (columna N = headers[13])
+    const lastModifiedValue = row[headers[13]];
+    const lastModified = parseLastModified(lastModifiedValue);
+    
     const presupuesto = {
         id_presupuesto_ext: (row[headers[0]] || '').toString().trim(),
         id_cliente: (row[headers[2]] || '').toString().trim(),
@@ -301,12 +493,15 @@ function procesarPresupuesto(row, headers, config) {
         cliente_nuevo_id: row[headers[9]] || null,
         punto_entrega: row[headers[11]] || null,
         descuento: parseFloat(row[headers[12]]) || 0,
-        activo: true,
+        activo: activo,
+        lastModified: lastModified,
         hoja_nombre: 'Presupuestos',
         hoja_url: config.hoja_url,
         usuario_id: config.usuario_id || null,
         _fechaCorregida: false,
-        _fechaNula: false
+        _fechaNula: false,
+        _activoFalse: !activo,
+        _sinLastModified: !lastModified
     };
     
     // Procesar fecha principal
@@ -335,7 +530,11 @@ function procesarPresupuesto(row, headers, config) {
 /**
  * Procesar fila de detalle
  */
-function procesarDetalle(row, headers) {
+function procesarDetalle(row, headers, presupuestoLastModified = null) {
+    // Procesar columna LastModified de detalle (columna P = headers[15])
+    const lastModifiedDetalleValue = row[headers[15]];
+    const lastModifiedDetalle = parseLastModified(lastModifiedDetalleValue);
+    
     return {
         id_presupuesto_ext: (row[headers[1]] || '').toString().trim(),
         articulo: (row[headers[2]] || '').toString().trim(),
@@ -349,7 +548,9 @@ function procesarDetalle(row, headers) {
         camp3: parseFloat(row[headers[11]]) || 0,
         camp4: parseFloat(row[headers[12]]) || 0,
         camp5: parseFloat(row[headers[13]]) || 0,
-        camp6: parseFloat(row[headers[14]]) || 0
+        camp6: parseFloat(row[headers[14]]) || 0,
+        lastModifiedDetalle: lastModifiedDetalle,
+        presupuestoLastModified: presupuestoLastModified
     };
 }
 
@@ -425,8 +626,200 @@ function mostrarResumenOperacion(resultado) {
     console.log('[SYNC-FECHAS-FIX] ===== FIN RESUMEN =====');
 }
 
+// Fecha y hora como las ves en Sheets/AppSheet (AR): dd/mm/aaaa HH:MM:SS
+function toSheetDateTimeAR(value) {
+  const d = value ? new Date(value) : new Date();
+  // Forzamos zona horaria de Argentina para que coincida con AppSheet/Sheets
+  const f = new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).formatToParts(d);
+  const parts = Object.fromEntries(f.map(p => [p.type, p.value]));
+  return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+// helper simple para fechas en Sheets (d/m/yyyy)
+function toSheetDate(val) {
+  if (!val) return '';
+  const d = new Date(val);
+  if (isNaN(d)) {
+    // si ya viene en texto d/m/yyyy, lo dejamos
+    return String(val);
+  }
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/**
+ * Push de ALTAS locales a Google Sheets (alineado A:O, fechas ok, % ok)
+ */
+async function pushAltasLocalesASheets(presupuestosData, config, db) {
+  try {
+    const { getSheets } = require('../../google/gsheetsClient');
+    const sheets = await getSheets();
+
+    // IDs que ya existen en Sheets (col A)
+    const sheetIds = new Set(
+      presupuestosData.rows.map(r => (r[presupuestosData.headers[0]] || '').toString().trim())
+    );
+
+    // Activos locales
+    const rs = await db.query(`
+      SELECT id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
+             nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
+             fecha_actualizacion
+      FROM public.presupuestos
+      WHERE activo = true
+    `);
+
+    // Solo los que no están en Sheets
+    const aInsertar = rs.rows.filter(r => !sheetIds.has((r.id_presupuesto_ext || '').toString().trim()));
+    if (aInsertar.length === 0) return;
+
+    const nowIso = new Date().toISOString();
+
+    // Mapeo EXACTO A..O (15 columnas)
+    const data = aInsertar.map(r => {
+      const pct = r.descuento == null ? null : Number(r.descuento);
+      const pctStr = pct == null ? '' : (pct > 1 ? `${pct}%` : `${pct*100}%`);
+      
+      // Normalizar LastModified a formato AppSheet Argentina
+      const lastModifiedAR = toSheetDateTimeAR(r.fecha_actualizacion || Date.now());
+      console.log(`[GSHEETS-WRITE] LastModified(normalizado)=${lastModifiedAR} fila=${r.id_presupuesto_ext}`);
+      
+      return [
+        (r.id_presupuesto_ext ?? '').toString().trim(),     // A  IDPresupuesto
+        toSheetDate(r.fecha),                               // B  Fecha
+        r.id_cliente ?? '',                                 // C  IDCliente
+        r.agente ?? '',                                     // D  Agente
+        toSheetDate(r.fecha_entrega),                       // E  Fecha de entrega
+        r.tipo_comprobante ?? '',                           // F  Factura/Efectivo
+        r.nota ?? '',                                       // G  Nota
+        r.estado ?? '',                                     // H  Estado
+        r.informe_generado ?? '',                           // I  InformeGenerado
+        r.cliente_nuevo_id ?? '',                           // J  ClienteNuevID
+        '',                                                 // K  Estado/ImprimePDF (quedará vacío)
+        r.punto_entrega ?? '',                              // L  PuntoEntrega
+        pctStr,                                             // M  Descuento
+        lastModifiedAR,                                     // N  LastModified (formato AppSheet AR)
+        true                                                // O  Activo
+      ];
+    });
+
+    // IMPORTANTE: anclamos al encabezado A1:O1 con valueInputOption RAW
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: config.hoja_id,
+      range: 'Presupuestos!A1:O1',
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: data, majorDimension: 'ROWS' }
+    });
+
+    console.log(`[SYNC-FECHAS-FIX] Push de ALTAS a Sheets: ${aInsertar.length} encabezados agregados.`);
+    
+    const insertedIds = new Set(aInsertar.map(r => (r.id_presupuesto_ext ?? '').toString().trim()));
+    return insertedIds;
+  } catch (e) {
+    console.warn('[SYNC-FECHAS-FIX] No se pudieron empujar ALTAS locales a Sheets:', e?.message);
+    return new Set();
+  }
+}
+
+async function pushDetallesLocalesASheets(insertedIds, config, db) {
+  try {
+    if (!insertedIds || insertedIds.size === 0) return;
+    const ids = Array.from(insertedIds);
+    const { getSheets } = require('../../google/gsheetsClient');
+    const sheets = await getSheets();
+    const nowAR = toSheetDateTimeAR(Date.now());
+
+    // Traer detalles locales de esas cabeceras nuevas
+    const rs = await db.query(
+      `
+      SELECT d.id_presupuesto_ext, d.articulo, d.cantidad, d.valor1, d.precio1,
+             d.iva1, d.diferencia, d.camp1, d.camp2, d.camp3, d.camp4, d.camp5, d.camp6
+      FROM public.presupuestos_detalles d
+      WHERE d.id_presupuesto_ext = ANY($1)
+      `,
+      [ids]
+    );
+    if (rs.rows.length === 0) return;
+
+    const num2 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 100) / 100;   // 2 decimales
+    const num3 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 1000) / 1000; // 3 decimales (camp2 %)
+    const asText = v => (v == null) ? '' : String(v).trim();
+    const mkId = r => crypto.createHash('sha1')
+      .update(`${r.id_presupuesto_ext}|${r.articulo}|${r.cantidad}|${r.valor1}|${r.precio1}|${r.iva1}|${r.diferencia}|${r.camp1}|${r.camp2}|${r.camp3}|${r.camp4}|${r.camp5}|${r.camp6}`)
+      .digest('hex').slice(0, 8);
+
+    // Mapeo EXACTO DetallesPresupuestos A:Q (SHIFT IZQUIERDA de los CAMP*)
+    // I: Camp1  <= camp1 (local)
+    // J: Camp2  <= camp2 (local, % con 3 decimales)
+    // K: Camp3  <= camp3 (local)
+    // L: Camp4  <= camp4 (local)
+    // M: Camp5  <= camp5 (local)
+    // N: Camp6  <= camp6 (local)
+    // O: Condicion (sin fuente local -> vacío)
+    const values = rs.rows.map(r => {
+      const row = [
+        mkId(r),                        // A  IDDetallePresupuesto
+        asText(r.id_presupuesto_ext),   // B  IdPresupuesto
+        asText(r.articulo),             // C  Articulo
+        num2(r.cantidad),               // D  Cantidad
+        num2(r.valor1),                 // E  Valor1
+        num2(r.precio1),                // F  Precio1
+        num2(r.iva1),                   // G  IVA1
+        num2(r.diferencia),             // H  Diferencia
+        num2(r.camp1),                  // I  Camp1   (J→I)
+        num3(r.camp2),                  // J  Camp2   (K→J)  *** % ***
+        num2(r.camp3),                  // K  Camp3   (L→K)
+        num2(r.camp4),                  // L  Camp4   (M→L)
+        num2(r.camp5),                  // M  Camp5   (N→M)
+        num2(r.camp6),                  // N  Camp6   (O→N)
+        '',                             // O  Condicion (queda vacío)
+        nowAR,                          // P  LastModified (AppSheet AR)
+        true                            // Q  Activo
+      ];
+
+      console.log('[PUSH-DET][SHIFT OK]', {
+        id: row[1], art: row[2],
+        I_c1: row[8],  J_c2: row[9],   K_c3: row[10],
+        L_c4: row[11], M_c5: row[12],  N_c6: row[13], O_cond: row[14]
+      });
+      return row;
+    });
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: config.hoja_id,
+      range: 'DetallesPresupuestos!A1:Q1',
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values, majorDimension: 'ROWS' }
+    });
+
+    console.log(`[SYNC-FECHAS-FIX] Push de DETALLES a Sheets: ${values.length} filas agregadas para ${ids.length} cabeceras.`);
+
+    // Lectura rápida y log de cola
+    const tailRead = await sheets.spreadsheets.values.get({
+      spreadsheetId: config.hoja_id,
+      range: 'DetallesPresupuestos!A:Q'
+    });
+    const body = tailRead.data.values || [];
+    console.log('[PUSH-DET][SHEET] últimas 5 A..Q:', body.slice(-5));
+  } catch (e) {
+    console.warn('[SYNC-FECHAS-FIX] No se pudieron empujar DETALLES locales a Sheets:', e?.message);
+  }
+}
+
+
 console.log('[SYNC-FECHAS-FIX] ✅ Servicio de corrección de fechas configurado');
 
 module.exports = {
-    ejecutarCorreccionFechas
+    ejecutarCorreccionFechas,
+    pushAltasLocalesASheets,
+    pushDetallesLocalesASheets
 };

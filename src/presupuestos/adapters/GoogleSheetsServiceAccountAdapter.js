@@ -146,7 +146,10 @@ class GoogleSheetsServiceAccountAdapter extends GSheetsPort {
             
             console.log(`✅ [SA-ADAPTER] Datos leídos: ${rows.length} filas`);
             console.log('📊 [SA-ADAPTER] Encabezados:', headers);
-            console.log('📊 [SA-ADAPTER] Primeras 3 filas:', rows.slice(0, 3));
+            const TAIL = 5;
+            const filas = rows || [];
+            const ultimas5 = filas.slice(-TAIL);
+            console.log('[SA-ADAPTER] Últimas 5 filas:', ultimas5);
             
             return {
                 headers: headers,
