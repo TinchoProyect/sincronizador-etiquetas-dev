@@ -738,81 +738,60 @@ async function pushDetallesLocalesASheets(insertedIds, config, db) {
     const nowAR = toSheetDateTimeAR(Date.now());
 
     // Traer detalles locales de esas cabeceras nuevas
-    const rs = await db.query(`
+    const rs = await db.query(
+      `
       SELECT d.id_presupuesto_ext, d.articulo, d.cantidad, d.valor1, d.precio1,
              d.iva1, d.diferencia, d.camp1, d.camp2, d.camp3, d.camp4, d.camp5, d.camp6
       FROM public.presupuestos_detalles d
       WHERE d.id_presupuesto_ext = ANY($1)
-    `, [ids]);
-
+      `,
+      [ids]
+    );
     if (rs.rows.length === 0) return;
 
-    const num   = v => (v == null || v === '') ? '' : Number(v);
-    const asText  = v => (v == null) ? '' : String(v).trim();
-    const mkId  = r => crypto.createHash('sha1')
+    const num2 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 100) / 100;   // 2 decimales
+    const num3 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 1000) / 1000; // 3 decimales (camp2 %)
+    const asText = v => (v == null) ? '' : String(v).trim();
+    const mkId = r => crypto.createHash('sha1')
       .update(`${r.id_presupuesto_ext}|${r.articulo}|${r.cantidad}|${r.valor1}|${r.precio1}|${r.iva1}|${r.diferencia}|${r.camp1}|${r.camp2}|${r.camp3}|${r.camp4}|${r.camp5}|${r.camp6}`)
       .digest('hex').slice(0, 8);
 
+    // Mapeo EXACTO DetallesPresupuestos A:Q (SHIFT IZQUIERDA de los CAMP*)
+    // I: Camp1  <= camp1 (local)
+    // J: Camp2  <= camp2 (local, % con 3 decimales)
+    // K: Camp3  <= camp3 (local)
+    // L: Camp4  <= camp4 (local)
+    // M: Camp5  <= camp5 (local)
+    // N: Camp6  <= camp6 (local)
+    // O: Condicion (sin fuente local -> vacío)
     const values = rs.rows.map(r => {
       const row = [
-        mkId(r),                   // A  IDDetallePresupuesto
-        asText(r.id_presupuesto_ext), // B  IdPresupuesto
-        asText(r.articulo),        // C  Articulo
-        num(r.cantidad),           // D  Cantidad
-        num(r.valor1),             // E  Valor1
-        num(r.precio1),            // F  Precio1
-        num(r.iva1),               // G  IVA1
-        num(r.diferencia),         // H  Diferencia
-        '',                        // I  Camp1 (vacío según especificación)
-        num(r.camp1),              // J  Camp2 -> camp1 (local) según especificación
-        num(r.camp2),              // K  Camp3 -> camp2 (local) según especificación
-        num(r.camp3),              // L  Camp4 -> camp3 (local) según especificación
-        num(r.camp4),              // M  Camp5 -> camp4 (local) según especificación
-        num(r.camp5),              // N  Camp6 -> camp5 (local) según especificación
-        num(r.camp6),              // O  Condicion -> camp6 (local) según especificación
-        nowAR,   // P  LastModified (formato AppSheet AR)
-        true                       // Q  Activo
+        mkId(r),                        // A  IDDetallePresupuesto
+        asText(r.id_presupuesto_ext),   // B  IdPresupuesto
+        asText(r.articulo),             // C  Articulo
+        num2(r.cantidad),               // D  Cantidad
+        num2(r.valor1),                 // E  Valor1
+        num2(r.precio1),                // F  Precio1
+        num2(r.iva1),                   // G  IVA1
+        num2(r.diferencia),             // H  Diferencia
+        num2(r.camp1),                  // I  Camp1   (J→I)
+        num3(r.camp2),                  // J  Camp2   (K→J)  *** % ***
+        num2(r.camp3),                  // K  Camp3   (L→K)
+        num2(r.camp4),                  // L  Camp4   (M→L)
+        num2(r.camp5),                  // M  Camp5   (N→M)
+        num2(r.camp6),                  // N  Camp6   (O→N)
+        '',                             // O  Condicion (queda vacío)
+        nowAR,                          // P  LastModified (AppSheet AR)
+        true                            // Q  Activo
       ];
 
-      console.log('[PUSH-DET] Mapeo CORRECTO según especificación:', {
-        'camp1(local)->Camp2(Sheets)': { local: r.camp1, sheet_col_J: row[9] },
-        'camp2(local)->Camp3(Sheets)': { local: r.camp2, sheet_col_K: row[10] },
-        'camp3(local)->Camp4(Sheets)': { local: r.camp3, sheet_col_L: row[11] },
-        'camp4(local)->Camp5(Sheets)': { local: r.camp4, sheet_col_M: row[12] },
-        'camp5(local)->Camp6(Sheets)': { local: r.camp5, sheet_col_N: row[13] },
-        'camp6(local)->Condicion(Sheets)': { local: r.camp6, sheet_col_O: row[14] }
+      console.log('[PUSH-DET][SHIFT OK]', {
+        id: row[1], art: row[2],
+        I_c1: row[8],  J_c2: row[9],   K_c3: row[10],
+        L_c4: row[11], M_c5: row[12],  N_c6: row[13], O_cond: row[14]
       });
       return row;
     });
-
-    const tail = values[values.length - 1];
-    console.log('[PUSH-DET][CHECK] Camp5<=camp4', {
-      local_camp4: rs.rows[rs.rows.length - 1]?.camp4,
-      sheet_camp5: tail?.[12] // usa índice 12 si no hay headers
-    });
-
-    const last = values[values.length - 1];
-    console.log('[PUSH-DET][CHECK] Camp6<=camp5', {
-      local_camp5: rs.rows[rs.rows.length - 1]?.camp5,
-      sheet_camp6: last?.[13]
-    });
-
-    const TAIL = 5;
-    // Últimas 5 del local (D..N)
-    const last5Local = rs.rows.slice(-TAIL).map(r => ({
-      cantidad: r.cantidad, valor1: r.valor1, precio1: r.precio1, iva1: r.iva1,
-      diferencia: r.diferencia, camp1: r.camp1, camp2: r.camp2,
-      camp3: r.camp3, camp4: r.camp4, camp5: r.camp5, camp6: r.camp6
-    }));
-    console.log('[PUSH-DET][LOCAL] últimas 5 D..N:', last5Local);
-
-    // Últimas 5 mapeadas para Sheets (D..N por índices)
-    const last5Map = values.slice(-TAIL).map(v => ({
-      cantidad: v[3], valor1: v[4], precio1: v[5], iva1: v[6],
-      diferencia: v[7], camp1: v[8], camp2: v[9],
-      camp3: v[10], camp4: v[11], camp5: v[12], camp6: v[13]
-    }));
-    console.log('[PUSH-DET][MAP] últimas 5 D..N:', last5Map);
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: config.hoja_id,
@@ -823,7 +802,7 @@ async function pushDetallesLocalesASheets(insertedIds, config, db) {
     });
 
     console.log(`[SYNC-FECHAS-FIX] Push de DETALLES a Sheets: ${values.length} filas agregadas para ${ids.length} cabeceras.`);
-    
+
     // Lectura rápida y log de cola
     const tailRead = await sheets.spreadsheets.values.get({
       spreadsheetId: config.hoja_id,
@@ -835,6 +814,7 @@ async function pushDetallesLocalesASheets(insertedIds, config, db) {
     console.warn('[SYNC-FECHAS-FIX] No se pudieron empujar DETALLES locales a Sheets:', e?.message);
   }
 }
+
 
 console.log('[SYNC-FECHAS-FIX] ✅ Servicio de corrección de fechas configurado');
 
