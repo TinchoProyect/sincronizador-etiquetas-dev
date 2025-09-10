@@ -612,38 +612,7 @@ export function initTemporizadores() {
 /* ──────────────────────────────────────────────────────────────
    Visibilidad tras render
    ────────────────────────────────────────────────────────────── */
-/*export function syncTimerButtonsVisibility() {
-  const botonGlobal = document.getElementById('btn-temporizador-global');
-  const activo = botonGlobal && botonGlobal.classList.contains('activo');
 
-  if (!activo) { _hideAllTimers(); return; }
-
-  // Mostrar controles de artículo
-  document.querySelectorAll('.btn-temporizador-articulo')
-    .forEach(b => b.style.display = 'inline-block');
-
-  const carroId = localStorage.getItem('carroActivo');
-  _showEtapa1(!!carroId);
-
-  // Etapa 2 visible si está corriendo o si quedó finalizada (clase 'finished')
-  const badge = document.getElementById('badge-etapa2');
-  if (badge) {
-    const s2 = carroId ? _ensure(carroId)[2] : null;
-    const running  = !!(s2 && s2.running);
-    const finished = badge.classList.contains('finished');
-    _showEtapa2(running || finished);
-    if (!running && !finished) badge.textContent = '';
-  }
-
-  // Etapa 3: la mostramos sólo si corre o si quedó con tiempo final
-  const btn3 = document.getElementById('btn-etapa3');
-  if (btn3) {
-    const s3 = carroId ? _ensure(carroId)[3] : null;
-    const running = !!(s3 && s3.running);
-    const finished = btn3.classList.contains('finished');
-    showEtapa3Button(running || finished);
-  }
-}*/
 export function syncTimerButtonsVisibility() {
   const botonGlobal = document.getElementById('btn-temporizador-global');
   const activo = botonGlobal && botonGlobal.classList.contains('activo');

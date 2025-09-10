@@ -8,6 +8,7 @@ const cors = require('cors');
 const app = express();
 const port = 3000;
 
+
 // Configuración CORS
 app.use(cors({
     origin: 'http://localhost:3002',
@@ -37,6 +38,23 @@ app.use(express.static(staticPath));
 app.use('/css', express.static(path.join(staticPath, 'css')));
 app.use('/js', express.static(path.join(staticPath, 'js')));
 app.use('/pages', express.static(path.join(staticPath, 'pages')));
+
+// 🔍 [ESTADISTICAS] Configurar proxy para el módulo de estadísticas
+// 🔍 [ESTADISTICAS] Proxy a servicio en 3001
+app.use('/api/estadisticas', createProxyMiddleware({
+  target: 'http://localhost:3001',
+  changeOrigin: true
+}));
+
+// Proxy para los archivos estáticos del módulo
+app.use('/estadisticas', createProxyMiddleware({
+  target: 'http://localhost:3001',
+  changeOrigin: true
+}));
+
+
+// === FIN ESTADÍSTICAS ===
+
 
 // Configurar index.html como página principal
 app.get('/', (req, res) => {
