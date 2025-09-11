@@ -39,6 +39,38 @@ const _load = id => {
 };
 const _save = (id, snap) => { try { localStorage.setItem(_ST_KEY(id), JSON.stringify(snap)); } catch {} };
 
+// --- snapshot por ARTÍCULO (igual idea que etapas) ---
+const _ART_KEY = id => `timers_articulos_${id}`;
+const _loadArt = (id) => {
+  try { return JSON.parse(localStorage.getItem(_ART_KEY(id))) || {}; }
+  catch { return {}; }
+};
+const _saveArt = (id, snap) => {
+  try { localStorage.setItem(_ART_KEY(id), JSON.stringify(snap)); } catch {}
+};
+
+
+
+// Importa estado del backend → snapshot local por artículo
+export function importarEstadoLocalArticulos(carroId, filas) {
+  const snap = {};
+  (filas || []).forEach(r => {
+    const n = r.articulo_numero;
+    if (!n) return;
+    if (r.tiempo_fin)    snap[n] = { running:false, start:null, elapsed:Number(r.duracion_ms || 0) };
+    else if (r.tiempo_inicio) snap[n] = { running:true,  start:Date.parse(r.tiempo_inicio), elapsed:0 };
+    else                 snap[n] = { running:false, start:null, elapsed:0 };
+  });
+  _saveArt(carroId, snap);
+}
+
+// Actualiza un artículo en el snapshot
+function _updateArtSnap(carroId, numero, patch) {
+  const snap = _loadArt(carroId);
+  snap[numero] = { ...(snap[numero] || {}), ...patch };
+  _saveArt(carroId, snap);
+}
+
 // Convierte el SELECT del backend en snapshot local
 export function importarEstadoLocal(carroId, est) {
   const snap = { 1:{}, 2:{}, 3:{} };
@@ -232,12 +264,37 @@ export async function stopEtapa3(carroId, uid){
 /* ──────────────────────────────────────────────────────────────
    Ocultar todo al salir del modo
    ────────────────────────────────────────────────────────────── */
+
+ // 🔹 Oculta todo y corta intervalos cuando no hay carro seleccionado
+export function clearTimersForNoCar() {
+  try {
+    const cid = window.carroIdGlobal || localStorage.getItem('carroActivo');
+    if (cid && etapas.has(cid)) {
+      const st = etapas.get(cid);
+      [1, 2, 3].forEach(n => {
+        if (st[n] && st[n].interval) clearInterval(st[n].interval);
+        if (st[n]) { st[n].running = false; st[n].start = null; }
+      });
+    }
+  } catch {}
+  _hideAllTimers(); // oculta artículos + E1 + E2 + E3 + píldoras
+}
+   
 function _hideAllTimers() {
+  //botones por articulo
   document.querySelectorAll('.btn-temporizador-articulo')
-    .forEach(b => b.style.display = 'none');
-  _showEtapa1(false);
+   .forEach(b => b.style.display = 'none');
+  
+   //etapas
+   _showEtapa1(false);
   _showEtapa2(false);
   showEtapa3Button(false);
+
+  // 🔹 ocultar también las píldoras verdes
+    [1,2,3].forEach(n => {
+      const p = document.getElementById(`pill-etapa-${n}`);
+      if (p) p.style.display = 'none';
+    });
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -317,6 +374,61 @@ export function rehidratarDesdeEstado(carroId) {
   }
 }
 
+/* Rehidrata los botones .btn-temporizador-articulo según snapshot guardado*/
+export function rehidratarArticulosDesdeEstado(carroId) {
+  const snap = _loadArt(carroId);
+  const modoActivo = !!(document.getElementById('btn-temporizador-global')?.classList.contains('activo'));
+
+  document.querySelectorAll('.btn-temporizador-articulo').forEach(btn => {
+    const numero = btn.dataset.numero;
+    const s = snap[numero];
+
+    // Por defecto
+    btn.style.display = modoActivo ? 'inline-block' : 'none';
+
+    if (!s) {
+      btn.textContent = '⏱ Iniciar';
+      btn.classList.remove('running', 'finished');
+      btn.disabled = false;
+      return;
+    }
+
+    const k = _key(carroId, numero);
+    let t = temporizadores.get(k);
+
+    if (s.running && s.start) {
+      // Mostrar corriendo desde la hora persistida
+      btn.classList.add('running');
+      btn.classList.remove('finished');
+      btn.disabled = false;
+
+      t = t || { running:true, start:s.start, interval:null };
+      t.running = true; t.start = s.start;
+      clearInterval(t.interval);
+      const actualizar = () => { btn.textContent = `⏹ ${formatearTiempo(Date.now() - t.start)} ×`; };
+      actualizar();
+      t.interval = setInterval(actualizar, 1000);
+      temporizadores.set(k, t);
+      return;
+    }
+
+    if ((s.elapsed || 0) > 0) {
+      // Ya finalizado
+      btn.classList.remove('running');
+      btn.classList.add('finished');
+      btn.disabled = true;
+      btn.textContent = `✅ ${formatearTiempo(s.elapsed)}`;
+      return;
+    }
+
+    // Nunca iniciado
+    btn.classList.remove('running', 'finished');
+    btn.disabled = false;
+    btn.textContent = '⏱ Iniciar';
+  });
+}
+
+
 /* ──────────────────────────────────────────────────────────────
    INIT + listeners
    ────────────────────────────────────────────────────────────── */
@@ -325,7 +437,7 @@ export function initTemporizadores() {
   _inicializado = true;
 
   // Botón global "Modo medición"
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     if (!(e.target && e.target.id === 'btn-temporizador-global')) return;
 
     const botonGlobal = e.target;
@@ -333,43 +445,75 @@ export function initTemporizadores() {
     botonGlobal.textContent = activo ? '🛑 Salir de medición' : '⏱ Modo medición';
 
     if (activo) {
-      // Mostrar controles de artículo
+      // Mostrar controles por artículo
       document.querySelectorAll('.btn-temporizador-articulo')
         .forEach(b => b.style.display = 'inline-block');
 
       const carroId = localStorage.getItem('carroActivo');
       _showEtapa1(!!carroId);
 
-      // Rehidratar E2/E3 con estado persistido del back
       if (carroId) {
-        const colab = JSON.parse(localStorage.getItem('colaboradorActivo') || '{}');
+        // Usuario (tolerante a JSON inválido)
+        let colab = {};
+        try { colab = JSON.parse(localStorage.getItem('colaboradorActivo') || '{}'); } catch {}
+        const uid = colab?.id ?? '';
 
-        fetch(`http://localhost:3002/api/tiempos/carro/${carroId}/etapas/estado?usuarioId=${colab.id}`)
-          .then(r => r.ok ? r.json() : null)
-          .then(est => {
-            if (est) {
-              window.__carroBloqueadoPorPreparado = !!est.preparado;
-              importarEstadoLocal(carroId, est);
-            }
-          })
-          .catch(() => {/* no romper UI */})
-          .finally(() => { rehidratarDesdeEstado(carroId); syncTimerButtonsVisibility(); });
+        // 1) Estado de ETAPAS
+        try {
+          const r = await fetch(
+            `http://localhost:3002/api/tiempos/carro/${carroId}/etapas/estado?usuarioId=${encodeURIComponent(uid)}`
+          );
+          if (r.ok) {
+            const est = await r.json();
+            window.__carroBloqueadoPorPreparado = !!est.preparado;
+            importarEstadoLocal(carroId, est);
+          }
+        } catch (_) { /* no romper UI */ }
+        rehidratarDesdeEstado(carroId);
+        syncTimerButtonsVisibility();
+
+        // 2) Estado de TEMPORIZADORES POR ARTÍCULO
+        try {
+          const r2 = await fetch(
+            `http://localhost:3002/api/tiempos/carro/${carroId}/articulos/estado?usuarioId=${encodeURIComponent(uid)}`
+          );
+          if (r2.ok) {
+            const lista = await r2.json();
+            importarEstadoLocalArticulos(carroId, lista);
+          }
+        } catch (_) { /* no romper UI */ }
+        rehidratarArticulosDesdeEstado(carroId);
+        syncTimerButtonsVisibility();
       } else {
+        // Sin carro activo, sólo actualizamos visibilidad general
         syncTimerButtonsVisibility();
       }
     } else {
+      // Salir de modo medición: ocultar TODO
       _hideAllTimers();
+      syncTimerButtonsVisibility();
     }
   });
+}
 
   // Temporizador por artículo
   document.addEventListener('click', async (e) => {
     if (!e.target.classList.contains('btn-temporizador-articulo')) return;
 
     const btn = e.target;
+    if (btn.disabled || btn.classList.contains('finished')) return; // ⛔ ya finalizado
+
     const numero  = btn.dataset.numero;
     const carroId = window.carroIdGlobal;
     if (!carroId || !numero) return;
+
+    // usa la misma lógica de “terminado” que en etapas, pero para artículos
+    const sArt = (_loadArt(carroId) || {})[numero];
+    if (sArt && !sArt.running && (sArt.elapsed || 0) > 0) {
+      // Ya estaba finalizado (rehidratado desde el back) → no permitir reinicio
+      _showElapsedOnButton(btn, sArt.elapsed);
+      return;
+    }
 
     const k = _key(carroId, numero);
     let t = temporizadores.get(k);
@@ -378,6 +522,9 @@ export function initTemporizadores() {
     if (!t || !t.running) {
       t = { running: true, start: Date.now(), interval: null };
       temporizadores.set(k, t);
+
+        // 🔸 snapshot: marcamos corriendo (misma idea que etapas)
+    _updateArtSnap(carroId, numero, { running: true, start: t.start, elapsed: 0 });
 
       const actualizar = () => {
         const ms = Date.now() - t.start;
@@ -404,10 +551,12 @@ export function initTemporizadores() {
       clearInterval(t.interval);
       const elapsed = Date.now() - t.start;
 
-      btn.textContent = `✅ ${formatearTiempo(elapsed)}`;
-      btn.classList.remove('running');
-      btn.classList.add('finished');
-      btn.disabled = true;
+      // 🔸 snapshot: guardamos final (como en etapas)
+    _updateArtSnap(carroId, numero, { running: false, start: null, elapsed });
+
+    _showElapsedOnButton(btn, elapsed);
+    btn.classList.remove('running');
+    btn.classList.add('finished');
 
       try {
         await _postFirstAvailable(
@@ -458,12 +607,12 @@ export function initTemporizadores() {
       alert(`No se pudo alternar la Etapa 3.\n${err.message || ''}`);
     }
   });
-}
+
 
 /* ──────────────────────────────────────────────────────────────
    Visibilidad tras render
    ────────────────────────────────────────────────────────────── */
-export function syncTimerButtonsVisibility() {
+/*export function syncTimerButtonsVisibility() {
   const botonGlobal = document.getElementById('btn-temporizador-global');
   const activo = botonGlobal && botonGlobal.classList.contains('activo');
 
@@ -494,6 +643,126 @@ export function syncTimerButtonsVisibility() {
     const finished = btn3.classList.contains('finished');
     showEtapa3Button(running || finished);
   }
+}*/
+export function syncTimerButtonsVisibility() {
+  const botonGlobal = document.getElementById('btn-temporizador-global');
+  const activo = botonGlobal && botonGlobal.classList.contains('activo');
+
+  // Si Modo medición NO está activo → ocultar todo
+  if (!activo) {
+    _hideAllTimers();
+    return;
+  }
+
+  // Si Modo medición está activo PERO NO hay carro seleccionado → ocultar todo
+  // ⚠️ Modo activo pero SIN carro seleccionado → ocultar todo
+  const carroId = (window.carroIdGlobal && String(window.carroIdGlobal)) || localStorage.getItem('carroActivo');
+  if (!carroId) {
+    _hideAllTimers();
+    return;
+  }
+
+  // ⏱ por artículo
+  document.querySelectorAll('.btn-temporizador-articulo')
+    .forEach(b => b.style.display = 'inline-block');
+
+  // Etapa 1 (visible si hay carro)
+  _showEtapa1(true);
+
+  // Etapa 2 (visible si está corriendo o si quedó finalizada)
+  {
+    const s2 = _ensure(carroId)[2];
+    const badge = document.getElementById('badge-etapa2');
+    if (badge) {
+      const running  = !!(s2 && s2.running);
+      const finished = badge.classList.contains('finished');
+      const show = running || finished;
+      _showEtapa2(show);
+      if (!show) badge.textContent = '';
+    }
+  }
+
+  // Etapa 3 (visible si está corriendo o si quedó finalizada)
+  {
+    const b3 = document.getElementById('btn-etapa3');
+    if (b3) {
+      const show3 = b3.classList.contains('running') || b3.classList.contains('finished');
+      showEtapa3Button(show3);
+    }
+  }
+
+  // Píldoras verdes (mostrar solo si hay carro seleccionado)
+  [1,2,3].forEach(n => {
+    const pill = document.getElementById(`pill-etapa-${n}`);
+    if (pill) pill.style.display = 'inline-block';
+  });
 }
+
+
+/*Limpieza de temporizadores al eliminar el carro*/
+
+// Limpia todo lo relacionado a un carro: intervalos, storage y UI
+export function clearTimersForCarro(carroId) {
+  if (!carroId) return;
+  const idStr = String(carroId);
+
+  // 1) Parar intervalos de ETAPAS y olvidar estado en memoria
+  const st = etapas.get(idStr);
+  if (st) {
+    [1,2,3].forEach(n => {
+      const s = st[n];
+      if (s && s.interval) { try { clearInterval(s.interval); } catch {} }
+    });
+    etapas.delete(idStr);
+  }
+
+  // 2) Parar intervalos de ARTÍCULOS y olvidar estado en memoria
+  for (const [k, t] of Array.from(temporizadores.entries())) {
+    if (k.startsWith(idStr + ':')) {
+      if (t && t.interval) { try { clearInterval(t.interval); } catch {} }
+      temporizadores.delete(k);
+    }
+  }
+
+  // 3) Borrar snapshots persistidos
+  try { localStorage.removeItem(`timers_carro_${idStr}`); } catch {}
+  try { localStorage.removeItem(`timers_articulos_${idStr}`); } catch {}
+
+  // 4) Resetear UI (ocultar todo y devolver textos por defecto)
+  _hideAllTimers();
+
+  const b1 = document.getElementById('btn-etapa1');
+  if (b1) { b1.textContent = '00:00 (Etapa 1)'; b1.classList.remove('running','finished'); b1.disabled = false; }
+  const b2 = document.getElementById('badge-etapa2');
+  if (b2) { b2.textContent = ''; b2.classList.remove('running','finished'); }
+  const b3 = document.getElementById('btn-etapa3');
+  if (b3) { b3.textContent = '00:00 (Etapa 3)'; b3.classList.remove('running','finished'); b3.disabled = false; }
+
+  [1,2,3].forEach(n => {
+    const p = document.getElementById(`pill-etapa-${n}`);
+    if (p) {
+      p.style.display = 'none';
+      p.classList.remove('running','finished');
+      p.textContent = `00:00 (Etapa ${n})`;
+    }
+  });
+
+  // 5) Botones de artículo
+  document.querySelectorAll('.btn-temporizador-articulo').forEach(btn => {
+    btn.classList.remove('running','finished');
+    btn.disabled = false;
+    btn.style.display = 'none';
+    btn.textContent = '⏱ Iniciar';
+  });
+
+  // 6) Forzar reevaluación de visibilidad por si el botón global sigue activo
+  if (typeof syncTimerButtonsVisibility === 'function') {
+    syncTimerButtonsVisibility();
+  } else if (window.syncTimerButtonsVisibility) {
+    window.syncTimerButtonsVisibility();
+  }
+}
+
+
 
 
