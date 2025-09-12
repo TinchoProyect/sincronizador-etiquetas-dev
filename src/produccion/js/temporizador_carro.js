@@ -136,6 +136,92 @@ export function formatearTiempo(ms) {
 }
 function _key(carroId, numero){ return `${carroId}:${numero}`; }
 
+// ⛔ NUEVO: Detiene SOLAMENTE los temporizadores por artículo que estén corriendo
+async function _detenerMedicionArticulosEnCurso(carroId) {
+  const idStr = String(carroId);
+
+  // A) Timers vivos en memoria
+  for (const [k, t] of Array.from(temporizadores.entries())) {
+    if (!k.startsWith(idStr + ':')) continue;
+    const numero = k.split(':')[1];
+
+    // 👉 Solo si está corriendo (si no, no tocamos nada)
+    if (!t || !t.running) continue;
+
+    try {
+      t.running = false;
+      if (t.interval) { try { clearInterval(t.interval); } catch {} }
+      const startMs = t.start || Date.now();
+      const elapsed = Math.max(0, Date.now() - startMs);
+
+      // Snapshot
+      _updateArtSnap(carroId, numero, { running: false, start: null, elapsed });
+
+      // UI
+      let btn = null;
+      document.querySelectorAll('.btn-temporizador-articulo').forEach(b => {
+        if (String(b.dataset.numero) === String(numero)) btn = b;
+      });
+      if (btn) {
+        _showElapsedOnButton(btn, elapsed);
+        btn.classList.remove('running');
+        btn.classList.add('finished');
+      }
+
+      // Backend
+      try {
+        await _postFirstAvailable(
+          `/carro/${carroId}/articulo/${encodeURIComponent(numero)}/finalizar`,
+          { usuarioId },
+          { elapsedMs: elapsed }
+        );
+      } catch (e) {
+        console.error('[Auto-stop E3] No se pudo registrar fin de artículo', numero, e);
+      }
+    } catch (e) {
+      console.error('[Auto-stop E3] Error deteniendo artículo', numero, e);
+    }
+  }
+
+  // B) Casos rehidratados: “running” solo en snapshot (sin intervalo en RAM)
+  const snap = _loadArt(carroId) || {};
+  for (const numero of Object.keys(snap)) {
+    const s = snap[numero];
+
+    // 👉 Solo si figura corriendo y tiene start
+    if (!s || !s.running || !s.start) continue;
+
+    try {
+      const elapsed = Math.max(0, Date.now() - s.start);
+
+      _updateArtSnap(carroId, numero, { running: false, start: null, elapsed });
+
+      let btn = null;
+      document.querySelectorAll('.btn-temporizador-articulo').forEach(b => {
+        if (String(b.dataset.numero) === String(numero)) btn = b;
+      });
+      if (btn) {
+        _showElapsedOnButton(btn, elapsed);
+        btn.classList.remove('running');
+        btn.classList.add('finished');
+      }
+
+      try {
+        await _postFirstAvailable(
+          `/carro/${carroId}/articulo/${encodeURIComponent(numero)}/finalizar`,
+          { usuarioId },
+          { elapsedMs: elapsed }
+        );
+      } catch (e) {
+        console.error('[Auto-stop E3] (snapshot) No se pudo registrar fin de artículo', numero, e);
+      }
+    } catch (e) {
+      console.error('[Auto-stop E3] (snapshot) Error deteniendo artículo', numero, e);
+    }
+  }
+}
+
+
 function _showElapsedOnButton(btn, elapsedMs, etiqueta='') {
   if (!btn) return;
   btn.disabled = true;
@@ -293,6 +379,10 @@ export async function startEtapa3(carroId, uid){
   if (_etapaTerminada(carroId, 3)) { alert('Etapa 3 ya finalizada.'); return; }
 
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/3/iniciar`, uid);
+
+  // ⛔ NUEVO: detener SOLO los artículos que sigan corriendo
+  await _detenerMedicionArticulosEnCurso(carroId);
+
   const s = _ensure(carroId)[3];
   s.running = true; s.start = Date.now();
   clearInterval(s.interval);
