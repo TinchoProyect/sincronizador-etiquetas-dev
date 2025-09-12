@@ -1,4 +1,19 @@
+
+
 // /js/temporizador_carro.js  (ES module)
+
+// ⛔ MOD: ampliar import
+import { setEtapaCarro, getEtapaCarro, esEtapa1 } from './utilsEtapasMedicion.js';
+
+// (Fallback seguro por si tu utils no exporta get/es)
+if (typeof getEtapaCarro !== 'function') {
+  window.__GET_ETAPA_FALLBACK__ = (cid) => Number(localStorage.getItem(`carro:${cid}:etapa`) || 1);
+}
+if (typeof esEtapa1 !== 'function') {
+  window.__ES_ETAPA1_FALLBACK__ = (cid) => (window.__GET_ETAPA_FALLBACK__?.(cid) ?? 1) === 1;
+}
+
+
 let _inicializado = false;
 
 /* ──────────────────────────────────────────────────────────────
@@ -163,6 +178,24 @@ function _showEtapa1(show){ const b = document.getElementById('btn-etapa1'); if 
 function _showEtapa2(show){ const b = document.getElementById('badge-etapa2'); if (b) b.style.display = show ? 'inline-block' : 'none'; }
 export function showEtapa3Button(show){ const b = document.getElementById('btn-etapa3'); if (b) b.style.display = show ? 'inline-block' : 'none'; }
 
+
+// ⛔ NUEVO: habilita/inhabilita botones por artículo según etapa actual
+function _aplicarBloqueoArticulosPorEtapa(carroId) {
+  const getEtapa = (typeof getEtapaCarro === 'function') ? getEtapaCarro : window.__GET_ETAPA_FALLBACK__;
+  const etapa = getEtapa?.(carroId) ?? 1;
+  const bloquear = etapa === 1;
+
+  document.querySelectorAll('.btn-temporizador-articulo').forEach(btn => {
+    // no tocar botones ya finalizados
+    const estaFinalizado = btn.classList.contains('finished');
+    if (estaFinalizado) return;
+
+    btn.disabled = bloquear;
+    btn.classList.toggle('bloqueado', bloquear);
+    btn.title = bloquear ? 'Bloqueado en Etapa 1' : '';
+  });
+}
+
 /* ──────────────────────────────────────────────────────────────
    HTTP helper (?usuarioId=)
    ────────────────────────────────────────────────────────────── */
@@ -179,16 +212,25 @@ export async function startEtapa1(carroId, uid){
   if (_carroBloqueado()) { alert('El carro ya fue preparado. No se puede reiniciar medición.'); return; }
   if (_etapaTerminada(carroId, 1)) { alert('Etapa 1 ya finalizada.'); return; }
 
-  await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/1/iniciar`, uid);
-  const s = _ensure(carroId)[1];
-  s.running = true; s.start = Date.now();
-  clearInterval(s.interval);
-  s.interval = setInterval(()=>_tickEtapa1(carroId), 1000);
-  _tickEtapa1(carroId);
-  _showEtapa1(true);
-  const btn = document.getElementById('btn-etapa1');
-  if (btn) { btn.classList.add('running'); btn.classList.remove('finished'); btn.disabled = false; }
+ try {
+    await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/1/iniciar`, uid);
+    const s = _ensure(carroId)[1];
+    s.running = true; s.start = Date.now();
+    clearInterval(s.interval);
+    s.interval = setInterval(()=>_tickEtapa1(carroId), 1000);
+    _tickEtapa1(carroId);
+    _showEtapa1(true);
+    const btn = document.getElementById('btn-etapa1');
+    if (btn) { btn.classList.add('running'); btn.classList.remove('finished'); btn.disabled = false; }
+  } finally {
+    // ⛔ NUEVO: marcar etapa 1 activa y bloquear botones por artículo
+    setEtapaCarro(carroId, 1);
+    _aplicarBloqueoArticulosPorEtapa(carroId);
+  }
 }
+
+
+
 export async function stopEtapa1(carroId, uid){
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/1/finalizar`, uid);
   const s = _ensure(carroId)[1];
@@ -198,7 +240,13 @@ export async function stopEtapa1(carroId, uid){
   const btn = document.getElementById('btn-etapa1');
   if (btn) _showElapsedOnButton(btn, elapsedMs, '(Etapa 1)');
   if (btn) { btn.classList.remove('running'); btn.classList.add('finished'); }
+
+  // ⛔ NUEVO: mantenemos etapa 1 hasta iniciar etapa 2 → sigue bloqueado
+  setEtapaCarro(carroId, 1);
+  _aplicarBloqueoArticulosPorEtapa(carroId);
 }
+
+
 
 export async function startEtapa2(carroId, uid){
   if (_carroBloqueado()) { alert('El carro ya fue preparado.'); return; }
@@ -218,6 +266,10 @@ export async function startEtapa2(carroId, uid){
     badge.classList.add('running');
   }
   _tickEtapa2(carroId);
+
+  // ⛔ NUEVO: pasamos a etapa 2 y desbloqueamos botones por artículo
+  setEtapaCarro(carroId, 2);
+  _aplicarBloqueoArticulosPorEtapa(carroId);
 }
 export async function stopEtapa2(carroId, uid){
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/finalizar`, uid);
@@ -426,6 +478,8 @@ export function rehidratarArticulosDesdeEstado(carroId) {
     btn.disabled = false;
     btn.textContent = '⏱ Iniciar';
   });
+   // ⛔ NUEVO: asegurar bloqueo/permiso según etapa actual
+  _aplicarBloqueoArticulosPorEtapa(carroId);
 }
 
 
@@ -471,6 +525,8 @@ export function initTemporizadores() {
         } catch (_) { /* no romper UI */ }
         rehidratarDesdeEstado(carroId);
         syncTimerButtonsVisibility();
+        // ⛔ Opcionalmente explícito (no necesario si agregaste en sync/rehidratar):
+        _aplicarBloqueoArticulosPorEtapa(carroId);
 
         // 2) Estado de TEMPORIZADORES POR ARTÍCULO
         try {
@@ -506,6 +562,16 @@ export function initTemporizadores() {
     const numero  = btn.dataset.numero;
     const carroId = window.carroIdGlobal;
     if (!carroId || !numero) return;
+
+     // ⛔ NUEVO: bloqueo duro si Etapa 1
+  const esE1 = (typeof esEtapa1 === 'function') ? esEtapa1(carroId)
+              : (window.__ES_ETAPA1_FALLBACK__?.(carroId) ?? true);
+  if (esE1) {
+    // Mostrá tu toast/modal si preferís
+    alert('⛔ La medición por artículo está bloqueada durante la Etapa 1.');
+    return;
+  }
+
 
     // usa la misma lógica de “terminado” que en etapas, pero para artículos
     const sArt = (_loadArt(carroId) || {})[numero];
@@ -665,6 +731,9 @@ export function syncTimerButtonsVisibility() {
     const pill = document.getElementById(`pill-etapa-${n}`);
     if (pill) pill.style.display = 'inline-block';
   });
+ // ⛔ NUEVO: asegurar bloqueo/permiso según etapa actual
+  _aplicarBloqueoArticulosPorEtapa(carroId);
+
 }
 
 
