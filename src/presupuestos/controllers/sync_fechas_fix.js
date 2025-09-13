@@ -686,6 +686,9 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
         const presupuestosActualizados = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
         const detallesActualizados = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
         
+        // Marcar presupuestos anulados en Sheets antes del pull
+        await marcarAnuladosEnSheets(presupuestosActualizados, config, req.db);
+        
         const pullResult = await pullCambiosRemotosConTimestamp(presupuestosActualizados, detallesActualizados, req.db);
         
         console.log('[SYNC-BIDI] Pull completado. Registros actualizados:', pullResult.actualizados);
@@ -752,15 +755,14 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
     // ==== 2) Traer SOLO locales recientes (por fecha_actualizacion) ====
     // Nota: si tu campo “fecha_actualizacion” puede ser null para nuevas ALTAS,
     // usamos NOW() como fallback al construir la fila.
-    const rs = await db.query(
+  const rs = await db.query(
       `
       SELECT id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
              nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
-             fecha_actualizacion
+             fecha_actualizacion, activo, necesita_sync_sheets
       FROM public.presupuestos
-      WHERE activo = true
-        AND (fecha_actualizacion IS NOT NULL AND fecha_actualizacion >= NOW() - INTERVAL '${ONLY_RECENT_DAYS} days')
-      ORDER BY fecha_actualizacion DESC
+      WHERE (activo = true OR necesita_sync_sheets = true)
+      ORDER BY fecha_actualizacion DESC NULLS FIRST
       LIMIT 800
       `
     );
@@ -860,18 +862,17 @@ async function pullCambiosRemotosConTimestamp(presupuestosSheets, detallesSheets
     const idsCambiados = new Set(); // ← guardamos IDs creados/actualizados
 
     try {
-        // Crear mapa de timestamps locales
+        // Crear mapa de timestamps locales (incluye inactivos)
         const localTimestamps = new Map();
         const rsLocal = await db.query(`
-            SELECT id_presupuesto_ext, fecha_actualizacion
+            SELECT id_presupuesto_ext, fecha_actualizacion, activo
             FROM public.presupuestos
-            WHERE activo = true
         `);
         
         rsLocal.rows.forEach(row => {
             const id = (row.id_presupuesto_ext || '').toString().trim();
             const timestamp = new Date(row.fecha_actualizacion || 0);
-            localTimestamps.set(id, timestamp);
+            localTimestamps.set(id, { timestamp, activo: row.activo });
         });
 
             // Procesar registros de Sheets
@@ -882,22 +883,35 @@ async function pullCambiosRemotosConTimestamp(presupuestosSheets, detallesSheets
                 if (!id || !sheetLastModified) continue;
                 
                 const sheetTimestamp = new Date(parseLastModifiedToDate(sheetLastModified));
-                const localTimestamp = localTimestamps.get(id);
-                
-                if (!localTimestamp) {
-                    // No existe localmente, crear
+                const localData = localTimestamps.get(id); // { timestamp, activo } o undefined
+
+                // Columna O (Activo) en Sheets
+                const activoValue = row[presupuestosSheets.headers[14]];
+                const esInactivo = String(activoValue ?? '').toLowerCase() === 'false';
+
+                if (!localData) {
+                    // No existe localmente: crear solo si en Sheets está ACTIVO
+                    if (esInactivo) {
+                        console.log('[SYNC-BIDI] Omitiendo presupuesto inactivo de Sheets:', id);
+                        omitidos++;
+                        continue;
+                    }
                     await insertarPresupuestoDesdeSheet(row, presupuestosSheets.headers, db);
                     recibidos++;
                     idsCambiados.add(id);
                     console.log('[SYNC-BIDI] Nuevo desde Sheets:', id);
-                } else if (sheetTimestamp > localTimestamp) {
+                } else if (localData.activo === false) {
+                    // Existe local pero está inactivo: NO recrear
+                    omitidos++;
+                    continue;
+                } else if (sheetTimestamp > localData.timestamp) {
                     // Sheet más reciente, actualizar local
                     await actualizarPresupuestoDesdeSheet(row, presupuestosSheets.headers, db);
                     actualizados++;
                     idsCambiados.add(id);
                     console.log('[SYNC-BIDI] Actualizado desde Sheets:', id,
                         'sheet:', sheetTimestamp.toISOString(),
-                        'local:', localTimestamp.toISOString());
+                        'local:', localData.timestamp.toISOString());
                 } else {
                     // Local más reciente o igual, omitir
                     omitidos++;
@@ -1567,6 +1581,54 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
         console.error('[SYNC-BIDI][DETALLES] Stack trace:', e?.stack);
         throw e;
     }
+}async function marcarAnuladosEnSheets(presupuestosData, config, db) {
+  const { getSheets } = require('../../google/gsheetsClient');
+  const sheets = await getSheets();
+
+  const H = presupuestosData.headers || [];
+  const idxId = 0;   // Col A: ID
+  const idxLM = 13;  // Col N: LastModified
+  const idxActivo = 14; // Col O: Activo
+  const idxEstado = 7;  // Col H: Estado
+
+  // mapa: id -> nro de fila en Sheets (2-based, por el encabezado)
+  const rowById = new Map();
+  presupuestosData.rows.forEach((r, i) => {
+    const id = String(r[H[idxId]] ?? '').trim();
+    if (id) rowById.set(id, i + 2);
+  });
+
+  // Traer los que están inactivos en local
+  const rs = await db.query(`
+    SELECT id_presupuesto_ext
+    FROM public.presupuestos
+    WHERE activo = false AND COALESCE(id_presupuesto_ext,'') <> ''
+  `);
+  if (!rs.rowCount) return;
+
+  const now = toSheetDateTimeAR(Date.now());
+  const data = [];
+
+  for (const { id_presupuesto_ext } of rs.rows) {
+    const id = String(id_presupuesto_ext).trim();
+    const rowNum = rowById.get(id);
+    if (!rowNum) continue; // si no existe en Sheets, nada que marcar
+
+    // O (Activo) -> FALSE
+    data.push({ range: `Presupuestos!O${rowNum}:O${rowNum}`, values: [[false]] });
+    // H (Estado) -> 'Anulado' (opcional pero recomendable)
+    data.push({ range: `Presupuestos!H${rowNum}:H${rowNum}`, values: [['Anulado']] });
+    // N (LastModified) -> ahora
+    data.push({ range: `Presupuestos!N${rowNum}:N${rowNum}`, values: [[now]] });
+  }
+
+  if (data.length) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: config.hoja_id,
+      requestBody: { valueInputOption: 'USER_ENTERED', data }
+    });
+    console.log('[SYNC-BIDI] Marcados como inactivos en Sheets:', rs.rowCount);
+  }
 }
 
 console.log('[SYNC-FECHAS-CONTROLLER] ✅ Controlador de corrección de fechas configurado');
