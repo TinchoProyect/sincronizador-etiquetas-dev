@@ -12,13 +12,25 @@
 
 </head>
 <body>
+  <div class="container">
+    <!-- Header como tarjeta fila -->
+    <header class="card card--row">
+      <h1 class="card__title card__title--with-icon">Módulo de Estadísticas</h1>
+      <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
+    </header>
+  </div>
 
-    <div class="container">
-        <header>
-            <h1>Módulo de Estadísticas</h1>
-            <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
-        </header>
-    </div>
-    
+  <!-- IMPORTANTE: el main también dentro de .container para alinear anchos -->
+  <main class="container">
+    <!-- Sección como tarjeta estándar -->
+    <section class="card">
+      <h2 class="card__title card__title--center">Tiempos de Producción</h2>
+      <!-- tu contenido -->
+    </section>
+  </main>
+
+  <!-- corrige la ruta del JS (con / inicial) -->
+  <script src="/estadisticas/js/main.js" defer></script>
 </body>
+
 </html>

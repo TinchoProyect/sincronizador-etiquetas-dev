@@ -75,8 +75,54 @@ header h1::before{
   border-radius:10px;
   border:1px solid rgba(0,0,0,.05);
   box-shadow: 0 1px 1px rgba(0,0,0,.08), 0 6px 12px rgba(37,99,235,.25);
-  transition: background .15s ease, transform .03s ease, box-shadow .15s ease;
+  transition: background-color .15s ease, transform .03s ease, box-shadow .15s ease;
 }
 .back-button:hover{ background:var(--btn-hover); box-shadow: 0 2px 8px rgba(29,78,216,.35); }
 .back-button:active{ transform: translateY(1px); }
 .back-button:focus{ outline: 2px solid #93c5fd; outline-offset: 2px; }
+
+/* === Patrón tarjeta unificado === */
+.card{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin: 20px 0;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,.04),
+    0 8px 24px rgba(0,0,0,.06);
+}
+
+/* Tarjeta “fila” (header con botón a la derecha) */
+.card--row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Títulos de tarjeta */
+.card__title{
+  margin: 0;
+  font-size: clamp(18px, 2.2vw, 22px);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Título con icono (igual al header anterior) */
+.card__title--with-icon{
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.card__title--with-icon::before{
+  content:"";
+  width:28px; height:28px;
+  border-radius:6px;
+  border:1px solid var(--border);
+  background:#fff center/22px 22px no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.02);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'%3E%3Crect x='3' y='11' width='4' height='10' rx='1' fill='%23ef4444'/%3E%3Crect x='10' y='6' width='4' height='15' rx='1' fill='%233b82f6'/%3E%3Crect x='17' y='13' width='4' height='8' rx='1' fill='%2310b981'/%3E%3C/svg%3E");
+}
+
+/* Centrar el título de las secciones */
+.card__title--center{ text-align:center; }
