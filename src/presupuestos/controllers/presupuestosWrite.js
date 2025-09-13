@@ -721,45 +721,24 @@ const eliminarPresupuesto = async (req, res) => {
             await client.query("SET LOCAL lock_timeout TO '5s'");
             await client.query("SET LOCAL statement_timeout TO '15s'");
 
-            // 1. Borrar detalles del presupuesto (por id_presupuesto)
-            const deleteDetallesQuery = `
-                DELETE FROM presupuestos_detalles
-                WHERE id_presupuesto = $1
-            `;
-            const detallesResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
-            const detallesEliminados = detallesResult.rowCount;
+            // SOFT-DELETE (solo encabezado, sin tocar detalles)
+                await client.query(`
+                UPDATE presupuestos
+                    SET activo = false,
+                        estado = CASE WHEN COALESCE(estado,'')='' THEN 'Anulado' ELSE estado END
+                WHERE id = $1 AND activo = true
+                `, [presupuesto.id]);
 
-            console.log(`🗑️ [PRESUPUESTOS-WRITE] ${requestId} - Detalles eliminados: ${detallesEliminados} registros`);
+                await client.query('COMMIT');
 
-            // 2. Borrar el presupuesto principal
-            const deletePresupuestoQuery = `
-                DELETE FROM presupuestos
-                WHERE id = $1
-            `;
-            const presupuestoResult = await client.query(deletePresupuestoQuery, [presupuesto.id]);
-            const presupuestoEliminado = presupuestoResult.rowCount;
-
-            if (presupuestoEliminado === 0) {
-                throw new Error('No se pudo eliminar el presupuesto principal');
-            }
-
-            // Confirmar transacción
-            await client.query('COMMIT');
-
-            console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Eliminación física completada:`);
-            console.log(`   - Presupuesto: ${presupuesto.id_presupuesto_ext} (ID: ${presupuesto.id})`);
-            console.log(`   - Detalles eliminados: ${detallesEliminados} registros`);
-
-            // Respuesta exitosa
-            res.json({
+                return res.json({
                 success: true,
                 data: {
                     id: presupuesto.id,
                     id_presupuesto: presupuesto.id_presupuesto_ext,
-                    detalles_eliminados: detallesEliminados,
-                    eliminado_completo: true
+                    anulado: true
                 },
-                message: `Presupuesto y ${detallesEliminados} detalles eliminados exitosamente`,
+                message: 'Presupuesto anulado (soft-delete)',
                 requestId,
                 timestamp: new Date().toISOString()
             });
