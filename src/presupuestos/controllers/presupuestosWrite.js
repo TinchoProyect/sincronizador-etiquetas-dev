@@ -113,7 +113,7 @@ async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId
         console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de cabecera...`);
         const insertedIds = await pushAltasLocalesASheets(presupuestosData, config, db);
         
-        if (insertedIds && insertedIds.has(presupuestoId)) {
+        if (insertedIds && insertedIds.size > 0 && insertedIds.has(presupuestoId)) {
             console.log(`✅ [SYNC-UP] ${requestId} - Cabecera enviada exitosamente: ${presupuestoId}`);
             
             // Push de detalles
@@ -441,7 +441,8 @@ const editarPresupuesto = async (req, res) => {
         const { id } = req.params;
         const { agente, nota, punto_entrega, descuento, fecha_entrega, detalles } = req.body;
 
-        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
+    console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
+    console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos para edición:`, req.body);
 
         // Helpers numéricos locales para cálculos (copiados del POST)
         function round2(valor) {
@@ -569,6 +570,11 @@ const editarPresupuesto = async (req, res) => {
             // Actualizar cabecera si hay campos
             let presupuestoActualizado = presupuesto;
             if (updates.length > 0) {
+                // CRÍTICO: Agregar fecha_actualizacion para que la sincronización detecte el cambio
+                paramCount++;
+                updates.push(`fecha_actualizacion = $${paramCount}`);
+                params.push(new Date().toISOString());
+                
                 paramCount++;
                 params.push(presupuesto.id);
 
@@ -581,7 +587,7 @@ const editarPresupuesto = async (req, res) => {
 
                 const updateResult = await client.query(updateQuery, params);
                 presupuestoActualizado = updateResult.rows[0];
-                console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada`);
+                console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada con timestamp`);
             }
 
             // Determinar si actualizar detalles
@@ -604,7 +610,7 @@ const editarPresupuesto = async (req, res) => {
                 const deleteResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
                 const detallesEliminados = deleteResult.rowCount;
 
-                // 2. Construir detalles normalizados (misma lógica que POST)
+                // 2. Construir detalles normalizados (USAR MISMO CÁLCULO QUE EN CREACIÓN)
                 const detallesNormalizados = [];
                 const detallesInput = Array.isArray(detalles) ? detalles : [];
 
@@ -644,7 +650,7 @@ const editarPresupuesto = async (req, res) => {
                     console.log(`[PUT-DET] ejemplo primer detalle normalizado`, detallesNormalizados[0]);
                 }
 
-                // 3. Insertar nuevos detalles (misma query que POST)
+                // 3. Insertar nuevos detalles (versión simple)
                 const insertDetalleQuery = `
                     INSERT INTO presupuestos_detalles
                     (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
@@ -660,21 +666,26 @@ const editarPresupuesto = async (req, res) => {
                         detalle.valor1,
                         detalle.precio1,
                         detalle.iva1,
-                        // Corrección de mapeo según especificación del usuario
-                        detalle.diferencia, // diferencia (H)
-                        detalle.camp1,      // camp1 ↔ Camp2
-                        detalle.camp2,      // camp2 ↔ Camp3
-                        detalle.camp3,      // camp3 ↔ Camp4
-                        detalle.camp4,      // camp4 ↔ Camp5 (columna M)
-                        detalle.camp5,      // camp5 ↔ Camp6 (columna N)
-                        detalle.camp6       // camp6 ↔ Condicion (columna O)
+                        detalle.diferencia,
+                        detalle.camp1,
+                        detalle.camp2,
+                        detalle.camp3,
+                        detalle.camp4,
+                        detalle.camp5,
+                        detalle.camp6
                     ]);
                 }
 
                 console.log(`[PUT-DET] eliminados=${detallesEliminados} insertados=${detallesNormalizados.length}`);
+                
+                // Log antes del COMMIT
+                console.log(`[TRACE-EDIT-LOCAL] id=${presupuesto.id_presupuesto_ext} detalles_eliminados=${detallesEliminados} detalles_insertados=${detallesNormalizados.length}`);
             }
 
             await client.query('COMMIT');
+            
+            // Log después del COMMIT
+            console.log(`[TRACE-EDIT-LOCAL] commit_ok id=${presupuesto.id_presupuesto_ext}`);
 
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Transacción completada`);
 

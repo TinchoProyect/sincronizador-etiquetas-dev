@@ -53,35 +53,20 @@ const ejecutarCorreccion = async (req, res) => {
         if (hoja_url || sheetId) {
             console.log('[VALIDATION] Usando configuración del payload...');
             
-            let hojaId = sheetId;
-            let hojaUrl = hoja_url;
-            
-            // Si se proporciona URL, extraer ID
-            if (hoja_url && !sheetId) {
-                const hojaIdMatch = hoja_url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-                if (!hojaIdMatch) {
-                    console.log('[VALIDATION][ERROR] motivo=URL_INVALIDA');
-                    return res.status(400).json({
-                        success: false,
-                        code: 'INVALID_SHEET_URL',
-                        message: 'La URL de Google Sheets proporcionada no es válida',
-                        missingFields: [],
-                        timestamp: new Date().toISOString()
-                    });
-                }
-                hojaId = hojaIdMatch[1];
-            }
-            
-            // Si se proporciona ID, construir URL
-            if (sheetId && !hoja_url) {
-                hojaUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
-            }
+            // Reemplazo: no usar hojaId ni hojaUrl directamente, sino leer desde presupuestos_config
+            const { rows: [cfg] } = await req.db.query(`
+                SELECT hoja_id, hoja_nombre, hoja_url, COALESCE(usuario_id, 1) AS usuario_id
+                FROM presupuestos_config
+                WHERE activo = true
+                ORDER BY id DESC
+                LIMIT 1
+            `);
             
             config = {
-                hoja_id: hojaId,
-                hoja_url: hojaUrl,
-                hoja_nombre: sheetName || 'PresupuestosCopia',
-                usuario_id: req.user?.id || null
+                hoja_id:   cfg.hoja_id,
+                hoja_nombre: cfg.hoja_nombre,
+                hoja_url:  cfg.hoja_url,
+                usuario_id: cfg.usuario_id
             };
             
         } else {
@@ -90,10 +75,10 @@ const ejecutarCorreccion = async (req, res) => {
             
             try {
                 const configQuery = `
-                    SELECT sheet_url, sheet_id 
-                    FROM presupuestos_config 
-                    WHERE activo = true 
-                    ORDER BY fecha_creacion DESC 
+                    SELECT hoja_id, hoja_nombre, hoja_url, COALESCE(usuario_id, 1) AS usuario_id
+                    FROM presupuestos_config
+                    WHERE activo = true
+                    ORDER BY id DESC
                     LIMIT 1
                 `;
                 
@@ -101,13 +86,13 @@ const ejecutarCorreccion = async (req, res) => {
                 
                 if (configResult.rows.length > 0) {
                     const configPersistida = configResult.rows[0];
-                    console.log('[VALIDATION] Configuración persistida encontrada:', configPersistida.sheet_id);
+                    console.log('[VALIDATION] Configuración persistida encontrada:', configPersistida.hoja_id);
                     
                     config = {
-                        hoja_id: configPersistida.sheet_id,
-                        hoja_url: configPersistida.sheet_url,
-                        hoja_nombre: 'PresupuestosCopia',
-                        usuario_id: req.user?.id || null
+                        hoja_id: configPersistida.hoja_id,
+                        hoja_url: configPersistida.hoja_url,
+                        hoja_nombre: configPersistida.hoja_nombre,
+                        usuario_id: configPersistida.usuario_id
                     };
                 } else {
                     // Usar configuración hardcodeada como último recurso
@@ -117,7 +102,7 @@ const ejecutarCorreccion = async (req, res) => {
                         hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
                         hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
                         hoja_nombre: 'PresupuestosCopia',
-                        usuario_id: req.user?.id || null
+                        usuario_id: 1
                     };
                 }
                 
@@ -130,7 +115,7 @@ const ejecutarCorreccion = async (req, res) => {
                     hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
                     hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
                     hoja_nombre: 'PresupuestosCopia',
-                    usuario_id: req.user?.id || null
+                    usuario_id: 1
                 };
             }
         }
@@ -658,6 +643,10 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
             hoja_nombre: config.hoja_nombre
         });
         
+        const AUTO_SYNC_ENABLED = process.env.AUTO_SYNC_ENABLED ?? 'false';
+        const GSHEETS_DEBUG = process.env.GSHEETS_DEBUG ?? 'false';
+        console.log(`[DIAG-SYNC] start route=POST /api/presupuestos/sync/bidireccional sheetId=${config?.hoja_id} flags={AUTO_SYNC_ENABLED: ${AUTO_SYNC_ENABLED}, GSHEETS_DEBUG: ${GSHEETS_DEBUG}}`);
+        
         // PASO 2: Leer datos actuales de Sheets
         console.log('[SYNC-BIDI] Leyendo datos actuales de Sheets...');
         const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
@@ -680,7 +669,96 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
         
         // ===== FASE 2: PUSH ALTAS/UPDATES =====
         console.log('[SYNC-BTN] === FASE 2: PUSH ALTAS/UPDATES ===');
-        const { pushAltasLocalesASheets, pushDetallesLocalesASheets } = require('../../services/gsheets/sync_fechas_fix');
+        
+        // === DIAG: última edición local y conjunto de editados (solo log) ===
+        try {
+          // Si ya existen variables locales con estos datos, usalas para loguear; si no, calculá aquí sin cambiar la lógica del flujo.
+          const localRows = typeof localLastEdits !== 'undefined'
+            ? localLastEdits
+            : (await req.db.query(`
+                SELECT p.id_presupuesto_ext AS id,
+                       GREATEST(
+                         MAX(COALESCE(p.fecha_actualizacion,'epoch'::timestamp)),
+                         MAX(COALESCE(d.fecha_actualizacion,'epoch'::timestamp))
+                       ) AS local_last_edit
+                FROM presupuestos p
+                LEFT JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
+                WHERE p.activo = true
+                GROUP BY p.id_presupuesto_ext;
+              `)).rows;
+
+          console.log('[DIAG-LOCAL] count=%d sample=%o',
+            Array.isArray(localRows) ? localRows.length : 0,
+            Array.isArray(localRows) ? localRows.slice(0,5) : []
+          );
+
+          // Construir mapa de LastModified remoto desde 'presupuestosSheets' ya leído arriba
+          const idCol = presupuestosSheets.headers[0];       // "IDPresupuesto"
+          const lmCol = presupuestosSheets.headers[13];      // "LastModified"
+          const remoteLM = new Map(
+            presupuestosSheets.rows.map(r => [ r[idCol], r[lmCol] ])
+          );
+
+          // Intento de set de editados solo para diagnóstico (no altera el flujo)
+          const parseLM = (v) => {
+            // Maneja string tipo "14/09/2025 3:05:01" o número excel (45914)
+            if (typeof v === 'number') { // excel serial date
+              const ms = (v - 25569) * 86400 * 1000;
+              return new Date(ms);
+            }
+            return new Date(v);
+          };
+
+          const editedIds = new Set();
+          const debugComparisons = [];
+          
+          localRows.forEach(row => {
+            const rlm = remoteLM.get(row.id);
+            if (!rlm) {
+              editedIds.add(row.id);
+              debugComparisons.push({
+                id: row.id,
+                reason: 'ALTA_LOCAL_NO_EXISTE_REMOTO',
+                localDate: row.local_last_edit,
+                remoteDate: 'N/A'
+              });
+              return;
+            }
+            
+            const rDate = parseLM(rlm);
+            const lDate = new Date(row.local_last_edit);
+            
+            debugComparisons.push({
+              id: row.id,
+              localDate: lDate.toISOString(),
+              remoteDate: rDate.toISOString(),
+              localNewer: lDate > rDate,
+              timeDiffMinutes: Math.round((lDate - rDate) / (1000 * 60))
+            });
+            
+            if (lDate > rDate) {
+              editedIds.add(row.id);
+            }
+          });
+
+          console.log('[DIAG-EDIT-SET] size=%d sample=%o',
+            editedIds.size,
+            Array.from(editedIds).slice(0,5)
+          );
+          
+          // Log detallado de comparaciones (primeros 10)
+          console.log('[DIAG-TIMESTAMP-COMPARISON] Primeras 10 comparaciones:');
+          debugComparisons.slice(0, 10).forEach((comp, i) => {
+            console.log(`[DIAG-TIMESTAMP-COMPARISON] ${i+1}. ID: ${comp.id}`);
+            console.log(`   Local: ${comp.localDate}, Remoto: ${comp.remoteDate}`);
+            console.log(`   Local más nuevo: ${comp.localNewer}, Diff: ${comp.timeDiffMinutes || 'N/A'} min`);
+            console.log(`   Razón: ${comp.reason || (comp.localNewer ? 'LOCAL_NEWER' : 'REMOTE_NEWER_OR_EQUAL')}`);
+          });
+        } catch (e) {
+          console.log('[DIAG-EDIT-SET] error_en_diag', e?.message || e);
+        }
+        
+        const { pushAltasLocalesASheets, pushDetallesLocalesASheets, pushDetallesModificadosASheets } = require('../../services/gsheets/sync_fechas_fix');
         
         // Releer después de marcar anulados
         const presupuestosActualizados1 = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
@@ -691,6 +769,10 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
         
         const insertedIds = await pushCambiosLocalesConTimestamp(presupuestosData_updated, config, req.db);
         await pushDetallesLocalesASheets(insertedIds, config, req.db);
+        
+        // NUEVO: Sincronizar detalles modificados localmente
+        console.log('[SYNC-BTN] === SINCRONIZANDO DETALLES MODIFICADOS ===');
+        await pushDetallesModificadosASheets(config, req.db);
         
         console.log(`[SYNC-BTN] phase=push-upserts count=${insertedIds?.size || 0}`);
         
@@ -739,130 +821,207 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
 };
 
 /**
- * Push de cambios locales priorizando ALTAS NUEVAS y recientes.
- * - No depende de LastModified para decidir si existe: usa sólo el ID (col A).
- * - APPEND si el ID NO existe en Sheets.
- * - NO actualiza registros existentes (evita tocar históricos).
- * - Sólo mira "recientes" para no recorrer toda la historia.
- * - Limita escrituras por corrida para cuidar cuota.
+ * Push de cambios locales con detección de MODIFICACIONES
+ * IMPLEMENTA: Detectar editados y reemplazar filas existentes en Sheets
+ * SOLUCIÓN AL PROBLEMA: local_last_edit > LastModified de Sheets
  */
 async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
-  console.log('[SYNC-BIDI] Push (solo ALTAS nuevas y recientes)…');
-
-  // ⚙️ Parámetros de seguridad
-  const ONLY_RECENT_DAYS = parseInt(process.env.SYNC_ONLY_RECENT_DAYS || '30', 10); // ventana de recencia
-  const MAX_APPENDS_PER_SYNC = parseInt(process.env.SYNC_MAX_APPENDS || '20', 10); // cap de appends
+  console.log('[SYNC-BTN] phase=push-updates iniciando...');
 
   try {
     const { getSheets } = require('../../google/gsheetsClient');
     const sheets = await getSheets();
 
-    // ==== 1) Construir índice de IDs existentes en Sheets (columna A) ====
-    const sheetIdSet = new Set();
-    const sheetRowIndex = new Map(); // por si en el futuro querés updates
+    // ==== 1) Construir remoteById = Map(IDPresupuesto → { lastModified, _rowIndex }) ====
+    const remoteById = new Map();
     presupuestosData.rows.forEach((row, i) => {
-      const id = (row[presupuestosData.headers[0]] || '').toString().trim(); // A: IDPresupuesto
+      const id = (row[presupuestosData.headers[0]] || '').toString().trim();
+      const lastModified = row[presupuestosData.headers[13]] || '';
       if (id) {
-        sheetIdSet.add(id);
-        sheetRowIndex.set(id, i + 2); // (2-based, por encabezado)
+        remoteById.set(id, { 
+          lastModified, 
+          _rowIndex: i + 2  // +2 porque fila 1 es header
+        });
       }
     });
 
-    console.log('[SYNC-BIDI] IDs actuales en Sheets:', sheetIdSet.size);
+    console.log('[SYNC-BTN] remoteById construido:', remoteById.size, 'registros');
 
-    // ==== 2) Traer SOLO locales recientes (por fecha_actualizacion) ====
-    // Nota: si tu campo “fecha_actualizacion” puede ser null para nuevas ALTAS,
-    // usamos NOW() como fallback al construir la fila.
-  const rs = await db.query(
-      `
-      SELECT id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
-             nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
-             fecha_actualizacion, activo, necesita_sync_sheets
-      FROM public.presupuestos
-      WHERE (activo = true OR necesita_sync_sheets = true)
-      ORDER BY fecha_actualizacion DESC NULLS FIRST
-      LIMIT 800
-      `
-    );
+    // ==== 2) Calcular local_last_edit por ID ====
+    const localLastEditQuery = `
+      SELECT 
+        p.id_presupuesto_ext AS id,
+        p.id_cliente, p.fecha, p.fecha_entrega, p.agente, p.tipo_comprobante,
+        p.nota, p.estado, p.informe_generado, p.cliente_nuevo_id, 
+        p.punto_entrega, p.descuento, p.activo,
+        GREATEST(
+          COALESCE(p.fecha_actualizacion, 'epoch'::timestamp),
+          COALESCE(MAX(d.fecha_actualizacion), 'epoch'::timestamp)
+        ) AS local_last_edit
+      FROM presupuestos p
+      LEFT JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
+      WHERE p.activo = true AND p.id_presupuesto_ext IS NOT NULL
+      GROUP BY p.id, p.id_presupuesto_ext, p.id_cliente, p.fecha, p.fecha_entrega, 
+               p.agente, p.tipo_comprobante, p.nota, p.estado, p.informe_generado, 
+               p.cliente_nuevo_id, p.punto_entrega, p.descuento, p.activo, p.fecha_actualizacion
+      ORDER BY local_last_edit DESC
+      LIMIT 500
+    `;
 
-    console.log('[SYNC-BIDI] Locales recientes leídos:', rs.rowCount);
+    const rs = await db.query(localLastEditQuery);
+    console.log('[SYNC-BTN] local_last_edit calculado para', rs.rowCount, 'presupuestos');
 
-    // ==== 3) Filtrar solo ALTAS nuevas (ID no existe en Sheets) ====
-    const nuevas = [];
-    for (const r of rs.rows) {
-      const id = (r.id_presupuesto_ext || '').toString().trim();
-      if (!id) {
-        console.log('[SYNC-BIDI][OMIT] Sin ID externo, no se puede subir.');
-        continue;
+    // ==== 3) Detectar editados: toUpdate = locales.filter(l => remoteById.has(l.id) && local_last_edit(l) > parse(remote.lastModified)) ====
+    const toUpdate = [];
+    const toInsert = [];
+
+    // Helper para parsear LastModified que puede venir como string o número Excel
+    const parseLastModified = (val) => {
+      if (!val) return new Date(0);
+      
+      // Si es número (Excel serial date)
+      if (typeof val === 'number') {
+        const excelEpoch = new Date(1900, 0, 1);
+        const days = val - 2; // Excel cuenta desde 1900-01-01 pero tiene bug del año bisiesto
+        return new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
       }
+      
+      // Si es string, intentar parsear
+      try {
+        // Formato dd/mm/yyyy hh:mm:ss
+        const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/;
+        const match = String(val).match(ddmmyyyyRegex);
+        if (match) {
+          const [, day, month, year, hour, minute, second] = match;
+          return new Date(year, month - 1, day, hour, minute, second);
+        }
+        return new Date(val);
+      } catch (e) {
+        return new Date(0);
+      }
+    };
 
-      if (!sheetIdSet.has(id)) {
-        nuevas.push(r);
-        console.log('[SYNC-BIDI][CANDIDATO-APPEND] ID nuevo (no existe en Sheets):', id);
+    for (const row of rs.rows) {
+      const id = (row.id || '').toString().trim();
+      if (!id) continue;
+
+      const localLastEdit = new Date(row.local_last_edit);
+      const remote = remoteById.get(id);
+
+      if (!remote) {
+        // No existe en Sheets → ALTA
+        toInsert.push(row);
+        console.log('[SYNC-BTN] ALTA detectada:', id);
       } else {
-        // Existe → no lo tocamos (evitamos reescrituras históricas)
+        // Existe en Sheets → comparar timestamps
+        const remoteLastModified = parseLastModified(remote.lastModified);
+        
+        if (localLastEdit > remoteLastModified) {
+          // Local más nuevo → UPDATE
+          toUpdate.push({ ...row, _rowIndex: remote._rowIndex });
+          console.log('[SYNC-BTN] UPDATE detectado:', id, 
+            'local:', localLastEdit.toISOString(), 
+            'remote:', remoteLastModified.toISOString());
+        }
       }
     }
 
-    if (nuevas.length === 0) {
-      console.log('[SYNC-BIDI] No hay ALTAS nuevas para subir (recientes).');
-      return new Set();
-    }
+    console.log(`[SYNC-BTN] phase=push-updates count=${toUpdate.length}`);
+    console.log(`[DIAG-UPDATE-ROWS] sample=${JSON.stringify(toUpdate.slice(0,5).map(x=>x.id))}`);
 
-    // ==== 4) Cap de escritura por cuota ====
-    const aAppend = nuevas.slice(0, MAX_APPENDS_PER_SYNC);
-    console.log(`[SYNC-BIDI] ALTAS nuevas detectadas=${nuevas.length} | aAppend (cap)=${aAppend.length}`);
+    // ==== 4) Reemplazar filas en Sheets (no append) ====
+    const updatedIds = new Set();
+    const insertedIds = new Set();
 
-    // ==== 5) Helper de formateo A:O (coherente con tu esquema) ====
-    const toRow = (r) => {
+    // ==== 5) Reutilizar el mismo helper de ALTAS (sin armar arrays "a mano") ====
+    const { pushAltasLocalesASheets } = require('../../services/gsheets/sync_fechas_fix');
+    
+    // Importar el helper de mapeo usado en ALTAS
+    const toSheetRowPresupuesto = (r) => {
+      // Usar EXACTAMENTE el mismo mapeo que las inserciones
       const pctStr = formatDescuentoForSheet(r.descuento);
-      const lastModifiedAR = toSheetDateTimeAR(r.fecha_actualizacion || Date.now());
+      const lastModifiedAR = toSheetDateTimeAR(r.local_last_edit || Date.now());
+
+      // Asegurar que ningún campo quede vacío o con valor por defecto incorrecto
       return [
-        (r.id_presupuesto_ext ?? '').toString().trim(), // A  IDPresupuesto
+        (r.id ?? '').toString().trim(),                 // A  IDPresupuesto
         toSheetDate(r.fecha),                           // B  Fecha
-        r.id_cliente ?? '',                             // C  IDCliente
-        r.agente ?? '',                                 // D  Agente
+        r.id_cliente !== undefined && r.id_cliente !== null ? r.id_cliente.toString() : '',  // C  IDCliente
+        r.agente !== undefined && r.agente !== null ? r.agente.toString() : '',            // D  Agente
         toSheetDate(r.fecha_entrega),                   // E  Fecha de entrega
-        r.tipo_comprobante ?? '',                       // F  Factura/Efectivo
-        r.nota ?? '',                                   // G  Nota
-        r.estado ?? '',                                 // H  Estado
-        r.informe_generado ?? '',                       // I  InformeGenerado
-        r.cliente_nuevo_id ?? '',                       // J  ClienteNuevID
+        r.tipo_comprobante !== undefined && r.tipo_comprobante !== null ? r.tipo_comprobante.toString() : '', // F  Factura/Efectivo
+        r.nota !== undefined && r.nota !== null ? r.nota.toString() : '',                  // G  Nota
+        r.estado !== undefined && r.estado !== null ? r.estado.toString() : '',            // H  Estado
+        r.informe_generado !== undefined && r.informe_generado !== null ? r.informe_generado.toString() : '', // I  InformeGenerado
+        r.cliente_nuevo_id !== undefined && r.cliente_nuevo_id !== null ? r.cliente_nuevo_id.toString() : '', // J  ClienteNuevID
         '',                                             // K  Estado/ImprimePDF
-        r.punto_entrega ?? '',                          // L  PuntoEntrega
+        r.punto_entrega !== undefined && r.punto_entrega !== null ? r.punto_entrega.toString() : '',          // L  PuntoEntrega
         pctStr,                                         // M  Descuento
-        lastModifiedAR,                                 // N  LastModified (lo inicializamos)
-        true                                            // O  Activo
+        lastModifiedAR,                                 // N  LastModified
+        r.activo !== false                              // O  Activo
       ];
     };
 
-    // ==== 6) Hacer APPEND (uno por uno; cap bajo evita cuota) ====
-    const insertedIds = new Set();
+    // ==== 6) Procesar UPDATES (reemplazar filas existentes con mapeo completo) ====
+    for (const r of toUpdate.slice(0, 20)) { // Limitar para cuidar cuota
+      const id = (r.id ?? '').toString().trim();
+      const mappedRow = toSheetRowPresupuesto(r);
+      const values = [mappedRow];
+      const rowIndex = r._rowIndex;
 
-    for (const r of aAppend) {
-      const id = (r.id_presupuesto_ext ?? '').toString().trim();
-      const values = [toRow(r)];
+      // Log de muestra de filas ya mapeadas (como en ALTAS)
+      if (updatedIds.size < 2) {
+        console.log(`[DIAG-UPDATE-MAP] sample=${JSON.stringify({ id, mappedRow: mappedRow.slice(0, 5) })}`);
+      }
+
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: config.hoja_id,
+          range: `Presupuestos!A${rowIndex}:O${rowIndex}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values, majorDimension: 'ROWS' }
+        });
+        updatedIds.add(id);
+        console.log('[SYNC-BTN] UPDATE-OK:', id, `(fila ${rowIndex})`);
+      } catch (e) {
+        console.warn('[SYNC-BTN] UPDATE-ERR:', id, e?.message);
+      }
+    }
+
+    // ==== 7) Procesar INSERTS (append nuevas filas con mismo mapeo) ====
+    for (const r of toInsert.slice(0, 10)) { // Limitar para cuidar cuota
+      const id = (r.id ?? '').toString().trim();
+      const mappedRow = toSheetRowPresupuesto(r);
+      const values = [mappedRow];
 
       try {
         await sheets.spreadsheets.values.append({
           spreadsheetId: config.hoja_id,
           range: 'Presupuestos!A1:O1',
-          valueInputOption: 'USER_ENTERED', // deja a Sheets interpretar fechas/locales
+          valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS',
           requestBody: { values, majorDimension: 'ROWS' }
         });
-        console.log('[SYNC-BIDI][APPEND-OK]', id);
         insertedIds.add(id);
+        console.log('[SYNC-BTN] INSERT-OK:', id);
       } catch (e) {
-        console.warn('[SYNC-BIDI][APPEND-ERR]', id, e?.message);
+        console.warn('[SYNC-BTN] INSERT-ERR:', id, e?.message);
       }
     }
 
-    console.log('[SYNC-BIDI] ALTAS insertadas efectivamente:', insertedIds.size);
-    return insertedIds;
+    const totalProcessed = updatedIds.size + insertedIds.size;
+    console.log('[SYNC-BTN] Push completado:', {
+      updates: updatedIds.size,
+      inserts: insertedIds.size,
+      total: totalProcessed
+    });
+
+    // Retornar todos los IDs procesados para sincronizar detalles
+    const allProcessedIds = new Set([...updatedIds, ...insertedIds]);
+    return allProcessedIds;
 
   } catch (e) {
-    console.warn('[SYNC-BIDI] Error general en push (altas recientes):', e?.message);
+    console.warn('[SYNC-BTN] Error en push updates:', e?.message);
     return new Set();
   }
 }
