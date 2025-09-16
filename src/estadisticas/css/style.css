@@ -110,6 +110,7 @@ header h1::before{
 
 /* Título con icono (igual al header anterior) */
 .card__title--with-icon{
+ 
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -132,6 +133,7 @@ header h1::before{
 /* Stats panel */
 .stats-panel {
     display: grid;
+    
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 20px;
     margin-bottom: 20px;
@@ -140,10 +142,11 @@ header h1::before{
 .stat-card {
     background-color: var(--white);
     padding: 20px;
+    border: rgba(0,0,0,0.15) 1px solid;
     border-radius: var(--border-radius);
-    box-shadow: var(--shadow);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     text-align: center;
-    transition: var(--transition);
+   
 }
 
 .stat-card:hover {
