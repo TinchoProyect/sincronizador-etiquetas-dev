@@ -20,16 +20,37 @@
     </header>
   </div>
 
-  <!-- IMPORTANTE: el main también dentro de .container para alinear anchos -->
   <main class="container">
     <!-- Sección como tarjeta estándar -->
     <section class="card">
       <h2 class="card__title card__title--center">Tiempos de Producción</h2>
       <!-- tu contenido -->
     </section>
+    <div class="container">
+
+      <section class="stats-panel">
+        <div class="stat-card">
+          <h3>Tiempos de Producción de Carros </h3>
+        <!-- tu contenido -->
+        <span id="total-registros" class="stat-value">-</span>
+        </div>
+        <div class="stat-card">
+          <h3>Datos Brutos</h3>
+        <!-- tu contenido -->
+        <span id="total-registros" class="stat-value">-</span>
+        </div>
+      
+        <div class="stat-card">
+          <h3>Análisis de Datos</h3>
+        <!-- tu contenido -->
+        <span id="total-registros" class="stat-value">-</span>
+        </div>  
+          
+      </section>
+    </div>
   </main>
 
-  <!-- corrige la ruta del JS (con / inicial) -->
+  <!--Scripts -->
   <script src="/estadisticas/js/main.js" defer></script>
 </body>
 
