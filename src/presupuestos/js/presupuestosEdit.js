@@ -1,15 +1,11 @@
-// Encapsular todo el código del editor en IIFE para evitar conflictos con el módulo común
+// Módulo de edición de presupuestos - Integrado con detalles-common.js
 (function() {
-  console.log('[EDIT] Cargando módulo de edición...');
+  console.log('[EDIT] Cargando módulo de edición integrado...');
 
   // Variables globales del editor
   let presupuestoId = null;
   let presupuestoData = null;
   let detallesData = [];
-  let clienteSeleccionado = null;
-  let currentRequest = null;
-  let selectedIndex = -1;
-  let detalleCounter = 0; // Contador para IDs de detalles
 
   // Cache para descripciones de artículos por código de barras
   const descripcionCache = new Map();
@@ -50,39 +46,37 @@
     }
   }
 
-  // Exponer funciones para compatibilidad
-  window.agregarDetalle = agregarDetalle;
-  window.removerDetalle = removerDetalle;
-  window.seleccionarArticuloPorClick = seleccionarArticuloPorClick;
-  window.seleccionarArticulo = seleccionarArticulo;
-  window.seleccionarClientePorClick = seleccionarClientePorClick;
+  // Usar funciones del módulo común en lugar de duplicar código
+  window.agregarDetalle = function() {
+    if (window.Detalles && window.Detalles.agregarDetalle) {
+      window.Detalles.agregarDetalle();
+    } else {
+      console.error('❌ [PRESUPUESTOS-EDIT] Módulo común no disponible');
+    }
+  };
 
-  // --- EXPORTS necesarios para handlers inline ---
-  window.calcularPrecio = calcularPrecio;     // onchange="calcularPrecio(id)"
-  window.recalcTotales = recalcTotales;       // por si lo usás desde fuera
+  window.removerDetalle = function(id) {
+    if (window.Detalles && window.Detalles.removerDetalle) {
+      window.Detalles.removerDetalle(id);
+    } else {
+      console.error('❌ [PRESUPUESTOS-EDIT] Módulo común no disponible');
+    }
+  };
 
-  // --- Render helper llamado después de cargar datos ---
-  function renderDetallesConModuloComun() {
-    // Si más adelante exponés un render del módulo común, usalo acá.
-    // Por ahora hacemos fallback al renderer propio:
-    renderDetallesDesdeBD();
-  }
+  // Exponer funciones para compatibilidad con handlers inline
+  window.calcularPrecio = function(detalleId) {
+    if (window.Detalles && window.Detalles.calcularPrecio) {
+      window.Detalles.calcularPrecio(detalleId);
+    }
+  };
 
-  // === UI core compartido con "Crear" (copiado y reducido) ===
+  window.recalcTotales = function() {
+    if (window.Detalles && window.Detalles.recalcTotales) {
+      window.Detalles.recalcTotales();
+    }
+  };
 
-  // Moneda ARS
-  const fmtARS = new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', minimumFractionDigits:2, maximumFractionDigits:2 });
-  const formatARS = n => Number.isFinite(+n) ? fmtARS.format(+n) : '$ 0,00';
-
-  function dispatchRecalc(el){ try{ el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }catch(_){ } }
-  function setNumeric(el,val,dec=2,fallback=0){ const n=Number(val); el.value=Number.isFinite(n)?n.toFixed(dec):Number(fallback).toFixed(dec); dispatchRecalc(el); }
-  function setCantidad(el,val){ setNumeric(el,val,2,1); }
-  function getDetalleIdFromInput(input){ const m=(input?.name||'').match(/\[(\d+)\]\[/); return m?parseInt(m[1],10):null; }
-
-  function updatePrecioDisplay(id, pvu){ const d=document.querySelector(`input[data-precio-display="${id}"]`); if(d) d.value = formatARS(pvu); }
-  function updateSubtotalDisplay(id, st){ const d=document.querySelector(`input[data-subtotal-display="${id}"]`); if(d) d.value = formatARS(st); }
-
-  // Convierte "10.940,92" -> 10940.92, "21,00" -> 21,  "21" -> 21
+  // Funciones de utilidad locales
   function toNum(x) {
     if (typeof x === 'number' && Number.isFinite(x)) return x;
     if (typeof x === 'string') {
@@ -93,71 +87,18 @@
     return 0;
   }
 
-  // Igual a Crear: agrega una fila con mismos names/estructura
-  function agregarDetalle(){
-    const tbody = document.getElementById('detalles-tbody');
-    if(!tbody) return;
-    detalleCounter++;
-    const row = document.createElement('tr');
-    row.id = `detalle-${detalleCounter}`;
-    row.innerHTML = `
-      <td><input type="text" class="articulo-input" name="detalles[${detalleCounter}][articulo]" placeholder="Código o descripción del artículo" required></td>
-      <td><input type="number" name="detalles[${detalleCounter}][cantidad]" min="0.01" step="0.01" placeholder="1" required onchange="calcularPrecio(${detalleCounter})"></td>
-      <td><input type="number" name="detalles[${detalleCounter}][valor1]" min="0" step="0.01" placeholder="0.00" required onchange="calcularPrecio(${detalleCounter})"></td>
-      <td><input type="number" name="detalles[${detalleCounter}][iva1]" min="0" max="100" step="0.01" placeholder="21.00" onchange="calcularPrecio(${detalleCounter})"></td>
-      <td>
-        <input type="hidden" name="detalles[${detalleCounter}][precio1]" class="precio1-hidden">
-        <input type="text" class="precio-calculado" data-precio-display="${detalleCounter}" value="$ 0,00" readonly>
-      </td>
-      <td><input type="text" class="subtotal-display" data-subtotal-display="${detalleCounter}" value="$ 0,00" readonly></td>
-      <td><button type="button" class="btn-remove-detalle" onclick="removerDetalle(${detalleCounter})">🗑️</button></td>
-    `;
-    tbody.appendChild(row);
-    row.querySelector(`[name="detalles[${detalleCounter}][iva1]"]`).value = '21.00';
-    row.querySelector(`[name="detalles[${detalleCounter}][cantidad]"]`).value = '1';
+  function setNumeric(el, val, dec = 2, fallback = 0) {
+    const n = Number(val);
+    el.value = Number.isFinite(n) ? n.toFixed(dec) : Number(fallback).toFixed(dec);
+    try {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (_) {}
   }
 
-  function calcularPrecio(detalleId){
-    const q = +document.querySelector(`input[name="detalles[${detalleId}][cantidad]"]`)?.value || 0;
-    const v = +document.querySelector(`input[name="detalles[${detalleId}][valor1]"]`)?.value || 0;
-    const ivaPct = +document.querySelector(`input[name="detalles[${detalleId}][iva1]"]`)?.value || 0;
-    const precio1El = document.querySelector(`input[name="detalles[${detalleId}][precio1]"]`);
-    const pvu = v * (1 + ivaPct/100);
-    if(precio1El) precio1El.value = pvu.toFixed(2);
-    updatePrecioDisplay(detalleId, pvu);
-    updateSubtotalDisplay(detalleId, pvu*q);
+  function setCantidad(el, val) {
+    setNumeric(el, val, 2, 1);
   }
-
-  function recalcTotales(){
-    const tbody = document.getElementById('detalles-tbody'); if(!tbody) return;
-    let bruto = 0;
-    tbody.querySelectorAll('tr').forEach(row=>{
-      const q = +row.querySelector('input[name*="[cantidad]"]')?.value || 0;
-      const p = +row.querySelector('input[name*="[precio1]"]')?.value || 0;
-      bruto += q*p;
-    });
-    const dEl = document.getElementById('descuento'); const pct = Math.max(0, Math.min(100, +(dEl?.value||0)));
-    const desc = bruto * (pct/100);
-    const total = bruto - desc;
-    const set = (sel, val)=>{ document.querySelectorAll(sel).forEach(el=> el.tagName==='INPUT'? el.value=val: el.textContent=val); };
-    set('#total-bruto,[data-total="bruto"]', formatARS(bruto));
-    set('#total-descuento,[data-total="descuento"]', formatARS(desc));
-    set('#total-final,[data-total="final"]', formatARS(total));
-  }
-
-  // listeners para recalcular como en Crear
-  document.addEventListener('input', (e)=>{
-    const n = e.target?.name || '';
-    if (/\[(cantidad|valor1|iva1)\]/.test(n)){
-      const id = getDetalleIdFromInput(e.target);
-      if(id!=null){ calcularPrecio(id); recalcTotales(); }
-    } else if (e.target?.id === 'descuento'){ recalcTotales(); }
-  });
-  (() => {
-    const tbody = document.getElementById('detalles-tbody');
-    if(!tbody) return;
-    new MutationObserver(()=>recalcTotales()).observe(tbody,{childList:true});
-  })();
 
   // Inicialización
 document.addEventListener('DOMContentLoaded', function() {
@@ -460,13 +401,17 @@ function llenarCamposEditables() {
 }
 
 /**
- * Renderizar detalles desde BD usando la nueva estructura
+ * Renderizar detalles desde BD usando el módulo común
  */
-async function renderDetallesDesdeBD(){
+async function renderDetallesConModuloComun(){
   const tbody = document.getElementById('detalles-tbody');
   if(!tbody) return;
   tbody.innerHTML = '';
-  detalleCounter = 0;
+  
+  // Resetear contador del módulo común
+  if (window.Detalles) {
+    window.Detalles.detalleCounter = 0;
+  }
 
   const tipoSel = document.getElementById('tipo_comprobante');
   const esRemito = () => tipoSel && tipoSel.value === 'Remito-Efectivo';
@@ -477,10 +422,13 @@ async function renderDetallesDesdeBD(){
     const ivaPctBase = ((det.iva1 || 0) * 100);
     const ivaPctVisible = esRemito() ? (ivaPctBase / 2) : ivaPctBase;
 
+    // Usar función del módulo común
     agregarDetalle();
-    const idx = detalleCounter; // el que acaba de agregarse
+    const idx = window.Detalles ? window.Detalles.detalleCounter : 1;
 
     const row = document.getElementById(`detalle-${idx}`);
+    if (!row) continue;
+
     const artInput   = row.querySelector(`input[name="detalles[${idx}][articulo]"]`);
     const cantInput  = row.querySelector(`input[name="detalles[${idx}][cantidad]"]`);
     const valorInput = row.querySelector(`input[name="detalles[${idx}][valor1]"]`);
@@ -526,10 +474,16 @@ async function renderDetallesDesdeBD(){
       : (det.valor1||0) * (1 + (ivaPctBase/100));
     if (precio1El) precio1El.value = (+pvu).toFixed(2);
 
-    calcularPrecio(idx); // también actualiza displays y subtotal
+    // Usar función del módulo común para calcular precio
+    if (window.Detalles && window.Detalles.calcularPrecio) {
+      window.Detalles.calcularPrecio(idx);
+    }
   }
 
-  recalcTotales();
+  // Usar función del módulo común para recalcular totales
+  if (window.Detalles && window.Detalles.recalcTotales) {
+    window.Detalles.recalcTotales();
+  }
 }
 
 /**

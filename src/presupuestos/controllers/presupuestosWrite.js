@@ -50,8 +50,90 @@ function normalizeNumber(numberInput) {
 }
 
 /**
+ * Push automático a Google Sheets (fire-and-forget)
+ * Se ejecuta en segundo plano después del COMMIT exitoso
+ */
+async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId, db) {
+    try {
+        console.log(`🚀 [SYNC-UP] ${requestId} - Iniciando push automático a Sheets: ${presupuestoId} (${detallesCount} detalles)`);
+        
+        // Obtener configuración de Sheets
+        let config = null;
+        try {
+            const configQuery = `
+                SELECT sheet_url, sheet_id 
+                FROM presupuestos_config 
+                WHERE activo = true 
+                ORDER BY fecha_creacion DESC 
+                LIMIT 1
+            `;
+            const configResult = await db.query(configQuery);
+            
+            if (configResult.rows.length > 0) {
+                const configPersistida = configResult.rows[0];
+                config = {
+                    hoja_id: configPersistida.sheet_id,
+                    hoja_url: configPersistida.sheet_url,
+                    hoja_nombre: 'Presupuestos',
+                    usuario_id: null
+                };
+            } else {
+                // Usar configuración por defecto
+                config = {
+                    hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
+                    hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
+                    hoja_nombre: 'Presupuestos',
+                    usuario_id: null
+                };
+            }
+        } catch (configError) {
+            console.warn(`⚠️ [SYNC-UP] ${requestId} - Error obteniendo config, usando por defecto:`, configError.message);
+            config = {
+                hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
+                hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
+                hoja_nombre: 'Presupuestos',
+                usuario_id: null
+            };
+        }
+
+        if (!config.hoja_id) {
+            console.warn(`⚠️ [SYNC-UP] ${requestId} - No hay configuración válida para push automático`);
+            return;
+        }
+
+        // Importar funciones de push (usando las existentes del servicio)
+        const { pushAltasLocalesASheets, pushDetallesLocalesASheets } = require('../../services/gsheets/sync_fechas_fix');
+        const { readSheetWithHeaders } = require('../../services/gsheets/client_with_logs');
+
+        // Leer datos actuales de Sheets para el push
+        console.log(`🔍 [SYNC-UP] ${requestId} - Leyendo datos actuales de Sheets...`);
+        const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        
+        // Push de cabecera (solo el presupuesto recién creado)
+        console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de cabecera...`);
+        const insertedIds = await pushAltasLocalesASheets(presupuestosData, config, db);
+        
+        if (insertedIds && insertedIds.size > 0 && insertedIds.has(presupuestoId)) {
+            console.log(`✅ [SYNC-UP] ${requestId} - Cabecera enviada exitosamente: ${presupuestoId}`);
+            
+            // Push de detalles
+            console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de detalles...`);
+            await pushDetallesLocalesASheets(insertedIds, config, db);
+            console.log(`✅ [SYNC-UP] ${requestId} - Push automático completado: ${presupuestoId} con ${detallesCount} detalles`);
+        } else {
+            console.log(`ℹ️ [SYNC-UP] ${requestId} - Presupuesto ya existía en Sheets o no se pudo enviar: ${presupuestoId}`);
+        }
+
+    } catch (pushError) {
+        // Error en push NO debe afectar la respuesta al cliente
+        console.error(`❌ [SYNC-UP] ${requestId} - Error en push automático (no crítico):`, pushError.message);
+        console.error(`❌ [SYNC-UP] ${requestId} - Stack:`, pushError.stack);
+    }
+}
+
+/**
  * Crear nuevo presupuesto con encabezado + detalles
- * Transacción corta + guardas de concurrencia
+ * Transacción corta + guardas de concurrencia + PUSH AUTOMÁTICO A SHEETS
  */
 const crearPresupuesto = async (req, res) => {
     const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -259,6 +341,12 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
 
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Transacción OK. Presupuesto creado: ${presupuestoId}`);
 
+            // ===== PUENTE AUTOMÁTICO LOCAL→JIT (FIRE-AND-FORGET POST-COMMIT) =====
+            // Disparar push automático en segundo plano SIN esperar respuesta
+            setImmediate(() => {
+                pushToSheetsFireAndForget(presupuestoId, detallesNormalizados.length, requestId, req.db);
+            });
+
             // Respuesta exitosa INMEDIATA (sin esperar Google Sheets)
             return res.status(201).json({
                 success: true,
@@ -353,7 +441,8 @@ const editarPresupuesto = async (req, res) => {
         const { id } = req.params;
         const { agente, nota, punto_entrega, descuento, fecha_entrega, detalles } = req.body;
 
-        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
+    console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
+    console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos para edición:`, req.body);
 
         // Helpers numéricos locales para cálculos (copiados del POST)
         function round2(valor) {
@@ -481,6 +570,11 @@ const editarPresupuesto = async (req, res) => {
             // Actualizar cabecera si hay campos
             let presupuestoActualizado = presupuesto;
             if (updates.length > 0) {
+                // CRÍTICO: Agregar fecha_actualizacion para que la sincronización detecte el cambio
+                paramCount++;
+                updates.push(`fecha_actualizacion = $${paramCount}`);
+                params.push(new Date().toISOString());
+                
                 paramCount++;
                 params.push(presupuesto.id);
 
@@ -493,7 +587,7 @@ const editarPresupuesto = async (req, res) => {
 
                 const updateResult = await client.query(updateQuery, params);
                 presupuestoActualizado = updateResult.rows[0];
-                console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada`);
+                console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada con timestamp`);
             }
 
             // Determinar si actualizar detalles
@@ -516,7 +610,7 @@ const editarPresupuesto = async (req, res) => {
                 const deleteResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
                 const detallesEliminados = deleteResult.rowCount;
 
-                // 2. Construir detalles normalizados (misma lógica que POST)
+                // 2. Construir detalles normalizados (USAR MISMO CÁLCULO QUE EN CREACIÓN)
                 const detallesNormalizados = [];
                 const detallesInput = Array.isArray(detalles) ? detalles : [];
 
@@ -556,7 +650,7 @@ const editarPresupuesto = async (req, res) => {
                     console.log(`[PUT-DET] ejemplo primer detalle normalizado`, detallesNormalizados[0]);
                 }
 
-                // 3. Insertar nuevos detalles (misma query que POST)
+                // 3. Insertar nuevos detalles (versión simple)
                 const insertDetalleQuery = `
                     INSERT INTO presupuestos_detalles
                     (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
@@ -572,21 +666,26 @@ const editarPresupuesto = async (req, res) => {
                         detalle.valor1,
                         detalle.precio1,
                         detalle.iva1,
-                        // Corrección de mapeo según especificación del usuario
-                        detalle.diferencia, // diferencia (H)
-                        detalle.camp1,      // camp1 ↔ Camp2
-                        detalle.camp2,      // camp2 ↔ Camp3
-                        detalle.camp3,      // camp3 ↔ Camp4
-                        detalle.camp4,      // camp4 ↔ Camp5 (columna M)
-                        detalle.camp5,      // camp5 ↔ Camp6 (columna N)
-                        detalle.camp6       // camp6 ↔ Condicion (columna O)
+                        detalle.diferencia,
+                        detalle.camp1,
+                        detalle.camp2,
+                        detalle.camp3,
+                        detalle.camp4,
+                        detalle.camp5,
+                        detalle.camp6
                     ]);
                 }
 
                 console.log(`[PUT-DET] eliminados=${detallesEliminados} insertados=${detallesNormalizados.length}`);
+                
+                // Log antes del COMMIT
+                console.log(`[TRACE-EDIT-LOCAL] id=${presupuesto.id_presupuesto_ext} detalles_eliminados=${detallesEliminados} detalles_insertados=${detallesNormalizados.length}`);
             }
 
             await client.query('COMMIT');
+            
+            // Log después del COMMIT
+            console.log(`[TRACE-EDIT-LOCAL] commit_ok id=${presupuesto.id_presupuesto_ext}`);
 
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Transacción completada`);
 

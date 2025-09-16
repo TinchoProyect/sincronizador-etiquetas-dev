@@ -655,41 +655,40 @@ function toSheetDate(val) {
 }
 
 /**
- * Push de ALTAS locales a Google Sheets (alineado A:O, fechas ok, % ok)
+ * Push de ALTAS locales a Google Sheets (append-only sin necesita_sync_sheets)
  */
 async function pushAltasLocalesASheets(presupuestosData, config, db) {
   try {
     const { getSheets } = require('../../google/gsheetsClient');
     const sheets = await getSheets();
 
-    // IDs que ya existen en Sheets (col A)
-    const sheetIds = new Set(
-      presupuestosData.rows.map(r => (r[presupuestosData.headers[0]] || '').toString().trim())
-    );
+    // Armar set de IDs remotos con lo que ya leíste de Sheets
+    const idCol = presupuestosData.headers[0]; // "IDPresupuesto" ya existe en el log
+    const remoteIds = new Set(presupuestosData.rows.map(r => r[idCol]).filter(Boolean));
 
-    // Activos locales
-    const rs = await db.query(`
-      SELECT id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
+    // Seleccionar candidatos locales (sin flags extra) y filtrar en JS
+    const { rows: locales } = await db.query(`
+      SELECT id_presupuesto_ext, id_cliente, agente, fecha, fecha_entrega, tipo_comprobante,
              nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
-             fecha_actualizacion
-      FROM public.presupuestos
+             activo, fecha_actualizacion
+      FROM presupuestos
       WHERE activo = true
     `);
+    
+    const toInsert = locales.filter(p => !remoteIds.has(p.id_presupuesto_ext));
+    const insertedIds = new Set(toInsert.map(p => p.id_presupuesto_ext));
+    console.log('[SYNC-BTN] phase=push-upserts count=%d', insertedIds.size);
+    console.log('[DIAG-PUSH-DET] sampleInserted=%o', Array.from(insertedIds).slice(0,5));
 
-    // Solo los que no están en Sheets
-    const aInsertar = rs.rows.filter(r => !sheetIds.has((r.id_presupuesto_ext || '').toString().trim()));
-    if (aInsertar.length === 0) return;
+    if (toInsert.length === 0) return insertedIds;
 
-    const nowIso = new Date().toISOString();
-
-    // Mapeo EXACTO A..O (15 columnas)
-    const data = aInsertar.map(r => {
+    // Usar el writer/mapeo existente tal cual está para hacer append de toInsert a Presupuestos!A:O
+    const data = toInsert.map(r => {
       const pct = r.descuento == null ? null : Number(r.descuento);
       const pctStr = pct == null ? '' : (pct > 1 ? `${pct}%` : `${pct*100}%`);
       
       // Normalizar LastModified a formato AppSheet Argentina
       const lastModifiedAR = toSheetDateTimeAR(r.fecha_actualizacion || Date.now());
-      console.log(`[GSHEETS-WRITE] LastModified(normalizado)=${lastModifiedAR} fila=${r.id_presupuesto_ext}`);
       
       return [
         (r.id_presupuesto_ext ?? '').toString().trim(),     // A  IDPresupuesto
@@ -710,7 +709,7 @@ async function pushAltasLocalesASheets(presupuestosData, config, db) {
       ];
     });
 
-    // IMPORTANTE: anclamos al encabezado A1:O1 con valueInputOption RAW
+    // Append a Presupuestos!A:O con config.hoja_id
     await sheets.spreadsheets.values.append({
       spreadsheetId: config.hoja_id,
       range: 'Presupuestos!A1:O1',
@@ -719,9 +718,8 @@ async function pushAltasLocalesASheets(presupuestosData, config, db) {
       requestBody: { values: data, majorDimension: 'ROWS' }
     });
 
-    console.log(`[SYNC-FECHAS-FIX] Push de ALTAS a Sheets: ${aInsertar.length} encabezados agregados.`);
+    console.log(`[SYNC-FECHAS-FIX] Push de ALTAS a Sheets: ${toInsert.length} encabezados agregados.`);
     
-    const insertedIds = new Set(aInsertar.map(r => (r.id_presupuesto_ext ?? '').toString().trim()));
     return insertedIds;
   } catch (e) {
     console.warn('[SYNC-FECHAS-FIX] No se pudieron empujar ALTAS locales a Sheets:', e?.message);
@@ -730,6 +728,9 @@ async function pushAltasLocalesASheets(presupuestosData, config, db) {
 }
 
 async function pushDetallesLocalesASheets(insertedIds, config, db) {
+  console.log('[DIAG-PUSH-DET] called opts=', { insertedIds, config });
+  console.log('[DIAG-PUSH-DET] mode=append-only (actual), supportsReplace=false');
+
   try {
     if (!insertedIds || insertedIds.size === 0) return;
     const ids = Array.from(insertedIds);
@@ -815,11 +816,156 @@ async function pushDetallesLocalesASheets(insertedIds, config, db) {
   }
 }
 
+/**
+ * Sincronizar detalles modificados localmente a Google Sheets
+ * Detecta por fecha_actualizacion y actualiza filas existentes o hace append
+ */
+async function pushDetallesModificadosASheets(config, db) {
+  console.log('[DIAG-UPD-DET] Iniciando sincronización de detalles modificados...');
+  
+  try {
+    const { getSheets } = require('../../google/gsheetsClient');
+    const sheets = await getSheets();
+    
+    // 1. Leer detalles actuales de Sheets
+    const detallesSheets = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
+    
+    // 2. Detectar detalles modificados localmente (últimas 24 horas)
+    const rs = await db.query(`
+      SELECT d.id_presupuesto_ext, d.articulo, d.cantidad, d.valor1, d.precio1,
+             d.iva1, d.diferencia, d.camp1, d.camp2, d.camp3, d.camp4, d.camp5, d.camp6,
+             d.fecha_actualizacion
+      FROM public.presupuestos_detalles d
+      INNER JOIN public.presupuestos p ON p.id_presupuesto_ext = d.id_presupuesto_ext
+      WHERE p.activo = true 
+      AND d.fecha_actualizacion >= NOW() - INTERVAL '24 hours'
+      ORDER BY d.fecha_actualizacion DESC
+    `);
+    
+    if (rs.rows.length === 0) {
+      console.log('[DIAG-UPD-DET] No hay detalles modificados en las últimas 24 horas');
+      return;
+    }
+    
+    console.log(`[DIAG-UPD-DET] Encontrados ${rs.rows.length} detalles modificados localmente`);
+    
+    // 3. Crear mapas para búsqueda eficiente
+    const num2 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 100) / 100;
+    const num3 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 1000) / 1000;
+    const asText = v => (v == null) ? '' : String(v).trim();
+    const nowAR = toSheetDateTimeAR(Date.now());
+    
+    const mkId = r => crypto.createHash('sha1')
+      .update(`${r.id_presupuesto_ext}|${r.articulo}|${r.cantidad}|${r.valor1}|${r.precio1}|${r.iva1}|${r.diferencia}|${r.camp1}|${r.camp2}|${r.camp3}|${r.camp4}|${r.camp5}|${r.camp6}`)
+      .digest('hex').slice(0, 8);
+    
+    // Crear mapa de filas existentes en Sheets por IDDetallePresupuesto
+    const sheetRowMap = new Map();
+    detallesSheets.rows.forEach((row, index) => {
+      const idDetalle = row[detallesSheets.headers[0]]; // Columna A: IDDetallePresupuesto
+      if (idDetalle) {
+        sheetRowMap.set(idDetalle, index + 2); // +2 porque fila 1 es header
+      }
+    });
+    
+    let actualizados = 0;
+    let insertados = 0;
+    const sampleRows = [];
+    
+    // 4. Procesar cada detalle modificado con LOGS DETALLADOS
+    for (const r of rs.rows) {
+      const idDetalle = mkId(r);
+      const existingRowIndex = sheetRowMap.get(idDetalle);
+      
+      // LOG DETALLADO: Valores originales de BD local
+      console.log(`[DIAG-UPD-DET] ORIGINAL BD: id=${r.id_presupuesto_ext} art=${r.articulo}`);
+      console.log(`[DIAG-UPD-DET] VALORES BD: precio1=${r.precio1} iva1=${r.iva1} camp1=${r.camp1} camp2=${r.camp2} camp3=${r.camp3} camp4=${r.camp4} camp5=${r.camp5} camp6=${r.camp6}`);
+      
+      // MAPEO EXACTO COPIADO DE pushDetallesLocalesASheets (que funciona)
+      const mappedRow = [
+        idDetalle,                      // A  IDDetallePresupuesto
+        asText(r.id_presupuesto_ext),   // B  IdPresupuesto
+        asText(r.articulo),             // C  Articulo
+        num2(r.cantidad),               // D  Cantidad
+        num2(r.valor1),                 // E  Valor1
+        num2(r.precio1),                // F  Precio1
+        num2(r.iva1),                   // G  IVA1
+        num2(r.diferencia),             // H  Diferencia
+        num2(r.camp1),                  // I  Camp1   (J→I)
+        num3(r.camp2),                  // J  Camp2   (K→J)  *** % ***
+        num2(r.camp3),                  // K  Camp3   (L→K)
+        num2(r.camp4),                  // L  Camp4   (M→L)
+        num2(r.camp5),                  // M  Camp5   (N→M)
+        num2(r.camp6),                  // N  Camp6   (O→N)
+        '',                             // O  Condicion (queda vacío)
+        nowAR,                          // P  LastModified (AppSheet AR)
+        true                            // Q  Activo
+      ];
+      
+      // LOG DETALLADO: Valores después del mapeo
+      console.log(`[DIAG-UPD-DET] MAPEADO: F=${mappedRow[5]} G=${mappedRow[6]} I=${mappedRow[8]} J=${mappedRow[9]} K=${mappedRow[10]} L=${mappedRow[11]} M=${mappedRow[12]} N=${mappedRow[13]}`);
+      console.log(`[DIAG-UPD-DET] FUNCIONES: num2(${r.precio1})=${num2(r.precio1)} num2(${r.iva1})=${num2(r.iva1)} num2(${r.camp1})=${num2(r.camp1)} num3(${r.camp2})=${num3(r.camp2)}`);
+      
+      if (existingRowIndex) {
+        console.log(`[DIAG-UPD-DET] ACTUALIZANDO fila ${existingRowIndex} para ${r.id_presupuesto_ext}`);
+        // Actualizar fila existente
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: config.hoja_id,
+          range: `DetallesPresupuestos!A${existingRowIndex}:Q${existingRowIndex}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [mappedRow],
+            majorDimension: 'ROWS'
+          }
+        });
+        actualizados++;
+        console.log(`[DIAG-UPD-DET] ✅ ACTUALIZADO fila ${existingRowIndex}`);
+      } else {
+        console.log(`[DIAG-UPD-DET] INSERTANDO nueva fila para ${r.id_presupuesto_ext}`);
+        // Insertar nueva fila
+        await sheets.spreadsheets.values.append({
+          spreadsheetId: config.hoja_id,
+          range: 'DetallesPresupuestos!A1:Q1',
+          valueInputOption: 'USER_ENTERED',
+          insertDataOption: 'INSERT_ROWS',
+          requestBody: {
+            values: [mappedRow],
+            majorDimension: 'ROWS'
+          }
+        });
+        insertados++;
+        console.log(`[DIAG-UPD-DET] ✅ INSERTADO nueva fila`);
+      }
+      
+      // Guardar muestra para logs
+      if (sampleRows.length < 3) {
+        sampleRows.push({
+          id: r.id_presupuesto_ext,
+          articulo: r.articulo,
+          precio1_original: r.precio1,
+          precio1_mapeado: mappedRow[5],
+          camp1_original: r.camp1,
+          camp1_mapeado: mappedRow[8],
+          camp2_original: r.camp2,
+          camp2_mapeado: mappedRow[9],
+          action: existingRowIndex ? 'UPDATE' : 'INSERT'
+        });
+      }
+    }
+    
+    console.log(`[DIAG-UPD-DET] actualizados=${actualizados} insertados=${insertados} sample=${JSON.stringify(sampleRows)}`);
+    
+  } catch (error) {
+    console.error('[DIAG-UPD-DET] Error sincronizando detalles modificados:', error.message);
+  }
+}
+
 
 console.log('[SYNC-FECHAS-FIX] ✅ Servicio de corrección de fechas configurado');
 
 module.exports = {
     ejecutarCorreccionFechas,
     pushAltasLocalesASheets,
-    pushDetallesLocalesASheets
+    pushDetallesLocalesASheets,
+    pushDetallesModificadosASheets
 };
