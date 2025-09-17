@@ -46,11 +46,7 @@ app.use('/api/estadisticas', createProxyMiddleware({
   changeOrigin: true
 }));
 
-// Proxy para los archivos estáticos del módulo
-app.use('/estadisticas', createProxyMiddleware({
-  target: 'http://localhost:3001',
-  changeOrigin: true
-}));
+
 
 
 // === FIN ESTADÍSTICAS ===
