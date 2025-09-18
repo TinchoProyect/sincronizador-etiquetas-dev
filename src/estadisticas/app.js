@@ -1,5 +1,6 @@
 // src/estadisticas/app.js
 const express = require('express');
+const mountApi = require('./api');
 const { Pool } = require('pg');
 
 const path = require('path');
@@ -9,6 +10,7 @@ const app = express();
 const port = process.env.ESTADISTICAS_PORT || 3001;
 
 app.use(express.json());
+mountApi(app);
 
 // === estáticos del módulo (sirve /estadisticas/*) ===
 const baseDir = __dirname; // espera: src/estadisticas/
