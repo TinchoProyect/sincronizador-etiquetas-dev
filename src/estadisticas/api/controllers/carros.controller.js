@@ -1,12 +1,16 @@
-const svc = require('../services/carros.service');
+// src/estadisticas/api/controllers/carros.controller.js
+// importa el service (ajustá a `../bd/pool` dentro del service si usás carpeta "bd")
+const carrosService = require('../services/carros.service');
 
-exports.getStats = async (req, res) => {
+async function list(req, res, next) {
   try {
-    const q = { ...req.query };             // normalizar si hace falta
-    const data = await svc.stats(q);
+    const { desde, hasta, limit = 50 } = req.query;
+    const data = await carrosService.list({ desde, hasta, limit });
     res.json({ ok: true, data });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ ok: false, error: 'SERVER_ERROR' });
+  } catch (err) {
+    next(err);
   }
-};
+}
+
+module.exports = { list };   // 👈 export SIEMPRE la función que usarás en la ruta
+

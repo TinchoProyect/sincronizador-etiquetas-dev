@@ -1,9 +1,15 @@
-const carrosRoutes = require('./routes/carros.routes');
-const modelosRoutes = require('./routes/modelos.routes');
-const healthRoutes  = require('./routes/health.routes');
+const express = require('express');
 
-module.exports = (app) => {
-  app.use('/api/estadisticas', carrosRoutes);
-  app.use('/api/estadisticas', modelosRoutes);
-  app.use('/api/estadisticas', healthRoutes);
+module.exports = function mountApi(app) {
+  const api = express.Router();
+
+  // health simple
+  api.get('/health', (req, res) => res.json({ ok: true }));
+
+  // rutas
+  api.use('/carros', require('./routes/carros.routes'));
+  api.use('/articulos', require('./routes/articulos.routes')); // si existe
+
+  // monta TODO el módulo bajo /api/estadisticas
+  app.use('/api/estadisticas', api);
 };

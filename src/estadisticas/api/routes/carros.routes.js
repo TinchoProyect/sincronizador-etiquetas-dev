@@ -1,10 +1,10 @@
-const { Router } = require('express');
-const ctrl = require('../controllers/carros.controller');
-const router = Router();
+const express = require('express');
+const router = express.Router();
 
-router.get('/carros/stats', ctrl.getStats);
-router.get('/carros/por-periodo', ctrl.getPorPeriodo);
-router.get('/carros/distribucion', ctrl.getDistribucion);
-router.get('/carros/complejidad', ctrl.getComplejidad);
+const carrosCtrl = require('../controllers/carros.controller'); // 👈 import correcto
+
+// callback válido (carrosCtrl.list existe porque lo exportamos arriba)
+router.get('/', carrosCtrl.list);
 
 module.exports = router;
+
