@@ -7,9 +7,9 @@ module.exports = function mountApi(app) {
   api.get('/health', (req, res) => res.json({ ok: true }));
 
   // rutas
-  api.use('/carros', require('./routes/carros.routes'));
-  api.use('/articulos', require('./routes/articulos.routes')); // si existe
-
-  // monta TODO el módulo bajo /api/estadisticas
+  api.use('/carros',    require('./routes/carros.routes'));
+  api.use('/articulos', require('./routes/articulos.routes'));
   app.use('/api/estadisticas', api);
+
+
 };

@@ -4,7 +4,7 @@ const db = require('../db/pool');
 function n(v) { return (v === undefined || v === '' ? null : v); }
 
 // 1) Últimos registros (solo los que tienen temporización hecha)
-async function ultimos({ desde, hasta, limit = 50 }) {
+async function getUltimos({ desde, hasta, limit = 50 }) {
   const sql = `
     WITH filas AS (
       SELECT
@@ -43,7 +43,7 @@ async function ultimos({ desde, hasta, limit = 50 }) {
 }
 
 // 2) Resumen por artículo (totales, promedio por unidad)
-async function resumen({ desde, hasta, limit = 50 }) {
+async function getResumen({ desde, hasta, limit = 50 }) {
   const sql = `
     WITH filas AS (
       SELECT
@@ -82,4 +82,4 @@ async function resumen({ desde, hasta, limit = 50 }) {
   return rows;
 }
 
-module.exports = { ultimos, resumen };
+module.exports = {getUltimos, getResumen };

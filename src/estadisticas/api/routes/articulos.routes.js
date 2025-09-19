@@ -1,10 +1,9 @@
 // src/estadisticas/api/routes/articulos.routes.js
-const express = require('express');
-const router = express.Router();
+const r = require('express').Router();
 const ctrl = require('../controllers/articulos.controller');
 
-router.get('/ultimos', ctrl.ultimos);
-router.get('/resumen', ctrl.resumen);
+r.get('/ultimos',  ctrl.getUltimos);
+r.get('/resumen',  ctrl.getResumen);
 
-module.exports = router;
+module.exports = r;
 

@@ -1,37 +1,11 @@
-const getLimit = (id) => parseInt(document.getElementById(id)?.value || '10', 10);
+'use strict';
 
-
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.json();
-}
-
-async function cargarArtUltimos() {
-  const { data } = await fetchJSON('/api/estadisticas/articulos/ultimos?limit=15');
-  // TODO: render tabla “Últimos medidos”
-}
-
-async function cargarArtResumen() {
-  const params = new URLSearchParams({ limit: 15 /*, desde, hasta */ });
-  const { data } = await fetchJSON('/api/estadisticas/articulos/resumen?' + params.toString());
-  // TODO: render tarjetas o tabla con seg_por_ud, tiempo_total_seg, ultima_medicion, etc.
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  cargarArtUltimos();
-  cargarArtResumen();
-});
-
-//nuevo
-// src/estadisticas/js/main.js
-
-// ---------- helpers DOM ----------
-const $ = (s, el = document) => el.querySelector(s);
+// ========== Helpers DOM ==========
+const $  = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
-// ---------- helpers formato ----------
-function pad(n) { return String(n).padStart(2, '0'); }
+// ========== Helpers formato ==========
+const pad = (n) => String(n).padStart(2, '0');
 
 function secondsToHMS(s = 0) {
   const sign = s < 0 ? '-' : '';
@@ -45,7 +19,6 @@ function secondsToHMS(s = 0) {
 function fmtDateTime(iso) {
   if (!iso) return '–';
   const d = new Date(iso);
-  // Mostrar local (fecha + hora corta)
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
@@ -55,10 +28,20 @@ function fmtDate(iso) {
   return d.toLocaleDateString();
 }
 
-// ---------- API base ----------
+// Etapas: busca una etapa por número y devuelve tiempos/duración
+function etapaInfo(etapas, num) {
+  const e = (etapas || []).find(x => Number(x.etapa_num) === Number(num));
+  if (!e) return { durSeg: null, ini: null, fin: null };
+  let durSeg = e.duracion_seg ?? null;
+  if ((durSeg == null || isNaN(durSeg)) && e.inicio && e.fin) {
+    durSeg = Math.max(0, Math.floor((new Date(e.fin) - new Date(e.inicio)) / 1000));
+  }
+  return { durSeg, ini: e.inicio ?? null, fin: e.fin ?? null };
+}
+
+// ========== API base ==========
 const API = '/api/estadisticas';
 
-// Construye query string solo con params no vacíos
 function qsParams(obj) {
   const p = new URLSearchParams();
   Object.entries(obj).forEach(([k, v]) => {
@@ -68,12 +51,12 @@ function qsParams(obj) {
 }
 
 async function getJson(url) {
-  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-// ---------- Filtros ----------
+// ========== Filtros ==========
 function getFilters() {
   const desde = $('#f-desde')?.value || '';
   const hasta = $('#f-hasta')?.value || '';
@@ -89,62 +72,82 @@ function setToday() {
   $('#f-hasta').value = `${yyyy}-${mm}-${dd}`;
 }
 
-// ---------- Render: Carros ----------
+// ÚNICA definición de getLimit
+const getLimit = (id) => {
+  const el = document.getElementById(id);
+  const v = el ? Number(el.value) : NaN;
+  return Number.isFinite(v) && v > 0 ? v : 10;
+};
+
+// ========== Render: Carros ==========
 async function loadCarros() {
   const { desde, hasta } = getFilters();
   const limit = getLimit('limit-carros');
   const url = `${API}/carros${qsParams({ desde, hasta, limit })}`;
 
-  const card = $('#carros-card');
   const tbody = $('#carros-table tbody');
-  tbody.innerHTML = `<tr><td colspan="5">Cargando...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7">Cargando...</td></tr>`;
+
+  const setText = (sel, value) => {
+  const el = document.querySelector(sel);
+  if (el) el.textContent = value;
+};
+
 
   try {
     const { ok, data } = await getJson(url);
     if (!ok) throw new Error('Respuesta no OK');
 
-    if (!data.length) {
-      $('#carros-cant').textContent = '0';
-      $('#carros-prom').textContent = '–';
-      tbody.innerHTML = `<tr><td colspan="5">Sin datos</td></tr>`;
-      return;
-    }
+      if (!data.length) {
+          setText('#carros-cant', '0');
+          setText('#carros-prom', '–');
+          tbody.innerHTML = `<tr><td colspan="7">Sin datos</td></tr>`;
+          return;
+      }
 
-    // promedio duración
     const total = data.reduce((acc, r) => acc + (Number(r.duracion_total_seg) || 0), 0);
     const avg = total / data.length;
+     setText('#carros-cant', String(data.length));
+     setText('#carros-prom', secondsToHMS(avg));
 
-    $('#carros-cant').textContent = data.length;
-    $('#carros-prom').textContent = secondsToHMS(avg);
-
-    // filas
     tbody.innerHTML = data.map(r => {
+      const e1 = etapaInfo(r.etapas, 1);
+      const e2 = etapaInfo(r.etapas, 2);
+      const e3 = etapaInfo(r.etapas, 3);
       const etapasCount = r.etapas_count ?? (Array.isArray(r.etapas) ? r.etapas.length : 0);
+
+      const cellEtapa = (seg) => {
+        const txt = seg == null ? '–' : secondsToHMS(seg);
+        const cls = seg == null ? 'muted' : 'mono';
+        return `<td class="${cls}">${txt}</td>`;
+      };
+
       return `
         <tr>
           <td>${fmtDate(r.fecha_produccion)}</td>
           <td>${r.carro_id}</td>
-          <td>${r.tipo_carro ?? '–'}</td>
           <td>${etapasCount}</td>
-          <td>${secondsToHMS(Number(r.duracion_total_seg) || 0)}</td>
+          ${cellEtapa(e1.durSeg)}
+          ${cellEtapa(e2.durSeg)}
+          ${cellEtapa(e3.durSeg)}
+          <td class="mono">${secondsToHMS(Number(r.duracion_total_seg) || 0)}</td>
         </tr>
       `;
     }).join('');
-
   } catch (err) {
     console.error('carros error', err);
-    tbody.innerHTML = `<tr><td colspan="5">Error al cargar</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7">Error al cargar</td></tr>`;
   }
 }
 
-// ---------- Render: Artículos (últimos) ----------
+// ========== Render: Artículos (últimos) ==========
 async function loadArticulosUltimos() {
   const { desde, hasta } = getFilters();
   const limit = getLimit('limit-ultimos');
   const url = `${API}/articulos/ultimos${qsParams({ desde, hasta, limit })}`;
 
   const tbody = $('#ultimos-table tbody');
-  if (!tbody) return; // por si la sección está comentada
+  if (!tbody) return;
   tbody.innerHTML = `<tr><td colspan="5">Cargando...</td></tr>`;
 
   try {
@@ -173,9 +176,9 @@ async function loadArticulosUltimos() {
   }
 }
 
-// ---------- Render: Artículos (resumen) ----------
+// ========== Render: Artículos (resumen) ==========
 async function loadArticulosResumen() {
-   const { desde, hasta } = getFilters();
+  const { desde, hasta } = getFilters();
   const limit = getLimit('limit-resumen');
   const url = `${API}/articulos/resumen${qsParams({ desde, hasta, limit })}`;
 
@@ -207,7 +210,7 @@ async function loadArticulosResumen() {
   }
 }
 
-// ---------- Init ----------
+// ========== Init ==========
 function wireEvents() {
   $('#filtros')?.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -224,16 +227,15 @@ function wireEvents() {
     $('#f-hasta').value = '';
     refreshAll();
   });
-  ['limit-carros','limit-ultimos','limit-resumen'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('change', () => {
-    // recargamos solo la sección afectada
-    if (id === 'limit-carros') loadCarros();
-    if (id === 'limit-ultimos') loadArticulosUltimos();
-    if (id === 'limit-resumen') loadArticulosResumen();
-  });
-});
 
+  ['limit-carros', 'limit-ultimos', 'limit-resumen'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => {
+      if (id === 'limit-carros')  loadCarros();
+      if (id === 'limit-ultimos') loadArticulosUltimos();
+      if (id === 'limit-resumen') loadArticulosResumen();
+    });
+  });
 }
 
 async function refreshAll() {
@@ -244,8 +246,7 @@ async function refreshAll() {
   ]);
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   wireEvents();
-  // opcional: setToday(); // si querés iniciar la vista en "hoy"
   refreshAll();
 });

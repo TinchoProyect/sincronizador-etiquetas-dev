@@ -1,24 +1,33 @@
 // src/estadisticas/api/controllers/articulos.controller.js
 const svc = require('../services/articulos.service');
 
-async function ultimos(req, res, next) {
+async function getUltimos(req, res, next) {
   try {
     const { desde, hasta, limit } = req.query;
-    const data = await svc.ultimos({ desde, hasta, limit: Number(limit) || 50 });
+     const data = await svc.getUltimos({
+      desde: desde || null,
+      hasta: hasta || null,
+      limit: Number(limit) || 50,});
     return res.json({ ok: true, data });
   } catch (err) {
-    next(err);
+    console.error('[ARTICULOS] getUltimos', err);
+    res.status(500).json({ ok: false, error: 'SERVER_ERROR' });
   }
 }
 
-async function resumen(req, res, next) {
+async function getResumen(req, res, next) {
   try {
     const { desde, hasta, limit } = req.query;
-    const data = await svc.resumen({ desde, hasta, limit: Number(limit) || 50 });
+    const data = await svc.getResumen({
+      desde: desde || null,
+      hasta: hasta || null,
+      limit: Number(limit) || 50, });
     return res.json({ ok: true, data });
   } catch (err) {
-    next(err);
+    console.error('[ARTICULOS] getResumen', err);
+    res.status(500).json({ ok: false, error: 'SERVER_ERROR' });
   }
 }
 
-module.exports = { ultimos, resumen };
+module.exports = { getUltimos, getResumen };
+
