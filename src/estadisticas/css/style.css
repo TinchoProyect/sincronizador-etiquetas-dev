@@ -263,3 +263,26 @@ header h1::before{
   font-size: .9rem;
 }
 
+/* ===== Menú de estadísticas (grid de tarjetas) ===== */
+.stats-menu{
+display:grid; gap:12px;
+grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+margin-top:12px;
+}
+.stats-menu__item{
+appearance:none; border:1px solid var(--border); background:#fff; color:var(--text);
+text-align:left; padding:14px; border-radius:12px; cursor:pointer;
+box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 16px rgba(0,0,0,.05);
+display:grid; align-content:start; gap:6px; transition:transform .06s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.stats-menu__item:hover{ transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+.stats-menu__item.is-active{ border-color:#93c5fd; box-shadow: 0 0 0 3px rgba(147,197,253,.35) inset; }
+.stats-menu__title{ font-weight:700; }
+.stats-menu__desc{ color:var(--muted); font-size:.9rem; }
+.stats-menu__icon{ width:28px; height:28px; border-radius:8px; border:1px solid var(--border); background:#fff center/22px 22px no-repeat; }
+/* Iconitos inline (SVG embebido) */
+.stats-menu__icon[data-i="bars"]{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'%3E%3Crect x='3' y='11' width='4' height='10' rx='1' fill='%233b82f6'/%3E%3Crect x='10' y='6' width='4' height='15' rx='1' fill='%2310b981'/%3E%3Crect x='17' y='13' width='4' height='8' rx='1' fill='%23ef4444'/%3E%3C/svg%3E"); }
+.stats-menu__icon[data-i="cart"]{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'%3E%3Ccircle cx='9' cy='21' r='1' fill='%23111827'/%3E%3Ccircle cx='20' cy='21' r='1' fill='%23111827'/%3E%3Cpath d='M1 1h4l2.7 12.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6' stroke='%23111827' stroke-width='2' fill='none'/%3E%3C/svg%3E"); }
+.stats-menu__icon[data-i="clock"]{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' stroke='%23111827' stroke-width='2' fill='none'/%3E%3Cpath d='M12 7v5l3 3' stroke='%23111827' stroke-width='2' fill='none'/%3E%3C/svg%3E"); }
+.stats-menu__icon[data-i="chart"]{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'%3E%3Cpath d='M3 3v18h18' stroke='%23111827' stroke-width='2' fill='none'/%3E%3Crect x='7' y='9' width='3' height='7' fill='%233b82f6'/%3E%3Crect x='12' y='5' width='3' height='11' fill='%2310b981'/%3E%3Crect x='17' y='12' width='3' height='4' fill='%23ef4444'/%3E%3C/svg%3E"); }
+

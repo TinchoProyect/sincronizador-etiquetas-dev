@@ -29,7 +29,7 @@ app.get('/estadisticas', (_req, res) => {
 });
 
 // health simple fuera del API (para descartar problemas de ruteo)
-app.get('/healthz', (_req, res) => res.json({ ok: true, svc: 'estadisticas' }));
+app.get('/health', (_req, res) => res.json({ ok: true, svc: 'estadisticas' }));
 
 // 404 del módulo (que no choque con el de 3000)
 app.use((_req, res) => res.status(404).json({ ok: false, error: 'NOT_FOUND' }));

@@ -1,15 +1,18 @@
+
+
 const express = require('express');
 
 module.exports = function mountApi(app) {
   const api = express.Router();
 
-  // health simple
-  api.get('/health', (req, res) => res.json({ ok: true }));
+  // health inline (evita archivo extra)
+  api.get('/health', (_req, res) => res.json({ ok: true }));
 
-  // rutas
-  api.use('/carros',    require('./routes/carros.routes'));
+  // rutas (solo si existen los archivos)
+  api.use('/carros', require('./routes/carros.routes'));
   api.use('/articulos', require('./routes/articulos.routes'));
+
+  // monta todo bajo /api/estadisticas
   app.use('/api/estadisticas', api);
-
-
 };
+

@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estadísticas - Gestiones Lamda</title>
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="stylesheet" href="/estadisticas/css/style.css">
-  
 
- 
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estadísticas - Gestiones Lamda</title>
+  <link rel="icon" type="image/x-icon" href="/estadisticas/imagen/favicon.ico">
+  <link rel="stylesheet" href="/estadisticas/css/style.css">
+
+
+
 
 </head>
+
 <body>
   <div class="container">
     <!-- Header como tarjeta fila -->
@@ -20,141 +22,164 @@
     </header>
   </div>
 
+
   <main class="container">
-    <!-- Sección como tarjeta estándar -->
-    <section class="card">
-      <h2 class="card__title card__title--center ">Tiempos de Producción</h2>
-      <!-- tu contenido -->
-            <form id="filtros" class="filters">
-              <label class="filters__item">
-                <span class="card__title__">Desde</span>
-                <input type="date" id="f-desde">
-              </label>
-              <label class="filters__item">
-                <span class="card__title__"> Hasta</span>
-                <input type="date" id="f-hasta">
-              </label>
-              <div class="filters__actions">
-                <button type="submit" class="back-button">Aplicar</button>
-                <button type="button" id="btn-hoy" class="back-button">Hoy</button>
-                <button type="button" id="btn-limpiar" class="back-button">Limpiar</button>
-              </div>
-            </form>
+    <!-- 🔎 Tiempos (filtros) -->
+    <section class="card " id="filtros-card">
+      <h2 class="card__title card__title--center">Tiempos de Producción</h2>
+      <form id="filtros" class="filters">
+        <label class="filters__item">
+          <span class="card__title__">Desde</span>
+          <input type="date" id="f-desde">
+        </label>
+        <label class="filters__item">
+          <span class="card__title__"> Hasta</span>
+          <input type="date" id="f-hasta">
+        </label>
+        <div class="filters__actions">
+          <button type="submit" class="back-button">Aplicar</button>
+          <button type="button" id="btn-hoy" class="back-button">Hoy</button>
+          <button type="button" id="btn-limpiar" class="back-button">Limpiar</button>
+        </div>
+      </form>
     </section>
 
-    <!--Seccion tiempos de produccion carros-->
+    <!-- 🧭 Menú de estadísticas (bonito y simple) -->
+    <section class="card title" id="menu-card">
+      <h2 class="card">Elegí una estadística</h2>
+      <div class="stats-menu" id="stats-menu">
+        
+        <button class="stats-menu__item" data-key="carros" aria-label="Carros medidos">
+          <span class="stats-menu__icon" data-i="cart"></span>
+          <span class="stats-menu__title">Carros medidos</span>
+          <span class="stats-menu__desc">Detalle por etapas y total.</span>
+        </button>
+        <button class="stats-menu__item" data-key="ultimos" aria-label="Artículos últimos">
+          <span class="stats-menu__icon" data-i="clock"></span>
+          <span class="stats-menu__title">Artículos — últimos</span>
+          <span class="stats-menu__desc">Lo más reciente medido.</span>
+        </button>
+        <button class="stats-menu__item" data-key="resumen" aria-label="Artículos resumen">
+          <span class="stats-menu__icon" data-i="chart"></span>
+          <span class="stats-menu__title">Artículos — resumen</span>
+          <span class="stats-menu__desc">Agregado por artículo.</span>
+        </button>
+      </div>
+    </section>
+
+
     
-      <section class="card" id="carros-card">
-        <div class="card__header">
-          <h3 class="card__title">Carros medidos</h3>
-          <div class="badges">
-            <label class="control">
-              <span>Mostrar</span>
-              <select id="limit-carros" class="select">
-                <option value="10" selected>10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-              </select>
-            </label>
-            <span class="badge"><strong id="carros-cant">–</strong> carros</span>
-            <span class="badge">Prom. total <strong id="carros-prom">–</strong></span>
-          </div>
-        </div>
+    <!-- 🚚 Carros medidos -->
+    <section class="card" id="carros-card" data-section="carros">
+      <div class="card__header">
+        <h3 class="card__title">Carros medidos</h3>
+        <div class="badges">
+          <label class="control">
+            <span>Mostrar</span>
+            <select id="limit-carros" class="select">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <span class="badge"><strong id="carros-cant">–</strong> carros</span>
+          <span class="badge">Prom. total <strong id="carros-prom">–</strong></span>
 
-        <div class="table-wrapper table-scroll">
-          <table class="table" id="carros-table">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>ID</th>
-                <th>Etapas</th>
-                <th>Etapa 1 · Preparación</th>
-                
-                <th>Etapa 2 · Fraccionado</th>
-                
-                <th>Etapa 3 · Etiquetado y guardado</th>
-                
-                <th>Duración total</th>
-              </tr>
-            </thead>
-            <tbody><!-- rows dinámicas --></tbody>
-          </table>
         </div>
-      </section>
+      </div>
 
-  
-    <!--Seccion tiempos de produccion articulos-->
-    
 
-      <!-- Artículos: últimos medidos -->
-      <section class="card" id="ultimos-card">
-        <div class="card__header">
-          <h3 class="card__title">Artículos — últimos medidos</h3>
-          <div class="badges">
-            <label class="control">
-              <span>Mostrar</span>
-              <select id="limit-ultimos" class="select">
-                <option value="10" selected>10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-              </select>
-            </label>
-            <span class="badge"><strong id="ultimos-cant">–</strong> registros</span>
-          </div>
-        </div>
-      
-        <div class="table-wrapper table-scroll">
-          <table class="table table--compact" id="ultimos-table">
-            <thead>
-              <tr>
-                <th>TS medición</th>
-                <th>Carro</th>
-                <th>Artículo</th>
-                <th>Cant.</th>
-                <th>Duración</th>
-              </tr>
-            </thead>
-            <tbody><!-- rows dinámicas --></tbody>
-          </table>
-        </div>
-      </section>
+      <div class="table-wrapper table-scroll">
+        <table class="table" id="carros-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>ID</th>
+              <th>Etapas</th>
+              <th>Etapa 1 · Preparación</th>
+              <th>Etapa 2 · Fraccionado</th>
+              <th>Etapa 3 · Etiquetado y guardado</th>
+              <th>Duración total</th>
+            </tr>
+          </thead>
+          <tbody><!-- rows dinámicas --></tbody>
+        </table>
+      </div>
+    </section>
 
-      <!-- Artículos: resumen -->
-      <section class="card" id="resumen-card">
-        <div class="card__header">
-          <h3 class="card__title">Artículos — resumen</h3>
-          <div class="badges">
-            <label class="control">
-              <span>Mostrar</span>
-              <select id="limit-resumen" class="select">
-                <option value="10" selected>10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-              </select>
-            </label>
-          </div>
+    <!-- 🕒 Artículos: últimos -->
+    <section class="card" id="ultimos-card" data-section="ultimos">
+      <div class="card__header">
+        <h3 class="card__title">Artículos — últimos medidos</h3>
+        <div class="badges">
+          <label class="control">
+            <span>Mostrar</span>
+            <select id="limit-ultimos" class="select">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <span class="badge"><strong id="ultimos-cant">–</strong> registros</span>
         </div>
+      </div>
 
-        <div class="table-wrapper table-scroll">
-          <table class="table table--compact" id="resumen-table">
-            <thead>
-              <tr>
-                <th>Artículo</th>
-                <th>Total uds.</th>
-                <th>Seg/ud</th>
-                <th>Tiempo total</th>
-                <th>Última medición</th>
-              </tr>
-            </thead>
-            <tbody><!-- rows dinámicas --></tbody>
-          </table>
+
+      <div class="table-wrapper table-scroll">
+        <table class="table table--compact" id="ultimos-table">
+          <thead>
+            <tr>
+              <th>TS medición</th>
+              <th>Carro</th>
+              <th>Artículo</th>
+              <th>Cant.</th>
+              <th>Duración</th>
+            </tr>
+          </thead>
+          <tbody><!-- rows dinámicas --></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 📊 Artículos: resumen -->
+    <section class="card" id="resumen-card" data-section="resumen">
+      <div class="card__header">
+        <h3 class="card__title">Artículos — resumen</h3>
+        <div class="badges">
+          <label class="control">
+            <span>Mostrar</span>
+            <select id="limit-resumen" class="select">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
         </div>
-      </section>
-   
+      </div>
+
+
+      <div class="table-wrapper table-scroll">
+        <table class="table table--compact" id="resumen-table">
+          <thead>
+            <tr>
+              <th>Artículo</th>
+              <th>Total uds.</th>
+              <th>Seg/ud</th>
+              <th>Tiempo total</th>
+              <th>Última medición</th>
+            </tr>
+          </thead>
+          <tbody><!-- rows dinámicas --></tbody>
+        </table>
+      </div>
+    </section>
+
+
   </main>
 
   <!--Scripts -->
   <script src="/estadisticas/js/main.js" defer></script>
+  <script src="/estadisticas/js/estadisticas-menu.js" defer></script>
 </body>
 
 </html>
