@@ -55,14 +55,14 @@
           <span class="stats-menu__desc">Detalle por etapas y total.</span>
         </button>
         <button class="stats-menu__item" data-key="ultimos" aria-label="Artículos últimos">
-          <span class="stats-menu__icon" data-i="clock"></span>
-          <span class="stats-menu__title">Artículos — últimos</span>
-          <span class="stats-menu__desc">Lo más reciente medido.</span>
+          <span class="stats-menu__icon" data-i="boxes"></span>
+          <span class="stats-menu__title">Artículos Medidos</span>
+          <span class="stats-menu__desc">Medición general por aticulo.</span>
         </button>
         <button class="stats-menu__item" data-key="resumen" aria-label="Artículos resumen">
-          <span class="stats-menu__icon" data-i="chart"></span>
-          <span class="stats-menu__title">Artículos — resumen</span>
-          <span class="stats-menu__desc">Agregado por artículo.</span>
+          <span class="stats-menu__icon" data-i="box"></span>
+          <span class="stats-menu__title">Artículos — Resumen</span>
+          <span class="stats-menu__desc">Tiempos totales y por unidad.</span>
         </button>
       </div>
     </section>
@@ -80,10 +80,11 @@
               <option value="10" selected>10</option>
               <option value="25">25</option>
               <option value="50">50</option>
+              <option value="100">100</option>
             </select>
           </label>
           <span class="badge"><strong id="carros-cant">–</strong> carros</span>
-          <span class="badge">Prom. total <strong id="carros-prom">–</strong></span>
+          <span class="badge">Promedio total <strong id="carros-prom">–</strong></span>
 
         </div>
       </div>
@@ -110,7 +111,7 @@
     <!-- 🕒 Artículos: últimos -->
     <section class="card" id="ultimos-card" data-section="ultimos">
       <div class="card__header">
-        <h3 class="card__title">Artículos — últimos medidos</h3>
+        <h3 class="card__title">Artículos medidos</h3>
         <div class="badges">
           <label class="control">
             <span>Mostrar</span>
@@ -118,9 +119,10 @@
               <option value="10" selected>10</option>
               <option value="25">25</option>
               <option value="50">50</option>
+              <option value="100">100</option>
             </select>
           </label>
-          <span class="badge"><strong id="ultimos-cant">–</strong> registros</span>
+          <span class="badge"><strong id="ultimos-cant">–</strong> mediciones</span>
         </div>
       </div>
 
@@ -129,10 +131,10 @@
         <table class="table table--compact" id="ultimos-table">
           <thead>
             <tr>
-              <th>TS medición</th>
+              <th>Fecha y hora de medición</th>
               <th>Carro</th>
               <th>Artículo</th>
-              <th>Cant.</th>
+              <th>Cantidad</th>
               <th>Duración</th>
             </tr>
           </thead>
@@ -144,7 +146,7 @@
     <!-- 📊 Artículos: resumen -->
     <section class="card" id="resumen-card" data-section="resumen">
       <div class="card__header">
-        <h3 class="card__title">Artículos — resumen</h3>
+        <h3 class="card__title">Artículos — Resumen</h3>
         <div class="badges">
           <label class="control">
             <span>Mostrar</span>
@@ -152,6 +154,7 @@
               <option value="10" selected>10</option>
               <option value="25">25</option>
               <option value="50">50</option>
+              <option value="100">100</option>
             </select>
           </label>
         </div>
@@ -162,11 +165,12 @@
         <table class="table table--compact" id="resumen-table">
           <thead>
             <tr>
-              <th>Artículo</th>
-              <th>Total uds.</th>
-              <th>Seg/ud</th>
-              <th>Tiempo total</th>
               <th>Última medición</th>
+              <th>Artículo</th>
+              <th>Total producido</th>
+              <th>Tiempo por Unidad</th>
+              <th>Tiempo total</th>
+              
             </tr>
           </thead>
           <tbody><!-- rows dinámicas --></tbody>

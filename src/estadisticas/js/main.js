@@ -118,19 +118,19 @@ async function loadCarros() {
 
       const cellEtapa = (seg) => {
         const txt = seg == null ? '–' : secondsToHMS(seg);
-        const cls = seg == null ? 'muted' : 'mono';
-        return `<td class="${cls}">${txt}</td>`;
+        const cls = seg == null ? ' muted' : '';
+        return `<td class="${cls} center">${txt}</td>`;
       };
 
       return `
         <tr>
           <td>${fmtDate(r.fecha_produccion)}</td>
-          <td>${r.carro_id}</td>
-          <td>${etapasCount}</td>
+          <td class="center">${r.carro_id}</td>
+          <td class="center">${etapasCount}</td>
           ${cellEtapa(e1.durSeg)}
           ${cellEtapa(e2.durSeg)}
           ${cellEtapa(e3.durSeg)}
-          <td class="mono">${secondsToHMS(Number(r.duracion_total_seg) || 0)}</td>
+          <td class="center">${secondsToHMS(Number(r.duracion_total_seg) || 0)}</td>
         </tr>
       `;
     }).join('');
@@ -140,7 +140,7 @@ async function loadCarros() {
   }
 }
 
-// ========== Render: Artículos (últimos) ==========
+// ========== Render: Artículos Medidos ==========
 async function loadArticulosUltimos() {
   const { desde, hasta } = getFilters();
   const limit = getLimit('limit-ultimos');
@@ -164,10 +164,10 @@ async function loadArticulosUltimos() {
     tbody.innerHTML = data.map(r => `
       <tr>
         <td>${fmtDateTime(r.timestamp_medicion)}</td>
-        <td>${r.carro_id}</td>
+        <td class="center">${r.carro_id}</td>
         <td>${r.articulo} <small class="muted">(${r.articulo_numero})</small></td>
-        <td>${r.cantidad}</td>
-        <td>${secondsToHMS(r.duracion_seg)}</td>
+        <td class="center">${r.cantidad}</td>
+        <td class="center">${secondsToHMS(r.duracion_seg)}</td>
       </tr>
     `).join('');
   } catch (err) {
@@ -197,11 +197,12 @@ async function loadArticulosResumen() {
 
     tbody.innerHTML = data.map(r => `
       <tr>
-        <td>${r.articulo} <small class="muted">(${r.articulo_numero})</small></td>
-        <td>${r.cantidad_total}</td>
-        <td>${secondsToHMS(r.seg_por_ud)}</td>
-        <td>${secondsToHMS(r.tiempo_total_seg)}</td>
         <td>${fmtDateTime(r.ultima_medicion)}</td>
+        <td>${r.articulo} <small class="muted">(${r.articulo_numero})</small></td>
+        <td class= "center">${r.cantidad_total}</td>
+        <td class= "center">${secondsToHMS(r.seg_por_ud)}</td>
+        <td class= "center">${secondsToHMS(r.tiempo_total_seg)}</td>
+        
       </tr>
     `).join('');
   } catch (err) {
