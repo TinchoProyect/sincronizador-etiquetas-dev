@@ -577,17 +577,20 @@ const ejecutarPushAltas = async (req, res) => {
  * 1. PUSH anulaciones locales → Sheets (primera fase)
  * 2. PUSH altas/updates locales → Sheets  
  * 3. PULL cambios remotos → Local (con tie-break para anulaciones)
+ * 
+ * IMPLEMENTA FILTROS CUTOFF_AT: Solo procesa registros >= cutoff_at
  */
 const ejecutarSincronizacionBidireccional = async (req, res) => {
-    console.log('[SYNC-BIDI] Iniciando sincronización bidireccional...');
+    console.log('[SYNC-BIDI] Iniciando sincronización bidireccional con filtros cutoff_at...');
     
     try {
-        // PASO 1: Resolver configuración (igual que otros endpoints)
+        // PASO 1: Resolver configuración y obtener cutoff_at
         let config = null;
+        let cutoffAt = null;
         
         try {
             const configQuery = `
-                SELECT sheet_url, sheet_id 
+                SELECT hoja_id, hoja_url, hoja_nombre, cutoff_at, usuario_id
                 FROM presupuestos_config 
                 WHERE activo = true 
                 ORDER BY fecha_creacion DESC 
@@ -598,14 +601,15 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
             
             if (configResult.rows.length > 0) {
                 const configPersistida = configResult.rows[0];
-                console.log('[SYNC-BIDI] Configuración persistida encontrada:', configPersistida.sheet_id);
+                console.log('[SYNC-BIDI] Configuración persistida encontrada:', configPersistida.hoja_id);
                 
                 config = {
-                    hoja_id: configPersistida.sheet_id,
-                    hoja_url: configPersistida.sheet_url,
-                    hoja_nombre: 'PresupuestosCopia',
-                    usuario_id: req.user?.id || null
+                    hoja_id: configPersistida.hoja_id,
+                    hoja_url: configPersistida.hoja_url,
+                    hoja_nombre: configPersistida.hoja_nombre || 'PresupuestosCopia',
+                    usuario_id: configPersistida.usuario_id || req.user?.id || null
                 };
+                cutoffAt = configPersistida.cutoff_at;
             } else {
                 console.log('[SYNC-BIDI] Usando configuración por defecto...');
                 
@@ -638,10 +642,25 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
             });
         }
         
+        // VALIDAR CUTOFF_AT
+        if (!cutoffAt) {
+            console.log('[SYNC-BIDI] Error: cutoff_at no configurado');
+            return res.status(400).json({
+                success: false,
+                code: 'CUTOFF_MISSING',
+                message: 'cutoff_at no está configurado en presupuestos_config',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
         console.log('[SYNC-BIDI] Configuración final:', {
             hoja_id: config.hoja_id,
-            hoja_nombre: config.hoja_nombre
+            hoja_nombre: config.hoja_nombre,
+            cutoff_at: cutoffAt
         });
+        
+        // Agregar cutoff_at a config para pasarlo a las funciones
+        config.cutoff_at = cutoffAt;
         
         const AUTO_SYNC_ENABLED = process.env.AUTO_SYNC_ENABLED ?? 'false';
         const GSHEETS_DEBUG = process.env.GSHEETS_DEBUG ?? 'false';
@@ -767,44 +786,140 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
             rows: presupuestosActualizados1.rows 
         };
         
-        const insertedIds = await pushCambiosLocalesConTimestamp(presupuestosData_updated, config, req.db);
-        await pushDetallesLocalesASheets(insertedIds, config, req.db);
+        // USAR LA FUNCIÓN DEL SERVICIO que tiene filtros cutoff_at correctos
+        const { pushCambiosLocalesConTimestamp } = require('../../services/gsheets/sync_fechas_fix');
+        const result = await pushCambiosLocalesConTimestamp(presupuestosData_updated, config, req.db);
+        const confirmedIds = new Set([...(result.insertedIds || []), ...(result.modifiedIds || [])]);
         
-        // NUEVO: Sincronizar detalles modificados localmente
-        console.log('[SYNC-BTN] === SINCRONIZANDO DETALLES MODIFICADOS ===');
-        await pushDetallesModificadosASheets(config, req.db);
+        // SIMPLIFICACIÓN CRÍTICA: pushDetallesLocalesASheets ya maneja la sincronización completa
+        // No necesitamos eliminar detalles en Sheets porque:
+        // 1. Los detalles se eliminan en LOCAL antes de insertar (en pushDetallesLocalesASheets)
+        // 2. Los nuevos detalles se insertan en Sheets con IDs únicos
+        // 3. La eliminación en Sheets era innecesaria y causaba lentitud
+        console.log('[SYNC-BTN] === SINCRONIZANDO DETALLES PARA PRESUPUESTOS NUEVOS Y MODIFICADOS ===');
         
-        console.log(`[SYNC-BTN] phase=push-upserts count=${insertedIds?.size || 0}`);
+        // ===== FASE 2B: PUSH DETALLES PARA PRESUPUESTOS NUEVOS Y MODIFICADOS (FLUJO ORIGINAL RESTAURADO) =====
+        console.log('[SYNC-BTN] === FASE 2B: PUSH DETALLES PARA PRESUPUESTOS NUEVOS Y MODIFICADOS ===');
         
-        // ===== FASE 3: PULL CAMBIOS REMOTOS =====
+        if (confirmedIds && confirmedIds.size > 0) {
+            console.log('[SYNC-BTN] Sincronizando detalles usando flujo original (pushDetallesLocalesASheets)...');
+            await pushDetallesLocalesASheets(confirmedIds, config, req.db);
+        }
+        
+        console.log(`[SYNC-BTN] phase=push-upserts count=${confirmedIds?.size || 0}`);
+        
+        // ===== FASE 3: PULL CAMBIOS REMOTOS (SOLO PARA PRESUPUESTOS NO MODIFICADOS LOCALMENTE) =====
         console.log('[SYNC-BTN] === FASE 3: PULL CAMBIOS REMOTOS ===');
         
         // Releer Sheets después de todos los pushes
         const presupuestosFinales = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
         const detallesFinales = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
         
-        const pullResult = await pullCambiosRemotosConTimestampMejorado(presupuestosFinales, detallesFinales, req.db);
+        // CRÍTICO: Excluir del PULL los IDs que fueron modificados localmente
+        const pullResult = await pullCambiosRemotosConTimestampMejorado(presupuestosFinales, detallesFinales, config, req.db, confirmedIds);
         
         console.log(`[SYNC-BTN] phase=pull count=${pullResult.recibidos + pullResult.actualizados}`);
+        
+        // PASO 4: Registrar log de sincronización con contadores completos
+        try {
+            const totalProcesados = (confirmedIds ? confirmedIds.size : 0) + pullResult.recibidos + pullResult.actualizados;
+            const totalOmitidos = (pullResult.omitidosPorCutoff || 0) + (pullResult.omitidosPorSinFecha || 0);
+            
+            await req.db.query(`
+                INSERT INTO public.presupuestos_sync_log 
+                (fecha_sync, exitoso, registros_procesados, registros_nuevos, registros_actualizados, 
+                 detalles, tipo_sync, usuario_id)
+                VALUES (
+                    CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires', 
+                    true, 
+                    $1, 
+                    $2, 
+                    $3, 
+                    $4, 
+                    'bidireccional_manual', 
+                    $5
+                )
+            `, [
+                totalProcesados,
+                pullResult.recibidos + (confirmedIds ? confirmedIds.size : 0),
+                pullResult.actualizados,
+                JSON.stringify({
+                    push_deletes: countAnulados,
+                    push_upserts: confirmedIds ? confirmedIds.size : 0,
+                    pull_recibidos: pullResult.recibidos,
+                    pull_actualizados: pullResult.actualizados,
+                    pull_omitidos: pullResult.omitidos,
+                    omitidos_por_cutoff: pullResult.omitidosPorCutoff || 0,
+                    omitidos_por_sin_fecha: pullResult.omitidosPorSinFecha || 0,
+                    cutoff_at: config.cutoff_at
+                }),
+                config.usuario_id
+            ]);
+            console.log('[SYNC-BIDI] ✅ Log de sincronización registrado con contadores completos');
+            
+            // CRÍTICO: Actualizar cutoff_at para próxima sincronización
+            // Restar 30 segundos para incluir registros con diferencias de timestamp mínimas
+            const ahoraAR = new Date();
+            const cutoffConMargen = new Date(ahoraAR.getTime() - 30 * 1000); // -30 segundos de margen
+            await req.db.query(`
+                UPDATE presupuestos_config 
+                SET cutoff_at = $1
+                WHERE activo = true
+            `, [cutoffConMargen]);
+            console.log('[SYNC-BIDI] ✅ cutoff_at actualizado a:', cutoffConMargen.toISOString(), '(-30s margen)');
+            
+            // VERIFICACIÓN: Confirmar que ahora NO hay registros que pasen el filtro
+            const verificacionPresupuestos = await req.db.query(`
+                SELECT COUNT(*) as count
+                FROM presupuestos p
+                WHERE p.activo = true 
+                  AND p.id_presupuesto_ext IS NOT NULL
+                  AND p.fecha_actualizacion > $1
+            `, [ahoraAR]);
+            
+            const verificacionDetalles = await req.db.query(`
+                SELECT COUNT(*) as count
+                FROM presupuestos_detalles d
+                INNER JOIN presupuestos p ON p.id_presupuesto_ext = d.id_presupuesto_ext
+                WHERE p.activo = true 
+                  AND d.fecha_actualizacion > $1
+            `, [ahoraAR]);
+            
+            console.log('[SYNC-BIDI] 🔍 Verificación post-actualización cutoff_at:');
+            console.log(`   Presupuestos > nuevo_cutoff: ${verificacionPresupuestos.rows[0].count}`);
+            console.log(`   Detalles > nuevo_cutoff: ${verificacionDetalles.rows[0].count}`);
+            
+            if (verificacionPresupuestos.rows[0].count == 0 && verificacionDetalles.rows[0].count == 0) {
+                console.log('[SYNC-BIDI] ✅ PERFECTO: Próxima sync NO procesará registros antiguos');
+            } else {
+                console.log('[SYNC-BIDI] ⚠️ ADVERTENCIA: Aún hay registros que pasarían el filtro');
+            }
+            
+        } catch (logError) {
+            console.warn('[SYNC-BIDI] ⚠️ Error registrando log:', logError.message);
+        }
         
         // PASO 5: Responder con resumen
         res.json({
             success: true,
             fases: {
                 push_deletes: countAnulados,
-                push_upserts: insertedIds ? insertedIds.size : 0,
+                push_upserts: confirmedIds ? confirmedIds.size : 0,
                 pull: pullResult.recibidos + pullResult.actualizados
             },
             push: {
-                enviados: insertedIds ? insertedIds.size : 0,
+                enviados: confirmedIds ? confirmedIds.size : 0,
                 detallesEnviados: null,
                 anulados: countAnulados
             },
             pull: {
                 recibidos: pullResult.recibidos,
                 actualizados: pullResult.actualizados,
-                omitidos: pullResult.omitidos
+                omitidos: pullResult.omitidos,
+                omitidosPorCutoff: pullResult.omitidosPorCutoff || 0,
+                omitidosPorSinFecha: pullResult.omitidosPorSinFecha || 0
             },
+            cutoff_at: config.cutoff_at,
             timestamp: new Date().toISOString()
         });
         
@@ -821,12 +936,18 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
 };
 
 /**
- * Push de cambios locales con detección de MODIFICACIONES
+ * Push de cambios locales con detección de MODIFICACIONES (CONTROLADOR LOCAL)
  * IMPLEMENTA: Detectar editados y reemplazar filas existentes en Sheets
  * SOLUCIÓN AL PROBLEMA: local_last_edit > LastModified de Sheets
  */
-async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+async function pushCambiosLocalesConTimestampLocal(presupuestosData, config, db) {
   console.log('[SYNC-BTN] phase=push-updates iniciando...');
+  
+  console.log('[PUSH-HEAD] start', {
+    hoja: config.hoja_nombre,
+    hojaId: config.hoja_id,
+    cutoffAt: (config.cutoff_at?.toISOString?.() || config.cutoff_at)
+  });
 
   try {
     const { getSheets } = require('../../google/gsheetsClient');
@@ -847,29 +968,100 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
 
     console.log('[SYNC-BTN] remoteById construido:', remoteById.size, 'registros');
 
-    // ==== 2) Calcular local_last_edit por ID ====
-    const localLastEditQuery = `
-      SELECT 
-        p.id_presupuesto_ext AS id,
-        p.id_cliente, p.fecha, p.fecha_entrega, p.agente, p.tipo_comprobante,
-        p.nota, p.estado, p.informe_generado, p.cliente_nuevo_id, 
-        p.punto_entrega, p.descuento, p.activo,
-        GREATEST(
-          COALESCE(p.fecha_actualizacion, 'epoch'::timestamp),
-          COALESCE(MAX(d.fecha_actualizacion), 'epoch'::timestamp)
-        ) AS local_last_edit
+    // ==== 2) Calcular local_last_edit por ID CON FILTRO CUTOFF_AT ====
+    const cutoffAt = config.cutoff_at || new Date(Date.now() - 7*24*60*60*1000);
+    console.log('[SYNC-BTN] Aplicando filtro cutoff_at:', cutoffAt);
+    
+    // PASO 2A: Generar id_presupuesto_ext para presupuestos sin ID externo
+    const { generatePresupuestoId } = require('../../services/gsheets/idGenerator');
+    
+    const presupuestosSinIdQuery = `
+      SELECT p.id, p.fecha_actualizacion
       FROM presupuestos p
-      LEFT JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
-      WHERE p.activo = true AND p.id_presupuesto_ext IS NOT NULL
-      GROUP BY p.id, p.id_presupuesto_ext, p.id_cliente, p.fecha, p.fecha_entrega, 
-               p.agente, p.tipo_comprobante, p.nota, p.estado, p.informe_generado, 
-               p.cliente_nuevo_id, p.punto_entrega, p.descuento, p.activo, p.fecha_actualizacion
-      ORDER BY local_last_edit DESC
-      LIMIT 500
+      WHERE p.activo = true 
+        AND p.id_presupuesto_ext IS NULL
+        AND p.fecha_actualizacion > $1  -- ESTRICTO: solo posteriores a última sync
+      ORDER BY p.fecha_actualizacion DESC
+      LIMIT 100
+    `;
+    
+    const rsSinId = await db.query(presupuestosSinIdQuery, [cutoffAt]);
+    
+    if (rsSinId.rowCount > 0) {
+      console.log(`[SYNC-BTN] Generando id_presupuesto_ext para ${rsSinId.rowCount} presupuestos sin ID externo`);
+      
+      for (const row of rsSinId.rows) {
+        const nuevoIdExterno = generatePresupuestoId();
+        await db.query(`
+          UPDATE public.presupuestos 
+          SET id_presupuesto_ext = $1, fecha_actualizacion = NOW()
+          WHERE id = $2
+        `, [nuevoIdExterno, row.id]);
+        
+        console.log(`[SYNC-BTN] ID externo generado: ${row.id} → ${nuevoIdExterno}`);
+      }
+    }
+    
+    const localLastEditQuery = `
+      SELECT
+        p.id_presupuesto_ext AS id,
+        p.id_cliente,
+        p.fecha,
+        p.fecha_entrega,
+        p.agente,
+        p.tipo_comprobante,
+        p.nota,
+        p.estado,
+        p.informe_generado,
+        p.cliente_nuevo_id,
+        p.punto_entrega,
+        p.descuento,
+        p.activo,
+        GREATEST(
+          p.fecha_actualizacion,
+          COALESCE(MAX(d.fecha_actualizacion), p.fecha_actualizacion)
+        ) AS local_last_edit
+      FROM public.presupuestos p
+      LEFT JOIN public.presupuestos_detalles d
+        ON d.id_presupuesto = p.id
+      WHERE p.activo = true
+        AND p.id_presupuesto_ext IS NOT NULL
+      GROUP BY
+        p.id_presupuesto_ext, p.id_cliente, p.fecha, p.fecha_entrega,
+        p.agente, p.tipo_comprobante, p.nota, p.estado, p.informe_generado,
+        p.cliente_nuevo_id, p.punto_entrega, p.descuento, p.activo, p.fecha_actualizacion
+      HAVING GREATEST(
+        p.fecha_actualizacion,
+        COALESCE(MAX(d.fecha_actualizacion), p.fecha_actualizacion)
+      ) > $1  -- ESTRICTO: solo posteriores a última sync
     `;
 
-    const rs = await db.query(localLastEditQuery);
-    console.log('[SYNC-BTN] local_last_edit calculado para', rs.rowCount, 'presupuestos');
+    const rs = await db.query(localLastEditQuery, [cutoffAt]);
+    console.log('[SYNC-BTN] local_last_edit calculado para', rs.rowCount, 'presupuestos (incluyendo IDs recién generados)');
+    
+    // DIAGNÓSTICO CRÍTICO: Mostrar qué presupuestos se encontraron
+    console.log('[SYNC-DIAG] cutoff_at usado:', cutoffAt.toISOString());
+    console.log('[SYNC-DIAG] Presupuestos encontrados:', rs.rows.slice(0, 5).map(r => ({
+      id: r.id,
+      fecha_actualizacion: r.local_last_edit,
+      pasaCutoff: new Date(r.local_last_edit) >= cutoffAt
+    })));
+    
+    // DIAGNÓSTICO: Verificar si hay presupuestos que NO pasan el filtro
+    const rsAll = await db.query(`
+      SELECT p.id_presupuesto_ext AS id, p.fecha_actualizacion, p.activo
+      FROM public.presupuestos p
+      WHERE p.activo = true AND p.id_presupuesto_ext IS NOT NULL
+      ORDER BY p.fecha_actualizacion DESC
+      LIMIT 10
+    `);
+    console.log('[SYNC-DIAG] Todos los presupuestos activos (top 10):', rsAll.rows.map(r => ({
+      id: r.id,
+      fecha_actualizacion: r.fecha_actualizacion,
+      pasaCutoff: new Date(r.fecha_actualizacion) >= cutoffAt
+    })));
+    
+    console.log('[PUSH-HEAD] candidatos', { count: rs.rows.length, sample: rs.rows.slice(0,5).map(r => r.id) });
 
     // ==== 3) Detectar editados: toUpdate = locales.filter(l => remoteById.has(l.id) && local_last_edit(l) > parse(remote.lastModified)) ====
     const toUpdate = [];
@@ -963,6 +1155,8 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
     };
 
     // ==== 6) Procesar UPDATES (reemplazar filas existentes con mapeo completo) ====
+    const confirmedIds = new Set();
+    
     for (const r of toUpdate.slice(0, 20)) { // Limitar para cuidar cuota
       const id = (r.id ?? '').toString().trim();
       const mappedRow = toSheetRowPresupuesto(r);
@@ -975,50 +1169,115 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
       }
 
       try {
+        console.log(`[PUSH-HEAD] hoja=${config.hoja_nombre}, id=${config.hoja_id}`);
         await sheets.spreadsheets.values.update({
           spreadsheetId: config.hoja_id,
-          range: `Presupuestos!A${rowIndex}:O${rowIndex}`,
+          range: `${config.hoja_nombre}!A${rowIndex}:O${rowIndex}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: { values, majorDimension: 'ROWS' }
         });
         updatedIds.add(id);
+        confirmedIds.add(id);
         console.log('[SYNC-BTN] UPDATE-OK:', id, `(fila ${rowIndex})`);
       } catch (e) {
         console.warn('[SYNC-BTN] UPDATE-ERR:', id, e?.message);
       }
     }
 
-    // ==== 7) Procesar INSERTS (append nuevas filas con mismo mapeo) ====
+    // ==== 7) Leer IDs existentes en Sheets para evitar duplicados ====
+    const headExisting = await sheets.spreadsheets.values.get({
+      spreadsheetId: config.hoja_id,
+      range: `${config.hoja_nombre}!A:A`
+    });
+    const existingHeaderIds = new Set((headExisting.data.values || [])
+      .slice(1) // Saltar header
+      .map(r => String(r[0] || '').trim())
+      .filter(Boolean));
+
+    console.log('[PUSH-HEAD] IDs existentes en Sheets:', existingHeaderIds.size);
+
+    // ==== 8) Procesar INSERTS (append nuevas filas con deduplicación) ====
+    const totalLocales = toInsert.length;
+    let yaExistentes = 0, aInsertar = 0;
+    
     for (const r of toInsert.slice(0, 10)) { // Limitar para cuidar cuota
-      const id = (r.id ?? '').toString().trim();
+      const id = String(r.id || '').trim();
+      
+      if (existingHeaderIds.has(id)) { 
+        console.log('[PUSH-HEAD] skip por existente:', id);
+        yaExistentes++; 
+        continue; 
+      }
+      
       const mappedRow = toSheetRowPresupuesto(r);
       const values = [mappedRow];
 
       try {
+        console.log(`[PUSH-HEAD] hoja=${config.hoja_nombre}, id=${config.hoja_id}`);
         await sheets.spreadsheets.values.append({
           spreadsheetId: config.hoja_id,
-          range: 'Presupuestos!A1:O1',
+          range: `${config.hoja_nombre}!A1:O1`,
           valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS',
           requestBody: { values, majorDimension: 'ROWS' }
         });
         insertedIds.add(id);
+        confirmedIds.add(id);
+        aInsertar++;
         console.log('[SYNC-BTN] INSERT-OK:', id);
       } catch (e) {
         console.warn('[SYNC-BTN] INSERT-ERR:', id, e?.message);
       }
     }
+    
+    console.log('[PUSH-HEAD] métricas encabezados:', { totalLocales, yaExistentes, aInsertar });
 
-    const totalProcessed = updatedIds.size + insertedIds.size;
-    console.log('[SYNC-BTN] Push completado:', {
-      updates: updatedIds.size,
-      inserts: insertedIds.size,
-      total: totalProcessed
+    // ✅ FIX CRÍTICO CORREGIDO: ACTUALIZACIÓN TOTAL
+    // Cuando un presupuesto se modifica, se debe reemplazar COMPLETAMENTE:
+    // 1. Reescribir presupuesto en Sheets (ya se hace arriba)
+    // 2. Reemplazar TODOS los detalles relacionados por los actuales de local
+    
+    // Logs claros como solicitó el usuario
+    Array.from(updatedIds).forEach(id => console.log('[PUSH-HEAD] UPDATE-OK: %s', id));
+    Array.from(insertedIds).forEach(id => console.log('[PUSH-HEAD] INSERT-OK: %s', id));
+    
+    // Log de existentes pero NO los agregamos a confirmed
+    const existingValidIds = new Set();
+    for (const r of rs.rows) {
+      const id = String(r.id || '').trim();
+      if (id && existingHeaderIds.has(id) && !insertedIds.has(id) && !updatedIds.has(id)) {
+        existingValidIds.add(id);
+      }
+    }
+    
+    Array.from(existingValidIds).forEach(id => console.log('[PUSH-HEAD] skip por existente: %s', id));
+    
+    // CREAR SET COMBINADO: INSERTADOS + ACTUALIZADOS para sincronización total
+    const idsParaSincronizacionTotal = new Set([...insertedIds, ...updatedIds]);
+    
+    console.log('[PUSH-HEAD] ✅ NUEVOS para sincronización total: %d (inserts=%d)', 
+                insertedIds.size, insertedIds.size);
+    console.log('[PUSH-HEAD] ✅ MODIFICADOS para sincronización total: %d (updates=%d)', 
+                updatedIds.size, updatedIds.size);
+    console.log('[PUSH-HEAD] ✅ TOTAL para sincronización completa de detalles: %d', 
+                idsParaSincronizacionTotal.size);
+    console.log('[PUSH-HEAD] ✅ Otros procesados: existentes=%d', existingValidIds.size);
+    
+    console.log('[PUSH-HEAD] done', {
+      updated: updatedIds.size,
+      inserted: insertedIds.size,
+      existing: existingValidIds.size,
+      confirmed_for_total_sync: idsParaSincronizacionTotal.size,
+      sync_breakdown: {
+        nuevos_completos: insertedIds.size,
+        modificados_reemplazo_total: updatedIds.size
+      }
     });
-
-    // Retornar todos los IDs procesados para sincronizar detalles
-    const allProcessedIds = new Set([...updatedIds, ...insertedIds]);
-    return allProcessedIds;
+    
+    // RETORNAR INSERTADOS + ACTUALIZADOS para sincronización total de detalles
+    // Esto garantiza que tanto presupuestos nuevos como modificados 
+    // tengan sus detalles completamente sincronizados
+    return idsParaSincronizacionTotal;
 
   } catch (e) {
     console.warn('[SYNC-BTN] Error en push updates:', e?.message);
@@ -1105,103 +1364,166 @@ async function pullCambiosRemotosConTimestamp(presupuestosSheets, detallesSheets
                 }
             }
 
-            // MEJORA CRÍTICA: Siempre verificar presupuestos sin detalles locales, independientemente de si hubo cambios
-            console.log('[SYNC-BIDI] Verificando presupuestos sin detalles locales...');
-            try {
-                // Función helper para búsqueda robusta de columnas (movida aquí para reutilización)
-                const findColumnIndex = (headers, ...candidates) => {
-                    const normalize = (s) => (s ?? '').toString()
-                        .normalize('NFD')
-                        .replace(/[\u0300-\u036f]/g, '') // quitar acentos
-                        .replace(/\s+/g, '') // quitar espacios
-                        .toLowerCase();
-                    
-                    const headerMap = new Map();
-                    headers.forEach((name, i) => headerMap.set(normalize(name), i));
-                    
-                    for (const candidate of candidates) {
-                        const hit = headerMap.get(normalize(candidate));
-                        if (hit !== undefined) return hit;
-                    }
-                    return -1;
-                };
-
-                const H = detallesSheets.headers || [];
-                const idxId = findColumnIndex(H, 'IDPresupuesto', 'IdPresupuesto', 'ID Presupuesto', 'Id Presupuesto', 'id_presupuesto');
+        // MEJORA CRÍTICA CON FILTRO CUTOFF_AT: Solo verificar presupuestos modificados recientemente
+        console.log('[SYNC-BIDI] Verificando presupuestos sin detalles locales (solo recientes)...');
+        try {
+            // FILTRO CRÍTICO: Solo procesar presupuestos que fueron modificados >= cutoff_at
+            // Esto evita el procesamiento masivo de todos los detalles existentes
+            
+            const cutoffAt = new Date(config.cutoff_at);
+            console.log('[SYNC-BIDI] Aplicando filtro cutoff_at para verificación de detalles:', cutoffAt.toISOString());
+            
+            // Función helper para búsqueda robusta de columnas
+            const findColumnIndex = (headers, ...candidates) => {
+                const normalize = (s) => (s ?? '').toString()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '') // quitar acentos
+                    .replace(/\s+/g, '') // quitar espacios
+                    .toLowerCase();
                 
-                if (idxId !== -1) {
-                    console.log(`[SYNC-BIDI] ✅ Columna de ID encontrada: "${H[idxId]}" (índice ${idxId})`);
+                const headerMap = new Map();
+                headers.forEach((name, i) => headerMap.set(normalize(name), i));
+                
+                for (const candidate of candidates) {
+                    const hit = headerMap.get(normalize(candidate));
+                    if (hit !== undefined) return hit;
+                }
+                return -1;
+            };
+
+            const H = detallesSheets.headers || [];
+            const idxId = findColumnIndex(H, 'IDPresupuesto', 'IdPresupuesto', 'ID Presupuesto', 'Id Presupuesto', 'id_presupuesto');
+            const idxLastModified = findColumnIndex(H, 'LastModified', 'Last Modified', 'Ultima Modificacion');
+            
+            if (idxId !== -1) {
+                console.log(`[SYNC-BIDI] ✅ Columna de ID encontrada: "${H[idxId]}" (índice ${idxId})`);
+                
+                // FILTRO CUTOFF_AT: Solo IDs con detalles modificados recientemente en Sheets
+                const idsConDetallesRecientes = new Set();
+                
+                detallesSheets.rows.forEach(r => {
+                    const id = String((Array.isArray(r) ? r[idxId] : r[H[idxId]]) ?? '').trim();
                     
-                    // 1) IDs que tienen al menos un detalle en la hoja DetallesPresupuestos
-                    const idsConDetallesEnSheets = new Set(
-                        detallesSheets.rows
-                            .map(r => {
-                                const id = String((Array.isArray(r) ? r[idxId] : r[H[idxId]]) ?? '').trim();
-                                return id;
-                            })
-                            .filter(Boolean)
-                    );
-
-                    console.log(`[SYNC-BIDI] Presupuestos con detalles en Sheets: ${idsConDetallesEnSheets.size}`);
+                    if (!id) return;
                     
-                    // Log de muestra de IDs encontrados
-                    const muestraIds = Array.from(idsConDetallesEnSheets).slice(0, 5);
-                    console.log(`[SYNC-BIDI] Muestra de IDs con detalles en Sheets: ${muestraIds.join(', ')}`);
-
-                    if (idsConDetallesEnSheets.size > 0) {
-                        // 2) De esos, ¿cuáles NO tienen detalles en local?
-                        console.log('[SYNC-BIDI] Consultando presupuestos sin detalles en BD local...');
-                        
-                        const rs = await db.query(`
-                            SELECT p.id_presupuesto_ext
-                            FROM public.presupuestos p
-                            LEFT JOIN public.presupuestos_detalles d
-                            ON d.id_presupuesto_ext = p.id_presupuesto_ext
-                            WHERE p.activo = true
-                            AND p.id_presupuesto_ext = ANY($1::text[])
-                            GROUP BY p.id_presupuesto_ext
-                            HAVING COUNT(d.id) = 0
-                                OR (
-                                        COUNT(d.id) > 0
-                                    AND COALESCE(SUM(d.cantidad),0) = 0
-                                    AND COALESCE(SUM(d.valor1),0)   = 0
-                                    AND COALESCE(SUM(d.precio1),0)  = 0
-                                    AND COALESCE(SUM(d.iva1),0)     = 0
-                                )
-                        `, [Array.from(idsConDetallesEnSheets)]);
-
-                        const idsSinDetallesLocal = new Set(
-                            rs.rows
-                            .map(r => (r.id_presupuesto_ext || '').toString().trim())
-                            .filter(Boolean)
-                        );
-
-                        console.log(`[SYNC-BIDI] Presupuestos sin detalles en BD local: ${idsSinDetallesLocal.size}`);
-
-                        if (idsSinDetallesLocal.size > 0) {
-                            console.log(
-                            '[SYNC-BIDI] 🚨 PRESUPUESTOS SIN DETALLES DETECTADOS:',
-                            Array.from(idsSinDetallesLocal).join(', ')
-                            );
-                            
-                            console.log('[SYNC-BIDI] Ejecutando syncDetallesDesdeSheets para presupuestos sin detalles...');
-                            await syncDetallesDesdeSheets(detallesSheets, idsSinDetallesLocal, db);
-                            console.log(`[SYNC-BIDI] ✅ Detalles sincronizados para ${idsSinDetallesLocal.size} presupuestos`);
-                        } else {
-                            console.log('[SYNC-BIDI] ✅ Todos los presupuestos ya tienen sus detalles locales');
+                    // Verificar si el detalle fue modificado recientemente
+                    if (idxLastModified !== -1) {
+                        const lastModified = Array.isArray(r) ? r[idxLastModified] : r[H[idxLastModified]];
+                        if (lastModified) {
+                            try {
+                                const detalleTimestamp = new Date(lastModified);
+                                if (detalleTimestamp >= cutoffAt) {
+                                    idsConDetallesRecientes.add(id);
+                                }
+                            } catch (e) {
+                                // Si no se puede parsear la fecha, omitir
+                            }
                         }
                     } else {
-                        console.warn('[SYNC-BIDI] ⚠️ No se encontraron presupuestos con detalles en Sheets');
+                        // Si no hay columna LastModified, solo incluir si el presupuesto fue cambiado
+                        if (idsCambiados.has(id)) {
+                            idsConDetallesRecientes.add(id);
+                        }
+                    }
+                });
+
+                console.log(`[SYNC-BIDI] Presupuestos con detalles RECIENTES en Sheets (>= cutoff_at): ${idsConDetallesRecientes.size}`);
+                
+                if (idsConDetallesRecientes.size > 0) {
+                    // Log de muestra de IDs encontrados
+                    const muestraIds = Array.from(idsConDetallesRecientes).slice(0, 5);
+                    console.log(`[SYNC-BIDI] Muestra de IDs con detalles recientes: ${muestraIds.join(', ')}`);
+
+                    // 2) De esos, ¿cuáles NO tienen detalles en local?
+                    console.log('[SYNC-BIDI] Consultando presupuestos sin detalles en BD local (solo recientes)...');
+                    
+                    const rs = await db.query(`
+                        SELECT p.id_presupuesto_ext
+                        FROM public.presupuestos p
+                        LEFT JOIN public.presupuestos_detalles d
+                        ON d.id_presupuesto_ext = p.id_presupuesto_ext
+                        LEFT JOIN public.presupuestos_detalles_map m
+                        ON m.local_detalle_id = d.id
+                        WHERE p.activo = true
+                        AND p.id_presupuesto_ext = ANY($1::text[])
+                        GROUP BY p.id_presupuesto_ext
+                        HAVING COUNT(d.id) = 0
+                            OR (
+                                    COUNT(d.id) > 0
+                                AND COALESCE(SUM(d.cantidad),0) = 0
+                                AND COALESCE(SUM(d.valor1),0)   = 0
+                                AND COALESCE(SUM(d.precio1),0)  = 0
+                                AND COALESCE(SUM(d.iva1),0)     = 0
+                            )
+                            OR (
+                                    COUNT(d.id) > 0
+                                AND COUNT(m.local_detalle_id) = 0
+                            )
+                    `, [Array.from(idsConDetallesRecientes)]);
+
+                    const idsSinDetallesLocal = new Set(
+                        rs.rows
+                        .map(r => (r.id_presupuesto_ext || '').toString().trim())
+                        .filter(Boolean)
+                    );
+
+                    console.log(`[SYNC-BIDI] Presupuestos sin detalles en BD local (filtrados): ${idsSinDetallesLocal.size}`);
+
+                    if (idsSinDetallesLocal.size > 0) {
+                        console.log(
+                        '[SYNC-BIDI] 🚨 PRESUPUESTOS SIN DETALLES O SIN MAP DETECTADOS:',
+                        Array.from(idsSinDetallesLocal).join(', ')
+                        );
+                        
+                        // Separar presupuestos sin detalles de presupuestos solo sin MAP
+                        const presupuestosSinDetalles = new Set();
+                        const presupuestosSoloSinMap = new Set();
+                        
+                        for (const id of idsSinDetallesLocal) {
+                            const verificacion = await db.query(`
+                                SELECT COUNT(d.id) as count_detalles
+                                FROM presupuestos_detalles d
+                                WHERE d.id_presupuesto_ext = $1
+                            `, [id]);
+                            
+                            if (verificacion.rows[0].count_detalles == 0) {
+                                presupuestosSinDetalles.add(id);
+                            } else {
+                                presupuestosSoloSinMap.add(id);
+                            }
+                        }
+                        
+                        console.log(`[SYNC-BIDI] Presupuestos SIN detalles: ${presupuestosSinDetalles.size}`);
+                        console.log(`[SYNC-BIDI] Presupuestos SOLO sin MAP: ${presupuestosSoloSinMap.size}`);
+                        
+                        // Para presupuestos sin detalles: usar syncDetallesDesdeSheets (elimina + crea)
+                        if (presupuestosSinDetalles.size > 0) {
+                            console.log('[SYNC-BIDI] Ejecutando syncDetallesDesdeSheets para presupuestos SIN detalles...');
+                            await syncDetallesDesdeSheets(detallesSheets, presupuestosSinDetalles, db);
+                            console.log(`[SYNC-BIDI] ✅ Detalles sincronizados para ${presupuestosSinDetalles.size} presupuestos`);
+                        }
+                        
+                        // Para presupuestos solo sin MAP: crear MAP sin tocar detalles
+                        if (presupuestosSoloSinMap.size > 0) {
+                            console.log('[SYNC-BIDI] Creando MAP para presupuestos que ya tienen detalles...');
+                            await crearMapParaDetallesExistentes(detallesSheets, presupuestosSoloSinMap, db);
+                            console.log(`[SYNC-BIDI] ✅ MAP creado para ${presupuestosSoloSinMap.size} presupuestos`);
+                        }
+                    } else {
+                        console.log('[SYNC-BIDI] ✅ Todos los presupuestos recientes ya tienen sus detalles locales y MAP');
                     }
                 } else {
-                    console.error('[SYNC-BIDI] ❌ NO SE ENCONTRÓ COLUMNA DE ID en DetallesPresupuestos');
-                    console.error('[SYNC-BIDI] Encabezados disponibles:', H);
-                    console.error('[SYNC-BIDI] Candidatos buscados: IDPresupuesto, IdPresupuesto, ID Presupuesto, Id Presupuesto, id_presupuesto');
+                    console.log('[SYNC-BIDI] ✅ No hay presupuestos con detalles recientes en Sheets (filtro cutoff_at aplicado)');
                 }
-            } catch (e) {
-                console.error('[SYNC-BIDI] ❌ Error crítico verificando presupuestos sin detalles:', e?.message);
-                console.error('[SYNC-BIDI] Stack trace:', e?.stack);
+            } else {
+                console.error('[SYNC-BIDI] ❌ NO SE ENCONTRÓ COLUMNA DE ID en DetallesPresupuestos');
+                console.error('[SYNC-BIDI] Encabezados disponibles:', H);
+                console.error('[SYNC-BIDI] Candidatos buscados: IDPresupuesto, IdPresupuesto, ID Presupuesto, Id Presupuesto, id_presupuesto');
             }
+        } catch (e) {
+            console.error('[SYNC-BIDI] ❌ Error crítico verificando presupuestos sin detalles:', e?.message);
+            console.error('[SYNC-BIDI] Stack trace:', e?.stack);
+        }
 
         console.log('[SYNC-BIDI] Pull completado:', { recibidos, actualizados, omitidos });
         
@@ -1466,18 +1788,21 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
         valor1:  findColumnIndex('Valor1', 'Valor 1', 'Valor', 'Value1'),
         precio1: findColumnIndex('Precio1', 'Precio 1', 'Precio', 'Price1'),
         iva1:    findColumnIndex('IVA1', 'IVA 1', 'IVA', 'Iva1'),
-        // CORRECCIÓN CRÍTICA: Mapeo correcto según especificación del usuario
-        // camp1 (local) ↔ Camp2 (Google Sheets - columna J)
-        // camp2 (local) ↔ Camp3 (Google Sheets - columna K)
-        // camp3 (local) ↔ Camp4 (Google Sheets - columna L)
-        // camp4 (local) ↔ Camp5 (Google Sheets - columna M)
-        // camp5 (local) ↔ Camp6 (Google Sheets - columna N)
-        // camp6 (local) ↔ Condicion (Google Sheets - columna O)
-        camp1:   findColumnIndex('Camp2', 'Camp 2', 'Campo2'),           // camp1 ↔ Camp2 (columna J)
-        camp2:   findColumnIndex('Camp3', 'Camp 3', 'Campo3'),           // camp2 ↔ Camp3 (columna K)
-        camp3:   findColumnIndex('Camp4', 'Camp 4', 'Campo4'),           // camp3 ↔ Camp4 (columna L)
-        camp4:   findColumnIndex('Camp5', 'Camp 5', 'Campo5'),           // camp4 ↔ Camp5 (columna M)
-        camp5:   findColumnIndex('Camp6', 'Camp 6', 'Campo6'),           // camp5 ↔ Camp6 (columna N)
+        diferencia: findColumnIndex('Diferencia', 'Diff', 'Difference'),
+        // MAPEO CORRECTO según documentación del usuario:
+        // LOCAL → SHEETS:
+        // camp1 local → (I) Camp1 Sheets
+        // camp2 local → (K) Camp3 Sheets (porcentaje: 0.210 → 21,00%)
+        // camp3 local → (L) Camp4 Sheets
+        // camp4 local → (M) Camp5 Sheets  
+        // camp5 local → (N) Camp6 Sheets
+        // camp6 local → (O) Condicion Sheets
+        // NOTA: (J) Camp2 Sheets = mismo valor que precio1 (se calcula automáticamente)
+        camp1:   findColumnIndex('Camp1', 'Camp 1'),                     // camp1 ↔ Camp1 (columna I)
+        camp2:   findColumnIndex('Camp3', 'Camp 3'),                     // camp2 ↔ Camp3 (columna K) - PORCENTAJE
+        camp3:   findColumnIndex('Camp4', 'Camp 4'),                     // camp3 ↔ Camp4 (columna L)
+        camp4:   findColumnIndex('Camp5', 'Camp 5'),                     // camp4 ↔ Camp5 (columna M)
+        camp5:   findColumnIndex('Camp6', 'Camp 6'),                     // camp5 ↔ Camp6 (columna N)
         camp6:   findColumnIndex('Condicion', 'Condición', 'Condition')  // camp6 ↔ Condicion (columna O)
     };
 
@@ -1592,42 +1917,48 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
         return;
     }
 
-                // Filtrar filas de detalles - MEJORADO con mejor lógica
+                // FILTRO ESTRICTO: Solo filas únicas por presupuesto+artículo
                 const filas = [];
+                const filasUnicas = new Map(); // presupuesto+artículo -> fila más reciente
                 let filasOmitidas = 0;
 
+                // PASO 1: Identificar filas únicas por presupuesto+artículo
                 detallesSheets.rows.forEach((row, i) => {
-                const idCell = String(cell(row, idx.id) ?? '').trim();
-                if (idCell && idSet.has(idCell)) {
-                    const articulo = String(cell(row, idx.art) ?? '').trim();
-                    if (articulo) {
-                    filas.push(row);
-                    } else {
-                    console.warn('[DET-DBG][SKIP-NO-ART]', {
-                        id: idCell,
-                        art_idx: cell(row, idx.art),
-                        mode: Array.isArray(row) ? 'array' : 'obj'
-                    });
-                    filasOmitidas++;
+                    const idCell = String(cell(row, idx.id) ?? '').trim();
+                    if (idCell && idSet.has(idCell)) {
+                        const articulo = String(cell(row, idx.art) ?? '').trim();
+                        if (articulo) {
+                            const key = `${idCell}-${articulo}`;
+                            
+                            // Solo mantener la primera ocurrencia (más reciente en Sheets)
+                            if (!filasUnicas.has(key)) {
+                                filasUnicas.set(key, row);
+                                filas.push(row);
+                            } else {
+                                console.warn(`[SYNC-BIDI][DETALLES] ⚠️ DUPLICADO EN SHEETS OMITIDO: ${key}`);
+                                filasOmitidas++;
+                            }
+                        } else {
+                            console.warn('[DET-DBG][SKIP-NO-ART]', {
+                                id: idCell,
+                                art_idx: cell(row, idx.art),
+                                mode: Array.isArray(row) ? 'array' : 'obj'
+                            });
+                            filasOmitidas++;
+                        }
+                    } else if (idCell) {
+                        filasOmitidas++;
                     }
-                } else if (idCell) {
-                    filasOmitidas++;
-                }
                 });
 
-                console.log(`[SYNC-BIDI][DETALLES] 📊 Filas procesadas: ${filas.length} incluidas, ${filasOmitidas} omitidas de ${detallesSheets.rows.length} totales`);
-                console.log(`[DET-DBG][POST-FILTER] incluidas=${filas.length} / tot=${detallesSheets.rows.length}`);
-                filas.slice(-5).forEach((r, i2) => {
-                const idByIdx   = r?.[idx.id];
-                const idByName  = (r && H[idx.id] != null) ? r[H[idx.id]] : undefined;
-                const artByIdx  = r?.[idx.art];
-                const artByName = (r && H[idx.art] != null) ? r[H[idx.art]] : undefined;
-                console.log('[DET-DBG][CAND]', {
-                    pos: i2,
-                    mode: Array.isArray(r) ? 'array' : 'obj',
-                    id_idx: idByIdx, id_name: idByName,
-                    art_idx: artByIdx, art_name: artByName
-                });
+                console.log(`[SYNC-BIDI][DETALLES] 📊 Filas procesadas: ${filas.length} únicas incluidas, ${filasOmitidas} omitidas de ${detallesSheets.rows.length} totales`);
+                console.log(`[SYNC-BIDI][DETALLES] 🔍 Combinaciones únicas: ${filasUnicas.size}`);
+                
+                // Log de muestra de filas únicas
+                const muestraUnicas = Array.from(filasUnicas.entries()).slice(0, 5);
+                console.log(`[SYNC-BIDI][DETALLES] 📋 Muestra de combinaciones únicas:`);
+                muestraUnicas.forEach(([key, row], i) => {
+                    console.log(`   ${i+1}. ${key}: fila con artículo ${cell(row, idx.art)}`);
                 });
 
     if (filas.length === 0) {
@@ -1653,7 +1984,10 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
         let skippedCount = 0;
         const erroresInsercion = [];
 
-        // Insertar nuevos detalles - MEJORADO con mejor manejo de errores
+        // VALIDACIÓN ANTI-DUPLICADOS: Crear Set para evitar duplicados por presupuesto+artículo
+        const detallesYaInsertados = new Set();
+        
+        // Insertar nuevos detalles - MEJORADO con validación anti-duplicados
         for (let i = 0; i < filas.length; i++) {
             const r = filas[i];
             
@@ -1676,7 +2010,7 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
                 }
 
                 const articulo = String(cell(r, idx.art) ?? '').trim();
-                    if (!articulo) {
+                if (!articulo) {
                     console.warn('[DET-DBG][SKIP-NO-ART]', {
                         id: idCell,
                         art_idx: cell(r, idx.art),
@@ -1684,38 +2018,127 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
                     });
                     skippedCount++;
                     continue;
-                    }
+                }
 
-                    const n = (k) => toNumber(cell(r, k));
-                    const cantidad = n(idx.cant);
-                    const valor1   = n(idx.valor1);
-                    const precio1  = n(idx.precio1);
-                    const iva1     = n(idx.iva1);
-                    const camp1    = (idx.camp1 !== -1 ? n(idx.camp1) : null);
-                    const camp2    = (idx.camp2 !== -1 ? n(idx.camp2) : null);
-                    const camp3    = (idx.camp3 !== -1 ? n(idx.camp3) : null);
-                    const camp4    = (idx.camp4 !== -1 ? n(idx.camp4) : null);
-                    const camp5    = (idx.camp5 !== -1 ? n(idx.camp5) : null);
-                    const camp6    = (idx.camp6 !== -1 ? n(idx.camp6) : null);
+                // VALIDACIÓN CRÍTICA: Evitar duplicados por presupuesto+artículo
+                const detalleKey = `${idCell}-${articulo}`;
+                if (detallesYaInsertados.has(detalleKey)) {
+                    console.warn(`[SYNC-BIDI][DETALLES] ⚠️ DUPLICADO DETECTADO: ${detalleKey} - SALTANDO`);
+                    skippedCount++;
+                    continue;
+                }
+                
+                // Marcar como insertado para evitar duplicados
+                detallesYaInsertados.add(detalleKey);
 
+                const n = (k) => toNumber(cell(r, k));
+                const cantidad = n(idx.cant);
+                const valor1   = n(idx.valor1);
+                const precio1  = n(idx.precio1);
+                const iva1     = n(idx.iva1);
+                const camp1    = (idx.camp1 !== -1 ? n(idx.camp1) : null);
+                const camp2    = (idx.camp2 !== -1 ? n(idx.camp2) : null);
+                const camp3    = (idx.camp3 !== -1 ? n(idx.camp3) : null);
+                const camp4    = (idx.camp4 !== -1 ? n(idx.camp4) : null);
+                const camp5    = (idx.camp5 !== -1 ? n(idx.camp5) : null);
+                const camp6    = (idx.camp6 !== -1 ? n(idx.camp6) : null);
 
-                            if (insertedCount < 5) {
-                            const preview = {
-                                id_presupuesto_ext: idCell,
-                                articulo, cantidad, valor1, precio1, iva1,
-                                camp1, camp2, camp3, camp4, camp5, camp6
-                            };
-                            console.log('[DET-DBG][WILL-INSERT]', preview);
-                            }
+                if (insertedCount < 5) {
+                    const preview = {
+                        id_presupuesto_ext: idCell,
+                        articulo, cantidad, valor1, precio1, iva1,
+                        camp1, camp2, camp3, camp4, camp5, camp6
+                    };
+                    console.log('[DET-DBG][WILL-INSERT]', preview);
+                }
 
+                // VALIDACIÓN ADICIONAL: Verificar que no existe ya en BD
+                const existeEnBD = await db.query(
+                    `SELECT id FROM public.presupuestos_detalles 
+                     WHERE id_presupuesto_ext = $1 AND articulo = $2`,
+                    [idCell, articulo]
+                );
+                
+                if (existeEnBD.rowCount > 0) {
+                    console.warn(`[SYNC-BIDI][DETALLES] ⚠️ DETALLE YA EXISTE EN BD: ${idCell}-${articulo} - SALTANDO`);
+                    skippedCount++;
+                    continue;
+                }
 
-                await db.query(
+                // CRÍTICO: Obtener id_presupuesto numérico local para FK
+                const presupuestoLocalResult = await db.query(
+                    `SELECT id FROM public.presupuestos WHERE id_presupuesto_ext = $1`,
+                    [idCell]
+                );
+                
+                if (presupuestoLocalResult.rowCount === 0) {
+                    console.error(`[SYNC-BIDI][DETALLES] ❌ No se encontró presupuesto local para ID: ${idCell}`);
+                    skippedCount++;
+                    continue;
+                }
+                
+                const idPresupuestoLocal = presupuestoLocalResult.rows[0].id;
+
+                const insertResult = await db.query(
                     `INSERT INTO public.presupuestos_detalles
-                       (id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
+                       (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
                         camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
-                    [idCell, articulo, cantidad, valor1, precio1, iva1,
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+                     RETURNING id`,
+                    [idPresupuestoLocal, idCell, articulo, cantidad, valor1, precio1, iva1,
                      camp1, camp2, camp3, camp4, camp5, camp6]
+                );
+                
+                const localDetalleId = insertResult.rows[0].id;
+                
+                // USAR EL ID REAL DE SHEETS (columna A: IDDetallePresupuesto)
+                let idDetallePresupuesto = '';
+                
+                // Obtener ID de Sheets de múltiples formas
+                if (r[0] !== undefined && r[0] !== null && r[0] !== '') {
+                    idDetallePresupuesto = r[0].toString().trim();
+                } else if (r[H[0]] !== undefined && r[H[0]] !== null && r[H[0]] !== '') {
+                    idDetallePresupuesto = r[H[0]].toString().trim();
+                } else if (r['IDDetallePresupuesto'] !== undefined && r['IDDetallePresupuesto'] !== null && r['IDDetallePresupuesto'] !== '') {
+                    idDetallePresupuesto = r['IDDetallePresupuesto'].toString().trim();
+                }
+                
+                // Si no se puede obtener el ID de Sheets, generar uno como fallback
+                if (!idDetallePresupuesto) {
+                    console.warn('[SYNC-BIDI][DETALLES] ⚠️ No se pudo obtener ID de Sheets, generando fallback');
+                    const crypto = require('crypto');
+                    const mkId = r => crypto.createHash('sha1')
+                      .update(`${r.id_presupuesto_ext}|${r.articulo}|${r.cantidad}|${r.valor1}|${r.precio1}|${r.iva1}|${r.diferencia}|${r.camp1}|${r.camp2}|${r.camp3}|${r.camp4}|${r.camp5}|${r.camp6}`)
+                      .digest('hex').slice(0, 8);
+                    
+                    idDetallePresupuesto = mkId({
+                        id_presupuesto_ext: idCell,
+                        articulo: articulo,
+                        cantidad: cantidad,
+                        valor1: valor1,
+                        precio1: precio1,
+                        iva1: iva1,
+                        diferencia: 0,
+                        camp1: camp1,
+                        camp2: camp2,
+                        camp3: camp3,
+                        camp4: camp4,
+                        camp5: camp5,
+                        camp6: camp6
+                    });
+                } else {
+                    console.log(`[SYNC-BIDI][DETALLES] ✅ Usando ID real de Sheets: ${idDetallePresupuesto}`);
+                }
+                
+                // Upsert en presupuestos_detalles_map con fuente='Sheets'
+                await db.query(
+                    `INSERT INTO public.presupuestos_detalles_map (local_detalle_id, id_detalle_presupuesto, fuente, fecha_asignacion)
+                     VALUES ($1, $2, 'Sheets', CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                     ON CONFLICT (local_detalle_id) DO UPDATE
+                     SET id_detalle_presupuesto = EXCLUDED.id_detalle_presupuesto,
+                         fuente = 'Sheets',
+                         fecha_asignacion = EXCLUDED.fecha_asignacion`,
+                    [localDetalleId, idDetallePresupuesto]
                 );
                 
                 insertedCount++;
@@ -1760,6 +2183,7 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
     }
 }
 
+
 /**
  * Marcar presupuestos anulados en Sheets (versión con conteo para logs)
  * FIX CRÍTICO: Esta función ahora se ejecuta PRIMERA en el pipeline
@@ -1781,16 +2205,17 @@ async function marcarAnuladosEnSheetsConConteo(presupuestosData, config, db) {
     if (id) rowById.set(id, i + 2);
   });
 
-  // MEJORA CRÍTICA: Incluir presupuestos recién anulados (mismo ciclo)
-  // Usar fecha_actualizacion para capturar cambios recientes
+  // MEJORA CRÍTICA: Incluir presupuestos recién anulados usando cutoff_at
+  // Usar fecha_actualizacion >= cutoff_at
+  const cutoffAt = config.cutoff_at;
   const rs = await db.query(`
     SELECT id_presupuesto_ext, fecha_actualizacion
     FROM public.presupuestos
     WHERE activo = false 
     AND COALESCE(id_presupuesto_ext,'') <> ''
-    AND fecha_actualizacion >= NOW() - INTERVAL '1 hour'
+    AND fecha_actualizacion > $1  -- ESTRICTO: solo posteriores a última sync
     ORDER BY fecha_actualizacion DESC
-  `);
+  `, [cutoffAt]);
   
   if (!rs.rowCount) {
     console.log('[SYNC-BTN] No hay presupuestos anulados recientes para marcar en Sheets');
@@ -1887,15 +2312,168 @@ async function marcarAnuladosEnSheets(presupuestosData, config, db) {
 }
 
 /**
+ * Eliminar y recrear detalles en Sheets para presupuestos modificados localmente
+ * SOLO ACTUALIZA SHEETS - NO TOCA LOCAL
+ */
+async function eliminarYRecrearDetallesEnSheets(idsModificadosLocalmente, config, db) {
+    console.log('[PUSH-DETALLES-MODIFICADOS] Eliminando y recreando detalles en Sheets...');
+    
+    if (!idsModificadosLocalmente || idsModificadosLocalmente.size === 0) {
+        console.log('[PUSH-DETALLES-MODIFICADOS] No hay IDs modificados localmente');
+        return;
+    }
+    
+    try {
+        const { getSheets } = require('../../google/gsheetsClient');
+        const sheets = await getSheets();
+        
+        // 1. Leer detalles actuales de Sheets para encontrar filas a eliminar
+        const detallesSheets = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
+        
+        // 2. Encontrar filas en Sheets que pertenecen a presupuestos modificados localmente
+        const filasAEliminar = [];
+        const idsModificadosArray = Array.from(idsModificadosLocalmente);
+        
+        detallesSheets.rows.forEach((row, index) => {
+            const idPresupuesto = (row[detallesSheets.headers[1]] || '').toString().trim(); // Columna B: IdPresupuesto
+            if (idsModificadosArray.includes(idPresupuesto)) {
+                filasAEliminar.push(index + 2); // +2 porque fila 1 es header
+            }
+        });
+        
+        console.log(`[PUSH-DETALLES-MODIFICADOS] Encontradas ${filasAEliminar.length} filas de detalles a eliminar en Sheets`);
+        
+        // 3. Eliminar filas en Sheets (de abajo hacia arriba para no alterar índices)
+        if (filasAEliminar.length > 0) {
+            const filasOrdenadas = filasAEliminar.sort((a, b) => b - a); // Orden descendente
+            
+            for (const fila of filasOrdenadas) {
+                await sheets.spreadsheets.batchUpdate({
+                    spreadsheetId: config.hoja_id,
+                    requestBody: {
+                        requests: [{
+                            deleteDimension: {
+                                range: {
+                                    sheetId: 0, // Asumiendo que DetallesPresupuestos es la primera hoja
+                                    dimension: 'ROWS',
+                                    startIndex: fila - 1, // 0-based
+                                    endIndex: fila
+                                }
+                            }
+                        }]
+                    }
+                });
+            }
+            
+            console.log(`[PUSH-DETALLES-MODIFICADOS] ✅ Eliminadas ${filasAEliminar.length} filas de detalles en Sheets`);
+        }
+        
+        // 4. Obtener detalles actuales de LOCAL para los presupuestos modificados
+        const detallesLocales = await db.query(`
+            SELECT d.id, d.id_presupuesto_ext, d.articulo, d.cantidad, d.valor1, d.precio1,
+                   d.iva1, d.diferencia, d.camp1, d.camp2, d.camp3, d.camp4, d.camp5, d.camp6
+            FROM public.presupuestos_detalles d
+            WHERE d.id_presupuesto_ext = ANY($1)
+            ORDER BY d.id_presupuesto_ext, d.id
+        `, [idsModificadosArray]);
+        
+        console.log(`[PUSH-DETALLES-MODIFICADOS] Encontrados ${detallesLocales.rowCount} detalles locales para recrear en Sheets`);
+        
+        // 5. Recrear detalles en Sheets con mapeo correcto
+        if (detallesLocales.rowCount > 0) {
+            const nowAR = toSheetDateTimeAR(Date.now());
+            const num2 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 100) / 100;
+            const num3 = v => (v == null || v === '') ? '' : Math.round(Number(v) * 1000) / 1000;
+            const asText = v => (v == null) ? '' : String(v).trim();
+            
+            // Generar IDs únicos para los detalles y crear MAP
+            const detallesParaSheets = [];
+            
+            for (const r of detallesLocales.rows) {
+                // Generar ID único para Sheets
+                const crypto = require('crypto');
+                const timestamp = Date.now() + Math.random() * 1000;
+                const hash = crypto.createHash('sha1')
+                    .update(`${r.id_presupuesto_ext}|${r.articulo}|${r.cantidad}|${r.valor1}|${r.precio1}|${r.iva1}|${r.diferencia}|${r.camp1}|${r.camp2}|${r.camp3}|${r.camp4}|${r.camp5}|${r.camp6}|${timestamp}`)
+                    .digest('hex');
+                const idDetallePresupuesto = `${hash.slice(0, 8)}-${hash.slice(8, 12)}`;
+                
+                // Actualizar MAP
+                await db.query(`
+                    INSERT INTO public.presupuestos_detalles_map
+                    (local_detalle_id, id_detalle_presupuesto, fuente, fecha_asignacion)
+                    VALUES ($1, $2, 'Local', CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                    ON CONFLICT (local_detalle_id) DO UPDATE
+                    SET id_detalle_presupuesto = EXCLUDED.id_detalle_presupuesto,
+                        fuente = 'Local',
+                        fecha_asignacion = EXCLUDED.fecha_asignacion
+                `, [r.id, idDetallePresupuesto]);
+                
+                // Mapear para Sheets con mapeo correcto
+                const mappedRow = [
+                    idDetallePresupuesto,           // A  IDDetallePresupuesto
+                    asText(r.id_presupuesto_ext),   // B  IdPresupuesto
+                    asText(r.articulo),             // C  Articulo
+                    num2(r.cantidad),               // D  Cantidad
+                    num2(r.valor1),                 // E  Valor1
+                    num2(r.precio1),                // F  Precio1
+                    num2(r.iva1),                   // G  IVA1
+                    num2(r.diferencia),             // H  Diferencia
+                    num2(r.camp1),                  // I  Camp1 (camp1 local → Camp1 Sheets)
+                    num2(r.precio1),                // J  Camp2 (mismo valor que precio1)
+                    num3(r.camp2),                  // K  Camp3 (camp2 local → Camp3 Sheets - PORCENTAJE)
+                    num2(r.camp3),                  // L  Camp4 (camp3 local → Camp4 Sheets)
+                    num2(r.camp4),                  // M  Camp5 (camp4 local → Camp5 Sheets)
+                    num2(r.camp5),                  // N  Camp6 (camp5 local → Camp6 Sheets)
+                    asText(r.camp6),                // O  Condicion (camp6 local → Condicion Sheets)
+                    nowAR,                          // P  LastModified
+                    true                            // Q  Activo
+                ];
+                
+                detallesParaSheets.push(mappedRow);
+            }
+            
+            // 6. Insertar todos los detalles en Sheets
+            if (detallesParaSheets.length > 0) {
+                await sheets.spreadsheets.values.append({
+                    spreadsheetId: config.hoja_id,
+                    range: 'DetallesPresupuestos!A1:Q1',
+                    valueInputOption: 'USER_ENTERED',
+                    insertDataOption: 'INSERT_ROWS',
+                    requestBody: {
+                        values: detallesParaSheets,
+                        majorDimension: 'ROWS'
+                    }
+                });
+                
+                console.log(`[PUSH-DETALLES-MODIFICADOS] ✅ Recreados ${detallesParaSheets.length} detalles en Sheets`);
+            }
+        }
+        
+    } catch (error) {
+        console.error('[PUSH-DETALLES-MODIFICADOS] Error:', error.message);
+        throw error;
+    }
+}
+
+/**
  * Pull de cambios remotos con comparación de timestamp MEJORADO
  * INCLUYE TIE-BREAK: cuando timestamps son iguales, anulación local gana
+ * IMPLEMENTA FILTROS CUTOFF_AT: Solo procesa registros >= cutoff_at
+ * IMPLEMENTA LWW: Compara Local.fecha_actualizacion vs Sheets.LastModified
+ * EXCLUYE: IDs que fueron modificados localmente (para evitar conflictos)
  */
-async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detallesSheets, db) {
-    console.log('[SYNC-BIDI] Comparando timestamps para pull (con tie-break para anulaciones)...');
+async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detallesSheets, config, db, idsModificadosLocalmente = new Set()) {
+    console.log('[SYNC-BIDI] Comparando timestamps para pull con filtros cutoff_at...');
+    
+    const cutoffAt = new Date(config.cutoff_at);
+    console.log('[SYNC-BIDI] Aplicando filtro cutoff_at para pull:', cutoffAt.toISOString());
     
     let recibidos = 0;
     let actualizados = 0;
     let omitidos = 0;
+    let omitidosPorCutoff = 0;
+    let omitidosPorSinFecha = 0;
 
     let presetsToggledToFalse = 0;
     let detailsToggledToFalse = 0;
@@ -1909,6 +2487,35 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
         if (['false', '0', 'n', 'no', ''].includes(val)) return false;
         if (['true', '1', 's', 'sí', 'si'].includes(val)) return true;
         return null; // no se infiere true por defecto
+    }
+
+    // Función para parsear LastModified robustamente (tz AR)
+    function parseLastModifiedRobust(value) {
+        if (!value) return new Date(0);
+        
+        try {
+            // Si es número (Excel serial date)
+            if (typeof value === 'number') {
+                const excelEpoch = new Date(1900, 0, 1);
+                const days = value - 2; // Excel cuenta desde 1900-01-01 pero tiene bug del año bisiesto
+                return new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+            }
+            
+            // Si es string, intentar parsear formato dd/mm/yyyy hh:mm:ss (AR)
+            if (typeof value === 'string') {
+                const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/;
+                const match = value.match(ddmmyyyyRegex);
+                if (match) {
+                    const [, day, month, year, hour, minute, second] = match;
+                    // Crear fecha en zona horaria de Argentina
+                    return new Date(year, month - 1, day, hour, minute, second);
+                }
+            }
+            
+            return new Date(value);
+        } catch (e) {
+            return new Date(0);
+        }
     }
 
     try {
@@ -1927,14 +2534,39 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
             localActivos.set(id, row.activo);
         });
 
-        // Procesar registros de Sheets
+        // Procesar registros de Sheets CON FILTRO CUTOFF_AT Y LWW
         for (const row of presupuestosSheets.rows) {
             const id = (row[presupuestosSheets.headers[0]] || '').toString().trim();
             const sheetLastModified = row[presupuestosSheets.headers[13]]; // columna N
             
-            if (!id || !sheetLastModified) continue;
+            if (!id) {
+                omitidos++;
+                continue;
+            }
             
-            const sheetTimestamp = new Date(parseLastModifiedToDate(sheetLastModified));
+            // FILTRO CRÍTICO: Excluir IDs que fueron modificados localmente (ya procesados en PUSH)
+            if (idsModificadosLocalmente.has(id)) {
+                console.log('[SYNC-BIDI] Omitiendo ID modificado localmente (ya procesado en PUSH):', id);
+                omitidos++;
+                continue;
+            }
+            
+            // FILTRO CUTOFF_AT: Omitir si no tiene LastModified
+            if (!sheetLastModified) {
+                console.log('[SYNC-BIDI] Omitiendo por sin fecha - ID:', id);
+                omitidosPorSinFecha++;
+                continue;
+            }
+            
+            const sheetTimestamp = parseLastModifiedRobust(sheetLastModified);
+            
+            // FILTRO CUTOFF_AT: Omitir si LastModified < cutoff_at
+            if (sheetTimestamp < cutoffAt) {
+                console.log('[SYNC-BIDI] Omitiendo por cutoff_at - ID:', id, 'fecha:', sheetTimestamp.toISOString());
+                omitidosPorCutoff++;
+                continue;
+            }
+            
             const localTimestamp = localTimestamps.get(id);
             const localActivo = localActivos.get(id);
             const remoteActivoRaw = row[presupuestosSheets.headers[14]];
@@ -1952,23 +2584,26 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
                 idsCambiados.add(id);
                 console.log('[SYNC-BIDI] Nuevo desde Sheets:', id);
             } else {
-                // Aplicar regla sticky delete para activo
-                // Si cualquiera está en false, activo_final = false
-                let activoFinal = true;
-                if (localActivo === false || remoteActivo === false) {
-                    activoFinal = false;
-                } else if (remoteActivo === null) {
-                    // No sobreescribir activo local si remoto no es parseable
-                    activoFinal = localActivo;
-                }
-
-                // Comparar timestamps para decidir actualización
+                // IMPLEMENTACIÓN LWW: Comparar timestamps
+                console.log(`[LWW] Comparando timestamps para ID ${id}:`);
+                console.log(`[LWW]   Local: ${localTimestamp.toISOString()}`);
+                console.log(`[LWW]   Sheet: ${sheetTimestamp.toISOString()}`);
+                
                 if (sheetTimestamp > localTimestamp) {
-                    // Actualizar local con datos remotos, pero con activoFinal aplicado
+                    // Sheet más reciente → UPDATE
+                    console.log(`[LWW] sheet>local → update`);
+                    
+                    // Aplicar regla sticky delete para activo
+                    let activoFinal = true;
+                    if (localActivo === false || remoteActivo === false) {
+                        activoFinal = false;
+                    } else if (remoteActivo === null) {
+                        activoFinal = localActivo;
+                    }
+
                     const presupuestoActualizado = { ...row };
                     presupuestoActualizado[presupuestosSheets.headers[14]] = activoFinal;
 
-                    // Actualizar en BD local
                     await actualizarPresupuestoDesdeSheet(presupuestoActualizado, presupuestosSheets.headers, db);
 
                     actualizados++;
@@ -1978,42 +2613,63 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
                         presetsToggledToFalse++;
                     }
 
-                    console.log('[SYNC-BIDI] Actualizado desde Sheets:', id,
-                        'sheet:', sheetTimestamp.toISOString(),
-                        'local:', localTimestamp.toISOString(),
-                        'activoFinal:', activoFinal);
+                    console.log('[SYNC-BIDI] Actualizado desde Sheets:', id, 'activoFinal:', activoFinal);
+                } else if (sheetTimestamp < localTimestamp) {
+                    // Local más reciente → SKIP
+                    console.log(`[LWW] sheet<local → skip`);
+                    omitidos++;
                 } else {
-                    // Local más reciente o igual, omitir
+                    // Empate (timestamps iguales) → SKIP (mantener Local)
+                    console.log(`[LWW] sheet=local → skip (mantener Local)`);
                     omitidos++;
                 }
             }
         }
 
-        // Sincronizar detalles con lógica similar para activo si existe
+        // Sincronizar detalles con LWW aplicado
         if (idsCambiados.size > 0) {
             try {
-                // Procesar detalles con parseActivo y sticky delete
-                const detallesActualizados = new Set();
+                console.log('[SYNC-BIDI] Aplicando LWW a detalles para IDs cambiados:', Array.from(idsCambiados).join(', '));
+                
+                // Obtener timestamps locales de detalles para LWW
+                const localDetalleTimestamps = new Map();
+                const rsDetalles = await db.query(`
+                    SELECT d.id, d.id_presupuesto_ext, d.articulo, d.fecha_actualizacion
+                    FROM public.presupuestos_detalles d
+                    INNER JOIN public.presupuestos_detalles_map m ON m.local_detalle_id = d.id
+                    WHERE d.id_presupuesto_ext = ANY($1::text[])
+                `, [Array.from(idsCambiados)]);
+                
+                rsDetalles.rows.forEach(row => {
+                    const key = `${row.id_presupuesto_ext}-${row.articulo}`;
+                    localDetalleTimestamps.set(key, new Date(row.fecha_actualizacion || 0));
+                });
+
+                // Procesar detalles con LWW
                 const H = detallesSheets.headers || [];
-                const idxActivo = H.findIndex(h => h.toLowerCase() === 'activo');
-
+                const idxLastModified = H.findIndex(h => h.toLowerCase().includes('lastmodified') || h.toLowerCase().includes('modified'));
+                
                 for (const row of detallesSheets.rows) {
-                    const idDetalle = (row[H[0]] || '').toString().trim();
                     const idPresupuesto = (row[H[1]] || '').toString().trim();
-                    if (!idsCambiados.has(idPresupuesto)) continue;
-
-                    const remoteActivoDetalleRaw = idxActivo !== -1 ? row[H[idxActivo]] : null;
-                    const remoteActivoDetalle = parseActivo(remoteActivoDetalleRaw);
-
-                    // Obtener local activo para detalle (asumir true si no disponible)
-                    // Aquí se debería consultar la base local para el detalle, pero para simplicidad asumimos true
-                    // En implementación real, se debe consultar la base local para el detalle
-
-                    // Aplicar sticky delete para detalle
-                    // Si local o remoto es false, activoFinalDetalle = false
-                    // Para simplicidad, si remoto es false, contamos como toggle a false
-                    if (remoteActivoDetalle === false) {
-                        detailsToggledToFalse++;
+                    const articulo = (row[H[2]] || '').toString().trim();
+                    
+                    if (!idsCambiados.has(idPresupuesto) || !articulo) continue;
+                    
+                    const key = `${idPresupuesto}-${articulo}`;
+                    const localDetalleTimestamp = localDetalleTimestamps.get(key);
+                    
+                    if (localDetalleTimestamp && idxLastModified !== -1) {
+                        const sheetDetalleLastModified = row[H[idxLastModified]];
+                        if (sheetDetalleLastModified) {
+                            const sheetDetalleTimestamp = parseLastModifiedRobust(sheetDetalleLastModified);
+                            
+                            if (sheetDetalleTimestamp <= localDetalleTimestamp) {
+                                console.log(`[LWW] Detalle ${key}: sheet<=local → skip`);
+                                continue; // No actualizar este detalle
+                            } else {
+                                console.log(`[LWW] Detalle ${key}: sheet>local → update`);
+                            }
+                        }
                     }
                 }
 
@@ -2023,10 +2679,15 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
             }
         }
 
-        // MEJORA CRÍTICA: Siempre verificar presupuestos sin detalles locales, independientemente de si hubo cambios
-        console.log('[SYNC-BIDI] Verificando presupuestos sin detalles locales...');
+        // MEJORA CRÍTICA CON FILTRO CUTOFF_AT: Solo verificar presupuestos modificados recientemente
+        console.log('[SYNC-BIDI] Verificando presupuestos sin detalles locales (solo recientes)...');
         try {
-            // Función helper para búsqueda robusta de columnas (movida aquí para reutilización)
+            // FILTRO CRÍTICO: Solo procesar presupuestos que fueron modificados >= cutoff_at
+            // Esto evita el procesamiento masivo de todos los detalles existentes
+            
+            console.log('[SYNC-BIDI] Aplicando filtro cutoff_at para verificación de detalles:', cutoffAt.toISOString());
+            
+            // Función helper para búsqueda robusta de columnas
             const findColumnIndex = (headers, ...candidates) => {
                 const normalize = (s) => (s ?? '').toString()
                     .normalize('NFD')
@@ -2046,35 +2707,39 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
 
             const H = detallesSheets.headers || [];
             const idxId = findColumnIndex(H, 'IDPresupuesto', 'IdPresupuesto', 'ID Presupuesto', 'Id Presupuesto', 'id_presupuesto');
+            const idxLastModified = findColumnIndex(H, 'LastModified', 'Last Modified', 'Ultima Modificacion');
             
             if (idxId !== -1) {
                 console.log(`[SYNC-BIDI] ✅ Columna de ID encontrada: "${H[idxId]}" (índice ${idxId})`);
                 
-                // 1) IDs que tienen al menos un detalle en la hoja DetallesPresupuestos
-                const idsConDetallesEnSheets = new Set(
-                    detallesSheets.rows
-                        .map(r => {
-                            const id = String((Array.isArray(r) ? r[idxId] : r[H[idxId]]) ?? '').trim();
-                            return id;
-                        })
-                        .filter(Boolean)
-                );
-
-                console.log(`[SYNC-BIDI] Presupuestos con detalles en Sheets: ${idsConDetallesEnSheets.size}`);
+                // INCLUIR TODOS LOS IDs que tienen detalles en Sheets
+                // El filtro cutoff_at se aplicará después en la query de BD local
+                const idsConDetallesRecientes = new Set();
                 
-                // Log de muestra de IDs encontrados
-                const muestraIds = Array.from(idsConDetallesEnSheets).slice(0, 5);
-                console.log(`[SYNC-BIDI] Muestra de IDs con detalles en Sheets: ${muestraIds.join(', ')}`);
+                detallesSheets.rows.forEach(r => {
+                    const id = String((Array.isArray(r) ? r[idxId] : r[H[idxId]]) ?? '').trim();
+                    if (id) {
+                        idsConDetallesRecientes.add(id);
+                    }
+                });
 
-                if (idsConDetallesEnSheets.size > 0) {
+                console.log(`[SYNC-BIDI] Presupuestos con detalles RECIENTES en Sheets (>= cutoff_at): ${idsConDetallesRecientes.size}`);
+                
+                if (idsConDetallesRecientes.size > 0) {
+                    // Log de muestra de IDs encontrados
+                    const muestraIds = Array.from(idsConDetallesRecientes).slice(0, 5);
+                    console.log(`[SYNC-BIDI] Muestra de IDs con detalles recientes: ${muestraIds.join(', ')}`);
+
                     // 2) De esos, ¿cuáles NO tienen detalles en local?
-                    console.log('[SYNC-BIDI] Consultando presupuestos sin detalles en BD local...');
+                    console.log('[SYNC-BIDI] Consultando presupuestos sin detalles en BD local (solo recientes)...');
                     
                     const rs = await db.query(`
                         SELECT p.id_presupuesto_ext
                         FROM public.presupuestos p
                         LEFT JOIN public.presupuestos_detalles d
                         ON d.id_presupuesto_ext = p.id_presupuesto_ext
+                        LEFT JOIN public.presupuestos_detalles_map m
+                        ON m.local_detalle_id = d.id
                         WHERE p.activo = true
                         AND p.id_presupuesto_ext = ANY($1::text[])
                         GROUP BY p.id_presupuesto_ext
@@ -2086,7 +2751,11 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
                                 AND COALESCE(SUM(d.precio1),0)  = 0
                                 AND COALESCE(SUM(d.iva1),0)     = 0
                             )
-                    `, [Array.from(idsConDetallesEnSheets)]);
+                            OR (
+                                    COUNT(d.id) > 0
+                                AND COUNT(m.local_detalle_id) = 0
+                            )
+                    `, [Array.from(idsConDetallesRecientes)]);
 
                     const idsSinDetallesLocal = new Set(
                         rs.rows
@@ -2094,22 +2763,22 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
                         .filter(Boolean)
                     );
 
-                    console.log(`[SYNC-BIDI] Presupuestos sin detalles en BD local: ${idsSinDetallesLocal.size}`);
+                    console.log(`[SYNC-BIDI] Presupuestos sin detalles en BD local (filtrados): ${idsSinDetallesLocal.size}`);
 
                     if (idsSinDetallesLocal.size > 0) {
                         console.log(
-                        '[SYNC-BIDI] 🚨 PRESUPUESTOS SIN DETALLES DETECTADOS:',
+                        '[SYNC-BIDI] 🚨 PRESUPUESTOS SIN DETALLES DETECTADOS (solo recientes):',
                         Array.from(idsSinDetallesLocal).join(', ')
                         );
                         
-                        console.log('[SYNC-BIDI] Ejecutando syncDetallesDesdeSheets para presupuestos sin detalles...');
+                        console.log('[SYNC-BIDI] Ejecutando syncDetallesDesdeSheets para presupuestos sin detalles (filtrado)...');
                         await syncDetallesDesdeSheets(detallesSheets, idsSinDetallesLocal, db);
-                        console.log(`[SYNC-BIDI] ✅ Detalles sincronizados para ${idsSinDetallesLocal.size} presupuestos`);
+                        console.log(`[SYNC-BIDI] ✅ Detalles sincronizados para ${idsSinDetallesLocal.size} presupuestos (filtrado)`);
                     } else {
-                        console.log('[SYNC-BIDI] ✅ Todos los presupuestos ya tienen sus detalles locales');
+                        console.log('[SYNC-BIDI] ✅ Todos los presupuestos recientes ya tienen sus detalles locales');
                     }
                 } else {
-                    console.warn('[SYNC-BIDI] ⚠️ No se encontraron presupuestos con detalles en Sheets');
+                    console.log('[SYNC-BIDI] ✅ No hay presupuestos con detalles recientes en Sheets (filtro cutoff_at aplicado)');
                 }
             } else {
                 console.error('[SYNC-BIDI] ❌ NO SE ENCONTRÓ COLUMNA DE ID en DetallesPresupuestos');
@@ -2122,13 +2791,110 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
         }
 
         console.log(`[SYNC-PULL] presets_toggled_to_false=${presetsToggledToFalse} details_toggled_to_false=${detailsToggledToFalse}`);
-        console.log('[SYNC-BIDI] Pull completado:', { recibidos, actualizados, omitidos });
+        console.log('[SYNC-BIDI] Pull completado:', { 
+            recibidos, 
+            actualizados, 
+            omitidos, 
+            omitidosPorCutoff, 
+            omitidosPorSinFecha 
+        });
         
-        return { recibidos, actualizados, omitidos };
+        return { 
+            recibidos, 
+            actualizados, 
+            omitidos, 
+            omitidosPorCutoff, 
+            omitidosPorSinFecha 
+        };
         
     } catch (error) {
         console.error('[SYNC-BIDI] Error en pull:', error.message);
         return { recibidos, actualizados, omitidos };
+    }
+}
+
+/**
+ * Crear MAP para detalles existentes sin eliminarlos
+ * SOLO CREA MAP - NO TOCA DETALLES EXISTENTES
+ */
+async function crearMapParaDetallesExistentes(detallesSheets, idsPresupuestos, db) {
+    console.log('[CREATE-MAP] 🚀 Creando MAP para detalles existentes...');
+    
+    if (!idsPresupuestos || idsPresupuestos.size === 0) {
+        console.log('[CREATE-MAP] ❌ No hay IDs para procesar');
+        return;
+    }
+    
+    try {
+        const crypto = require('crypto');
+        let mapCreados = 0;
+        
+        // Obtener detalles locales que no tienen MAP
+        const detallesLocales = await db.query(`
+            SELECT d.id, d.id_presupuesto_ext, d.articulo, d.cantidad, d.valor1, d.precio1,
+                   d.iva1, d.diferencia, d.camp1, d.camp2, d.camp3, d.camp4, d.camp5, d.camp6
+            FROM presupuestos_detalles d
+            LEFT JOIN presupuestos_detalles_map m ON m.local_detalle_id = d.id
+            WHERE d.id_presupuesto_ext = ANY($1::text[])
+              AND m.local_detalle_id IS NULL
+            ORDER BY d.id_presupuesto_ext, d.id
+        `, [Array.from(idsPresupuestos)]);
+        
+        console.log(`[CREATE-MAP] Detalles locales sin MAP: ${detallesLocales.rowCount}`);
+        
+        if (detallesLocales.rowCount === 0) {
+            console.log('[CREATE-MAP] ✅ No hay detalles sin MAP para procesar');
+            return;
+        }
+        
+        await db.query('BEGIN');
+        
+        for (const detalle of detallesLocales.rows) {
+            try {
+                // Generar ID único para Sheets con formato correcto
+                const timestamp = Date.now() + Math.random() * 1000;
+                const hash = crypto.createHash('sha1')
+                    .update(`${detalle.id_presupuesto_ext}|${detalle.articulo}|${detalle.cantidad}|${detalle.valor1}|${detalle.precio1}|${detalle.iva1}|${detalle.diferencia}|${detalle.camp1}|${detalle.camp2}|${detalle.camp3}|${detalle.camp4}|${detalle.camp5}|${detalle.camp6}|${timestamp}`)
+                    .digest('hex');
+                
+                const idDetallePresupuesto = `${hash.slice(0, 8)}-${hash.slice(8, 12)}`;
+                
+                // Verificar que el ID sea único
+                const existeId = await db.query(`
+                    SELECT 1 FROM presupuestos_detalles_map 
+                    WHERE id_detalle_presupuesto = $1
+                `, [idDetallePresupuesto]);
+                
+                if (existeId.rowCount > 0) {
+                    console.warn(`[CREATE-MAP] ⚠️ ID duplicado generado: ${idDetallePresupuesto}, saltando`);
+                    continue;
+                }
+                
+                // Crear MAP con fuente='Sheets' (porque el presupuesto viene de Sheets)
+                await db.query(`
+                    INSERT INTO presupuestos_detalles_map
+                    (local_detalle_id, id_detalle_presupuesto, fuente, fecha_asignacion)
+                    VALUES ($1, $2, 'Sheets', CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                `, [detalle.id, idDetallePresupuesto]);
+                
+                mapCreados++;
+                
+                if (mapCreados <= 5) {
+                    console.log(`[CREATE-MAP] ✅ MAP creado: local=${detalle.id} sheet=${idDetallePresupuesto} presup=${detalle.id_presupuesto_ext}`);
+                }
+                
+            } catch (error) {
+                console.error(`[CREATE-MAP] ❌ Error creando MAP para detalle ${detalle.id}:`, error.message);
+            }
+        }
+        
+        await db.query('COMMIT');
+        console.log(`[CREATE-MAP] ✅ MAP creados exitosamente: ${mapCreados}`);
+        
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error('[CREATE-MAP] ❌ Error creando MAP, rollback ejecutado:', error.message);
+        throw error;
     }
 }
 
