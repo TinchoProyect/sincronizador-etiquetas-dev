@@ -46,6 +46,24 @@ async function ejecutarCorreccionFechas(config, db) {
     let conteoSinLastModified = 0;
     
     try {
+        // PASO 0: Obtener configuración activa una sola vez
+        console.log('[SYNC-FECHAS-FIX] Obteniendo configuración activa...');
+        const configQuery = `
+            SELECT hoja_url
+            FROM presupuestos_config
+            WHERE activo = true
+            ORDER BY id DESC
+            LIMIT 1
+        `;
+        const configResult = await db.query(configQuery);
+        
+        if (configResult.rows.length === 0) {
+            throw new Error('No se encontró configuración activa en presupuestos_config');
+        }
+        
+        const configHojaUrl = configResult.rows[0].hoja_url;
+        console.log(`[SINCRO] Config hoja_url: ${configHojaUrl}`);
+        
         // PASO 1: Validar acceso a Google Sheets
         console.log('[SYNC-FECHAS-FIX] Validando acceso a Google Sheets...');
         const acceso = await validateSheetAccess(config.hoja_id);
@@ -163,7 +181,7 @@ async function ejecutarCorreccionFechas(config, db) {
                 const row = presupuestosData.rows[i];
                 
                 try {
-                    const presupuesto = procesarPresupuesto(row, presupuestosData.headers, config);
+                    const presupuesto = procesarPresupuesto(row, presupuestosData.headers, config, configHojaUrl);
                     
                     if (!presupuesto.id_presupuesto_ext || !presupuesto.id_cliente) {
                         continue; // Saltar filas inválidas
@@ -306,7 +324,44 @@ async function ejecutarCorreccionFechas(config, db) {
                 }
             }
             
-            // PASO 5: Validaciones finales
+            // PASO 5: Completar campos hoja_url y usuario_id para presupuestos procesados
+            console.log('[SYNC-FECHAS-FIX] Completando campos hoja_url y usuario_id...');
+            
+            // Obtener IDs de los presupuestos procesados en esta sincronización
+            const idsPresupuestosProcesados = Array.from(presupuestosMap.keys());
+            console.log(`[SINCRO] IDs a completar: [${idsPresupuestosProcesados.join(', ')}]`);
+            
+            if (idsPresupuestosProcesados.length > 0) {
+                // Obtener los IDs internos de la base de datos para los presupuestos procesados
+                const idsInternosQuery = `
+                    SELECT id FROM presupuestos 
+                    WHERE id_presupuesto_ext = ANY($1::text[])
+                `;
+                const idsInternosResult = await db.query(idsInternosQuery, [idsPresupuestosProcesados]);
+                const idsInternos = idsInternosResult.rows.map(row => row.id);
+                
+                // Completar hoja_url para los presupuestos que lo tengan NULL
+                const updateHojaUrlQuery = `
+                    UPDATE presupuestos 
+                    SET hoja_url = $1 
+                    WHERE hoja_url IS NULL 
+                      AND id = ANY($2::int[])
+                `;
+                const hojaUrlResult = await db.query(updateHojaUrlQuery, [configHojaUrl, idsInternos]);
+                
+                // Completar usuario_id = 1 para los presupuestos que lo tengan NULL
+                const updateUsuarioIdQuery = `
+                    UPDATE presupuestos 
+                    SET usuario_id = 1 
+                    WHERE usuario_id IS NULL 
+                      AND id = ANY($1::int[])
+                `;
+                const usuarioIdResult = await db.query(updateUsuarioIdQuery, [idsInternos]);
+                
+                console.log(`[SINCRO] Actualizados hoja_url: ${hojaUrlResult.rowCount} / usuario_id: ${usuarioIdResult.rowCount}`);
+            }
+            
+            // PASO 6: Validaciones finales
             console.log('[SYNC-FECHAS-FIX] Ejecutando validaciones finales...');
             
             // Verificar fechas futuras
@@ -462,7 +517,7 @@ function parseLastModified(value) {
 /**
  * Procesar fila de presupuesto con corrección de fechas
  */
-function procesarPresupuesto(row, headers, config) {
+function procesarPresupuesto(row, headers, config, configHojaUrl) {
     // Procesar columna Activo (columna O = headers[14])
     const activoValue = row[headers[14]];
     let activo = true; // default
@@ -496,8 +551,8 @@ function procesarPresupuesto(row, headers, config) {
         activo: activo,
         lastModified: lastModified,
         hoja_nombre: 'Presupuestos',
-        hoja_url: config.hoja_url,
-        usuario_id: config.usuario_id || null,
+        hoja_url: configHojaUrl, // Usar la URL obtenida de la configuración activa
+        usuario_id: 1, // Asignar 1 por defecto como se solicitó
         _fechaCorregida: false,
         _fechaNula: false,
         _activoFalse: !activo,

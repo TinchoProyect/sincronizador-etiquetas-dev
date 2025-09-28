@@ -213,12 +213,28 @@ const crearPresupuesto = async (req, res) => {
             await client.query("SET LOCAL lock_timeout TO '5s'");
             await client.query("SET LOCAL statement_timeout TO '15s'");
 
+            // Obtener configuración activa para completar campos
+            const configQuery = `
+                SELECT hoja_url
+                FROM presupuestos_config
+                WHERE activo = true
+                ORDER BY id DESC
+                LIMIT 1
+            `;
+            const configResult = await client.query(configQuery);
+            
+            let configHojaUrl = process.env.SPREADSHEET_URL || '';
+            if (configResult.rows.length > 0) {
+                configHojaUrl = configResult.rows[0].hoja_url;
+                console.log(`[SINCRO] Config hoja_url para nuevo presupuesto: ${configHojaUrl}`);
+            }
+
             // Insertar encabezado en BD como PENDIENTE
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11)
+                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url, usuario_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11, $12)
                 RETURNING *
             `;
 
@@ -233,7 +249,8 @@ const crearPresupuesto = async (req, res) => {
                 estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
-                process.env.SPREADSHEET_URL || ''
+                configHojaUrl,
+                1 // usuario_id = 1 por defecto
             ]);
 
             const presupuestoBD = headerResult.rows[0];
