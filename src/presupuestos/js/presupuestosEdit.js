@@ -227,9 +227,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Configurar autocompletar para artículos usando módulo común
-    if (typeof setupArticuloAutocomplete === 'function') {
+    if (window.Detalles && window.Detalles.setupArticuloAutocomplete) {
+        window.Detalles.setupArticuloAutocomplete();
+    } else if (typeof setupArticuloAutocomplete === 'function') {
         setupArticuloAutocomplete();
     }
+
+    // NUEVO: Exponer función de selección para compatibilidad con autocompletar
+    window.seleccionarArticulo = seleccionarArticulo;
 
     // Cargar datos del presupuesto y detalles en paralelo
     Promise.all([cargarPresupuesto(), cargarDetallesPresupuesto()]).then(() => {
@@ -509,10 +514,135 @@ function formatearFecha(fecha) {
 
 
 /**
- * Seleccionar artículo del autocompletar
+ * Seleccionar artículo del autocompletar - CORREGIDO para igualar comportamiento de creación
+ * SIGNATURA COMPATIBLE: (input, element) como en creación
  */
-function seleccionarArticulo(articulo, detalleIndex) {
-    console.log('📦 [PRESUPUESTOS-EDIT] Seleccionando artículo:', articulo, 'para detalle:', detalleIndex);
+function seleccionarArticulo(input, element) {
+    // Si se llama con la signatura antigua (articulo, detalleIndex), adaptarla
+    if (typeof input === 'object' && input.descripcion && typeof element === 'number') {
+        const articulo = input;
+        const detalleIndex = element;
+        return seleccionarArticuloLegacy(articulo, detalleIndex);
+    }
+
+    // NUEVA IMPLEMENTACIÓN: Signatura compatible con creación (input, element)
+    const codigoBarras = (element.dataset.codigoBarras || '').toString();
+    const articuloNumero = (element.dataset.articuloNumero || '').toString();
+    const description = (element.dataset.description || '').toString();
+    const stock = parseFloat(element.dataset.stock || 0);
+
+    console.log(`📦 [PRESUPUESTOS-EDIT] Seleccionando artículo: ${description} [${articuloNumero}] (Stock: ${stock})`);
+
+    // Mostrar descripción al usuario y guardar códigos reales para el submit
+    input.value = description;
+    input.dataset.codigoBarras = codigoBarras;
+    input.dataset.articuloNumero = articuloNumero;
+
+    // Remover cualquier estilo que cause texto azul
+    input.style.color = '';
+    input.classList.remove('articulo-codigo');
+
+    console.log(`✅ [PRESUPUESTOS-EDIT] Artículo seleccionado: ${description}`);
+    
+    // Ocultar sugerencias
+    const container = document.querySelector('.articulo-sugerencias');
+    if (container) {
+        container.style.display = 'none';
+        container.dataset.selectedIndex = '-1';
+    }
+
+    // Ubicar fila/inputs
+    const row = input.closest('tr');
+    const cantidadInput = row?.querySelector('input[name*="[cantidad]"]');
+    const valor1Input = row?.querySelector('input[name*="[valor1]"]');
+    const iva1Input = row?.querySelector('input[name*="[iva1]"]');
+    const detalleId = getDetalleIdFromInput(cantidadInput || input);
+
+    // Establecer valores por defecto
+    if (cantidadInput && (!cantidadInput.value || parseFloat(cantidadInput.value) <= 0)) {
+        setCantidad(cantidadInput, 1);
+    }
+    if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) {
+        setNumeric(iva1Input, 21, 2, 21);
+    }
+    if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) {
+        setNumeric(valor1Input, 0, 2, 0);
+    }
+
+    if (detalleId != null && window.Detalles && window.Detalles.calcularPrecio) {
+        window.Detalles.calcularPrecio(detalleId);
+    }
+
+    // BUSCAR PRECIOS AUTOMÁTICAMENTE (igual que en creación)
+    const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+
+    const fetchPrecios = async (params) => {
+        const url = `/api/presupuestos/precios?${params.toString()}`;
+        console.log('[PRESUPUESTOS-EDIT] GET precios ->', url);
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    };
+
+    (async () => {
+        let valor, iva;
+
+        // 1) Por código de barras
+        try {
+            const p = new URLSearchParams();
+            p.set('cliente_id', String(clienteId));
+            if (codigoBarras) p.set('codigo_barras', codigoBarras);
+            let body = await fetchPrecios(p);
+            valor = Number(body?.data?.valor1);
+            iva = Number(body?.data?.iva);
+        } catch (e1) {
+            console.warn('⚠️ [PRESUPUESTOS-EDIT] No respondió por código de barras. Probando por descripción…', e1);
+        }
+
+        // 2) Fallback por descripción
+        if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
+            try {
+                const p2 = new URLSearchParams();
+                p2.set('cliente_id', String(clienteId));
+                if (description) p2.set('descripcion', description);
+                const body2 = await fetchPrecios(p2);
+                valor = Number(body2?.data?.valor1);
+                iva = Number(body2?.data?.iva);
+            } catch (e2) {
+                console.warn('⚠️ [PRESUPUESTOS-EDIT] Tampoco por descripción:', e2);
+            }
+        }
+
+        // Setear valores si se encontraron
+        if (Number.isFinite(valor) && valor1Input) {
+            setNumeric(valor1Input, valor, 2, 0);
+        }
+        
+        if (Number.isFinite(iva) && iva1Input) {
+            // Guardar la base real del IVA que vino del backend
+            iva1Input.dataset.ivaBase = String(iva);
+            // Mostrar mitad si el tipo es Remito-Efectivo
+            const tipoSel = document.getElementById('tipo_comprobante');
+            const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+            setNumeric(iva1Input, visibleIva, 2, 21);
+        }
+
+        if (detalleId != null && window.Detalles && window.Detalles.calcularPrecio) {
+            window.Detalles.calcularPrecio(detalleId);
+        }
+        
+        // Enfocar siguiente campo
+        setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
+        
+        console.log('✅ [PRESUPUESTOS-EDIT] Precios actualizados automáticamente');
+    })();
+}
+
+/**
+ * Función legacy para compatibilidad con signatura antigua
+ */
+function seleccionarArticuloLegacy(articulo, detalleIndex) {
+    console.log('📦 [PRESUPUESTOS-EDIT] Seleccionando artículo (legacy):', articulo, 'para detalle:', detalleIndex);
 
     // Encontrar la fila correspondiente usando el detalleIndex como ID de fila
     const row = document.getElementById(`detalle-${detalleIndex}`);
@@ -528,28 +658,148 @@ function seleccionarArticulo(articulo, detalleIndex) {
     const cantInput = row.querySelector(`input[name="detalles[${detalleIndex}][cantidad]"]`);
 
     if (artInput) {
-        artInput.value = articulo.descripcion || articulo.nombre || '';
+        // CORREGIDO: Mostrar descripción al usuario y guardar código de barras
+        artInput.value = articulo.descripcion || articulo.description || articulo.nombre || '';
         artInput.dataset.codigoBarras = articulo.codigo_barras || '';
         artInput.dataset.articuloNumero = articulo.articulo_numero || '';
+        
+        // Remover cualquier estilo que cause texto azul
+        artInput.style.color = '';
+        artInput.classList.remove('articulo-codigo');
     }
 
+    // CORREGIDO: Usar los mismos valores que en creación
     if (valorInput) {
-        setNumeric(valorInput, parseFloat(articulo.precio) || 0, 2, 0);
+        const precio = parseFloat(articulo.precio) || parseFloat(articulo.valor1) || 0;
+        setNumeric(valorInput, precio, 2, 0);
     }
 
     if (ivaInput) {
-        setNumeric(ivaInput, parseFloat(articulo.iva) || 0, 2, 21);
+        const iva = parseFloat(articulo.iva) || parseFloat(articulo.iva1) || 21;
+        // Guardar la base real del IVA
+        ivaInput.dataset.ivaBase = String(iva);
+        // Mostrar mitad si el tipo es Remito-Efectivo
+        const tipoSel = document.getElementById('tipo_comprobante');
+        const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+        setNumeric(ivaInput, visibleIva, 2, 21);
     }
 
     if (cantInput && (!cantInput.value || parseFloat(cantInput.value) <= 0)) {
         setCantidad(cantInput, 1);
     }
 
-    console.log('✅ [PRESUPUESTOS-EDIT] Artículo seleccionado y datos actualizados');
+    console.log('✅ [PRESUPUESTOS-EDIT] Artículo seleccionado y datos actualizados (legacy)');
 
     // Recalcular precio para esta fila
-    calcularPrecio(detalleIndex);
-    recalcTotales();
+    if (window.Detalles && window.Detalles.calcularPrecio) {
+        window.Detalles.calcularPrecio(detalleIndex);
+    }
+    if (window.Detalles && window.Detalles.recalcTotales) {
+        window.Detalles.recalcTotales();
+    }
+
+    // NUEVO: Buscar precios automáticamente como en creación
+    buscarPreciosAutomaticamente(articulo, detalleIndex);
+}
+
+/**
+ * Buscar precios automáticamente como en el flujo de creación
+ */
+async function buscarPreciosAutomaticamente(articulo, detalleIndex) {
+    try {
+        const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+        const codigoBarras = articulo.codigo_barras || '';
+        const descripcion = articulo.descripcion || articulo.description || '';
+
+        console.log(`🔍 [PRESUPUESTOS-EDIT] Buscando precios para cliente ${clienteId}, código: ${codigoBarras}`);
+
+        const fetchPrecios = async (params) => {
+            const url = `/api/presupuestos/precios?${params.toString()}`;
+            console.log('[PRESUPUESTOS-EDIT] GET precios ->', url);
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+        };
+
+        let valor, iva;
+
+        // 1) Buscar por código de barras
+        try {
+            const p = new URLSearchParams();
+            p.set('cliente_id', String(clienteId));
+            if (codigoBarras) p.set('codigo_barras', codigoBarras);
+            let body = await fetchPrecios(p);
+            valor = Number(body?.data?.valor1);
+            iva = Number(body?.data?.iva);
+        } catch (e1) {
+            console.warn('⚠️ [PRESUPUESTOS-EDIT] No respondió por código de barras. Probando por descripción…', e1);
+        }
+
+        // 2) Fallback por descripción
+        if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
+            try {
+                const p2 = new URLSearchParams();
+                p2.set('cliente_id', String(clienteId));
+                if (descripcion) p2.set('descripcion', descripcion);
+                const body2 = await fetchPrecios(p2);
+                valor = Number(body2?.data?.valor1);
+                iva = Number(body2?.data?.iva);
+            } catch (e2) {
+                console.warn('⚠️ [PRESUPUESTOS-EDIT] Tampoco por descripción:', e2);
+            }
+        }
+
+        // Actualizar valores si se encontraron
+        const row = document.getElementById(`detalle-${detalleIndex}`);
+        if (row) {
+            const valorInput = row.querySelector(`input[name="detalles[${detalleIndex}][valor1]"]`);
+            const ivaInput = row.querySelector(`input[name="detalles[${detalleIndex}][iva1]"]`);
+
+            if (Number.isFinite(valor) && valorInput) {
+                setNumeric(valorInput, valor, 2, 0);
+            }
+            
+            if (Number.isFinite(iva) && ivaInput) {
+                // Guardar la base real del IVA
+                ivaInput.dataset.ivaBase = String(iva);
+                // Mostrar mitad si el tipo es Remito-Efectivo
+                const tipoSel = document.getElementById('tipo_comprobante');
+                const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+                setNumeric(ivaInput, visibleIva, 2, 21);
+            }
+
+            // Recalcular después de actualizar precios
+            if (window.Detalles && window.Detalles.calcularPrecio) {
+                window.Detalles.calcularPrecio(detalleIndex);
+            }
+        }
+
+        console.log('✅ [PRESUPUESTOS-EDIT] Precios actualizados automáticamente');
+
+    } catch (error) {
+        console.warn('⚠️ [PRESUPUESTOS-EDIT] Error buscando precios automáticamente:', error);
+    }
+}
+
+/**
+ * Obtener ID del cliente activo
+ */
+function getClienteIdActivo() {
+    const clienteInput = document.getElementById('id_cliente');
+    if (!clienteInput) return '0';
+    
+    const raw = (clienteInput.value || '').trim();
+    const match = raw.match(/^\d+/);
+    return match ? match[0] : '0';
+}
+
+/**
+ * Obtener ID de detalle desde input (función auxiliar)
+ */
+function getDetalleIdFromInput(input) {
+    if (!input || !input.name) return null;
+    const match = input.name.match(/\[(\d+)\]\[/);
+    return match ? parseInt(match[1], 10) : null;
 }
 
 /**
