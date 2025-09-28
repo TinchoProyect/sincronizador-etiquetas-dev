@@ -2079,13 +2079,29 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
                 
                 const idPresupuestoLocal = presupuestoLocalResult.rows[0].id;
 
+                // OBTENER DIFERENCIA CON ACCESO CORRECTO
+                const diferencia = (idx.diferencia !== -1) ? 
+                    (cell(r, idx.diferencia) || r.Diferencia || r['Diferencia'] || 0) : 0;
+                
+                // LOG ESPECÍFICO PARA DEBUGGING DEL CAMPO DIFERENCIA
+                if (idCell && idCell.includes('8347c87e')) {
+                    console.log(`🔍 [DIFERENCIA-BIDI-DEBUG] Presupuesto 8347c87e - Artículo ${articulo}:`);
+                    console.log(`   cell(r, idx.diferencia): ${cell(r, idx.diferencia)} (idx: ${idx.diferencia})`);
+                    console.log(`   r.Diferencia: ${r.Diferencia} (tipo: ${typeof r.Diferencia})`);
+                    console.log(`   r['Diferencia']: ${r['Diferencia']} (tipo: ${typeof r['Diferencia']})`);
+                    console.log(`   diferencia final: ${diferencia} (tipo: ${typeof diferencia})`);
+                    console.log(`   toNumber(diferencia): ${toNumber(diferencia)}`);
+                }
+                
+                const diferenciaFinal = toNumber(diferencia);
+
                 const insertResult = await db.query(
                     `INSERT INTO public.presupuestos_detalles
-                       (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
+                       (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, diferencia,
                         camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                      RETURNING id`,
-                    [idPresupuestoLocal, idCell, articulo, cantidad, valor1, precio1, iva1,
+                    [idPresupuestoLocal, idCell, articulo, cantidad, valor1, precio1, iva1, diferenciaFinal,
                      camp1, camp2, camp3, camp4, camp5, camp6]
                 );
                 

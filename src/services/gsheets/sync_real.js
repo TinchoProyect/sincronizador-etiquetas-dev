@@ -440,7 +440,19 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config, conf
             const valor1 = row[detallesData.headers[4]] || 0;                  // Valor1 (E)
             const precio1 = row[detallesData.headers[5]] || 0;                 // Precio1 (F)
             const iva1 = row[detallesData.headers[6]] || 0;                    // IVA1 (G)
-            const diferencia = row[detallesData.headers[7]] || 0;              // Diferencia (H)
+            const diferencia = row.Diferencia || row['Diferencia'] || row[detallesData.headers[7]] || 0;       // Diferencia (H) - TRIPLE FALLBACK: objeto + índice
+            
+            // LOG ESPECÍFICO PARA DEBUGGING DEL CAMPO DIFERENCIA
+            if (id_presupuesto && id_presupuesto.toString().includes('8347c87e')) {
+                console.log(`🔍 [DIFERENCIA-DEBUG] Presupuesto 8347c87e - Artículo ${articulo}:`);
+                console.log(`   row.Diferencia: ${row.Diferencia} (tipo: ${typeof row.Diferencia})`);
+                console.log(`   row['Diferencia']: ${row['Diferencia']} (tipo: ${typeof row['Diferencia']})`);
+                console.log(`   row[headers[7]]: ${row[detallesData.headers[7]]} (tipo: ${typeof row[detallesData.headers[7]]})`);
+                console.log(`   headers[7]: ${detallesData.headers[7]}`);
+                console.log(`   diferencia final: ${diferencia} (tipo: ${typeof diferencia})`);
+                console.log(`   parseFloat(diferencia): ${parseFloat(diferencia)}`);
+            }
+            
             const condicion = row[detallesData.headers[8]] || null;            // Condicion (I)
             // CORRECCIÓN: Mapeo correcto según especificación del usuario
             const camp1 = row[detallesData.headers[9]] || 0;                   // Camp2 (J) -> camp1
@@ -777,6 +789,13 @@ async function upsertPresupuesto(db, presupuestoData, config) {
                      iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                 `;
+                
+                // LOG ESPECÍFICO PARA DEBUGGING DEL CAMPO DIFERENCIA EN INSERT
+                if (detalle.id_presupuesto_ext && detalle.id_presupuesto_ext.includes('8347c87e')) {
+                    console.log(`🔍 [INSERT-DEBUG] Insertando detalle 8347c87e - Artículo ${detalle.articulo}:`);
+                    console.log(`   diferencia a insertar: ${detalle.diferencia} (tipo: ${typeof detalle.diferencia})`);
+                    console.log(`   todos los valores: cantidad=${detalle.cantidad}, valor1=${detalle.valor1}, precio1=${detalle.precio1}, iva1=${detalle.iva1}`);
+                }
                 
                 const result = await db.query(insertDetalleQuery, [
                     presupuestoId,

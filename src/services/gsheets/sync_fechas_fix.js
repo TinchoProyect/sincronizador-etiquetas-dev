@@ -597,7 +597,7 @@ function procesarDetalle(row, headers, presupuestoLastModified = null) {
         valor1: parseFloat(row[headers[4]]) || 0,
         precio1: parseFloat(row[headers[5]]) || 0,
         iva1: parseFloat(row[headers[6]]) || 0,
-        diferencia: parseFloat(row[headers[7]]) || 0,
+        diferencia: parseFloat(row.Diferencia || row['Diferencia'] || 0) || 0,
         camp1: parseFloat(row[headers[9]]) || 0,
         camp2: parseFloat(row[headers[10]]) || 0,
         camp3: parseFloat(row[headers[11]]) || 0,
