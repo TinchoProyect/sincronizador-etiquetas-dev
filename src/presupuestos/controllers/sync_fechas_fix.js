@@ -1358,10 +1358,12 @@ async function pullCambiosRemotosConTimestamp(presupuestosSheets, detallesSheets
             if (idsCambiados.size > 0) {
                 try {
                     console.log('[SYNC-BIDI] Sincronizando detalles para presupuestos cambiados:', Array.from(idsCambiados).join(', '));
-                    await syncDetallesDesdeSheets(detallesSheets, idsCambiados, db);
-                } catch (e) {
-                    console.warn('[SYNC-BIDI] No se pudieron sincronizar detalles:', e?.message);
-                }
+                // CORRECCIÓN: Eliminar llamada recursiva innecesaria
+                // Los detalles ya se sincronizaron arriba en el mismo bucle
+                console.log('[SYNC-BIDI] ✅ Detalles ya sincronizados en el bucle principal');
+            } catch (e) {
+                console.warn('[SYNC-BIDI] No se pudieron sincronizar detalles:', e?.message);
+            }
             }
 
         // MEJORA CRÍTICA CON FILTRO CUTOFF_AT: Solo verificar presupuestos modificados recientemente
@@ -2146,22 +2148,25 @@ async function syncDetallesDesdeSheets(detallesSheets, idsCambiados, db) {
                     console.log(`[SYNC-BIDI][DETALLES] ✅ Usando ID real de Sheets: ${idDetallePresupuesto}`);
                 }
                 
-                // Upsert en presupuestos_detalles_map con fuente='Sheets'
+                // Upsert en presupuestos_detalles_map con fuente='AppSheet' (presupuesto viene de Google Sheets/AppSheet)
                 await db.query(
                     `INSERT INTO public.presupuestos_detalles_map (local_detalle_id, id_detalle_presupuesto, fuente, fecha_asignacion)
-                     VALUES ($1, $2, 'Sheets', CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                     VALUES ($1, $2, 'AppSheet', CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')
                      ON CONFLICT (local_detalle_id) DO UPDATE
                      SET id_detalle_presupuesto = EXCLUDED.id_detalle_presupuesto,
-                         fuente = 'Sheets',
+                         fuente = 'AppSheet',
                          fecha_asignacion = EXCLUDED.fecha_asignacion`,
                     [localDetalleId, idDetallePresupuesto]
                 );
                 
                 insertedCount++;
                 
+                // LOG ESPECÍFICO PARA VERIFICAR CREACIÓN DE MAP EN PRIMER CORRIDO
+                console.log(`[MAP-PRIMER-CORRIDO] ✅ MAP creado: local_id=${localDetalleId} sheet_id=${idDetallePresupuesto} presup=${idCell} art=${articulo}`);
+                
                 // Log de los primeros 3 detalles insertados
                 if (insertedCount <= 3) {
-                    console.log(`[SYNC-BIDI][DETALLES] ✅ Detalle ${insertedCount}: ${idCell} - ${articulo} (cant: ${cantidad}, precio: ${precio1})`);
+                    console.log(`[SYNC-BIDI][DETALLES] ✅ Detalle ${insertedCount}: ${idCell} - ${articulo} (cant: ${cantidad}, precio: ${precio1}, diferencia: ${diferenciaFinal})`);
                 }
                 
             } catch (insertError) {
@@ -2886,11 +2891,11 @@ async function crearMapParaDetallesExistentes(detallesSheets, idsPresupuestos, d
                     continue;
                 }
                 
-                // Crear MAP con fuente='Sheets' (porque el presupuesto viene de Sheets)
+                // Crear MAP con fuente='AppSheet' (porque el presupuesto viene de Google Sheets/AppSheet)
                 await db.query(`
                     INSERT INTO presupuestos_detalles_map
                     (local_detalle_id, id_detalle_presupuesto, fuente, fecha_asignacion)
-                    VALUES ($1, $2, 'Sheets', CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                    VALUES ($1, $2, 'AppSheet', CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')
                 `, [detalle.id, idDetallePresupuesto]);
                 
                 mapCreados++;
