@@ -2555,7 +2555,9 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
             localActivos.set(id, row.activo);
         });
 
-        // Procesar registros de Sheets CON FILTRO CUTOFF_AT Y LWW
+        // CORRECCIÓN CRÍTICA: Procesar registros de Sheets SIN FILTRO CUTOFF_AT para LWW puro
+        console.log('[SYNC-BIDI] 🔄 Procesando TODOS los registros de Sheets para LWW puro...');
+        
         for (const row of presupuestosSheets.rows) {
             const id = (row[presupuestosSheets.headers[0]] || '').toString().trim();
             const sheetLastModified = row[presupuestosSheets.headers[13]]; // columna N
@@ -2572,7 +2574,7 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
                 continue;
             }
             
-            // FILTRO CUTOFF_AT: Omitir si no tiene LastModified
+            // VALIDACIÓN MÍNIMA: Omitir si no tiene LastModified
             if (!sheetLastModified) {
                 console.log('[SYNC-BIDI] Omitiendo por sin fecha - ID:', id);
                 omitidosPorSinFecha++;
@@ -2580,19 +2582,15 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
             }
             
             const sheetTimestamp = parseLastModifiedRobust(sheetLastModified);
-            
-            // FILTRO CUTOFF_AT: Omitir si LastModified < cutoff_at
-            if (sheetTimestamp < cutoffAt) {
-                console.log('[SYNC-BIDI] Omitiendo por cutoff_at - ID:', id, 'fecha:', sheetTimestamp.toISOString());
-                omitidosPorCutoff++;
-                continue;
-            }
-            
             const localTimestamp = localTimestamps.get(id);
             const localActivo = localActivos.get(id);
             const remoteActivoRaw = row[presupuestosSheets.headers[14]];
             const remoteActivo = parseActivo(remoteActivoRaw);
 
+            // APLICAR FILTRO CUTOFF_AT SOLO DESPUÉS DE LWW
+            // Si Sheet > Local, procesar independientemente del cutoff_at
+            // Si Sheet <= Local, aplicar cutoff_at
+            
             if (!localTimestamp) {
                 // No existe localmente: crear solo si en Sheets está ACTIVO (true)
                 if (remoteActivo === false) {
@@ -2600,19 +2598,27 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
                     omitidos++;
                     continue;
                 }
+                
+                // APLICAR CUTOFF_AT para presupuestos NUEVOS
+                if (sheetTimestamp < cutoffAt) {
+                    console.log('[SYNC-BIDI] Omitiendo presupuesto NUEVO por cutoff_at - ID:', id, 'fecha:', sheetTimestamp.toISOString());
+                    omitidosPorCutoff++;
+                    continue;
+                }
+                
                 await insertarPresupuestoDesdeSheet(row, presupuestosSheets.headers, db);
                 recibidos++;
                 idsCambiados.add(id);
                 console.log('[SYNC-BIDI] Nuevo desde Sheets:', id);
             } else {
-                // IMPLEMENTACIÓN LWW: Comparar timestamps
-                console.log(`[LWW] Comparando timestamps para ID ${id}:`);
-                console.log(`[LWW]   Local: ${localTimestamp.toISOString()}`);
-                console.log(`[LWW]   Sheet: ${sheetTimestamp.toISOString()}`);
+                // IMPLEMENTACIÓN LWW CORREGIDA: Comparar timestamps SIN cutoff_at
+                console.log(`[LWW-FIXED] Comparando timestamps para ID ${id}:`);
+                console.log(`[LWW-FIXED]   Local: ${localTimestamp.toISOString()}`);
+                console.log(`[LWW-FIXED]   Sheet: ${sheetTimestamp.toISOString()}`);
                 
                 if (sheetTimestamp > localTimestamp) {
-                    // Sheet más reciente → UPDATE
-                    console.log(`[LWW] sheet>local → update`);
+                    // Sheet más reciente → UPDATE (SIN IMPORTAR CUTOFF_AT)
+                    console.log(`[LWW-FIXED] sheet>local → update (IGNORANDO cutoff_at)`);
                     
                     // Aplicar regla sticky delete para activo
                     let activoFinal = true;
@@ -2634,69 +2640,58 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
                         presetsToggledToFalse++;
                     }
 
-                    console.log('[SYNC-BIDI] Actualizado desde Sheets:', id, 'activoFinal:', activoFinal);
+                    console.log('[SYNC-BIDI] ✅ ACTUALIZADO desde Sheets:', id, 'activoFinal:', activoFinal);
                 } else if (sheetTimestamp < localTimestamp) {
                     // Local más reciente → SKIP
-                    console.log(`[LWW] sheet<local → skip`);
+                    console.log(`[LWW-FIXED] sheet<local → skip`);
                     omitidos++;
                 } else {
                     // Empate (timestamps iguales) → SKIP (mantener Local)
-                    console.log(`[LWW] sheet=local → skip (mantener Local)`);
+                    console.log(`[LWW-FIXED] sheet=local → skip (mantener Local)`);
                     omitidos++;
                 }
             }
         }
 
-        // Sincronizar detalles con LWW aplicado
+        // CORRECCIÓN CRÍTICA: Sincronizar detalles para presupuestos NUEVOS y ACTUALIZADOS
         if (idsCambiados.size > 0) {
             try {
-                console.log('[SYNC-BIDI] Aplicando LWW a detalles para IDs cambiados:', Array.from(idsCambiados).join(', '));
+                console.log('[SYNC-BIDI-UPDATE] 🔄 Sincronizando detalles integralmente para presupuestos nuevos/actualizados:', Array.from(idsCambiados).join(', '));
                 
-                // Obtener timestamps locales de detalles para LWW
-                const localDetalleTimestamps = new Map();
-                const rsDetalles = await db.query(`
-                    SELECT d.id, d.id_presupuesto_ext, d.articulo, d.fecha_actualizacion
-                    FROM public.presupuestos_detalles d
-                    INNER JOIN public.presupuestos_detalles_map m ON m.local_detalle_id = d.id
-                    WHERE d.id_presupuesto_ext = ANY($1::text[])
-                `, [Array.from(idsCambiados)]);
+                // SEPARAR presupuestos NUEVOS de ACTUALIZADOS para logs específicos
+                const presupuestosNuevos = new Set();
+                const presupuestosActualizados = new Set();
                 
-                rsDetalles.rows.forEach(row => {
-                    const key = `${row.id_presupuesto_ext}-${row.articulo}`;
-                    localDetalleTimestamps.set(key, new Date(row.fecha_actualizacion || 0));
-                });
-
-                // Procesar detalles con LWW
-                const H = detallesSheets.headers || [];
-                const idxLastModified = H.findIndex(h => h.toLowerCase().includes('lastmodified') || h.toLowerCase().includes('modified'));
-                
-                for (const row of detallesSheets.rows) {
-                    const idPresupuesto = (row[H[1]] || '').toString().trim();
-                    const articulo = (row[H[2]] || '').toString().trim();
-                    
-                    if (!idsCambiados.has(idPresupuesto) || !articulo) continue;
-                    
-                    const key = `${idPresupuesto}-${articulo}`;
-                    const localDetalleTimestamp = localDetalleTimestamps.get(key);
-                    
-                    if (localDetalleTimestamp && idxLastModified !== -1) {
-                        const sheetDetalleLastModified = row[H[idxLastModified]];
-                        if (sheetDetalleLastModified) {
-                            const sheetDetalleTimestamp = parseLastModifiedRobust(sheetDetalleLastModified);
-                            
-                            if (sheetDetalleTimestamp <= localDetalleTimestamp) {
-                                console.log(`[LWW] Detalle ${key}: sheet<=local → skip`);
-                                continue; // No actualizar este detalle
-                            } else {
-                                console.log(`[LWW] Detalle ${key}: sheet>local → update`);
-                            }
-                        }
+                for (const id of idsCambiados) {
+                    const localTimestamp = localTimestamps.get(id);
+                    if (!localTimestamp) {
+                        presupuestosNuevos.add(id);
+                    } else {
+                        presupuestosActualizados.add(id);
                     }
                 }
-
+                
+                console.log(`[SYNC-BIDI-UPDATE] 📊 Presupuestos NUEVOS: ${presupuestosNuevos.size}, ACTUALIZADOS: ${presupuestosActualizados.size}`);
+                
+                // APLICAR REGLA: "última escritura gana" - actualizar detalles integralmente
+                // Esto maneja: modificaciones de cantidad, eliminaciones y creaciones de detalles
+                console.log('[SYNC-BIDI-UPDATE] Aplicando regla "última escritura gana" para detalles...');
+                
+                // Para presupuestos NUEVOS y ACTUALIZADOS: sincronizar detalles completamente
+                // La función syncDetallesDesdeSheets hace: DELETE todos los detalles locales + INSERT todos los de Sheets
                 await syncDetallesDesdeSheets(detallesSheets, idsCambiados, db);
+                
+                console.log(`[SYNC-BIDI-UPDATE] ✅ Detalles sincronizados integralmente para ${idsCambiados.size} presupuestos`);
+                console.log(`[SYNC-BIDI-UPDATE] ✅ Encabezados actualizados: ${presupuestosActualizados.size}`);
+                console.log(`[SYNC-BIDI-UPDATE] ✅ Mapeo de detalles actualizado en la misma corrida`);
+                
+                // LOG ESPECÍFICO para presupuestos ACTUALIZADOS
+                if (presupuestosActualizados.size > 0) {
+                    console.log('[SYNC-BIDI-UPDATE] 📝 Presupuestos ACTUALIZADOS con detalles refrescados:', Array.from(presupuestosActualizados).join(', '));
+                }
+                
             } catch (e) {
-                console.warn('[SYNC-BIDI] No se pudieron sincronizar detalles:', e?.message);
+                console.error('[SYNC-BIDI-UPDATE] ❌ Error sincronizando detalles:', e?.message);
             }
         }
 
