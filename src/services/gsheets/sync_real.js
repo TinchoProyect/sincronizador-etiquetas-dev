@@ -38,6 +38,26 @@ async function syncFromGoogleSheets(config, db) {
         usuario_id: config.usuario_id
     });
     
+    // PASO 0: Obtener configuración activa una sola vez para completar campos
+    console.log('[SYNC] Obteniendo configuración activa para completar campos...');
+    const configQuery = `
+        SELECT hoja_url
+        FROM presupuestos_config
+        WHERE activo = true
+        ORDER BY id DESC
+        LIMIT 1
+    `;
+    const configResult = await db.query(configQuery);
+    
+    let configHojaUrl = null;
+    if (configResult.rows.length > 0) {
+        configHojaUrl = configResult.rows[0].hoja_url;
+        console.log(`[SINCRO] Config hoja_url: ${configHojaUrl}`);
+    } else {
+        console.log('[SINCRO] No se encontró configuración activa, usando hoja_url del config recibido');
+        configHojaUrl = config.hoja_url;
+    }
+    
     // 🔍 LOG PUNTO 1: Inicio de conexión a Google Sheets
     console.log('[PRESUPUESTOS-BACK] Iniciando conexión con Google Sheets');
     console.log('[PRESUPUESTOS-BACK] ID del archivo recibido:', config.hoja_id);
@@ -121,7 +141,7 @@ async function syncFromGoogleSheets(config, db) {
         
         // 3. Mapear datos a estructura de presupuestos usando AMBAS hojas
         console.log('🔍 [PRESUPUESTOS] Mapeando datos de AMBAS hojas a estructura de presupuestos...');
-        const presupuestosMapeados = mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config);
+        const presupuestosMapeados = mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config, configHojaUrl);
         
         console.log(`📋 [PRESUPUESTOS] Presupuestos mapeados: ${presupuestosMapeados.length} registros válidos`);
         
@@ -151,7 +171,92 @@ async function syncFromGoogleSheets(config, db) {
                 }
             }
             
-            // 6. Confirmar transacción
+            // 6. Completar campos hoja_url, usuario_id y punto_entrega para presupuestos procesados en esta sincronización
+            console.log('[SYNC] Completando campos hoja_url, usuario_id y punto_entrega...');
+            
+            // Obtener IDs de los presupuestos procesados en esta sincronización
+            const idsPresupuestosProcesados = presupuestosMapeados.map(p => p.presupuesto.id_presupuesto_ext);
+            console.log(`[SINCRO] IDs a completar: [${idsPresupuestosProcesados.join(', ')}]`);
+            
+            if (idsPresupuestosProcesados.length > 0 && configHojaUrl) {
+                // Obtener los IDs internos y clientes de la base de datos para los presupuestos procesados
+                const idsInternosQuery = `
+                    SELECT id, id_cliente, punto_entrega FROM presupuestos 
+                    WHERE id_presupuesto_ext = ANY($1::text[])
+                `;
+                const idsInternosResult = await db.query(idsInternosQuery, [idsPresupuestosProcesados]);
+                const idsInternos = idsInternosResult.rows.map(row => row.id);
+                
+                // Completar hoja_url para los presupuestos que lo tengan NULL o vacío
+                const updateHojaUrlQuery = `
+                    UPDATE presupuestos 
+                    SET hoja_url = $1 
+                    WHERE (hoja_url IS NULL OR hoja_url = '') 
+                      AND id = ANY($2::int[])
+                `;
+                const hojaUrlResult = await db.query(updateHojaUrlQuery, [configHojaUrl, idsInternos]);
+                
+                // Completar usuario_id = 1 para los presupuestos que lo tengan NULL
+                const updateUsuarioIdQuery = `
+                    UPDATE presupuestos 
+                    SET usuario_id = 1 
+                    WHERE usuario_id IS NULL 
+                      AND id = ANY($1::int[])
+                `;
+                const usuarioIdResult = await db.query(updateUsuarioIdQuery, [idsInternos]);
+                
+                // Completar punto_entrega buscando en Google Sheets el más reciente del mismo cliente
+                let puntoEntregaResult = { rowCount: 0 };
+                for (const row of idsInternosResult.rows) {
+                    const { id: presupuestoId, id_cliente, punto_entrega } = row;
+                    
+                    // Solo procesar si punto_entrega está vacío o es "Sin dirección"
+                    if (!punto_entrega || punto_entrega.trim() === '' || punto_entrega.trim() === 'Sin dirección') {
+                        console.log(`[SINCRO] Buscando punto_entrega en Sheets para cliente ${id_cliente}...`);
+                        
+                        // Buscar en los datos de Google Sheets el punto_entrega más reciente del mismo cliente
+                        const clientePresupuestos = presupuestosData.rows.filter(sheetRow => {
+                            const clienteRow = String(sheetRow[presupuestosData.headers[2]] || '').trim();
+                            return clienteRow === id_cliente;
+                        });
+                        
+                        let puntoEntregaEncontrado = null;
+                        
+                        // Buscar punto_entrega válido (que no sea "Sin dirección" ni "null")
+                        for (const clienteRow of clientePresupuestos) {
+                            const puntoEntregaCliente = clienteRow[presupuestosData.headers[11]]; // PuntoEntrega (columna L)
+                            const puntoEntregaStr = String(puntoEntregaCliente || '').trim();
+                            
+                            if (puntoEntregaStr !== '' && 
+                                puntoEntregaStr !== 'Sin dirección' && 
+                                puntoEntregaStr !== 'null' &&
+                                puntoEntregaStr !== 'NULL') {
+                                puntoEntregaEncontrado = puntoEntregaStr;
+                                console.log(`[SINCRO] Punto entrega encontrado en Sheets para cliente ${id_cliente}: "${puntoEntregaEncontrado}"`);
+                                break;
+                            }
+                        }
+                        
+                        // Usar valor encontrado o valor por defecto
+                        const puntoEntregaFinal = puntoEntregaEncontrado || 'Sin dirección';
+                        
+                        // Actualizar en la base de datos local
+                        const updatePuntoEntregaQuery = `
+                            UPDATE presupuestos 
+                            SET punto_entrega = $1 
+                            WHERE id = $2
+                        `;
+                        const updateResult = await db.query(updatePuntoEntregaQuery, [puntoEntregaFinal, presupuestoId]);
+                        puntoEntregaResult.rowCount += updateResult.rowCount;
+                        
+                        console.log(`[SINCRO] Punto entrega actualizado para presupuesto ${presupuestoId}: "${puntoEntregaFinal}"`);
+                    }
+                }
+                
+                console.log(`[SINCRO] Actualizados hoja_url: ${hojaUrlResult.rowCount} / usuario_id: ${usuarioIdResult.rowCount} / punto_entrega: ${puntoEntregaResult.rowCount}`);
+            }
+            
+            // 7. Confirmar transacción
             await db.query('COMMIT');
             console.log('✅ [PRESUPUESTOS] Transacción confirmada');
             
@@ -194,7 +299,7 @@ async function syncFromGoogleSheets(config, db) {
  * Hoja 1: Presupuestos (IDPresupuesto, Fecha, IDCliente, Agente, etc.)
  * Hoja 2: DetallesPresupuestos (IDDetallePresupuesto, IdPresupuesto, Articulo, etc.)
  */
-function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
+function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config, configHojaUrl) {
     console.log('🔍 [PRESUPUESTOS] Mapeando datos de DOS hojas de Google Sheets...');
     console.log('🔍 [GSHEETS-DEBUG] PUNTO 6: Iniciando mapeo de ambas hojas');
     
@@ -252,6 +357,32 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
             
             const presupuestoKey = id_presupuesto_clean;
             
+            // Buscar punto_entrega más reciente del mismo cliente en Google Sheets
+            let puntoEntregaFinal = punto_entrega;
+            if (!puntoEntregaFinal || puntoEntregaFinal.trim() === '') {
+                // Buscar en los datos de Google Sheets el punto_entrega más reciente del mismo cliente
+                const clientePresupuestos = presupuestosData.rows.filter(row => {
+                    const clienteRow = String(row[presupuestosData.headers[2]] || '').trim();
+                    return clienteRow === id_cliente_clean;
+                });
+                
+                // Ordenar por fecha más reciente y buscar punto_entrega válido
+                for (const clienteRow of clientePresupuestos) {
+                    const puntoEntregaCliente = clienteRow[presupuestosData.headers[11]]; // PuntoEntrega (columna L)
+                    if (puntoEntregaCliente && String(puntoEntregaCliente).trim() !== '') {
+                        puntoEntregaFinal = String(puntoEntregaCliente).trim();
+                        console.log(`[SINCRO] Punto entrega encontrado para cliente ${id_cliente_clean}: ${puntoEntregaFinal}`);
+                        break;
+                    }
+                }
+                
+                // Si no se encontró, usar valor por defecto
+                if (!puntoEntregaFinal || puntoEntregaFinal.trim() === '') {
+                    puntoEntregaFinal = 'Sin dirección';
+                    console.log(`[SINCRO] Usando punto entrega por defecto para cliente ${id_cliente_clean}: ${puntoEntregaFinal}`);
+                }
+            }
+
             const presupuesto = {
                 id_presupuesto_ext: id_presupuesto_clean,
                 id_cliente: id_cliente_clean || 'SIN_CLIENTE',
@@ -263,12 +394,12 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
                 estado: estado,
                 informe_generado: informe_generado,
                 cliente_nuevo_id: cliente_nuevo_id,
-                punto_entrega: punto_entrega,
+                punto_entrega: puntoEntregaFinal,
                 descuento: parseFloat(descuento) || 0,
                 activo: true,
                 hoja_nombre: 'Presupuestos',
-                hoja_url: config.hoja_url,
-                usuario_id: config.usuario_id || null
+                hoja_url: configHojaUrl, // Usar la URL obtenida de la configuración activa
+                usuario_id: 1 // Asignar 1 por defecto como se solicitó
             };
             
             presupuestosMap.set(presupuestoKey, {
@@ -309,7 +440,19 @@ function mapTwoSheetsToPresupuestos(presupuestosData, detallesData, config) {
             const valor1 = row[detallesData.headers[4]] || 0;                  // Valor1 (E)
             const precio1 = row[detallesData.headers[5]] || 0;                 // Precio1 (F)
             const iva1 = row[detallesData.headers[6]] || 0;                    // IVA1 (G)
-            const diferencia = row[detallesData.headers[7]] || 0;              // Diferencia (H)
+            const diferencia = row.Diferencia || row['Diferencia'] || row[detallesData.headers[7]] || 0;       // Diferencia (H) - TRIPLE FALLBACK: objeto + índice
+            
+            // LOG ESPECÍFICO PARA DEBUGGING DEL CAMPO DIFERENCIA
+            if (id_presupuesto && id_presupuesto.toString().includes('8347c87e')) {
+                console.log(`🔍 [DIFERENCIA-DEBUG] Presupuesto 8347c87e - Artículo ${articulo}:`);
+                console.log(`   row.Diferencia: ${row.Diferencia} (tipo: ${typeof row.Diferencia})`);
+                console.log(`   row['Diferencia']: ${row['Diferencia']} (tipo: ${typeof row['Diferencia']})`);
+                console.log(`   row[headers[7]]: ${row[detallesData.headers[7]]} (tipo: ${typeof row[detallesData.headers[7]]})`);
+                console.log(`   headers[7]: ${detallesData.headers[7]}`);
+                console.log(`   diferencia final: ${diferencia} (tipo: ${typeof diferencia})`);
+                console.log(`   parseFloat(diferencia): ${parseFloat(diferencia)}`);
+            }
+            
             const condicion = row[detallesData.headers[8]] || null;            // Condicion (I)
             // CORRECCIÓN: Mapeo correcto según especificación del usuario
             const camp1 = row[detallesData.headers[9]] || 0;                   // Camp2 (J) -> camp1
@@ -484,8 +627,8 @@ function mapSheetDataToPresupuestos(sheetData, config) {
                     descuento: parseFloat(row[sheetData.headers[11]]) || 0, // Columna L
                     activo: true,
                     hoja_nombre: config.hoja_nombre,
-                    hoja_url: config.hoja_url,
-                    usuario_id: config.usuario_id || null
+                    hoja_url: configHojaUrl, // Usar la URL obtenida de la configuración activa
+                    usuario_id: 1 // Asignar 1 por defecto como se solicitó
                 };
                 
                 presupuestosMap.set(presupuestoKey, {
@@ -646,6 +789,13 @@ async function upsertPresupuesto(db, presupuestoData, config) {
                      iva1, diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                 `;
+                
+                // LOG ESPECÍFICO PARA DEBUGGING DEL CAMPO DIFERENCIA EN INSERT
+                if (detalle.id_presupuesto_ext && detalle.id_presupuesto_ext.includes('8347c87e')) {
+                    console.log(`🔍 [INSERT-DEBUG] Insertando detalle 8347c87e - Artículo ${detalle.articulo}:`);
+                    console.log(`   diferencia a insertar: ${detalle.diferencia} (tipo: ${typeof detalle.diferencia})`);
+                    console.log(`   todos los valores: cantidad=${detalle.cantidad}, valor1=${detalle.valor1}, precio1=${detalle.precio1}, iva1=${detalle.iva1}`);
+                }
                 
                 const result = await db.query(insertDetalleQuery, [
                     presupuestoId,

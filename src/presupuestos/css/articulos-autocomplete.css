@@ -66,6 +66,16 @@
     border-radius: 3px;
     font-family: 'Courier New', monospace;
     font-weight: 500;
+    color: #495057; /* CORREGIDO: Color gris en lugar de azul */
+}
+
+/* NUEVO: Asegurar que los inputs de artículo no tengan color azul */
+input[name*="[articulo]"] {
+    color: #495057 !important;
+}
+
+input[name*="[articulo]"].articulo-codigo {
+    color: #495057 !important;
 }
 
 .articulo-stock {

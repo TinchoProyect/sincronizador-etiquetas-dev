@@ -213,12 +213,28 @@ const crearPresupuesto = async (req, res) => {
             await client.query("SET LOCAL lock_timeout TO '5s'");
             await client.query("SET LOCAL statement_timeout TO '15s'");
 
+            // Obtener configuración activa para completar campos
+            const configQuery = `
+                SELECT hoja_url
+                FROM presupuestos_config
+                WHERE activo = true
+                ORDER BY id DESC
+                LIMIT 1
+            `;
+            const configResult = await client.query(configQuery);
+            
+            let configHojaUrl = process.env.SPREADSHEET_URL || '';
+            if (configResult.rows.length > 0) {
+                configHojaUrl = configResult.rows[0].hoja_url;
+                console.log(`[SINCRO] Config hoja_url para nuevo presupuesto: ${configHojaUrl}`);
+            }
+
             // Insertar encabezado en BD como PENDIENTE
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11)
+                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url, usuario_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11, $12)
                 RETURNING *
             `;
 
@@ -233,7 +249,8 @@ const crearPresupuesto = async (req, res) => {
                 estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
-                process.env.SPREADSHEET_URL || ''
+                configHojaUrl,
+                1 // usuario_id = 1 por defecto
             ]);
 
             const presupuestoBD = headerResult.rows[0];
@@ -293,6 +310,9 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
             const barcode   = (det.articulo || '').toString().trim();
             const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
 
+            // LOG ANTES - Mapeo actual detectado
+            console.log(`🔍 [CAMP-MAPPING-ANTES] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal`);
+
             detallesNormalizados.push({
                 id: generateDetalleId(),
                 id_presupuesto_ext: presupuestoId,
@@ -302,13 +322,16 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
                 precio1: brutoUnit,               // F (con IVA)
                 iva1: ivaUnit,                    // G (monto unitario)
                 diferencia: round2(brutoUnit - costoUnit), // H = Precio1 - Costo
-                camp1: netoUnit,                  // I
-                camp2: brutoUnit,                 // J
-                camp3: alicDec,                   // K
-                camp4: netoTotal,                 // L
-                camp5: brutoTotal,                // M
-                camp6: ivaTotal                   // N
+                camp1: netoUnit,                  // I (sin cambio)
+                camp2: alicDec,                   // K (era camp3) - CORRIMIENTO
+                camp3: netoTotal,                 // L (era camp4) - CORRIMIENTO  
+                camp4: brutoTotal,                // M (era camp5) - CORRIMIENTO
+                camp5: ivaTotal,                  // N (era camp6) - CORRIMIENTO
+                camp6: null                       // Sin uso (era ivaTotal)
             });
+
+            // LOG DESPUÉS - Mapeo efectivo aplicado
+            console.log(`✅ [CAMP-MAPPING-DESPUES] ${requestId} - CAMP2<=alicDec, CAMP3<=netoTotal, CAMP4<=brutoTotal, CAMP5<=ivaTotal, CAMP6<=null`);
             }
 
             const insertDetalleQuery = `
@@ -628,6 +651,9 @@ const editarPresupuesto = async (req, res) => {
                     const barcode   = (det.articulo || '').toString().trim();
                     const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
 
+                    // LOG ANTES - Mapeo actual detectado (edición)
+                    console.log(`🔍 [CAMP-MAPPING-ANTES-EDIT] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal`);
+
                     detallesNormalizados.push({
                         id: generateDetalleId(),
                         id_presupuesto_ext: presupuesto.id_presupuesto_ext,
@@ -637,13 +663,16 @@ const editarPresupuesto = async (req, res) => {
                         precio1: brutoUnit,               // F (con IVA)
                         iva1: ivaUnit,                    // G (monto unitario)
                         diferencia: round2(brutoUnit - costoUnit), // H = Precio1 - Costo
-                        camp1: netoUnit,                  // I
-                        camp2: brutoUnit,                 // J
-                        camp3: alicDec,                   // K
-                        camp4: netoTotal,                 // L
-                        camp5: brutoTotal,                // M
-                        camp6: ivaTotal                   // N
+                        camp1: netoUnit,                  // I (sin cambio)
+                        camp2: alicDec,                   // K (era camp3) - CORRIMIENTO
+                        camp3: netoTotal,                 // L (era camp4) - CORRIMIENTO
+                        camp4: brutoTotal,                // M (era camp5) - CORRIMIENTO
+                        camp5: ivaTotal,                  // N (era camp6) - CORRIMIENTO
+                        camp6: null                       // Sin uso (era ivaTotal)
                     });
+
+                    // LOG DESPUÉS - Mapeo efectivo aplicado (edición)
+                    console.log(`✅ [CAMP-MAPPING-DESPUES-EDIT] ${requestId} - CAMP2<=alicDec, CAMP3<=netoTotal, CAMP4<=brutoTotal, CAMP5<=ivaTotal, CAMP6<=null`);
                 }
 
                 if (detallesNormalizados.length > 0) {
