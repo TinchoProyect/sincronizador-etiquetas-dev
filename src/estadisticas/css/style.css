@@ -102,7 +102,9 @@ header h1::before{
 
 /* Títulos de tarjeta */
 .card__title{
-  margin: 0;
+  margin: 10px;
+  padding: 10px;
+
   font-size: clamp(18px, 2.2vw, 22px);
   font-weight: 600;
   color: var(--text);
@@ -110,6 +112,7 @@ header h1::before{
 
 .card__title__{
   margin: 0;
+ 
   font-size: clamp(12px, 1.8vw, 18px);
   font-weight: 600;
   color: var(--text);
