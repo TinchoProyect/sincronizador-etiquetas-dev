@@ -138,6 +138,7 @@ async function loadCarros() {
     console.error('carros error', err);
     tbody.innerHTML = `<tr><td colspan="7">Error al cargar</td></tr>`;
   }
+  window.loadCarros = loadCarros;
 }
 
 // ========== Render: Artículos Medidos ==========
@@ -174,6 +175,7 @@ async function loadArticulosUltimos() {
     console.error('ultimos error', err);
     tbody.innerHTML = `<tr><td colspan="5">Error al cargar</td></tr>`;
   }
+  window.loadArticulosUltimos = loadArticulosUltimos;
 }
 
 // ========== Render: Artículos (resumen) ==========
@@ -209,10 +211,50 @@ async function loadArticulosResumen() {
     console.error('resumen error', err);
     tbody.innerHTML = `<tr><td colspan="5">Error al cargar</td></tr>`;
   }
+  window.loadArticulosResumen = loadArticulosResumen;
 }
 
+// main.js (mismo estilo que tus otros loaders)
+
+async function loadGraficos() {
+  const cont = document.getElementById('graficos-card');
+  if (!cont) return;
+
+  // si jamás se cargó, render inicial (una sola vez)
+  const firstTime = !cont.dataset.loaded;
+
+  if (firstTime) {
+    const html = `
+      <div class="card__header">
+        <h3 class="card__title">Gráficos de barra</h3>
+        <div class="badges">
+          <label class="control"><span>Mostrar</span></label>
+        </div>
+      </div>
+
+      <!-- contenedor donde dibujarás el gráfico -->
+      <div id="graficos-content">
+        <p class="muted">Acá va el gráfico…</p>
+        <!-- Ejemplo: <canvas id="grafico-barras" width="600" height="320"></canvas> -->
+      </div>
+    `;
+    cont.innerHTML = html;
+    cont.dataset.loaded = '1';
+  }
+
+  // ▼ Si querés refrescar datos cada vez que se muestra:
+  // const { desde, hasta } = getFilters();
+  // const url = `${API}/grafico-barras${qsParams({ desde, hasta })}`;
+  // const { ok, data } = await getJson(url);
+  // if (!ok) throw new Error('Respuesta no OK');
+  // renderizá data dentro de #graficos-content
+}
+
+window.loadGraficos = loadGraficos;
+
+
 // ========== Init ==========
-function wireEvents() {
+/*function wireEvents() {
   $('#filtros')?.addEventListener('submit', (e) => {
     e.preventDefault();
     refreshAll();
@@ -237,7 +279,7 @@ function wireEvents() {
       if (id === 'limit-resumen') loadArticulosResumen();
     });
   });
-}
+}*/
 
 async function refreshAll() {
   await Promise.all([
@@ -247,7 +289,24 @@ async function refreshAll() {
   ]);
 }
 
+//Funcion de que vista esta visible
+
+function getVisibleKey() {
+  const sec = document.querySelector('[data-section]:not([style*="display: none"])');
+  return sec ? sec.getAttribute('data-section') : null;
+}
+
+async function reloadVisible() {
+  const key = getVisibleKey();
+  if (key === 'carros')  return loadCarros();
+  if (key === 'ultimos') return loadArticulosUltimos();
+  if (key === 'resumen') return loadArticulosResumen();
+  if (key === 'graficos' && typeof window.loadGraficos === 'function') return window.loadGraficos();
+  // tiempos o nada seleccionado: no hacer nada
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
-  wireEvents();
+ // wireEvents();
   refreshAll();
 });

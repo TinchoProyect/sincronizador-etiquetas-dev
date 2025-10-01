@@ -43,15 +43,15 @@
         </div>
       </form>
     </section>
-
+  
     <!-- 🧭 Menú de estadísticas (bonito y simple) -->
     <section class="card title" id="menu-card">
       <h2 class="card card__title card__title--center">Elegí una estadística</h2>
-      
+  
       <h2 class=" card__title card__title--center">Informes de tiempo</h2>
- 
+  
       <div class="stats-menu" id="stats-menu">
-        
+  
         <button class="stats-menu__item" data-key="carros" aria-label="Carros medidos">
           <span class="stats-menu__icon" data-i="cart"></span>
           <span class="stats-menu__title">Carros medidos</span>
@@ -68,9 +68,6 @@
           <span class="stats-menu__desc">Tiempos totales y por unidad.</span>
         </button>
       </div>
-    </section>
-
-
     
     <!-- 🚚 Carros medidos -->
     <section class="card" id="carros-card" data-section="carros">
@@ -180,13 +177,40 @@
         </table>
       </div>
     </section>
+    <!-- 📊 Gráficos de barra menu -->
+    <h2 class="card__title card__title--center">Gráficos de barra</h2>
+      <div class="stats-menu" id="stats-menu">
+        <button class="stats-menu__item"  data-key="graficos" aria-label="Gráficos de barra">
+          <span class="stats-menu__icon" data-i="bar-chart"></span>
+          <span class="stats-menu__title"> -------</span>
+          <span class="stats-menu__desc"> *********</span>
+        </button>
+      </div>
+ 
 
+    <!-- 📊 Gráficos de barra despliegue -->
+    <section class="card" id="graficos-card" data-section="graficos">
+     
+        <h3 class="card__title">Gráficos de barra</h3>
+        <div class="badges">
+          <label class="control">
+            <div id="graficos-content"> <!-- carga dinamica --></div>
+        
+          </label>
+        
+
+
+  
+    </section>
+    </section>
 
   </main>
 
   <!--Scripts -->
+
   <script src="/estadisticas/js/main.js" defer></script>
   <script src="/estadisticas/js/estadisticas-menu.js" defer></script>
+  
 </body>
 
 </html>
