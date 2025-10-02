@@ -75,37 +75,10 @@
   // Enganchamos ambos menús (si existen en el DOM)
   attachMenuListeners($menuTiempos);
   attachMenuListeners($menuGraficos);
-
   
 
-  //Eventos de filtros y selects para que cargue solo la vista visible
+ 
 
-  /*function wireEvents() {
-  $('#filtros')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    reloadVisible();
-  });
-
-  $('#btn-hoy')?.addEventListener('click', () => {
-    setToday();
-    reloadVisible();
-  });
-
-  $('#btn-limpiar')?.addEventListener('click', () => {
-    $('#f-desde').value = '';
-    $('#f-hasta').value = '';
-    reloadVisible();
-  });
-
-  ['limit-carros', 'limit-ultimos', 'limit-resumen'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('change', () => {
-      reloadVisible();
-    });
-  });
-}
-*/
 
   // Init: NO activar nada, NO cargar nada (solo ocultar)
   
@@ -117,6 +90,5 @@
     // const last = localStorage.getItem(KEY_STORAGE);
     // if (last) activate(last);
   });
+
 })();
-
-
