@@ -10,6 +10,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
         
         const { 
             cliente_id, 
+            presupuesto_id,
             fecha_desde, 
             fecha_hasta, 
             formato = 'html' 
@@ -41,9 +42,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
             });
         }
         
-        console.log('📋 [REMITO-R] Parámetros impresión:', { cliente_id, fecha_desde, fecha_hasta, formato });
+        console.log('📋 [REMITO-R] Parámetros impresión:', { cliente_id, presupuesto_id, fecha_desde, fecha_hasta, formato });
         
-        // 🔧 CONSULTA CORREGIDA: Usar misma lógica que el frontend
+        // 🔧 CONSULTA CORREGIDA: Usar misma lógica que el frontend + filtro por presupuesto_id
         const query = `
             WITH presupuestos_cliente AS (
                 SELECT 
@@ -53,8 +54,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
                 WHERE p.activo = true 
                   AND CAST(p.id_cliente AS integer) = $1
                   AND LOWER(TRIM(p.estado)) ILIKE '%presupuesto%orden%'
-                  AND ($2::date IS NULL OR p.fecha >= $2)
-                  AND ($3::date IS NULL OR p.fecha <= $3)
+                  AND ($2::text IS NULL OR p.id_presupuesto_ext = $2)
+                  AND ($3::date IS NULL OR p.fecha >= $3)
+                  AND ($4::date IS NULL OR p.fecha <= $4)
             )
             SELECT 
                 c.cliente_id,
@@ -92,6 +94,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
         
         const params = [
             parseInt(cliente_id),
+            presupuesto_id || null,
             fecha_desde || null,
             fecha_hasta || null
         ];
