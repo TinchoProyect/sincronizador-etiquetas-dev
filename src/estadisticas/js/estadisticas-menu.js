@@ -2,70 +2,15 @@
 
 (function () {
   const KEY_STORAGE = 'estadisticas.lastKey';
-  const $menu = document.getElementById('stats-menu');
+  const $menuTiempos = document.getElementById('stats-menu-tiempos');
+  const $menuGraficos = document.getElementById('stats-menu-graficos');
   const $sections = Array.from(document.querySelectorAll('[data-section]'));
   
-  //graficos de barras
-  const graficosBtn = document.querySelector('#stats-menu .stats-menu__item[data-key="graficos"]');
-  const graficosCard = document.getElementById('graficos-card');
-  const graficosContent = document.getElementById('graficos-content');
-  //fin graficos de barras constantes
-
   let currentKey = null; // ⬅️ estado de selección actual (o null si nada visible)
 
-  //codigo graficos de barras
-  if (!graficosBtn || !graficosCard || !graficosContent) {
-    console.warn('[graficos] no se encontraron nodos necesarios');
-    return;
-  }
 
-  let visible = false;        // estado de visibilidad
-  let loaded  = false;        // si ya cargamos el contenido al menos una vez
 
-  function renderGraficos() {
-    // si querés regenerar cada vez, no uses el flag `loaded`
-    const html = `
-      <div class="card__header">
-        <h3 class="card__title">Gráficos de barra piripipito</h3>
-        <div class="badges">
-          <label class="control">
-            <span>Mostrar</span>
-          </label>
-        </div>
-      </div>
-      <!-- acá podrías agregar tus selects/filtros y el canvas -->
-      <div id="grafico-barras-wrapper">
-        <!-- contenido dinámico -->
-        <p class="muted">Acá va el gráfico…</p>
-      </div>
-    `;
-    graficosContent.innerHTML = html;
 
-    // si tenés un loader de datos para el gráfico, llamalo acá:
-    // await cargarSerieDeBarras();  // por ejemplo
-  }
-
-  graficosBtn.addEventListener('click', async () => {
-    visible = !visible;
-
-    // visual del botón activo
-    graficosBtn.classList.toggle('is-active', visible);
-
-    // mostrar / ocultar la tarjeta
-    graficosCard.style.display = visible ? '' : 'none';
-
-    // cargar UNA vez cuando se muestra por primera vez
-    if (visible && !loaded) {
-      try {
-        renderGraficos();
-        loaded = true;
-      } catch (e) {
-        console.error('[graficos] error al renderizar', e);
-        graficosContent.innerHTML = `<p style="color:#b91c1c">Error al cargar gráficos</p>`;
-      }
-    }
-  });
-  //fin codigo graficos de barras
 
   function hideAll() {
     $sections.forEach(sec => (sec.style.display = 'none'));
@@ -103,27 +48,39 @@
     callLoaderFor(key);
   }
 
-  // Click en menú → activar (o toggle off)
-  $menu?.addEventListener('click', e => {
-    const btn = e.target.closest('.stats-menu__item');
-    if (!btn) return;
-    activate(btn.dataset.key);
-  });
 
-  // Accesible con teclado (Enter/Espacio)
-  $menu?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') {
+// ⬇️ Reutilizable: engancha click + teclado en cualquier menú que le pases
+  function attachMenuListeners(menuEl) {
+    if (!menuEl) return;
+
+    menuEl.addEventListener('click', (e) => {
       const btn = e.target.closest('.stats-menu__item');
-      if (btn) {
-        e.preventDefault();
-        activate(btn.dataset.key);
-      }
-    }
-  });
+      if (!btn || !menuEl.contains(btn)) return; // asegura que el botón pertenezca a este menú
+      const key = btn.dataset.key;
+      if (!key) return;
+      activate(key);
+    });
+
+    menuEl.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const btn = e.target.closest('.stats-menu__item');
+      if (!btn || !menuEl.contains(btn)) return;
+      e.preventDefault();
+      const key = btn.dataset.key;
+      if (!key) return;
+      activate(key);
+    });
+  }
+
+  // Enganchamos ambos menús (si existen en el DOM)
+  attachMenuListeners($menuTiempos);
+  attachMenuListeners($menuGraficos);
+
+  
 
   //Eventos de filtros y selects para que cargue solo la vista visible
 
-  function wireEvents() {
+  /*function wireEvents() {
   $('#filtros')?.addEventListener('submit', (e) => {
     e.preventDefault();
     reloadVisible();
@@ -148,7 +105,7 @@
     });
   });
 }
-
+*/
 
   // Init: NO activar nada, NO cargar nada (solo ocultar)
   

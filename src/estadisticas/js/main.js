@@ -215,9 +215,10 @@ async function loadArticulosResumen() {
 }
 
 // main.js (mismo estilo que tus otros loaders)
-
-async function loadGraficos() {
-  const cont = document.getElementById('graficos-card');
+//Funciones de carga de graficos
+async function loadTiemposArticulos() {//to do se tiene que separar para las tres estadisticas.
+//  en principio voy a trabajar aca solo con los tiempos de articulos
+  const cont = document.getElementById('graficos-card-articulos');
   if (!cont) return;
 
   // si jamás se cargó, render inicial (una sola vez)
@@ -226,14 +227,14 @@ async function loadGraficos() {
   if (firstTime) {
     const html = `
       <div class="card__header">
-        <h3 class="card__title">Gráficos de barra</h3>
+        <h3 class="card__title">Tiempos Artículos</h3>
         <div class="badges">
           <label class="control"><span>Mostrar</span></label>
         </div>
       </div>
 
       <!-- contenedor donde dibujarás el gráfico -->
-      <div id="graficos-content">
+      <div id="graficos-content-articulos">
         <p class="muted">Acá va el gráfico…</p>
         <!-- Ejemplo: <canvas id="grafico-barras" width="600" height="320"></canvas> -->
       </div>
@@ -250,11 +251,84 @@ async function loadGraficos() {
   // renderizá data dentro de #graficos-content
 }
 
-window.loadGraficos = loadGraficos;
+window.loadTiemposArticulos = loadTiemposArticulos;
 
+async function loadTiemposCarros() {//to do se tiene que separar para las tres estadisticas.
+//  en principio voy a trabajar aca solo con los tiempos de articulos
+  const cont = document.getElementById('graficos-card-carros');
+  if (!cont) return;
+
+  // si jamás se cargó, render inicial (una sola vez)
+  const firstTime = !cont.dataset.loaded;
+
+  if (firstTime) {
+    const html = `
+      <div class="card__header">
+        <h3 class="card__title">Tiempos de carros</h3>
+        <div class="badges">
+          <label class="control"><span>Mostrar</span></label>
+        </div>
+      </div>
+
+      <!-- contenedor donde dibujarás el gráfico -->
+      <div id="graficos-content-carros">
+        <p class="muted">Acá va el gráfico…</p>
+        <!-- Ejemplo: <canvas id="grafico-barras" width="600" height="320"></canvas> -->
+      </div>
+    `;
+    cont.innerHTML = html;
+    cont.dataset.loaded = '1';
+  }
+
+  // ▼ Si querés refrescar datos cada vez que se muestra:
+  // const { desde, hasta } = getFilters();
+  // const url = `${API}/grafico-barras${qsParams({ desde, hasta })}`;
+  // const { ok, data } = await getJson(url);
+  // if (!ok) throw new Error('Respuesta no OK');
+  // renderizá data dentro de #graficos-content
+}
+
+window.loadTiemposCarros = loadTiemposCarros;
+
+async function loadProduccionSemanalCarros() {
+  const cont = document.getElementById('graficos-card-produccion');
+  if (!cont) return;
+
+  // si jamás se cargó, render inicial (una sola vez)
+  const firstTime = !cont.dataset.loaded;
+
+  if (firstTime) {
+    const html = `
+      <div class="card__header">
+        <h3 class="card__title">Producción semanal de carros</h3>
+        <div class="badges">
+          <label class="control"><span>Mostrar</span></label>
+        </div>
+      </div>
+
+      <!-- contenedor donde dibujarás el gráfico -->
+      <div id="graficos-content-produccion">
+        <p class="muted">Acá va el gráfico…</p>
+        <!-- Ejemplo: <canvas id="grafico-barras" width="600" height="320"></canvas> -->
+      </div>
+    `;
+    cont.innerHTML = html;
+    cont.dataset.loaded = '1';
+  }
+
+  // ▼ Si querés refrescar datos cada vez que se muestra:
+  // const { desde, hasta } = getFilters();
+  // const url = `${API}/grafico-barras${qsParams({ desde, hasta })}`;
+  // const { ok, data } = await getJson(url);
+  // if (!ok) throw new Error('Respuesta no OK');
+  // renderizá data dentro de #graficos-content
+}
+
+window.loadProduccionSemanalCarros = loadProduccionSemanalCarros;
+//Fin funciones de carga de graficos
 
 // ========== Init ==========
-/*function wireEvents() {
+function wireEvents() {
   $('#filtros')?.addEventListener('submit', (e) => {
     e.preventDefault();
     refreshAll();
@@ -271,21 +345,27 @@ window.loadGraficos = loadGraficos;
     refreshAll();
   });
 
-  ['limit-carros', 'limit-ultimos', 'limit-resumen'].forEach(id => {
+  ['limit-carros', 'limit-ultimos', 'limit-resumen',
+    'limit-tiempos-articulos','limit-tiempos-carros','limit-produccion-semanal-carros'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', () => {
       if (id === 'limit-carros')  loadCarros();
       if (id === 'limit-ultimos') loadArticulosUltimos();
       if (id === 'limit-resumen') loadArticulosResumen();
-    });
+      if (id === 'limit-tiempos-articulos')loadTiemposArticulos();
+      if (id === 'limit-tiempos-carros')loadTiemposCarros();
+      if (id === 'limit-produccion-semanal-carros')loadProduccionSemanalCarros();});
   });
-}*/
+}
 
 async function refreshAll() {
   await Promise.all([
     loadCarros(),
     loadArticulosUltimos(),
     loadArticulosResumen(),
+    loadTiemposArticulos(),
+    loadTiemposCarros(),
+    loadProduccionSemanalCarros()  
   ]);
 }
 
@@ -301,7 +381,10 @@ async function reloadVisible() {
   if (key === 'carros')  return loadCarros();
   if (key === 'ultimos') return loadArticulosUltimos();
   if (key === 'resumen') return loadArticulosResumen();
-  if (key === 'graficos' && typeof window.loadGraficos === 'function') return window.loadGraficos();
+  if (key === 'tiempos_articulos') return loadTiemposArticulos();
+  if (key === 'tiempos_carros') return loadTiemposCarros();
+  if (key === 'produccion_semanal_carros') return loadProduccionSemanalCarros();
+  
   // tiempos o nada seleccionado: no hacer nada
 }
 

@@ -282,7 +282,7 @@ header h1::before{
 }
 
 /* ===== Menú de estadísticas (grid de tarjetas) ===== */
-.stats-menu{
+.stats-menu, .stats-menu-graficos, .stats-menu-tiempos{
 display:grid; gap:12px;
 grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 margin-top:12px;

@@ -50,7 +50,7 @@
   
       <h2 class=" card__title card__title--center">Informes de tiempo</h2>
   
-      <div class="stats-menu" id="stats-menu">
+      <div class="stats-menu" id="stats-menu-tiempos">
   
         <button class="stats-menu__item" data-key="carros" aria-label="Carros medidos">
           <span class="stats-menu__icon" data-i="cart"></span>
@@ -177,32 +177,71 @@
         </table>
       </div>
     </section>
+
+
     <!-- 📊 Gráficos de barra menu -->
     <h2 class="card__title card__title--center">Gráficos de barra</h2>
-      <div class="stats-menu" id="stats-menu">
-        <button class="stats-menu__item"  data-key="graficos" aria-label="Gráficos de barra">
+      <div class="stats-menu" id="stats-menu-graficos">
+        <button class="stats-menu__item"  data-key="tiempos_articulos" aria-label="Gráficos de barra">
           <span class="stats-menu__icon" data-i="bar-chart"></span>
-          <span class="stats-menu__title"> -------</span>
-          <span class="stats-menu__desc"> *********</span>
+          <span class="stats-menu__title"> Tiempos Artículos </span>
+          <span class="stats-menu__desc"> Gráficos</span>
+        </button>
+ 
+        <button class="stats-menu__item"  data-key="tiempos_carros" aria-label="Gráficos de barra">
+          <span class="stats-menu__icon" data-i="bar-chart"></span>
+          <span class="stats-menu__title"> Tiempos de Carros </span>
+          <span class="stats-menu__desc"> Etapa...</span>
+        </button>
+
+        <button class="stats-menu__item"  data-key="produccion_semanal_carros" aria-label="Gráficos de barra">
+          <span class="stats-menu__icon" data-i="bar-chart"></span>
+          <span class="stats-menu__title"> Producción semanal de  Carros </span>
+          <span class="stats-menu__desc"> Cantidad /Tiempos diarios</span>
         </button>
       </div>
  
 
     <!-- 📊 Gráficos de barra despliegue -->
-    <section class="card" id="graficos-card" data-section="graficos">
-     
+  <!--Tiempos Artículos -->
+    <section class="card" id="graficos-card-articulos" data-section="tiempos_articulos">
+        
         <h3 class="card__title">Gráficos de barra</h3>
         <div class="badges">
           <label class="control">
-            <div id="graficos-content"> <!-- carga dinamica --></div>
+            <div id="graficos-content-articulos"> <!-- carga dinamica --></div>
         
           </label>
+          </div>
+          </section>
+
+        <!--Tiempos de carros -->
+         <section class="card" id="graficos-card-carros" data-section="tiempos_carros">
+        <h3 class="card__title">Tiempos de armado de carros</h3>
+        <div class="badges">
+          <label class="control">
+            <div id="graficos-content-carros"> <!-- carga dinamica--> </div>
+        
+          </label>
+          </div>
+         </section>
+
+        <!--Producción semanal de carros-->
+         <section class="card" id="graficos-card-produccion" data-section="produccion_semanal_carros"> 
+        <h3 class="card__title">Gráficos producción semanal carros</h3>
+        <div class="badges">
+          <label class="control">
+            <div id="graficos-content-produccion"> <!-- carga dinamica--> </div>
+        
+          </label>
+        </div>
+         </section>
+
         
 
 
-  
-    </section>
-    </section>
+  </section>
+ 
 
   </main>
 
