@@ -1,3 +1,5 @@
+/*estadisticas/api/db/sql/articulos/serie_por_fecha.sql */
+
 WITH base AS (
   SELECT fecha, ms_por_unidad
   FROM v_mediciones_articulo_unit
@@ -12,3 +14,4 @@ SELECT
 FROM base
 GROUP BY fecha
 ORDER BY fecha;
+

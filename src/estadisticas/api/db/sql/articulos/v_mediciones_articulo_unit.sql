@@ -1,3 +1,5 @@
+/*src/estadisticas/api/db/sql/articulos/v_mediciones_articulo_unit.sql*/
+
 CREATE OR REPLACE VIEW v_mediciones_articulo_unit AS
 SELECT
   ca.id                           AS medicion_id,
