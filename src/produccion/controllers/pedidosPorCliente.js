@@ -105,70 +105,62 @@ const obtenerPedidosPorCliente = async (req, res) => {
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
             ),
-            articulos_consolidados AS (
+            articulos_por_presupuesto AS (
                 SELECT 
                     pc.cliente_id_int,
+                    ${presupuestoIdFieldMain} as presupuesto_id,
+                    pc.fecha as presupuesto_fecha,
                     pd.articulo as articulo_numero,
-                    SUM(COALESCE(pd.cantidad, 0)) as pedido_total,
-                    JSON_AGG(
-                        JSON_BUILD_OBJECT(
-                            'presupuesto_id', ${presupuestoIdFieldMain},
-                            'fecha', pc.fecha,
-                            'cantidad', COALESCE(pd.cantidad, 0)
-                        ) ORDER BY pc.fecha DESC
-                    ) as presupuestos_detalle
+                    SUM(COALESCE(pd.cantidad, 0)) as cantidad
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.fecha, pd.articulo
             )
             SELECT 
-                ac.cliente_id_int as cliente_id,
+                app.cliente_id_int as cliente_id,
                 COALESCE(
                     NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''),
                     NULLIF(TRIM(c.nombre), ''),
                     NULLIF(TRIM(c.apellido), ''),
-                    'Cliente ' || ac.cliente_id_int
+                    'Cliente ' || app.cliente_id_int
                 ) as cliente_nombre,
-                COUNT(DISTINCT ac.articulo_numero) as total_articulos,
-                (
-                    SELECT COUNT(DISTINCT ${presupuestoIdFieldCount})
-                    FROM presupuestos_confirmados pc2
-                    WHERE pc2.cliente_id_int = ac.cliente_id_int
-                ) as total_presupuestos,
+                COUNT(DISTINCT app.articulo_numero) as total_articulos,
+                COUNT(DISTINCT app.presupuesto_id) as total_presupuestos,
                 JSON_AGG(
                     JSON_BUILD_OBJECT(
-                        'articulo_numero', ac.articulo_numero,
+                        'presupuesto_id', app.presupuesto_id,
+                        'presupuesto_fecha', app.presupuesto_fecha,
+                        'articulo_numero', app.articulo_numero,
                         'descripcion', COALESCE(
                             NULLIF(TRIM(a.nombre), ''),
-                            ac.articulo_numero
+                            app.articulo_numero
                         ),
-                        'pedido_total', ac.pedido_total,
+                        'pedido_total', app.cantidad,
                         'stock_disponible', CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                             THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                             ELSE COALESCE(src.stock_consolidado, 0)
                         END,
-                        'faltante', GREATEST(0, ac.pedido_total - 
+                        'faltante', GREATEST(0, app.cantidad - 
                             CASE 
                                 WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                                 THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                                 ELSE COALESCE(src.stock_consolidado, 0)
                             END
                         ),
-                        'presupuestos_detalle', ac.presupuestos_detalle,
                         'es_pack', src.es_pack,
                         'pack_hijo_codigo', src.pack_hijo_codigo,
                         'pack_unidades', src.pack_unidades,
                         'stock_hijo', hijo.stock_consolidado
-                    ) ORDER BY ac.articulo_numero
+                    ) ORDER BY app.presupuesto_fecha DESC, app.presupuesto_id, app.articulo_numero
                 ) as articulos
-            FROM articulos_consolidados ac
-            LEFT JOIN public.clientes c ON c.cliente_id = ac.cliente_id_int
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+            FROM articulos_por_presupuesto app
+            LEFT JOIN public.clientes c ON c.cliente_id = app.cliente_id_int
+            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = app.articulo_numero
             LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
-            LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
-            GROUP BY ac.cliente_id_int, c.nombre, c.apellido
+            LEFT JOIN public.articulos a ON a.codigo_barras = app.articulo_numero
+            GROUP BY app.cliente_id_int, c.nombre, c.apellido
             ORDER BY cliente_nombre;
         `;
         

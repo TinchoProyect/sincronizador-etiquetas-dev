@@ -136,6 +136,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirmarBtn) {
         confirmarBtn.addEventListener('click', confirmarAsignacionFaltantes);
     }
+    
+    // Evento para botón "Imprimir Todos los Presupuestos" (general)
+    const btnImprimirTodosGeneral = document.getElementById('imprimir-todos-general');
+    if (btnImprimirTodosGeneral) {
+        btnImprimirTodosGeneral.addEventListener('click', () => {
+            const fechaCorte = document.getElementById('fecha-corte').value;
+            imprimirTodosLosPresupuestos(fechaCorte);
+        });
+    }
 });
 
 // Base URL para fetch
@@ -171,83 +180,208 @@ function renderPedidosCliente(pedidos) {
         return;
     }
 
+    console.log('🔍 Renderizando pedidos por cliente...');
     contenedor.innerHTML = '';
+    
     pedidos.forEach(cliente => {
+        console.log(`📋 Cliente: ${cliente.cliente_nombre} - ${cliente.total_presupuestos} presupuestos`);
+        
         const clienteDiv = document.createElement('div');
         clienteDiv.className = 'cliente-acordeon';
         clienteDiv.setAttribute('data-cliente-id', cliente.cliente_id);
 
+        // Calcular total de artículos (suma de todos los presupuestos)
+        const totalArticulos = cliente.articulos.length;
+        
         const header = document.createElement('div');
         header.className = 'cliente-header';
-        header.textContent = cliente.cliente_nombre + ' [ID: ' + cliente.cliente_id + '] (' + cliente.total_articulos + ' artículos)';
+        header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
         header.addEventListener('click', () => toggleAcordeon(cliente.cliente_id));
         clienteDiv.appendChild(header);
 
         const contenido = document.createElement('div');
         contenido.className = 'cliente-contenido';
         contenido.id = `contenido-${cliente.cliente_id}`;
+        contenido.style.padding = '10px';
 
-        const tabla = document.createElement('table');
-        tabla.className = 'articulos-tabla';
-
-        const thead = document.createElement('thead');
-        thead.innerHTML = `
-            <tr>
-                <th>Artículo</th>
-                <th>Descripción</th>
-                <th>Pedido Total</th>
-                <th>Stock Disponible</th>
-                <th>Faltante</th>
-                <th>Estado</th>
-            </tr>
-        `;
-        tabla.appendChild(thead);
-
-        const tbody = document.createElement('tbody');
+        // Agrupar artículos por presupuesto_id
+        const presupuestosMap = new Map();
         cliente.articulos.forEach(articulo => {
-            const tr = document.createElement('tr');
-
-            const tdArticulo = document.createElement('td');
-            tdArticulo.textContent = articulo.articulo_numero;
-            tr.appendChild(tdArticulo);
-
-            const tdDescripcion = document.createElement('td');
-            tdDescripcion.textContent = articulo.descripcion || '-';
-            tr.appendChild(tdDescripcion);
-
-            const tdPedidoTotal = document.createElement('td');
-            tdPedidoTotal.textContent = articulo.pedido_total;
-            tr.appendChild(tdPedidoTotal);
-
-            const tdStockDisponible = document.createElement('td');
-            tdStockDisponible.textContent = articulo.stock_disponible;
-            tr.appendChild(tdStockDisponible);
-
-            const tdFaltante = document.createElement('td');
-            tdFaltante.textContent = articulo.faltante;
-            tdFaltante.className = articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa';
-            tr.appendChild(tdFaltante);
-
-            const tdEstado = document.createElement('td');
-            const indicador = document.createElement('span');
-            indicador.className = 'indicador-estado ' + calcularIndicadorEstado(articulo);
-            indicador.textContent = articulo.faltante > 0 ? 'Faltante' : 'Completo';
-            tdEstado.appendChild(indicador);
-            tr.appendChild(tdEstado);
-
-            tbody.appendChild(tr);
+            const presupId = articulo.presupuesto_id;
+            if (!presupuestosMap.has(presupId)) {
+                presupuestosMap.set(presupId, {
+                    presupuesto_id: presupId,
+                    presupuesto_fecha: articulo.presupuesto_fecha,
+                    articulos: []
+                });
+            }
+            presupuestosMap.get(presupId).articulos.push(articulo);
         });
 
-        tabla.appendChild(tbody);
-        contenido.appendChild(tabla);
+        // Convertir a array y ordenar por fecha
+        const presupuestos = Array.from(presupuestosMap.values()).sort((a, b) => 
+            new Date(b.presupuesto_fecha) - new Date(a.presupuesto_fecha)
+        );
 
-        // Botones de acción por cliente
+        console.log(`   → ${presupuestos.length} presupuestos agrupados`);
+
+        // Crear acordeón para cada presupuesto
+        presupuestos.forEach((presupuesto, idx) => {
+            // Calcular estado del presupuesto
+            let faltantes = 0;
+            let completos = 0;
+            presupuesto.articulos.forEach(art => {
+                if (art.faltante > 0) {
+                    faltantes++;
+                } else {
+                    completos++;
+                }
+            });
+            
+            const estadoPresupuesto = faltantes > 0 ? 'FALTANTES' : 'COMPLETO';
+            const estadoClass = faltantes > 0 ? 'indicador-faltantes' : 'indicador-completo';
+            
+            const presupuestoDiv = document.createElement('div');
+            presupuestoDiv.style.marginBottom = '15px';
+            presupuestoDiv.style.border = '1px solid #dee2e6';
+            presupuestoDiv.style.borderRadius = '4px';
+            presupuestoDiv.style.overflow = 'hidden';
+
+            // Header del presupuesto
+            const presupuestoHeader = document.createElement('div');
+            presupuestoHeader.style.padding = '12px 15px';
+            presupuestoHeader.style.backgroundColor = '#f8f9fa';
+            presupuestoHeader.style.display = 'flex';
+            presupuestoHeader.style.justifyContent = 'space-between';
+            presupuestoHeader.style.alignItems = 'center';
+            presupuestoHeader.style.gap = '10px';
+            
+            const fechaFormateada = new Date(presupuesto.presupuesto_fecha).toLocaleDateString('es-AR');
+            
+            // Parte clickeable (info + icono)
+            const clickeableDiv = document.createElement('div');
+            clickeableDiv.style.display = 'flex';
+            clickeableDiv.style.alignItems = 'center';
+            clickeableDiv.style.flex = '1';
+            clickeableDiv.style.cursor = 'pointer';
+            clickeableDiv.style.gap = '10px';
+            
+            const iconSpan = document.createElement('span');
+            iconSpan.textContent = '▼';
+            iconSpan.style.fontSize = '1.2em';
+            iconSpan.style.transition = 'transform 0.3s ease';
+            
+            const estadoSpan = document.createElement('span');
+            estadoSpan.className = `indicador-estado ${estadoClass}`;
+            estadoSpan.textContent = estadoPresupuesto;
+            estadoSpan.style.marginRight = '10px';
+            
+            const infoSpan = document.createElement('span');
+            infoSpan.innerHTML = `<strong>Presupuesto ${presupuesto.presupuesto_id}</strong> <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span> <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>`;
+            
+            clickeableDiv.appendChild(iconSpan);
+            clickeableDiv.appendChild(estadoSpan);
+            clickeableDiv.appendChild(infoSpan);
+            
+            // Botón imprimir (no clickeable con el acordeón)
+            const btnImprimirPresup = document.createElement('button');
+            btnImprimirPresup.textContent = '📄 Imprimir';
+            btnImprimirPresup.className = 'admin-button';
+            btnImprimirPresup.style.padding = '6px 12px';
+            btnImprimirPresup.style.fontSize = '12px';
+            btnImprimirPresup.addEventListener('click', (e) => {
+                e.stopPropagation();
+                imprimirPresupuestoIndividual(cliente.cliente_id, presupuesto.presupuesto_id);
+            });
+            
+            const presupuestoId = `presupuesto-${cliente.cliente_id}-${idx}`;
+            clickeableDiv.addEventListener('click', () => {
+                const contenidoPresup = document.getElementById(presupuestoId);
+                if (contenidoPresup.style.display === 'none' || contenidoPresup.style.display === '') {
+                    contenidoPresup.style.display = 'block';
+                    iconSpan.style.transform = 'rotate(180deg)';
+                    presupuestoHeader.style.backgroundColor = '#e9ecef';
+                } else {
+                    contenidoPresup.style.display = 'none';
+                    iconSpan.style.transform = 'rotate(0deg)';
+                    presupuestoHeader.style.backgroundColor = '#f8f9fa';
+                }
+            });
+
+            presupuestoHeader.appendChild(clickeableDiv);
+            presupuestoHeader.appendChild(btnImprimirPresup);
+            presupuestoDiv.appendChild(presupuestoHeader);
+
+            // Contenido del presupuesto (tabla de artículos)
+            const presupuestoContenido = document.createElement('div');
+            presupuestoContenido.id = presupuestoId;
+            presupuestoContenido.style.display = 'none';
+
+            const tabla = document.createElement('table');
+            tabla.className = 'articulos-tabla';
+
+            const thead = document.createElement('thead');
+            thead.innerHTML = `
+                <tr>
+                    <th>Artículo</th>
+                    <th>Descripción</th>
+                    <th>Cantidad</th>
+                    <th>Stock Disponible</th>
+                    <th>Faltante</th>
+                    <th>Estado</th>
+                </tr>
+            `;
+            tabla.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            presupuesto.articulos.forEach(articulo => {
+                const tr = document.createElement('tr');
+
+                const tdArticulo = document.createElement('td');
+                tdArticulo.textContent = articulo.articulo_numero;
+                tr.appendChild(tdArticulo);
+
+                const tdDescripcion = document.createElement('td');
+                tdDescripcion.textContent = articulo.descripcion || '-';
+                tr.appendChild(tdDescripcion);
+
+                const tdPedidoTotal = document.createElement('td');
+                tdPedidoTotal.textContent = articulo.pedido_total;
+                tr.appendChild(tdPedidoTotal);
+
+                const tdStockDisponible = document.createElement('td');
+                tdStockDisponible.textContent = articulo.stock_disponible;
+                tr.appendChild(tdStockDisponible);
+
+                const tdFaltante = document.createElement('td');
+                tdFaltante.textContent = articulo.faltante;
+                tdFaltante.className = articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa';
+                tr.appendChild(tdFaltante);
+
+                const tdEstado = document.createElement('td');
+                const indicador = document.createElement('span');
+                indicador.className = 'indicador-estado ' + calcularIndicadorEstado(articulo);
+                indicador.textContent = articulo.faltante > 0 ? 'Faltante' : 'Completo';
+                tdEstado.appendChild(indicador);
+                tr.appendChild(tdEstado);
+
+                tbody.appendChild(tr);
+            });
+
+            tabla.appendChild(tbody);
+            presupuestoContenido.appendChild(tabla);
+            presupuestoDiv.appendChild(presupuestoContenido);
+            contenido.appendChild(presupuestoDiv);
+        });
+
+        // Botones de acción por cliente (al final de todos los presupuestos) - FUERA DEL LOOP
         const accionesDiv = document.createElement('div');
         accionesDiv.style.padding = '15px';
         accionesDiv.style.textAlign = 'center';
-        accionesDiv.style.borderTop = '1px solid #dee2e6';
+        accionesDiv.style.borderTop = '2px solid #dee2e6';
+        accionesDiv.style.marginTop = '10px';
 
-        // Calcular artículos faltantes
+        // Calcular artículos faltantes de todos los presupuestos
         const articulosFaltantes = cliente.articulos.filter(art => art.faltante > 0);
         
         if (articulosFaltantes.length > 0) {
@@ -258,12 +392,15 @@ function renderPedidosCliente(pedidos) {
             accionesDiv.appendChild(btnAsignar);
         }
 
-        const btnImprimir = document.createElement('button');
-        btnImprimir.textContent = 'Imprimir';
-        btnImprimir.className = 'admin-button';
-        btnImprimir.style.marginLeft = '10px';
-        btnImprimir.addEventListener('click', () => imprimirPresupuestoCliente(cliente.cliente_id));
-        accionesDiv.appendChild(btnImprimir);
+        // Solo mostrar botón "Imprimir Todos" si hay más de 1 presupuesto
+        if (presupuestos.length > 1) {
+            const btnImprimirTodos = document.createElement('button');
+            btnImprimirTodos.textContent = '📄 Imprimir Todos de Este Cliente';
+            btnImprimirTodos.className = 'admin-button';
+            btnImprimirTodos.style.marginLeft = '10px';
+            btnImprimirTodos.addEventListener('click', () => imprimirPresupuestoCliente(cliente.cliente_id));
+            accionesDiv.appendChild(btnImprimirTodos);
+        }
 
         contenido.appendChild(accionesDiv);
         clienteDiv.appendChild(contenido);
@@ -419,7 +556,7 @@ async function confirmarAsignacionFaltantes() {
     }
 }
 
-// Función para imprimir presupuesto cliente
+// Función para imprimir todos los presupuestos de un cliente
 function imprimirPresupuestoCliente(clienteId) {
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=html`;
@@ -428,6 +565,42 @@ function imprimirPresupuestoCliente(clienteId) {
     const win = window.open(urlPdf, '_blank');
 
     // Si el PDF no se puede abrir (por ejemplo, error 501), abrir fallback HTML
+    setTimeout(() => {
+        if (!win || win.closed || typeof win.closed == 'undefined') {
+            window.open(urlHtml, '_blank');
+        }
+    }, 2000);
+}
+
+// Función para imprimir un presupuesto individual
+function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
+    console.log(`📄 Imprimiendo presupuesto individual: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
+    
+    const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf`;
+    const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html`;
+
+    // Abrir PDF en nueva pestaña
+    const win = window.open(urlPdf, '_blank');
+
+    // Si el PDF no se puede abrir, abrir fallback HTML
+    setTimeout(() => {
+        if (!win || win.closed || typeof win.closed == 'undefined') {
+            window.open(urlHtml, '_blank');
+        }
+    }, 2000);
+}
+
+// Función para imprimir TODOS los presupuestos de TODOS los clientes
+function imprimirTodosLosPresupuestos(fechaCorte) {
+    console.log(`📄 Imprimiendo TODOS los presupuestos hasta fecha: ${fechaCorte}`);
+    
+    const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=pdf`;
+    const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=html`;
+
+    // Abrir PDF en nueva pestaña
+    const win = window.open(urlPdf, '_blank');
+
+    // Si el PDF no se puede abrir, abrir fallback HTML
     setTimeout(() => {
         if (!win || win.closed || typeof win.closed == 'undefined') {
             window.open(urlHtml, '_blank');

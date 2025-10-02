@@ -239,44 +239,140 @@ function renderizarPedidosPorCliente(clientes) {
         return;
     }
     
-    const html = clientes.map(cliente => `
-        <div class="cliente-acordeon">
-            <div class="cliente-header" onclick="toggleCliente('cliente-${cliente.cliente_id}')">
-                <span class="indicador-estado indicador-${cliente.indicador_estado.toLowerCase()}">${cliente.indicador_estado}</span>
-                ${cliente.cliente_nombre} (${cliente.total_articulos} artículos, ${cliente.total_presupuestos} presupuestos)
+    const html = clientes.map(cliente => {
+        // DEBUG: Log para ver datos del cliente
+        console.log(`🔍 DEBUG Cliente: ${cliente.cliente_nombre}`);
+        console.log(`   - total_presupuestos: ${cliente.total_presupuestos}`);
+        console.log(`   - total_articulos: ${cliente.total_articulos}`);
+        console.log(`   - articulos.length: ${cliente.articulos.length}`);
+        
+        // Agrupar artículos por presupuesto_id
+        const presupuestosMap = new Map();
+        
+        cliente.articulos.forEach(articulo => {
+            const presupId = articulo.presupuesto_id;
+            console.log(`   - Artículo ${articulo.articulo_numero}: presupuesto_id = ${presupId}`);
+            if (!presupuestosMap.has(presupId)) {
+                presupuestosMap.set(presupId, {
+                    presupuesto_id: presupId,
+                    presupuesto_fecha: articulo.presupuesto_fecha,
+                    articulos: []
+                });
+            }
+            presupuestosMap.get(presupId).articulos.push(articulo);
+        });
+        
+        // Convertir Map a array y ordenar por fecha descendente
+        const presupuestos = Array.from(presupuestosMap.values()).sort((a, b) => 
+            new Date(b.presupuesto_fecha) - new Date(a.presupuesto_fecha)
+        );
+        
+        console.log(`   - Presupuestos agrupados: ${presupuestos.length}`);
+        presupuestos.forEach((p, i) => {
+            console.log(`     ${i+1}. Presupuesto ${p.presupuesto_id}: ${p.articulos.length} artículos`);
+        });
+        
+        return `
+            <div class="cliente-acordeon">
+                <div class="cliente-header" onclick="toggleCliente('cliente-${cliente.cliente_id}')">
+                    <span class="indicador-estado indicador-${cliente.indicador_estado.toLowerCase()}">${cliente.indicador_estado}</span>
+                    ${cliente.cliente_nombre} (${cliente.total_articulos} artículos, ${cliente.total_presupuestos} presupuestos)
+                </div>
+                <div id="cliente-${cliente.cliente_id}" class="cliente-contenido" style="padding: 10px;">
+                    ${presupuestos.map((presupuesto, idx) => {
+                        // Calcular estado del presupuesto
+                        let faltantes = 0;
+                        let parciales = 0;
+                        let completos = 0;
+                        
+                        presupuesto.articulos.forEach(art => {
+                            if (art.faltante === 0) {
+                                completos++;
+                            } else if (art.stock_disponible > 0) {
+                                parciales++;
+                            } else {
+                                faltantes++;
+                            }
+                        });
+                        
+                        let estadoPresupuesto;
+                        if (faltantes > 0) {
+                            estadoPresupuesto = 'FALTANTES';
+                        } else if (parciales > 0) {
+                            estadoPresupuesto = 'PARCIAL';
+                        } else {
+                            estadoPresupuesto = 'COMPLETO';
+                        }
+                        
+                        const fechaFormateada = new Date(presupuesto.presupuesto_fecha).toLocaleDateString('es-AR');
+                        
+                        return `
+                            <div class="presupuesto-acordeon" style="margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 4px; overflow: hidden;">
+                                <div class="presupuesto-header" onclick="togglePresupuesto('presupuesto-${cliente.cliente_id}-${idx}')" style="padding: 12px 15px; background-color: #f8f9fa; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.3s ease;">
+                                    <div>
+                                        <span class="indicador-estado indicador-${estadoPresupuesto.toLowerCase()}" style="margin-right: 10px;">${estadoPresupuesto}</span>
+                                        <strong>Presupuesto ${presupuesto.presupuesto_id}</strong>
+                                        <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span>
+                                        <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>
+                                    </div>
+                                    <span class="toggle-icon" style="font-size: 1.2em; transition: transform 0.3s ease;">▼</span>
+                                </div>
+                                <div id="presupuesto-${cliente.cliente_id}-${idx}" class="presupuesto-contenido" style="display: none;">
+                                    <table class="articulos-tabla">
+                                        <thead>
+                                            <tr>
+                                                <th>Artículo</th>
+                                                <th>Descripción</th>
+                                                <th>Cantidad</th>
+                                                <th>Stock Disponible</th>
+                                                <th>Faltante</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${presupuesto.articulos.map(articulo => `
+                                                <tr>
+                                                    <td>${articulo.articulo_numero}</td>
+                                                    <td>${articulo.descripcion}</td>
+                                                    <td>${articulo.pedido_total}</td>
+                                                    <td>${articulo.stock_disponible}</td>
+                                                    <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${articulo.faltante}</td>
+                                                    <td>
+                                                        ${articulo.faltante > 0 ? `<button class="admin-button" onclick="abrirModalAsignar(${cliente.cliente_id}, '${cliente.cliente_nombre}', [${JSON.stringify(articulo).replace(/"/g, '"')}])">Asignar</button>` : ''}
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
             </div>
-            <div id="cliente-${cliente.cliente_id}" class="cliente-contenido">
-                <table class="articulos-tabla">
-                    <thead>
-                        <tr>
-                            <th>Artículo</th>
-                            <th>Descripción</th>
-                            <th>Pedido Total</th>
-                            <th>Stock Disponible</th>
-                            <th>Faltante</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${cliente.articulos.map(articulo => `
-                            <tr>
-                                <td>${articulo.articulo_numero}</td>
-                                <td>${articulo.descripcion}</td>
-                                <td>${articulo.pedido_total}</td>
-                                <td>${articulo.stock_disponible}</td>
-                                <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${articulo.faltante}</td>
-                                <td>
-                                    ${articulo.faltante > 0 ? `<button class="admin-button" onclick="abrirModalAsignar(${cliente.cliente_id}, '${cliente.cliente_nombre}', [${JSON.stringify(articulo).replace(/"/g, '"')}])">Asignar</button>` : ''}
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
     
     container.innerHTML = html;
+}
+
+// Función para toggle de presupuestos
+function togglePresupuesto(presupuestoId) {
+    const contenido = document.getElementById(presupuestoId);
+    const header = document.querySelector(`[onclick="togglePresupuesto('${presupuestoId}')"]`);
+    const icon = header ? header.querySelector('.toggle-icon') : null;
+    
+    if (contenido) {
+        if (contenido.style.display === 'none' || contenido.style.display === '') {
+            contenido.style.display = 'block';
+            if (icon) icon.style.transform = 'rotate(180deg)';
+            if (header) header.style.backgroundColor = '#e9ecef';
+        } else {
+            contenido.style.display = 'none';
+            if (icon) icon.style.transform = 'rotate(0deg)';
+            if (header) header.style.backgroundColor = '#f8f9fa';
+        }
+    }
 }
 
 function mostrarErrorPedidos() {
@@ -763,6 +859,7 @@ function refrescarVistasPack() {
 // Hacer funciones disponibles globalmente para onclick
 window.abrirEspacioTrabajo = abrirEspacioTrabajo;
 window.toggleCliente = toggleCliente;
+window.togglePresupuesto = togglePresupuesto;
 window.abrirModalAsignar = abrirModalAsignar;
 window.abrirModalAsignarArticulo = abrirModalAsignarArticulo;
 window.cerrarModalAsignar = cerrarModalAsignar;
