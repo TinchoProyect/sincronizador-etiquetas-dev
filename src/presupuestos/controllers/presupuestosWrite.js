@@ -462,7 +462,19 @@ const editarPresupuesto = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { agente, nota, punto_entrega, descuento, fecha_entrega, detalles } = req.body;
+        const { 
+            agente, 
+            nota, 
+            punto_entrega, 
+            descuento, 
+            fecha_entrega, 
+            detalles,
+            // NUEVOS: Campos del encabezado que faltaban
+            tipo_comprobante,
+            estado,
+            id_cliente,
+            fecha
+        } = req.body;
 
     console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
     console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos para edición:`, req.body);
@@ -588,6 +600,31 @@ const editarPresupuesto = async (req, res) => {
                 paramCount++;
                 updates.push(`fecha_entrega = $${paramCount}`);
                 params.push(fecha_entrega ? normalizeDate(fecha_entrega) : null);
+            }
+
+            // NUEVOS: Campos del encabezado que faltaban
+            if (tipo_comprobante !== undefined) {
+                paramCount++;
+                updates.push(`tipo_comprobante = $${paramCount}`);
+                params.push(tipo_comprobante);
+            }
+
+            if (estado !== undefined) {
+                paramCount++;
+                updates.push(`estado = $${paramCount}`);
+                params.push(estado);
+            }
+
+            if (id_cliente !== undefined) {
+                paramCount++;
+                updates.push(`id_cliente = $${paramCount}`);
+                params.push(id_cliente);
+            }
+
+            if (fecha !== undefined) {
+                paramCount++;
+                updates.push(`fecha = $${paramCount}`);
+                params.push(fecha ? normalizeDate(fecha) : null);
             }
 
             // Actualizar cabecera si hay campos

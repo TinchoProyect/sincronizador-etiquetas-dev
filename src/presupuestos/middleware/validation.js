@@ -224,12 +224,25 @@ const validarCrearPresupuesto = (req, res, next) => {
 
 /**
  * Validar datos para actualizar presupuesto (PATCH/PUT)
- * Campos permitidos: agente, nota, punto_entrega, descuento, fecha_entrega, detalles
+ * Campos permitidos: agente, nota, punto_entrega, descuento, fecha_entrega, detalles, tipo_comprobante, estado, id_cliente, fecha
  */
 const validarActualizarPresupuesto = (req, res, next) => {
   console.log('🔍 [PRESUPUESTOS] Validando datos para actualizar presupuesto...');
   try {
-    const allow = ['agente', 'nota', 'punto_entrega', 'descuento', 'fecha_entrega', 'detalles'];
+    // CORREGIDO: Agregados campos faltantes del encabezado
+    const allow = [
+      'agente', 
+      'nota', 
+      'punto_entrega', 
+      'descuento', 
+      'fecha_entrega', 
+      'detalles',
+      // NUEVOS: Campos del encabezado que faltaban
+      'tipo_comprobante',
+      'estado',
+      'id_cliente',
+      'fecha'
+    ];
     const body = req.body || {};
     const keys = Object.keys(body);
     const errores = [];
@@ -248,7 +261,7 @@ const validarActualizarPresupuesto = (req, res, next) => {
       errores.push(`Campos no permitidos: ${invalid.join(', ')}`);
     }
 
-    // Validaciones light
+    // Validaciones light de campos existentes
     if (body.agente !== undefined && body.agente !== null && body.agente !== '') {
       if (typeof body.agente !== 'string') errores.push("El campo 'agente' debe ser texto.");
       else if (body.agente.length > 100) errores.push("El campo 'agente' no puede exceder 100 caracteres.");
@@ -267,6 +280,36 @@ const validarActualizarPresupuesto = (req, res, next) => {
     if (body.fecha_entrega !== undefined && body.fecha_entrega !== null && body.fecha_entrega !== '') {
       if (!isYYYYMMDD(String(body.fecha_entrega))) {
         errores.push("El campo 'fecha_entrega' debe tener formato YYYY-MM-DD.");
+      }
+    }
+
+    // NUEVAS VALIDACIONES: Campos del encabezado que faltaban
+    if (body.tipo_comprobante !== undefined && body.tipo_comprobante !== null && body.tipo_comprobante !== '') {
+      if (typeof body.tipo_comprobante !== 'string') {
+        errores.push("El campo 'tipo_comprobante' debe ser texto.");
+      } else if (body.tipo_comprobante.length > 50) {
+        errores.push("El campo 'tipo_comprobante' no puede exceder 50 caracteres.");
+      }
+    }
+
+    if (body.estado !== undefined && body.estado !== null && body.estado !== '') {
+      if (typeof body.estado !== 'string') {
+        errores.push("El campo 'estado' debe ser texto.");
+      } else if (body.estado.length > 50) {
+        errores.push("El campo 'estado' no puede exceder 50 caracteres.");
+      }
+    }
+
+    if (body.id_cliente !== undefined && body.id_cliente !== null && body.id_cliente !== '') {
+      const idClienteStr = String(body.id_cliente).trim();
+      if (idClienteStr === '') {
+        errores.push("El campo 'id_cliente' no puede estar vacío.");
+      }
+    }
+
+    if (body.fecha !== undefined && body.fecha !== null && body.fecha !== '') {
+      if (!isYYYYMMDD(String(body.fecha))) {
+        errores.push("El campo 'fecha' debe tener formato YYYY-MM-DD.");
       }
     }
 
