@@ -957,11 +957,20 @@ async function handleSubmit(event) {
 
         // Enviar actualización del presupuesto (cabecera + detalles)
         const updateData = {
+            // Campos existentes (ya funcionan)
             agente: data.agente,
             punto_entrega: data.punto_entrega,
             descuento: data.descuento,
             fecha_entrega: data.fecha_entrega,
             nota: data.nota,
+            
+            // NUEVOS: Campos del encabezado que faltaban
+            tipo_comprobante: data.tipo_comprobante,
+            estado: data.estado,
+            id_cliente: data.id_cliente,
+            fecha: data.fecha,
+            
+            // Detalles
             detalles: detalles
         };
 
