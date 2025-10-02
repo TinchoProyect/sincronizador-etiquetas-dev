@@ -136,6 +136,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirmarBtn) {
         confirmarBtn.addEventListener('click', confirmarAsignacionFaltantes);
     }
+    
+    // Evento para botón "Imprimir Todos los Presupuestos" (general)
+    const btnImprimirTodosGeneral = document.getElementById('imprimir-todos-general');
+    if (btnImprimirTodosGeneral) {
+        btnImprimirTodosGeneral.addEventListener('click', () => {
+            const fechaCorte = document.getElementById('fecha-corte').value;
+            imprimirTodosLosPresupuestos(fechaCorte);
+        });
+    }
 });
 
 // Base URL para fetch
@@ -365,7 +374,7 @@ function renderPedidosCliente(pedidos) {
             contenido.appendChild(presupuestoDiv);
         });
 
-        // Botones de acción por cliente (al final de todos los presupuestos)
+        // Botones de acción por cliente (al final de todos los presupuestos) - FUERA DEL LOOP
         const accionesDiv = document.createElement('div');
         accionesDiv.style.padding = '15px';
         accionesDiv.style.textAlign = 'center';
@@ -383,12 +392,15 @@ function renderPedidosCliente(pedidos) {
             accionesDiv.appendChild(btnAsignar);
         }
 
-        const btnImprimirTodos = document.createElement('button');
-        btnImprimirTodos.textContent = '📄 Imprimir Todos los Presupuestos';
-        btnImprimirTodos.className = 'admin-button';
-        btnImprimirTodos.style.marginLeft = '10px';
-        btnImprimirTodos.addEventListener('click', () => imprimirPresupuestoCliente(cliente.cliente_id));
-        accionesDiv.appendChild(btnImprimirTodos);
+        // Solo mostrar botón "Imprimir Todos" si hay más de 1 presupuesto
+        if (presupuestos.length > 1) {
+            const btnImprimirTodos = document.createElement('button');
+            btnImprimirTodos.textContent = '📄 Imprimir Todos de Este Cliente';
+            btnImprimirTodos.className = 'admin-button';
+            btnImprimirTodos.style.marginLeft = '10px';
+            btnImprimirTodos.addEventListener('click', () => imprimirPresupuestoCliente(cliente.cliente_id));
+            accionesDiv.appendChild(btnImprimirTodos);
+        }
 
         contenido.appendChild(accionesDiv);
         clienteDiv.appendChild(contenido);
@@ -564,9 +576,26 @@ function imprimirPresupuestoCliente(clienteId) {
 function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     console.log(`📄 Imprimiendo presupuesto individual: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
     
-    // Por ahora, usar el mismo endpoint pero podría filtrarse por presupuesto_id en el futuro
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html`;
+
+    // Abrir PDF en nueva pestaña
+    const win = window.open(urlPdf, '_blank');
+
+    // Si el PDF no se puede abrir, abrir fallback HTML
+    setTimeout(() => {
+        if (!win || win.closed || typeof win.closed == 'undefined') {
+            window.open(urlHtml, '_blank');
+        }
+    }, 2000);
+}
+
+// Función para imprimir TODOS los presupuestos de TODOS los clientes
+function imprimirTodosLosPresupuestos(fechaCorte) {
+    console.log(`📄 Imprimiendo TODOS los presupuestos hasta fecha: ${fechaCorte}`);
+    
+    const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=pdf`;
+    const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=html`;
 
     // Abrir PDF en nueva pestaña
     const win = window.open(urlPdf, '_blank');
