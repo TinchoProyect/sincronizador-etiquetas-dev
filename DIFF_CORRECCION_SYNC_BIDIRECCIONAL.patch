@@ -1,0 +1,122 @@
+--- a/src/presupuestos/controllers/sync_fechas_fix.js
++++ b/src/presupuestos/controllers/sync_fechas_fix.js
+@@ -1,5 +1,6 @@
+ console.log('[SYNC-FECHAS-CONTROLLER] Inicializando controlador de corrección de fechas...');
+ 
++const { readSheetWithHeaders } = require('../../services/gsheets/client_with_logs');
+ const { ejecutarCorreccionFechas } = require('../../services/gsheets/sync_fechas_fix');
+ 
+ // Función para formatear fecha y hora en Argentina (dd/mm/yyyy HH:MM:SS)
+@@ -18,7 +19,7 @@ function toSheetDateTimeAR(value) {
+ }
+ 
+ // Función helper para formato de fecha simple (d/m/yyyy)
+-function toSheetDate(val) {
++function toSheetDate(val) {
+     if (!val) return '';
+     const d = new Date(val);
+     if (isNaN(d)) {
+@@ -650,7 +651,7 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
+         // PASO 3: Ejecutar PUSH de cambios locales más recientes
+         console.log('[SYNC-BIDI] === FASE PUSH: Enviando cambios locales ===');
+         
+-        const { pushAltasLocalesASheets, pushDetallesLocalesASheets } = require('../../services/gsheets/sync_fechas_fix');
++        const { pushDetallesLocalesASheets } = require('../../services/gsheets/sync_fechas_fix');
+         
+         const presupuestosData_like = { 
+             headers: presupuestosSheets.headers, 
+@@ -703,6 +704,8 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+     console.log('[SYNC-BIDI] Comparando timestamps para push...');
+     
+     try {
++        console.log('[SYNC-BIDI] Iniciando push con comparación de timestamps...');
++        
+         const { getSheets } = require('../../google/gsheetsClient');
+         const sheets = await getSheets();
+ 
+@@ -710,6 +713,7 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+         const sheetsTimestamps = new Map();
+         presupuestosData.rows.forEach(row => {
+             const id = (row[presupuestosData.headers[0]] || '').toString().trim();
++            if (!id) return;
+             const lastModified = row[presupuestosData.headers[13]]; // columna N
+             if (id && lastModified) {
+                 sheetsTimestamps.set(id, new Date(parseLastModifiedToDate(lastModified)));
+@@ -730,7 +734,7 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+             
+             if (!sheetTimestamp) {
+                 // No existe en Sheets, enviar
+-                console.log('[SYNC-BIDI] Nuevo registro local:', id);
++                console.log('[SYNC-BIDI] nuevo en Sheets:', id);
+                 return true;
+             }
+             
+@@ -738,13 +742,13 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+                 // Local más reciente, enviar
+                 console.log('[SYNC-BIDI] Local más reciente:', id, 
+                     'local:', localTimestamp.toISOString(), 
+-                    'sheet:', sheetTimestamp.toISOString());
++                    'sheet:', sheetTimestamp.toISOString(), '-> actualizado en Sheets');
+                 return true;
+             }
+             
+             // Sheet más reciente o igual, omitir
+-            console.log('[SYNC-BIDI] Omitido (Sheet más reciente):', id);
++            console.log('[SYNC-BIDI] omitido por ser más viejo:', id, 
++                'local:', localTimestamp.toISOString(), 'sheet:', sheetTimestamp.toISOString());
+             return false;
+         });
+ 
+@@ -757,6 +761,8 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+ 
+         // Mapear datos para Sheets (formato A:O)
+         const data = aEnviar.map(r => {
++            console.log('[SYNC-BIDI] Preparando registro para Sheets:', r.id_presupuesto_ext);
++            
+             const pct = r.descuento == null ? null : Number(r.descuento);
+             const pctStr = pct == null ? '' : (pct > 1 ? `${pct}%` : `${pct*100}%`);
+             const lastModifiedAR = toSheetDateTimeAR(r.fecha_actualizacion || Date.now());
+@@ -785,7 +791,10 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+             );
+             
+             if (filaIndex >= 0) {
+-                // Actualizar fila existente
++                // Actualizar fila existente  
++                console.log('[SYNC-BIDI] Actualizando fila existente en Sheets:', id, 
++                    'fila:', filaIndex + 2);
++                    
+                 const range = `Presupuestos!A${filaIndex + 2}:O${filaIndex + 2}`;
+                 await sheets.spreadsheets.values.update({
+                     spreadsheetId: config.hoja_id,
+@@ -793,10 +802,12 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+                     valueInputOption: 'RAW',
+                     requestBody: { values: [registro], majorDimension: 'ROWS' }
+                 });
+-                console.log('[SYNC-BIDI] Actualizado en Sheets:', id);
++                console.log('[SYNC-BIDI] ✅ actualizado en Sheets:', id);
+             } else {
+                 // Agregar nueva fila
++                console.log('[SYNC-BIDI] Agregando nueva fila a Sheets:', id);
++                
+                 await sheets.spreadsheets.values.append({
+                     spreadsheetId: config.hoja_id,
+                     range: 'Presupuestos!A1:O1',
+@@ -804,7 +815,7 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+                     insertDataOption: 'INSERT_ROWS',
+                     requestBody: { values: [registro], majorDimension: 'ROWS' }
+                 });
+-                console.log('[SYNC-BIDI] Agregado a Sheets:', id);
++                console.log('[SYNC-BIDI] ✅ nuevo en Sheets:', id);
+             }
+         }
+ 
+@@ -812,7 +823,8 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
+         return insertedIds;
+         
+     } catch (e) {
+-        console.warn('[SYNC-BIDI] Error en push con timestamp:', e?.message);
++        console.error('[SYNC-BIDI] Error en push con timestamp:', e?.message);
++        console.error('[SYNC-BIDI] Stack trace:', e?.stack);
+         return new Set();
+     }
+ }

@@ -1,0 +1,39 @@
+[33mcommit 7a67cd39aaaa2269719768ee4a77294e32e29c78[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mrescate/presupuestos-rollback-2[m[33m)[m
+Author: TinchoProyect <miserrano75@gmail.com>
+Date:   Mon Aug 25 11:15:41 2025 -0300
+
+    revert(presupuestos): restaurar archivos del último commit de la IA
+
+D	CORRECCION_AUTENTICACION_COMPLETADA.md
+D	CORRECCION_MIDDLEWARE_VALIDACION.md
+D	CORRECCION_PUT_COMPLETADA_FINAL.md
+D	CORRECCION_PUT_EXITOSA_FINAL.md
+D	ESTADO_FINAL_CORRECCION_PUT.md
+D	ESTRATEGIA_BUSQUEDA_CLIENTES.md
+D	RESUMEN_CORRECCION_PUT_COMPLETADA.md
+D	TESTING_AUTENTICACION_COMPLETADO.md
+D	diagnostico_post_presupuesto.js
+M	src/app-etiquetas/temp/etiqueta_texto.zpl
+D	src/presupuestos/README_ESCRITURA_SHEETS.md
+D	src/presupuestos/README_FUNCIONALIDADES.md
+D	src/presupuestos/TESTING_COMPLETO_FINALIZADO.md
+D	src/presupuestos/TESTING_CRITICO_COMPLETADO.md
+M	src/presupuestos/app.js
+M	src/presupuestos/controllers/gsheets.js
+M	src/presupuestos/controllers/presupuestos.js
+D	src/presupuestos/controllers/presupuestosWrite.js
+D	src/presupuestos/css/action-buttons.css
+D	src/presupuestos/css/articulos-autocomplete.css
+M	src/presupuestos/js/presupuestos.js
+D	src/presupuestos/js/presupuestosCreate.js
+D	src/presupuestos/js/presupuestosEdit.js
+D	src/presupuestos/middleware/idempotency.js
+M	src/presupuestos/middleware/validation.js
+M	src/presupuestos/package.json
+D	src/presupuestos/pages/crear-presupuesto.html
+D	src/presupuestos/pages/editar-presupuesto.html
+M	src/presupuestos/pages/presupuestos.html
+M	src/presupuestos/routes/presupuestos.js
+D	src/services/gsheets/idGenerator.js
+D	src/services/gsheets/normalizer.js
+D	src/services/gsheets/writer.js

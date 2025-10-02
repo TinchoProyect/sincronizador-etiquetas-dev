@@ -1,0 +1,605 @@
+--- a/src/presupuestos/routes/presupuestos.js
++++ b/src/presupuestos/routes/presupuestos.js
+@@ -42,7 +42,8 @@ const {
+     obtenerEstadisticasFechas,
+     obtenerHistorialCorrecciones,
+     validarConfiguracion,
+-    ejecutarPushAltas
++    ejecutarPushAltas,
++    ejecutarSincronizacionBidireccional
+ } = require('../controllers/sync_fechas_fix');
+ 
+ // Importar controlador de Configuración de Autosync
+@@ -850,6 +851,20 @@ router.post('/sync/push-altas', validatePermissions('presupuestos.sync'), async
+     }
+ });
+ 
++/**
++ * @route POST /api/presupuestos/sync/bidireccional
++ * @desc Ejecutar sincronización bidireccional (push + pull) con regla "gana el último cambio"
++ * @access Privado
++ */
++router.post('/sync/bidireccional', validatePermissions('presupuestos.sync'), async (req, res) => {
++    console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/bidireccional - Ejecutando sincronización bidireccional');
++    
++    try {
++        await ejecutarSincronizacionBidireccional(req, res);
++    } catch (error) {
++        console.error('❌ [PRESUPUESTOS] Error en ruta POST /sync/bidireccional:', error);
++        res.status(500).json({
++            success: false,
++            error: 'Error interno al ejecutar sincronización bidireccional',
++            message: error.message
++        });
++    }
++});
++
+ // ===== RUTAS DE CONFIGURACIÓN DE AUTOSYNC =====
+ 
+ /**
+@@ -1010,6 +1025,7 @@ console.log('📅 [PRESUPUESTOS] Rutas de Corrección de Fechas:');
+ console.log('   - GET /api/presupuestos/sync/estadisticas-fechas');
+ console.log('   - GET /api/presupuestos/sync/historial-correcciones');
+ console.log('   - POST /api/presupuestos/sync/validar-configuracion');
+ console.log('   - POST /api/presupuestos/sync/push-altas');
++console.log('   - POST /api/presupuestos/sync/bidireccional');
+ console.log('⚙️ [PRESUPUESTOS] Rutas de Configuración de Autosync:');
+ console.log('   - GET /api/presupuestos/sync/config');
+ console.log('   - PATCH /api/presupuestos/sync/config');
+
+--- a/src/presupuestos/controllers/sync_fechas_fix.js
++++ b/src/presupuestos/controllers/sync_fechas_fix.js
+@@ -17,6 +17,18 @@ function toSheetDateTimeAR(value) {
+     return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+ }
+ 
++// Función helper para formato de fecha simple (d/m/yyyy)
++function toSheetDate(val) {
++    if (!val) return '';
++    const d = new Date(val);
++    if (isNaN(d)) {
++        // si ya viene en texto d/m/yyyy, lo dejamos
++        return String(val);
++    }
++    const dd = String(d.getDate()).padStart(2, '0');
++    const mm = String(d.getMonth() + 1).padStart(2, '0');
++    const yyyy = d.getFullYear();
++    return `${dd}/${mm}/${yyyy}`;
++}
++
+ /**
+  * CONTROLADOR DE CORRECCIÓN DE FECHAS
+  * API endpoints para la corrección definitiva de fechas DD/MM/YYYY
+@@ -575,9 +587,478 @@ const ejecutarPushAltas = async (req, res) => {
+     }
+ };
+ 
++/**
++ * Ejecutar sincronización bidireccional (push + pull) con regla "gana el último cambio"
++ * POST /api/presupuestos/sync/bidireccional
++ */
++const ejecutarSincronizacionBidireccional = async (req, res) => {
++    console.log('[SYNC-BIDI] Iniciando sincronización bidireccional...');
++    
++    try {
++        // PASO 1: Resolver configuración (igual que otros endpoints)
++        let config = null;
++        
++        try {
++            const configQuery = `
++                SELECT sheet_url, sheet_id 
++                FROM presupuestos_config 
++                WHERE activo = true 
++                ORDER BY fecha_creacion DESC 
++                LIMIT 1
++            `;
++            
++            const configResult = await req.db.query(configQuery);
++            
++            if (configResult.rows.length > 0) {
++                const configPersistida = configResult.rows[0];
++                console.log('[SYNC-BIDI] Configuración persistida encontrada:', configPersistida.sheet_id);
++                
++                config = {
++                    hoja_id: configPersistida.sheet_id,
++                    hoja_url: configPersistida.sheet_url,
++                    hoja_nombre: 'PresupuestosCopia',
++                    usuario_id: req.user?.id || null
++                };
++            } else {
++                console.log('[SYNC-BIDI] Usando configuración por defecto...');
++                
++                config = {
++                    hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
++                    hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
++                    hoja_nombre: 'PresupuestosCopia',
++                    usuario_id: req.user?.id || null
++                };
++            }
++            
++        } catch (dbError) {
++            console.log('[SYNC-BIDI] Error DB, usando configuración por defecto:', dbError.message);
++            
++            config = {
++                hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
++                hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
++                hoja_nombre: 'PresupuestosCopia',
++                usuario_id: req.user?.id || null
++            };
++        }
++        
++        if (!config.hoja_id) {
++            console.log('[SYNC-BIDI] Error: No se encontró configuración válida');
++            return res.status(400).json({
++                success: false,
++                code: 'CONFIG_MISSING',
++                message: 'No se encontró configuración válida',
++                timestamp: new Date().toISOString()
++            });
++        }
++        
++        console.log('[SYNC-BIDI] Configuración final:', {
++            hoja_id: config.hoja_id,
++            hoja_nombre: config.hoja_nombre
++        });
++        
++        // PASO 2: Leer datos actuales de Sheets
++        console.log('[SYNC-BIDI] Leyendo datos actuales de Sheets...');
++        const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
++        const detallesSheets = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
++        
++        console.log('[SYNC-BIDI] Datos leídos de Sheets:', {
++            presupuestos: presupuestosSheets.rows.length,
++            detalles: detallesSheets.rows.length
++        });
++        
++        // PASO 3: Ejecutar PUSH de cambios locales más recientes
++        console.log('[SYNC-BIDI] === FASE PUSH: Enviando cambios locales ===');
++        
++        const { pushAltasLocalesASheets, pushDetallesLocalesASheets } = require('../../services/gsheets/sync_fechas_fix');
++        
++        const presupuestosData_like = { 
++            headers: presupuestosSheets.headers, 
++            rows: presupuestosSheets.rows 
++        };
++        
++        // Push con comparación de timestamps
++        const insertedIds = await pushCambiosLocalesConTimestamp(presupuestosData_like, config, req.db);
++        await pushDetallesLocalesASheets(insertedIds, config, req.db);
++        
++        console.log('[SYNC-BIDI] Push completado. IDs enviados:', insertedIds?.size || 0);
++        
++        // PASO 4: Ejecutar PULL de cambios remotos más recientes
++        console.log('[SYNC-BIDI] === FASE PULL: Recibiendo cambios remotos ===');
++        
++        // Releer Sheets después del push
++        const presupuestosActualizados = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
++        const detallesActualizados = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
++        
++        const pullResult = await pullCambiosRemotosConTimestamp(presupuestosActualizados, detallesActualizados, req.db);
++        
++        console.log('[SYNC-BIDI] Pull completado. Registros actualizados:', pullResult.actualizados);
++        
++        // PASO 5: Responder con resumen
++        res.json({
++            success: true,
++            push: {
++                enviados: insertedIds ? insertedIds.size : 0,
++                detallesEnviados: null // pushDetallesLocalesASheets no retorna número
++            },
++            pull: {
++                recibidos: pullResult.recibidos,
++                actualizados: pullResult.actualizados,
++                omitidos: pullResult.omitidos
++            },
++            timestamp: new Date().toISOString()
++        });
++        
++    } catch (error) {
++        console.error('[SYNC-BIDI] Error en sincronización bidireccional:', error.message);
++        res.status(500).json({
++            success: false,
++            code: 'SYNC_BIDI_ERROR',
++            message: 'Error interno en sincronización bidireccional',
++            details: error.message,
++            timestamp: new Date().toISOString()
++        });
++    }
++};
++
++/**
++ * Push de cambios locales con comparación de timestamp
++ */
++async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
++    console.log('[SYNC-BIDI] Comparando timestamps para push...');
++    
++    try {
++        const { getSheets } = require('../../google/gsheetsClient');
++        const sheets = await getSheets();
++
++        // Crear mapa de timestamps de Sheets (ID -> LastModified)
++        const sheetsTimestamps = new Map();
++        presupuestosData.rows.forEach(row => {
++            const id = (row[presupuestosData.headers[0]] || '').toString().trim();
++            const lastModified = row[presupuestosData.headers[13]]; // columna N
++            if (id && lastModified) {
++                sheetsTimestamps.set(id, new Date(parseLastModifiedToDate(lastModified)));
++            }
++        });
++
++        // Obtener registros locales activos
++        const rs = await db.query(`
++            SELECT id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
++                   nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
++                   fecha_actualizacion
++            FROM public.presupuestos
++            WHERE activo = true
++        `);
++
++        // Filtrar solo los que son más recientes localmente
++        const aEnviar = rs.rows.filter(r => {
++            const id = (r.id_presupuesto_ext || '').toString().trim();
++            const localTimestamp = new Date(r.fecha_actualizacion || Date.now());
++            const sheetTimestamp = sheetsTimestamps.get(id);
++            
++            if (!sheetTimestamp) {
++                // No existe en Sheets, enviar
++                console.log('[SYNC-BIDI] Nuevo registro local:', id);
++                return true;
++            }
++            
++            if (localTimestamp > sheetTimestamp) {
++                // Local más reciente, enviar
++                console.log('[SYNC-BIDI] Local más reciente:', id, 
++                    'local:', localTimestamp.toISOString(), 
++                    'sheet:', sheetTimestamp.toISOString());
++                return true;
++            }
++            
++            // Sheet más reciente o igual, omitir
++            console.log('[SYNC-BIDI] Omitido (Sheet más reciente):', id);
++            return false;
++        });
++
++        if (aEnviar.length === 0) {
++            console.log('[SYNC-BIDI] No hay cambios locales para enviar');
++            return new Set();
++        }
++
++        console.log('[SYNC-BIDI] Enviando', aEnviar.length, 'registros actualizados localmente');
++
++        // Mapear datos para Sheets (formato A:O)
++        const data = aEnviar.map(r => {
++            const pct = r.descuento == null ? null : Number(r.descuento);
++            const pctStr = pct == null ? '' : (pct > 1 ? `${pct}%` : `${pct*100}%`);
++            const lastModifiedAR = toSheetDateTimeAR(r.fecha_actualizacion || Date.now());
++            
++            return [
++                (r.id_presupuesto_ext ?? '').toString().trim(),     // A  IDPresupuesto
++                toSheetDate(r.fecha),                               // B  Fecha
++                r.id_cliente ?? '',                                 // C  IDCliente
++                r.agente ?? '',                                     // D  Agente
++                toSheetDate(r.fecha_entrega),                       // E  Fecha de entrega
++                r.tipo_comprobante ?? '',                           // F  Factura/Efectivo
++                r.nota ?? '',                                       // G  Nota
++                r.estado ?? '',                                     // H  Estado
++                r.informe_generado ?? '',                           // I  InformeGenerado
++                r.cliente_nuevo_id ?? '',                           // J  ClienteNuevID
++                '',                                                 // K  Estado/ImprimePDF
++                r.punto_entrega ?? '',                              // L  PuntoEntrega
++                pctStr,                                             // M  Descuento
++                lastModifiedAR,                                     // N  LastModified
++                true                                                // O  Activo
++            ];
++        });
++
++        // Actualizar registros existentes en Sheets (no append, sino update)
++        for (const registro of data) {
++            const id = registro[0];
++            // Buscar fila en Sheets y actualizar
++            const filaIndex = presupuestosData.rows.findIndex(row => 
++                (row[presupuestosData.headers[0]] || '').toString().trim() === id
++            );
++            
++            if (filaIndex >= 0) {
++                // Actualizar fila existente
++                const range = `Presupuestos!A${filaIndex + 2}:O${filaIndex + 2}`;
++                await sheets.spreadsheets.values.update({
++                    spreadsheetId: config.hoja_id,
++                    range: range,
++                    valueInputOption: 'RAW',
++                    requestBody: { values: [registro], majorDimension: 'ROWS' }
++                });
++                console.log('[SYNC-BIDI] Actualizado en Sheets:', id);
++            } else {
++                // Agregar nueva fila
++                await sheets.spreadsheets.values.append({
++                    spreadsheetId: config.hoja_id,
++                    range: 'Presupuestos!A1:O1',
++                    valueInputOption: 'RAW',
++                    insertDataOption: 'INSERT_ROWS',
++                    requestBody: { values: [registro], majorDimension: 'ROWS' }
++                });
++                console.log('[SYNC-BIDI] Agregado a Sheets:', id);
++            }
++        }
++
++        const insertedIds = new Set(aEnviar.map(r => (r.id_presupuesto_ext ?? '').toString().trim()));
++        return insertedIds;
++        
++    } catch (e) {
++        console.warn('[SYNC-BIDI] Error en push con timestamp:', e?.message);
++        return new Set();
++    }
++}
++
++/**
++ * Pull de cambios remotos con comparación de timestamp
++ */
++async function pullCambiosRemotosConTimestamp(presupuestosSheets, detallesSheets, db) {
++    console.log('[SYNC-BIDI] Comparando timestamps para pull...');
++    
++    let recibidos = 0;
++    let actualizados = 0;
++    let omitidos = 0;
++    
++    try {
++        // Crear mapa de timestamps locales
++        const localTimestamps = new Map();
++        const rsLocal = await db.query(`
++            SELECT id_presupuesto_ext, fecha_actualizacion
++            FROM public.presupuestos
++            WHERE activo = true
++        `);
++        
++        rsLocal.rows.forEach(row => {
++            const id = (row.id_presupuesto_ext || '').toString().trim();
++            const timestamp = new Date(row.fecha_actualizacion || 0);
++            localTimestamps.set(id, timestamp);
++        });
++
++        // Procesar registros de Sheets
++        for (const row of presupuestosSheets.rows) {
++            const id = (row[presupuestosSheets.headers[0]] || '').toString().trim();
++            const sheetLastModified = row[presupuestosSheets.headers[13]]; // columna N
++            
++            if (!id || !sheetLastModified) continue;
++            
++            const sheetTimestamp = new Date(parseLastModifiedToDate(sheetLastModified));
++            //const localTimestamp = localTimestamps.get(id);
+               const local = localInfo.get(id);
+               const localTimestamp = local?.ts;
+
++            
++            if (!localTimestamp) {
++                // No existe localmente, crear
++                await insertarPresupuestoDesdeSheet(row, presupuestosSheets.headers, db);
++                recibidos++;
++                console.log('[SYNC-BIDI] Nuevo desde Sheets:', id);
++            } else if (sheetTimestamp > localTimestamp) {
++                // Sheet más reciente, actualizar local
++                await actualizarPresupuestoDesdeSheet(row, presupuestosSheets.headers, db);
++                actualizados++;
++                console.log('[SYNC-BIDI] Actualizado desde Sheets:', id,
++                    'sheet:', sheetTimestamp.toISOString(),
++                    'local:', localTimestamp.toISOString());
++            } else {
++                // Local más reciente o igual, omitir
++                omitidos++;
++            }
++        }
++
++        console.log('[SYNC-BIDI] Pull completado:', { recibidos, actualizados, omitidos });
++        
++        return { recibidos, actualizados, omitidos };
++        
++    } catch (error) {
++        console.error('[SYNC-BIDI] Error en pull:', error.message);
++        return { recibidos, actualizados, omitidos };
++    }
++}
++
++/**
++ * Helper para parsear LastModified a Date
++ */
++function parseLastModifiedToDate(value) {
++    if (!value) return new Date(0);
++    
++    try {
++        // Intentar parseo directo
++        const date = new Date(value);
++        if (!isNaN(date.getTime())) {
++            return date;
++        }
++        
++        // Intentar formato dd/mm/yyyy hh:mm[:ss]
++        const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
++        const match = value.match(ddmmyyyyRegex);
++        
++        if (match) {
++            const [, day, month, year, hour, minute, second = '00'] = match;
++            return new Date(year, month - 1, day, hour, minute, second);
++        }
++        
++        return new Date(0);
++    } catch (error) {
++        return new Date(0);
++    }
++}
++
++/**
++ * Insertar presupuesto desde Sheet
++ */
++async function insertarPresupuestoDesdeSheet(row, headers, db) {
++    try {
++        const presupuesto = procesarPresupuestoDesdeSheet(row, headers);
++        
++        const insertQuery = `
++            INSERT INTO presupuestos 
++            (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
++             nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
++             activo, fecha_actualizacion, hoja_nombre, hoja_url, usuario_id)
++            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
++        `;
++        
++        await db.query(insertQuery, [
++            presupuesto.id_presupuesto_ext,
++            presupuesto.id_cliente,
++            presupuesto.fecha,
++            presupuesto.fecha_entrega,
++            presupuesto.agente,
++            presupuesto.tipo_comprobante,
++            presupuesto.nota,
++            presupuesto.estado,
++            presupuesto.informe_generado,
++            presupuesto.cliente_nuevo_id,
++            presupuesto.punto_entrega,
++            presupuesto.descuento,
++            presupuesto.activo,
++            presupuesto.lastModified,
++            presupuesto.hoja_nombre,
++            presupuesto.hoja_url,
++            presupuesto.usuario_id
++        ]);
++        
++    } catch (error) {
++        console.error('[SYNC-BIDI] Error insertando desde Sheet:', error.message);
++    }
++}
++
++/**
++ * Actualizar presupuesto desde Sheet
++ */
++async function actualizarPresupuestoDesdeSheet(row, headers, db) {
++    try {
++        const presupuesto = procesarPresupuestoDesdeSheet(row, headers);
++        
++        const updateQuery = `
++            UPDATE presupuestos SET
++                id_cliente = $2,
++                fecha = $3,
++                fecha_entrega = $4,
++                agente = $5,
++                tipo_comprobante = $6,
++                nota = $7,
++                estado = $8,
++                informe_generado = $9,
++                cliente_nuevo_id = $10,
++                punto_entrega = $11,
++                descuento = $12,
++                activo = $13,
++                fecha_actualizacion = $14
++            WHERE id_presupuesto_ext = $1
++        `;
++        
++        await db.query(updateQuery, [
++            presupuesto.id_presupuesto_ext,
++            presupuesto.id_cliente,
++            presupuesto.fecha,
++            presupuesto.fecha_entrega,
++            presupuesto.agente,
++            presupuesto.tipo_comprobante,
++            presupuesto.nota,
++            presupuesto.estado,
++            presupuesto.informe_generado,
++            presupuesto.cliente_nuevo_id,
++            presupuesto.punto_entrega,
++            presupuesto.descuento,
++            presupuesto.activo,
++            presupuesto.lastModified
++        ]);
++        
++    } catch (error) {
++        console.error('[SYNC-BIDI] Error actualizando desde Sheet:', error.message);
++    }
++}
++
++/**
++ * Procesar presupuesto desde Sheet
++ */
++function procesarPresupuestoDesdeSheet(row, headers) {
++    const { parseDate } = require('../../services/gsheets/transformer');
++    
++    // Procesar columna Activo (columna O = headers[14])
++    const activoValue = row[headers[14]];
++    let activo = true;
++    if (activoValue !== undefined && activoValue !== null && activoValue !== '') {
++        const activoStr = activoValue.toString().toLowerCase();
++        if (activoStr === 'false' || activoStr === '0') {
++            activo = false;
++        }
++    }
++    
++    // Procesar LastModified (columna N = headers[13])
++    const lastModifiedValue = row[headers[13]];
++    const lastModified = parseLastModifiedToDate(lastModifiedValue);
++    
++    return {
++        id_presupuesto_ext: (row[headers[0]] || '').toString().trim(),
++        id_cliente: (row[headers[2]] || '').toString().trim(),
++        fecha: parseDate(row[headers[1]]),
++        fecha_entrega: parseDate(row[headers[4]]),
++        agente: row[headers[3]] || null,
++        tipo_comprobante: row[headers[5]] || null,
++        nota: row[headers[6]] || null,
++        estado: row[headers[7]] || 'pendiente',
++        informe_generado: row[headers[8]] || null,
++        cliente_nuevo_id: row[headers[9]] || null,
++        punto_entrega: row[headers[11]] || null,
++        descuento: parseFloat(row[headers[12]]) || 0,
++        activo: activo,
++        lastModified: lastModified.toISOString(),
++        hoja_nombre: 'Presupuestos',
++        hoja_url: null,
++        usuario_id: null
++    };
++}
++
+ console.log('[SYNC-FECHAS-CONTROLLER] ✅ Controlador de corrección de fechas configurado');
+ 
+ module.exports = {
+     ejecutarCorreccion,
+     obtenerEstadisticasFechas,
+     obtenerHistorialCorrecciones,
+     validarConfiguracion,
+-    ejecutarPushAltas
++    ejecutarPushAltas,
++    ejecutarSincronizacionBidireccional
+ };
+
+--- a/src/presupuestos/js/presupuestos.js
++++ b/src/presupuestos/js/presupuestos.js
+@@ -35,6 +35,7 @@ const URLS = {
+   ESTADOS: API_BASE + '/estados',
+   CORREGIR_FECHAS: API_BASE + '/sync/corregir-fechas',
+   PUSH_ALTAS: API_BASE + '/sync/push-altas',
++  SYNC_BIDIRECCIONAL: API_BASE + '/sync/bidireccional',
+   LIST: (qs) => API_BASE + '/?' + (qs || ''),
+   DETALLES: (id) => API_BASE + '/' + id + '/detalles',
+   PRESUPUESTO: (id) => API_BASE + '/' + id,
+@@ -430,7 +431,7 @@ async function executeSyncronization() {
+         setSyncLoading(true, 'Enviando ALTAS locales a Google Sheets (push)...');
+         
+         // USAR EL NUEVO ENDPOINT DE PUSH DE ALTAS
+-        const response = await fetch(URLS.PUSH_ALTAS, {
++        const response = await fetch(URLS.SYNC_BIDIRECCIONAL, {
+             method: 'POST',
+             headers: {
+                 'Content-Type': 'application/json'
+@@ -440,17 +441,25 @@ async function executeSyncronization() {
+         const data = await response.json();
+         
+         if (data.success) {
+-            const fechasCorregidas = data.resumen?.fechasCorregidas || data.fechasCorregidas || 0;
+-            const fechasFuturas = data.resumen?.fechasFuturas || data.fechasFuturas || 0;
+-            const duracion = data.duracionSegundos || 'N/A';
++            const enviados = data.push?.enviados || 0;
++            const recibidos = data.pull?.recibidos || 0;
++            const actualizados = data.pull?.actualizados || 0;
++            const omitidos = data.pull?.omitidos || 0;
+             
+-            console.log('✅ [PRESUPUESTOS-JS] Corrección de fechas completada:', data);
+-            console.log(`📊 [PRESUPUESTOS-JS] Fechas corregidas: ${fechasCorregidas}, Fechas futuras restantes: ${fechasFuturas}`);
++            console.log('✅ [PRESUPUESTOS-JS] Sincronización bidireccional completada:', data);
++            console.log(`📊 [SYNC-BIDI] Push: ${enviados} enviados`);
++            console.log(`📊 [SYNC-BIDI] Pull:
