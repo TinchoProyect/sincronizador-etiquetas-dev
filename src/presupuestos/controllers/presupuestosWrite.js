@@ -340,8 +340,10 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
                  diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
             `;
-            for (const detalle of detallesNormalizados) {
-                await client.query(insertDetalleQuery, [
+                let detallesInsertados = 0;
+                for (const detalle of detallesNormalizados) {
+                    console.log(`[PUT-DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
+                    await client.query(insertDetalleQuery, [
                     presupuestoBD.id,
                     detalle.id_presupuesto_ext,
                     detalle.articulo,
@@ -652,29 +654,41 @@ const editarPresupuesto = async (req, res) => {
 
             // Determinar si actualizar detalles
             if (Array.isArray(detalles)) {
+                console.log(`[PUT-DET] ===== INICIO PROCESAMIENTO DETALLES =====`);
+                console.log(`[PUT-DET] detalles recibidos:`, JSON.stringify(detalles, null, 2));
+                console.log(`[PUT-DET] detalles.length: ${detalles.length}`);
+                console.log(`[PUT-DET] primer detalle:`, detalles[0]);
                 console.log(`[PUT-DET] reemplazando detalles → count=${detalles.length}`);
 
                 // Validar detalles antes de procesar
                 for (const det of detalles) {
                     const barcode = (det.articulo || '').toString().trim();
+                    console.log(`[PUT-DET] Validando detalle: articulo="${barcode}", cantidad=${det.cantidad}, valor1=${det.valor1}`);
                     if (!barcode) {
+                        console.error(`[PUT-DET] ❌ Detalle sin código de barras válido:`, det);
                         throw new Error(`Detalle sin código de barras válido: ${JSON.stringify(det)}`);
                     }
                 }
+                console.log(`[PUT-DET] ✅ Todos los detalles validados correctamente`);
 
                 // 1. Eliminar detalles existentes
+                console.log(`[PUT-DET] Ejecutando DELETE de detalles existentes para id_presupuesto=${presupuesto.id}`);
                 const deleteDetallesQuery = `
                     DELETE FROM presupuestos_detalles
                     WHERE id_presupuesto = $1
                 `;
                 const deleteResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
                 const detallesEliminados = deleteResult.rowCount;
+                console.log(`[PUT-DET] ✅ DELETE ejecutado: ${detallesEliminados} detalles eliminados`);
 
                 // 2. Construir detalles normalizados (USAR MISMO CÁLCULO QUE EN CREACIÓN)
+                console.log(`[PUT-DET] Construyendo detalles normalizados...`);
                 const detallesNormalizados = [];
                 const detallesInput = Array.isArray(detalles) ? detalles : [];
+                console.log(`[PUT-DET] detallesInput.length: ${detallesInput.length}`);
 
                 for (const det of detallesInput) {
+                    console.log(`[PUT-DET] Procesando detalle:`, det);
                     const cantidad = normalizeNumber(det.cantidad || 0);          // D
                     const netoUnit = normalizeNumber(det.valor1 || 0);            // E
                     const alicDec  = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
@@ -712,18 +726,25 @@ const editarPresupuesto = async (req, res) => {
                     console.log(`✅ [CAMP-MAPPING-DESPUES-EDIT] ${requestId} - CAMP2<=alicDec, CAMP3<=netoTotal, CAMP4<=brutoTotal, CAMP5<=ivaTotal, CAMP6<=null`);
                 }
 
+                console.log(`[PUT-DET] ===== RESUMEN NORMALIZACIÓN =====`);
+                console.log(`[PUT-DET] Total detalles normalizados: ${detallesNormalizados.length}`);
                 if (detallesNormalizados.length > 0) {
-                    console.log(`[PUT-DET] ejemplo primer detalle normalizado`, detallesNormalizados[0]);
+                    console.log(`[PUT-DET] Ejemplo primer detalle normalizado:`, detallesNormalizados[0]);
+                } else {
+                    console.warn(`[PUT-DET] ⚠️ NO SE NORMALIZÓ NINGÚN DETALLE - Los detalles desaparecerán`);
                 }
 
                 // 3. Insertar nuevos detalles (versión simple)
+                console.log(`[PUT-DET] Iniciando INSERT de ${detallesNormalizados.length} detalles...`);
                 const insertDetalleQuery = `
                     INSERT INTO presupuestos_detalles
                     (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
                      diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                 `;
+                let detallesInsertados = 0;
                 for (const detalle of detallesNormalizados) {
+                    console.log(`[PUT-DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
                     await client.query(insertDetalleQuery, [
                         presupuesto.id,
                         detalle.id_presupuesto_ext,
@@ -740,9 +761,13 @@ const editarPresupuesto = async (req, res) => {
                         detalle.camp5,
                         detalle.camp6
                     ]);
+                    detallesInsertados++;
                 }
 
-                console.log(`[PUT-DET] eliminados=${detallesEliminados} insertados=${detallesNormalizados.length}`);
+                console.log(`[PUT-DET] ===== RESUMEN FINAL =====`);
+                console.log(`[PUT-DET] Detalles eliminados: ${detallesEliminados}`);
+                console.log(`[PUT-DET] Detalles insertados: ${detallesInsertados}`);
+                console.log(`[PUT-DET] ✅ Operación de detalles completada`);
                 
                 // Log antes del COMMIT
                 console.log(`[TRACE-EDIT-LOCAL] id=${presupuesto.id_presupuesto_ext} detalles_eliminados=${detallesEliminados} detalles_insertados=${detallesNormalizados.length}`);
