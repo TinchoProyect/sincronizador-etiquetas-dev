@@ -2683,8 +2683,75 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
         console.log(`[LWW-REAL]   Procesados efectivamente: ${procesadosLWW}`);
         console.log(`[LWW-REAL]   Omitidos por anteriores a última_sync: ${omitidosPorAnteriores}`);
         
+        // PASO 3B: Sincronizar presupuestos con DETALLES modificados (FIX CRÍTICO)
+        console.log('\n[LWW-REAL] 🔍 Verificando detalles modificados en JIT...');
+        
+        const idsConDetallesModificados = new Set();
+        
+        detallesSheets.rows.forEach(detRow => {
+            const idPresupuesto = (detRow[detallesSheets.headers[1]] || '').toString().trim();
+            const detalleLastModified = detRow[detallesSheets.headers[15]]; // Columna P: LastModified
+            
+            if (!idPresupuesto || !detalleLastModified) return;
+            
+            // Excluir IDs ya procesados en PUSH o en el bucle anterior
+            if (idsModificadosLocalmente.has(idPresupuesto) || idsCambiados.has(idPresupuesto)) return;
+            
+            const detalleTimestamp = parseLastModifiedRobust(detalleLastModified);
+            
+            // Si el detalle fue modificado después de la última sync
+            if (detalleTimestamp > fechaUltimaSync) {
+                idsConDetallesModificados.add(idPresupuesto);
+            }
+        });
+        
+        console.log(`[LWW-REAL] Presupuestos con detalles modificados en JIT: ${idsConDetallesModificados.size}`);
+        
+        if (idsConDetallesModificados.size > 0) {
+            console.log(`[LWW-REAL] IDs con detalles modificados: ${Array.from(idsConDetallesModificados).join(', ')}`);
+            
+            for (const id of idsConDetallesModificados) {
+                // Buscar presupuesto en Sheets
+                const presupRow = presupuestosSheets.rows.find(r => 
+                    (r[presupuestosSheets.headers[0]] || '').toString().trim() === id
+                );
+                
+                if (!presupRow) {
+                    console.log(`[LWW-REAL] ⚠️ Presupuesto ${id} no encontrado en Sheets`);
+                    continue;
+                }
+                
+                const localTimestampData = localTimestamps.get(id);
+                const remoteActivoRaw = presupRow[presupuestosSheets.headers[14]];
+                const remoteActivo = parseActivo(remoteActivoRaw);
+                
+                if (!localTimestampData) {
+                    // No existe en local → crear
+                    if (remoteActivo === false) {
+                        console.log(`[LWW-REAL] Omitiendo presupuesto inactivo: ${id}`);
+                        continue;
+                    }
+                    
+                    await insertarPresupuestoDesdeSheet(presupRow, presupuestosSheets.headers, db);
+                    recibidos++;
+                    idsCambiados.add(id);
+                    console.log(`[LWW-REAL] ✅ NUEVO (por detalle modificado en JIT): ${id}`);
+                } else {
+                    // Existe en local → actualizar
+                    console.log(`[SYNC-LWW] ID: ${id}`);
+                    console.log(`[SYNC-LWW]   Razón: Detalle modificado en JIT después de última sync`);
+                    console.log(`[SYNC-LWW]   Decisión: Actualizar LOCAL desde JIT`);
+                    
+                    await actualizarPresupuestoDesdeSheet(presupRow, presupuestosSheets.headers, db);
+                    actualizados++;
+                    idsCambiados.add(id);
+                    console.log(`[LWW-REAL] ✅ ACTUALIZADO (por detalle modificado en JIT): ${id}`);
+                }
+            }
+        }
+        
         // INFORMACIÓN TEMPRANA: Si no hay candidatos, informar sin hacer cambios
-        if (candidatosLWW === 0) {
+        if (candidatosLWW === 0 && idsConDetallesModificados.size === 0) {
             console.log('[LWW-REAL] ℹ️ NO HAY REGISTROS POSTERIORES A LA ÚLTIMA SINCRONIZACIÓN');
             console.log('[LWW-REAL] ℹ️ No se realizarán cambios en esta sincronización');
             

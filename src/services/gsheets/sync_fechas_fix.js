@@ -720,7 +720,18 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
 
     // Armar set de IDs remotos con lo que ya leíste de Sheets
     const idCol = presupuestosData.headers[0]; // "IDPresupuesto"
+    const lmCol = presupuestosData.headers[13]; // "LastModified"
     const remoteIds = new Set(presupuestosData.rows.map(r => r[idCol]).filter(Boolean));
+    
+    // Crear mapa de timestamps remotos
+    const remoteTimestamps = new Map();
+    presupuestosData.rows.forEach(row => {
+      const id = row[idCol];
+      const lastMod = row[lmCol];
+      if (id && lastMod) {
+        remoteTimestamps.set(id, lastMod);
+      }
+    });
 
     // DETECTAR PRESUPUESTOS CON CAMBIOS (nuevos O con detalles modificados)
     const cutoffAt = config.cutoff_at;
@@ -739,9 +750,59 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
         )
     `, [cutoffAt]);
     
-    // SEPARAR: nuevos (INSERT) vs modificados (UPDATE)
-    const toInsert = locales.filter(p => !remoteIds.has(p.id_presupuesto_ext));
-    const toUpdate = locales.filter(p => remoteIds.has(p.id_presupuesto_ext));
+    // FILTRO CRÍTICO: Excluir presupuestos que tienen cambios más recientes en SHEET
+    console.log('[PUSH-HEAD] Comparando timestamps LOCAL vs SHEET...');
+    
+    const parseLastModified = (val) => {
+      if (!val) return new Date(0);
+      if (typeof val === 'number') {
+        const excelEpoch = new Date(1900, 0, 1);
+        const days = val - 2;
+        return new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+      }
+      const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/;
+      const match = String(val).match(ddmmyyyyRegex);
+      if (match) {
+        const [, day, month, year, hour, minute, second] = match;
+        return new Date(year, month - 1, day, hour, minute, second);
+      }
+      return new Date(val);
+    };
+    
+    const localesFiltrados = locales.filter(local => {
+      const remoteLastMod = remoteTimestamps.get(local.id_presupuesto_ext);
+      
+      if (!remoteLastMod) {
+        // No existe en SHEET → es NUEVO, incluir
+        console.log(`[SYNC-LWW] ID: ${local.id_presupuesto_ext} - NUEVO (no existe en SHEET)`);
+        return true;
+      }
+      
+      const localTimestamp = new Date(local.fecha_actualizacion);
+      const remoteTimestamp = parseLastModified(remoteLastMod);
+      
+      console.log(`[SYNC-LWW] ID: ${local.id_presupuesto_ext}`);
+      console.log(`[SYNC-LWW]   Local: ${localTimestamp.toISOString()}`);
+      console.log(`[SYNC-LWW]   Sheet: ${remoteTimestamp.toISOString()}`);
+      
+      if (localTimestamp > remoteTimestamp) {
+        console.log(`[SYNC-LWW]   Decisión: LOCAL gana (más reciente) → PUSH a SHEET`);
+        return true;
+      } else if (remoteTimestamp > localTimestamp) {
+        console.log(`[SYNC-LWW]   Decisión: SHEET gana (más reciente) → NO enviar, esperar PULL`);
+        return false;
+      } else {
+        // Empate → mantener SHEET (no enviar)
+        console.log(`[SYNC-LWW]   Decisión: EMPATE → mantener SHEET (no enviar)`);
+        return false;
+      }
+    });
+    
+    console.log(`[PUSH-HEAD] Filtrados: ${locales.length} → ${localesFiltrados.length} (excluidos ${locales.length - localesFiltrados.length} por SHEET más reciente)`);
+    
+    // SEPARAR: nuevos (INSERT) vs modificados (UPDATE) - USAR LOCALES FILTRADOS
+    const toInsert = localesFiltrados.filter(p => !remoteIds.has(p.id_presupuesto_ext));
+    const toUpdate = localesFiltrados.filter(p => remoteIds.has(p.id_presupuesto_ext));
     
     const insertedIds = new Set(toInsert.map(p => p.id_presupuesto_ext));
     const modifiedIds = new Set(toUpdate.map(p => p.id_presupuesto_ext));
