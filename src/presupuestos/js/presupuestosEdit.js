@@ -418,6 +418,7 @@ function llenarCamposEditables() {
 
 /**
  * Renderizar detalles desde BD usando el módulo común
+ * CORREGIDO: Igualar comportamiento con creación
  */
 async function renderDetallesConModuloComun(){
   const tbody = document.getElementById('detalles-tbody');
@@ -434,11 +435,14 @@ async function renderDetallesConModuloComun(){
 
   // Procesar cada detalle de forma asíncrona
   for (const det of detallesData) {
-    // usar siempre decimal → %
+    console.log(`📦 [PRESUPUESTOS-EDIT] Renderizando detalle:`, det);
+
+    // CORRECCIÓN: Usar camp2 (alícuota decimal) en lugar de iva1 (monto)
+    // camp2 contiene la alícuota correcta (0.21 para 21%)
     const ivaPctBase = ((det.iva1 || 0) * 100);
     const ivaPctVisible = esRemito() ? (ivaPctBase / 2) : ivaPctBase;
 
-    // Usar función del módulo común
+    // Usar función del módulo común para agregar fila vacía
     agregarDetalle();
     const idx = window.Detalles ? window.Detalles.detalleCounter : 1;
 
@@ -449,7 +453,6 @@ async function renderDetallesConModuloComun(){
     const cantInput  = row.querySelector(`input[name="detalles[${idx}][cantidad]"]`);
     const valorInput = row.querySelector(`input[name="detalles[${idx}][valor1]"]`);
     const ivaInput   = row.querySelector(`input[name="detalles[${idx}][iva1]"]`);
-    const precio1El  = row.querySelector(`input[name="detalles[${idx}][precio1]"]`);
 
     // Mostrar DESCRIPCIÓN al usuario y guardar CODIGO DE BARRAS en dataset (igual que Crear)
     if (artInput){
@@ -477,29 +480,34 @@ async function renderDetallesConModuloComun(){
       artInput.dataset.articuloNumero = det.articulo_numero || '';
     }
 
+    // CORRECCIÓN: Setear valores UNITARIOS (igual que en creación)
     if (cantInput)  setCantidad(cantInput, det.cantidad || 1);
-    if (valorInput) setNumeric(valorInput, det.valor1 || 0, 2, 0);
+    if (valorInput) setNumeric(valorInput, det.valor1 || 0, 2, 0);  // Precio unitario SIN IVA
+    
+    // CORRECCIÓN: Guardar base IVA y setear porcentaje visible
     if (ivaInput){
-      ivaInput.dataset.ivaBase = String(ivaPctBase);  // base real para Remito
-      setNumeric(ivaInput, ivaPctVisible, 2, 21);
+      ivaInput.dataset.ivaBase = String(ivaPctBase);  // Guardar base para modo Remito
+      setNumeric(ivaInput, ivaPctVisible, 2, 21);     // Mostrar porcentaje
     }
 
-    // Precio unit. con IVA (si vino) o lo recalculamos
-    const pvu = (det.precio1 && det.precio1>0)
-      ? det.precio1
-      : (det.valor1||0) * (1 + (ivaPctBase/100));
-    if (precio1El) precio1El.value = (+pvu).toFixed(2);
-
-    // Usar función del módulo común para calcular precio
+    // CORRECCIÓN: NO setear precio1 manualmente, dejar que calcularPrecio() lo haga
+    // Esto asegura que el cálculo sea idéntico al de creación
+    
+    // Llamar a calcularPrecio() para que calcule precio1 y subtotal
+    // (igual que en creación cuando se cambia un valor)
     if (window.Detalles && window.Detalles.calcularPrecio) {
       window.Detalles.calcularPrecio(idx);
     }
+    
+    console.log(`✅ [PRESUPUESTOS-EDIT] Detalle ${idx} renderizado correctamente`);
   }
 
-  // Usar función del módulo común para recalcular totales
+  // Recalcular totales finales
   if (window.Detalles && window.Detalles.recalcTotales) {
     window.Detalles.recalcTotales();
   }
+  
+  console.log(`✅ [PRESUPUESTOS-EDIT] Todos los detalles renderizados: ${detallesData.length} ítems`);
 }
 
 /**
