@@ -46,35 +46,46 @@
     }
   }
 
-  // Usar funciones del módulo común en lugar de duplicar código
-  window.agregarDetalle = function() {
-    if (window.Detalles && window.Detalles.agregarDetalle) {
-      window.Detalles.agregarDetalle();
-    } else {
-      console.error('❌ [PRESUPUESTOS-EDIT] Módulo común no disponible');
-    }
-  };
+  // NO sobrescribir funciones del módulo común
+  // El módulo común ya expone window.Detalles.agregarDetalle, window.Detalles.removerDetalle, etc.
+  // Solo crear wrappers si NO existen (para compatibilidad con onclick sin namespace)
+  
+  if (!window.agregarDetalle) {
+    window.agregarDetalle = function() {
+      if (window.Detalles && window.Detalles.agregarDetalle) {
+        window.Detalles.agregarDetalle();
+      } else {
+        console.error('❌ [PRESUPUESTOS-EDIT] Módulo común no disponible');
+      }
+    };
+  }
 
-  window.removerDetalle = function(id) {
-    if (window.Detalles && window.Detalles.removerDetalle) {
-      window.Detalles.removerDetalle(id);
-    } else {
-      console.error('❌ [PRESUPUESTOS-EDIT] Módulo común no disponible');
-    }
-  };
+  if (!window.removerDetalle) {
+    window.removerDetalle = function(id) {
+      if (window.Detalles && window.Detalles.removerDetalle) {
+        window.Detalles.removerDetalle(id);
+      } else {
+        console.error('❌ [PRESUPUESTOS-EDIT] Módulo común no disponible');
+      }
+    };
+  }
 
-  // Exponer funciones para compatibilidad con handlers inline
-  window.calcularPrecio = function(detalleId) {
-    if (window.Detalles && window.Detalles.calcularPrecio) {
-      window.Detalles.calcularPrecio(detalleId);
-    }
-  };
+  // Exponer funciones para compatibilidad con handlers inline (solo si no existen)
+  if (!window.calcularPrecio) {
+    window.calcularPrecio = function(detalleId) {
+      if (window.Detalles && window.Detalles.calcularPrecio) {
+        window.Detalles.calcularPrecio(detalleId);
+      }
+    };
+  }
 
-  window.recalcTotales = function() {
-    if (window.Detalles && window.Detalles.recalcTotales) {
-      window.Detalles.recalcTotales();
-    }
-  };
+  if (!window.recalcTotales) {
+    window.recalcTotales = function() {
+      if (window.Detalles && window.Detalles.recalcTotales) {
+        window.Detalles.recalcTotales();
+      }
+    };
+  }
 
   // Funciones de utilidad locales
   function toNum(x) {
