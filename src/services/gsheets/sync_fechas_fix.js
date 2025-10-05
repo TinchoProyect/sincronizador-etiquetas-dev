@@ -745,8 +745,8 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
       LEFT JOIN presupuestos_detalles d ON d.id_presupuesto_ext = p.id_presupuesto_ext
       WHERE p.activo = true 
         AND (
-          p.fecha_actualizacion > $1  -- Presupuesto modificado (ESTRICTO: solo posteriores)
-          OR d.fecha_actualizacion > $1  -- Detalle modificado (ESTRICTO: solo posteriores)
+          p.fecha_actualizacion >= $1  -- Presupuesto modificado (incluye iguales a cutoff_at)
+          OR d.fecha_actualizacion >= $1  -- Detalle modificado (incluye iguales a cutoff_at)
         )
     `, [cutoffAt]);
     
@@ -1329,7 +1329,7 @@ async function pushDetallesModificadosASheets(config, db) {
       FROM public.presupuestos_detalles d
       INNER JOIN public.presupuestos p ON p.id_presupuesto_ext = d.id_presupuesto_ext
       WHERE p.activo = true 
-        AND d.fecha_actualizacion > $1  -- ESTRICTO: solo posteriores a última sync
+        AND d.fecha_actualizacion >= $1  -- Incluye iguales a cutoff_at
       ORDER BY d.fecha_actualizacion DESC
     `, [cutoffAt]);
     

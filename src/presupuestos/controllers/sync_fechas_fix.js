@@ -857,24 +857,22 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
             ]);
             console.log('[SYNC-BIDI] ✅ Log de sincronización registrado con contadores completos');
             
-            // CRÍTICO: Actualizar cutoff_at para próxima sincronización
-            // Restar 30 segundos para incluir registros con diferencias de timestamp mínimas
+            // CRÍTICO: Actualizar cutoff_at AL FINAL de la sincronización
             const ahoraAR = new Date();
-            const cutoffConMargen = new Date(ahoraAR.getTime() - 30 * 1000); // -30 segundos de margen
             await req.db.query(`
                 UPDATE presupuestos_config 
                 SET cutoff_at = $1
                 WHERE activo = true
-            `, [cutoffConMargen]);
-            console.log('[SYNC-BIDI] ✅ cutoff_at actualizado a:', cutoffConMargen.toISOString(), '(-30s margen)');
+            `, [ahoraAR]);
+            console.log('[SYNC-BIDI] ✅ cutoff_at actualizado AL FINAL a:', ahoraAR.toISOString());
             
-            // VERIFICACIÓN: Confirmar que ahora NO hay registros que pasen el filtro
+            // VERIFICACIÓN: Confirmar que NO hay registros que pasen el nuevo filtro
             const verificacionPresupuestos = await req.db.query(`
                 SELECT COUNT(*) as count
                 FROM presupuestos p
                 WHERE p.activo = true 
                   AND p.id_presupuesto_ext IS NOT NULL
-                  AND p.fecha_actualizacion > $1
+                  AND p.fecha_actualizacion >= $1
             `, [ahoraAR]);
             
             const verificacionDetalles = await req.db.query(`
@@ -882,7 +880,7 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
                 FROM presupuestos_detalles d
                 INNER JOIN presupuestos p ON p.id_presupuesto_ext = d.id_presupuesto_ext
                 WHERE p.activo = true 
-                  AND d.fecha_actualizacion > $1
+                  AND d.fecha_actualizacion >= $1
             `, [ahoraAR]);
             
             console.log('[SYNC-BIDI] 🔍 Verificación post-actualización cutoff_at:');
@@ -980,7 +978,7 @@ async function pushCambiosLocalesConTimestampLocal(presupuestosData, config, db)
       FROM presupuestos p
       WHERE p.activo = true 
         AND p.id_presupuesto_ext IS NULL
-        AND p.fecha_actualizacion > $1  -- ESTRICTO: solo posteriores a última sync
+        AND p.fecha_actualizacion >= $1  -- Incluye iguales a cutoff_at
       ORDER BY p.fecha_actualizacion DESC
       LIMIT 100
     `;
@@ -2219,22 +2217,27 @@ async function marcarAnuladosEnSheetsConConteo(presupuestosData, config, db) {
   const idxActivo = 14; // Col O: Activo
   const idxEstado = 7;  // Col H: Estado
 
-  // mapa: id -> nro de fila en Sheets (2-based, por el encabezado)
+  // Crear mapa: id -> { rowNum, lastModified, activo }
   const rowById = new Map();
   presupuestosData.rows.forEach((r, i) => {
     const id = String(r[H[idxId]] ?? '').trim();
-    if (id) rowById.set(id, i + 2);
+    if (id) {
+      rowById.set(id, { 
+        rowNum: i + 2,  // +2 porque fila 1 es header
+        lastModified: r[H[idxLM]],
+        activo: r[H[idxActivo]]
+      });
+    }
   });
 
   // MEJORA CRÍTICA: Incluir presupuestos recién anulados usando cutoff_at
-  // Usar fecha_actualizacion >= cutoff_at
   const cutoffAt = config.cutoff_at;
   const rs = await db.query(`
     SELECT id_presupuesto_ext, fecha_actualizacion
     FROM public.presupuestos
     WHERE activo = false 
     AND COALESCE(id_presupuesto_ext,'') <> ''
-    AND fecha_actualizacion > $1  -- ESTRICTO: solo posteriores a última sync
+    AND fecha_actualizacion >= $1  -- Incluye iguales a cutoff_at
     ORDER BY fecha_actualizacion DESC
   `, [cutoffAt]);
   
@@ -2245,27 +2248,72 @@ async function marcarAnuladosEnSheetsConConteo(presupuestosData, config, db) {
 
   console.log(`[SYNC-BTN] Encontrados ${rs.rowCount} presupuestos anulados recientes para marcar en Sheets`);
 
+  // Helper para parsear LastModified de Sheets
+  const parseLastModified = (val) => {
+    if (!val) return new Date(0);
+    if (typeof val === 'number') {
+      const excelEpoch = new Date(1900, 0, 1);
+      const days = val - 2;
+      return new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+    }
+    const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/;
+    const match = String(val).match(ddmmyyyyRegex);
+    if (match) {
+      const [, day, month, year, hour, minute, second] = match;
+      return new Date(year, month - 1, day, hour, minute, second);
+    }
+    return new Date(val);
+  };
+
   const now = toSheetDateTimeAR(Date.now());
   const data = [];
   let marcados = 0;
+  let omitidosPorSheetMasReciente = 0;
 
-  for (const { id_presupuesto_ext } of rs.rows) {
+  for (const { id_presupuesto_ext, fecha_actualizacion } of rs.rows) {
     const id = String(id_presupuesto_ext).trim();
-    const rowNum = rowById.get(id);
-    if (!rowNum) {
+    const sheetData = rowById.get(id);
+    
+    if (!sheetData) {
       console.log(`[SYNC-BTN] Presupuesto anulado ${id} no existe en Sheets, omitiendo`);
-      continue; // si no existe en Sheets, nada que marcar
+      continue;
     }
 
+    // FILTRO CRÍTICO: Si ya está anulado en Sheets, NO tocarlo
+    const activoEnSheet = String(sheetData.activo ?? '').toLowerCase();
+    if (activoEnSheet === 'false' || activoEnSheet === '0') {
+      console.log(`[SYNC-BTN] ⚠️ Presupuesto ${id} YA está anulado en Sheets, omitiendo`);
+      console.log(`[SYNC-BTN]    Razón: Evitar actualizar LastModified innecesariamente`);
+      omitidosPorSheetMasReciente++;
+      continue;
+    }
+
+    // CRÍTICO: Comparar timestamps antes de marcar como anulado
+    const localTimestamp = new Date(fecha_actualizacion);
+    const sheetTimestamp = parseLastModified(sheetData.lastModified);
+    
+    if (sheetTimestamp > localTimestamp) {
+      console.log(`[SYNC-BTN] ⚠️ OMITIENDO anulación de ${id} - SHEET más reciente`);
+      console.log(`[SYNC-BTN]    Local: ${localTimestamp.toISOString()} (anulado)`);
+      console.log(`[SYNC-BTN]    Sheet: ${sheetTimestamp.toISOString()} (posiblemente reactivado)`);
+      console.log(`[SYNC-BTN]    Decisión: SHEET gana, NO marcar como anulado`);
+      omitidosPorSheetMasReciente++;
+      continue;
+    }
+
+    // Solo marcar como anulado si LOCAL es más reciente o igual Y no está ya anulado
+    console.log(`[SYNC-BTN] Marcando como anulado en Sheets: ${id} (LOCAL más reciente)`);
+    console.log(`[SYNC-BTN]    Local: ${localTimestamp.toISOString()}`);
+    console.log(`[SYNC-BTN]    Sheet: ${sheetTimestamp.toISOString()}`);
+
     // O (Activo) -> FALSE
-    data.push({ range: `Presupuestos!O${rowNum}:O${rowNum}`, values: [[false]] });
-    // H (Estado) -> 'Anulado' (opcional pero recomendable)
-    data.push({ range: `Presupuestos!H${rowNum}:H${rowNum}`, values: [['Anulado']] });
+    data.push({ range: `Presupuestos!O${sheetData.rowNum}:O${sheetData.rowNum}`, values: [[false]] });
+    // H (Estado) -> 'Anulado'
+    data.push({ range: `Presupuestos!H${sheetData.rowNum}:H${sheetData.rowNum}`, values: [['Anulado']] });
     // N (LastModified) -> ahora (CRÍTICO para LWW)
-    data.push({ range: `Presupuestos!N${rowNum}:N${rowNum}`, values: [[now]] });
+    data.push({ range: `Presupuestos!N${sheetData.rowNum}:N${sheetData.rowNum}`, values: [[now]] });
     
     marcados++;
-    console.log(`[SYNC-BTN] Marcando como anulado en Sheets: ${id} (fila ${rowNum})`);
   }
 
   if (data.length) {
@@ -2274,6 +2322,10 @@ async function marcarAnuladosEnSheetsConConteo(presupuestosData, config, db) {
       requestBody: { valueInputOption: 'USER_ENTERED', data }
     });
     console.log(`[SYNC-BTN] ✅ Marcados ${marcados} presupuestos como inactivos en Sheets`);
+  }
+
+  if (omitidosPorSheetMasReciente > 0) {
+    console.log(`[SYNC-BTN] ⚠️ Omitidos ${omitidosPorSheetMasReciente} presupuestos por SHEET más reciente (posiblemente reactivados)`);
   }
 
   return marcados;
@@ -2644,9 +2696,19 @@ async function pullCambiosRemotosConTimestampMejorado(presupuestosSheets, detall
             } else {
                 // IMPLEMENTACIÓN LWW REAL: Comparar timestamps
                 console.log(`[LWW-REAL] Comparando timestamps para ID ${id}:`);
-                console.log(`[LWW-REAL]   Local: ${localTimestamp.toISOString()}`);
-                console.log(`[LWW-REAL]   Sheet: ${sheetTimestamp.toISOString()}`);
+                console.log(`[LWW-REAL]   Local: ${localTimestamp.toISOString()}, activo: ${localActivo}`);
+                console.log(`[LWW-REAL]   Sheet: ${sheetTimestamp.toISOString()}, activo: ${remoteActivo}`);
                 console.log(`[LWW-REAL]   Última sync: ${fechaUltimaSync.toISOString()}`);
+                
+                // FILTRO CRÍTICO: NO actualizar si local está inactivo
+                // Los presupuestos anulados localmente NO deben reactivarse desde Sheets
+                // porque ya fueron procesados en FASE 1 (PUSH Anulaciones)
+                if (localActivo === false) {
+                    console.log(`[LWW-REAL] ⚠️ Omitiendo presupuesto inactivo LOCAL - ID: ${id}`);
+                    console.log(`[LWW-REAL]    Razón: Ya fue procesado en FASE 1 (PUSH Anulaciones)`);
+                    omitidos++;
+                    continue;
+                }
                 
                 if (sheetTimestamp > localTimestamp) {
                     // Sheet más reciente → UPDATE INTEGRAL
