@@ -1313,13 +1313,22 @@ function procesarCodigoEscaneado(codigo) {
         // Artículo encontrado
         const articulo = estadoVerificacion.articulos[index];
         
-        if (articulo.confirmado) {
-            // Ya estaba confirmado
-            mostrarFeedback(`⚠️ Artículo ${codigo} ya fue confirmado`, 'error');
+        // Incrementar cantidad confirmada en 1 (no marcar completo directamente)
+        const nuevaCantidad = articulo.cantidad_confirmada + 1;
+        
+        if (nuevaCantidad > articulo.pedido_total) {
+            // Ya se escaneó la cantidad completa
+            mostrarFeedback(`⚠️ Artículo ${codigo} ya tiene ${articulo.cantidad_confirmada}/${articulo.pedido_total} confirmados`, 'error');
         } else {
-            // Marcar como confirmado
-            marcarArticuloConfirmado(index, articulo.pedido_total);
-            mostrarFeedback(`✅ Artículo ${codigo} confirmado correctamente`, 'success');
+            // Incrementar en 1
+            marcarArticuloConfirmado(index, nuevaCantidad);
+            
+            // Feedback diferenciado según si completó o no
+            if (nuevaCantidad >= articulo.pedido_total) {
+                mostrarFeedback(`✅ Artículo ${codigo} COMPLETO (${nuevaCantidad}/${articulo.pedido_total})`, 'success');
+            } else {
+                mostrarFeedback(`✅ Artículo ${codigo} +1 → ${nuevaCantidad}/${articulo.pedido_total}`, 'success');
+            }
         }
     } else {
         // Artículo no encontrado
