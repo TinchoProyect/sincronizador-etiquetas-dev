@@ -262,7 +262,14 @@ function _tickEtapa3(carroId) {
 
 function _showEtapa1(show){ const b = document.getElementById('btn-etapa1'); if (b) b.style.display = show ? 'inline-block' : 'none'; }
 function _showEtapa2(show){ const b = document.getElementById('badge-etapa2'); if (b) b.style.display = show ? 'inline-block' : 'none'; }
-export function showEtapa3Button(show){ const b = document.getElementById('btn-etapa3'); if (b) b.style.display = show ? 'inline-block' : 'none'; }
+export function showEtapa3Button(show) {
+  const botonGlobal3 = document.getElementById('btn-temporizador-global');
+  if (botonGlobal3.classList.contains('activo')) {
+    const b = document.getElementById('btn-etapa3');
+    if (b) b.style.display = show ? 'inline-block' : 'none';
+  }
+
+}
 
 
 // ⛔ NUEVO: habilita/inhabilita botones por artículo según etapa actual
@@ -337,20 +344,10 @@ export async function stopEtapa1(carroId, uid){
 export async function startEtapa2(carroId, uid){
   if (_carroBloqueado()) { alert('El carro ya fue preparado.'); return; }
   if (_etapaTerminada(carroId, 2)) { alert('Etapa 2 ya finalizada.'); return; }
-  
-  //Inento evitar que se dispare la etapa 2 si no esta activado el boton Modo medicion
-
   const botonGlobal = document.getElementById('btn-temporizador-global');
-           
-
-            if (botonGlobal) {
-                const activo = botonGlobal.classList.contains('activo');
-                document.querySelectorAll('.btn-temporizador-articulo')
-                    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
-               
-
-//Fin de modificación
-
+  if ( botonGlobal.classList.contains('activo')) {
+  
+  
 
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/iniciar`, uid);
   const s = _ensure(carroId)[2];
@@ -370,12 +367,8 @@ export async function startEtapa2(carroId, uid){
   // ⛔ NUEVO: pasamos a etapa 2 y desbloqueamos botones por artículo
   setEtapaCarro(carroId, 2);
   _aplicarBloqueoArticulosPorEtapa(carroId);
-
- } else {
-                    console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
-            }
-
-            }
+  return;}
+ } 
 export async function stopEtapa2(carroId, uid){
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/finalizar`, uid);
   const s = _ensure(carroId)[2];
@@ -395,31 +388,46 @@ export async function stopEtapa2(carroId, uid){
 
 export async function startEtapa3(carroId, uid){
   if (_carroBloqueado()) { alert('El carro ya fue preparado.'); return; }
+  
   if (_etapaTerminada(carroId, 3)) { alert('Etapa 3 ya finalizada.'); return; }
+  
+  const botonGlobal = document.getElementById('btn-temporizador-global');
+  if ( botonGlobal.classList.contains('activo')) {
 
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/3/iniciar`, uid);
 
   // ⛔ NUEVO: detener SOLO los artículos que sigan corriendo
   await _detenerMedicionArticulosEnCurso(carroId);
 
+ 
   const s = _ensure(carroId)[3];
   s.running = true; s.start = Date.now();
   clearInterval(s.interval);
   s.interval = setInterval(()=>_tickEtapa3(carroId), 1000);
   _tickEtapa3(carroId);
   showEtapa3Button(true);
+  
   const btn = document.getElementById('btn-etapa3');
   if (btn) { btn.classList.add('running'); btn.classList.remove('finished'); btn.disabled = false; }
+  }
 }
 export async function stopEtapa3(carroId, uid){
+  
+  
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/3/finalizar`, uid);
+  const botonGlobal = document.getElementById('btn-temporizador-global');
+  if ( botonGlobal.classList.contains('activo')) {
   const s = _ensure(carroId)[3];
   const elapsedMs = s.start ? (Date.now() - s.start) : 0;
   s.running = false;
   clearInterval(s.interval);
+ 
+
+  
   const btn = document.getElementById('btn-etapa3');
   if (btn) _showElapsedOnButton(btn, elapsedMs, '(Etapa 3)');
   if (btn) { btn.classList.remove('running'); btn.classList.add('finished'); }
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -511,6 +519,7 @@ export function rehidratarDesdeEstado(carroId) {
   // E3 → botón
   const s3 = snap[3] || {};
   const btn3 = document.getElementById('btn-etapa3');
+ 
   if (btn3) {
     if (s3.running && s3.start) {
       const st = _ensure(carroId)[3] = { running:true, start:s3.start, interval:null };
@@ -529,6 +538,7 @@ export function rehidratarDesdeEstado(carroId) {
     }
   }
 
+  
   // Mantener coherencia con el botón global
   if (typeof syncTimerButtonsVisibility === 'function') {
     syncTimerButtonsVisibility();
@@ -766,6 +776,7 @@ export function initTemporizadores() {
 
   // Toggle Etapa 3 (pausa/reanudar)
   document.addEventListener('click', async (e)=>{
+    
     if (!(e.target && e.target.id === 'btn-etapa3')) return;
 
     const carroId = localStorage.getItem('carroActivo');
@@ -781,6 +792,7 @@ export function initTemporizadores() {
       console.error(err);
       alert(`No se pudo alternar la Etapa 3.\n${err.message || ''}`);
     }
+  
   });
 
 

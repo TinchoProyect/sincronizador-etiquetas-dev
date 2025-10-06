@@ -64,12 +64,11 @@ window.asentarProduccionConTemporizador = async (carroId) => {
   try{
     const colab = JSON.parse(localStorage.getItem('colaboradorActivo')||'{}');
     if (!carroId || !colab?.id) return;
-
+   
      console.log('[MEDICION] Asentar prod. → stop E2, start E3');
     await stopEtapa2(carroId, colab.id).catch(()=>{});
     await startEtapa3(carroId, colab.id);
-    showEtapa3Button(true);
-
+    await showEtapa3Button(true);
     await finalizarProduccion(carroId); // tu función existente
   }catch(err){
     console.error(err);
