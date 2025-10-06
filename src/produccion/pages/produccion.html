@@ -703,6 +703,14 @@
             background-color: #dc3545;
         }
 
+        /* Estilos para contadores de secuencia */
+        .contador-secuencia {
+            font-weight: normal;
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-left: 8px;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .pedidos-header {
@@ -820,27 +828,53 @@
 
     <!-- Sección de Informes de Presupuestos -->
     <section class="reports-section">
-        <!-- Bloque Pedidos por Cliente - Presupuestos Confirmados -->
+        <!-- 1. Imprimir / Imprimir Modificado -->
         <section class="pedidos-por-cliente-section collapsible-section">
-            <!-- Botón de Toggle -->
-            <button class="section-toggle" onclick="toggleSection('pedidos-section')" aria-expanded="false">
+            <button class="section-toggle" onclick="toggleSection('pedidos-imprimir-section')" aria-expanded="false">
                 <span class="toggle-icon">▶</span>
-                <h2>Pedidos por Cliente - Presupuestos Confirmados</h2>
+                <h2>📄 Imprimir / Imprimir Modificado <span id="contador-imprimir" class="contador-secuencia">(0)</span></h2>
             </button>
             
-            <!-- Contenido Colapsable -->
-            <div id="pedidos-section" class="collapsible-content" style="display: none;">
+            <div id="pedidos-imprimir-section" class="collapsible-content" style="display: none;">
                 <div class="pedidos-header">
                     <div class="pedidos-controls">
-                        <label for="fecha-corte">Fecha limite:</label>
+                        <label for="fecha-corte">Fecha límite:</label>
                         <input type="date" id="fecha-corte" name="fecha-corte" />
                         <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." />
                         <button id="refresh-pedidos" class="admin-button">Actualizar</button>
-                        <button id="imprimir-todos-general" class="admin-button" style="background-color: #28a745;">📄 Imprimir Todos los Presupuestos</button>
+                        <button id="imprimir-todos-general" class="admin-button" style="background-color: #28a745;">📄 Imprimir Todos</button>
                     </div>
                 </div>
-                <div id="pedidos-container" class="pedidos-container">
-                    <!-- Aquí se renderizarán los pedidos por cliente -->
+                <div id="pedidos-imprimir" class="pedidos-container">
+                    <!-- Contenido dinámico -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Armar Pedido -->
+        <section class="pedidos-por-cliente-section collapsible-section">
+            <button class="section-toggle" onclick="toggleSection('pedidos-armar-section')" aria-expanded="false">
+                <span class="toggle-icon">▶</span>
+                <h2>📦 Armar Pedido <span id="contador-armar" class="contador-secuencia">(0)</span></h2>
+            </button>
+            
+            <div id="pedidos-armar-section" class="collapsible-content" style="display: none;">
+                <div id="pedidos-armar" class="pedidos-container">
+                    <!-- Contenido dinámico -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Pedido Listo -->
+        <section class="pedidos-por-cliente-section collapsible-section">
+            <button class="section-toggle" onclick="toggleSection('pedidos-listo-section')" aria-expanded="false">
+                <span class="toggle-icon">▶</span>
+                <h2>✅ Pedido Listo <span id="contador-listo" class="contador-secuencia">(0)</span></h2>
+            </button>
+            
+            <div id="pedidos-listo-section" class="collapsible-content" style="display: none;">
+                <div id="pedidos-listo" class="pedidos-container">
+                    <!-- Contenido dinámico -->
                 </div>
             </div>
         </section>

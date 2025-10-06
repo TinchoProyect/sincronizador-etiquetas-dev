@@ -98,6 +98,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     p.id_presupuesto_ext,
                     p.id_cliente,
                     p.fecha,
+                    COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
                 WHERE p.activo = true 
@@ -110,12 +111,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     pc.cliente_id_int,
                     ${presupuestoIdFieldMain} as presupuesto_id,
                     pc.fecha as presupuesto_fecha,
+                    pc.secuencia,
                     pd.articulo as articulo_numero,
                     SUM(COALESCE(pd.cantidad, 0)) as cantidad
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.fecha, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.fecha, pc.secuencia, pd.articulo
             )
             SELECT 
                 app.cliente_id_int as cliente_id,
@@ -131,6 +133,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     JSON_BUILD_OBJECT(
                         'presupuesto_id', app.presupuesto_id,
                         'presupuesto_fecha', app.presupuesto_fecha,
+                        'secuencia', app.secuencia,
                         'articulo_numero', app.articulo_numero,
                         'descripcion', COALESCE(
                             NULLIF(TRIM(a.nombre), ''),

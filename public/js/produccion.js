@@ -24,6 +24,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Configurar event listeners
     configurarEventListeners();
     
+    // Cargar pedidos por cliente automáticamente
+    setTimeout(() => {
+        cargarPedidosPorCliente();
+    }, 500);
+    
     console.log('✅ Página de producción inicializada');
 });
 
@@ -91,6 +96,58 @@ function renderizarColaboradores() {
     `).join('');
     
     container.innerHTML = html;
+}
+
+/**
+ * Actualiza los contadores en los títulos de los acordeones
+ */
+function actualizarContadoresSecuencia(grupos) {
+    const contadorImprimir = document.getElementById('contador-imprimir');
+    const contadorArmar = document.getElementById('contador-armar');
+    const contadorListo = document.getElementById('contador-listo');
+    
+    // Contar total de presupuestos en cada grupo
+    const totalImprimir = grupos.imprimir.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
+    const totalArmar = grupos.armar_pedido.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
+    const totalListo = grupos.pedido_listo.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
+    
+    if (contadorImprimir) contadorImprimir.textContent = `(${totalImprimir})`;
+    if (contadorArmar) contadorArmar.textContent = `(${totalArmar})`;
+    if (contadorListo) contadorListo.textContent = `(${totalListo})`;
+    
+    console.log('🔢 [CONTADORES] Actualizados:', { totalImprimir, totalArmar, totalListo });
+}
+
+/**
+ * Renderiza pedidos por cliente agrupados por secuencia
+ * MODIFICADA para soportar agrupación por secuencia
+ */
+function renderizarPedidosPorCliente(clientes) {
+    if (!clientes || clientes.length === 0) {
+        // Si no hay datos, limpiar todos los contenedores
+        const containers = ['pedidos-imprimir', 'pedidos-armar', 'pedidos-listo'];
+        containers.forEach(id => {
+            const container = document.getElementById(id);
+            if (container) {
+                container.innerHTML = '<div class="mensaje-info">No se encontraron pedidos para los criterios especificados</div>';
+            }
+        });
+        
+        // Resetear contadores
+        actualizarContadoresSecuencia({ imprimir: [], armar_pedido: [], pedido_listo: [] });
+        return;
+    }
+    
+    // Agrupar por secuencia
+    const grupos = agruparPresupuestosPorSecuencia(clientes);
+    
+    // Renderizar cada grupo en su contenedor
+    renderizarGrupoSecuencia('pedidos-imprimir', grupos.imprimir, 'Imprimir / Imprimir Modificado');
+    renderizarGrupoSecuencia('pedidos-armar', grupos.armar_pedido, 'Armar Pedido');
+    renderizarGrupoSecuencia('pedidos-listo', grupos.pedido_listo, 'Pedido Listo');
+    
+    // Actualizar contadores en títulos
+    actualizarContadoresSecuencia(grupos);
 }
 
 function mostrarErrorColaboradores() {
@@ -230,15 +287,89 @@ async function cargarPedidosPorCliente() {
     }
 }
 
-function renderizarPedidosPorCliente(clientes) {
-    const container = document.getElementById('pedidos-container');
-    if (!container) return;
+/**
+ * Agrupa presupuestos por secuencia
+ * Retorna objeto con tres grupos: imprimir, armar_pedido, pedido_listo
+ */
+function agruparPresupuestosPorSecuencia(clientes) {
+    const grupos = {
+        imprimir: [],      // Imprimir + Imprimir_Modificado
+        armar_pedido: [],  // Armar_Pedido
+        pedido_listo: []   // Pedido_Listo
+    };
     
-    if (!clientes || clientes.length === 0) {
-        container.innerHTML = '<div class="mensaje-info">No se encontraron pedidos para los criterios especificados</div>';
+    clientes.forEach(cliente => {
+        // Crear versiones del cliente para cada grupo
+        const clienteImprimir = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
+        const clienteArmar = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
+        const clienteListo = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
+        
+        const presupuestosImprimir = new Set();
+        const presupuestosArmar = new Set();
+        const presupuestosListo = new Set();
+        
+        cliente.articulos.forEach(articulo => {
+            const secuencia = (articulo.secuencia || 'Imprimir').trim();
+            
+            if (secuencia === 'Imprimir' || secuencia === 'Imprimir_Modificado') {
+                clienteImprimir.articulos.push(articulo);
+                presupuestosImprimir.add(articulo.presupuesto_id);
+            } else if (secuencia === 'Armar_Pedido') {
+                clienteArmar.articulos.push(articulo);
+                presupuestosArmar.add(articulo.presupuesto_id);
+            } else if (secuencia === 'Pedido_Listo') {
+                clienteListo.articulos.push(articulo);
+                presupuestosListo.add(articulo.presupuesto_id);
+            } else {
+                // Fallback: si no reconoce la secuencia, va a imprimir
+                clienteImprimir.articulos.push(articulo);
+                presupuestosImprimir.add(articulo.presupuesto_id);
+            }
+        });
+        
+        // Actualizar contadores y agregar a grupos solo si tienen artículos
+        if (clienteImprimir.articulos.length > 0) {
+            clienteImprimir.total_articulos = clienteImprimir.articulos.length;
+            clienteImprimir.total_presupuestos = presupuestosImprimir.size;
+            grupos.imprimir.push(clienteImprimir);
+        }
+        if (clienteArmar.articulos.length > 0) {
+            clienteArmar.total_articulos = clienteArmar.articulos.length;
+            clienteArmar.total_presupuestos = presupuestosArmar.size;
+            grupos.armar_pedido.push(clienteArmar);
+        }
+        if (clienteListo.articulos.length > 0) {
+            clienteListo.total_articulos = clienteListo.articulos.length;
+            clienteListo.total_presupuestos = presupuestosListo.size;
+            grupos.pedido_listo.push(clienteListo);
+        }
+    });
+    
+    console.log('📊 [SECUENCIA] Agrupación completada:', {
+        imprimir: grupos.imprimir.length,
+        armar_pedido: grupos.armar_pedido.length,
+        pedido_listo: grupos.pedido_listo.length
+    });
+    
+    return grupos;
+}
+
+/**
+ * Renderiza un grupo de clientes en un contenedor específico
+ */
+function renderizarGrupoSecuencia(containerId, clientes, titulo) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+        console.warn(`⚠️ Contenedor ${containerId} no encontrado`);
         return;
     }
     
+    if (!clientes || clientes.length === 0) {
+        container.innerHTML = '<div class="mensaje-info">No hay presupuestos en esta etapa</div>';
+        return;
+    }
+    
+    // Reutilizar la misma lógica de renderizado
     const html = clientes.map(cliente => {
         // DEBUG: Log para ver datos del cliente
         console.log(`🔍 DEBUG Cliente: ${cliente.cliente_nombre}`);
@@ -376,10 +507,17 @@ function togglePresupuesto(presupuestoId) {
 }
 
 function mostrarErrorPedidos() {
-    const container = document.getElementById('pedidos-container');
-    if (container) {
-        container.innerHTML = '<div class="mensaje-error">Error al cargar pedidos. Intente actualizar.</div>';
-    }
+    // Mostrar error en todos los contenedores de pedidos
+    const containers = ['pedidos-imprimir', 'pedidos-armar', 'pedidos-listo'];
+    containers.forEach(id => {
+        const container = document.getElementById(id);
+        if (container) {
+            container.innerHTML = '<div class="mensaje-error">Error al cargar pedidos. Intente actualizar.</div>';
+        }
+    });
+    
+    // Resetear contadores
+    actualizarContadoresSecuencia({ imprimir: [], armar_pedido: [], pedido_listo: [] });
 }
 
 function toggleCliente(clienteId) {
