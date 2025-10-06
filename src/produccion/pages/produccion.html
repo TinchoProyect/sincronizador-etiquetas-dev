@@ -394,6 +394,10 @@
             color: var(--primary-color);
             font-size: 1.2em;
             font-weight: bold;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .toggle-icon {
@@ -405,6 +409,26 @@
 
         .section-toggle[aria-expanded="true"] .toggle-icon {
             transform: rotate(90deg);
+        }
+        
+        /* Estilos para contadores de secuencia - DESTACADOS */
+        .contador-secuencia {
+            font-weight: bold;
+            color: #fff;
+            font-size: 2em;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color-dark, #5092a7));
+            padding: 10px 24px;
+            border-radius: 30px;
+            min-width: 70px;
+            text-align: center;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .contador-secuencia:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
 
         .collapsible-content {
@@ -703,13 +727,6 @@
             background-color: #dc3545;
         }
 
-        /* Estilos para contadores de secuencia */
-        .contador-secuencia {
-            font-weight: normal;
-            color: #6c757d;
-            font-size: 0.9em;
-            margin-left: 8px;
-        }
 
         /* Estilos para modal de armar pedido */
         .modal-armar-grande {

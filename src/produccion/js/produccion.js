@@ -273,9 +273,10 @@ function actualizarContadoresSecuencia(grupos) {
     const totalArmar = grupos.armar_pedido.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
     const totalListo = grupos.pedido_listo.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
     
-    if (contadorImprimir) contadorImprimir.textContent = `(${totalImprimir})`;
-    if (contadorArmar) contadorArmar.textContent = `(${totalArmar})`;
-    if (contadorListo) contadorListo.textContent = `(${totalListo})`;
+    // Mostrar solo el número sin paréntesis
+    if (contadorImprimir) contadorImprimir.textContent = totalImprimir;
+    if (contadorArmar) contadorArmar.textContent = totalArmar;
+    if (contadorListo) contadorListo.textContent = totalListo;
     
     console.log('🔢 [CONTADORES] Actualizados:', { totalImprimir, totalArmar, totalListo });
 }
