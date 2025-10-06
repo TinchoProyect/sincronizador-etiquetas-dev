@@ -173,6 +173,10 @@ async function cargarPedidosPorCliente() {
             throw new Error(data.message || 'Error en la respuesta del servidor');
         }
         const pedidos = data.data;
+        
+        // Guardar datos en variable global para funciones de impresión
+        window.clientesPedidos = pedidos;
+        
         renderPedidosCliente(pedidos);
     } catch (error) {
         console.error('❌ Error al cargar pedidos:', error);
@@ -698,56 +702,169 @@ async function confirmarAsignacionFaltantes() {
     }
 }
 
+/**
+ * Actualiza la secuencia de presupuestos a "Armar_Pedido"
+ */
+async function actualizarSecuenciaPresupuestos(presupuestosIds) {
+    try {
+        console.log(`🔄 Actualizando secuencia de ${presupuestosIds.length} presupuestos a "Armar_Pedido"...`);
+        
+        const response = await fetch(`${base}/actualizar-secuencia`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presupuestos_ids: presupuestosIds,
+                nueva_secuencia: 'Armar_Pedido'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            console.log(`✅ Secuencia actualizada: ${data.actualizados} presupuestos`);
+            return true;
+        } else {
+            console.error('❌ Error al actualizar secuencia:', data.error);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Error al actualizar secuencia:', error);
+        return false;
+    }
+}
+
+/**
+ * Obtiene todos los IDs de presupuestos de un cliente desde los datos cargados
+ */
+function obtenerPresupuestosDeCliente(clienteId) {
+    const presupuestosIds = new Set();
+    
+    // Buscar en los datos cargados
+    if (window.clientesPedidos && window.clientesPedidos.length > 0) {
+        const cliente = window.clientesPedidos.find(c => c.cliente_id === clienteId);
+        if (cliente && cliente.articulos) {
+            cliente.articulos.forEach(art => {
+                if (art.presupuesto_id) {
+                    presupuestosIds.add(art.presupuesto_id);
+                }
+            });
+        }
+    }
+    
+    return Array.from(presupuestosIds);
+}
+
+/**
+ * Obtiene todos los IDs de presupuestos de todos los clientes desde los datos cargados
+ */
+function obtenerTodosLosPresupuestos() {
+    const presupuestosIds = new Set();
+    
+    if (window.clientesPedidos && window.clientesPedidos.length > 0) {
+        window.clientesPedidos.forEach(cliente => {
+            if (cliente.articulos) {
+                cliente.articulos.forEach(art => {
+                    if (art.presupuesto_id) {
+                        presupuestosIds.add(art.presupuesto_id);
+                    }
+                });
+            }
+        });
+    }
+    
+    return Array.from(presupuestosIds);
+}
+
 // Función para imprimir todos los presupuestos de un cliente
-function imprimirPresupuestoCliente(clienteId) {
+async function imprimirPresupuestoCliente(clienteId) {
+    console.log(`📄 Imprimiendo presupuestos del cliente ${clienteId}...`);
+    
+    // 1. Obtener IDs de presupuestos del cliente
+    const presupuestosIds = obtenerPresupuestosDeCliente(clienteId);
+    console.log(`📋 Presupuestos a imprimir: ${presupuestosIds.length}`);
+    
+    // 2. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=html`;
 
-    // Abrir PDF en nueva pestaña
     const win = window.open(urlPdf, '_blank');
 
-    // Si el PDF no se puede abrir (por ejemplo, error 501), abrir fallback HTML
     setTimeout(() => {
         if (!win || win.closed || typeof win.closed == 'undefined') {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
+    
+    // 3. Actualizar secuencia a "Armar_Pedido"
+    if (presupuestosIds.length > 0) {
+        const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
+        if (actualizado) {
+            // Recargar datos para reflejar el cambio
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+            }, 1000);
+        }
+    }
 }
 
 // Función para imprimir un presupuesto individual
-function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
+async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     console.log(`📄 Imprimiendo presupuesto individual: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
     
+    // 1. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html`;
 
-    // Abrir PDF en nueva pestaña
     const win = window.open(urlPdf, '_blank');
 
-    // Si el PDF no se puede abrir, abrir fallback HTML
     setTimeout(() => {
         if (!win || win.closed || typeof win.closed == 'undefined') {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
+    
+    // 2. Actualizar secuencia a "Armar_Pedido"
+    const actualizado = await actualizarSecuenciaPresupuestos([presupuestoId]);
+    if (actualizado) {
+        // Recargar datos para reflejar el cambio
+        setTimeout(() => {
+            cargarPedidosPorCliente();
+        }, 1000);
+    }
 }
 
 // Función para imprimir TODOS los presupuestos de TODOS los clientes
-function imprimirTodosLosPresupuestos(fechaCorte) {
+async function imprimirTodosLosPresupuestos(fechaCorte) {
     console.log(`📄 Imprimiendo TODOS los presupuestos hasta fecha: ${fechaCorte}`);
     
+    // 1. Obtener todos los IDs de presupuestos
+    const presupuestosIds = obtenerTodosLosPresupuestos();
+    console.log(`📋 Total de presupuestos a imprimir: ${presupuestosIds.length}`);
+    
+    // 2. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=html`;
 
-    // Abrir PDF en nueva pestaña
     const win = window.open(urlPdf, '_blank');
 
-    // Si el PDF no se puede abrir, abrir fallback HTML
     setTimeout(() => {
         if (!win || win.closed || typeof win.closed == 'undefined') {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
+    
+    // 3. Actualizar secuencia a "Armar_Pedido"
+    if (presupuestosIds.length > 0) {
+        const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
+        if (actualizado) {
+            // Recargar datos para reflejar el cambio
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+            }, 1000);
+        }
+    }
 }
 
 // Función para filtrar pedidos por cliente
