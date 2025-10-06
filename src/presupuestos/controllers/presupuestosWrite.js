@@ -107,7 +107,7 @@ async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId
 
         // Leer datos actuales de Sheets para el push
         console.log(`🔍 [SYNC-UP] ${requestId} - Leyendo datos actuales de Sheets...`);
-        const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         
         // Push de cabecera (solo el presupuesto recién creado)
         console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de cabecera...`);
@@ -166,6 +166,7 @@ const crearPresupuesto = async (req, res) => {
             estado,
             punto_entrega,
             descuento = 0,
+            secuencia,
             detalles = []
         } = req.body;
 
@@ -233,8 +234,8 @@ const crearPresupuesto = async (req, res) => {
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url, usuario_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11, $12)
+                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, $11, true, 'Presupuestos', $12, $13)
                 RETURNING *
             `;
 
@@ -249,6 +250,7 @@ const crearPresupuesto = async (req, res) => {
                 estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
+                secuencia || 'Imprimir', // Valor predeterminado: "Imprimir"
                 configHojaUrl,
                 1 // usuario_id = 1 por defecto
             ]);
@@ -475,7 +477,8 @@ const editarPresupuesto = async (req, res) => {
             tipo_comprobante,
             estado,
             id_cliente,
-            fecha
+            fecha,
+            secuencia
         } = req.body;
 
     console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
@@ -627,6 +630,12 @@ const editarPresupuesto = async (req, res) => {
                 paramCount++;
                 updates.push(`fecha = $${paramCount}`);
                 params.push(fecha ? normalizeDate(fecha) : null);
+            }
+
+            if (secuencia !== undefined) {
+                paramCount++;
+                updates.push(`secuencia = $${paramCount}`);
+                params.push(secuencia || null);
             }
 
             // Actualizar cabecera si hay campos

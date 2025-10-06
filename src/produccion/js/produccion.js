@@ -152,9 +152,16 @@ const base = (window.API_BASE || API_BASE || '/api') + '/produccion';
 
 // Función para cargar pedidos por cliente
 async function cargarPedidosPorCliente() {
-    const contenedor = document.getElementById('pedidos-container');
     const fechaCorte = document.getElementById('fecha-corte').value;
-    contenedor.innerHTML = '<p class="mensaje-info">Cargando pedidos...</p>';
+    
+    // Mostrar loading en todos los contenedores
+    const containers = ['pedidos-imprimir', 'pedidos-armar', 'pedidos-listo'];
+    containers.forEach(id => {
+        const container = document.getElementById(id);
+        if (container) {
+            container.innerHTML = '<p class="mensaje-info">Cargando pedidos...</p>';
+        }
+    });
 
     try {
         const response = await fetch(`${base}/pedidos-por-cliente?fecha=${fechaCorte}`);
@@ -166,24 +173,133 @@ async function cargarPedidosPorCliente() {
             throw new Error(data.message || 'Error en la respuesta del servidor');
         }
         const pedidos = data.data;
+        
+        // Guardar datos en variable global para funciones de impresión
+        window.clientesPedidos = pedidos;
+        
         renderPedidosCliente(pedidos);
     } catch (error) {
-        contenedor.innerHTML = `<p class="mensaje-error">${error.message}</p>`;
+        console.error('❌ Error al cargar pedidos:', error);
+        // Mostrar error en todos los contenedores
+        containers.forEach(id => {
+            const container = document.getElementById(id);
+            if (container) {
+                container.innerHTML = `<p class="mensaje-error">${error.message}</p>`;
+            }
+        });
+        // Resetear contadores
+        actualizarContadoresSecuencia({ imprimir: [], armar_pedido: [], pedido_listo: [] });
     }
 }
 
-// Función para renderizar pedidos por cliente
-function renderPedidosCliente(pedidos) {
-    const contenedor = document.getElementById('pedidos-container');
-    if (!pedidos || pedidos.length === 0) {
-        contenedor.innerHTML = '<p class="mensaje-info">No hay pedidos pendientes para la fecha seleccionada.</p>';
+/**
+ * Agrupa presupuestos por secuencia
+ * Retorna objeto con tres grupos: imprimir, armar_pedido, pedido_listo
+ */
+function agruparPresupuestosPorSecuencia(clientes) {
+    const grupos = {
+        imprimir: [],      // Imprimir + Imprimir_Modificado
+        armar_pedido: [],  // Armar_Pedido
+        pedido_listo: []   // Pedido_Listo
+    };
+    
+    clientes.forEach(cliente => {
+        // Crear versiones del cliente para cada grupo
+        const clienteImprimir = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
+        const clienteArmar = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
+        const clienteListo = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
+        
+        const presupuestosImprimir = new Set();
+        const presupuestosArmar = new Set();
+        const presupuestosListo = new Set();
+        
+        cliente.articulos.forEach(articulo => {
+            const secuencia = (articulo.secuencia || 'Imprimir').trim();
+            
+            if (secuencia === 'Imprimir' || secuencia === 'Imprimir_Modificado') {
+                clienteImprimir.articulos.push(articulo);
+                presupuestosImprimir.add(articulo.presupuesto_id);
+            } else if (secuencia === 'Armar_Pedido') {
+                clienteArmar.articulos.push(articulo);
+                presupuestosArmar.add(articulo.presupuesto_id);
+            } else if (secuencia === 'Pedido_Listo') {
+                clienteListo.articulos.push(articulo);
+                presupuestosListo.add(articulo.presupuesto_id);
+            } else {
+                // Fallback: si no reconoce la secuencia, va a imprimir
+                console.log(`⚠️ Secuencia no reconocida: "${secuencia}", usando Imprimir como fallback`);
+                clienteImprimir.articulos.push(articulo);
+                presupuestosImprimir.add(articulo.presupuesto_id);
+            }
+        });
+        
+        // Actualizar contadores y agregar a grupos solo si tienen artículos
+        if (clienteImprimir.articulos.length > 0) {
+            clienteImprimir.total_articulos = clienteImprimir.articulos.length;
+            clienteImprimir.total_presupuestos = presupuestosImprimir.size;
+            grupos.imprimir.push(clienteImprimir);
+        }
+        if (clienteArmar.articulos.length > 0) {
+            clienteArmar.total_articulos = clienteArmar.articulos.length;
+            clienteArmar.total_presupuestos = presupuestosArmar.size;
+            grupos.armar_pedido.push(clienteArmar);
+        }
+        if (clienteListo.articulos.length > 0) {
+            clienteListo.total_articulos = clienteListo.articulos.length;
+            clienteListo.total_presupuestos = presupuestosListo.size;
+            grupos.pedido_listo.push(clienteListo);
+        }
+    });
+    
+    console.log('📊 [SECUENCIA] Agrupación completada:', {
+        imprimir: grupos.imprimir.length,
+        armar_pedido: grupos.armar_pedido.length,
+        pedido_listo: grupos.pedido_listo.length
+    });
+    
+    return grupos;
+}
+
+/**
+ * Actualiza los contadores en los títulos de los acordeones
+ */
+function actualizarContadoresSecuencia(grupos) {
+    const contadorImprimir = document.getElementById('contador-imprimir');
+    const contadorArmar = document.getElementById('contador-armar');
+    const contadorListo = document.getElementById('contador-listo');
+    
+    // Contar total de presupuestos en cada grupo
+    const totalImprimir = grupos.imprimir.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
+    const totalArmar = grupos.armar_pedido.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
+    const totalListo = grupos.pedido_listo.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
+    
+    // Mostrar solo el número sin paréntesis
+    if (contadorImprimir) contadorImprimir.textContent = totalImprimir;
+    if (contadorArmar) contadorArmar.textContent = totalArmar;
+    if (contadorListo) contadorListo.textContent = totalListo;
+    
+    console.log('🔢 [CONTADORES] Actualizados:', { totalImprimir, totalArmar, totalListo });
+}
+
+/**
+ * Renderiza un grupo de clientes en un contenedor específico
+ */
+function renderizarGrupoSecuencia(containerId, clientes, titulo) {
+    const contenedor = document.getElementById(containerId);
+    if (!contenedor) {
+        console.warn(`⚠️ Contenedor ${containerId} no encontrado`);
+        return;
+    }
+    
+    if (!clientes || clientes.length === 0) {
+        contenedor.innerHTML = '<p class="mensaje-info">No hay presupuestos en esta etapa</p>';
         return;
     }
 
-    console.log('🔍 Renderizando pedidos por cliente...');
+    console.log(`🔍 Renderizando ${titulo}: ${clientes.length} clientes`);
     contenedor.innerHTML = '';
     
-    pedidos.forEach(cliente => {
+    clientes.forEach(cliente => {
         console.log(`📋 Cliente: ${cliente.cliente_nombre} - ${cliente.total_presupuestos} presupuestos`);
         
         const clienteDiv = document.createElement('div');
@@ -283,16 +399,39 @@ function renderPedidosCliente(pedidos) {
             clickeableDiv.appendChild(estadoSpan);
             clickeableDiv.appendChild(infoSpan);
             
-            // Botón imprimir (no clickeable con el acordeón)
-            const btnImprimirPresup = document.createElement('button');
-            btnImprimirPresup.textContent = '📄 Imprimir';
-            btnImprimirPresup.className = 'admin-button';
-            btnImprimirPresup.style.padding = '6px 12px';
-            btnImprimirPresup.style.fontSize = '12px';
-            btnImprimirPresup.addEventListener('click', (e) => {
-                e.stopPropagation();
-                imprimirPresupuestoIndividual(cliente.cliente_id, presupuesto.presupuesto_id);
-            });
+            // Contenedor de botones del presupuesto
+            const botonesPresupuesto = document.createElement('div');
+            botonesPresupuesto.style.display = 'flex';
+            botonesPresupuesto.style.gap = '8px';
+            
+            // Botón imprimir (solo en acordeón "Imprimir")
+            if (containerId === 'pedidos-imprimir') {
+                const btnImprimirPresup = document.createElement('button');
+                btnImprimirPresup.textContent = '📄 Imprimir';
+                btnImprimirPresup.className = 'admin-button';
+                btnImprimirPresup.style.padding = '6px 12px';
+                btnImprimirPresup.style.fontSize = '12px';
+                btnImprimirPresup.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    imprimirPresupuestoIndividual(cliente.cliente_id, presupuesto.presupuesto_id);
+                });
+                botonesPresupuesto.appendChild(btnImprimirPresup);
+            }
+            
+            // Botón verificar (solo en acordeón "Armar Pedido")
+            if (containerId === 'pedidos-armar') {
+                const btnVerificarPresup = document.createElement('button');
+                btnVerificarPresup.textContent = '🔍 Verificar';
+                btnVerificarPresup.className = 'admin-button';
+                btnVerificarPresup.style.padding = '6px 12px';
+                btnVerificarPresup.style.fontSize = '12px';
+                btnVerificarPresup.style.background = '#007bff';
+                btnVerificarPresup.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    abrirModalArmarPedido(cliente.cliente_id, presupuesto.presupuesto_id);
+                });
+                botonesPresupuesto.appendChild(btnVerificarPresup);
+            }
             
             const presupuestoId = `presupuesto-${cliente.cliente_id}-${idx}`;
             clickeableDiv.addEventListener('click', () => {
@@ -309,7 +448,7 @@ function renderPedidosCliente(pedidos) {
             });
 
             presupuestoHeader.appendChild(clickeableDiv);
-            presupuestoHeader.appendChild(btnImprimirPresup);
+            presupuestoHeader.appendChild(botonesPresupuesto);
             presupuestoDiv.appendChild(presupuestoHeader);
 
             // Contenido del presupuesto (tabla de artículos)
@@ -392,8 +531,8 @@ function renderPedidosCliente(pedidos) {
             accionesDiv.appendChild(btnAsignar);
         }
 
-        // Solo mostrar botón "Imprimir Todos" si hay más de 1 presupuesto
-        if (presupuestos.length > 1) {
+        // Solo mostrar botón "Imprimir Todos" si hay más de 1 presupuesto y estamos en acordeón "Imprimir"
+        if (containerId === 'pedidos-imprimir' && presupuestos.length > 1) {
             const btnImprimirTodos = document.createElement('button');
             btnImprimirTodos.textContent = '📄 Imprimir Todos de Este Cliente';
             btnImprimirTodos.className = 'admin-button';
@@ -406,6 +545,37 @@ function renderPedidosCliente(pedidos) {
         clienteDiv.appendChild(contenido);
         contenedor.appendChild(clienteDiv);
     });
+}
+
+// Función para renderizar pedidos por cliente (MODIFICADA para soportar agrupación por secuencia)
+function renderPedidosCliente(pedidos) {
+    if (!pedidos || pedidos.length === 0) {
+        // Si no hay datos, limpiar todos los contenedores
+        const containers = ['pedidos-imprimir', 'pedidos-armar', 'pedidos-listo'];
+        containers.forEach(id => {
+            const container = document.getElementById(id);
+            if (container) {
+                container.innerHTML = '<p class="mensaje-info">No hay pedidos pendientes para la fecha seleccionada.</p>';
+            }
+        });
+        
+        // Resetear contadores
+        actualizarContadoresSecuencia({ imprimir: [], armar_pedido: [], pedido_listo: [] });
+        return;
+    }
+
+    console.log('🔍 Renderizando pedidos por cliente con agrupación por secuencia...');
+    
+    // Agrupar por secuencia
+    const grupos = agruparPresupuestosPorSecuencia(pedidos);
+    
+    // Renderizar cada grupo en su contenedor
+    renderizarGrupoSecuencia('pedidos-imprimir', grupos.imprimir, 'Imprimir / Imprimir Modificado');
+    renderizarGrupoSecuencia('pedidos-armar', grupos.armar_pedido, 'Armar Pedido');
+    renderizarGrupoSecuencia('pedidos-listo', grupos.pedido_listo, 'Pedido Listo');
+    
+    // Actualizar contadores en títulos
+    actualizarContadoresSecuencia(grupos);
 }
 
 // Función para calcular clase indicador estado
@@ -556,56 +726,169 @@ async function confirmarAsignacionFaltantes() {
     }
 }
 
+/**
+ * Actualiza la secuencia de presupuestos a "Armar_Pedido"
+ */
+async function actualizarSecuenciaPresupuestos(presupuestosIds) {
+    try {
+        console.log(`🔄 Actualizando secuencia de ${presupuestosIds.length} presupuestos a "Armar_Pedido"...`);
+        
+        const response = await fetch(`${base}/actualizar-secuencia`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presupuestos_ids: presupuestosIds,
+                nueva_secuencia: 'Armar_Pedido'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            console.log(`✅ Secuencia actualizada: ${data.actualizados} presupuestos`);
+            return true;
+        } else {
+            console.error('❌ Error al actualizar secuencia:', data.error);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Error al actualizar secuencia:', error);
+        return false;
+    }
+}
+
+/**
+ * Obtiene todos los IDs de presupuestos de un cliente desde los datos cargados
+ */
+function obtenerPresupuestosDeCliente(clienteId) {
+    const presupuestosIds = new Set();
+    
+    // Buscar en los datos cargados
+    if (window.clientesPedidos && window.clientesPedidos.length > 0) {
+        const cliente = window.clientesPedidos.find(c => c.cliente_id === clienteId);
+        if (cliente && cliente.articulos) {
+            cliente.articulos.forEach(art => {
+                if (art.presupuesto_id) {
+                    presupuestosIds.add(art.presupuesto_id);
+                }
+            });
+        }
+    }
+    
+    return Array.from(presupuestosIds);
+}
+
+/**
+ * Obtiene todos los IDs de presupuestos de todos los clientes desde los datos cargados
+ */
+function obtenerTodosLosPresupuestos() {
+    const presupuestosIds = new Set();
+    
+    if (window.clientesPedidos && window.clientesPedidos.length > 0) {
+        window.clientesPedidos.forEach(cliente => {
+            if (cliente.articulos) {
+                cliente.articulos.forEach(art => {
+                    if (art.presupuesto_id) {
+                        presupuestosIds.add(art.presupuesto_id);
+                    }
+                });
+            }
+        });
+    }
+    
+    return Array.from(presupuestosIds);
+}
+
 // Función para imprimir todos los presupuestos de un cliente
-function imprimirPresupuestoCliente(clienteId) {
+async function imprimirPresupuestoCliente(clienteId) {
+    console.log(`📄 Imprimiendo presupuestos del cliente ${clienteId}...`);
+    
+    // 1. Obtener IDs de presupuestos del cliente
+    const presupuestosIds = obtenerPresupuestosDeCliente(clienteId);
+    console.log(`📋 Presupuestos a imprimir: ${presupuestosIds.length}`);
+    
+    // 2. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=html`;
 
-    // Abrir PDF en nueva pestaña
     const win = window.open(urlPdf, '_blank');
 
-    // Si el PDF no se puede abrir (por ejemplo, error 501), abrir fallback HTML
     setTimeout(() => {
         if (!win || win.closed || typeof win.closed == 'undefined') {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
+    
+    // 3. Actualizar secuencia a "Armar_Pedido"
+    if (presupuestosIds.length > 0) {
+        const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
+        if (actualizado) {
+            // Recargar datos para reflejar el cambio
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+            }, 1000);
+        }
+    }
 }
 
 // Función para imprimir un presupuesto individual
-function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
+async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     console.log(`📄 Imprimiendo presupuesto individual: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
     
+    // 1. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html`;
 
-    // Abrir PDF en nueva pestaña
     const win = window.open(urlPdf, '_blank');
 
-    // Si el PDF no se puede abrir, abrir fallback HTML
     setTimeout(() => {
         if (!win || win.closed || typeof win.closed == 'undefined') {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
+    
+    // 2. Actualizar secuencia a "Armar_Pedido"
+    const actualizado = await actualizarSecuenciaPresupuestos([presupuestoId]);
+    if (actualizado) {
+        // Recargar datos para reflejar el cambio
+        setTimeout(() => {
+            cargarPedidosPorCliente();
+        }, 1000);
+    }
 }
 
 // Función para imprimir TODOS los presupuestos de TODOS los clientes
-function imprimirTodosLosPresupuestos(fechaCorte) {
+async function imprimirTodosLosPresupuestos(fechaCorte) {
     console.log(`📄 Imprimiendo TODOS los presupuestos hasta fecha: ${fechaCorte}`);
     
+    // 1. Obtener todos los IDs de presupuestos
+    const presupuestosIds = obtenerTodosLosPresupuestos();
+    console.log(`📋 Total de presupuestos a imprimir: ${presupuestosIds.length}`);
+    
+    // 2. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=html`;
 
-    // Abrir PDF en nueva pestaña
     const win = window.open(urlPdf, '_blank');
 
-    // Si el PDF no se puede abrir, abrir fallback HTML
     setTimeout(() => {
         if (!win || win.closed || typeof win.closed == 'undefined') {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
+    
+    // 3. Actualizar secuencia a "Armar_Pedido"
+    if (presupuestosIds.length > 0) {
+        const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
+        if (actualizado) {
+            // Recargar datos para reflejar el cambio
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+            }, 1000);
+        }
+    }
 }
 
 // Función para filtrar pedidos por cliente
@@ -834,3 +1117,420 @@ function filtrarPedidosArticulos() {
 
     renderPedidosArticulos(articulosFiltrados, totalesFiltrados);
 }
+
+// ==========================================
+// FUNCIONES PARA MODAL DE ARMAR PEDIDO (VERIFICACIÓN INTERACTIVA)
+// ==========================================
+
+// Estado del modal de verificación
+let estadoVerificacion = {
+    presupuesto_id: null,
+    cliente_id: null,
+    articulos: [],
+    articulosConfirmados: 0,
+    totalArticulos: 0
+};
+
+/**
+ * Abre el modal de verificación de pedido
+ */
+function abrirModalArmarPedido(clienteId, presupuestoId) {
+    console.log(`🔍 Abriendo modal de verificación: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
+    
+    // Obtener artículos del presupuesto
+    const articulos = obtenerArticulosPresupuesto(clienteId, presupuestoId);
+    
+    if (!articulos || articulos.length === 0) {
+        alert('No se encontraron artículos para este presupuesto');
+        return;
+    }
+    
+    // Inicializar estado
+    estadoVerificacion = {
+        presupuesto_id: presupuestoId,
+        cliente_id: clienteId,
+        articulos: articulos.map(art => ({
+            ...art,
+            cantidad_confirmada: 0,
+            confirmado: false
+        })),
+        articulosConfirmados: 0,
+        totalArticulos: articulos.length
+    };
+    
+    // Actualizar título del modal
+    const titulo = document.getElementById('modal-presupuesto-titulo');
+    if (titulo) {
+        titulo.textContent = `Presupuesto ${presupuestoId}`;
+    }
+    
+    // Renderizar tabla de artículos
+    renderizarTablaVerificacion();
+    
+    // Actualizar progreso
+    actualizarProgreso();
+    
+    // Limpiar campo de escaneo y feedback
+    const scannerInput = document.getElementById('scanner-input');
+    const feedback = document.getElementById('scanner-feedback');
+    if (scannerInput) {
+        scannerInput.value = '';
+        scannerInput.focus();
+    }
+    if (feedback) {
+        feedback.className = 'feedback-message';
+        feedback.style.display = 'none';
+    }
+    
+    // Configurar listener para el campo de escaneo
+    configurarScannerInput();
+    
+    // Mostrar modal
+    const modal = document.getElementById('modal-armar-pedido');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Obtiene los artículos de un presupuesto específico
+ */
+function obtenerArticulosPresupuesto(clienteId, presupuestoId) {
+    if (!window.clientesPedidos) return [];
+    
+    const cliente = window.clientesPedidos.find(c => c.cliente_id === clienteId);
+    if (!cliente || !cliente.articulos) return [];
+    
+    // Filtrar artículos que pertenecen al presupuesto
+    return cliente.articulos.filter(art => art.presupuesto_id === presupuestoId);
+}
+
+/**
+ * Renderiza la tabla de artículos para verificación
+ */
+function renderizarTablaVerificacion() {
+    const tbody = document.getElementById('lista-articulos-verificacion');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    estadoVerificacion.articulos.forEach((articulo, index) => {
+        const tr = document.createElement('tr');
+        tr.className = articulo.confirmado ? 'articulo-confirmado' : 'articulo-pendiente';
+        tr.id = `articulo-row-${index}`;
+        
+        // Estado
+        const tdEstado = document.createElement('td');
+        tdEstado.className = 'estado-check';
+        tdEstado.textContent = articulo.confirmado ? '✅' : '⏳';
+        tr.appendChild(tdEstado);
+        
+        // Código
+        const tdCodigo = document.createElement('td');
+        tdCodigo.textContent = articulo.articulo_numero;
+        tr.appendChild(tdCodigo);
+        
+        // Descripción
+        const tdDescripcion = document.createElement('td');
+        tdDescripcion.textContent = articulo.descripcion || '-';
+        tr.appendChild(tdDescripcion);
+        
+        // Cantidad Pedida
+        const tdPedida = document.createElement('td');
+        tdPedida.textContent = articulo.pedido_total;
+        tdPedida.style.textAlign = 'center';
+        tr.appendChild(tdPedida);
+        
+        // Cantidad Confirmada
+        const tdConfirmada = document.createElement('td');
+        const inputConfirmada = document.createElement('input');
+        inputConfirmada.type = 'number';
+        inputConfirmada.min = '0';
+        inputConfirmada.max = articulo.pedido_total;
+        inputConfirmada.value = articulo.cantidad_confirmada;
+        inputConfirmada.style.width = '80px';
+        inputConfirmada.style.textAlign = 'center';
+        inputConfirmada.addEventListener('change', (e) => {
+            const cantidad = parseInt(e.target.value) || 0;
+            marcarArticuloConfirmado(index, cantidad);
+        });
+        tdConfirmada.appendChild(inputConfirmada);
+        tr.appendChild(tdConfirmada);
+        
+        // Acciones
+        const tdAcciones = document.createElement('td');
+        const btnMarcar = document.createElement('button');
+        btnMarcar.textContent = articulo.confirmado ? '✓' : '✓ OK';
+        btnMarcar.className = 'btn-marcar-manual';
+        btnMarcar.addEventListener('click', () => {
+            marcarArticuloConfirmado(index, articulo.pedido_total);
+        });
+        tdAcciones.appendChild(btnMarcar);
+        tr.appendChild(tdAcciones);
+        
+        tbody.appendChild(tr);
+    });
+}
+
+/**
+ * Configura el listener para el campo de escaneo
+ */
+function configurarScannerInput() {
+    const scannerInput = document.getElementById('scanner-input');
+    if (!scannerInput) return;
+    
+    // Remover listeners anteriores
+    const newInput = scannerInput.cloneNode(true);
+    scannerInput.parentNode.replaceChild(newInput, scannerInput);
+    
+    // Agregar nuevo listener
+    newInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const codigo = newInput.value.trim();
+            if (codigo) {
+                procesarCodigoEscaneado(codigo);
+                newInput.value = '';
+            }
+        }
+    });
+}
+
+/**
+ * Procesa un código escaneado
+ */
+function procesarCodigoEscaneado(codigo) {
+    console.log(`🔍 Código escaneado: ${codigo}`);
+    
+    // Buscar artículo en la lista
+    const index = estadoVerificacion.articulos.findIndex(art => 
+        art.articulo_numero === codigo || art.articulo_numero.toString() === codigo
+    );
+    
+    const feedback = document.getElementById('scanner-feedback');
+    
+    if (index !== -1) {
+        // Artículo encontrado
+        const articulo = estadoVerificacion.articulos[index];
+        
+        // Incrementar cantidad confirmada en 1 (no marcar completo directamente)
+        const nuevaCantidad = articulo.cantidad_confirmada + 1;
+        
+        if (nuevaCantidad > articulo.pedido_total) {
+            // Ya se escaneó la cantidad completa
+            mostrarFeedback(`⚠️ Artículo ${codigo} ya tiene ${articulo.cantidad_confirmada}/${articulo.pedido_total} confirmados`, 'error');
+        } else {
+            // Incrementar en 1
+            marcarArticuloConfirmado(index, nuevaCantidad);
+            
+            // Feedback diferenciado según si completó o no
+            if (nuevaCantidad >= articulo.pedido_total) {
+                mostrarFeedback(`✅ Artículo ${codigo} COMPLETO (${nuevaCantidad}/${articulo.pedido_total})`, 'success');
+            } else {
+                mostrarFeedback(`✅ Artículo ${codigo} +1 → ${nuevaCantidad}/${articulo.pedido_total}`, 'success');
+            }
+        }
+    } else {
+        // Artículo no encontrado
+        mostrarFeedback(`❌ Artículo ${codigo} no pertenece a este presupuesto`, 'error');
+    }
+}
+
+/**
+ * Marca un artículo como confirmado
+ */
+function marcarArticuloConfirmado(index, cantidad) {
+    const articulo = estadoVerificacion.articulos[index];
+    const cantidadAnterior = articulo.cantidad_confirmada;
+    
+    articulo.cantidad_confirmada = cantidad;
+    articulo.confirmado = (cantidad >= articulo.pedido_total);
+    
+    // Si cambió el estado de confirmación, actualizar contador
+    if (!articulo.confirmado && cantidadAnterior >= articulo.pedido_total) {
+        estadoVerificacion.articulosConfirmados--;
+    } else if (articulo.confirmado && cantidadAnterior < articulo.pedido_total) {
+        estadoVerificacion.articulosConfirmados++;
+    }
+    
+    // Actualizar fila en la tabla
+    const row = document.getElementById(`articulo-row-${index}`);
+    if (row) {
+        row.className = articulo.confirmado ? 'articulo-confirmado' : 'articulo-pendiente';
+        const estadoCell = row.querySelector('.estado-check');
+        if (estadoCell) {
+            estadoCell.textContent = articulo.confirmado ? '✅' : '⏳';
+        }
+        
+        // Actualizar input de cantidad
+        const input = row.querySelector('input[type="number"]');
+        if (input) {
+            input.value = cantidad;
+        }
+    }
+    
+    // Actualizar progreso
+    actualizarProgreso();
+    
+    // Verificar si se puede habilitar el botón de confirmar
+    verificarEstadoCompleto();
+}
+
+/**
+ * Actualiza la barra de progreso
+ */
+function actualizarProgreso() {
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    
+    const porcentaje = (estadoVerificacion.articulosConfirmados / estadoVerificacion.totalArticulos) * 100;
+    
+    if (progressFill) {
+        progressFill.style.width = `${porcentaje}%`;
+    }
+    
+    if (progressText) {
+        progressText.textContent = `${estadoVerificacion.articulosConfirmados} de ${estadoVerificacion.totalArticulos} artículos confirmados`;
+    }
+}
+
+/**
+ * Verifica si todos los artículos están confirmados
+ */
+function verificarEstadoCompleto() {
+    const btnConfirmar = document.getElementById('btn-confirmar-pedido-completo');
+    if (!btnConfirmar) return;
+    
+    const todosConfirmados = estadoVerificacion.articulosConfirmados === estadoVerificacion.totalArticulos;
+    btnConfirmar.disabled = !todosConfirmados;
+    
+    if (todosConfirmados) {
+        console.log('✅ Todos los artículos confirmados - Botón habilitado');
+    }
+}
+
+/**
+ * Muestra feedback al usuario
+ */
+function mostrarFeedback(mensaje, tipo) {
+    const feedback = document.getElementById('scanner-feedback');
+    if (!feedback) return;
+    
+    feedback.textContent = mensaje;
+    feedback.className = `feedback-message feedback-${tipo}`;
+    feedback.style.display = 'block';
+    
+    // Ocultar después de 3 segundos
+    setTimeout(() => {
+        feedback.style.display = 'none';
+    }, 3000);
+}
+
+/**
+ * Confirma el pedido completo y cambia secuencia a "Pedido_Listo"
+ */
+async function confirmarPedidoCompleto() {
+    console.log('✅ Confirmando pedido completo...');
+    
+    // Verificar que todos estén confirmados
+    if (estadoVerificacion.articulosConfirmados !== estadoVerificacion.totalArticulos) {
+        alert('Debe confirmar todos los artículos antes de completar el pedido');
+        return;
+    }
+    
+    // Actualizar secuencia a "Pedido_Listo"
+    try {
+        const response = await fetch(`${base}/actualizar-secuencia`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presupuestos_ids: [estadoVerificacion.presupuesto_id],
+                nueva_secuencia: 'Pedido_Listo'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            console.log(`✅ Pedido marcado como listo`);
+            
+            // Cerrar modal
+            cerrarModalArmarPedido();
+            
+            // Mostrar mensaje de éxito
+            mostrarToast('✅ Pedido verificado y marcado como listo', 'success');
+            
+            // Recargar datos
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+            }, 500);
+        } else {
+            alert(`Error al actualizar secuencia: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('❌ Error al confirmar pedido:', error);
+        alert('Error al confirmar pedido. Intente nuevamente.');
+    }
+}
+
+/**
+ * Cierra el modal de armar pedido
+ */
+function cerrarModalArmarPedido() {
+    const modal = document.getElementById('modal-armar-pedido');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Limpiar estado
+    estadoVerificacion = {
+        presupuesto_id: null,
+        cliente_id: null,
+        articulos: [],
+        articulosConfirmados: 0,
+        totalArticulos: 0
+    };
+}
+
+// Configurar event listener para el botón de confirmar pedido completo
+document.addEventListener('DOMContentLoaded', () => {
+    const btnConfirmarCompleto = document.getElementById('btn-confirmar-pedido-completo');
+    if (btnConfirmarCompleto) {
+        btnConfirmarCompleto.addEventListener('click', confirmarPedidoCompleto);
+    }
+});
+
+/**
+ * Muestra un toast notification
+ */
+function mostrarToast(texto, tipo = 'success') {
+    // Crear elemento toast
+    const toast = document.createElement('div');
+    toast.className = `toast ${tipo === 'error' ? 'error' : ''}`;
+    toast.textContent = texto;
+    
+    // Agregar al DOM
+    document.body.appendChild(toast);
+    
+    // Mostrar con animación
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 100);
+    
+    // Ocultar y remover después de 3 segundos
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// Hacer funciones disponibles globalmente
+window.abrirModalArmarPedido = abrirModalArmarPedido;
+window.cerrarModalArmarPedido = cerrarModalArmarPedido;
+window.mostrarToast = mostrarToast;

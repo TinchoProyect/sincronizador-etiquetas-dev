@@ -1711,7 +1711,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             SELECT 
                 pd.id,
                 pd.articulo,
-                COALESCE(src.descripcion, pd.articulo) as descripcion_articulo,
+                COALESCE(a.nombre, pd.articulo) as descripcion_articulo,
                 pd.cantidad,
                 pd.valor1,
                 pd.precio1,
@@ -1725,7 +1725,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 -- TOTAL = cantidad * precio1 (total unitario con IVA incluido)
                 ROUND(pd.cantidad * COALESCE(pd.precio1, 0), 2) as total_linea
             FROM public.presupuestos_detalles pd
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = pd.articulo
+            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
             WHERE pd.id_presupuesto_ext = $1
             ORDER BY pd.id
         `;
@@ -1734,12 +1734,24 @@ const obtenerDetallesPresupuesto = async (req, res) => {
         
         console.log(`✅ [PRESUPUESTOS] Detalles encontrados: ${detallesResult.rows.length} artículos para presupuesto ${presupuesto.id_presupuesto_ext}`);
         
-        // Mapear resultados con nombres que consume la UI - CORREGIDO
+        // Mapear resultados - CORRECCIÓN: Devolver valores UNITARIOS + TOTALES
+        // El frontend de edición espera valores UNITARIOS en valor1/precio1/iva1
+        // Los totales (neto/iva/total) son para el resumen
         const detallesConCalculos = detallesResult.rows.map(item => ({
             id: item.id,
+            codigo_barras: item.articulo,
             articulo: item.articulo,
-            descripcion_articulo: item.descripcion_articulo,
+            articulo_numero: item.articulo,
+            descripcion_articulo: item.descripcion_articulo,  // ✅ Agregar campo faltante
+            detalle: item.descripcion_articulo,
+            descripcion: item.descripcion_articulo,
             cantidad: parseFloat(item.cantidad || 0),
+            // VALORES UNITARIOS (para edición)
+            valor1: parseFloat(item.valor1 || 0),      // Precio unitario SIN IVA
+            precio1: parseFloat(item.precio1 || 0),    // Precio unitario CON IVA
+            iva1: parseFloat(item.iva1 || 0),          // Monto IVA unitario
+            camp2: parseFloat(item.camp2 || 0),        // Alícuota decimal (0.21)
+            // VALORES TOTALES (para resumen/totales)
             neto: parseFloat(item.neto_linea || 0),
             iva: parseFloat(item.iva_linea || 0),
             total: parseFloat(item.total_linea || 0)
@@ -1942,5 +1954,5 @@ module.exports = {
     obtenerEstadisticas,
     obtenerConfiguracion,
     obtenerResumen,
-    obtenerPrecioArticuloCliente   // <-- NUEVO
+    obtenerPrecioArticuloCliente
 };

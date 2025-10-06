@@ -119,6 +119,12 @@ document.addEventListener('DOMContentLoaded', function() {
         estadoSel.value = 'Presupuesto/Orden';
     }
 
+    // Establecer valor predeterminado para secuencia
+    const secuenciaSelect = document.getElementById('secuencia');
+    if (secuenciaSelect && !secuenciaSelect.value) {
+        secuenciaSelect.value = 'Imprimir';
+    }
+
     const fechaEntregaInput = document.getElementById('fecha_entrega');
     // usar misma fecha que 'fecha' si está vacío
     if (fechaEntregaInput && !fechaEntregaInput.value) {
@@ -503,6 +509,9 @@ async function handleSubmit(event) {
         descuentoPct = Number.isFinite(descuentoPct) ? Math.min(Math.max(descuentoPct, 0), 100) : 0;
         const descuentoValor = parseFloat((descuentoPct / 100).toFixed(2)); // ej 5 -> 0.05
         const informeGeneradoValor = (document.getElementById('informe_generado')?.value || 'Pendiente').toString();
+        
+        // Secuencia (nuevo campo)
+        const secuenciaValor = (formData.get('secuencia') || '').toString().trim();
 
 
         // ---- payload final ----
@@ -517,6 +526,7 @@ async function handleSubmit(event) {
         nota: (formData.get('nota') || '').toString(),
         punto_entrega: puntoEntregaValor,
         descuento: descuentoValor, // proporción 0..1
+        secuencia: secuenciaValor, // nuevo campo
         detalles: []
         };
         // Recopilar detalles
