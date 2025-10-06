@@ -404,6 +404,9 @@ function llenarCamposEditables() {
     document.getElementById('tipo_comprobante').value = presupuestoData.tipo_comprobante || 'Factura';
     document.getElementById('estado').value = presupuestoData.estado || 'Presupuesto/Orden';
     document.getElementById('agente').value = presupuestoData.agente || '';
+    
+    // Secuencia (nuevo campo) - usar "Imprimir" como fallback
+    document.getElementById('secuencia').value = presupuestoData.secuencia || 'Imprimir';
 
     // Fecha de entrega (convertir formato si es necesario)
     if (presupuestoData.fecha_entrega) {
@@ -988,6 +991,7 @@ async function handleSubmit(event) {
             estado: data.estado,
             id_cliente: data.id_cliente,
             fecha: data.fecha,
+            secuencia: formData.get('secuencia') || null,
             
             // Detalles
             detalles: detalles

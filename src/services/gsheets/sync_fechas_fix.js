@@ -73,7 +73,7 @@ async function ejecutarCorreccionFechas(config, db) {
         
         // PASO 2: Leer datos desde Google Sheets
         console.log('[SYNC-FECHAS-FIX] Leyendo datos desde Google Sheets...');
-        let presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        let presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         let detallesData = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
         // ===== DEBUG READ (solo últimos 5) =====
                 try {
@@ -137,7 +137,7 @@ async function ejecutarCorreccionFechas(config, db) {
         await pushDetallesLocalesASheets(insertedIds, config, db);
         
         // Releer hojas para incorporar lo que se acaba de escribir
-        presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         detallesData = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
 
         // Reaplicar filtro de inactivos locales
@@ -740,7 +740,7 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
     const { rows: locales } = await db.query(`
       SELECT DISTINCT p.id_presupuesto_ext, p.id_cliente, p.agente, p.fecha, p.fecha_entrega, 
              p.tipo_comprobante, p.nota, p.estado, p.informe_generado, p.cliente_nuevo_id, 
-             p.punto_entrega, p.descuento, p.activo, p.fecha_actualizacion
+             p.punto_entrega, p.descuento, p.secuencia, p.activo, p.fecha_actualizacion
       FROM presupuestos p
       LEFT JOIN presupuestos_detalles d ON d.id_presupuesto_ext = p.id_presupuesto_ext
       WHERE p.activo = true 
@@ -831,13 +831,14 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
           r.punto_entrega ?? '',                              // L  PuntoEntrega
           pctStr,                                             // M  Descuento
           lastModifiedAR,                                     // N  LastModified (formato AppSheet AR)
-          true                                                // O  Activo
+          true,                                               // O  Activo
+          r.secuencia ?? ''                                   // P  Secuencia
         ];
       });
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: config.hoja_id,
-        range: 'Presupuestos!A1:O1',
+        range: 'Presupuestos!A1:P1',
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: data, majorDimension: 'ROWS' }
@@ -882,12 +883,13 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
             r.punto_entrega ?? '',
             pctStr,
             lastModifiedAR,
-            true
+            true,
+            r.secuencia ?? ''
           ];
 
           await sheets.spreadsheets.values.update({
             spreadsheetId: config.hoja_id,
-            range: `Presupuestos!A${rowIndex}:O${rowIndex}`,
+            range: `Presupuestos!A${rowIndex}:P${rowIndex}`,
             valueInputOption: 'RAW',
             requestBody: {
               values: [updatedRow],
@@ -949,7 +951,7 @@ async function pushDetallesLocalesASheets(confirmedHeaderIds, config, db) {
     
     // INDICADOR 2: Presupuestos que YA existen en Sheets (desde pushCambiosLocalesConTimestamp)
     // Leer datos actuales de Sheets para verificar existencia
-    const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+    const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
     const idsEnSheets = new Set(
       presupuestosSheets.rows
         .map(row => (row[presupuestosSheets.headers[0]] || '').toString().trim())

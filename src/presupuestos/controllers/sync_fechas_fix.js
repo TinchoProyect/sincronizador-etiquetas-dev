@@ -522,7 +522,7 @@ const ejecutarPushAltas = async (req, res) => {
         
         // PASO 3: Preparar presupuestosData_like mínimo
         console.log('[PUSH-ALTAS] Leyendo datos actuales de Sheets...');
-        const pres = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        const pres = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         const presupuestosData_like = { 
             headers: pres.headers, 
             rows: pres.rows 
@@ -668,7 +668,7 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
         
         // PASO 2: Leer datos actuales de Sheets
         console.log('[SYNC-BIDI] Leyendo datos actuales de Sheets...');
-        const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         const detallesSheets = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
         
         console.log('[SYNC-BIDI] Datos leídos de Sheets:', {
@@ -780,7 +780,7 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
         const { pushAltasLocalesASheets, pushDetallesLocalesASheets, pushDetallesModificadosASheets } = require('../../services/gsheets/sync_fechas_fix');
         
         // Releer después de marcar anulados
-        const presupuestosActualizados1 = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        const presupuestosActualizados1 = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         const presupuestosData_updated = { 
             headers: presupuestosActualizados1.headers, 
             rows: presupuestosActualizados1.rows 
@@ -812,7 +812,7 @@ const ejecutarSincronizacionBidireccional = async (req, res) => {
         console.log('[SYNC-BTN] === FASE 3: PULL CAMBIOS REMOTOS ===');
         
         // Releer Sheets después de todos los pushes
-        const presupuestosFinales = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        const presupuestosFinales = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         const detallesFinales = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
         
         // CRÍTICO: Excluir del PULL los IDs que fueron modificados localmente

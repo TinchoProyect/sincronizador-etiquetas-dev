@@ -1711,7 +1711,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             SELECT 
                 pd.id,
                 pd.articulo,
-                COALESCE(src.descripcion, pd.articulo) as descripcion_articulo,
+                COALESCE(a.nombre, pd.articulo) as descripcion_articulo,
                 pd.cantidad,
                 pd.valor1,
                 pd.precio1,
@@ -1725,7 +1725,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 -- TOTAL = cantidad * precio1 (total unitario con IVA incluido)
                 ROUND(pd.cantidad * COALESCE(pd.precio1, 0), 2) as total_linea
             FROM public.presupuestos_detalles pd
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = pd.articulo
+            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
             WHERE pd.id_presupuesto_ext = $1
             ORDER BY pd.id
         `;
@@ -1742,6 +1742,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             codigo_barras: item.articulo,
             articulo: item.articulo,
             articulo_numero: item.articulo,
+            descripcion_articulo: item.descripcion_articulo,  // ✅ Agregar campo faltante
             detalle: item.descripcion_articulo,
             descripcion: item.descripcion_articulo,
             cantidad: parseFloat(item.cantidad || 0),

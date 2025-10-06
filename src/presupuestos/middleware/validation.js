@@ -241,7 +241,8 @@ const validarActualizarPresupuesto = (req, res, next) => {
       'tipo_comprobante',
       'estado',
       'id_cliente',
-      'fecha'
+      'fecha',
+      'secuencia'  // Campo de secuencia agregado
     ];
     const body = req.body || {};
     const keys = Object.keys(body);
