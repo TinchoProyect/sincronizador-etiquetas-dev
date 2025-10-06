@@ -337,6 +337,20 @@ export async function stopEtapa1(carroId, uid){
 export async function startEtapa2(carroId, uid){
   if (_carroBloqueado()) { alert('El carro ya fue preparado.'); return; }
   if (_etapaTerminada(carroId, 2)) { alert('Etapa 2 ya finalizada.'); return; }
+  
+  //Inento evitar que se dispare la etapa 2 si no esta activado el boton Modo medicion
+
+  const botonGlobal = document.getElementById('btn-temporizador-global');
+           
+
+            if (botonGlobal) {
+                const activo = botonGlobal.classList.contains('activo');
+                document.querySelectorAll('.btn-temporizador-articulo')
+                    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
+               
+
+//Fin de modificación
+
 
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/iniciar`, uid);
   const s = _ensure(carroId)[2];
@@ -356,7 +370,12 @@ export async function startEtapa2(carroId, uid){
   // ⛔ NUEVO: pasamos a etapa 2 y desbloqueamos botones por artículo
   setEtapaCarro(carroId, 2);
   _aplicarBloqueoArticulosPorEtapa(carroId);
-}
+
+ } else {
+                    console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
+            }
+
+            }
 export async function stopEtapa2(carroId, uid){
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/finalizar`, uid);
   const s = _ensure(carroId)[2];

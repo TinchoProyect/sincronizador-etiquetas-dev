@@ -748,6 +748,8 @@ window.eliminarCarro = eliminarCarro;
 
 // Función para seleccionar un carro
 export async function seleccionarCarro(carroId) {
+    
+
   try {
     console.log(`Seleccionando carro ID: ${carroId}`);
 
@@ -800,6 +802,7 @@ export async function seleccionarCarro(carroId) {
                 syncTimerButtonsVisibility();            // al menos refresca visibilidad
             }
 }
+
       } else {
         console.warn('No se pudo obtener estado de etapas para rehidratar (HTTP):', resp.status);
       }
@@ -852,6 +855,8 @@ export async function seleccionarCarro(carroId) {
     console.error('Error al seleccionar carro:', error);
     mostrarError(error.message);
   }
+  //Reload para evitar inconsistencias visuales menores
+  window.location.reload();
 }
 
 
@@ -905,7 +910,8 @@ export async function deseleccionarCarro() {
     } else {
         console.warn('⚠️ actualizarVisibilidadBotones no está disponible al deseleccionar carro');
     }
-}
+//Reload para evitar inconsistencias visuales menores
+window.location.reload();}
 
 // Función para eliminar un carro
 export async function eliminarCarro(carroId) {
