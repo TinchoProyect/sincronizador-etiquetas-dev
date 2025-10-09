@@ -312,12 +312,14 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         const header = document.createElement('div');
         header.className = 'cliente-header';
         header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
-        header.addEventListener('click', () => toggleAcordeon(cliente.cliente_id));
+        // Pasar containerId para que toggleAcordeon busque en la sección correcta
+        header.addEventListener('click', () => toggleAcordeon(cliente.cliente_id, containerId));
         clienteDiv.appendChild(header);
 
         const contenido = document.createElement('div');
         contenido.className = 'cliente-contenido';
-        contenido.id = `contenido-${cliente.cliente_id}`;
+        // ID único por sección para evitar conflictos cuando el mismo cliente está en múltiples secciones
+        contenido.id = `contenido-${containerId}-${cliente.cliente_id}`;
         contenido.style.padding = '10px';
 
         // Agrupar artículos por presupuesto_id
@@ -433,7 +435,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 botonesPresupuesto.appendChild(btnVerificarPresup);
             }
             
-            const presupuestoId = `presupuesto-${cliente.cliente_id}-${idx}`;
+            const presupuestoId = `presupuesto-${containerId}-${cliente.cliente_id}-${idx}`;
             clickeableDiv.addEventListener('click', () => {
                 const contenidoPresup = document.getElementById(presupuestoId);
                 if (contenidoPresup.style.display === 'none' || contenidoPresup.style.display === '') {
@@ -585,13 +587,106 @@ function calcularIndicadorEstado(articulo) {
     return 'indicador-faltantes';
 }
 
-// Función para toggle acordeon
-function toggleAcordeon(clienteId) {
-    const contenido = document.getElementById(`contenido-${clienteId}`);
-    if (contenido.style.display === 'block') {
-        contenido.style.display = 'none';
+// Función para toggle acordeon - MODIFICADA para buscar en el contexto correcto
+function toggleAcordeon(clienteId, containerId) {
+    // Buscar el contenido con ID único por sección
+    const contenido = document.getElementById(`contenido-${containerId}-${clienteId}`);
+    
+    if (contenido) {
+        if (contenido.style.display === 'block') {
+            contenido.style.display = 'none';
+        } else {
+            contenido.style.display = 'block';
+        }
     } else {
+        console.warn(`⚠️ No se encontró contenido para cliente ${clienteId} en ${containerId}`);
+    }
+}
+
+// Función para abrir acordeon del cliente DENTRO de una sección específica
+function abrirAcordeonEnSeccion(clienteId, containerId) {
+    console.log(`🔍 [DEBUG] Iniciando abrirAcordeonEnSeccion(${clienteId}, ${containerId})`);
+    
+    // PASO 1: Expandir el acordeón del cliente
+    const contenidoId = `contenido-${containerId}-${clienteId}`;
+    const contenido = document.getElementById(contenidoId);
+    
+    console.log(`🔍 [DEBUG] Buscando contenido con ID: ${contenidoId}`);
+    console.log(`🔍 [DEBUG] Contenido encontrado:`, contenido ? 'SÍ' : 'NO');
+    
+    if (contenido) {
+        const displayAntes = contenido.style.display;
         contenido.style.display = 'block';
+        const displayDespues = contenido.style.display;
+        
+        console.log(`✅ [DEBUG] Acordeón del cliente expandido - Display: ${displayAntes} → ${displayDespues}`);
+        
+        // PASO 2: Expandir todos los presupuestos dentro del cliente (solo en "Armar Pedido")
+        if (containerId === 'pedidos-armar') {
+            setTimeout(() => {
+                // Buscar todos los divs de presupuesto dentro del contenido del cliente
+                const presupuestoDivs = contenido.querySelectorAll('div[style*="margin-bottom: 15px"]');
+                console.log(`🔍 [DEBUG] Divs de presupuesto encontrados: ${presupuestoDivs.length}`);
+                
+                // Buscar todos los contenidos de presupuesto con el patrón correcto (presupuesto-containerId-clienteId-*)
+                const presupuestosContenido = contenido.querySelectorAll(`[id^="presupuesto-${containerId}-${clienteId}-"]`);
+                console.log(`🔍 [DEBUG] Contenidos de presupuesto encontrados: ${presupuestosContenido.length}`);
+                
+                presupuestosContenido.forEach((presupuestoContenido, idx) => {
+                    // Expandir el contenido del presupuesto
+                    presupuestoContenido.style.display = 'block';
+                    
+                    // Buscar el header del presupuesto (es el previousElementSibling)
+                    const presupuestoHeader = presupuestoContenido.previousElementSibling;
+                    if (presupuestoHeader) {
+                        // Buscar el div clickeable dentro del header (el primero)
+                        const clickeableDiv = presupuestoHeader.querySelector('div[style*="cursor: pointer"]');
+                        
+                        // Buscar el icono dentro del clickeable div
+                        const iconSpan = clickeableDiv ? clickeableDiv.querySelector('span') : presupuestoHeader.querySelector('span');
+                        if (iconSpan) {
+                            iconSpan.style.transform = 'rotate(180deg)';
+                        }
+                        presupuestoHeader.style.backgroundColor = '#e9ecef';
+                    }
+                    
+                    console.log(`   ✅ [DEBUG] Presupuesto ${idx} expandido: ${presupuestoContenido.id}`);
+                });
+            }, 200);
+        }
+    } else {
+        console.error(`❌ [DEBUG] No se encontró contenido con ID: ${contenidoId}`);
+        
+        // Listar todos los IDs de contenido en el DOM para debugging
+        const todosLosContenidos = document.querySelectorAll('.cliente-contenido');
+        console.log(`🔍 [DEBUG] Total de contenidos en el DOM: ${todosLosContenidos.length}`);
+        todosLosContenidos.forEach((cont, idx) => {
+            console.log(`   [${idx}] ID: ${cont.id}`);
+        });
+    }
+}
+
+// Función para forzar expansión de sección principal
+function forzarExpandirSeccion(sectionId) {
+    const content = document.getElementById(sectionId);
+    const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
+    
+    if (content && content.style.display === 'none') {
+        // Expandir
+        content.style.display = 'block';
+        content.classList.add('expanding');
+        content.classList.remove('collapsing');
+        if (button) {
+            button.setAttribute('aria-expanded', 'true');
+        }
+        
+        setTimeout(() => {
+            content.classList.remove('expanding');
+        }, 300);
+        
+        console.log(`📂 Sección ${sectionId} expandida`);
+    } else if (content) {
+        console.log(`📂 Sección ${sectionId} ya estaba expandida`);
     }
 }
 
@@ -825,9 +920,19 @@ async function imprimirPresupuestoCliente(clienteId) {
     if (presupuestosIds.length > 0) {
         const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
         if (actualizado) {
-            // Recargar datos para reflejar el cambio
+            // Recargar datos y expandir sección "Armar Pedido" + cliente
             setTimeout(() => {
                 cargarPedidosPorCliente();
+                
+                setTimeout(() => {
+                    console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
+                    forzarExpandirSeccion('pedidos-armar-section');
+                    
+                    // Expandir el cliente DENTRO de la sección "Armar Pedido"
+                    setTimeout(() => {
+                        abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
+                    }, 500);
+                }, 800);
             }, 1000);
         }
     }
@@ -852,9 +957,19 @@ async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     // 2. Actualizar secuencia a "Armar_Pedido"
     const actualizado = await actualizarSecuenciaPresupuestos([presupuestoId]);
     if (actualizado) {
-        // Recargar datos para reflejar el cambio
+        // Recargar datos y expandir sección "Armar Pedido" + cliente
         setTimeout(() => {
             cargarPedidosPorCliente();
+            
+            setTimeout(() => {
+                console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
+                forzarExpandirSeccion('pedidos-armar-section');
+                
+                // Expandir el cliente DENTRO de la sección "Armar Pedido"
+                setTimeout(() => {
+                    abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
+                }, 500);
+            }, 800);
         }, 1000);
     }
 }
