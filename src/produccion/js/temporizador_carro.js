@@ -264,12 +264,12 @@ function _showEtapa1(show){ const b = document.getElementById('btn-etapa1'); if 
 function _showEtapa2(show){ const b = document.getElementById('badge-etapa2'); if (b) b.style.display = show ? 'inline-block' : 'none'; }
 export function showEtapa3Button(show) {
   const botonGlobal3 = document.getElementById('btn-temporizador-global');
-  if (botonGlobal3.classList.contains('activo')) {
+  if (botonGlobal3 && botonGlobal3.classList.contains('activo')) {
     const b = document.getElementById('btn-etapa3');
     if (b) b.style.display = show ? 'inline-block' : 'none';
   }
-
 }
+
 
 
 // ⛔ NUEVO: habilita/inhabilita botones por artículo según etapa actual
@@ -345,8 +345,8 @@ export async function startEtapa2(carroId, uid){
   if (_carroBloqueado()) { alert('El carro ya fue preparado.'); return; }
   if (_etapaTerminada(carroId, 2)) { alert('Etapa 2 ya finalizada.'); return; }
   const botonGlobal = document.getElementById('btn-temporizador-global');
-  if ( botonGlobal.classList.contains('activo')) {
-  
+  if (botonGlobal && botonGlobal.classList.contains('activo')) {
+
   
 
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/iniciar`, uid);
@@ -394,8 +394,9 @@ export async function startEtapa3(carroId, uid){
   
   if (_etapaTerminada(carroId, 3)) { alert('Etapa 3 ya finalizada.'); return; }
   
-  const botonGlobal = document.getElementById('btn-temporizador-global');
-  if ( botonGlobal.classList.contains('activo')) {
+ const botonGlobal = document.getElementById('btn-temporizador-global');
+if (botonGlobal && botonGlobal.classList.contains('activo')) {
+ {
 
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/3/iniciar`, uid);
 
@@ -414,12 +415,14 @@ export async function startEtapa3(carroId, uid){
   if (btn) { btn.classList.add('running'); btn.classList.remove('finished'); btn.disabled = false; }
   }
 }
+}
 export async function stopEtapa3(carroId, uid){
   
   
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/3/finalizar`, uid);
   const botonGlobal = document.getElementById('btn-temporizador-global');
-  if ( botonGlobal.classList.contains('activo')) {
+if (botonGlobal && botonGlobal.classList.contains('activo')) {
+
   const s = _ensure(carroId)[3];
   const elapsedMs = s.start ? (Date.now() - s.start) : 0;
   s.running = false;
@@ -924,7 +927,6 @@ export function clearTimersForCarro(carroId) {
     window.syncTimerButtonsVisibility();
   }
 }
-
 
 
 

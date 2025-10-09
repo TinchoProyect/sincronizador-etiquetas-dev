@@ -695,7 +695,12 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         // Guardar el ID del carro en localStorage y variable global
         localStorage.setItem('carroActivo', data.id);
         window.carroIdGlobal = data.id;
-        
+
+        // ⛔ NUEVO: cachear si este carro es EXTERNO para que no aparezca el Modo Medición
+        try {
+        localStorage.setItem(`carro:${data.id}:externo`, tipoCarro === 'externa' ? '1' : '0');
+        } catch {}
+                
         console.log('Actualizando interfaz...');
         
         // Actualizar la información visual del carro
@@ -1495,22 +1500,55 @@ export async function mostrarArticulosDelCarro() {
                 console.warn('Error al obtener relaciones:', error);
             }
         }
+        // ⛔ NUEVO: detectar si el carro activo es EXTERNO
+        let esExterno = false;
+        try {
+        // 1) cache local
+        const key = `carro:${carroId}:externo`;
+        const v = localStorage.getItem(key);
+        esExterno = (v === '1' || v === 'true');
+
+        // 2) Fallback: si no hay cache, consulto la lista de carros del usuario
+        if (!esExterno) {
+            const colab = JSON.parse(localStorage.getItem('colaboradorActivo') || '{}');
+            if (colab?.id) {
+            const r = await fetch(`http://localhost:3002/api/produccion/usuario/${colab.id}/carros`);
+            if (r.ok) {
+                const carros = await r.json();
+                const c = Array.isArray(carros) ? carros.find(x => String(x.id) === String(carroId)) : null;
+                if (c && (c.tipo_carro === 'externa' || c.externo === true || c.es_externo === true)) {
+                esExterno = true;
+                try { localStorage.setItem(key, '1'); } catch {}
+                } else {
+                try { localStorage.setItem(key, '0'); } catch {}
+                }
+            }
+            }
+        }
+        } catch {}
+        // ⛔ FIN nuevo
+
+
+                // ⛔ MOD: si es externo, NO incluimos el botón "Modo medición"
+        const botonMedicion = esExterno ? '' : `
+        <button id="btn-temporizador-global" class="btn btn-outline-primary btn-sm">
+            ⏱ Modo medición
+        </button>
+        `;
 
         let html = `
-            <div class="agregar-articulo-container">
-                <button id="agregar-articulo" class="btn btn-secondary">
-                    Agregar artículo al carro
-                </button>
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div class="agregar-articulo-container">
+            <button id="agregar-articulo" class="btn btn-secondary">
+            Agregar artículo al carro
+            </button>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
             <h3>Artículos en el carro</h3>
-                <button id="btn-temporizador-global" class="btn btn-outline-primary btn-sm">
-                 ⏱ Modo medición
-                </button>
-            </div>
-
-            <div class="seccion-articulos">
+            ${botonMedicion}
+        </div>
+        ...
         `;
+
 
         for (const art of articulos) {
             const relacion = relacionesExistentes[art.numero];
@@ -1618,12 +1656,12 @@ export async function mostrarArticulosDelCarro() {
             // Activar botón de temporizador global una vez que está en el DOM         
                 // 🔄 Sincronizar estado del modo medición después de renderizar
             const botonGlobal = document.getElementById('btn-temporizador-global');
-            const estadoModoMedicion = document.getElementById('crear-carro');
+           
 
             // Sincronizar visibilidad según estado actual del botón global
             syncTimerButtonsVisibility();
 
-            if (botonGlobal && estadoModoMedicion) {
+            if (botonGlobal) {
                 const activo = botonGlobal.classList.contains('activo');
                 
                 document.querySelectorAll('.btn-temporizador-articulo')

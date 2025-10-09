@@ -41,6 +41,30 @@ import {
 
 window.carroIdGlobal = null;
 
+//Modificacion que no haya Modo Medicion para carros externos
+// ⛔ NUEVO: helper para aplicar la regla de visibilidad del botón "Modo medición"
+function aplicarReglaBotonMedicion() {
+  // Si el botón no existe en el DOM aún, no hacemos nada
+  const btn = document.getElementById('btn-temporizador-global');
+  if (!btn) return;
+
+  const carroId = localStorage.getItem('carroActivo');
+  // Flag que vamos a setear desde cargarResumenIngredientes()
+  const esExterno = localStorage.getItem(`carro:${carroId}:externo`) === '1';
+
+  // Ocultar si es externo, mostrar si no lo es
+  btn.style.display = esExterno ? 'none' : '';
+}
+
+// ⛔ NUEVO: utilitario para setear el flag de "carro externo" y refrescar el botón
+function setCarroExternoFlag(carroId, esExterno) {
+  try {
+    localStorage.setItem(`carro:${carroId}:externo`, esExterno ? '1' : '0');
+  } catch {}
+  aplicarReglaBotonMedicion();
+}
+
+//fin Modificacion que no haya Modo Medicion para carros externos
 
 // ✅ Carro listo: corta etapa 1, inicia etapa 2 y luego marca el carro como preparado
 window.carroPreparadoConTemporizador = async (carroId) => {
@@ -143,11 +167,15 @@ window._bindActionButtons = bindActionButtons;
 window.seleccionarCarro = async (...args) => {
     await seleccionarCarro(...args);
     await actualizarVisibilidadBotones();
+    // ⛔ NUEVO:
+     aplicarReglaBotonMedicion();
 };
 
 window.deseleccionarCarro = async (...args) => {
     await deseleccionarCarro(...args);
     await actualizarVisibilidadBotones();
+     // ⛔ NUEVO:
+  aplicarReglaBotonMedicion();
 };
 
 window.eliminarCarro = eliminarCarro;
@@ -221,6 +249,10 @@ function toggleCantidadField() {
 document.addEventListener('DOMContentLoaded', () => {
     // Iniciar el espacio de trabajo de forma asíncrona
     inicializarEspacioTrabajo();
+
+    // ⛔ NUEVO: actualizar visibilidad del botón apenas carga la vista
+    aplicarReglaBotonMedicion();
+
 
     // Configurar el evento change para el selector de ingredientes
     const selectorIngrediente = document.getElementById('selector-ingrediente');
@@ -378,12 +410,17 @@ async function cargarResumenIngredientes() {
             const seccionArticulos = document.getElementById('resumen-articulos');
             if (seccionArticulos) {
                 seccionArticulos.style.display = 'block';
+
+                // ⛔ NUEVO: marcar el carro como EXTERNO y ocultar el botón de medición
+                 setCarroExternoFlag(carroId, true);
             }
         } else {
             const seccionArticulos = document.getElementById('resumen-articulos');
             if (seccionArticulos) {
                 seccionArticulos.style.display = 'none';
             }
+              // ⛔ NUEVO: marcar el carro como NO EXTERNO y (si existe) mostrar el botón
+            setCarroExternoFlag(carroId, false);
         }
         
         // Actualizar visibilidad de los botones después de cargar ingredientes
