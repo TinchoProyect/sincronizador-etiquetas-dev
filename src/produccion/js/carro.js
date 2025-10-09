@@ -1618,11 +1618,14 @@ export async function mostrarArticulosDelCarro() {
             // Activar botón de temporizador global una vez que está en el DOM         
                 // 🔄 Sincronizar estado del modo medición después de renderizar
             const botonGlobal = document.getElementById('btn-temporizador-global');
+            const estadoModoMedicion = document.getElementById('crear-carro');
+
             // Sincronizar visibilidad según estado actual del botón global
             syncTimerButtonsVisibility();
 
-            if (botonGlobal) {
+            if (botonGlobal && estadoModoMedicion) {
                 const activo = botonGlobal.classList.contains('activo');
+                
                 document.querySelectorAll('.btn-temporizador-articulo')
                     .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
                 } else {

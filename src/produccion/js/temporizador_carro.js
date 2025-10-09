@@ -370,6 +370,8 @@ export async function startEtapa2(carroId, uid){
   return;}
  } 
 export async function stopEtapa2(carroId, uid){
+  
+
   await _postEtapa(`http://localhost:3002/api/tiempos/carro/${carroId}/etapa/2/finalizar`, uid);
   const s = _ensure(carroId)[2];
   const elapsedMs = s.start ? (Date.now() - s.start) : 0;
@@ -384,6 +386,7 @@ export async function stopEtapa2(carroId, uid){
     badge.classList.remove('running');
     badge.classList.add('finished');
   }
+
 }
 
 export async function startEtapa3(carroId, uid){
@@ -777,7 +780,7 @@ export function initTemporizadores() {
   // Toggle Etapa 3 (pausa/reanudar)
   document.addEventListener('click', async (e)=>{
     
-    if (!(e.target && e.target.id === 'btn-etapa3')) return;
+    if (!(e.target && e.target === 'btn-etapa3')) return;
 
     const carroId = localStorage.getItem('carroActivo');
     const colabStr = localStorage.getItem('colaboradorActivo');
