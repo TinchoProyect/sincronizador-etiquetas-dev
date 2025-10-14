@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="/css/modal-ingreso-manual.css">
     <link rel="stylesheet" href="/css/modal-guardado-ingredientes.css">
     <link rel="stylesheet" href="../css/tiempos.css">
+    <link rel="stylesheet" href="/css/modal-medicion-interna.css">
 </head>
 <body>
     <div class="container">
@@ -496,6 +497,82 @@
         </div>
     </div>
 
+    <!-- Modal de Medición para Carros Internos -->
+    <div id="modalMedicionInterna" class="modal">
+        <div class="modal-content modal-medicion-content">
+            <div class="modal-header">
+                <h2>⏱️ Modo Medición </h2>
+                <span class="close-modal" onclick="cerrarModalMedicion()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="medicion-info">
+                    <div class="carro-info-medicion">
+                        <span id="info-carro-medicion">Carro #<span id="carro-id-medicion"></span></span>
+                        <span id="tipo-carro-medicion" class="badge-interno">Interno</span>
+                    </div>
+                </div>
+
+                <!-- ETAPA 1: PREPARACIÓN -->
+                <div class="etapa-medicion" id="etapa1-medicion">
+                    <h3>🏭 Etapa 1: Preparación</h3>
+                    <div class="etapa-content">
+                        <div class="timer-display">
+                            <span id="timer-etapa1">00:00</span>
+                        </div>
+                        <div class="etapa-actions">
+                            <button id="btn-inicio-etapa1" class="btn btn-primary" onclick="iniciarEtapa1Medicion()">
+                                ▶️ Iniciar Preparación
+                            </button>
+                            <button id="btn-carro-listo-medicion" class="btn btn-success" onclick="carroListoParaProducirMedicion()" style="display: none;">
+                                ✅ Carro Listo para Producir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ETAPA 2: MEDICIÓN INDIVIDUAL -->
+                <div class="etapa-medicion" id="etapa2-medicion" style="display: none;">
+                    <h3>📦 Etapa 2: Medición por Artículo</h3>
+                    <div class="etapa-content">
+                        <div class="timer-total-etapa2">
+                            <span>Total Etapa 2: </span>
+                            <span id="timer-total-etapa2">00:00</span>
+                        </div>
+                        <div id="articulos-medicion-lista" class="articulos-medicion">
+                            <!-- Los artículos se cargarán dinámicamente -->
+                        </div>
+                        <div class="etapa-actions">
+                            <button id="btn-completar-etapa2" class="btn btn-warning" onclick="completarEtapa2Medicion()" style="display: none;">
+                                🚀 Completar Etapa 2
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ETAPA 3: FINALIZACIÓN -->
+                <div class="etapa-medicion" id="etapa3-medicion" style="display: none;">
+                    <h3>✅ Etapa 3: Finalización</h3>
+                    <div class="etapa-content">
+                        <div class="timer-display">
+                            <span id="timer-etapa3">00:00</span>
+                        </div>
+                        <div class="etapa-actions">
+                            <button id="btn-finalizar-medicion" class="btn btn-success" onclick="finalizarMedicion()">
+                                🏁 Finalizar Medición
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LOGS DE DEPURACIÓN -->
+                <div class="debug-logs" id="debug-logs-medicion" style="display: none;">
+                    <h4>📋 Logs de Depuración</h4>
+                    <div id="logs-content-medicion" class="logs-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal de Ajuste de Kilos -->
     <div id="modalAjusteKilos" class="modal">
         <div class="modal-content">
@@ -533,9 +610,10 @@
     </div>
 
 
- 
+
     <script type="module" src="/js/produccion_personal.js"></script>
     <script type="module" src="/js/carroPreparado.js"></script>
+    <script type="module" src="/js/modal_medicion_interna.js"></script>
     
 
 

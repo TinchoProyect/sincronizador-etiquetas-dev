@@ -1657,6 +1657,17 @@ export async function mostrarArticulosDelCarro() {
                 // 🔄 Sincronizar estado del modo medición después de renderizar
             const botonGlobal = document.getElementById('btn-temporizador-global');
            
+            // ⛔ NUEVO: Event listener para abrir modal de medición (solo carros internos)
+            if (botonGlobal && !esExterno) {
+                botonGlobal.addEventListener('click', () => {
+                    console.log('🎯 Abriendo modal de medición para carro interno:', carroId);
+                    if (typeof window.abrirModalMedicion === 'function') {
+                        window.abrirModalMedicion(carroId);
+                    } else {
+                        console.error('❌ abrirModalMedicion no está disponible');
+                    }
+                });
+            }
 
             // Sincronizar visibilidad según estado actual del botón global
             syncTimerButtonsVisibility();
