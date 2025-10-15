@@ -1,7 +1,7 @@
 // modal_medicion_interna.js - Sistema de medición centralizado para carros internos
 // Solo funciona con carros de tipo 'interna', sin afectar carros externos
 
-import { formatearTiempo } from './temporizador_carro.js';
+import { formatearTiempo } from './utils/formatearTiempo.js';
 
 // ==========================================
 // ESTADO GLOBAL DEL MODAL

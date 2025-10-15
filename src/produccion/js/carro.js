@@ -3,19 +3,7 @@
 import { mostrarError, estilosTablaCarros, agruparCarrosPorSemanas, agruparCarrosPorSemanasYMeses } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
 import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
-import {
-  initTemporizadores,
-  syncTimerButtonsVisibility,
-  importarEstadoLocal,
-  rehidratarDesdeEstado,
-  clearTimersForCarro,
-  clearTimersForNoCar,
 
-} from './temporizador_carro.js';
-
-
-
-initTemporizadores();
 
 // Hacer la función disponible globalmente
 window.editarIngredienteCompuesto = async (mixId) => {
@@ -778,42 +766,7 @@ export async function seleccionarCarro(carroId) {
     localStorage.setItem('carroActivo', String(carroId));
     window.carroIdGlobal = carroId;
 
-    // --- Intento de rehidratación de etapas (no bloqueante) ---
-    try {
-      const resp = await fetch(
-        `http://localhost:3002/api/produccion/carro/${carroId}/etapas/estado?usuarioId=${usuarioId}`
-      );
-      if (resp.ok) {
-        const estado = await resp.json();
-       importarEstadoLocal(carroId, estado);           // guarda snapshot
-        const botonGlobal = document.getElementById('btn-temporizador-global');
-        if (botonGlobal && botonGlobal.classList.contains('activo')) {
-            rehidratarDesdeEstado(carroId);               // si el modo ya estaba activo, pinta
-        }
-        // Guardar snapshot local para rehidratación futura
-        if (typeof importarEstadoLocal === 'function') {
-          importarEstadoLocal(carroId, estado);
-        } else if (window.importarEstadoLocal) {
-          window.importarEstadoLocal(carroId, estado);
-        }
 
-        // Si Modo medición está activo, rehidratar UI ahora
-        //const botonGlobal = document.getElementById('btn-temporizador-global');
-        const activo = !!(botonGlobal && botonGlobal.classList.contains('activo'));
-        if (activo) {
-            if (typeof window._rehidratarDesdeEstado === 'function') {
-                window._rehidratarDesdeEstado(carroId);  // rehidrata si está definida global
-            } else if (typeof syncTimerButtonsVisibility === 'function') {
-                syncTimerButtonsVisibility();            // al menos refresca visibilidad
-            }
-}
-
-      } else {
-        console.warn('No se pudo obtener estado de etapas para rehidratar (HTTP):', resp.status);
-      }
-    } catch (e) {
-      console.warn('No se pudo obtener estado de etapas para rehidratar:', e);
-    }
 
     // --- Limpiar datos del carro anterior (ingresos manuales, etc.) ---
     limpiarIngresosManualesDelCarro();
@@ -873,9 +826,7 @@ export async function deseleccionarCarro() {
     localStorage.removeItem('carroActivo');
     window.carroIdGlobal = null;
 
-    // 🔹 LIMPIEZA VISUAL INMEDIATA (modo medición puede seguir activo)
-    clearTimersForNoCar();
-    syncTimerButtonsVisibility();
+    
     
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
@@ -947,9 +898,7 @@ export async function eliminarCarro(carroId) {
             window.carroIdGlobal = null;
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
 
-            // 🔹 LIMPIEZA VISUAL INMEDIATA
-            clearTimersForNoCar();
-            syncTimerButtonsVisibility();
+           
             }
 
         // Actualizar la lista de carros
@@ -1453,15 +1402,6 @@ export async function mostrarArticulosDelCarro() {
             return;
         }
 
-        const colab = JSON.parse(localStorage.getItem('colaboradorActivo') || '{}');
-        if (carroId && colab.id) {
-        // Traemos estado real, lo guardamos local y luego pintamos
-        fetch(`http://localhost:3002/api/tiempos/carro/${carroId}/etapas/estado?usuarioId=${colab.id}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(est => { if (est) importarEstadoLocal(carroId, est); })
-            .finally(() => rehidratarDesdeEstado(carroId));
-        }
-
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         if (!colaboradorData) {
             throw new Error('No hay colaborador seleccionado');
@@ -1574,9 +1514,6 @@ export async function mostrarArticulosDelCarro() {
                     </div>
                     <div class="articulo-controls">
                         <button class="toggle-ingredientes">Ver</button>
-                        <button class="btn-temporizador-articulo"  data-numero="${art.numero}"  style="display:none">
-                             ⏱ Iniciar
-                        </button>
                          ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
 
                     </div>
@@ -1657,7 +1594,7 @@ export async function mostrarArticulosDelCarro() {
                 // 🔄 Sincronizar estado del modo medición después de renderizar
             const botonGlobal = document.getElementById('btn-temporizador-global');
            
-            // ⛔ NUEVO: Event listener para abrir modal de medición (solo carros internos)
+            // Event listener para abrir modal de medición (solo carros internos)
             if (botonGlobal && !esExterno) {
                 botonGlobal.addEventListener('click', () => {
                     console.log('🎯 Abriendo modal de medición para carro interno:', carroId);
@@ -1667,17 +1604,6 @@ export async function mostrarArticulosDelCarro() {
                         console.error('❌ abrirModalMedicion no está disponible');
                     }
                 });
-            }
-
-            // Sincronizar visibilidad según estado actual del botón global
-            syncTimerButtonsVisibility();
-
-            if (botonGlobal) {
-                const activo = botonGlobal.classList.contains('activo');
-                
-               
-                } else {
-                    console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
             }
         } else {
             console.error('No se encontró el contenedor lista-articulos');
