@@ -54,8 +54,8 @@ const archivosInvolucrados = {
   "src/produccion/js/produccion_personal.js": {
     descripcion: "Inicializa la página y coordina funciones",
     funciones: [
-      "carroPreparadoConTemporizador(carroId) - Marca carro listo y inicia Etapa 2",
-      "asentarProduccionConTemporizador(carroId) - Asienta producción e inicia Etapa 3",
+      /*"carroPreparadoConTemporizador(carroId) - Marca carro listo y inicia Etapa 2",
+      "asentarProduccionConTemporizador(carroId) - Asienta producción e inicia Etapa 3",*/
       "inicializarEspacioTrabajo() - Configura la página al cargar"
     ]
   }

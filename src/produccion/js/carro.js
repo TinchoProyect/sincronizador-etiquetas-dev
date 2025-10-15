@@ -1675,8 +1675,7 @@ export async function mostrarArticulosDelCarro() {
             if (botonGlobal) {
                 const activo = botonGlobal.classList.contains('activo');
                 
-                document.querySelectorAll('.btn-temporizador-articulo')
-                    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
+               
                 } else {
                     console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
             }

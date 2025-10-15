@@ -159,9 +159,7 @@ async function _detenerMedicionArticulosEnCurso(carroId) {
 
       // UI
       let btn = null;
-      document.querySelectorAll('.btn-temporizador-articulo').forEach(b => {
-        if (String(b.dataset.numero) === String(numero)) btn = b;
-      });
+     
       if (btn) {
         _showElapsedOnButton(btn, elapsed);
         btn.classList.remove('running');
@@ -197,9 +195,7 @@ async function _detenerMedicionArticulosEnCurso(carroId) {
       _updateArtSnap(carroId, numero, { running: false, start: null, elapsed });
 
       let btn = null;
-      document.querySelectorAll('.btn-temporizador-articulo').forEach(b => {
-        if (String(b.dataset.numero) === String(numero)) btn = b;
-      });
+     
       if (btn) {
         _showElapsedOnButton(btn, elapsed);
         btn.classList.remove('running');
@@ -278,15 +274,7 @@ function _aplicarBloqueoArticulosPorEtapa(carroId) {
   const etapa = getEtapa?.(carroId) ?? 1;
   const bloquear = etapa === 1;
 
-  document.querySelectorAll('.btn-temporizador-articulo').forEach(btn => {
-    // no tocar botones ya finalizados
-    const estaFinalizado = btn.classList.contains('finished');
-    if (estaFinalizado) return;
 
-    btn.disabled = bloquear;
-    btn.classList.toggle('bloqueado', bloquear);
-    btn.title = bloquear ? 'Bloqueado en Etapa 1' : '';
-  });
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -456,9 +444,6 @@ export function clearTimersForNoCar() {
 }
    
 function _hideAllTimers() {
-  //botones por articulo
-  document.querySelectorAll('.btn-temporizador-articulo')
-   .forEach(b => b.style.display = 'none');
   
    //etapas
    _showEtapa1(false);
@@ -556,53 +541,7 @@ export function rehidratarArticulosDesdeEstado(carroId) {
   const snap = _loadArt(carroId);
   const modoActivo = !!(document.getElementById('btn-temporizador-global')?.classList.contains('activo'));
 
-  document.querySelectorAll('.btn-temporizador-articulo').forEach(btn => {
-    const numero = btn.dataset.numero;
-    const s = snap[numero];
-
-    // Por defecto
-    btn.style.display = modoActivo ? 'inline-block' : 'none';
-
-    if (!s) {
-      btn.textContent = '⏱ Iniciar';
-      btn.classList.remove('running', 'finished');
-      btn.disabled = false;
-      return;
-    }
-
-    const k = _key(carroId, numero);
-    let t = temporizadores.get(k);
-
-    if (s.running && s.start) {
-      // Mostrar corriendo desde la hora persistida
-      btn.classList.add('running');
-      btn.classList.remove('finished');
-      btn.disabled = false;
-
-      t = t || { running:true, start:s.start, interval:null };
-      t.running = true; t.start = s.start;
-      clearInterval(t.interval);
-      const actualizar = () => { btn.textContent = `⏹ ${formatearTiempo(Date.now() - t.start)} ×`; };
-      actualizar();
-      t.interval = setInterval(actualizar, 1000);
-      temporizadores.set(k, t);
-      return;
-    }
-
-    if ((s.elapsed || 0) > 0) {
-      // Ya finalizado
-      btn.classList.remove('running');
-      btn.classList.add('finished');
-      btn.disabled = true;
-      btn.textContent = `✅ ${formatearTiempo(s.elapsed)}`;
-      return;
-    }
-
-    // Nunca iniciado
-    btn.classList.remove('running', 'finished');
-    btn.disabled = false;
-    btn.textContent = '⏱ Iniciar';
-  });
+  
    // ⛔ NUEVO: asegurar bloqueo/permiso según etapa actual
   _aplicarBloqueoArticulosPorEtapa(carroId);
 }
@@ -624,10 +563,7 @@ export function initTemporizadores() {
     botonGlobal.textContent = activo ? '🛑 Salir de medición' : '⏱ Modo medición';
 
     if (activo) {
-      // Mostrar controles por artículo
-      document.querySelectorAll('.btn-temporizador-articulo')
-        .forEach(b => b.style.display = 'inline-block');
-
+      
       const carroId = localStorage.getItem('carroActivo');
       _showEtapa1(!!carroId);
 
@@ -824,10 +760,7 @@ export function syncTimerButtonsVisibility() {
     return;
   }
 
-  // ⏱ por artículo
-  document.querySelectorAll('.btn-temporizador-articulo')
-    .forEach(b => b.style.display = 'inline-block');
-
+ 
   // Etapa 1 (visible si hay carro)
   _showEtapa1(true);
 
@@ -912,13 +845,7 @@ export function clearTimersForCarro(carroId) {
     }
   });
 
-  // 5) Botones de artículo
-  document.querySelectorAll('.btn-temporizador-articulo').forEach(btn => {
-    btn.classList.remove('running','finished');
-    btn.disabled = false;
-    btn.style.display = 'none';
-    btn.textContent = '⏱ Iniciar';
-  });
+  
 
   // 6) Forzar reevaluación de visibilidad por si el botón global sigue activo
   if (typeof syncTimerButtonsVisibility === 'function') {

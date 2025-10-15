@@ -37,7 +37,7 @@ window.carroIdGlobal = null;
 
 //Modificacion que no haya Modo Medicion para carros externos
 // ⛔ NUEVO: helper para aplicar la regla de visibilidad del botón "Modo medición"
-function aplicarReglaBotonMedicion() {
+/*function aplicarReglaBotonMedicion() {
   // Si el botón no existe en el DOM aún, no hacemos nada
   const btn = document.getElementById('btn-temporizador-global');
   if (!btn) return;
@@ -48,17 +48,16 @@ function aplicarReglaBotonMedicion() {
 
   // Ocultar si es externo, mostrar si no lo es
   btn.style.display = esExterno ? 'none' : '';
-}
+}*/
 
 // ⛔ NUEVO: utilitario para setear el flag de "carro externo" y refrescar el botón
-function setCarroExternoFlag(carroId, esExterno) {
+/*function setCarroExternoFlag(carroId, esExterno) {
   try {
     localStorage.setItem(`carro:${carroId}:externo`, esExterno ? '1' : '0');
   } catch {}
   aplicarReglaBotonMedicion();
 }
-
-//fin Modificacion que no haya Modo Medicion para carros externos
+*/
 
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML

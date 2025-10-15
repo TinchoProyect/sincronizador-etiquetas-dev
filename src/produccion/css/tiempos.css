@@ -3,21 +3,7 @@
 #btn-etapa1,
 #badge-etapa2,
 #btn-etapa3,
-.btn-temporizador-articulo {
-  display: inline-flex;
-  align-items: center;
-  gap: .4rem;
-  padding: .32rem .64rem;
-  border-radius: 9999px;
-  font-size: 12px;
-  line-height: 1;
-  font-weight: 600;
-  border: 1px solid var(--timer-border, #E5E7EB);
-  background: var(--timer-bg, #F2F4F7);
-  color: var(--timer-fg, #344054);
-  vertical-align: middle;
-  white-space: nowrap;
-}
+
 
 /* Espaciado consistente en la barra de acciones */
 .workspace-actions #btn-etapa1,
@@ -30,38 +16,20 @@
 #btn-etapa1.running,
 #badge-etapa2.running,
 #btn-etapa3.running,
-.btn-temporizador-articulo.running {
-  --timer-bg: #E6F0FF;      /* azul clarito */
-  --timer-border: #B6D0FF;
-  --timer-fg: #1D4ED8;
-}
+
 
 #btn-etapa1.finished,
 #badge-etapa2.finished,
 #btn-etapa3.finished,
-.btn-temporizador-articulo.finished {
-  --timer-bg: #ECFDF3;      /* verde clarito */
-  --timer-border: #A7F3D0;
-  --timer-fg: #047857;
-}
+
 
 /* Idle / deshabilitado: opacidad suave */
 #btn-etapa1:disabled,
 #btn-etapa3:disabled,
-.btn-temporizador-articulo:disabled {
-  opacity: .65;
-  cursor: not-allowed;
-}
+
 
 /* Botón por artículo: mismo “chip” visual */
-.btn-temporizador-articulo {
-  padding: .28rem .56rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-temporizador-articulo.finished {
-  cursor: default;
-}
+
 
 /* Etiqueta de Etapa 2 (badge) siempre se ve como chip */
 #badge-etapa2 {
@@ -72,11 +40,7 @@
 #btn-etapa1 .dot,
 #badge-etapa2 .dot,
 #btn-etapa3 .dot,
-.btn-temporizador-articulo .dot {
-  width: 8px; height: 8px; border-radius: 9999px;
-  background: currentColor;
-  opacity: .6;
-}
+
 
 .timer-badge {
   display:inline-flex; align-items:center; gap:.4rem;
