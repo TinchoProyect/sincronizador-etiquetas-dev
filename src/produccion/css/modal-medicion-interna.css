@@ -402,3 +402,209 @@
 .etapa-medicion.completada h3 {
     color: #28a745;
 }
+
+/* ==========================================
+   RESUMEN COMPLETO (ETAPA 4)
+   ========================================== */
+
+#resumen-completo-medicion {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 3px solid #28a745;
+}
+
+#resumen-completo-medicion h3 {
+    color: #28a745;
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.resumen-tiempos-etapas {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.resumen-etapa-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    border-bottom: 1px solid #dee2e6;
+    transition: background 0.2s ease;
+}
+
+.resumen-etapa-item:last-child {
+    border-bottom: none;
+}
+
+.resumen-etapa-item:hover {
+    background: #f8f9fa;
+}
+
+.resumen-etapa-label {
+    font-size: 16px;
+    color: #495057;
+    font-weight: 500;
+}
+
+.resumen-etapa-tiempo {
+    font-size: 20px;
+    font-weight: 700;
+    color: #007bff;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+}
+
+.resumen-total-item {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border-radius: 8px;
+    margin-top: 10px;
+    padding: 15px 20px !important;
+    border: none;
+}
+
+.resumen-total-item:hover {
+    background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+}
+
+.resumen-total-item .resumen-etapa-label,
+.resumen-total-item .resumen-etapa-tiempo {
+    color: white;
+}
+
+.resumen-total-item .resumen-etapa-tiempo {
+    font-size: 24px;
+}
+
+/* Sección de artículos en resumen */
+.resumen-articulos-section {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.resumen-articulos-section h4 {
+    color: #495057;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 15px 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.resumen-articulos-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.resumen-articulo-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.resumen-articulo-item:hover {
+    border-color: #28a745;
+    box-shadow: 0 2px 6px rgba(40,167,69,0.1);
+}
+
+.resumen-articulo-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.resumen-articulo-codigo {
+    font-weight: 700;
+    color: #495057;
+    font-size: 14px;
+}
+
+.resumen-articulo-desc {
+    color: #6c757d;
+    font-size: 13px;
+}
+
+.resumen-articulo-cant {
+    color: #007bff;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.resumen-articulo-tiempo {
+    display: flex;
+    align-items: center;
+}
+
+.tiempo-medido {
+    background: #28a745;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+}
+
+.no-data {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 20px;
+}
+
+/* Scrollbar para lista de artículos en resumen */
+.resumen-articulos-lista::-webkit-scrollbar {
+    width: 8px;
+}
+
+.resumen-articulos-lista::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.resumen-articulos-lista::-webkit-scrollbar-thumb {
+    background: #28a745;
+    border-radius: 4px;
+}
+
+.resumen-articulos-lista::-webkit-scrollbar-thumb:hover {
+    background: #1e7e34;
+}
+
+/* Responsive para resumen */
+@media (max-width: 768px) {
+    .resumen-etapa-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .resumen-etapa-tiempo {
+        font-size: 18px;
+    }
+    
+    .resumen-total-item .resumen-etapa-tiempo {
+        font-size: 20px;
+    }
+    
+    .resumen-articulo-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+}

@@ -28,12 +28,6 @@ import { abrirModalIngresoManual } from './ingresoManual.js';
 import { actualizarVisibilidadBotones } from './carroPreparado.js';
 import { imprimirOrdenProduccion } from './ordenProduccion.js';
 import { abrirModalGuardadoIngredientes } from './guardadoIngredientes.js';
-//Temporizacion - Mari
-
-import {
-  startEtapa1, stopEtapa1, startEtapa2, stopEtapa2,
-  startEtapa3, stopEtapa3, showEtapa3Button
-} from './temporizador_carro.js';
 
 
 
@@ -66,116 +60,17 @@ function setCarroExternoFlag(carroId, esExterno) {
 
 //fin Modificacion que no haya Modo Medicion para carros externos
 
-// ✅ Carro listo: corta etapa 1, inicia etapa 2 y luego marca el carro como preparado
-window.carroPreparadoConTemporizador = async (carroId) => {
-  try{
-    const colab = JSON.parse(localStorage.getItem('colaboradorActivo')||'{}');
-    if (!carroId || !colab?.id) return;
-
-     console.log('[MEDICION] Carro listo → stop E1, start E2');
-    await stopEtapa1(carroId, colab.id).catch(()=>{});
-    await startEtapa2(carroId, colab.id);
-
-    await marcarCarroPreparado(carroId); // tu función existente
-  }catch(err){
-    console.error(err);
-    alert('No se pudo iniciar la Etapa 2 o marcar el carro como preparado.');
-  }
-};
-
-// ✅ Asentar producción: corta etapa 2, inicia etapa 3 y luego finaliza producción
-window.asentarProduccionConTemporizador = async (carroId) => {
-  try{
-    const colab = JSON.parse(localStorage.getItem('colaboradorActivo')||'{}');
-    if (!carroId || !colab?.id) return;
-   
-     console.log('[MEDICION] Asentar prod. → stop E2, start E3');
-    await stopEtapa2(carroId, colab.id).catch(()=>{});
-    await startEtapa3(carroId, colab.id);
-    await showEtapa3Button(true);
-    await finalizarProduccion(carroId); // tu función existente
-  }catch(err){
-    console.error(err);
-    alert('No se pudo iniciar la Etapa 3 o asentar la producción.');
-  }
-};
-
-//Modificacion etapa 2
-
-// --------- ENSURE + REBIND de BOTONES (evita que vuelvan a lo viejo) ----------
-function ensureBadgeEtapa2() {
-  let badge = document.getElementById('badge-etapa2');
-  if (!badge) {
-    const actions = document.querySelector('.workspace-actions');
-    if (actions) {
-      badge = document.createElement('span');
-      badge.id = 'badge-etapa2';
-      badge.style.cssText = 'display:none;margin-left:8px;padding:4px 10px;border-radius:16px;background:#f0f0f0;';
-      badge.textContent = 'Etapa 2: 00:00';
-      actions.appendChild(badge);
-      console.log('[MEDICION] badge-etapa2 creado');
-    }
-  }
-}
-
-function bindActionButtons() {
-  // Carro listo para producir
-  const prep = document.getElementById('carro-preparado');
-  if (prep && prep.dataset.bound !== '1') {
-    prep.onclick = (ev) => {
-      ev.preventDefault();
-      ev.stopImmediatePropagation(); // bloquea handlers viejos
-      console.log('[MEDICION] Click Carro listo para producir');
-      window.carroPreparadoConTemporizador?.(localStorage.getItem('carroActivo'));
-      return false;
-    };
-    prep.dataset.bound = '1';
-    console.log('[MEDICION] Reemplazado handler de #carro-preparado');
-  }
-
-  // Asentar producción
-  const fin = document.getElementById('finalizar-produccion');
-  if (fin && fin.dataset.bound !== '1') {
-    fin.onclick = (ev) => {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      console.log('[MEDICION] Click Asentar producción');
-      window.asentarProduccionConTemporizador?.(localStorage.getItem('carroActivo'));
-      return false;
-    };
-    fin.dataset.bound = '1';
-    console.log('[MEDICION] Reemplazado handler de #finalizar-produccion');
-  }
-
-  ensureBadgeEtapa2();
-}
-
-// Corre al cargar…
-document.addEventListener('DOMContentLoaded', bindActionButtons);
-
-// …y se vuelve a correr cuando el DOM cambia (por re-renders)
-const _btnObserver = new MutationObserver(() => bindActionButtons());
-_btnObserver.observe(document.body, { childList: true, subtree: true });
-
-// También ejecutalo tras tus re-renders grandes si querés:
-window._bindActionButtons = bindActionButtons;
-
-//Fin modificacion etapa 2
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
 // Envolver las funciones originales para agregar la actualización de botones
 window.seleccionarCarro = async (...args) => {
     await seleccionarCarro(...args);
     await actualizarVisibilidadBotones();
-    // ⛔ NUEVO:
-     aplicarReglaBotonMedicion();
 };
 
 window.deseleccionarCarro = async (...args) => {
     await deseleccionarCarro(...args);
     await actualizarVisibilidadBotones();
-     // ⛔ NUEVO:
-  aplicarReglaBotonMedicion();
 };
 
 window.eliminarCarro = eliminarCarro;
@@ -249,10 +144,6 @@ function toggleCantidadField() {
 document.addEventListener('DOMContentLoaded', () => {
     // Iniciar el espacio de trabajo de forma asíncrona
     inicializarEspacioTrabajo();
-
-    // ⛔ NUEVO: actualizar visibilidad del botón apenas carga la vista
-    aplicarReglaBotonMedicion();
-
 
     // Configurar el evento change para el selector de ingredientes
     const selectorIngrediente = document.getElementById('selector-ingrediente');
@@ -410,17 +301,12 @@ async function cargarResumenIngredientes() {
             const seccionArticulos = document.getElementById('resumen-articulos');
             if (seccionArticulos) {
                 seccionArticulos.style.display = 'block';
-
-                // ⛔ NUEVO: marcar el carro como EXTERNO y ocultar el botón de medición
-                 setCarroExternoFlag(carroId, true);
             }
         } else {
             const seccionArticulos = document.getElementById('resumen-articulos');
             if (seccionArticulos) {
                 seccionArticulos.style.display = 'none';
             }
-              // ⛔ NUEVO: marcar el carro como NO EXTERNO y (si existe) mostrar el botón
-            setCarroExternoFlag(carroId, false);
         }
         
         // Actualizar visibilidad de los botones después de cargar ingredientes

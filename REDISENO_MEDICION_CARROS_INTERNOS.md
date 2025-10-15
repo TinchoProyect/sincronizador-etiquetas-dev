@@ -141,7 +141,7 @@ etapa1_duracion_ms BIGINT     -- Duración en milisegundos
 -- Etapa 2 (calculada como sumatoria)
 etapa2_inicio TIMESTAMP       -- Timestamp de inicio (primer artículo)
 etapa2_fin TIMESTAMP          -- Timestamp de fin (último artículo)
-etapa2_duracion_ms BIGINT     -- Sumatoria de duraciones de artículos
+etapa2_duracion_ms BIGINT     -- Sumatoria de duraciones de artículos -> no esta funcionando asi, realiza diferencia entre etapa2_ fin y etapa2_inicio -> VERLO
 
 -- Etapa 3
 etapa3_inicio TIMESTAMP       -- Timestamp de inicio

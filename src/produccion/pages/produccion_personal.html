@@ -49,19 +49,6 @@
                         <div class="workspace-actions">
                             <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
                             <button id="carro-preparado" class="btn btn-success" style="display: none;" onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">Carro listo para producir</button>
-                            <!--Temporizacion - Mari-->
-                            <!-- ⏱ Botón global ya existente: se crea y maneja desde el render de artículos -->
-
-                            <!-- ▶️ Etapa 1: aparece SOLO cuando activás "Modo medición" -->
-                            <button id="btn-etapa1" class="btn btn-outline-primary" style="display: none;">▶️ Iniciar etapa 1</button>
-
-                            <!-- ✅ Cambiamos el onclick para cerrar etapa1 si corresponde e iniciar etapa2 -->
-                            <button id="carro-preparado" class="btn btn-success" style="display: none;"
-                            onclick="carroPreparadoConTemporizador(localStorage.getItem('carroActivo'))">
-                             Carro listo para producir
-                            </button>
-                           
-                            
                             <button id="imprimir-orden-produccion" class="btn btn-info" style="display: none;" onclick="imprimirOrdenProduccion()">📄 Imprimir orden de producción</button>
                             
                             <!-- Campo para kilos producidos (solo para carros de producción externa) -->
@@ -71,25 +58,9 @@
                                 <small class="help-text">Ingrese la cantidad real de kilos producidos</small>
                             </div>
 
-                            <!-- ⏱ Badge Etapa 2 -->
-                             <button id="btn-etapa2" class="btn btn-outline-warning" style="display:none;">Etapa 2</button>
-                             <span id="badge-etapa2" style="display:none; margin-left:8px; padding:4px 10px; border-radius:16px; background:#f0f0f0;">
-                                
-                            </span>
-
-                            
-                            <!-- ✅ Cambiado: wrapper que cierra Etapa 2 e inicia Etapa 3 -->
-                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;"
-                                onclick="asentarProduccionConTemporizador(localStorage.getItem('carroActivo'))">
-                                Asentar producción
-                            </button>
+                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="finalizarProduccion(localStorage.getItem('carroActivo'))">Asentar producción</button>
                             <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;" onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir etiquetas</button>
                             <button id="guardado-ingredientes" class="btn btn-success" style="display: none;" onclick="abrirModalGuardadoIngredientes(localStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦 Guardado de ingredientes</button>
-                            
-                            
-
-                             <!-- ⏱ Etapa 3: solo visible cuando Etapa 3 está activa -->
-                            <button id="btn-etapa3" class="btn btn-outline-warning" style="display:none;">⏸️ Pausar etapa 3</button>
                         </div>
                         <div id="carro-actual" class="carro-info">
                             <p>No hay carro activo</p>
@@ -559,6 +530,44 @@
                         <div class="etapa-actions">
                             <button id="btn-finalizar-medicion" class="btn btn-success" onclick="finalizarMedicion()">
                                 🏁 Finalizar Medición
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RESUMEN COMPLETO (ETAPA 4) -->
+                <div class="etapa-medicion" id="resumen-completo-medicion" style="display: none;">
+                    <h3>📊 Resumen de Medición Completa</h3>
+                    <div class="etapa-content">
+                        <div class="resumen-tiempos-etapas">
+                            <div class="resumen-etapa-item">
+                                <span class="resumen-etapa-label">Etapa 1 (Preparación):</span>
+                                <span class="resumen-etapa-tiempo" id="resumen-etapa1">00:00</span>
+                            </div>
+                            <div class="resumen-etapa-item">
+                                <span class="resumen-etapa-label">Etapa 2 (Medición):</span>
+                                <span class="resumen-etapa-tiempo" id="resumen-etapa2">00:00</span>
+                            </div>
+                            <div class="resumen-etapa-item">
+                                <span class="resumen-etapa-label">Etapa 3 (Finalización):</span>
+                                <span class="resumen-etapa-tiempo" id="resumen-etapa3">00:00</span>
+                            </div>
+                            <div class="resumen-etapa-item resumen-total-item">
+                                <span class="resumen-etapa-label"><strong>TIEMPO TOTAL:</strong></span>
+                                <span class="resumen-etapa-tiempo" id="resumen-total">00:00</span>
+                            </div>
+                        </div>
+
+                        <div class="resumen-articulos-section">
+                            <h4>Detalle de Artículos Medidos (Etapa 2)</h4>
+                            <div id="resumen-articulos-detalle" class="resumen-articulos-lista">
+                                <!-- Los artículos se cargarán dinámicamente -->
+                            </div>
+                        </div>
+
+                        <div class="etapa-actions">
+                            <button class="btn btn-secondary" onclick="cerrarModalMedicion()">
+                                Cerrar
                             </button>
                         </div>
                     </div>

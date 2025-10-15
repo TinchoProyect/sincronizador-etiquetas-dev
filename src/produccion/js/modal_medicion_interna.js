@@ -10,9 +10,10 @@ import { formatearTiempo } from './temporizador_carro.js';
 let estadoModal = {
     carroId: null,
     usuarioId: null,
-    etapaActual: 0, // 0=cerrado, 1=preparación, 2=medición, 3=finalización
+    etapaActual: 0, // 0=cerrado, 1=preparación, 2=medición, 3=finalización, 4=resumen
     timers: {
         etapa1: { interval: null, start: null, elapsed: 0 },
+        etapa2: { interval: null, start: null, elapsed: 0 },
         etapa3: { interval: null, start: null, elapsed: 0 },
         articulos: new Map() // key: articulo_numero, value: {interval, start, elapsed}
     },
@@ -113,6 +114,7 @@ export function cerrarModalMedicion() {
                 etapaActual: 0,
                 timers: {
                     etapa1: { interval: null, start: null, elapsed: 0 },
+                    etapa2: { interval: null, start: null, elapsed: 0 },
                     etapa3: { interval: null, start: null, elapsed: 0 },
                     articulos: new Map()
                 },
@@ -187,6 +189,9 @@ function procesarEstadoEtapas(estado) {
         if (estado.etapa3_inicio) {
             estadoModal.timers.etapa3.start = Date.parse(estado.etapa3_inicio);
         }
+    } else if (estado.etapa3_fin) {
+        // ✅ NUEVO: Si E3 está finalizada, mostrar resumen completo
+        estadoModal.etapaActual = 4;  // 4 = Resumen completo
     } else if (estado.etapa2_inicio && !estado.etapa2_fin) {
         estadoModal.etapaActual = 2;
     } else if (estado.etapa1_inicio && !estado.etapa1_fin) {
@@ -201,6 +206,9 @@ function procesarEstadoEtapas(estado) {
     // Cargar duraciones finalizadas
     if (estado.etapa1_duracion_ms) {
         estadoModal.timers.etapa1.elapsed = estado.etapa1_duracion_ms;
+    }
+    if (estado.etapa2_duracion_ms) {
+        estadoModal.timers.etapa2.elapsed = estado.etapa2_duracion_ms;
     }
     if (estado.etapa3_duracion_ms) {
         estadoModal.timers.etapa3.elapsed = estado.etapa3_duracion_ms;
@@ -246,6 +254,10 @@ async function actualizarUIModal() {
         document.getElementById('etapa1-medicion').style.display = 'none';
         document.getElementById('etapa2-medicion').style.display = 'none';
         document.getElementById('etapa3-medicion').style.display = 'none';
+        const resumenElement = document.getElementById('resumen-completo-medicion');
+        if (resumenElement) {
+            resumenElement.style.display = 'none';
+        }
         
         // Mostrar etapa actual
         switch (estadoModal.etapaActual) {
@@ -258,6 +270,9 @@ async function actualizarUIModal() {
                 break;
             case 3:
                 await mostrarEtapa3();
+                break;
+            case 4:
+                await mostrarResumenCompleto();
                 break;
         }
         
@@ -589,12 +604,12 @@ function iniciarIntervalArticulo(numeroArticulo) {
 function actualizarTimerTotalEtapa2() {
     let totalMs = 0;
     
+    // ✅ CORRECCIÓN: Solo sumar artículos finalizados (no incluir artículos en curso)
     estadoModal.timers.articulos.forEach((timer, key) => {
         if (estadoModal.articulosMedidos.has(key)) {
             totalMs += timer.elapsed;
-        } else if (timer.start) {
-            totalMs += Date.now() - timer.start;
         }
+        // Se eliminó el else if que sumaba artículos en curso
     });
     
     const display = document.getElementById('timer-total-etapa2');
@@ -602,14 +617,15 @@ function actualizarTimerTotalEtapa2() {
         display.textContent = formatearTiempo(totalMs);
     }
     
-    // Actualizar cada segundo si hay timers corriendo
-    const hayTimersCorriendo = Array.from(estadoModal.timers.articulos.values())
-        .some(t => t.start && !estadoModal.articulosMedidos.has(t.key));
-    
-    if (hayTimersCorriendo) {
-        setTimeout(() => actualizarTimerTotalEtapa2(), 1000);
-    }
+    // Ya no es necesario actualizar cada segundo porque solo mostramos finalizados
+    // El total solo cambia cuando se finaliza un artículo
 }
+
+
+
+
+
+
 
 function verificarCompletitudEtapa2() {
     const todosMedidos = estadoModal.articulosMedidos.size === estadoModal.totalArticulos;
@@ -755,6 +771,93 @@ function detenerTodosLosTimers() {
 // Hacer funciones disponibles globalmente
 window.abrirModalMedicion = abrirModalMedicion;
 window.cerrarModalMedicion = cerrarModalMedicion;
+
+// ==========================================
+// RESUMEN COMPLETO (ETAPA 4)
+// ==========================================
+
+async function mostrarResumenCompleto() {
+    const resumen = document.getElementById('resumen-completo-medicion');
+    if (!resumen) {
+        log('No se encontró el elemento de resumen completo', 'error');
+        return;
+    }
+    
+    resumen.style.display = 'block';
+    
+    // Calcular tiempos (con optional chaining para mayor robustez)
+    const tiempoEtapa1 = parseInt(estadoModal.timers.etapa1?.elapsed) || 0;
+    const tiempoEtapa2 = parseInt(estadoModal.timers.etapa2?.elapsed) || 0;
+    const tiempoEtapa3 = parseInt(estadoModal.timers.etapa3?.elapsed) || 0;
+    const tiempoTotal = tiempoEtapa1 + tiempoEtapa2 + tiempoEtapa3;
+    
+    // Log para debugging
+    log(`Tiempos cargados - E1: ${tiempoEtapa1}ms, E2: ${tiempoEtapa2}ms, E3: ${tiempoEtapa3}ms, Total: ${tiempoTotal}ms`);
+    
+    // Actualizar tiempos de etapas
+    document.getElementById('resumen-etapa1').textContent = formatearTiempo(tiempoEtapa1);
+    document.getElementById('resumen-etapa2').textContent = formatearTiempo(tiempoEtapa2);
+    document.getElementById('resumen-etapa3').textContent = formatearTiempo(tiempoEtapa3);
+    document.getElementById('resumen-total').textContent = formatearTiempo(tiempoTotal);
+    
+    // Cargar detalles de artículos de Etapa 2
+    await cargarDetallesArticulosResumen();
+    
+    log('Resumen completo mostrado correctamente', 'success');
+}
+
+async function cargarDetallesArticulosResumen() {
+    try {
+        const response = await fetch(
+            `http://localhost:3002/api/produccion/carro/${estadoModal.carroId}/articulos?usuarioId=${estadoModal.usuarioId}`
+        );
+        
+        if (!response.ok) {
+            throw new Error('Error al cargar artículos para resumen');
+        }
+        
+        const articulos = await response.json();
+        const container = document.getElementById('resumen-articulos-detalle');
+        
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        // Filtrar solo artículos medidos
+        const articulosMedidos = articulos.filter(art => 
+            estadoModal.articulosMedidos.has(art.numero)
+        );
+        
+        if (articulosMedidos.length === 0) {
+            container.innerHTML = '<p class="no-data">No hay artículos medidos</p>';
+            return;
+        }
+        
+        articulosMedidos.forEach(art => {
+            const timer = estadoModal.timers.articulos.get(art.numero);
+            const elapsed = timer ? timer.elapsed : 0;
+            
+            const articuloDiv = document.createElement('div');
+            articuloDiv.className = 'resumen-articulo-item';
+            articuloDiv.innerHTML = `
+                <div class="resumen-articulo-info">
+                    <span class="resumen-articulo-codigo">${art.numero}</span>
+                    <span class="resumen-articulo-desc">${art.descripcion}</span>
+                    <span class="resumen-articulo-cant">×${art.cantidad}</span>
+                </div>
+                <div class="resumen-articulo-tiempo">
+                    <span class="tiempo-medido">⏱ ${formatearTiempo(elapsed)}</span>
+                </div>
+            `;
+            container.appendChild(articuloDiv);
+        });
+        
+        log(`${articulosMedidos.length} artículos cargados en resumen`);
+        
+    } catch (error) {
+        log(`Error cargando detalles de artículos: ${error.message}`, 'error');
+    }
+}
 
 // Log de inicialización
 log('Módulo de medición interna inicializado correctamente', 'success');
