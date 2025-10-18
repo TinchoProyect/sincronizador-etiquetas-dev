@@ -4,6 +4,8 @@
  */
 
 const facturaService = require('../services/facturaService');
+const presupuestoFacturaService = require('../services/presupuestoFacturaService');
+const validadorAfipService = require('../services/validadorAfipService');
 const { pool } = require('../config/database');
 const { comaAPunto, puntoAComa } = require('../utils/decimales');
 
@@ -94,19 +96,111 @@ const crearFactura = async (req, res) => {
 const actualizarFactura = async (req, res) => {
     const { id } = req.params;
     console.log(`📝 [FACTURACION-CTRL] PUT /facturas/${id} - Actualizar borrador`);
+    console.log('📊 [FACTURACION-CTRL] Datos recibidos:', req.body);
     
     try {
-        // STUB: Implementación pendiente
-        console.log('⚠️ [FACTURACION-CTRL] STUB: Actualización pendiente de implementar');
+        // Verificar que la factura existe y está en BORRADOR
+        const checkQuery = 'SELECT estado FROM factura_facturas WHERE id = $1';
+        const checkResult = await pool.query(checkQuery, [parseInt(id)]);
+        
+        if (checkResult.rows.length === 0) {
+            console.error('❌ [FACTURACION-CTRL] Factura no encontrada');
+            return res.status(404).json({
+                success: false,
+                error: 'Factura no encontrada'
+            });
+        }
+        
+        const estado = checkResult.rows[0].estado;
+        if (estado !== 'BORRADOR') {
+            console.error(`❌ [FACTURACION-CTRL] Factura no es borrador (estado: ${estado})`);
+            return res.status(400).json({
+                success: false,
+                error: 'Solo se pueden editar facturas en estado BORRADOR',
+                estado_actual: estado
+            });
+        }
+        
+        console.log('✅ [FACTURACION-CTRL] Factura es BORRADOR, procediendo a actualizar');
+        
+        // Construir query de actualización dinámica
+        const camposPermitidos = [
+            'requiere_afip',
+            'serie_interna',
+            'doc_tipo',
+            'doc_nro',
+            'condicion_iva_id',
+            'cliente_id',
+            'fecha_emision',
+            'concepto'
+        ];
+        
+        const updates = [];
+        const valores = [];
+        let paramIndex = 1;
+        
+        // Agregar campos a actualizar
+        for (const campo of camposPermitidos) {
+            if (req.body.hasOwnProperty(campo)) {
+                updates.push(`${campo} = $${paramIndex}`);
+                valores.push(req.body[campo]);
+                paramIndex++;
+                console.log(`   - Actualizando ${campo}: ${req.body[campo]}`);
+            }
+        }
+        
+        if (updates.length === 0) {
+            console.warn('⚠️ [FACTURACION-CTRL] No hay campos para actualizar');
+            return res.status(400).json({
+                success: false,
+                error: 'No se proporcionaron campos para actualizar'
+            });
+        }
+        
+        // Agregar updated_at
+        updates.push(`updated_at = NOW()`);
+        
+        // Agregar ID al final
+        valores.push(parseInt(id));
+        
+        // Ejecutar actualización
+        const updateQuery = `
+            UPDATE factura_facturas 
+            SET ${updates.join(', ')}
+            WHERE id = $${paramIndex}
+            RETURNING *
+        `;
+        
+        console.log('🔍 [FACTURACION-CTRL] Query:', updateQuery);
+        console.log('🔍 [FACTURACION-CTRL] Valores:', valores);
+        
+        const resultado = await pool.query(updateQuery, valores);
+        
+        if (resultado.rows.length === 0) {
+            console.error('❌ [FACTURACION-CTRL] No se pudo actualizar la factura');
+            return res.status(500).json({
+                success: false,
+                error: 'Error actualizando factura'
+            });
+        }
+        
+        const facturaActualizada = resultado.rows[0];
+        console.log('✅ [FACTURACION-CTRL] Factura actualizada exitosamente');
+        console.log(`   - ID: ${facturaActualizada.id}`);
+        console.log(`   - requiere_afip: ${facturaActualizada.requiere_afip}`);
+        console.log(`   - doc_tipo: ${facturaActualizada.doc_tipo}`);
+        console.log(`   - doc_nro: ${facturaActualizada.doc_nro}`);
+        console.log(`   - condicion_iva_id: ${facturaActualizada.condicion_iva_id}`);
         
         res.status(200).json({
             success: true,
-            message: 'Funcionalidad en desarrollo',
-            data: { id }
+            message: 'Factura actualizada exitosamente',
+            data: facturaActualizada
         });
         
     } catch (error) {
         console.error('❌ [FACTURACION-CTRL] Error actualizando:', error.message);
+        console.error('❌ [FACTURACION-CTRL] Stack:', error.stack);
         
         res.status(400).json({
             success: false,
@@ -184,21 +278,84 @@ const listarFacturas = async (req, res) => {
     console.log('📊 [FACTURACION-CTRL] Query params:', req.query);
     
     try {
-        // STUB: Implementación básica
-        const query = `
-            SELECT * FROM factura_facturas
-            ORDER BY created_at DESC
-            LIMIT 50
-        `;
+        const {
+            presupuesto_id,
+            fecha_desde,
+            fecha_hasta,
+            estado,
+            tipo_cbte,
+            cliente_id,
+            limit = 50,
+            offset = 0
+        } = req.query;
         
-        const resultado = await pool.query(query);
+        // Construir query con filtros
+        let query = 'SELECT * FROM factura_facturas WHERE 1=1';
+        const params = [];
+        let paramIndex = 1;
+        
+        // Filtro por presupuesto_id (para verificar si ya existe factura)
+        if (presupuesto_id) {
+            query += ` AND presupuesto_id = $${paramIndex}`;
+            params.push(parseInt(presupuesto_id));
+            paramIndex++;
+            console.log(`   - Filtro presupuesto_id: ${presupuesto_id}`);
+        }
+        
+        // Filtro por fecha desde
+        if (fecha_desde) {
+            query += ` AND fecha_emision >= $${paramIndex}`;
+            params.push(fecha_desde);
+            paramIndex++;
+            console.log(`   - Filtro fecha_desde: ${fecha_desde}`);
+        }
+        
+        // Filtro por fecha hasta
+        if (fecha_hasta) {
+            query += ` AND fecha_emision <= $${paramIndex}`;
+            params.push(fecha_hasta);
+            paramIndex++;
+            console.log(`   - Filtro fecha_hasta: ${fecha_hasta}`);
+        }
+        
+        // Filtro por estado
+        if (estado) {
+            query += ` AND estado = $${paramIndex}`;
+            params.push(estado);
+            paramIndex++;
+            console.log(`   - Filtro estado: ${estado}`);
+        }
+        
+        // Filtro por tipo de comprobante
+        if (tipo_cbte) {
+            query += ` AND tipo_cbte = $${paramIndex}`;
+            params.push(parseInt(tipo_cbte));
+            paramIndex++;
+            console.log(`   - Filtro tipo_cbte: ${tipo_cbte}`);
+        }
+        
+        // Filtro por cliente
+        if (cliente_id) {
+            query += ` AND cliente_id = $${paramIndex}`;
+            params.push(parseInt(cliente_id));
+            paramIndex++;
+            console.log(`   - Filtro cliente_id: ${cliente_id}`);
+        }
+        
+        // Ordenar y limitar
+        query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+        params.push(parseInt(limit), parseInt(offset));
+        
+        const resultado = await pool.query(query, params);
         
         console.log(`✅ [FACTURACION-CTRL] ${resultado.rows.length} facturas obtenidas`);
         
         res.status(200).json({
             success: true,
             data: resultado.rows,
-            total: resultado.rows.length
+            total: resultado.rows.length,
+            limit: parseInt(limit),
+            offset: parseInt(offset)
         });
         
     } catch (error) {
@@ -241,6 +398,97 @@ const generarPDF = async (req, res) => {
     }
 };
 
+/**
+ * Facturar presupuesto (crear factura BORRADOR desde presupuesto)
+ * POST /facturacion/presupuestos/:id/facturar
+ */
+const facturarPresupuesto = async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔄 [FACTURACION-CTRL] POST /presupuestos/${id}/facturar - Facturar presupuesto`);
+    
+    try {
+        // Crear factura desde presupuesto
+        const resultado = await presupuestoFacturaService.facturarPresupuesto(parseInt(id));
+        
+        console.log('✅ [FACTURACION-CTRL] Factura creada desde presupuesto');
+        console.log(`   - factura_id: ${resultado.facturaId}`);
+        console.log(`   - items: ${resultado.itemsCount}`);
+        console.log(`   - total: ${resultado.totales.imp_total}`);
+        
+        // Validar automáticamente
+        console.log('🔍 [FACTURACION-CTRL] Validando factura automáticamente...');
+        const validacion = await validadorAfipService.validarFacturaParaAfip(resultado.facturaId);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Factura creada exitosamente desde presupuesto',
+            data: {
+                factura_id: resultado.facturaId,
+                presupuesto_id: resultado.presupuestoId,
+                totales: resultado.totales,
+                items_count: resultado.itemsCount,
+                validacion: {
+                    ready_for_wsfe: validacion.readyForWSFE,
+                    faltantes: validacion.faltantes,
+                    advertencias: validacion.advertencias
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error facturando presupuesto:', error.message);
+        console.error('❌ [FACTURACION-CTRL] Stack:', error.stack);
+        
+        // Verificar si es error de factura duplicada
+        if (error.message.includes('Ya existe una factura')) {
+            return res.status(409).json({
+                success: false,
+                error: 'Factura duplicada',
+                message: error.message
+            });
+        }
+        
+        res.status(400).json({
+            success: false,
+            error: 'Error facturando presupuesto',
+            message: error.message,
+            detalles: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+};
+
+/**
+ * Validar factura para AFIP (pre-WSFE)
+ * GET /facturacion/facturas/:id/validar-afip
+ */
+const validarFacturaAfip = async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔍 [FACTURACION-CTRL] GET /facturas/${id}/validar-afip - Validar para AFIP`);
+    
+    try {
+        const validacion = await validadorAfipService.validarFacturaParaAfip(parseInt(id));
+        
+        console.log(`${validacion.readyForWSFE ? '✅' : '⚠️'} [FACTURACION-CTRL] Validación completada`);
+        console.log(`   - ready_for_wsfe: ${validacion.readyForWSFE}`);
+        console.log(`   - faltantes: ${validacion.faltantes.length}`);
+        console.log(`   - advertencias: ${validacion.advertencias.length}`);
+        
+        res.status(200).json({
+            success: true,
+            data: validacion
+        });
+        
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error validando factura:', error.message);
+        
+        res.status(400).json({
+            success: false,
+            error: 'Error validando factura',
+            message: error.message
+        });
+    }
+};
+
 console.log('✅ [FACTURACION-CTRL] Controlador de facturas cargado');
 
 module.exports = {
@@ -249,5 +497,7 @@ module.exports = {
     emitirFactura,
     obtenerFactura,
     listarFacturas,
-    generarPDF
+    generarPDF,
+    facturarPresupuesto,
+    validarFacturaAfip
 };

@@ -182,7 +182,25 @@ const emitir = async (facturaId) => {
         
         console.log('✅ [FACTURACION-SERVICE] Factura puede emitirse');
         
-        // 3. Emitir según tipo
+        // 3. Si es reproceso de RECHAZADA, limpiar datos anteriores
+        if (validacion.esReproceso) {
+            console.log('🔄 [FACTURACION-SERVICE] Reprocesando factura RECHAZADA - limpiando datos anteriores');
+            await pool.query(
+                `UPDATE factura_facturas 
+                 SET cbte_nro = NULL, cae = NULL, cae_vto = NULL, resultado = NULL, estado = 'BORRADOR', updated_at = $1 
+                 WHERE id = $2`,
+                [paraBD(), facturaId]
+            );
+            // Recargar factura con datos limpios
+            factura.cbte_nro = null;
+            factura.cae = null;
+            factura.cae_vto = null;
+            factura.resultado = null;
+            factura.estado = 'BORRADOR';
+            console.log('✅ [FACTURACION-SERVICE] Datos anteriores limpiados, factura lista para reprocesar');
+        }
+        
+        // 4. Emitir según tipo
         if (factura.requiere_afip) {
             return await emitirAfip(factura);
         } else {

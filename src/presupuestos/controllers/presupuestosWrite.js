@@ -1195,6 +1195,89 @@ const obtenerEstadoPresupuesto = async (req, res) => {
     }
 };
 
+/**
+ * Actualizar factura_id de un presupuesto
+ * PUT /api/presupuestos/:id/factura
+ */
+const actualizarFacturaId = async (req, res) => {
+    const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    console.log(`🔍 [PRESUPUESTOS-WRITE] ${requestId} - Actualizando factura_id...`);
+
+    try {
+        const { id } = req.params;
+        const { factura_id } = req.body;
+
+        if (!factura_id) {
+            return res.status(400).json({
+                success: false,
+                error: 'factura_id es requerido',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto: ${id}, Factura: ${factura_id}`);
+
+        const isNumericId = /^\d+$/.test(id);
+        let updateQuery, queryParams;
+
+        if (isNumericId) {
+            updateQuery = `
+                UPDATE presupuestos 
+                SET factura_id = $1, fecha_actualizacion = NOW()
+                WHERE (id = $2 OR id_presupuesto_ext = $3) AND activo = true
+                RETURNING id, id_presupuesto_ext, factura_id
+            `;
+            queryParams = [parseInt(factura_id), parseInt(id), id];
+        } else {
+            updateQuery = `
+                UPDATE presupuestos 
+                SET factura_id = $1, fecha_actualizacion = NOW()
+                WHERE id_presupuesto_ext = $2 AND activo = true
+                RETURNING id, id_presupuesto_ext, factura_id
+            `;
+            queryParams = [parseInt(factura_id), id];
+        }
+
+        const result = await req.db.query(updateQuery, queryParams);
+
+        if (result.rows.length === 0) {
+            console.log(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto no encontrado`);
+            return res.status(404).json({
+                success: false,
+                error: 'Presupuesto no encontrado',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        const presupuesto = result.rows[0];
+        console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - factura_id actualizado: ${presupuesto.factura_id}`);
+
+        res.json({
+            success: true,
+            data: {
+                id: presupuesto.id,
+                id_presupuesto: presupuesto.id_presupuesto_ext,
+                factura_id: presupuesto.factura_id
+            },
+            message: 'factura_id actualizado exitosamente',
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al actualizar factura_id',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS-WRITE] Controlador de escritura configurado');
 
 module.exports = {
@@ -1202,5 +1285,6 @@ module.exports = {
     editarPresupuesto,
     eliminarPresupuesto,
     reintentarPresupuesto,
-    obtenerEstadoPresupuesto
+    obtenerEstadoPresupuesto,
+    actualizarFacturaId
 };
