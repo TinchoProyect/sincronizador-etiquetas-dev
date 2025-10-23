@@ -99,18 +99,61 @@
    TIMERS
    ========================================== */
 
-.timer-display {
-    display: inline-block;
-    background: #e9ecef;
-    border-radius: 6px;
-    padding: 8px 16px;
-    text-align: center;
-    font-size: 16px;
-    font-weight: 600;
-    color: #495057;
-    font-family: 'Courier New', monospace;
-    letter-spacing: 1px;
+
+
+/* Base consistente para todos los timers */
+.timer-display, /* E1 y E3 */
+.timer-articulo /* E2 */ {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 16px;
+  font-family: 'Courier New', monospace;
+  background: #e9ecef;
+  color: #495057;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06) inset;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
+
+.timer-display:hover,
+.timer-articulo:hover {
+  transform: translateY(-1px);
+}
+
+/* Corriendo */
+.timer-display.corriendo,
+.timer-articulo.corriendo {
+  background: #007bff;
+  color: #fff;
+  animation: pulse 2s infinite;
+  border-color: rgba(0,123,255,0.35);
+}
+
+/* Asegura que el reloj se vea cuando el timer corre */
+.timer-display.corriendo {
+  display: inline-block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+
+
+
+
+
+
+
+/* Finalizado */
+.timer-display.finalizado,
+.timer-articulo.finalizado {
+  background: #28a745;
+  color: #fff;
+  border-color: rgba(40,167,69,0.35);
+  animation: none;
+}
+/*Fin base consistente*/
 
 .timer-total-etapa2 {
     background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
@@ -408,6 +451,12 @@
     .etapa-actions .btn {
         min-width: 100%;
     }
+
+    .timer-display,
+    .timer-articulo {
+        font-size: 18px;
+        padding: 12px 16px;
+    }
 }
 
 /* ==========================================
@@ -427,6 +476,22 @@
 
 .etapa-medicion {
     animation: slideIn 0.3s ease-out;
+}
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(0,123,255,0.35); }
+  70%  { box-shadow: 0 0 0 10px rgba(0,123,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,123,255,0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* ==========================================
@@ -652,3 +717,4 @@
         gap: 10px;
     }
 }
+

@@ -297,17 +297,22 @@ async function mostrarEtapa1() {
         // Timer corriendo
         btnInicio.style.display = 'none';
         btnCarroListo.style.display = 'inline-block';
+        timerDisplay.classList.add('corriendo');
+        timerDisplay.classList.remove('finalizado');
         iniciarIntervalEtapa1();
     } else if (timer.elapsed > 0) {
         // Timer finalizado
         btnInicio.style.display = 'none';
         btnCarroListo.style.display = 'inline-block';
         timerDisplay.textContent = formatearTiempo(timer.elapsed);
+        timerDisplay.classList.remove('corriendo');
+        timerDisplay.classList.add('finalizado');
     } else {
         // Sin iniciar
         btnInicio.style.display = 'inline-block';
         btnCarroListo.style.display = 'none';
         timerDisplay.textContent = '00:00';
+        timerDisplay.classList.remove('corriendo', 'finalizado');
     }
 }
 
@@ -334,12 +339,17 @@ async function mostrarEtapa3() {
     
     if (timer.start && !timer.elapsed) {
         // Timer corriendo
+        timerDisplay.classList.add('corriendo');
+        timerDisplay.classList.remove('finalizado');
         iniciarIntervalEtapa3();
     } else if (timer.elapsed > 0) {
         // Timer finalizado
         timerDisplay.textContent = formatearTiempo(timer.elapsed);
+        timerDisplay.classList.remove('corriendo');
+        timerDisplay.classList.add('finalizado');
     } else {
         timerDisplay.textContent = '00:00';
+        timerDisplay.classList.remove('corriendo', 'finalizado');
     }
 }
 
@@ -348,7 +358,9 @@ async function mostrarEtapa3() {
 // ==========================================
 
 window.iniciarEtapa1Medicion = async function() {
-    try {
+
+
+   try {
         log('Iniciando Etapa 1...');
         
         const response = await fetch(
@@ -376,6 +388,12 @@ window.iniciarEtapa1Medicion = async function() {
 function iniciarIntervalEtapa1() {
     const timer = estadoModal.timers.etapa1;
     if (timer.interval) clearInterval(timer.interval);
+
+    const el = document.getElementById('timer-etapa1');
+    if (el) { el.classList.add('corriendo'); el.classList.remove('finalizado');}
+
+    const display = document.getElementById('timer-etapa1'); 
+    if (display) display.textContent = '⏱ 00:00';
     
     timer.interval = setInterval(() => {
         const elapsed = Date.now() - timer.start;
@@ -694,7 +712,13 @@ window.completarEtapa2Medicion = async function() {
 function iniciarIntervalEtapa3() {
     const timer = estadoModal.timers.etapa3;
     if (timer.interval) clearInterval(timer.interval);
+
+    const el = document.getElementById('timer-etapa3');
+    if (el) { el.classList.add('corriendo'); el.classList.remove('finalizado'); }
     
+    const display = document.getElementById('timer-etapa3'); 
+    if (display) display.textContent = '⏱ 00:00';
+
     timer.interval = setInterval(() => {
         const elapsed = Date.now() - timer.start;
         document.getElementById('timer-etapa3').textContent = formatearTiempo(elapsed);
@@ -713,6 +737,9 @@ window.finalizarMedicion = async function() {
         }
         timer.elapsed = Date.now() - timer.start;
         
+        const el = document.getElementById('timer-etapa3');
+        if (el) { el.classList.remove('corriendo'); el.classList.add('finalizado'); }
+
         // Finalizar Etapa 3 en backend
         const response = await fetch(
             `http://localhost:3002/api/tiempos/carro/${estadoModal.carroId}/etapa/3/finalizar?usuarioId=${estadoModal.usuarioId}`,
