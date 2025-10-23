@@ -18,7 +18,9 @@ let estadoModal = {
         articulos: new Map() // key: articulo_numero, value: {interval, start, elapsed}
     },
     articulosMedidos: new Set(),
-    totalArticulos: 0
+    totalArticulos: 0,
+    modalMinimizado: false,
+    panelInterval: null // Intervalo para actualizar el panel flotante
 };
 
 // ==========================================
@@ -884,6 +886,155 @@ async function cargarDetallesArticulosResumen() {
     } catch (error) {
         log(`Error cargando detalles de artículos: ${error.message}`, 'error');
     }
+}
+
+// ==========================================
+// MINIMIZACIÓN Y RESTAURACIÓN DEL MODAL
+// ==========================================
+
+window.iniciarEtapa1Medicion = (function() {
+    const originalFn = window.iniciarEtapa1Medicion;
+    return async function() {
+        await originalFn();
+        // Minimizar automáticamente al iniciar preparación
+        minimizarModalMedicion();
+    };
+})();
+
+function minimizarModalMedicion() {
+    try {
+        log('Minimizando modal de medición...');
+        
+        const modal = document.getElementById('modalMedicionInterna');
+        const panel = document.getElementById('panel-flotante-medicion');
+        
+        if (!modal || !panel) {
+            log('No se encontraron elementos para minimizar', 'error');
+            return;
+        }
+        
+        // Ocultar modal
+        modal.style.display = 'none';
+        
+        // Actualizar panel con info del carro
+        document.getElementById('panel-carro-id').textContent = estadoModal.carroId;
+        
+        // Mostrar panel
+        panel.style.display = 'block';
+        estadoModal.modalMinimizado = true;
+        
+        // Iniciar actualización del panel
+        iniciarActualizacionPanel();
+        
+        log('Modal minimizado correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error al minimizar modal: ${error.message}`, 'error');
+    }
+}
+
+window.restaurarModalMedicion = function() {
+    try {
+        log('Restaurando modal de medición...');
+        
+        const modal = document.getElementById('modalMedicionInterna');
+        const panel = document.getElementById('panel-flotante-medicion');
+        
+        if (!modal || !panel) {
+            log('No se encontraron elementos para restaurar', 'error');
+            return;
+        }
+        
+        // Detener actualización del panel
+        if (estadoModal.panelInterval) {
+            clearInterval(estadoModal.panelInterval);
+            estadoModal.panelInterval = null;
+        }
+        
+        // Ocultar panel
+        panel.style.display = 'none';
+        
+        // Mostrar modal
+        modal.style.display = 'block';
+        setTimeout(() => modal.classList.add('show'), 10);
+        estadoModal.modalMinimizado = false;
+        
+        log('Modal restaurado correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error al restaurar modal: ${error.message}`, 'error');
+    }
+};
+
+function iniciarActualizacionPanel() {
+    // Detener intervalo anterior si existe
+    if (estadoModal.panelInterval) {
+        clearInterval(estadoModal.panelInterval);
+    }
+    
+    // Actualizar inmediatamente
+    actualizarPanel();
+    
+    // Configurar actualización cada segundo
+    estadoModal.panelInterval = setInterval(() => {
+        actualizarPanel();
+    }, 1000);
+}
+
+function actualizarPanel() {
+    const timerDisplay = document.getElementById('panel-timer');
+    const etapaDisplay = document.getElementById('panel-etapa-actual');
+    
+    if (!timerDisplay || !etapaDisplay) return;
+    
+    let tiempo = 0;
+    let etapaTexto = '';
+    
+    switch (estadoModal.etapaActual) {
+        case 1:
+            // Etapa 1: Preparación
+            const timer1 = estadoModal.timers.etapa1;
+            if (timer1.start && !timer1.elapsed) {
+                tiempo = Date.now() - timer1.start;
+            } else {
+                tiempo = timer1.elapsed;
+            }
+            etapaTexto = '🏭 Etapa 1: Preparación';
+            break;
+            
+        case 2:
+            // Etapa 2: Medición de artículos
+            // Mostrar total de artículos medidos
+            let totalEtapa2 = 0;
+            estadoModal.timers.articulos.forEach((timer, key) => {
+                if (estadoModal.articulosMedidos.has(key)) {
+                    totalEtapa2 += timer.elapsed;
+                } else if (timer.start) {
+                    totalEtapa2 += Date.now() - timer.start;
+                }
+            });
+            tiempo = totalEtapa2;
+            etapaTexto = `📦 Etapa 2: ${estadoModal.articulosMedidos.size}/${estadoModal.totalArticulos} artículos`;
+            break;
+            
+        case 3:
+            // Etapa 3: Finalización
+            const timer3 = estadoModal.timers.etapa3;
+            if (timer3.start && !timer3.elapsed) {
+                tiempo = Date.now() - timer3.start;
+            } else {
+                tiempo = timer3.elapsed;
+            }
+            etapaTexto = '✅ Etapa 3: Finalización';
+            break;
+            
+        default:
+            tiempo = 0;
+            etapaTexto = 'Esperando...';
+    }
+    
+    timerDisplay.textContent = formatearTiempo(tiempo);
+    etapaDisplay.textContent = etapaTexto;
 }
 
 // Log de inicialización

@@ -578,6 +578,23 @@
         </div>
     </div>
 
+    <!-- Panel Flotante Minimizado -->
+    <div id="panel-flotante-medicion" class="panel-flotante" style="display: none;">
+        <div class="panel-flotante-header">
+            <span class="panel-flotante-titulo">⏱️ Medición en curso</span>
+            <button class="btn-restaurar" onclick="restaurarModalMedicion()" title="Restaurar modal">
+                ⬆️
+            </button>
+        </div>
+        <div class="panel-flotante-body">
+            <div class="panel-flotante-carro">
+                Carro #<span id="panel-carro-id"></span>
+            </div>
+            <div class="panel-flotante-timer" id="panel-timer">00:00</div>
+            <div class="panel-flotante-etapa" id="panel-etapa-actual">Etapa 1</div>
+        </div>
+    </div>
+
     <!-- Modal de Ajuste de Kilos -->
     <div id="modalAjusteKilos" class="modal">
         <div class="modal-content">
