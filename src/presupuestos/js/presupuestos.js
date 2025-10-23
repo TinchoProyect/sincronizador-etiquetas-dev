@@ -1421,6 +1421,16 @@ function renderDetallesArticulos(data) {
     
     const { presupuesto, detalles, totales, total_articulos } = data;
     
+    // DEBUG: Ver qué datos llegan
+    if (detalles && detalles.length > 0) {
+        console.log('[DEBUG-DETALLES] Primer artículo recibido:', {
+            articulo: detalles[0].articulo,
+            descripcion_articulo: detalles[0].descripcion_articulo,
+            descripcion: detalles[0].descripcion,
+            detalle: detalles[0].detalle
+        });
+    }
+    
     // Log de control por presupuesto según especificación
     if (totales) {
         console.log("[DETALLE]", "sumNeto=", totales.neto_total.toFixed(2), "sumIVA=", totales.iva_total.toFixed(2), "sumTotal=", totales.total_general.toFixed(2));

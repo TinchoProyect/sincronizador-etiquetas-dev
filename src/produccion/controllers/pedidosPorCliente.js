@@ -98,6 +98,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     p.id_presupuesto_ext,
                     p.id_cliente,
                     p.fecha,
+                    COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
                 WHERE p.activo = true 
@@ -110,12 +111,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     pc.cliente_id_int,
                     ${presupuestoIdFieldMain} as presupuesto_id,
                     pc.fecha as presupuesto_fecha,
+                    pc.secuencia,
                     pd.articulo as articulo_numero,
                     SUM(COALESCE(pd.cantidad, 0)) as cantidad
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.fecha, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.fecha, pc.secuencia, pd.articulo
             )
             SELECT 
                 app.cliente_id_int as cliente_id,
@@ -131,6 +133,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     JSON_BUILD_OBJECT(
                         'presupuesto_id', app.presupuesto_id,
                         'presupuesto_fecha', app.presupuesto_fecha,
+                        'secuencia', app.secuencia,
                         'articulo_numero', app.articulo_numero,
                         'descripcion', COALESCE(
                             NULLIF(TRIM(a.nombre), ''),
@@ -791,9 +794,84 @@ const actualizarPackMapping = async (req, res) => {
     }
 };
 
+/**
+ * Actualiza la secuencia de uno o varios presupuestos
+ */
+const actualizarSecuenciaPresupuestos = async (req, res) => {
+    try {
+        console.log('🔄 [SECUENCIA] Iniciando actualización de secuencia...');
+        
+        const { presupuestos_ids, nueva_secuencia } = req.body;
+        
+        // Validaciones
+        if (!presupuestos_ids || !Array.isArray(presupuestos_ids) || presupuestos_ids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'presupuestos_ids es requerido y debe ser un array no vacío',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const secuenciasValidas = ['Imprimir', 'Imprimir_Modificado', 'Armar_Pedido', 'Pedido_Listo'];
+        if (!nueva_secuencia || !secuenciasValidas.includes(nueva_secuencia)) {
+            return res.status(400).json({
+                success: false,
+                error: `nueva_secuencia debe ser uno de: ${secuenciasValidas.join(', ')}`,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        console.log('📋 [SECUENCIA] Datos recibidos:', { 
+            presupuestos_count: presupuestos_ids.length, 
+            nueva_secuencia 
+        });
+        
+        // Actualizar secuencia en la base de datos
+        const updateQuery = `
+            UPDATE public.presupuestos
+            SET secuencia = $1,
+                fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
+            WHERE id_presupuesto_ext = ANY($2::text[])
+              AND activo = true
+            RETURNING id_presupuesto_ext, secuencia
+        `;
+        
+        const result = await pool.query(updateQuery, [nueva_secuencia, presupuestos_ids]);
+        
+        console.log(`✅ [SECUENCIA] Actualizados: ${result.rowCount} presupuestos`);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'No se encontraron presupuestos activos con los IDs proporcionados',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        res.json({
+            success: true,
+            actualizados: result.rowCount,
+            nueva_secuencia: nueva_secuencia,
+            presupuestos: result.rows,
+            message: `${result.rowCount} presupuesto(s) actualizado(s) a secuencia "${nueva_secuencia}"`,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ [SECUENCIA] Error al actualizar secuencia:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 module.exports = {
     obtenerPedidosPorCliente,
     obtenerPedidosArticulos,
     asignarFaltantes,
-    actualizarPackMapping
+    actualizarPackMapping,
+    actualizarSecuenciaPresupuestos
 };

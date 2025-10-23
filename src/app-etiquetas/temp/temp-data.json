@@ -1,6 +1,8 @@
 {
-  "numero": "NMELCHx5",
-  "nombre": "Nuez/Ma/ExtL/Ch x 5",
-  "codigo_barras": "2569478523",
-  "cantidad": 2
+  "articulo": {
+    "numero": "APx2",
+    "nombre": "Avellanas Pel(Med). x 2",
+    "codigo_barras": "2563635537"
+  },
+  "cantidad": "5.00"
 }

@@ -140,7 +140,8 @@ const obtenerPresupuestos = async (req, res) => {
                 p.fecha as fecha_registro,
                 p.activo,
                 p.estado,
-                p.agente
+                p.agente,
+                p.factura_id
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
             WHERE p.activo = true
@@ -1195,6 +1196,7 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 COALESCE(p.nota, '') AS nota,
                 COALESCE(p.punto_entrega, 'Sin dirección') AS punto_entrega,
                 COALESCE(p.descuento, 0) AS descuento,
+                p.factura_id,
                 p.activo
             FROM public.presupuestos p
             WHERE p.id = $1 AND p.activo = true
@@ -1711,7 +1713,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             SELECT 
                 pd.id,
                 pd.articulo,
-                COALESCE(src.descripcion, pd.articulo) as descripcion_articulo,
+                COALESCE(a.nombre, pd.articulo) as descripcion_articulo,
                 pd.cantidad,
                 pd.valor1,
                 pd.precio1,
@@ -1725,7 +1727,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 -- TOTAL = cantidad * precio1 (total unitario con IVA incluido)
                 ROUND(pd.cantidad * COALESCE(pd.precio1, 0), 2) as total_linea
             FROM public.presupuestos_detalles pd
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = pd.articulo
+            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
             WHERE pd.id_presupuesto_ext = $1
             ORDER BY pd.id
         `;
@@ -1734,12 +1736,24 @@ const obtenerDetallesPresupuesto = async (req, res) => {
         
         console.log(`✅ [PRESUPUESTOS] Detalles encontrados: ${detallesResult.rows.length} artículos para presupuesto ${presupuesto.id_presupuesto_ext}`);
         
-        // Mapear resultados con nombres que consume la UI - CORREGIDO
+        // Mapear resultados - CORRECCIÓN: Devolver valores UNITARIOS + TOTALES
+        // El frontend de edición espera valores UNITARIOS en valor1/precio1/iva1
+        // Los totales (neto/iva/total) son para el resumen
         const detallesConCalculos = detallesResult.rows.map(item => ({
             id: item.id,
+            codigo_barras: item.articulo,
             articulo: item.articulo,
-            descripcion_articulo: item.descripcion_articulo,
+            articulo_numero: item.articulo,
+            descripcion_articulo: item.descripcion_articulo,  // ✅ Agregar campo faltante
+            detalle: item.descripcion_articulo,
+            descripcion: item.descripcion_articulo,
             cantidad: parseFloat(item.cantidad || 0),
+            // VALORES UNITARIOS (para edición)
+            valor1: parseFloat(item.valor1 || 0),      // Precio unitario SIN IVA
+            precio1: parseFloat(item.precio1 || 0),    // Precio unitario CON IVA
+            iva1: parseFloat(item.iva1 || 0),          // Monto IVA unitario
+            camp2: parseFloat(item.camp2 || 0),        // Alícuota decimal (0.21)
+            // VALORES TOTALES (para resumen/totales)
             neto: parseFloat(item.neto_linea || 0),
             iva: parseFloat(item.iva_linea || 0),
             total: parseFloat(item.total_linea || 0)
@@ -1925,6 +1939,72 @@ const actualizarEstadoPresupuesto = async (req, res) => {
     }
 };
 
+/**
+ * Obtener cliente por ID
+ */
+const obtenerClientePorId = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        console.log(`🔍 [PRESUPUESTOS] Obteniendo cliente por ID: ${id}`);
+        
+        if (!id || isNaN(parseInt(id))) {
+            console.log('❌ [PRESUPUESTOS] ID de cliente inválido:', id);
+            return res.status(400).json({
+                success: false,
+                error: 'ID de cliente inválido',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const query = `
+            SELECT 
+                cliente_id,
+                nombre,
+                apellido,
+                otros,
+                cuit,
+                dni,
+                condicion_iva,
+                lista_precios,
+                domicilio as direccion,
+                telefono,
+                email
+            FROM public.clientes
+            WHERE cliente_id = $1
+        `;
+        
+        const result = await req.db.query(query, [parseInt(id)]);
+        
+        if (result.rows.length === 0) {
+            console.log(`⚠️ [PRESUPUESTOS] Cliente no encontrado: ID ${id}`);
+            return res.status(404).json({
+                success: false,
+                error: 'Cliente no encontrado',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const cliente = result.rows[0];
+        console.log(`✅ [PRESUPUESTOS] Cliente encontrado: ${cliente.nombre} ${cliente.apellido || ''}`);
+        
+        res.json({
+            success: true,
+            data: cliente,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al obtener cliente:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener cliente',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD completo');
 
 module.exports = {
@@ -1942,5 +2022,6 @@ module.exports = {
     obtenerEstadisticas,
     obtenerConfiguracion,
     obtenerResumen,
-    obtenerPrecioArticuloCliente   // <-- NUEVO
+    obtenerPrecioArticuloCliente,
+    obtenerClientePorId
 };

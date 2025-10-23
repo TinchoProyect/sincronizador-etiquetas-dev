@@ -73,7 +73,7 @@ async function ejecutarCorreccionFechas(config, db) {
         
         // PASO 2: Leer datos desde Google Sheets
         console.log('[SYNC-FECHAS-FIX] Leyendo datos desde Google Sheets...');
-        let presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        let presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         let detallesData = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
         // ===== DEBUG READ (solo últimos 5) =====
                 try {
@@ -137,7 +137,7 @@ async function ejecutarCorreccionFechas(config, db) {
         await pushDetallesLocalesASheets(insertedIds, config, db);
         
         // Releer hojas para incorporar lo que se acaba de escribir
-        presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         detallesData = await readSheetWithHeaders(config.hoja_id, 'A:Q', 'DetallesPresupuestos');
 
         // Reaplicar filtro de inactivos locales
@@ -720,7 +720,18 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
 
     // Armar set de IDs remotos con lo que ya leíste de Sheets
     const idCol = presupuestosData.headers[0]; // "IDPresupuesto"
+    const lmCol = presupuestosData.headers[13]; // "LastModified"
     const remoteIds = new Set(presupuestosData.rows.map(r => r[idCol]).filter(Boolean));
+    
+    // Crear mapa de timestamps remotos
+    const remoteTimestamps = new Map();
+    presupuestosData.rows.forEach(row => {
+      const id = row[idCol];
+      const lastMod = row[lmCol];
+      if (id && lastMod) {
+        remoteTimestamps.set(id, lastMod);
+      }
+    });
 
     // DETECTAR PRESUPUESTOS CON CAMBIOS (nuevos O con detalles modificados)
     const cutoffAt = config.cutoff_at;
@@ -729,19 +740,69 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
     const { rows: locales } = await db.query(`
       SELECT DISTINCT p.id_presupuesto_ext, p.id_cliente, p.agente, p.fecha, p.fecha_entrega, 
              p.tipo_comprobante, p.nota, p.estado, p.informe_generado, p.cliente_nuevo_id, 
-             p.punto_entrega, p.descuento, p.activo, p.fecha_actualizacion
+             p.punto_entrega, p.descuento, p.secuencia, p.activo, p.fecha_actualizacion
       FROM presupuestos p
       LEFT JOIN presupuestos_detalles d ON d.id_presupuesto_ext = p.id_presupuesto_ext
       WHERE p.activo = true 
         AND (
-          p.fecha_actualizacion > $1  -- Presupuesto modificado (ESTRICTO: solo posteriores)
-          OR d.fecha_actualizacion > $1  -- Detalle modificado (ESTRICTO: solo posteriores)
+          p.fecha_actualizacion >= $1  -- Presupuesto modificado (incluye iguales a cutoff_at)
+          OR d.fecha_actualizacion >= $1  -- Detalle modificado (incluye iguales a cutoff_at)
         )
     `, [cutoffAt]);
     
-    // SEPARAR: nuevos (INSERT) vs modificados (UPDATE)
-    const toInsert = locales.filter(p => !remoteIds.has(p.id_presupuesto_ext));
-    const toUpdate = locales.filter(p => remoteIds.has(p.id_presupuesto_ext));
+    // FILTRO CRÍTICO: Excluir presupuestos que tienen cambios más recientes en SHEET
+    console.log('[PUSH-HEAD] Comparando timestamps LOCAL vs SHEET...');
+    
+    const parseLastModified = (val) => {
+      if (!val) return new Date(0);
+      if (typeof val === 'number') {
+        const excelEpoch = new Date(1900, 0, 1);
+        const days = val - 2;
+        return new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+      }
+      const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/;
+      const match = String(val).match(ddmmyyyyRegex);
+      if (match) {
+        const [, day, month, year, hour, minute, second] = match;
+        return new Date(year, month - 1, day, hour, minute, second);
+      }
+      return new Date(val);
+    };
+    
+    const localesFiltrados = locales.filter(local => {
+      const remoteLastMod = remoteTimestamps.get(local.id_presupuesto_ext);
+      
+      if (!remoteLastMod) {
+        // No existe en SHEET → es NUEVO, incluir
+        console.log(`[SYNC-LWW] ID: ${local.id_presupuesto_ext} - NUEVO (no existe en SHEET)`);
+        return true;
+      }
+      
+      const localTimestamp = new Date(local.fecha_actualizacion);
+      const remoteTimestamp = parseLastModified(remoteLastMod);
+      
+      console.log(`[SYNC-LWW] ID: ${local.id_presupuesto_ext}`);
+      console.log(`[SYNC-LWW]   Local: ${localTimestamp.toISOString()}`);
+      console.log(`[SYNC-LWW]   Sheet: ${remoteTimestamp.toISOString()}`);
+      
+      if (localTimestamp > remoteTimestamp) {
+        console.log(`[SYNC-LWW]   Decisión: LOCAL gana (más reciente) → PUSH a SHEET`);
+        return true;
+      } else if (remoteTimestamp > localTimestamp) {
+        console.log(`[SYNC-LWW]   Decisión: SHEET gana (más reciente) → NO enviar, esperar PULL`);
+        return false;
+      } else {
+        // Empate → mantener SHEET (no enviar)
+        console.log(`[SYNC-LWW]   Decisión: EMPATE → mantener SHEET (no enviar)`);
+        return false;
+      }
+    });
+    
+    console.log(`[PUSH-HEAD] Filtrados: ${locales.length} → ${localesFiltrados.length} (excluidos ${locales.length - localesFiltrados.length} por SHEET más reciente)`);
+    
+    // SEPARAR: nuevos (INSERT) vs modificados (UPDATE) - USAR LOCALES FILTRADOS
+    const toInsert = localesFiltrados.filter(p => !remoteIds.has(p.id_presupuesto_ext));
+    const toUpdate = localesFiltrados.filter(p => remoteIds.has(p.id_presupuesto_ext));
     
     const insertedIds = new Set(toInsert.map(p => p.id_presupuesto_ext));
     const modifiedIds = new Set(toUpdate.map(p => p.id_presupuesto_ext));
@@ -770,13 +831,14 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
           r.punto_entrega ?? '',                              // L  PuntoEntrega
           pctStr,                                             // M  Descuento
           lastModifiedAR,                                     // N  LastModified (formato AppSheet AR)
-          true                                                // O  Activo
+          true,                                               // O  Activo
+          r.secuencia ?? ''                                   // P  Secuencia
         ];
       });
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: config.hoja_id,
-        range: 'Presupuestos!A1:O1',
+        range: 'Presupuestos!A1:P1',
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: data, majorDimension: 'ROWS' }
@@ -821,12 +883,13 @@ async function pushCambiosLocalesConTimestamp(presupuestosData, config, db) {
             r.punto_entrega ?? '',
             pctStr,
             lastModifiedAR,
-            true
+            true,
+            r.secuencia ?? ''
           ];
 
           await sheets.spreadsheets.values.update({
             spreadsheetId: config.hoja_id,
-            range: `Presupuestos!A${rowIndex}:O${rowIndex}`,
+            range: `Presupuestos!A${rowIndex}:P${rowIndex}`,
             valueInputOption: 'RAW',
             requestBody: {
               values: [updatedRow],
@@ -888,7 +951,7 @@ async function pushDetallesLocalesASheets(confirmedHeaderIds, config, db) {
     
     // INDICADOR 2: Presupuestos que YA existen en Sheets (desde pushCambiosLocalesConTimestamp)
     // Leer datos actuales de Sheets para verificar existencia
-    const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+    const presupuestosSheets = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
     const idsEnSheets = new Set(
       presupuestosSheets.rows
         .map(row => (row[presupuestosSheets.headers[0]] || '').toString().trim())
@@ -1268,7 +1331,7 @@ async function pushDetallesModificadosASheets(config, db) {
       FROM public.presupuestos_detalles d
       INNER JOIN public.presupuestos p ON p.id_presupuesto_ext = d.id_presupuesto_ext
       WHERE p.activo = true 
-        AND d.fecha_actualizacion > $1  -- ESTRICTO: solo posteriores a última sync
+        AND d.fecha_actualizacion >= $1  -- Incluye iguales a cutoff_at
       ORDER BY d.fecha_actualizacion DESC
     `, [cutoffAt]);
     

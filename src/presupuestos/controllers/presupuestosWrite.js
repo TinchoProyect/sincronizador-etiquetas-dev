@@ -107,7 +107,7 @@ async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId
 
         // Leer datos actuales de Sheets para el push
         console.log(`🔍 [SYNC-UP] ${requestId} - Leyendo datos actuales de Sheets...`);
-        const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:O', 'Presupuestos');
+        const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
         
         // Push de cabecera (solo el presupuesto recién creado)
         console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de cabecera...`);
@@ -166,6 +166,7 @@ const crearPresupuesto = async (req, res) => {
             estado,
             punto_entrega,
             descuento = 0,
+            secuencia,
             detalles = []
         } = req.body;
 
@@ -233,8 +234,8 @@ const crearPresupuesto = async (req, res) => {
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, activo, hoja_nombre, hoja_url, usuario_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, true, 'Presupuestos', $11, $12)
+                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, $11, true, 'Presupuestos', $12, $13)
                 RETURNING *
             `;
 
@@ -249,6 +250,7 @@ const crearPresupuesto = async (req, res) => {
                 estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
+                secuencia || 'Imprimir', // Valor predeterminado: "Imprimir"
                 configHojaUrl,
                 1 // usuario_id = 1 por defecto
             ]);
@@ -340,8 +342,10 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
                  diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
             `;
-            for (const detalle of detallesNormalizados) {
-                await client.query(insertDetalleQuery, [
+                let detallesInsertados = 0;
+                for (const detalle of detallesNormalizados) {
+                    console.log(`[PUT-DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
+                    await client.query(insertDetalleQuery, [
                     presupuestoBD.id,
                     detalle.id_presupuesto_ext,
                     detalle.articulo,
@@ -473,7 +477,8 @@ const editarPresupuesto = async (req, res) => {
             tipo_comprobante,
             estado,
             id_cliente,
-            fecha
+            fecha,
+            secuencia
         } = req.body;
 
     console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
@@ -627,6 +632,12 @@ const editarPresupuesto = async (req, res) => {
                 params.push(fecha ? normalizeDate(fecha) : null);
             }
 
+            if (secuencia !== undefined) {
+                paramCount++;
+                updates.push(`secuencia = $${paramCount}`);
+                params.push(secuencia || null);
+            }
+
             // Actualizar cabecera si hay campos
             let presupuestoActualizado = presupuesto;
             if (updates.length > 0) {
@@ -652,29 +663,41 @@ const editarPresupuesto = async (req, res) => {
 
             // Determinar si actualizar detalles
             if (Array.isArray(detalles)) {
+                console.log(`[PUT-DET] ===== INICIO PROCESAMIENTO DETALLES =====`);
+                console.log(`[PUT-DET] detalles recibidos:`, JSON.stringify(detalles, null, 2));
+                console.log(`[PUT-DET] detalles.length: ${detalles.length}`);
+                console.log(`[PUT-DET] primer detalle:`, detalles[0]);
                 console.log(`[PUT-DET] reemplazando detalles → count=${detalles.length}`);
 
                 // Validar detalles antes de procesar
                 for (const det of detalles) {
                     const barcode = (det.articulo || '').toString().trim();
+                    console.log(`[PUT-DET] Validando detalle: articulo="${barcode}", cantidad=${det.cantidad}, valor1=${det.valor1}`);
                     if (!barcode) {
+                        console.error(`[PUT-DET] ❌ Detalle sin código de barras válido:`, det);
                         throw new Error(`Detalle sin código de barras válido: ${JSON.stringify(det)}`);
                     }
                 }
+                console.log(`[PUT-DET] ✅ Todos los detalles validados correctamente`);
 
                 // 1. Eliminar detalles existentes
+                console.log(`[PUT-DET] Ejecutando DELETE de detalles existentes para id_presupuesto=${presupuesto.id}`);
                 const deleteDetallesQuery = `
                     DELETE FROM presupuestos_detalles
                     WHERE id_presupuesto = $1
                 `;
                 const deleteResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
                 const detallesEliminados = deleteResult.rowCount;
+                console.log(`[PUT-DET] ✅ DELETE ejecutado: ${detallesEliminados} detalles eliminados`);
 
                 // 2. Construir detalles normalizados (USAR MISMO CÁLCULO QUE EN CREACIÓN)
+                console.log(`[PUT-DET] Construyendo detalles normalizados...`);
                 const detallesNormalizados = [];
                 const detallesInput = Array.isArray(detalles) ? detalles : [];
+                console.log(`[PUT-DET] detallesInput.length: ${detallesInput.length}`);
 
                 for (const det of detallesInput) {
+                    console.log(`[PUT-DET] Procesando detalle:`, det);
                     const cantidad = normalizeNumber(det.cantidad || 0);          // D
                     const netoUnit = normalizeNumber(det.valor1 || 0);            // E
                     const alicDec  = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
@@ -712,18 +735,25 @@ const editarPresupuesto = async (req, res) => {
                     console.log(`✅ [CAMP-MAPPING-DESPUES-EDIT] ${requestId} - CAMP2<=alicDec, CAMP3<=netoTotal, CAMP4<=brutoTotal, CAMP5<=ivaTotal, CAMP6<=null`);
                 }
 
+                console.log(`[PUT-DET] ===== RESUMEN NORMALIZACIÓN =====`);
+                console.log(`[PUT-DET] Total detalles normalizados: ${detallesNormalizados.length}`);
                 if (detallesNormalizados.length > 0) {
-                    console.log(`[PUT-DET] ejemplo primer detalle normalizado`, detallesNormalizados[0]);
+                    console.log(`[PUT-DET] Ejemplo primer detalle normalizado:`, detallesNormalizados[0]);
+                } else {
+                    console.warn(`[PUT-DET] ⚠️ NO SE NORMALIZÓ NINGÚN DETALLE - Los detalles desaparecerán`);
                 }
 
                 // 3. Insertar nuevos detalles (versión simple)
+                console.log(`[PUT-DET] Iniciando INSERT de ${detallesNormalizados.length} detalles...`);
                 const insertDetalleQuery = `
                     INSERT INTO presupuestos_detalles
                     (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
                      diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
                 `;
+                let detallesInsertados = 0;
                 for (const detalle of detallesNormalizados) {
+                    console.log(`[PUT-DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
                     await client.query(insertDetalleQuery, [
                         presupuesto.id,
                         detalle.id_presupuesto_ext,
@@ -740,9 +770,13 @@ const editarPresupuesto = async (req, res) => {
                         detalle.camp5,
                         detalle.camp6
                     ]);
+                    detallesInsertados++;
                 }
 
-                console.log(`[PUT-DET] eliminados=${detallesEliminados} insertados=${detallesNormalizados.length}`);
+                console.log(`[PUT-DET] ===== RESUMEN FINAL =====`);
+                console.log(`[PUT-DET] Detalles eliminados: ${detallesEliminados}`);
+                console.log(`[PUT-DET] Detalles insertados: ${detallesInsertados}`);
+                console.log(`[PUT-DET] ✅ Operación de detalles completada`);
                 
                 // Log antes del COMMIT
                 console.log(`[TRACE-EDIT-LOCAL] id=${presupuesto.id_presupuesto_ext} detalles_eliminados=${detallesEliminados} detalles_insertados=${detallesNormalizados.length}`);
@@ -1161,6 +1195,89 @@ const obtenerEstadoPresupuesto = async (req, res) => {
     }
 };
 
+/**
+ * Actualizar factura_id de un presupuesto
+ * PUT /api/presupuestos/:id/factura
+ */
+const actualizarFacturaId = async (req, res) => {
+    const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    console.log(`🔍 [PRESUPUESTOS-WRITE] ${requestId} - Actualizando factura_id...`);
+
+    try {
+        const { id } = req.params;
+        const { factura_id } = req.body;
+
+        if (!factura_id) {
+            return res.status(400).json({
+                success: false,
+                error: 'factura_id es requerido',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto: ${id}, Factura: ${factura_id}`);
+
+        const isNumericId = /^\d+$/.test(id);
+        let updateQuery, queryParams;
+
+        if (isNumericId) {
+            updateQuery = `
+                UPDATE presupuestos 
+                SET factura_id = $1, fecha_actualizacion = NOW()
+                WHERE (id = $2 OR id_presupuesto_ext = $3) AND activo = true
+                RETURNING id, id_presupuesto_ext, factura_id
+            `;
+            queryParams = [parseInt(factura_id), parseInt(id), id];
+        } else {
+            updateQuery = `
+                UPDATE presupuestos 
+                SET factura_id = $1, fecha_actualizacion = NOW()
+                WHERE id_presupuesto_ext = $2 AND activo = true
+                RETURNING id, id_presupuesto_ext, factura_id
+            `;
+            queryParams = [parseInt(factura_id), id];
+        }
+
+        const result = await req.db.query(updateQuery, queryParams);
+
+        if (result.rows.length === 0) {
+            console.log(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto no encontrado`);
+            return res.status(404).json({
+                success: false,
+                error: 'Presupuesto no encontrado',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        const presupuesto = result.rows[0];
+        console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - factura_id actualizado: ${presupuesto.factura_id}`);
+
+        res.json({
+            success: true,
+            data: {
+                id: presupuesto.id,
+                id_presupuesto: presupuesto.id_presupuesto_ext,
+                factura_id: presupuesto.factura_id
+            },
+            message: 'factura_id actualizado exitosamente',
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al actualizar factura_id',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS-WRITE] Controlador de escritura configurado');
 
 module.exports = {
@@ -1168,5 +1285,6 @@ module.exports = {
     editarPresupuesto,
     eliminarPresupuesto,
     reintentarPresupuesto,
-    obtenerEstadoPresupuesto
+    obtenerEstadoPresupuesto,
+    actualizarFacturaId
 };

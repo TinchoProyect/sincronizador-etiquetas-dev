@@ -3,19 +3,7 @@
 import { mostrarError, estilosTablaCarros, agruparCarrosPorSemanas, agruparCarrosPorSemanasYMeses } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
 import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
-import {
-  initTemporizadores,
-  syncTimerButtonsVisibility,
-  importarEstadoLocal,
-  rehidratarDesdeEstado,
-  clearTimersForCarro,
-  clearTimersForNoCar,
 
-} from './temporizador_carro.js';
-
-
-
-initTemporizadores();
 
 // Hacer la función disponible globalmente
 window.editarIngredienteCompuesto = async (mixId) => {
@@ -695,7 +683,12 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         // Guardar el ID del carro en localStorage y variable global
         localStorage.setItem('carroActivo', data.id);
         window.carroIdGlobal = data.id;
-        
+
+        // ⛔ NUEVO: cachear si este carro es EXTERNO para que no aparezca el Modo Medición
+        try {
+        localStorage.setItem(`carro:${data.id}:externo`, tipoCarro === 'externa' ? '1' : '0');
+        } catch {}
+                
         console.log('Actualizando interfaz...');
         
         // Actualizar la información visual del carro
@@ -748,6 +741,8 @@ window.eliminarCarro = eliminarCarro;
 
 // Función para seleccionar un carro
 export async function seleccionarCarro(carroId) {
+    
+
   try {
     console.log(`Seleccionando carro ID: ${carroId}`);
 
@@ -771,41 +766,7 @@ export async function seleccionarCarro(carroId) {
     localStorage.setItem('carroActivo', String(carroId));
     window.carroIdGlobal = carroId;
 
-    // --- Intento de rehidratación de etapas (no bloqueante) ---
-    try {
-      const resp = await fetch(
-        `http://localhost:3002/api/produccion/carro/${carroId}/etapas/estado?usuarioId=${usuarioId}`
-      );
-      if (resp.ok) {
-        const estado = await resp.json();
-       importarEstadoLocal(carroId, estado);           // guarda snapshot
-        const botonGlobal = document.getElementById('btn-temporizador-global');
-        if (botonGlobal && botonGlobal.classList.contains('activo')) {
-            rehidratarDesdeEstado(carroId);               // si el modo ya estaba activo, pinta
-        }
-        // Guardar snapshot local para rehidratación futura
-        if (typeof importarEstadoLocal === 'function') {
-          importarEstadoLocal(carroId, estado);
-        } else if (window.importarEstadoLocal) {
-          window.importarEstadoLocal(carroId, estado);
-        }
 
-        // Si Modo medición está activo, rehidratar UI ahora
-        //const botonGlobal = document.getElementById('btn-temporizador-global');
-        const activo = !!(botonGlobal && botonGlobal.classList.contains('activo'));
-        if (activo) {
-            if (typeof window._rehidratarDesdeEstado === 'function') {
-                window._rehidratarDesdeEstado(carroId);  // rehidrata si está definida global
-            } else if (typeof syncTimerButtonsVisibility === 'function') {
-                syncTimerButtonsVisibility();            // al menos refresca visibilidad
-            }
-}
-      } else {
-        console.warn('No se pudo obtener estado de etapas para rehidratar (HTTP):', resp.status);
-      }
-    } catch (e) {
-      console.warn('No se pudo obtener estado de etapas para rehidratar:', e);
-    }
 
     // --- Limpiar datos del carro anterior (ingresos manuales, etc.) ---
     limpiarIngresosManualesDelCarro();
@@ -852,6 +813,8 @@ export async function seleccionarCarro(carroId) {
     console.error('Error al seleccionar carro:', error);
     mostrarError(error.message);
   }
+  //Reload para evitar inconsistencias visuales menores
+  window.location.reload();
 }
 
 
@@ -863,9 +826,7 @@ export async function deseleccionarCarro() {
     localStorage.removeItem('carroActivo');
     window.carroIdGlobal = null;
 
-    // 🔹 LIMPIEZA VISUAL INMEDIATA (modo medición puede seguir activo)
-    clearTimersForNoCar();
-    syncTimerButtonsVisibility();
+    
     
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
@@ -905,7 +866,8 @@ export async function deseleccionarCarro() {
     } else {
         console.warn('⚠️ actualizarVisibilidadBotones no está disponible al deseleccionar carro');
     }
-}
+//Reload para evitar inconsistencias visuales menores
+window.location.reload();}
 
 // Función para eliminar un carro
 export async function eliminarCarro(carroId) {
@@ -936,9 +898,7 @@ export async function eliminarCarro(carroId) {
             window.carroIdGlobal = null;
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
 
-            // 🔹 LIMPIEZA VISUAL INMEDIATA
-            clearTimersForNoCar();
-            syncTimerButtonsVisibility();
+           
             }
 
         // Actualizar la lista de carros
@@ -1442,15 +1402,6 @@ export async function mostrarArticulosDelCarro() {
             return;
         }
 
-        const colab = JSON.parse(localStorage.getItem('colaboradorActivo') || '{}');
-        if (carroId && colab.id) {
-        // Traemos estado real, lo guardamos local y luego pintamos
-        fetch(`http://localhost:3002/api/tiempos/carro/${carroId}/etapas/estado?usuarioId=${colab.id}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(est => { if (est) importarEstadoLocal(carroId, est); })
-            .finally(() => rehidratarDesdeEstado(carroId));
-        }
-
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         if (!colaboradorData) {
             throw new Error('No hay colaborador seleccionado');
@@ -1489,22 +1440,55 @@ export async function mostrarArticulosDelCarro() {
                 console.warn('Error al obtener relaciones:', error);
             }
         }
+        // ⛔ NUEVO: detectar si el carro activo es EXTERNO
+        let esExterno = false;
+        try {
+        // 1) cache local
+        const key = `carro:${carroId}:externo`;
+        const v = localStorage.getItem(key);
+        esExterno = (v === '1' || v === 'true');
+
+        // 2) Fallback: si no hay cache, consulto la lista de carros del usuario
+        if (!esExterno) {
+            const colab = JSON.parse(localStorage.getItem('colaboradorActivo') || '{}');
+            if (colab?.id) {
+            const r = await fetch(`http://localhost:3002/api/produccion/usuario/${colab.id}/carros`);
+            if (r.ok) {
+                const carros = await r.json();
+                const c = Array.isArray(carros) ? carros.find(x => String(x.id) === String(carroId)) : null;
+                if (c && (c.tipo_carro === 'externa' || c.externo === true || c.es_externo === true)) {
+                esExterno = true;
+                try { localStorage.setItem(key, '1'); } catch {}
+                } else {
+                try { localStorage.setItem(key, '0'); } catch {}
+                }
+            }
+            }
+        }
+        } catch {}
+        // ⛔ FIN nuevo
+
+
+                // ⛔ MOD: si es externo, NO incluimos el botón "Modo medición"
+        const botonMedicion = esExterno ? '' : `
+        <button id="btn-temporizador-global" class="btn btn-outline-primary btn-sm">
+            ⏱ Modo medición
+        </button>
+        `;
 
         let html = `
-            <div class="agregar-articulo-container">
-                <button id="agregar-articulo" class="btn btn-secondary">
-                    Agregar artículo al carro
-                </button>
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div class="agregar-articulo-container">
+            <button id="agregar-articulo" class="btn btn-secondary">
+            Agregar artículo al carro
+            </button>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
             <h3>Artículos en el carro</h3>
-                <button id="btn-temporizador-global" class="btn btn-outline-primary btn-sm">
-                 ⏱ Modo medición
-                </button>
-            </div>
-
-            <div class="seccion-articulos">
+            ${botonMedicion}
+        </div>
+        ...
         `;
+
 
         for (const art of articulos) {
             const relacion = relacionesExistentes[art.numero];
@@ -1530,9 +1514,6 @@ export async function mostrarArticulosDelCarro() {
                     </div>
                     <div class="articulo-controls">
                         <button class="toggle-ingredientes">Ver</button>
-                        <button class="btn-temporizador-articulo"  data-numero="${art.numero}"  style="display:none">
-                             ⏱ Iniciar
-                        </button>
                          ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
 
                     </div>
@@ -1612,15 +1593,17 @@ export async function mostrarArticulosDelCarro() {
             // Activar botón de temporizador global una vez que está en el DOM         
                 // 🔄 Sincronizar estado del modo medición después de renderizar
             const botonGlobal = document.getElementById('btn-temporizador-global');
-            // Sincronizar visibilidad según estado actual del botón global
-            syncTimerButtonsVisibility();
-
-            if (botonGlobal) {
-                const activo = botonGlobal.classList.contains('activo');
-                document.querySelectorAll('.btn-temporizador-articulo')
-                    .forEach(b => b.style.display = activo ? 'inline-block' : 'none');
-                } else {
-                    console.error('❌ No se encontró el botón #btn-temporizador-global después de renderizar');
+           
+            // Event listener para abrir modal de medición (solo carros internos)
+            if (botonGlobal && !esExterno) {
+                botonGlobal.addEventListener('click', () => {
+                    console.log('🎯 Abriendo modal de medición para carro interno:', carroId);
+                    if (typeof window.abrirModalMedicion === 'function') {
+                        window.abrirModalMedicion(carroId);
+                    } else {
+                        console.error('❌ abrirModalMedicion no está disponible');
+                    }
+                });
             }
         } else {
             console.error('No se encontró el contenedor lista-articulos');

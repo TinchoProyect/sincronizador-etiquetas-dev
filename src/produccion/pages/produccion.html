@@ -394,6 +394,10 @@
             color: var(--primary-color);
             font-size: 1.2em;
             font-weight: bold;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .toggle-icon {
@@ -405,6 +409,26 @@
 
         .section-toggle[aria-expanded="true"] .toggle-icon {
             transform: rotate(90deg);
+        }
+        
+        /* Estilos para contadores de secuencia - DESTACADOS */
+        .contador-secuencia {
+            font-weight: bold;
+            color: #fff;
+            font-size: 2em;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color-dark, #5092a7));
+            padding: 10px 24px;
+            border-radius: 30px;
+            min-width: 70px;
+            text-align: center;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .contador-secuencia:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
 
         .collapsible-content {
@@ -703,6 +727,160 @@
             background-color: #dc3545;
         }
 
+
+        /* Estilos para modal de armar pedido */
+        .modal-armar-grande {
+            max-width: 900px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .scanner-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 2px solid #007bff;
+        }
+
+        .scanner-section label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #007bff;
+        }
+
+        .scanner-section input {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: 2px solid #007bff;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .scanner-section input:focus {
+            outline: none;
+            border-color: #0056b3;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        .feedback-message {
+            margin-top: 10px;
+            padding: 12px;
+            border-radius: 4px;
+            display: none;
+            font-weight: bold;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .feedback-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .feedback-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .progress-section {
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .articulos-verificacion {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+
+        .tabla-verificacion {
+            margin: 0;
+        }
+
+        .tabla-verificacion tbody tr {
+            transition: background-color 0.3s ease;
+        }
+
+        .articulo-confirmado {
+            background: #d4edda !important;
+        }
+
+        .articulo-pendiente {
+            background: #fff !important;
+        }
+
+        .estado-check {
+            font-size: 24px;
+            text-align: center;
+        }
+
+        .btn-confirmar-pedido {
+            background: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .btn-confirmar-pedido:hover:not(:disabled) {
+            background: #218838;
+        }
+
+        .btn-confirmar-pedido:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-marcar-manual {
+            background: #ffc107;
+            color: #000;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-marcar-manual:hover {
+            background: #e0a800;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .pedidos-header {
@@ -820,27 +998,53 @@
 
     <!-- Sección de Informes de Presupuestos -->
     <section class="reports-section">
-        <!-- Bloque Pedidos por Cliente - Presupuestos Confirmados -->
+        <!-- 1. Imprimir / Imprimir Modificado -->
         <section class="pedidos-por-cliente-section collapsible-section">
-            <!-- Botón de Toggle -->
-            <button class="section-toggle" onclick="toggleSection('pedidos-section')" aria-expanded="false">
+            <button class="section-toggle" onclick="toggleSection('pedidos-imprimir-section')" aria-expanded="false">
                 <span class="toggle-icon">▶</span>
-                <h2>Pedidos por Cliente - Presupuestos Confirmados</h2>
+                <h2>📄 Imprimir / Imprimir Modificado <span id="contador-imprimir" class="contador-secuencia">(0)</span></h2>
             </button>
             
-            <!-- Contenido Colapsable -->
-            <div id="pedidos-section" class="collapsible-content" style="display: none;">
+            <div id="pedidos-imprimir-section" class="collapsible-content" style="display: none;">
                 <div class="pedidos-header">
                     <div class="pedidos-controls">
-                        <label for="fecha-corte">Fecha limite:</label>
+                        <label for="fecha-corte">Fecha límite:</label>
                         <input type="date" id="fecha-corte" name="fecha-corte" />
                         <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." />
                         <button id="refresh-pedidos" class="admin-button">Actualizar</button>
-                        <button id="imprimir-todos-general" class="admin-button" style="background-color: #28a745;">📄 Imprimir Todos los Presupuestos</button>
+                        <button id="imprimir-todos-general" class="admin-button" style="background-color: #28a745;">📄 Imprimir Todos</button>
                     </div>
                 </div>
-                <div id="pedidos-container" class="pedidos-container">
-                    <!-- Aquí se renderizarán los pedidos por cliente -->
+                <div id="pedidos-imprimir" class="pedidos-container">
+                    <!-- Contenido dinámico -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Armar Pedido -->
+        <section class="pedidos-por-cliente-section collapsible-section">
+            <button class="section-toggle" onclick="toggleSection('pedidos-armar-section')" aria-expanded="false">
+                <span class="toggle-icon">▶</span>
+                <h2>📦 Armar Pedido <span id="contador-armar" class="contador-secuencia">(0)</span></h2>
+            </button>
+            
+            <div id="pedidos-armar-section" class="collapsible-content" style="display: none;">
+                <div id="pedidos-armar" class="pedidos-container">
+                    <!-- Contenido dinámico -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Pedido Listo -->
+        <section class="pedidos-por-cliente-section collapsible-section">
+            <button class="section-toggle" onclick="toggleSection('pedidos-listo-section')" aria-expanded="false">
+                <span class="toggle-icon">▶</span>
+                <h2>✅ Pedido Listo <span id="contador-listo" class="contador-secuencia">(0)</span></h2>
+            </button>
+            
+            <div id="pedidos-listo-section" class="collapsible-content" style="display: none;">
+                <div id="pedidos-listo" class="pedidos-container">
+                    <!-- Contenido dinámico -->
                 </div>
             </div>
         </section>
@@ -930,6 +1134,61 @@
                 </div>
             </div>
         </div>
+
+        <!-- Modal para Armar Pedido (Verificación Interactiva) -->
+        <div id="modal-armar-pedido" class="modal-overlay" style="display:none;">
+            <div class="modal-content modal-armar-grande">
+                <div class="modal-header">
+                    <h3>🔍 Verificar Pedido - <span id="modal-presupuesto-titulo"></span></h3>
+                    <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalArmarPedido()">&times;</button>
+                </div>
+                
+                <div class="modal-body">
+                    <!-- Campo de escaneo -->
+                    <div class="scanner-section">
+                        <label for="scanner-input">Escanear Código de Barras:</label>
+                        <input type="text" id="scanner-input" placeholder="Escanee o ingrese código de artículo..." autocomplete="off">
+                        <div id="scanner-feedback" class="feedback-message"></div>
+                    </div>
+                    
+                    <!-- Progreso -->
+                    <div class="progress-section">
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <p id="progress-text" style="text-align: center; margin-top: 10px; font-weight: bold;">0 de 0 artículos confirmados</p>
+                    </div>
+                    
+                    <!-- Lista de artículos -->
+                    <div class="articulos-verificacion">
+                        <table class="articulos-tabla tabla-verificacion">
+                            <thead>
+                                <tr>
+                                    <th style="width: 60px;">Estado</th>
+                                    <th>Código</th>
+                                    <th>Descripción</th>
+                                    <th style="width: 100px;">Pedida</th>
+                                    <th style="width: 120px;">Confirmada</th>
+                                    <th style="width: 100px;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-articulos-verificacion">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button id="btn-confirmar-pedido-completo" class="btn-confirmar-pedido" disabled>
+                        ✅ Confirmar Pedido Completo
+                    </button>
+                    <button class="admin-button" style="background: #6c757d;" onclick="cerrarModalArmarPedido()">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
     </section>
 </main>
 
@@ -938,7 +1197,7 @@
         </footer>
     </div>
 
-    <script src="/js/produccion.js?v=3.3"></script>
+    <script src="/js/produccion.js?v=3.5"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>

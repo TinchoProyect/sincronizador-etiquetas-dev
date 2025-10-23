@@ -141,6 +141,7 @@
     100% { transform: scale(1); }
 }
 
+
 .btn-action.success {
     animation: pulse 0.3s ease-in-out;
     background-color: #e8f5e8;
