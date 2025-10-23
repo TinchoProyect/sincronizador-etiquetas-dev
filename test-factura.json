@@ -1,0 +1,21 @@
+{
+  "tipo_cbte": 6,
+  "pto_vta": 32,
+  "concepto": 1,
+  "fecha_emision": "2025-01-12",
+  "doc_tipo": 99,
+  "doc_nro": "0",
+  "condicion_iva_id": 5,
+  "requiere_afip": false,
+  "serie_interna": "INT",
+  "cliente_id": 45,
+  "presupuesto_id": 123,
+  "items": [
+    {
+      "descripcion": "Item X",
+      "qty": 1,
+      "p_unit": 1000,
+      "alic_iva_id": 5
+    }
+  ]
+}

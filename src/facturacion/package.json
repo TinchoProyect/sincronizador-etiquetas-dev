@@ -1,0 +1,42 @@
+{
+  "name": "lamda-facturacion",
+  "version": "1.0.0",
+  "description": "Módulo de Facturación Electrónica AFIP para Sistema LAMDA",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Tests desactivados - Solo logs de depuración\" && exit 0"
+  },
+  "keywords": [
+    "facturacion",
+    "afip",
+    "wsfe",
+    "wsaa",
+    "argentina",
+    "factura-electronica"
+  ],
+  "author": "Sistema LAMDA",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "canvas": "^3.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.18.2",
+    "jsbarcode": "^3.12.1",
+    "moment-timezone": "^0.5.43",
+    "node-forge": "^1.3.1",
+    "pdfkit": "^0.17.1",
+    "pg": "^8.16.0",
+    "qrcode": "^1.5.3",
+    "soap": "^1.0.0",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
