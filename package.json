@@ -1,11 +1,13 @@
+
+
 {
   "name": "sincronizador-etiquetas",
   "version": "1.0.0",
   "description": "Sistema de sincronización e impresión de etiquetas",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,CLOUDFLARED\" -c \"blue,green,yellow,magenta,cyan\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
-    "start:local": "concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION\" -c \"blue,green,yellow,magenta\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\"",
+    "start": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,CLOUDFLARED\" -c \"blue,green,yellow,magenta,cyan\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
+    "start:local": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION\" -c \"blue,green,yellow,magenta\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\"",
     "dev": "cd src/app-etiquetas && vite",
     "sync": "node src/actualizaArticulos/syncEtiquetas.js",
     "sync:once": "node src/jobs/sync.js --once",
@@ -27,21 +29,16 @@
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "pdfkit": "^0.17.1",
-    "pg": "^8.16.3",
+    "pg": "^8.16.0",
     "puppeteer": "^24.16.1",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
-    "node-pg-migrate": "^8.0.3",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.2",
     "vite": "^4.0.0"
   },
   "keywords": [],
   "author": "",
   "license": "ISC"
-
-
 }
 
