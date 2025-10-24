@@ -15,8 +15,7 @@ const {
     obtenerEstadisticas,
     obtenerConfiguracion,
     obtenerResumen,
-    obtenerPrecioArticuloCliente,   // <-- NUEVO
-    obtenerClientePorId
+    obtenerPrecioArticuloCliente   // <-- NUEVO
 } = require('../controllers/presupuestos');
 
 
@@ -64,8 +63,7 @@ const {
     editarPresupuesto: editarPresupuestoWrite,
     eliminarPresupuesto: eliminarPresupuestoWrite,
     reintentarPresupuesto,
-    obtenerEstadoPresupuesto,
-    actualizarFacturaId
+    obtenerEstadoPresupuesto
 } = require('../controllers/presupuestosWrite');
 
 // Importar middleware
@@ -163,27 +161,6 @@ router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), as
         res.status(500).json({
             success: false,
             error: 'Error interno en la ruta de sugerencias de clientes',
-            message: error.message
-        });
-    }
-});
-
-/**
- * @route GET /api/presupuestos/clientes/:id
- * @desc Obtener datos de un cliente por ID
- * @access Privado
- */
-router.get('/clientes/:id', validatePermissions('presupuestos.read'), async (req, res) => {
-    const { id } = req.params;
-    console.log(`🔍 [PRESUPUESTOS] Ruta GET /clientes/:id - Obteniendo cliente ID: ${id}`);
-    
-    try {
-        await obtenerClientePorId(req, res);
-    } catch (error) {
-        console.error(`❌ [PRESUPUESTOS] Error en ruta GET /clientes/:id (${id}):`, error);
-        res.status(500).json({
-            success: false,
-            error: 'Error interno al obtener cliente',
             message: error.message
         });
     }
@@ -408,27 +385,6 @@ router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdP
         res.status(500).json({
             success: false,
             error: 'Error interno al actualizar estado',
-            message: error.message
-        });
-    }
-});
-
-/**
- * @route PUT /api/presupuestos/:id/factura
- * @desc Actualizar factura_id de un presupuesto
- * @access Privado
- */
-router.put('/:id/factura', validatePermissions('presupuestos.update'), validarIdPresupuesto, async (req, res) => {
-    const { id } = req.params;
-    console.log(`🔍 [PRESUPUESTOS] Ruta PUT /:id/factura - Actualizando factura_id de presupuesto ID: ${id}`);
-    
-    try {
-        await actualizarFacturaId(req, res);
-    } catch (error) {
-        console.error(`❌ [PRESUPUESTOS] Error en ruta PUT /:id/factura (${id}):`, error);
-        res.status(500).json({
-            success: false,
-            error: 'Error interno al actualizar factura_id',
             message: error.message
         });
     }

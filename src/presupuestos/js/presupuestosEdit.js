@@ -258,14 +258,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Aplicar modo IVA y recalcular totales
         applyIvaModeToAllRows();
         if (typeof recalcTotales === 'function') recalcTotales();
-
-        // Inicializar integración con facturación
-        if (window.FacturacionIntegration && presupuestoData && detallesData) {
-            console.log('🧾 [PRESUPUESTOS-EDIT] Inicializando integración con facturación...');
-            window.FacturacionIntegration.inicializar(presupuestoData, detallesData);
-        } else {
-            console.warn('⚠️ [PRESUPUESTOS-EDIT] Módulo de facturación no disponible');
-        }
     }).catch(error => {
         console.error('[EDIT] Error cargando datos:', error);
     });
