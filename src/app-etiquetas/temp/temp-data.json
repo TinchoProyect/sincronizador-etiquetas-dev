@@ -1,6 +1,8 @@
 {
-  "numero": "NMELCHx5",
-  "nombre": "Nuez/Ma/ExtL/Ch x 5",
-  "codigo_barras": "2569478523",
-  "cantidad": 2
+  "articulo": {
+    "numero": "PTSx5",
+    "nombre": "Pistach/Tos/Sal x 5",
+    "codigo_barras": "2563635045"
+  },
+  "cantidad": "1.00"
 }

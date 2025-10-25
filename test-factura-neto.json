@@ -1,0 +1,36 @@
+{
+  "usar_facturador_nuevo": true,
+  "fecha_presupuesto": "2025-10-12",
+  "presupuesto_id": 200,
+  "usuario_id": 1,
+  "tipo_cbte": 6,
+  "pto_vta": 32,
+  "concepto": 1,
+  "fecha_emision": "2025-01-12",
+  "cliente": {
+    "cliente_id": 45,
+    "razon_social": "Consumidor Final",
+    "doc_tipo": 99,
+    "doc_nro": "0",
+    "condicion_iva_id": 5
+  },
+  "precio_modo": "NETO",
+  "moneda": "PES",
+  "mon_cotiz": 1,
+  "items": [
+    {
+      "descripcion": "Producto A (precio neto)",
+      "qty": 2,
+      "p_unit": 1000.00,
+      "alic_iva_id": 5
+    },
+    {
+      "descripcion": "Producto B (precio neto)",
+      "qty": 1,
+      "p_unit": 500.50,
+      "alic_iva_id": 5
+    }
+  ],
+  "requiere_afip": false,
+  "serie_interna": "INT"
+}
