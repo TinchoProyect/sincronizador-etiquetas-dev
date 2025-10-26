@@ -50,7 +50,7 @@ const URLS = {
   ESTADOS: API_BASE + '/estados',
   CORREGIR_FECHAS: API_BASE + '/sync/corregir-fechas',
   PUSH_ALTAS: API_BASE + '/sync/push-altas',
-  SYNC_BIDIRECCIONAL: API_BASE + '/sync/bidireccional',
+  SYNC_BIDIRECCIONAL: API_BASE + '/sync/bidireccional-safe',  // NUEVO: endpoint tolerante a cuotas
   LIST: (qs) => API_BASE + '/?' + (qs || ''),
   DETALLES: (id) => API_BASE + '/' + id + '/detalles',
   PRESUPUESTO: (id) => API_BASE + '/' + id,
