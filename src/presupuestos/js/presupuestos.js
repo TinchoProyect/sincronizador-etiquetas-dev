@@ -92,7 +92,14 @@ let appState = {
     },
     loading: false,
     syncInProgress: false,
-    authStatus: null
+    authStatus: null,
+    // NUEVO: Estado para polling de actualizaciones automáticas
+    autoUpdatePolling: {
+        intervalId: null,
+        isActive: false,
+        lastSyncTimestamp: null,
+        pollIntervalSeconds: 30 // Revisar cada 30 segundos
+    }
 };
 
 /**
@@ -1802,4 +1809,143 @@ async function anularPresupuesto(presupuestoId) {
     showDeleteConfirmModal(presupuestoId);
 }
 
-console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación');
+/**
+ * SISTEMA DE POLLING PARA AUTOSYNC
+ * Actualiza estadísticas automáticamente cuando la sincronización automática está activa
+ */
+
+/**
+ * Iniciar polling de actualizaciones automáticas
+ */
+async function startAutoUpdatePolling() {
+    console.log('[AUTO-UPDATE] Iniciando polling de actualizaciones...');
+    
+    // Si ya está activo, no hacer nada
+    if (appState.autoUpdatePolling.isActive) {
+        console.log('[AUTO-UPDATE] Polling ya está activo');
+        return;
+    }
+    
+    // Verificar si autosync está habilitado
+    const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
+    if (!isAutoSyncEnabled) {
+        console.log('[AUTO-UPDATE] Autosync deshabilitado, no se iniciará polling');
+        return;
+    }
+    
+    // Marcar como activo
+    appState.autoUpdatePolling.isActive = true;
+    
+    // Configurar intervalo
+    appState.autoUpdatePolling.intervalId = setInterval(async () => {
+        await pollForUpdates();
+    }, appState.autoUpdatePolling.pollIntervalSeconds * 1000);
+    
+    console.log(`[AUTO-UPDATE] ✅ Polling iniciado (cada ${appState.autoUpdatePolling.pollIntervalSeconds} segundos)`);
+}
+
+/**
+ * Detener polling de actualizaciones automáticas
+ */
+function stopAutoUpdatePolling() {
+    console.log('[AUTO-UPDATE] Deteniendo polling de actualizaciones...');
+    
+    if (appState.autoUpdatePolling.intervalId) {
+        clearInterval(appState.autoUpdatePolling.intervalId);
+        appState.autoUpdatePolling.intervalId = null;
+    }
+    
+    appState.autoUpdatePolling.isActive = false;
+    console.log('[AUTO-UPDATE] ✅ Polling detenido');
+}
+
+/**
+ * Verificar si hay actualizaciones disponibles
+ */
+async function pollForUpdates() {
+    try {
+        // Obtener última sincronización de la BD sin mostrar errores
+        const response = await fetch(URLS.ESTADISTICAS);
+        const data = await response.json();
+        
+        if (data.success && data.estadisticas && data.estadisticas.ultima_sincronizacion) {
+            const nuevaFechaSinc = data.estadisticas.ultima_sincronizacion;
+            
+            // Si es la primera vez o si cambió, actualizar
+            if (!appState.autoUpdatePolling.lastSyncTimestamp || 
+                appState.autoUpdatePolling.lastSyncTimestamp !== nuevaFechaSinc) {
+                
+                console.log('[AUTO-UPDATE] 🔄 Nueva sincronización detectada:', nuevaFechaSinc);
+                
+                // Actualizar timestamp guardado
+                appState.autoUpdatePolling.lastSyncTimestamp = nuevaFechaSinc;
+                
+                // Actualizar estadísticas silenciosamente (sin mensaje al usuario)
+                await loadEstadisticas();
+                
+                console.log('[AUTO-UPDATE] ✅ Estadísticas actualizadas automáticamente');
+            }
+        }
+    } catch (error) {
+        // Silenciar errores del polling para no molestar al usuario
+        console.log('[AUTO-UPDATE] Error en polling (silenciado):', error.message);
+    }
+}
+
+/**
+ * Verificar si autosync está habilitado
+ */
+async function checkIfAutoSyncIsEnabled() {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/config`);
+        const data = await response.json();
+        
+        if (data && data.auto_sync_enabled) {
+            console.log('[AUTO-UPDATE] Autosync está HABILITADO');
+            return true;
+        }
+        
+        console.log('[AUTO-UPDATE] Autosync está DESHABILITADO');
+        return false;
+    } catch (error) {
+        console.log('[AUTO-UPDATE] Error verificando estado de autosync:', error.message);
+        return false;
+    }
+}
+
+/**
+ * Reiniciar polling según estado actual de autosync
+ * Se llama desde el modal al cerrar o al cambiar configuración
+ */
+window.refreshAutoUpdatePolling = async function() {
+    console.log('[AUTO-UPDATE] Refrescando estado de polling...');
+    
+    // Detener polling actual
+    stopAutoUpdatePolling();
+    
+    // Verificar si debe iniciarse nuevamente
+    const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
+    
+    if (isAutoSyncEnabled) {
+        console.log('[AUTO-UPDATE] Reiniciando polling porque autosync está activo');
+        await startAutoUpdatePolling();
+    } else {
+        console.log('[AUTO-UPDATE] No se inicia polling porque autosync está inactivo');
+    }
+};
+
+// Iniciar polling automáticamente si autosync está habilitado al cargar la página
+document.addEventListener('DOMContentLoaded', async function() {
+    // Esperar un momento para que la aplicación se inicialice completamente
+    setTimeout(async () => {
+        console.log('[AUTO-UPDATE] Verificando si debe iniciar polling al cargar página...');
+        const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
+        
+        if (isAutoSyncEnabled) {
+            console.log('[AUTO-UPDATE] Autosync habilitado, iniciando polling automático');
+            await startAutoUpdatePolling();
+        }
+    }, 2000);
+});
+
+console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación y auto-update');

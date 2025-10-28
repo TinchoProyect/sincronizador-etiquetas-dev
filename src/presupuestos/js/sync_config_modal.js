@@ -67,6 +67,19 @@ function closeSyncConfigModal() {
         // Limpiar errores
         clearFieldErrors();
         
+        // MEJORA: Recargar estadísticas al cerrar modal para actualizar "Última sync"
+        // Esto asegura que cambios en autosync se reflejen inmediatamente
+        if (typeof loadEstadisticas === 'function') {
+            console.log('[SYNC-CONFIG] Recargando estadísticas tras cerrar modal...');
+            loadEstadisticas();
+        }
+        
+        // NUEVO: Refrescar polling de auto-actualización según estado actual
+        if (typeof window.refreshAutoUpdatePolling === 'function') {
+            console.log('[SYNC-CONFIG] Refrescando polling de auto-actualización...');
+            window.refreshAutoUpdatePolling();
+        }
+        
         console.log('[SYNC_CONFIG_UI] ✅ Modal cerrado');
     }
 }
@@ -188,14 +201,18 @@ function populateConfigForm(config) {
 function populateSchedulerStatus(health) {
     console.log('[SYNC_CONFIG_UI] Poblando estado del scheduler...');
     
-    // Estado (corriendo/detenido) - CLICKEABLE PARA ACTIVAR/DESACTIVAR
+    // Estado basado en la configuración guardada (auto_sync_enabled)
+    // NO en isRunning que solo indica si el proceso scheduler está corriendo
     const schedulerRunning = document.getElementById('scheduler-running');
     if (schedulerRunning) {
-        schedulerRunning.textContent = health.isRunning ? '🟢 Activo' : '🔴 Inactivo';
-        schedulerRunning.className = `status-value ${health.isRunning ? 'status-active' : 'status-inactive'} status-clickable`;
+        // Obtener estado real de auto_sync_enabled desde la configuración actual
+        const isEnabled = modalState.currentConfig?.auto_sync_enabled || false;
+        
+        schedulerRunning.textContent = isEnabled ? '🟢 Activo' : '🔴 Inactivo';
+        schedulerRunning.className = `status-value ${isEnabled ? 'status-active' : 'status-inactive'} status-clickable`;
         
         // Agregar tooltip
-        schedulerRunning.title = health.isRunning ? 
+        schedulerRunning.title = isEnabled ? 
             'Click para desactivar sincronización automática' : 
             'Click para activar sincronización automática';
         
@@ -206,7 +223,7 @@ function populateSchedulerStatus(health) {
         // Agregar event listener para toggle
         newSchedulerRunning.addEventListener('click', async () => {
             console.log('[SYNC_CONFIG_UI] Click en estado del scheduler - toggling...');
-            await toggleSchedulerStatus(!health.isRunning);
+            await toggleSchedulerStatus(!isEnabled);
         });
         
         // Agregar cursor pointer en CSS si no existe

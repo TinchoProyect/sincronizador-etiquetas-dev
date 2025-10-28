@@ -101,6 +101,65 @@ const crearTablas = async () => {
         await pool.query(crearTablaSyncLog);
         console.log('[PRESUPUESTOS-BACK] ✅ Tabla presupuestos_sync_log verificada/creada');
         
+        // Agregar campos de sincronización automática si no existen
+        console.log('[PRESUPUESTOS-BACK] 🔧 Verificando campos de autosync en presupuestos_config...');
+        
+        const agregarCamposAutosync = `
+            DO $$ 
+            BEGIN
+                -- auto_sync_enabled
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'presupuestos_config' AND column_name = 'auto_sync_enabled'
+                ) THEN
+                    ALTER TABLE presupuestos_config ADD COLUMN auto_sync_enabled BOOLEAN DEFAULT false;
+                END IF;
+                
+                -- sync_interval_minutes
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'presupuestos_config' AND column_name = 'sync_interval_minutes'
+                ) THEN
+                    ALTER TABLE presupuestos_config ADD COLUMN sync_interval_minutes INTEGER DEFAULT 5;
+                END IF;
+                
+                -- active_hours_start
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'presupuestos_config' AND column_name = 'active_hours_start'
+                ) THEN
+                    ALTER TABLE presupuestos_config ADD COLUMN active_hours_start TIME DEFAULT '08:00:00';
+                END IF;
+                
+                -- active_hours_end
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'presupuestos_config' AND column_name = 'active_hours_end'
+                ) THEN
+                    ALTER TABLE presupuestos_config ADD COLUMN active_hours_end TIME DEFAULT '20:00:00';
+                END IF;
+                
+                -- timezone
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'presupuestos_config' AND column_name = 'timezone'
+                ) THEN
+                    ALTER TABLE presupuestos_config ADD COLUMN timezone VARCHAR(100) DEFAULT 'America/Argentina/Buenos_Aires';
+                END IF;
+                
+                -- cutoff_at (CRÍTICO para sincronización bidireccional)
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'presupuestos_config' AND column_name = 'cutoff_at'
+                ) THEN
+                    ALTER TABLE presupuestos_config ADD COLUMN cutoff_at TIMESTAMP DEFAULT (NOW() - INTERVAL '30 days');
+                END IF;
+            END $$;
+        `;
+        
+        await pool.query(agregarCamposAutosync);
+        console.log('[PRESUPUESTOS-BACK] ✅ Campos de autosync verificados/agregados');
+        
         // Insertar configuración por defecto si no existe
         const verificarConfig = `
             SELECT COUNT(*) as total FROM presupuestos_config WHERE activo = true
@@ -119,21 +178,43 @@ const crearTablas = async () => {
                     hoja_nombre, 
                     rango, 
                     activo, 
-                    usuario_id
+                    usuario_id,
+                    auto_sync_enabled,
+                    sync_interval_minutes,
+                    active_hours_start,
+                    active_hours_end,
+                    timezone,
+                    cutoff_at
                 ) VALUES (
                     'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
                     '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
                     'PresupuestosCopia',
                     'A:Z',
                     true,
-                    1
+                    1,
+                    false,
+                    5,
+                    '08:00:00',
+                    '20:00:00',
+                    'America/Argentina/Buenos_Aires',
+                    NOW() - INTERVAL '30 days'
                 )
+                ON CONFLICT DO NOTHING
             `;
             
             await pool.query(insertarConfigDefault);
             console.log('[PRESUPUESTOS-BACK] ✅ Configuración por defecto insertada');
         } else {
             console.log('[PRESUPUESTOS-BACK] ✅ Configuración existente encontrada');
+            
+            // Actualizar cutoff_at si está NULL
+            const actualizarCutoffNull = `
+                UPDATE presupuestos_config 
+                SET cutoff_at = NOW() - INTERVAL '30 days'
+                WHERE activo = true AND cutoff_at IS NULL
+            `;
+            await pool.query(actualizarCutoffNull);
+            console.log('[PRESUPUESTOS-BACK] ✅ Verificado cutoff_at en configuración existente');
         }
         
         // Verificar datos existentes

@@ -147,29 +147,22 @@ const inicializarServidor = async () => {
             console.log('[PRESUPUESTOS-BACK] 🎉 ================================');
             
             // INICIAR SCHEDULER DE SINCRONIZACIÓN AUTOMÁTICA
+            // NOTA: El scheduler siempre se inicia, pero solo ejecutará sincronizaciones
+            //       si auto_sync_enabled = true en la tabla presupuestos_config
             try {
-                console.log('[PRESUPUESTOS-BACK] 🔄 Verificando scheduler de sincronización automática...');
+                console.log('[PRESUPUESTOS-BACK] 🔄 Iniciando scheduler de sincronización automática...');
                 
-                // Verificar feature flag
-                const { AUTO_SYNC_ENABLED } = require('./config/feature-flags');
+                // Usar la misma instancia de base de datos que el resto del módulo
+                const { pool } = require('./config/database');
                 
-                if (AUTO_SYNC_ENABLED) {
-                    console.log('[PRESUPUESTOS-BACK] 🔄 Iniciando scheduler de sincronización automática...');
-                    
-                    // Usar la misma instancia de base de datos que el resto del módulo
-                    const { pool } = require('./config/database');
-                    
-                    // Iniciar scheduler con la instancia compartida de BD
-                    startAutoSync(pool);
-                    
-                    console.log('[PRESUPUESTOS-BACK] ✅ Scheduler de sincronización automática iniciado');
-                    console.log('[PRESUPUESTOS-BACK] ⏰ Intervalo de verificación: 60 segundos');
-                    console.log('[PRESUPUESTOS-BACK] 🔧 Estado del scheduler: /api/presupuestos/sync/health');
-                    console.log('[PRESUPUESTOS-BACK] 🔗 Usando instancia compartida de base de datos');
-                } else {
-                    console.log('[PRESUPUESTOS-BACK] ⚠️ Scheduler de sincronización automática deshabilitado por feature flag');
-                    console.log('[PRESUPUESTOS-BACK] 💡 Para habilitar: AUTO_SYNC_ENABLED=true');
-                }
+                // Iniciar scheduler con la instancia compartida de BD
+                startAutoSync(pool);
+                
+                console.log('[PRESUPUESTOS-BACK] ✅ Scheduler de sincronización automática iniciado');
+                console.log('[PRESUPUESTOS-BACK] ⏰ Intervalo de verificación: 60 segundos');
+                console.log('[PRESUPUESTOS-BACK] 📊 Estado: INACTIVO por defecto (auto_sync_enabled = false en BD)');
+                console.log('[PRESUPUESTOS-BACK] 🔧 Para activar: usar modal de configuración en el frontend');
+                console.log('[PRESUPUESTOS-BACK] 🔗 Usando instancia compartida de base de datos');
                 
             } catch (schedulerError) {
                 console.error('[PRESUPUESTOS-BACK] ❌ Error al iniciar scheduler:', schedulerError);
