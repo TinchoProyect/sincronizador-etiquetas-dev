@@ -47,7 +47,8 @@ const {
     obtenerHistorialCorrecciones,
     validarConfiguracion,
     ejecutarPushAltas,
-    ejecutarSincronizacionBidireccional
+    ejecutarSincronizacionBidireccional,
+    ejecutarSincronizacionBidireccionalSafe  // NUEVO
 } = require('../controllers/sync_fechas_fix');
 
 // Importar controlador de Configuración de Autosync
@@ -103,23 +104,45 @@ router.get('/', validatePermissions('presupuestos.read'), sanitizarDatos, valida
 });
 
 /**
- * @route GET /api/presupuestos/cliente/:cliente
- * @desc Obtener presupuestos por cliente específico
+ * @route POST /api/presupuestos/sync/bidireccional
+ * @desc Ejecutar sincronización bidireccional (push + pull) con regla "gana el último cambio"
  * @access Privado
  */
-router.get('/cliente/:cliente', validatePermissions('presupuestos.read'), async (req, res) => {
-    const { cliente } = req.params;
-    console.log(`🔍 [PRESUPUESTOS] Ruta GET /cliente/${cliente} - Obteniendo presupuestos por cliente`);
+router.post('/sync/bidireccional', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('[SYNC-BIDI] Iniciando sincronización bidireccional con filtros cutoff_at...');
     
     try {
-        req.query.id_cliente = cliente;
-        await obtenerPresupuestos(req, res);
+        await ejecutarSincronizacionBidireccional(req, res);
     } catch (error) {
-        console.error(`❌ [PRESUPUESTOS] Error en ruta GET /cliente/${cliente}:`, error);
+        console.error('[SYNC-BIDI] Error en sincronización bidireccional:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error interno en la ruta de cliente',
-            message: error.message
+            code: 'SYNC_BIDI_ERROR',
+            message: 'Error interno en sincronización bidireccional',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/sync/bidireccional-safe
+ * @desc Ejecutar sincronización bidireccional TOLERANTE A CUOTAS (NUEVO)
+ * @access Privado
+ */
+router.post('/sync/bidireccional-safe', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('[SYNC-BIDI-SAFE] Iniciando sincronización bidireccional tolerante a cuotas...');
+    
+    try {
+        await ejecutarSincronizacionBidireccionalSafe(req, res);
+    } catch (error) {
+        console.error('[SYNC-BIDI-SAFE] Error en sincronización:', error.message);
+        res.status(500).json({
+            success: false,
+            code: 'SYNC_BIDI_SAFE_ERROR',
+            message: 'Error interno en sincronización tolerante a cuotas',
+            details: error.message,
+            timestamp: new Date().toISOString()
         });
     }
 });
