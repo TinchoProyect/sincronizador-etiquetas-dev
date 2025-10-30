@@ -1195,7 +1195,23 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 COALESCE(p.nota, '') AS nota,
                 COALESCE(p.punto_entrega, 'Sin dirección') AS punto_entrega,
                 COALESCE(p.descuento, 0) AS descuento,
-                p.activo
+                p.activo,
+                COALESCE(
+                    p.factura_id,
+                    (SELECT f.id FROM public.factura_facturas f 
+                     WHERE f.presupuesto_id = p.id 
+                     ORDER BY f.created_at DESC 
+                     LIMIT 1)
+                ) AS factura_id,
+                CASE 
+                    WHEN p.factura_id IS NOT NULL THEN true
+                    WHEN EXISTS (
+                        SELECT 1 FROM public.factura_facturas f 
+                        WHERE f.presupuesto_id = p.id
+                        LIMIT 1
+                    ) THEN true
+                    ELSE false
+                END AS esta_facturado
             FROM public.presupuestos p
             WHERE p.id = $1 AND p.activo = true
         `;
