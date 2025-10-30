@@ -139,19 +139,19 @@ const obtenerPedidosPorCliente = async (req, res) => {
                             NULLIF(TRIM(a.nombre), ''),
                             app.articulo_numero
                         ),
-                        'pedido_total', app.cantidad,
-                        'stock_disponible', CASE 
+                        'pedido_total', ROUND(app.cantidad::numeric, 2),
+                        'stock_disponible', ROUND((CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                             THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                             ELSE COALESCE(src.stock_consolidado, 0)
-                        END,
-                        'faltante', GREATEST(0, app.cantidad - 
+                        END)::numeric, 2),
+                        'faltante', ROUND(GREATEST(0, app.cantidad - 
                             CASE 
                                 WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                                 THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                                 ELSE COALESCE(src.stock_consolidado, 0)
                             END
-                        ),
+                        )::numeric, 2),
                         'es_pack', src.es_pack,
                         'pack_hijo_codigo', src.pack_hijo_codigo,
                         'pack_unidades', src.pack_unidades,
@@ -201,6 +201,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             }
             
             // Calcular indicador de estado para cada cliente y limpiar campos internos
+            // IMPORTANTE: Usar valores redondeados para clasificación de estado
             const clientesConIndicador = result.rows.map(cliente => {
                 const articulos = cliente.articulos;
                 let completos = 0;
@@ -208,9 +209,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 let faltantes = 0;
                 
                 articulos.forEach(art => {
-                    if (art.faltante === 0) {
+                    // Los valores ya vienen redondeados del SQL, usarlos directamente
+                    const faltanteRedondeado = parseFloat(art.faltante) || 0;
+                    const stockRedondeado = parseFloat(art.stock_disponible) || 0;
+                    
+                    if (faltanteRedondeado === 0) {
                         completos++;
-                    } else if (art.stock_disponible > 0) {
+                    } else if (stockRedondeado > 0) {
                         parciales++;
                     } else {
                         faltantes++;
