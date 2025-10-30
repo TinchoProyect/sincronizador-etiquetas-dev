@@ -503,50 +503,54 @@ const obtenerPedidosArticulos = async (req, res) => {
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
                 GROUP BY pd.articulo
-            )
-            SELECT 
-                ac.articulo_numero,
-                COALESCE(
-                    NULLIF(TRIM(a.nombre), ''),
-                    ac.articulo_numero
-                ) as descripcion,
-                ac.pedido_total,
-                CASE 
-                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                    THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                    ELSE COALESCE(src.stock_consolidado, 0)
-                END as stock_disponible,
-                GREATEST(0, ac.pedido_total - 
-                    CASE 
+            ),
+            valores_redondeados AS (
+                SELECT 
+                    ac.articulo_numero,
+                    ac.pedido_total,
+                    COALESCE(
+                        NULLIF(TRIM(a.nombre), ''),
+                        ac.articulo_numero
+                    ) as descripcion,
+                    ROUND(ac.pedido_total::numeric, 2) as pedido_total_redondeado,
+                    ROUND(CASE 
                         WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                         THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                         ELSE COALESCE(src.stock_consolidado, 0)
-                    END
-                ) as faltante,
-                CASE 
-                    WHEN GREATEST(0, ac.pedido_total - 
+                    END::numeric, 2) as stock_disponible_redondeado,
+                    ROUND(GREATEST(0, ac.pedido_total - 
                         CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                             THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                             ELSE COALESCE(src.stock_consolidado, 0)
                         END
-                    ) = 0 THEN 'COMPLETO'
-                    WHEN CASE 
-                            WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                            THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                            ELSE COALESCE(src.stock_consolidado, 0)
-                        END > 0 THEN 'PARCIAL'
-                    ELSE 'FALTANTE'
+                    )::numeric, 2) as faltante_redondeado,
+                    src.es_pack,
+                    src.pack_hijo_codigo,
+                    src.pack_unidades,
+                    hijo.stock_consolidado as stock_hijo
+                FROM articulos_consolidados ac
+                LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+                LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
+            )
+            SELECT 
+                articulo_numero,
+                descripcion,
+                pedido_total_redondeado as pedido_total,
+                stock_disponible_redondeado as stock_disponible,
+                faltante_redondeado as faltante,
+                CASE 
+                    WHEN faltante_redondeado = 0 THEN 'COMPLETO'
+                    WHEN stock_disponible_redondeado = 0 THEN 'FALTANTE'
+                    ELSE 'PARCIAL'
                 END as estado,
-                src.es_pack,
-                src.pack_hijo_codigo,
-                src.pack_unidades,
-                hijo.stock_consolidado as stock_hijo
-            FROM articulos_consolidados ac
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
-            LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
-            LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
-            ORDER BY ac.articulo_numero;
+                es_pack,
+                pack_hijo_codigo,
+                pack_unidades,
+                stock_hijo
+            FROM valores_redondeados
+            ORDER BY articulo_numero;
         `;
         
         const params = ['presupuesto/orden', fecha];

@@ -465,9 +465,9 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                                                 <tr>
                                                     <td>${articulo.articulo_numero}</td>
                                                     <td>${articulo.descripcion}</td>
-                                                    <td>${articulo.pedido_total}</td>
-                                                    <td>${articulo.stock_disponible}</td>
-                                                    <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${articulo.faltante}</td>
+                                                    <td>${formatearNumero(articulo.pedido_total)}</td>
+                                                    <td>${formatearNumero(articulo.stock_disponible)}</td>
+                                                    <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${formatearNumero(articulo.faltante)}</td>
                                                     <td>
                                                         ${articulo.faltante > 0 ? `<button class="admin-button" onclick="abrirModalAsignar(${cliente.cliente_id}, '${cliente.cliente_nombre}', [${JSON.stringify(articulo).replace(/"/g, '"')}])">Asignar</button>` : ''}
                                                     </td>
@@ -609,9 +609,9 @@ function renderizarArticulosPedidos(articulos, totales) {
                     <tr>
                         <td>${articulo.articulo_numero}</td>
                         <td>${articulo.descripcion}</td>
-                        <td>${articulo.pedido_total}</td>
-                        <td>${articulo.stock_disponible}</td>
-                        <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${articulo.faltante}</td>
+                        <td>${formatearNumero(articulo.pedido_total)}</td>
+                        <td>${formatearNumero(articulo.stock_disponible)}</td>
+                        <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${formatearNumero(articulo.faltante)}</td>
                         <td><span class="indicador-estado indicador-${articulo.estado.toLowerCase()}">${articulo.estado}</span></td>
                         <td>
                             <button class="pack-button" onclick="abrirModalPack('${articulo.articulo_numero}')">🧩 Pack</button>
@@ -966,6 +966,17 @@ function mostrarToast(texto, tipo = 'success') {
 }
 
 // ===== FUNCIONES UTILITARIAS =====
+
+/**
+ * Formatea un número a máximo 2 decimales
+ * Ejemplos: 0.999999 → 1.00, 0.3333333 → 0.33, 1.000000 → 1.00
+ */
+function formatearNumero(valor) {
+    if (valor === null || valor === undefined || valor === '') return '0.00';
+    const numero = Number(valor);
+    if (isNaN(numero)) return '0.00';
+    return numero.toFixed(2);
+}
 
 function debounce(func, wait) {
     let timeout;
