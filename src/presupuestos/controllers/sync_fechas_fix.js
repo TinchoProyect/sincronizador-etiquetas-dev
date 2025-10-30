@@ -3017,6 +3017,191 @@ async function crearMapParaDetallesExistentes(detallesSheets, idsPresupuestos, d
     }
 }
 
+/**
+ * Ejecutar sincronización bidireccional TOLERANTE A CUOTAS (NUEVO)
+ * POST /api/presupuestos/sync/bidireccional-safe
+ * 
+ * Implementa:
+ * - Control de tasa de escrituras (respeta cuotas de Google Sheets)
+ * - Reintentos automáticos con backoff exponencial
+ * - Procesamiento por lotes controlados
+ * - Progreso visible para el frontend
+ * - Minimización de escrituras (solo cambios reales)
+ * - Idempotencia y reanudación
+ */
+const ejecutarSincronizacionBidireccionalSafe = async (req, res) => {
+    console.log('[SYNC-BIDI-SAFE] 🚀 Iniciando sincronización bidireccional tolerante a cuotas...');
+    
+    try {
+        // PASO 1: Obtener configuración activa
+        const configQuery = `
+            SELECT hoja_id, hoja_nombre, hoja_url, cutoff_at, usuario_id
+            FROM presupuestos_config 
+            WHERE activo = true 
+            ORDER BY fecha_creacion DESC 
+            LIMIT 1
+        `;
+        
+        const configResult = await req.db.query(configQuery);
+        
+        if (configResult.rows.length === 0) {
+            return res.status(400).json({
+                success: false,
+                code: 'CONFIG_MISSING',
+                message: 'No se encontró configuración activa en presupuestos_config',
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const config = configResult.rows[0];
+        
+        // Validar cutoff_at
+        if (!config.cutoff_at) {
+            // Inicializar cutoff_at si no existe (7 días atrás)
+            const cutoffInicial = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            await req.db.query(`
+                UPDATE presupuestos_config 
+                SET cutoff_at = $1
+                WHERE activo = true
+            `, [cutoffInicial]);
+            
+            config.cutoff_at = cutoffInicial;
+            console.log('[SYNC-BIDI-SAFE] cutoff_at inicializado:', cutoffInicial.toISOString());
+        }
+        
+        console.log('[SYNC-BIDI-SAFE] Configuración:', {
+            hoja_id: config.hoja_id,
+            hoja_nombre: config.hoja_nombre,
+            cutoff_at: config.cutoff_at
+        });
+        
+        // PASO 2: Importar y ejecutar servicio tolerante a cuotas
+        const { ejecutarSincronizacionBidireccionalQuotaSafe } = require('../../services/gsheets/syncQuotaSafe');
+        
+        // Callback de progreso (puede ser extendido para SSE/WebSocket)
+        const progressLog = [];
+        const onProgress = async (progressInfo) => {
+            progressLog.push({
+                timestamp: new Date().toISOString(),
+                ...progressInfo
+            });
+            
+            // Log en consola para seguimiento
+            console.log(`[SYNC-PROGRESS] ${progressInfo.fase}: Lote ${progressInfo.currentBatch}/${progressInfo.totalBatches} - ${progressInfo.progressPercent}%`);
+            
+            // Aquí podrías emitir evento a frontend via WebSocket/SSE si está implementado
+            // socketIO.emit('sync-progress', progressInfo);
+        };
+        
+        // PASO 3: Ejecutar sincronización con control de cuota
+        const startTime = Date.now();
+        const summary = await ejecutarSincronizacionBidireccionalQuotaSafe(
+            config,
+            req.db,
+            onProgress
+        );
+        const endTime = Date.now();
+        
+        // PASO 4: Registrar log de sincronización
+        try {
+            await req.db.query(`
+                INSERT INTO public.presupuestos_sync_log 
+                (fecha_sync, exitoso, registros_procesados, registros_nuevos, registros_actualizados, 
+                 detalles, tipo_sync, usuario_id, duracion_segundos)
+                VALUES (
+                    CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires', 
+                    true, 
+                    $1, 
+                    $2, 
+                    $3, 
+                    $4, 
+                    'bidireccional_safe', 
+                    $5,
+                    $6
+                )
+            `, [
+                summary.metrics.presupuestosInsertados + summary.metrics.presupuestosActualizados,
+                summary.metrics.presupuestosInsertados,
+                summary.metrics.presupuestosActualizados,
+                JSON.stringify({
+                    ...summary.metrics,
+                    quotaStats: summary.quotaStats,
+                    progressLog: progressLog.slice(-10) // Últimos 10 eventos de progreso
+                }),
+                config.usuario_id || req.user?.id || null,
+                summary.duration
+            ]);
+            
+            console.log('[SYNC-BIDI-SAFE] ✅ Log de sincronización registrado');
+        } catch (logError) {
+            console.warn('[SYNC-BIDI-SAFE] ⚠️ Error registrando log:', logError.message);
+        }
+        
+        // PASO 5: Responder con resumen detallado
+        res.json({
+            success: true,
+            message: 'Sincronización bidireccional completada exitosamente con control de cuota',
+            duracion: summary.duration,
+            duracionMs: endTime - startTime,
+            metrics: {
+                presupuestos: {
+                    leidos: summary.metrics.presupuestosLeidos,
+                    insertados: summary.metrics.presupuestosInsertados,
+                    actualizados: summary.metrics.presupuestosActualizados,
+                    borrados: summary.metrics.presupuestosBorrados
+                },
+                detalles: {
+                    leidos: summary.metrics.detallesLeidos,
+                    insertados: summary.metrics.detallesInsertados,
+                    actualizados: summary.metrics.detallesActualizados,
+                    borrados: summary.metrics.detallesBorrados
+                },
+                optimizacion: {
+                    omitidosPorCutoff: summary.metrics.omitidosPorCutoff,
+                    omitidosPorSinCambios: summary.metrics.omitidosPorSinCambios,
+                    escriturasTotales: summary.quotaStats.totalWrites,
+                    escriturasOptimizadas: summary.metrics.omitidosPorSinCambios
+                },
+                cuota: {
+                    totalEscrituras: summary.quotaStats.totalWrites,
+                    totalReintentos: summary.quotaStats.totalRetries,
+                    cuotasExcedidas: summary.quotaStats.quotaExceededCount,
+                    utilizacionPorcentaje: summary.quotaStats.utilizationPercent
+                },
+                errores: summary.metrics.errores
+            },
+            cutoffAtActualizado: summary.cutoffAtActualizado,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('[SYNC-BIDI-SAFE] ❌ Error en sincronización:', error.message);
+        
+        // Verificar si es error de cuota
+        const { QuotaExceededError } = require('../../services/gsheets/quotaManager');
+        
+        if (error instanceof QuotaExceededError) {
+            return res.status(429).json({
+                success: false,
+                code: 'QUOTA_EXCEEDED',
+                message: 'La cuota de Google Sheets fue excedida tras varios reintentos. Por favor intente la sincronización nuevamente en 1-2 minutos.',
+                retryAfter: error.retryAfter || 60,
+                partialResults: error.state,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Otros errores
+        res.status(500).json({
+            success: false,
+            code: 'SYNC_ERROR',
+            message: 'Error interno en sincronización bidireccional',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('[SYNC-FECHAS-CONTROLLER] ✅ Controlador de corrección de fechas configurado');
 
 module.exports = {
@@ -3025,5 +3210,6 @@ module.exports = {
     obtenerHistorialCorrecciones,
     validarConfiguracion,
     ejecutarPushAltas,
-    ejecutarSincronizacionBidireccional
+    ejecutarSincronizacionBidireccional,
+    ejecutarSincronizacionBidireccionalSafe  // NUEVO
 };

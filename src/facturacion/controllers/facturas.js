@@ -376,6 +376,62 @@ const listarFacturas = async (req, res) => {
 const generarPDF = async (req, res) => {
     const { id } = req.params;
     console.log(`📄 [FACTURACION-CTRL] POST /facturas/${id}/pdf - Generar PDF`);
+<<<<<<< HEAD
+<<<<<<< HEAD
+    
+    try {
+        // Obtener datos completos de la factura
+        const factura = await facturaService.obtenerPorId(parseInt(id));
+
+        if (!factura) {
+            console.error('❌ [FACTURACION-CTRL] Factura no encontrada');
+            return res.status(404).json({
+                success: false,
+                error: 'Factura no encontrada'
+            });
+        }
+
+        console.log('✅ [FACTURACION-CTRL] Factura obtenida para PDF');
+
+        // Obtener items de la factura
+        const itemsQuery = `
+            SELECT * FROM factura_factura_items
+            WHERE factura_id = $1
+            ORDER BY id ASC
+        `;
+        const itemsResult = await pool.query(itemsQuery, [parseInt(id)]);
+        const items = itemsResult.rows;
+
+        console.log(`📄 [FACTURACION-CTRL] ${items.length} items obtenidos para PDF`);
+
+        // Importar generador de PDF
+        const { generarPDF: generarPDFServicio } = require('../pdf/generador');
+
+        // Generar PDF
+        const pdfBuffer = await generarPDFServicio(factura, items);
+
+        // Configurar headers de respuesta
+        const fechaArchivo = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        const numeroComprobante = factura.cbte_nro ?
+            `${String(factura.pto_vta).padStart(4, '0')}-${String(factura.cbte_nro).padStart(8, '0')}` :
+            `BORRADOR-${factura.serie_interna}-${factura.nro_interno}`;
+
+        const nombreArchivo = `factura-${numeroComprobante}-${fechaArchivo}.pdf`;
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+
+        console.log(`✅ [FACTURACION-CTRL] PDF generado exitosamente: ${nombreArchivo}`);
+
+        // Enviar PDF
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error generando PDF:', error.message);
+        
+=======
+=======
+>>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
 
     try {
         // Obtener datos completos de la factura
@@ -428,6 +484,10 @@ const generarPDF = async (req, res) => {
         console.error('❌ [FACTURACION-CTRL] Error generando PDF:', error.message);
         console.error('❌ [FACTURACION-CTRL] Stack:', error.stack);
 
+<<<<<<< HEAD
+>>>>>>> 20413e89ff18263ab5934bfdd02ecdee0727387e
+=======
+>>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
         res.status(500).json({
             success: false,
             error: 'Error generando PDF',

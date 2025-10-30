@@ -406,72 +406,6 @@
             font-weight: 500;
             text-align: right;
         }
-
-        /* Estilos para botón de facturación */
-        .btn-success {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .btn-success:hover {
-            background-color: #218838;
-        }
-
-        .btn-info {
-            background-color: #17a2b8;
-            color: white;
-        }
-
-        .btn-info:hover {
-            background-color: #138496;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 4px 8px;
-            font-size: 12px;
-            font-weight: 500;
-            border-radius: 3px;
-        }
-
-        .badge-success {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .text-muted {
-            color: #6c757d;
-            font-size: 13px;
-        }
-
-        #facturacion-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        /* Animaciones para toasts */
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes slideOut {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-        }
     </style>
 </head>
 <body>
@@ -636,15 +570,13 @@
 
                     <!-- Acciones -->
                     <div class="form-actions">
-                        <div id="facturacion-container"></div>
                         <a href="/pages/presupuestos.html" class="btn btn-secondary">
                             Cancelar
                         </a>
                         <button type="submit" id="btn-guardar" class="btn btn-primary">
                             <span class="loading-spinner"></span>
                             💾 Guardar Presupuesto
-                        </button>
-                    </div>
+                        </button> <button type="button" id="btn-facturar" class="btn btn-primary" style="margin-left:10px;"> Facturar</button></div>
                 </form>
             </div>
         </main>
@@ -656,7 +588,7 @@
 
     <!-- Cargar módulo común primero -->
     <script src="/js/detalles-common.js"></script>
-    <script src="/js/facturacion-integration.js"></script>
     <script src="/js/presupuestosEdit.js"></script>
 </body>
 </html>
+

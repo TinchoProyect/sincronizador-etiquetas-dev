@@ -1,7 +1,7 @@
 console.log('[AUTO_SYNC] Cargando scheduler de sincronización automática...');
 
-// Importar el MISMO motor que usa el botón manual (corrección de fechas)
-const { ejecutarCorreccionFechas } = require('../../services/gsheets/sync_fechas_fix');
+// Importar el MISMO motor que usa el botón manual (sincronización bidireccional tolerante a cuotas)
+const { ejecutarSincronizacionBidireccionalQuotaSafe } = require('../../services/gsheets/syncQuotaSafe');
 
 /**
  * Scheduler de sincronización automática sin dependencias externas
@@ -174,44 +174,57 @@ async function getActiveConfig(db) {
 }
 
 /**
- * Ejecutar sincronización usando EXACTAMENTE el mismo motor del botón manual
+ * Ejecutar sincronización llamando al MISMO endpoint HTTP que el botón manual
+ * ACTUALIZADO: Llama a POST /sync/bidireccional-safe (mismo que botón manual)
  */
 async function executeSyncronization(config, db) {
-    console.log('[AUTO_SYNC] 🔄 Ejecutando sincronización automática con motor manual...');
+    console.log('[AUTO_SYNC] 🔄 Ejecutando sincronización automática...');
+    console.log('[AUTO_SYNC] 🔄 Llamando a POST /sync/bidireccional-safe (MISMO endpoint que botón manual)...');
     
     try {
-        // Verificar estado del motor antes de ejecutar
-        const motorEnabled = process.env.SYNC_ENGINE_ENABLED === 'true';
-        console.log(`[AUTO_SYNC] 🔍 Estado del motor: SYNC_ENGINE_ENABLED=${process.env.SYNC_ENGINE_ENABLED}`);
+        // Hacer petición HTTP al MISMO endpoint que usa el botón manual
+        const response = await fetch('http://localhost:3003/api/presupuestos/sync/bidireccional-safe', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
         
-        if (!motorEnabled) {
-            console.log('[AUTO_SYNC] ⚠️ Motor deshabilitado, activando temporalmente...');
-            process.env.SYNC_ENGINE_ENABLED = 'true';
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        // Usar EXACTAMENTE el mismo servicio que el botón manual (corrección de fechas)
-        console.log('[AUTO_SYNC] 🔄 Llamando a ejecutarCorreccionFechas (mismo flujo que botón manual)...');
-        const syncResult = await ejecutarCorreccionFechas(config, db);
+        const syncResult = await response.json();
         
-        // Adaptar resultado del servicio de corrección de fechas al formato esperado
+        if (!syncResult.success) {
+            throw new Error(syncResult.message || 'Sincronización falló');
+        }
+        
+        // Adaptar resultado del servicio bidireccional al formato esperado
+        const totalProcesados = (syncResult.metrics?.presupuestosInsertados || 0) + 
+                               (syncResult.metrics?.presupuestosActualizados || 0) +
+                               (syncResult.metrics?.detallesInsertados || 0);
+        
         schedulerState.lastResult = {
-            ok: syncResult.exito,
-            processed: (syncResult.datosInsertados?.presupuestos || 0) + (syncResult.datosInsertados?.detalles || 0),
-            error: syncResult.exito ? null : (syncResult.errores?.join('; ') || 'Error desconocido')
+            ok: syncResult.metrics?.errores?.length === 0,
+            processed: totalProcesados,
+            error: syncResult.metrics?.errores?.length > 0 ? 
+                   syncResult.metrics.errores[0].error : null
         };
         
-        console.log(`[AUTO_SYNC] ✅ Sincronización completada: ${schedulerState.lastResult.processed} registros procesados`);
-        console.log(`[AUTO_SYNC] 📊 Fechas corregidas: ${syncResult.fechasCorregidas || 0}`);
-        console.log(`[AUTO_SYNC] 📊 Fechas futuras: ${syncResult.fechasFuturas || 0}`);
+        console.log(`[AUTO_SYNC] ✅ Sincronización completada: ${totalProcesados} registros procesados`);
+        console.log(`[AUTO_SYNC] 📊 Presupuestos: ${syncResult.metrics?.presupuestosInsertados || 0} insertados, ${syncResult.metrics?.presupuestosActualizados || 0} actualizados`);
+        console.log(`[AUTO_SYNC] 📊 Detalles: ${syncResult.metrics?.detallesInsertados || 0} insertados`);
+        console.log(`[AUTO_SYNC] 📊 Duración: ${syncResult.duration || 0}s`);
         
         return {
-            exitoso: syncResult.exito,
-            registros_procesados: schedulerState.lastResult.processed,
-            registros_nuevos: (syncResult.datosInsertados?.presupuestos || 0) + (syncResult.datosInsertados?.detalles || 0),
-            registros_actualizados: 0, // Corrección de fechas es full refresh
-            errores: syncResult.errores || [],
-            fechasCorregidas: syncResult.fechasCorregidas || 0,
-            fechasFuturas: syncResult.fechasFuturas || 0
+            exitoso: syncResult.metrics?.errores?.length === 0,
+            registros_procesados: totalProcesados,
+            registros_nuevos: syncResult.metrics?.presupuestosInsertados || 0,
+            registros_actualizados: syncResult.metrics?.presupuestosActualizados || 0,
+            detalles_insertados: syncResult.metrics?.detallesInsertados || 0,
+            errores: syncResult.metrics?.errores || [],
+            duracion: syncResult.duration || 0
         };
         
     } catch (error) {
@@ -240,9 +253,9 @@ async function schedulerTick() {
             return;
         }
         
-        // Verificar si el autosync está habilitado
+        // Verificar si el autosync está habilitado en BD
         if (!config.auto_sync_enabled) {
-            console.log('[AUTO_SYNC] ℹ️ Autosync deshabilitado, omitiendo tick');
+            console.log('[AUTO_SYNC] ℹ️ Autosync deshabilitado en BD, omitiendo tick');
             schedulerState.nextRunAt = null;
             return;
         }
@@ -313,6 +326,15 @@ async function start(db) {
     schedulerState.db = db;
     
     try {
+        // RESET AUTOMÁTICO: Forzar auto_sync_enabled a false en cada arranque
+        console.log('[AUTO_SYNC] 🔄 Reseteando auto_sync_enabled a false en arranque...');
+        await db.query(`
+            UPDATE presupuestos_config 
+            SET auto_sync_enabled = false
+            WHERE activo = true
+        `);
+        console.log('[AUTO_SYNC] ✅ auto_sync_enabled reseteado a false');
+        
         // Obtener configuración para determinar intervalo
         const config = await getActiveConfig(db);
         const intervalMinutes = config?.sync_interval_minutes || 1;
@@ -326,6 +348,8 @@ async function start(db) {
         schedulerState.isSchedulerActive = true;
         
         console.log(`[AUTO_SYNC] ✅ Scheduler iniciado con intervalo de ${intervalMinutes} minuto(s)`);
+        console.log('[AUTO_SYNC] 📊 Estado inicial: INACTIVO (reseteado en arranque)');
+        console.log('[AUTO_SYNC] ℹ️ Para habilitar: activar desde modal de configuración');
         
         // Ejecutar primer tick después de 5 segundos
         setTimeout(schedulerTick, 5000);
@@ -339,6 +363,7 @@ async function start(db) {
         schedulerState.isSchedulerActive = true;
         
         console.log('[AUTO_SYNC] ⚠️ Usando intervalo por defecto de 1 minuto');
+        console.log('[AUTO_SYNC] ℹ️ El scheduler está corriendo pero NO ejecutará sincronizaciones hasta configurar');
         setTimeout(schedulerTick, 5000);
     }
 }
