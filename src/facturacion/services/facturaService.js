@@ -416,8 +416,7 @@ const obtenerPorId = async (id) => {
     console.log(`🔍 [FACTURACION-SERVICE] Obteniendo factura ID: ${id}`);
     
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
+
         const query = `
             SELECT * FROM factura_facturas WHERE id = $1
         `;
@@ -431,9 +430,7 @@ const obtenerPorId = async (id) => {
         console.log('✅ [FACTURACION-SERVICE] Factura obtenida');
         
         return resultado.rows[0];
-=======
-=======
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
+
         // Obtener factura con datos del cliente (apellido = razón social) y descuento del presupuesto
         const queryFactura = `
             SELECT 
@@ -446,7 +443,7 @@ const obtenerPorId = async (id) => {
             WHERE f.id = $1
         `;
         
-        const resultadoFactura = await pool.query(queryFactura, [id]);
+        //const resultadoFactura = await pool.query(queryFactura, [id]);
         
         if (resultadoFactura.rows.length === 0) {
             throw new Error(`Factura ${id} no encontrada`);
@@ -474,10 +471,7 @@ const obtenerPorId = async (id) => {
         console.log(`   - Descuento: ${(parseFloat(factura.descuento) * 100).toFixed(2)}%`);
         
         return factura;
-<<<<<<< HEAD
->>>>>>> 20413e89ff18263ab5934bfdd02ecdee0727387e
-=======
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
+
         
     } catch (error) {
         console.error('❌ [FACTURACION-SERVICE] Error obteniendo factura:', error.message);
