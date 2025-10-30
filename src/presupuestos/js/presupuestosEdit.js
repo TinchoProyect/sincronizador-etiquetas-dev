@@ -1079,3 +1079,35 @@ function mostrarMensaje(texto, tipo = 'info') {
   console.log('✅ [PRESUPUESTOS-EDIT] Módulo de edición cargado correctamente');
 
 })(); // Cerrar IIFE
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("btn-facturar");
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get("id");
+    if (!id) { alert(" No se encontr� el ID de presupuesto."); return; }
+
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Facturando...";
+
+    try {
+      const resp = await fetch(`http://localhost:3004/facturacion/presupuestos/${id}/facturar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = (data && (data.message || data.error)) || `Error HTTP ${resp.status}`;
+        throw new Error(msg);
+      }
+      alert(" Presupuesto facturado correctamente.");
+    } catch (e) {
+      alert(" Error al facturar: " + (e?.message || e));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original || "Facturar";
+    }
+  });
+});
