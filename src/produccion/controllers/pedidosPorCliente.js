@@ -494,6 +494,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                     p.id_presupuesto_ext,
                     p.id_cliente,
                     p.fecha,
+                    COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
                 WHERE p.activo = true 
@@ -506,7 +507,20 @@ const obtenerPedidosArticulos = async (req, res) => {
                     SUM(COALESCE(pd.cantidad, 0)) as pedido_total
                 FROM presupuestos_confirmados pc
                 ${joinClause}
-                WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
+                WHERE pd.articulo IS NOT NULL 
+                  AND TRIM(pd.articulo) != ''
+                  AND pc.secuencia != 'Pedido_Listo'
+                GROUP BY pd.articulo
+            ),
+            pedidos_listos AS (
+                SELECT 
+                    pd.articulo as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0)) as cantidad_en_pedidos_listos
+                FROM presupuestos_confirmados pc
+                ${joinClause}
+                WHERE pd.articulo IS NOT NULL 
+                  AND TRIM(pd.articulo) != ''
+                  AND pc.secuencia = 'Pedido_Listo'
                 GROUP BY pd.articulo
             ),
             valores_redondeados AS (
@@ -518,23 +532,28 @@ const obtenerPedidosArticulos = async (req, res) => {
                         ac.articulo_numero
                     ) as descripcion,
                     ROUND(ac.pedido_total::numeric, 2) as pedido_total_redondeado,
-                    ROUND(CASE 
-                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                        THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                        ELSE COALESCE(src.stock_consolidado, 0)
-                    END::numeric, 2) as stock_disponible_redondeado,
-                    ROUND(GREATEST(0, ac.pedido_total - 
+                    ROUND(GREATEST(0, 
                         CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                             THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                             ELSE COALESCE(src.stock_consolidado, 0)
-                        END
+                        END - COALESCE(pl.cantidad_en_pedidos_listos, 0)
+                    )::numeric, 2) as stock_disponible_redondeado,
+                    ROUND(GREATEST(0, ac.pedido_total - 
+                        GREATEST(0,
+                            CASE 
+                                WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                                ELSE COALESCE(src.stock_consolidado, 0)
+                            END - COALESCE(pl.cantidad_en_pedidos_listos, 0)
+                        )
                     )::numeric, 2) as faltante_redondeado,
                     src.es_pack,
                     src.pack_hijo_codigo,
                     src.pack_unidades,
                     hijo.stock_consolidado as stock_hijo
                 FROM articulos_consolidados ac
+                LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
                 LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
