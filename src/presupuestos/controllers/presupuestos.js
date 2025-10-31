@@ -142,7 +142,7 @@ const obtenerPresupuestos = async (req, res) => {
                 p.estado,
                 p.agente
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.activo = true
         `;
         
@@ -354,7 +354,7 @@ const obtenerPresupuestos = async (req, res) => {
         let countQuery = `
             SELECT COUNT(*) as total
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.activo = true
         `;
         
@@ -1006,7 +1006,7 @@ const obtenerPresupuestosPorCategoria = async (req, res) => {
                 p.fecha as fecha_sincronizacion,
                 p.activo
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.activo = true AND LOWER(p.tipo_comprobante) = LOWER($1)
             ORDER BY p.fecha DESC, concepto
         `;
@@ -1284,7 +1284,7 @@ const crearPresupuesto = async (req, res) => {
         // Verificar duplicados
         const duplicateQuery = `
             SELECT p.id FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE LOWER(COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente')) = LOWER($1) 
             AND LOWER(p.tipo_comprobante) = LOWER($2) 
             AND p.id_presupuesto_ext = $3 
@@ -1472,7 +1472,7 @@ const eliminarPresupuesto = async (req, res) => {
         const existsQuery = `
             SELECT p.id, COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto 
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(p.id_cliente AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.id = $1 AND p.activo = true
         `;
         

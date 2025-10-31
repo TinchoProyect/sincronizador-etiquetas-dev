@@ -1412,74 +1412,73 @@
             const parciales = [];
             
             articulos.forEach((art, index) => {
-                // Normalizar estado
-                const estadoNormalizado = normalizarEstado(art.estado);
+                // Parsear valores numéricos CRUDOS primero
+                const faltanteCrudo = parseNumeroSeguro(art.faltante || art.cantidad_faltante);
+                const stockCrudo = parseNumeroSeguro(art.stock_disponible || art.stock);
+                const pedidoCrudo = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida);
                 
-                // Parsear valores numéricos
-                const faltante = parseNumeroSeguro(art.faltante || art.cantidad_faltante);
-                const stockDisponible = parseNumeroSeguro(art.stock_disponible || art.stock);
-                const pedidoTotal = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida);
+                // REDONDEAR a 2 decimales ANTES de clasificar
+                const faltanteRedondeado = Math.round(faltanteCrudo * 100) / 100;
+                const stockRedondeado = Math.round(stockCrudo * 100) / 100;
+                const pedidoRedondeado = Math.round(pedidoCrudo * 100) / 100;
                 
                 // Log de depuración para el primer elemento
                 if (index === 0) {
-                    console.debug('🔍 Ejemplo artículo:', {
-                        original: art.estado,
-                        normalizado: estadoNormalizado,
-                        faltante: faltante,
-                        stock: stockDisponible,
-                        pedido: pedidoTotal
+                    console.debug('🔍 Ejemplo artículo (valores redondeados):', {
+                        codigo: art.codigo || art.articulo,
+                        faltanteCrudo: faltanteCrudo,
+                        faltanteRedondeado: faltanteRedondeado,
+                        stockCrudo: stockCrudo,
+                        stockRedondeado: stockRedondeado,
+                        pedidoCrudo: pedidoCrudo,
+                        pedidoRedondeado: pedidoRedondeado
                     });
                 }
                 
-                // Clasificar según estado normalizado
-                if (estadoNormalizado === 'FALTANTE') {
-                    faltantes.push({
-                        ...art,
-                        estado: estadoNormalizado,
-                        faltante: faltante,
-                        stock_disponible: stockDisponible,
-                        pedido_total: pedidoTotal
-                    });
-                } else if (estadoNormalizado === 'PARCIAL') {
-                    parciales.push({
-                        ...art,
-                        estado: estadoNormalizado,
-                        faltante: faltante,
-                        stock_disponible: stockDisponible,
-                        pedido_total: pedidoTotal
-                    });
-                }
-                
-                // Clasificación alternativa por lógica numérica (backup)
-                else if (faltante > 0) {
-                    if (stockDisponible === 0) {
-                        // Sin stock = FALTANTE
+                // NUEVA LÓGICA: Clasificar usando valores REDONDEADOS
+                // Solo procesamos si hay faltante después de redondear
+                if (faltanteRedondeado > 0) {
+                    if (stockRedondeado === 0) {
+                        // Sin stock = FALTANTE TOTAL
                         faltantes.push({
                             ...art,
                             estado: 'FALTANTE',
-                            faltante: faltante,
-                            stock_disponible: stockDisponible,
-                            pedido_total: pedidoTotal
+                            faltante: faltanteRedondeado,
+                            stock_disponible: stockRedondeado,
+                            pedido_total: pedidoRedondeado
                         });
-                    } else if (stockDisponible > 0 && stockDisponible < pedidoTotal) {
-                        // Stock parcial = PARCIAL
+                        console.debug(`  → FALTANTE (stock=0, faltante=${faltanteRedondeado})`);
+                    } else if (stockRedondeado > 0 && stockRedondeado < pedidoRedondeado) {
+                        // Hay algo de stock pero no todo = PARCIAL
                         parciales.push({
                             ...art,
                             estado: 'PARCIAL',
-                            faltante: faltante,
-                            stock_disponible: stockDisponible,
-                            pedido_total: pedidoTotal
+                            faltante: faltanteRedondeado,
+                            stock_disponible: stockRedondeado,
+                            pedido_total: pedidoRedondeado
                         });
+                        console.debug(`  → PARCIAL (stock=${stockRedondeado}, pedido=${pedidoRedondeado}, faltante=${faltanteRedondeado})`);
                     }
                 }
+                // Si faltanteRedondeado es 0, no lo incluimos (está completo)
             });
 
-            console.debug('📈 Resultados filtrado:', {
+            console.debug('📈 Resultados filtrado (con redondeo previo):', {
                 total: articulos.length,
                 faltantes: faltantes.length,
                 parciales: parciales.length,
-                ejemploFaltantes: faltantes.slice(0, 2).map(f => ({ codigo: f.codigo || f.articulo, estado: f.estado })),
-                ejemploParciales: parciales.slice(0, 2).map(p => ({ codigo: p.codigo || p.articulo, estado: p.estado }))
+                ejemploFaltantes: faltantes.slice(0, 2).map(f => ({ 
+                    codigo: f.codigo || f.articulo, 
+                    estado: f.estado,
+                    stock: f.stock_disponible,
+                    faltante: f.faltante 
+                })),
+                ejemploParciales: parciales.slice(0, 2).map(p => ({ 
+                    codigo: p.codigo || p.articulo, 
+                    estado: p.estado,
+                    stock: p.stock_disponible,
+                    faltante: p.faltante
+                }))
             });
 
             return { faltantes, parciales };
@@ -1491,19 +1490,32 @@
             const rowClass = tipo === 'FALTANTE' ? 'faltante-row' : 'parcial-row';
             const codigoArticulo = articulo.codigo || articulo.articulo || articulo.articulo_numero || '-';
             
+            // Formatear números a 2 decimales
+            const pedidoTotal = formatearNumeroResumen(articulo.pedido_total || articulo.cantidad_pedida || 0);
+            const stockDisponible = formatearNumeroResumen(articulo.stock_disponible || articulo.stock || 0);
+            const faltante = formatearNumeroResumen(articulo.faltante || articulo.cantidad_faltante || 0);
+            
             return `
                 <tr class="${rowClass}">
                     <td>${codigoArticulo}</td>
                     <td>${articulo.descripcion || articulo.nombre || '-'}</td>
-                    <td>${articulo.pedido_total || articulo.cantidad_pedida || 0}</td>
-                    <td>${articulo.stock_disponible || articulo.stock || 0}</td>
-                    <td class="cantidad-faltante">${articulo.faltante || articulo.cantidad_faltante || 0}</td>
+                    <td>${pedidoTotal}</td>
+                    <td>${stockDisponible}</td>
+                    <td class="cantidad-faltante">${faltante}</td>
                     <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
                     <td>
                         <button class="pack-button" onclick="abrirModalPack('${codigoArticulo}')">🧩 Pack</button>
                     </td>
                 </tr>
             `;
+        }
+
+        // Función auxiliar para formatear números a 2 decimales en el resumen
+        function formatearNumeroResumen(valor) {
+            if (valor === null || valor === undefined || valor === '') return '0.00';
+            const numero = Number(valor);
+            if (isNaN(numero)) return '0.00';
+            return numero.toFixed(2);
         }
 
         // Función para actualizar el resumen (sincronizada con panel principal)

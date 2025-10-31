@@ -139,19 +139,19 @@ const obtenerPedidosPorCliente = async (req, res) => {
                             NULLIF(TRIM(a.nombre), ''),
                             app.articulo_numero
                         ),
-                        'pedido_total', app.cantidad,
-                        'stock_disponible', CASE 
+                        'pedido_total', ROUND(app.cantidad::numeric, 2),
+                        'stock_disponible', ROUND((CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                             THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                             ELSE COALESCE(src.stock_consolidado, 0)
-                        END,
-                        'faltante', GREATEST(0, app.cantidad - 
+                        END)::numeric, 2),
+                        'faltante', ROUND(GREATEST(0, app.cantidad - 
                             CASE 
                                 WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                                 THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                                 ELSE COALESCE(src.stock_consolidado, 0)
                             END
-                        ),
+                        )::numeric, 2),
                         'es_pack', src.es_pack,
                         'pack_hijo_codigo', src.pack_hijo_codigo,
                         'pack_unidades', src.pack_unidades,
@@ -201,6 +201,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             }
             
             // Calcular indicador de estado para cada cliente y limpiar campos internos
+            // IMPORTANTE: Usar valores redondeados para clasificación de estado
             const clientesConIndicador = result.rows.map(cliente => {
                 const articulos = cliente.articulos;
                 let completos = 0;
@@ -208,9 +209,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 let faltantes = 0;
                 
                 articulos.forEach(art => {
-                    if (art.faltante === 0) {
+                    // Los valores ya vienen redondeados del SQL, usarlos directamente
+                    const faltanteRedondeado = parseFloat(art.faltante) || 0;
+                    const stockRedondeado = parseFloat(art.stock_disponible) || 0;
+                    
+                    if (faltanteRedondeado === 0) {
                         completos++;
-                    } else if (art.stock_disponible > 0) {
+                    } else if (stockRedondeado > 0) {
                         parciales++;
                     } else {
                         faltantes++;
@@ -489,6 +494,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                     p.id_presupuesto_ext,
                     p.id_cliente,
                     p.fecha,
+                    COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
                 WHERE p.activo = true 
@@ -501,52 +507,74 @@ const obtenerPedidosArticulos = async (req, res) => {
                     SUM(COALESCE(pd.cantidad, 0)) as pedido_total
                 FROM presupuestos_confirmados pc
                 ${joinClause}
-                WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
+                WHERE pd.articulo IS NOT NULL 
+                  AND TRIM(pd.articulo) != ''
+                  AND pc.secuencia != 'Pedido_Listo'
                 GROUP BY pd.articulo
-            )
-            SELECT 
-                ac.articulo_numero,
-                COALESCE(
-                    NULLIF(TRIM(a.nombre), ''),
-                    ac.articulo_numero
-                ) as descripcion,
-                ac.pedido_total,
-                CASE 
-                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                    THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                    ELSE COALESCE(src.stock_consolidado, 0)
-                END as stock_disponible,
-                GREATEST(0, ac.pedido_total - 
-                    CASE 
-                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                        THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                        ELSE COALESCE(src.stock_consolidado, 0)
-                    END
-                ) as faltante,
-                CASE 
-                    WHEN GREATEST(0, ac.pedido_total - 
+            ),
+            pedidos_listos AS (
+                SELECT 
+                    pd.articulo as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0)) as cantidad_en_pedidos_listos
+                FROM presupuestos_confirmados pc
+                ${joinClause}
+                WHERE pd.articulo IS NOT NULL 
+                  AND TRIM(pd.articulo) != ''
+                  AND pc.secuencia = 'Pedido_Listo'
+                GROUP BY pd.articulo
+            ),
+            valores_redondeados AS (
+                SELECT 
+                    ac.articulo_numero,
+                    ac.pedido_total,
+                    COALESCE(
+                        NULLIF(TRIM(a.nombre), ''),
+                        ac.articulo_numero
+                    ) as descripcion,
+                    ROUND(ac.pedido_total::numeric, 2) as pedido_total_redondeado,
+                    ROUND(GREATEST(0, 
                         CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                             THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
                             ELSE COALESCE(src.stock_consolidado, 0)
-                        END
-                    ) = 0 THEN 'COMPLETO'
-                    WHEN CASE 
-                            WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                            THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                            ELSE COALESCE(src.stock_consolidado, 0)
-                        END > 0 THEN 'PARCIAL'
-                    ELSE 'FALTANTE'
+                        END - COALESCE(pl.cantidad_en_pedidos_listos, 0)
+                    )::numeric, 2) as stock_disponible_redondeado,
+                    ROUND(GREATEST(0, ac.pedido_total - 
+                        GREATEST(0,
+                            CASE 
+                                WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                                ELSE COALESCE(src.stock_consolidado, 0)
+                            END - COALESCE(pl.cantidad_en_pedidos_listos, 0)
+                        )
+                    )::numeric, 2) as faltante_redondeado,
+                    src.es_pack,
+                    src.pack_hijo_codigo,
+                    src.pack_unidades,
+                    hijo.stock_consolidado as stock_hijo
+                FROM articulos_consolidados ac
+                LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
+                LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+                LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
+            )
+            SELECT 
+                articulo_numero,
+                descripcion,
+                pedido_total_redondeado as pedido_total,
+                stock_disponible_redondeado as stock_disponible,
+                faltante_redondeado as faltante,
+                CASE 
+                    WHEN faltante_redondeado = 0 THEN 'COMPLETO'
+                    WHEN stock_disponible_redondeado = 0 THEN 'FALTANTE'
+                    ELSE 'PARCIAL'
                 END as estado,
-                src.es_pack,
-                src.pack_hijo_codigo,
-                src.pack_unidades,
-                hijo.stock_consolidado as stock_hijo
-            FROM articulos_consolidados ac
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
-            LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
-            LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
-            ORDER BY ac.articulo_numero;
+                es_pack,
+                pack_hijo_codigo,
+                pack_unidades,
+                stock_hijo
+            FROM valores_redondeados
+            ORDER BY articulo_numero;
         `;
         
         const params = ['presupuesto/orden', fecha];
