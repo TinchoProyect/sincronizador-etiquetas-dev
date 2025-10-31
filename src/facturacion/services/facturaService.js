@@ -395,23 +395,8 @@ const calcularTotales = (items) => {
     };
 };
 
-/**
-<<<<<<< HEAD
-<<<<<<< HEAD
- * Obtener factura por ID
- * @param {number} id - ID de la factura
- * @returns {Promise<Object>} Factura
-=======
- * Obtener factura por ID con datos completos (incluye razón social y descuento del presupuesto)
- * @param {number} id - ID de la factura
- * @returns {Promise<Object>} Factura con datos completos
->>>>>>> 20413e89ff18263ab5934bfdd02ecdee0727387e
-=======
- * Obtener factura por ID con datos completos (incluye razón social y descuento del presupuesto)
- * @param {number} id - ID de la factura
- * @returns {Promise<Object>} Factura con datos completos
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
- */
+
+ 
 const obtenerPorId = async (id) => {
     console.log(`🔍 [FACTURACION-SERVICE] Obteniendo factura ID: ${id}`);
     
@@ -421,9 +406,9 @@ const obtenerPorId = async (id) => {
             SELECT * FROM factura_facturas WHERE id = $1
         `;
         
-        const resultadoFactura = await pool.query(queryFactura, [id]);
+        const resultado = await pool.query(query, [id]);
         
-        if (resultadoFactura.rows.length === 0) {
+        if (resultado.rows.length === 0) {
             throw new Error(`Factura ${id} no encontrada`);
         }
         
@@ -443,7 +428,7 @@ const obtenerPorId = async (id) => {
             WHERE f.id = $1
         `;
         
-        //const resultadoFactura = await pool.query(queryFactura, [id]);
+        const resultadoFactura = await pool.query(queryFactura, [id]);
         
         if (resultadoFactura.rows.length === 0) {
             throw new Error(`Factura ${id} no encontrada`);

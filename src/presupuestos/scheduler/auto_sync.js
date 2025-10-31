@@ -1,7 +1,7 @@
 console.log('[AUTO_SYNC] Cargando scheduler de sincronización automática...');
 
 // Importar el MISMO motor que usa el botón manual (sincronización bidireccional tolerante a cuotas)
-const { ejecutarSincronizacionBidireccionalQuotaSafe } = require('../../services/gsheets/syncQuotaSafe');
+//const { ejecutarSincronizacionBidireccionalQuotaSafe } = require('../../services/gsheets/syncQuotaSafe');
 
 /**
  * Scheduler de sincronización automática sin dependencias externas
