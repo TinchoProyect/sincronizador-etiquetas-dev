@@ -1746,7 +1746,7 @@
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
         
         // Función para abrir modal pack (disponible globalmente)
-        window.abrirModalPack = function(codigoPadre) {
+        window.abrirModalPack = async function(codigoPadre) {
             const modal = document.getElementById('modal-pack');
             const padreCodigo = document.getElementById('pack-padre-codigo');
             const hijoCodigo = document.getElementById('pack-hijo-codigo');
@@ -1756,7 +1756,7 @@
             
             if (!modal || !padreCodigo) return;
             
-            // Limpiar formulario
+            // Limpiar formulario inicialmente
             padreCodigo.value = codigoPadre;
             hijoCodigo.value = '';
             unidades.value = '';
@@ -1768,6 +1768,54 @@
             modal.style.display = 'flex';
             
             console.debug('🧩 Modal pack abierto para:', codigoPadre);
+            
+            // Intentar cargar datos existentes del pack
+            try {
+                console.debug('🔍 [MODAL] Consultando datos existentes del pack...');
+                
+                // Usar la función del módulo expandible si está disponible
+                let packMapping = null;
+                if (typeof window.obtenerPackMapping === 'function') {
+                    packMapping = await window.obtenerPackMapping(codigoPadre);
+                } else {
+                    // Fallback: consultar directamente
+                    const response = await fetch(`/api/produccion/pedidos-articulos?include_pack=true&q=${encodeURIComponent(codigoPadre)}`);
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success && result.data && result.data.length > 0) {
+                            const articulo = result.data.find(art => art.articulo_numero === codigoPadre);
+                            if (articulo && articulo.es_pack && articulo.pack_hijo_codigo) {
+                                packMapping = {
+                                    articulo_kilo_codigo: articulo.pack_hijo_codigo,
+                                    unidades: articulo.pack_unidades || 1
+                                };
+                            }
+                        }
+                    }
+                }
+                
+                if (packMapping && packMapping.articulo_kilo_codigo) {
+                    // Pre-llenar campos con datos existentes
+                    hijoCodigo.value = packMapping.articulo_kilo_codigo;
+                    unidades.value = packMapping.unidades || packMapping.multiplicador_ingredientes || 1;
+                    
+                    // Mostrar botón quitar
+                    quitarBtn.style.display = 'inline-block';
+                    
+                    // Mostrar mensaje informativo
+                    mostrarMensajePack(`📦 Pack configurado: ${packMapping.unidades || 1} unidades de ${packMapping.articulo_kilo_codigo}`, 'info');
+                    
+                    console.debug('✅ [MODAL] Datos del pack cargados:', {
+                        hijo: packMapping.articulo_kilo_codigo,
+                        unidades: packMapping.unidades
+                    });
+                } else {
+                    console.debug('ℹ️ [MODAL] No hay pack configurado para este artículo');
+                }
+                
+            } catch (error) {
+                console.error('❌ [MODAL] Error al cargar datos del pack:', error);
+            }
         };
 
         // Función para cerrar modal pack (disponible globalmente)

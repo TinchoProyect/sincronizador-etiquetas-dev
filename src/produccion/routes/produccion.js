@@ -1580,16 +1580,20 @@ router.get('/carro/:id/articulos-resumen', async (req, res) => {
             const articulosQuery = `
                 SELECT 
                     ra.articulo_numero,
-                    a.nombre,
+                    COALESCE(
+                        NULLIF(TRIM(src.descripcion), ''),
+                        NULLIF(TRIM(a.nombre), ''),
+                        ra.articulo_numero
+                    ) as nombre,
                     SUM(ra.cantidad * ca.cantidad) as cantidad_total,
                     COALESCE(src.stock_consolidado, 0) as stock_actual
                 FROM carros_articulos ca
                 JOIN recetas r ON r.articulo_numero = ca.articulo_numero
                 JOIN receta_articulos ra ON ra.receta_id = r.id
-                LEFT JOIN articulos a ON a.numero = ra.articulo_numero
                 LEFT JOIN stock_real_consolidado src ON src.articulo_numero = ra.articulo_numero
+                LEFT JOIN articulos a ON a.codigo_barras = ra.articulo_numero
                 WHERE ca.carro_id = $1
-                GROUP BY ra.articulo_numero, a.nombre, src.stock_consolidado
+                GROUP BY ra.articulo_numero, src.descripcion, a.nombre, src.stock_consolidado
                 ORDER BY ra.articulo_numero
             `;
 
