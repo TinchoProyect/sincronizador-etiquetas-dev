@@ -1348,6 +1348,7 @@ const { agregarStockUsuario } = require('../controllers/ingredientesStockUsuario
 const {
     obtenerRelacionesCarro,
     obtenerRelacionPorArticulo,
+    obtenerRelacionesPorArticulos,
     crearRelacion,
     actualizarRelacion,
     eliminarRelacion,

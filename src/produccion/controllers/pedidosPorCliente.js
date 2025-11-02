@@ -655,13 +655,17 @@ const obtenerPedidosArticulos = async (req, res) => {
             });
         }
 
-        // Limpiar campos internos del response
-        articulos = articulos.map(art => {
-            const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
-            return articuloLimpio;
-        });
+        // Limpiar campos internos del response SOLO si no se solicita explícitamente incluirlos
+        const includePack = req.query.include_pack === 'true';
+        
+        if (!includePack) {
+            articulos = articulos.map(art => {
+                const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
+                return articuloLimpio;
+            });
+        }
 
-        // Actualizar response con datos limpios
+        // Actualizar response con datos (limpios o con pack según parámetro)
         response.data = articulos;
         
         console.log(`✅ [PROD_ART] Consulta exitosa: ${articulos.length} artículos encontrados`);
