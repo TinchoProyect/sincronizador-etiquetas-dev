@@ -34,7 +34,7 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad } = require('../controllers/articulos');
+const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad, buscarArticulos } = require('../controllers/articulos');
 
 // Controladores para pedidos por cliente
 const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes, actualizarPackMapping } = require('../controllers/pedidosPorCliente');
@@ -2295,6 +2295,25 @@ router.get('/impresion-presupuesto', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Error interno en ruta de impresión',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Ruta para buscar artículos con búsqueda exacta o parcial
+ * GET /api/produccion/buscar-articulos?q=texto&exact=true
+ */
+router.get('/buscar-articulos', async (req, res) => {
+    try {
+        console.log('🔍 [BUSCAR-ART] Ruta GET /buscar-articulos');
+        await buscarArticulos(req, res);
+    } catch (error) {
+        console.error('❌ [BUSCAR-ART] Error en ruta /buscar-articulos:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de búsqueda de artículos',
             message: error.message,
             timestamp: new Date().toISOString()
         });

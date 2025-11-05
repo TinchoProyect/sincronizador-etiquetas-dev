@@ -1197,14 +1197,14 @@
                     <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalPack()">&times;</button>
                 </div>
                 <div class="modal-pack-body">
-                    <label for="pack-padre-codigo">Código Padre (solo lectura):</label>
-                    <input type="text" id="pack-padre-codigo" readonly>
-                    
-                    <label for="pack-hijo-codigo">Código Hijo:</label>
-                    <input type="text" id="pack-hijo-codigo" placeholder="Ingrese código del artículo hijo">
-                    
-                    <label for="pack-unidades">Unidades por Pack:</label>
-                    <input type="number" id="pack-unidades" min="1" placeholder="Ingrese cantidad de unidades">
+                    <label for="pack-padre-codigo">📦 Artículo Pack Padre (solo lectura):</label>
+                    <input type="text" id="pack-padre-codigo" readonly style="background-color: #e9ecef; font-weight: 600; color: #495057;">
+
+                    <label for="pack-hijo-codigo">🔗 Artículo Hijo:</label>
+                    <input type="text" id="pack-hijo-codigo" placeholder="Código o descripción del artículo hijo">
+
+                    <label for="pack-unidades">🔢 Unidades por Pack:</label>
+                    <input type="number" id="pack-unidades" min="1" placeholder="Ej: 2">
                     
                     <div id="pack-mensaje" class="mensaje-info" style="display:none;"></div>
                 </div>
@@ -1278,8 +1278,8 @@
         </footer>
     </div>
 
-    <script src="/js/produccion.js?v=7.0"></script>
-    <script src="/js/produccion-resumen-expandible.js?v=7.0"></script>
+    <script src="/js/produccion.js?v=8.0"></script>
+    <script src="/js/produccion-resumen-expandible.js?v=8.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1767,54 +1767,59 @@
             // Mostrar modal
             modal.style.display = 'flex';
             
-            console.debug('🧩 Modal pack abierto para:', codigoPadre);
+            console.debug('🧩 [MODAL-PACK] Modal abierto para:', codigoPadre);
             
-            // Intentar cargar datos existentes del pack
+            // Cargar descripción del padre y datos del pack desde stock_real_consolidado
             try {
-                console.debug('🔍 [MODAL] Consultando datos existentes del pack...');
+                console.debug('🔍 [MODAL-PACK] Consultando stock_real_consolidado...');
                 
-                // Usar la función del módulo expandible si está disponible
-                let packMapping = null;
-                if (typeof window.obtenerPackMapping === 'function') {
-                    packMapping = await window.obtenerPackMapping(codigoPadre);
-                } else {
-                    // Fallback: consultar directamente
-                    const response = await fetch(`/api/produccion/pedidos-articulos?include_pack=true&q=${encodeURIComponent(codigoPadre)}`);
-                    if (response.ok) {
-                        const result = await response.json();
-                        if (result.success && result.data && result.data.length > 0) {
-                            const articulo = result.data.find(art => art.articulo_numero === codigoPadre);
-                            if (articulo && articulo.es_pack && articulo.pack_hijo_codigo) {
-                                packMapping = {
-                                    articulo_kilo_codigo: articulo.pack_hijo_codigo,
-                                    unidades: articulo.pack_unidades || 1
-                                };
+                // Buscar artículo padre en stock_real_consolidado
+                const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(codigoPadre)}&exact=true`);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.articulos && result.articulos.length > 0) {
+                        const articulo = result.articulos.find(art => 
+                            art.codigo === codigoPadre || art.codigo.toString() === codigoPadre.toString()
+                        );
+                        
+                        if (articulo) {
+                            // ✅ Mostrar DESCRIPCIÓN del padre en el label
+                            const labelPadre = document.querySelector('label[for="pack-padre-codigo"]');
+                            if (labelPadre) {
+                                labelPadre.textContent = `Artículo Padre: ${articulo.descripcion || codigoPadre}`;
+                            }
+                            
+                            // Si tiene pack configurado, precargar datos
+                            if (articulo.pack_hijo_codigo && articulo.pack_unidades) {
+                                hijoCodigo.value = articulo.pack_hijo_codigo;
+                                unidades.value = articulo.pack_unidades;
+                                quitarBtn.style.display = 'inline-block';
+                                
+                                // Buscar descripción del hijo
+                                const hijoResp = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(articulo.pack_hijo_codigo)}&exact=true`);
+                                if (hijoResp.ok) {
+                                    const hijoResult = await hijoResp.json();
+                                    if (hijoResult.success && hijoResult.articulos && hijoResult.articulos.length > 0) {
+                                        const hijoArt = hijoResult.articulos[0];
+                                        const hijoDesc = hijoArt.descripcion || articulo.pack_hijo_codigo;
+                                        
+                                        // Actualizar label del hijo con descripción
+                                        const labelHijo = document.querySelector('label[for="pack-hijo-codigo"]');
+                                        if (labelHijo) {
+                                            labelHijo.textContent = `Artículo Hijo: ${hijoDesc}`;
+                                        }
+                                        
+                                        mostrarMensajePack(`📦 Pack configurado: ${articulo.pack_unidades} unidades de "${hijoDesc}"`, 'info');
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 
-                if (packMapping && packMapping.articulo_kilo_codigo) {
-                    // Pre-llenar campos con datos existentes
-                    hijoCodigo.value = packMapping.articulo_kilo_codigo;
-                    unidades.value = packMapping.unidades || packMapping.multiplicador_ingredientes || 1;
-                    
-                    // Mostrar botón quitar
-                    quitarBtn.style.display = 'inline-block';
-                    
-                    // Mostrar mensaje informativo
-                    mostrarMensajePack(`📦 Pack configurado: ${packMapping.unidades || 1} unidades de ${packMapping.articulo_kilo_codigo}`, 'info');
-                    
-                    console.debug('✅ [MODAL] Datos del pack cargados:', {
-                        hijo: packMapping.articulo_kilo_codigo,
-                        unidades: packMapping.unidades
-                    });
-                } else {
-                    console.debug('ℹ️ [MODAL] No hay pack configurado para este artículo');
-                }
-                
             } catch (error) {
-                console.error('❌ [MODAL] Error al cargar datos del pack:', error);
+                console.error('❌ [MODAL-PACK] Error al cargar datos:', error);
             }
         };
 
@@ -1996,5 +2001,6 @@
         });
 
     </script>
-</body>
+<script src="/js/modal-pack-debug.js?v=9.0"></script></body>
 </html>
+
