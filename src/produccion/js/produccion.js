@@ -1129,8 +1129,15 @@ function renderPedidosArticulos(articulos, totales) {
     const tbody = document.createElement('tbody');
     articulos.forEach(articulo => {
         const tr = document.createElement('tr');
+        tr.className = 'expandible-row';
+        tr.setAttribute('data-articulo', articulo.articulo_numero);
         tr.setAttribute('data-articulo-numero', articulo.articulo_numero);
         tr.setAttribute('data-estado', articulo.estado.toLowerCase());
+        tr.onclick = (e) => {
+            if (typeof window.handleFilaClick === 'function') {
+                window.handleFilaClick(articulo.articulo_numero, e);
+            }
+        };
 
         const tdArticulo = document.createElement('td');
         tdArticulo.textContent = articulo.articulo_numero;
@@ -1159,6 +1166,22 @@ function renderPedidosArticulos(articulos, totales) {
         indicador.textContent = articulo.estado;
         tdEstado.appendChild(indicador);
         tr.appendChild(tdEstado);
+        
+        // Columna de acciones con botón Pack
+        const tdAcciones = document.createElement('td');
+        tdAcciones.onclick = (e) => e.stopPropagation();
+        
+        const btnPack = document.createElement('button');
+        btnPack.className = 'pack-button pack-config-btn';
+        btnPack.textContent = '🧩 Pack';
+        btnPack.setAttribute('data-codigo', articulo.articulo_numero);
+        btnPack.onclick = () => {
+            if (typeof window.abrirModalPack === 'function') {
+                window.abrirModalPack(articulo.articulo_numero);
+            }
+        };
+        tdAcciones.appendChild(btnPack);
+        tr.appendChild(tdAcciones);
 
         tbody.appendChild(tr);
     });

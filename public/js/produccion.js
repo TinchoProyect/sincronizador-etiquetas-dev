@@ -606,15 +606,15 @@ function renderizarArticulosPedidos(articulos, totales) {
             </thead>
             <tbody>
                 ${articulos.map(articulo => `
-                    <tr>
+                    <tr class="expandible-row" data-articulo="${articulo.articulo_numero}" onclick="handleFilaClick('${articulo.articulo_numero}', event)">
                         <td>${articulo.articulo_numero}</td>
                         <td>${articulo.descripcion}</td>
                         <td>${formatearNumero(articulo.pedido_total)}</td>
                         <td>${formatearNumero(articulo.stock_disponible)}</td>
                         <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${formatearNumero(articulo.faltante)}</td>
                         <td><span class="indicador-estado indicador-${articulo.estado.toLowerCase()}">${articulo.estado}</span></td>
-                        <td>
-                            <button class="pack-button" onclick="abrirModalPack('${articulo.articulo_numero}')">🧩 Pack</button>
+                        <td onclick="event.stopPropagation()">
+                            <button class="pack-button pack-config-btn" data-codigo="${articulo.articulo_numero}" onclick="abrirModalPack('${articulo.articulo_numero}')">🧩 Pack</button>
                             ${articulo.faltante > 0 ? `<button class="admin-button" onclick="abrirModalAsignarArticulo('${articulo.articulo_numero}', '${articulo.descripcion}', ${articulo.faltante})" style="margin-left: 5px; font-size: 10px; padding: 2px 6px;">Asignar</button>` : ''}
                         </td>
                     </tr>
@@ -624,6 +624,14 @@ function renderizarArticulosPedidos(articulos, totales) {
     `;
     
     container.innerHTML = html;
+    
+    // Después de renderizar, actualizar los iconos de expansión
+    if (typeof window.actualizarIconosExpansion === 'function') {
+        setTimeout(() => {
+            console.log('🔄 Llamando a actualizarIconosExpansion desde renderizarArticulosPedidos');
+            window.actualizarIconosExpansion();
+        }, 100);
+    }
 }
 
 function mostrarErrorArticulos() {

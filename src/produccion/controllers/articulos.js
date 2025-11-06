@@ -244,10 +244,93 @@ async function actualizarKilosUnidad(articuloNumero, kilosUnidad) {
     }
 }
 
+/**
+ * Busca artículos en stock_real_consolidado con búsqueda exacta o parcial
+ * @param {Object} req - Request con query params: q (texto búsqueda), exact (true/false)
+ * @param {Object} res - Response
+ */
+async function buscarArticulos(req, res) {
+    try {
+        const { q, exact } = req.query;
+        
+        console.log('🔍 [BUSCAR-ART] Parámetros:', { q, exact });
+        
+        if (!q || q.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                error: 'Se requiere el parámetro de búsqueda "q"'
+            });
+        }
+        
+        const busqueda = q.trim();
+        const esExacta = exact === 'true';
+        
+        let query;
+        let params;
+        
+        if (esExacta) {
+            // Búsqueda EXACTA por código
+            query = `
+                SELECT 
+                    src.articulo_numero as codigo,
+                    src.descripcion,
+                    src.codigo_barras,
+                    src.stock_consolidado,
+                    src.es_pack,
+                    src.pack_hijo_codigo,
+                    src.pack_unidades
+                FROM stock_real_consolidado src
+                WHERE src.articulo_numero = $1 
+                   OR src.codigo_barras = $1
+                LIMIT 1
+            `;
+            params = [busqueda];
+        } else {
+            // Búsqueda PARCIAL por descripción
+            query = `
+                SELECT 
+                    src.articulo_numero as codigo,
+                    src.descripcion,
+                    src.codigo_barras,
+                    src.stock_consolidado,
+                    src.es_pack,
+                    src.pack_hijo_codigo,
+                    src.pack_unidades
+                FROM stock_real_consolidado src
+                WHERE src.descripcion ILIKE $1
+                ORDER BY src.descripcion
+                LIMIT 50
+            `;
+            params = [`%${busqueda}%`];
+        }
+        
+        console.log('🔍 [BUSCAR-ART] Params:', params);
+        
+        const result = await pool.query(query, params);
+        
+        console.log(`✅ [BUSCAR-ART] Encontrados: ${result.rows.length} artículos`);
+        
+        res.json({
+            success: true,
+            articulos: result.rows,
+            total: result.rows.length
+        });
+        
+    } catch (error) {
+        console.error('❌ [BUSCAR-ART] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al buscar artículos',
+            message: error.message
+        });
+    }
+}
+
 module.exports = {
     obtenerArticulos,
     buscarArticuloPorCodigo,
     actualizarProduccionLambda,
     actualizarProduccionExterna,
-    actualizarKilosUnidad
+    actualizarKilosUnidad,
+    buscarArticulos
 };
