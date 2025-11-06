@@ -536,6 +536,87 @@
             padding: 10px 12px;
         }
 
+        /* Ocultar columna Artículo (código de barras) */
+        .summary-table .col-articulo {
+            display: none;
+        }
+
+        /* Estilos para filas expandibles de artículos compuestos */
+        .summary-table .parent-row {
+            transition: background-color 0.2s ease;
+        }
+
+        .summary-table .parent-row.has-children {
+            border-left: 4px solid #17a2b8;
+        }
+
+        .summary-table .parent-row.has-children:hover {
+            background-color: rgba(23, 162, 184, 0.1) !important;
+        }
+
+        .summary-table .expand-indicator {
+            display: inline-block;
+            font-size: 14px;
+            transition: transform 0.3s ease;
+            user-select: none;
+        }
+
+        /* Fila hijo (subfila) */
+        .summary-table .child-row {
+            display: none;
+            background-color: #f0f8ff;
+            border-left: 6px solid #17a2b8;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .summary-table .child-row.visible {
+            display: table-row;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .summary-table .child-row td {
+            padding: 10px 12px 10px 50px;
+            font-size: 0.9em;
+            color: #2c5f6f;
+            background: linear-gradient(90deg, rgba(23, 162, 184, 0.05) 0%, transparent 50%);
+        }
+
+        .summary-table .child-description {
+            color: #2c5f6f;
+            font-weight: 500;
+        }
+
+        .summary-table .child-label {
+            display: inline-block;
+            padding: 3px 8px;
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            border-radius: 4px;
+            font-size: 0.75em;
+            margin-right: 10px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary-table .descripcion-col {
+            font-weight: 500;
+        }
+
+        .summary-table .parent-row.has-children .descripcion-col {
+            font-weight: 600;
+            color: #17a2b8;
+        }
+
         /* Estilos compactos para el resumen */
         .summary-table .articulos-tabla th,
         .summary-table .articulos-tabla td {
@@ -979,13 +1060,13 @@
                 <table class="articulos-tabla summary-table">
                     <thead>
                         <tr>
-                            <th>Artículo</th>
+                            <th class="col-articulo">Artículo</th>
                             <th>Descripción</th>
                             <th>Pedido Total</th>
                             <th>Stock Disponible</th>
                             <th>Faltante</th>
                             <th>Estado</th>
-                            <th>Acciones</th>
+                            <th style="width: 100px;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="summary-tbody">
@@ -1116,14 +1197,14 @@
                     <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalPack()">&times;</button>
                 </div>
                 <div class="modal-pack-body">
-                    <label for="pack-padre-codigo">Código Padre (solo lectura):</label>
-                    <input type="text" id="pack-padre-codigo" readonly>
-                    
-                    <label for="pack-hijo-codigo">Código Hijo:</label>
-                    <input type="text" id="pack-hijo-codigo" placeholder="Ingrese código del artículo hijo">
-                    
-                    <label for="pack-unidades">Unidades por Pack:</label>
-                    <input type="number" id="pack-unidades" min="1" placeholder="Ingrese cantidad de unidades">
+                    <label for="pack-padre-codigo">📦 Artículo Pack Padre (solo lectura):</label>
+                    <input type="text" id="pack-padre-codigo" readonly style="background-color: #e9ecef; font-weight: 600; color: #495057;">
+
+                    <label for="pack-hijo-codigo">🔗 Artículo Hijo:</label>
+                    <input type="text" id="pack-hijo-codigo" placeholder="Código o descripción del artículo hijo">
+
+                    <label for="pack-unidades">🔢 Unidades por Pack:</label>
+                    <input type="number" id="pack-unidades" min="1" placeholder="Ej: 2">
                     
                     <div id="pack-mensaje" class="mensaje-info" style="display:none;"></div>
                 </div>
@@ -1197,7 +1278,8 @@
         </footer>
     </div>
 
-    <script src="/js/produccion.js?v=3.5"></script>
+    <script src="/js/produccion.js?v=8.0"></script>
+    <script src="/js/produccion-resumen-expandible.js?v=8.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1485,26 +1567,32 @@
         }
 
         // Función para renderizar una fila de artículo en el resumen
+        // Ahora usa la versión expandible del módulo externo
         function renderizarFilaResumen(articulo, tipo) {
+            // Usar la función del módulo expandible si está disponible
+            if (typeof window.renderizarFilaResumenExpandible === 'function') {
+                return window.renderizarFilaResumenExpandible(articulo, tipo);
+            }
+            
+            // Fallback: versión simple sin expansión
             const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
-            const rowClass = tipo === 'FALTANTE' ? 'faltante-row' : 'parcial-row';
+            const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row' : 'parcial-row expandible-row';
             const codigoArticulo = articulo.codigo || articulo.articulo || articulo.articulo_numero || '-';
             
-            // Formatear números a 2 decimales
             const pedidoTotal = formatearNumeroResumen(articulo.pedido_total || articulo.cantidad_pedida || 0);
             const stockDisponible = formatearNumeroResumen(articulo.stock_disponible || articulo.stock || 0);
             const faltante = formatearNumeroResumen(articulo.faltante || articulo.cantidad_faltante || 0);
             
             return `
-                <tr class="${rowClass}">
-                    <td>${codigoArticulo}</td>
+                <tr class="${rowClass}" data-articulo="${codigoArticulo}" onclick="if(typeof window.handleFilaClick === 'function') window.handleFilaClick('${codigoArticulo}', event)">
+                    <td class="col-articulo">${codigoArticulo}</td>
                     <td>${articulo.descripcion || articulo.nombre || '-'}</td>
                     <td>${pedidoTotal}</td>
                     <td>${stockDisponible}</td>
                     <td class="cantidad-faltante">${faltante}</td>
                     <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
-                    <td>
-                        <button class="pack-button" onclick="abrirModalPack('${codigoArticulo}')">🧩 Pack</button>
+                    <td onclick="event.stopPropagation()">
+                        <button class="pack-button pack-config-btn" data-codigo="${codigoArticulo}" onclick="abrirModalPack('${codigoArticulo}')">🧩 Pack</button>
                     </td>
                 </tr>
             `;
@@ -1583,38 +1671,10 @@
         }
 
         // Función para observar cambios en la tabla del panel principal
+        // DESHABILITADA - causaba bucles infinitos al detectar cambios en íconos
         function configurarObservadorTabla() {
-            const articulosContainer = document.getElementById('articulos-container');
-            if (!articulosContainer) {
-                console.debug('⚠️ No se encontró articulos-container para observar');
-                return;
-            }
-
-            // Crear observer para detectar cambios en el contenido de la tabla
-            const observer = new MutationObserver((mutations) => {
-                let tablaModificada = false;
-                
-                mutations.forEach((mutation) => {
-                    // Detectar si se agregaron/removieron nodos o cambió el contenido
-                    if (mutation.type === 'childList' || mutation.type === 'subtree') {
-                        tablaModificada = true;
-                    }
-                });
-                
-                if (tablaModificada) {
-                    console.debug('🔄 Detectado cambio en tabla principal, actualizando resumen...');
-                    setTimeout(actualizarResumen, 300); // Delay corto para que se complete el renderizado
-                }
-            });
-
-            // Observar cambios en el contenedor de artículos y sus descendientes
-            observer.observe(articulosContainer, {
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
-
-            console.debug('✅ Observer de tabla configurado');
+            console.debug('⚠️ Observer de tabla DESHABILITADO para evitar bucles infinitos');
+            return;
         }
 
         // Función para sincronizar con todos los controles del panel principal
@@ -1655,8 +1715,8 @@
                 });
             }
 
-            // Configurar observer para detectar cambios automáticamente en la tabla
-            configurarObservadorTabla();
+            // Observer deshabilitado - usar actualizar manual
+            // configurarObservadorTabla();
         }
 
         // Inicializar el resumen cuando se carga la página
@@ -1667,6 +1727,13 @@
             setTimeout(() => {
                 actualizarResumen();
                 sincronizarConInformePrincipal();
+                
+                // Actualizar íconos UNA SOLA VEZ después de la carga inicial
+                setTimeout(() => {
+                    if (typeof window.actualizarIconosExpansion === 'function') {
+                        window.actualizarIconosExpansion();
+                    }
+                }, 3000);
             }, 2000); // Delay mayor para asegurar que el panel principal esté listo
         });
 
@@ -1679,7 +1746,7 @@
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
         
         // Función para abrir modal pack (disponible globalmente)
-        window.abrirModalPack = function(codigoPadre) {
+        window.abrirModalPack = async function(codigoPadre) {
             const modal = document.getElementById('modal-pack');
             const padreCodigo = document.getElementById('pack-padre-codigo');
             const hijoCodigo = document.getElementById('pack-hijo-codigo');
@@ -1689,7 +1756,7 @@
             
             if (!modal || !padreCodigo) return;
             
-            // Limpiar formulario
+            // Limpiar formulario inicialmente
             padreCodigo.value = codigoPadre;
             hijoCodigo.value = '';
             unidades.value = '';
@@ -1700,7 +1767,60 @@
             // Mostrar modal
             modal.style.display = 'flex';
             
-            console.debug('🧩 Modal pack abierto para:', codigoPadre);
+            console.debug('🧩 [MODAL-PACK] Modal abierto para:', codigoPadre);
+            
+            // Cargar descripción del padre y datos del pack desde stock_real_consolidado
+            try {
+                console.debug('🔍 [MODAL-PACK] Consultando stock_real_consolidado...');
+                
+                // Buscar artículo padre en stock_real_consolidado
+                const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(codigoPadre)}&exact=true`);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.articulos && result.articulos.length > 0) {
+                        const articulo = result.articulos.find(art => 
+                            art.codigo === codigoPadre || art.codigo.toString() === codigoPadre.toString()
+                        );
+                        
+                        if (articulo) {
+                            // ✅ Mostrar DESCRIPCIÓN del padre en el label
+                            const labelPadre = document.querySelector('label[for="pack-padre-codigo"]');
+                            if (labelPadre) {
+                                labelPadre.textContent = `Artículo Padre: ${articulo.descripcion || codigoPadre}`;
+                            }
+                            
+                            // Si tiene pack configurado, precargar datos
+                            if (articulo.pack_hijo_codigo && articulo.pack_unidades) {
+                                hijoCodigo.value = articulo.pack_hijo_codigo;
+                                unidades.value = articulo.pack_unidades;
+                                quitarBtn.style.display = 'inline-block';
+                                
+                                // Buscar descripción del hijo
+                                const hijoResp = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(articulo.pack_hijo_codigo)}&exact=true`);
+                                if (hijoResp.ok) {
+                                    const hijoResult = await hijoResp.json();
+                                    if (hijoResult.success && hijoResult.articulos && hijoResult.articulos.length > 0) {
+                                        const hijoArt = hijoResult.articulos[0];
+                                        const hijoDesc = hijoArt.descripcion || articulo.pack_hijo_codigo;
+                                        
+                                        // Actualizar label del hijo con descripción
+                                        const labelHijo = document.querySelector('label[for="pack-hijo-codigo"]');
+                                        if (labelHijo) {
+                                            labelHijo.textContent = `Artículo Hijo: ${hijoDesc}`;
+                                        }
+                                        
+                                        mostrarMensajePack(`📦 Pack configurado: ${articulo.pack_unidades} unidades de "${hijoDesc}"`, 'info');
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('❌ [MODAL-PACK] Error al cargar datos:', error);
+            }
         };
 
         // Función para cerrar modal pack (disponible globalmente)
@@ -1881,5 +2001,6 @@
         });
 
     </script>
-</body>
+<script src="/js/modal-pack-debug.js?v=9.0"></script></body>
 </html>
+

@@ -34,7 +34,7 @@ const {
     modificarCantidadDeArticulo,
     obtenerInfoEliminacion
 } = require('../controllers/carro');
-const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad } = require('../controllers/articulos');
+const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, actualizarProduccionExterna, actualizarKilosUnidad, buscarArticulos } = require('../controllers/articulos');
 
 // Controladores para pedidos por cliente
 const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes, actualizarPackMapping } = require('../controllers/pedidosPorCliente');
@@ -1348,6 +1348,7 @@ const { agregarStockUsuario } = require('../controllers/ingredientesStockUsuario
 const {
     obtenerRelacionesCarro,
     obtenerRelacionPorArticulo,
+    obtenerRelacionesPorArticulos,
     crearRelacion,
     actualizarRelacion,
     eliminarRelacion,
@@ -1579,16 +1580,20 @@ router.get('/carro/:id/articulos-resumen', async (req, res) => {
             const articulosQuery = `
                 SELECT 
                     ra.articulo_numero,
-                    a.nombre,
+                    COALESCE(
+                        NULLIF(TRIM(src.descripcion), ''),
+                        NULLIF(TRIM(a.nombre), ''),
+                        ra.articulo_numero
+                    ) as nombre,
                     SUM(ra.cantidad * ca.cantidad) as cantidad_total,
                     COALESCE(src.stock_consolidado, 0) as stock_actual
                 FROM carros_articulos ca
                 JOIN recetas r ON r.articulo_numero = ca.articulo_numero
                 JOIN receta_articulos ra ON ra.receta_id = r.id
-                LEFT JOIN articulos a ON a.numero = ra.articulo_numero
                 LEFT JOIN stock_real_consolidado src ON src.articulo_numero = ra.articulo_numero
+                LEFT JOIN articulos a ON a.codigo_barras = ra.articulo_numero
                 WHERE ca.carro_id = $1
-                GROUP BY ra.articulo_numero, a.nombre, src.stock_consolidado
+                GROUP BY ra.articulo_numero, src.descripcion, a.nombre, src.stock_consolidado
                 ORDER BY ra.articulo_numero
             `;
 
@@ -2290,6 +2295,25 @@ router.get('/impresion-presupuesto', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Error interno en ruta de impresión',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Ruta para buscar artículos con búsqueda exacta o parcial
+ * GET /api/produccion/buscar-articulos?q=texto&exact=true
+ */
+router.get('/buscar-articulos', async (req, res) => {
+    try {
+        console.log('🔍 [BUSCAR-ART] Ruta GET /buscar-articulos');
+        await buscarArticulos(req, res);
+    } catch (error) {
+        console.error('❌ [BUSCAR-ART] Error en ruta /buscar-articulos:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de búsqueda de artículos',
             message: error.message,
             timestamp: new Date().toISOString()
         });

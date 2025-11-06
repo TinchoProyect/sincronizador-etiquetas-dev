@@ -528,6 +528,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                     ac.articulo_numero,
                     ac.pedido_total,
                     COALESCE(
+                        NULLIF(TRIM(src.descripcion), ''),
                         NULLIF(TRIM(a.nombre), ''),
                         ac.articulo_numero
                     ) as descripcion,
@@ -585,13 +586,59 @@ const obtenerPedidosArticulos = async (req, res) => {
         // Aplicar filtros adicionales
         let articulos = result.rows;
         
-        // Filtro por texto (q)
+        // Filtro por texto (q) y búsqueda en stock_real_consolidado para artículos no pedidos
         if (q && q.trim()) {
             const filtroTexto = q.trim().toLowerCase();
+            
+            // Filtrar artículos que ya están en presupuestos
             articulos = articulos.filter(art => 
                 art.articulo_numero.toLowerCase().includes(filtroTexto) ||
                 art.descripcion.toLowerCase().includes(filtroTexto)
             );
+            
+            // Si buscamos por código de barras exacto y NO está en los resultados, buscar en stock_real_consolidado
+            const busquedaExacta = q.trim();
+            const yaExiste = articulos.some(art => art.articulo_numero === busquedaExacta);
+            
+            if (!yaExiste) {
+                console.log(`🔍 [PROD_ART] Artículo ${busquedaExacta} no está en presupuestos, buscando en stock_real_consolidado...`);
+                
+                const stockQuery = `
+                    SELECT 
+                        src.codigo_barras as articulo_numero,
+                        COALESCE(
+                            NULLIF(TRIM(src.descripcion), ''),
+                            src.codigo_barras
+                        ) as descripcion,
+                        0 as pedido_total,
+                        ROUND(COALESCE(
+                            CASE 
+                                WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                                ELSE src.stock_consolidado
+                            END, 0
+                        )::numeric, 2) as stock_disponible,
+                        0 as faltante,
+                        'COMPLETO' as estado,
+                        src.es_pack,
+                        src.pack_hijo_codigo,
+                        src.pack_unidades,
+                        hijo.stock_consolidado as stock_hijo
+                    FROM public.stock_real_consolidado src
+                    LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                    WHERE src.codigo_barras = $1 OR src.articulo_numero = $1
+                    LIMIT 1
+                `;
+                
+                const stockResult = await pool.query(stockQuery, [busquedaExacta]);
+                
+                if (stockResult.rows.length > 0) {
+                    console.log(`✅ [PROD_ART] Artículo ${busquedaExacta} encontrado en stock_real_consolidado`);
+                    articulos.push(stockResult.rows[0]);
+                } else {
+                    console.log(`❌ [PROD_ART] Artículo ${busquedaExacta} no encontrado en stock_real_consolidado`);
+                }
+            }
         }
         
         // Filtro por estado
@@ -655,13 +702,17 @@ const obtenerPedidosArticulos = async (req, res) => {
             });
         }
 
-        // Limpiar campos internos del response
-        articulos = articulos.map(art => {
-            const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
-            return articuloLimpio;
-        });
+        // Limpiar campos internos del response SOLO si no se solicita explícitamente incluirlos
+        const includePack = req.query.include_pack === 'true';
+        
+        if (!includePack) {
+            articulos = articulos.map(art => {
+                const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
+                return articuloLimpio;
+            });
+        }
 
-        // Actualizar response con datos limpios
+        // Actualizar response con datos (limpios o con pack según parámetro)
         response.data = articulos;
         
         console.log(`✅ [PROD_ART] Consulta exitosa: ${articulos.length} artículos encontrados`);
