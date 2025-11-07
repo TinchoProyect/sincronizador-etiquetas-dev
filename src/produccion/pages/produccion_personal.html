@@ -470,6 +470,32 @@
 
     <!-- Modal de Medición para Carros Internos -->
     <div id="modalMedicionInterna" class="modal">
+        <!-- Vista Minimizada -->
+        <div id="modal-medicion-minimizado" class="modal-minimizado" style="display: none;">
+            <div class="minimizado-info">
+                <span class="minimizado-titulo">⏱️ Etapa 1: Preparación</span>
+                <span class="minimizado-carro">Carro #<span id="carro-id-minimizado"></span></span>
+            </div>
+            <div class="minimizado-timer">
+                <span id="timer-etapa1-minimizado" class="timer-display corriendo">00:00</span>
+            </div>
+            <div class="minimizado-acciones">
+                <button id="btn-pausa-continuar-etapa1-minimizado" class="btn btn-warning btn-sm" onclick="togglePausaContinuarEtapa1()">
+                    ⏸️ Pausar
+                </button>
+                <button class="btn btn-info btn-sm" onclick="restaurarModal()">
+                    ⬆️ Restaurar
+                </button>
+                <button id="btn-carro-listo-minimizado" class="btn btn-success btn-sm" onclick="carroListoParaProducirMedicion()" style="display: none;">
+                    ✅ Carro listo para producir
+                </button>
+            </div>
+            <div class="minimizado-instructivo">
+                <small>💡 Preparar ingredientes y materiales necesarios para la producción</small>
+            </div>
+        </div>
+
+        <!-- Vista Normal del Modal -->
         <div class="modal-content modal-medicion-content">
             <div class="modal-header">
                 <h2>⏱️ Modo Medición </h2>

@@ -11,6 +11,9 @@ let estadoModal = {
     carroId: null,
     usuarioId: null,
     etapaActual: 0, // 0=cerrado, 1=preparación, 2=medición, 3=finalización, 4=resumen
+    modalMinimizado: false, // Estado de minimización del modal
+    etapa1Pausada: false, // Estado de pausa de Etapa 1
+    etapa1TiempoAcumulado: 0, // Tiempo acumulado antes de pausar
     timers: {
         etapa1: { interval: null, start: null, elapsed: 0 },
         etapa2: { interval: null, start: null, elapsed: 0 },
@@ -74,8 +77,12 @@ export async function abrirModalMedicion(carroId) {
             throw new Error('No se encontró el modal de medición');
         }
         
-        // Actualizar info del carro
+        // Actualizar info del carro en ambas vistas
         document.getElementById('carro-id-medicion').textContent = carroId;
+        const carroIdMinimizado = document.getElementById('carro-id-minimizado');
+        if (carroIdMinimizado) {
+            carroIdMinimizado.textContent = carroId;
+        }
         
         // Mostrar modal con animación
         modal.style.display = 'block';
@@ -102,6 +109,12 @@ export function cerrarModalMedicion() {
         // Detener todos los intervalos
         detenerTodosLosTimers();
         
+        // Ocultar vista minimizada si está visible
+        const vistaMinimizada = document.getElementById('modal-medicion-minimizado');
+        if (vistaMinimizada) {
+            vistaMinimizada.style.display = 'none';
+        }
+        
         // Cerrar con animación
         modal.classList.remove('show');
         setTimeout(() => {
@@ -112,6 +125,9 @@ export function cerrarModalMedicion() {
                 carroId: null,
                 usuarioId: null,
                 etapaActual: 0,
+                modalMinimizado: false,
+                etapa1Pausada: false,
+                etapa1TiempoAcumulado: 0,
                 timers: {
                     etapa1: { interval: null, start: null, elapsed: 0 },
                     etapa2: { interval: null, start: null, elapsed: 0 },
@@ -300,6 +316,9 @@ async function mostrarEtapa1() {
         timerDisplay.classList.add('corriendo');
         timerDisplay.classList.remove('finalizado');
         iniciarIntervalEtapa1();
+        
+        // Sincronizar botones en todas las vistas
+        sincronizarBotonesCarroListo(true);
     } else if (timer.elapsed > 0) {
         // Timer finalizado
         btnInicio.style.display = 'none';
@@ -307,12 +326,18 @@ async function mostrarEtapa1() {
         timerDisplay.textContent = formatearTiempo(timer.elapsed);
         timerDisplay.classList.remove('corriendo');
         timerDisplay.classList.add('finalizado');
+        
+        // Sincronizar botones en todas las vistas
+        sincronizarBotonesCarroListo(true);
     } else {
         // Sin iniciar
         btnInicio.style.display = 'inline-block';
         btnCarroListo.style.display = 'none';
         timerDisplay.textContent = '00:00';
         timerDisplay.classList.remove('corriendo', 'finalizado');
+        
+        // Ocultar botones en todas las vistas
+        sincronizarBotonesCarroListo(false);
     }
 }
 
@@ -358,8 +383,6 @@ async function mostrarEtapa3() {
 // ==========================================
 
 window.iniciarEtapa1Medicion = async function() {
-
-
    try {
         log('Iniciando Etapa 1...');
         
@@ -374,8 +397,16 @@ window.iniciarEtapa1Medicion = async function() {
         
         estadoModal.etapaActual = 1;
         estadoModal.timers.etapa1.start = Date.now();
+        estadoModal.etapa1Pausada = false;
+        estadoModal.etapa1TiempoAcumulado = 0;
         
         await actualizarUIModal();
+        
+        // Sincronizar botones en todas las vistas
+        sincronizarBotonesCarroListo(true);
+        
+        // Minimizar modal automáticamente después de iniciar
+        minimizarModal();
         
         log('Etapa 1 iniciada correctamente', 'success');
         
@@ -396,8 +427,22 @@ function iniciarIntervalEtapa1() {
     if (display) display.textContent = '⏱ 00:00';
     
     timer.interval = setInterval(() => {
-        const elapsed = Date.now() - timer.start;
-        document.getElementById('timer-etapa1').textContent = formatearTiempo(elapsed);
+        if (!estadoModal.etapa1Pausada) {
+            const elapsed = estadoModal.etapa1TiempoAcumulado + (Date.now() - timer.start);
+            const tiempoFormateado = formatearTiempo(elapsed);
+            
+            // Actualizar timer en vista normal
+            const displayNormal = document.getElementById('timer-etapa1');
+            if (displayNormal) {
+                displayNormal.textContent = tiempoFormateado;
+            }
+            
+            // Actualizar timer en vista minimizada
+            const displayMinimizado = document.getElementById('timer-etapa1-minimizado');
+            if (displayMinimizado) {
+                displayMinimizado.textContent = tiempoFormateado;
+            }
+        }
     }, 1000);
 }
 
@@ -405,13 +450,18 @@ window.carroListoParaProducirMedicion = async function() {
     try {
         log('Finalizando Etapa 1 e iniciando Etapa 2...');
         
+        // Ocultar botones inmediatamente en todas las vistas
+        sincronizarBotonesCarroListo(false);
+        
         // Detener timer de Etapa 1
         const timer = estadoModal.timers.etapa1;
         if (timer.interval) {
             clearInterval(timer.interval);
             timer.interval = null;
         }
-        timer.elapsed = Date.now() - timer.start;
+        
+        // Calcular tiempo total incluyendo pausas
+        timer.elapsed = estadoModal.etapa1TiempoAcumulado + (Date.now() - timer.start);
         
         // Finalizar Etapa 1 en backend
         const response1 = await fetch(
@@ -439,6 +489,12 @@ window.carroListoParaProducirMedicion = async function() {
         }
         
         estadoModal.etapaActual = 2;
+        
+        // Restaurar modal si está minimizado
+        if (estadoModal.modalMinimizado) {
+            restaurarModal();
+        }
+        
         await actualizarUIModal();
         
         log('Transición E1→E2 completada correctamente', 'success');
@@ -446,6 +502,9 @@ window.carroListoParaProducirMedicion = async function() {
     } catch (error) {
         log(`Error en transición E1→E2: ${error.message}`, 'error');
         alert(`Error: ${error.message}`);
+        
+        // Restaurar botones en caso de error
+        sincronizarBotonesCarroListo(true);
     }
 };
 
@@ -885,6 +944,204 @@ async function cargarDetallesArticulosResumen() {
         log(`Error cargando detalles de artículos: ${error.message}`, 'error');
     }
 }
+
+// ==========================================
+// FUNCIONES DE MINIMIZACIÓN Y RESTAURACIÓN
+// ==========================================
+
+function minimizarModal() {
+    try {
+        log('Minimizando modal...');
+        
+        const modalContent = document.querySelector('#modalMedicionInterna .modal-medicion-content');
+        const vistaMinimizada = document.getElementById('modal-medicion-minimizado');
+        
+        if (!modalContent || !vistaMinimizada) {
+            log('No se encontraron elementos para minimizar', 'error');
+            return;
+        }
+        
+        // Ocultar contenido del modal
+        modalContent.style.display = 'none';
+        
+        // Mostrar vista minimizada
+        vistaMinimizada.style.display = 'flex';
+        
+        // Actualizar estado
+        estadoModal.modalMinimizado = true;
+        
+        // Actualizar botón de pausa/continuar
+        actualizarBotonPausaContinuar();
+        
+        // Sincronizar visibilidad del botón "Carro listo" en vista minimizada
+        const timer = estadoModal.timers.etapa1;
+        const mostrarBoton = (timer.start && !timer.elapsed) || timer.elapsed > 0;
+        sincronizarBotonesCarroListo(mostrarBoton);
+        
+        log('Modal minimizado correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error minimizando modal: ${error.message}`, 'error');
+    }
+}
+
+function restaurarModal() {
+    try {
+        log('Restaurando modal...');
+        
+        const modalContent = document.querySelector('#modalMedicionInterna .modal-medicion-content');
+        const vistaMinimizada = document.getElementById('modal-medicion-minimizado');
+        
+        if (!modalContent || !vistaMinimizada) {
+            log('No se encontraron elementos para restaurar', 'error');
+            return;
+        }
+        
+        // Mostrar contenido del modal
+        modalContent.style.display = 'block';
+        
+        // Ocultar vista minimizada
+        vistaMinimizada.style.display = 'none';
+        
+        // Actualizar estado
+        estadoModal.modalMinimizado = false;
+        
+        log('Modal restaurado correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error restaurando modal: ${error.message}`, 'error');
+    }
+}
+
+// Hacer funciones disponibles globalmente
+window.minimizarModal = minimizarModal;
+window.restaurarModal = restaurarModal;
+
+// ==========================================
+// FUNCIONES DE PAUSA/CONTINUAR ETAPA 1
+// ==========================================
+
+function pausarEtapa1() {
+    try {
+        log('Pausando Etapa 1...');
+        
+        if (estadoModal.etapa1Pausada) {
+            log('Etapa 1 ya está pausada', 'info');
+            return;
+        }
+        
+        const timer = estadoModal.timers.etapa1;
+        
+        // Acumular tiempo transcurrido
+        estadoModal.etapa1TiempoAcumulado += (Date.now() - timer.start);
+        
+        // Marcar como pausada
+        estadoModal.etapa1Pausada = true;
+        
+        // Actualizar botón
+        actualizarBotonPausaContinuar();
+        
+        log('Etapa 1 pausada correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error pausando Etapa 1: ${error.message}`, 'error');
+    }
+}
+
+function continuarEtapa1() {
+    try {
+        log('Continuando Etapa 1...');
+        
+        if (!estadoModal.etapa1Pausada) {
+            log('Etapa 1 no está pausada', 'info');
+            return;
+        }
+        
+        const timer = estadoModal.timers.etapa1;
+        
+        // Reiniciar el punto de inicio
+        timer.start = Date.now();
+        
+        // Desmarcar pausa
+        estadoModal.etapa1Pausada = false;
+        
+        // Actualizar botón
+        actualizarBotonPausaContinuar();
+        
+        log('Etapa 1 continuada correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error continuando Etapa 1: ${error.message}`, 'error');
+    }
+}
+
+function actualizarBotonPausaContinuar() {
+    // Actualizar botón en vista minimizada
+    const btnPausaContinuarMin = document.getElementById('btn-pausa-continuar-etapa1-minimizado');
+    
+    if (btnPausaContinuarMin) {
+        if (estadoModal.etapa1Pausada) {
+            btnPausaContinuarMin.textContent = '▶️ Continuar';
+            btnPausaContinuarMin.classList.remove('btn-warning');
+            btnPausaContinuarMin.classList.add('btn-success');
+        } else {
+            btnPausaContinuarMin.textContent = '⏸️ Pausar';
+            btnPausaContinuarMin.classList.remove('btn-success');
+            btnPausaContinuarMin.classList.add('btn-warning');
+        }
+    }
+}
+
+window.togglePausaContinuarEtapa1 = function() {
+    if (estadoModal.etapa1Pausada) {
+        continuarEtapa1();
+    } else {
+        pausarEtapa1();
+    }
+};
+
+// ==========================================
+// SINCRONIZACIÓN DE BOTONES
+// ==========================================
+
+/**
+ * Sincroniza la visibilidad del botón "Carro listo para producir" en todas las vistas
+ * @param {boolean} mostrar - true para mostrar, false para ocultar
+ */
+function sincronizarBotonesCarroListo(mostrar) {
+    try {
+        // Botón en el workspace principal
+        const btnWorkspace = document.getElementById('carro-preparado');
+        
+        // Botón en el modal normal
+        const btnModalNormal = document.getElementById('btn-carro-listo-medicion');
+        
+        // Botón en la vista minimizada
+        const btnMinimizado = document.getElementById('btn-carro-listo-minimizado');
+        
+        const displayValue = mostrar ? 'inline-block' : 'none';
+        
+        if (btnWorkspace) {
+            btnWorkspace.style.display = displayValue;
+        }
+        
+        if (btnModalNormal) {
+            btnModalNormal.style.display = displayValue;
+        }
+        
+        if (btnMinimizado) {
+            btnMinimizado.style.display = displayValue;
+        }
+        
+        log(`Botones "Carro listo" sincronizados: ${mostrar ? 'VISIBLE' : 'OCULTO'}`, 'info');
+        
+    } catch (error) {
+        log(`Error sincronizando botones: ${error.message}`, 'error');
+    }
+}
+
+// Hacer función disponible globalmente
+window.sincronizarBotonesCarroListo = sincronizarBotonesCarroListo;
 
 // Log de inicialización
 log('Módulo de medición interna inicializado correctamente', 'success');
