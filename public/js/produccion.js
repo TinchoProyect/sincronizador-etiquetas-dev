@@ -234,21 +234,7 @@ function configurarEventListeners() {
         confirmarAsignacion.addEventListener('click', confirmarAsignacionFaltantes);
     }
     
-    // Modal de pack
-    configurarEventListenersPack();
-}
-
-function configurarEventListenersPack() {
-    const packGuardar = document.getElementById('pack-guardar');
-    const packQuitar = document.getElementById('pack-quitar');
-    
-    if (packGuardar) {
-        packGuardar.addEventListener('click', guardarPackMapping);
-    }
-    
-    if (packQuitar) {
-        packQuitar.addEventListener('click', quitarPackMapping);
-    }
+    // NOTA: Event listeners del modal de pack están en produccion.html (inline)
 }
 
 // ===== FUNCIONES DE PEDIDOS POR CLIENTE =====
@@ -761,217 +747,9 @@ function mostrarMensajeModal(texto, tipo) {
 }
 
 // ===== FUNCIONES DE MODAL DE PACK =====
-
-function abrirModalPack__legacy(codigoPadre) {
-    const modal = document.getElementById('modal-pack');
-    const padreCodigo = document.getElementById('pack-padre-codigo');
-    const hijoCodigo = document.getElementById('pack-hijo-codigo');
-    const unidades = document.getElementById('pack-unidades');
-    const mensaje = document.getElementById('pack-mensaje');
-    const quitarBtn = document.getElementById('pack-quitar');
-    
-    if (!modal || !padreCodigo) return;
-    
-    // Limpiar formulario
-    padreCodigo.value = codigoPadre;
-    hijoCodigo.value = '';
-    unidades.value = '';
-    mensaje.style.display = 'none';
-    mensaje.innerHTML = '';
-    quitarBtn.style.display = 'none';
-    
-    // Cargar datos existentes si los hay
-    cargarDatosPackExistente(codigoPadre);
-    
-    // Mostrar modal
-    modal.style.display = 'flex';
-}
-
-async function cargarDatosPackExistente(codigoPadre) {
-    try {
-        // Buscar en la tabla actual si hay información de pack
-        const tabla = document.querySelector('#articulos-container .articulos-tabla tbody');
-        if (tabla) {
-            const filas = tabla.querySelectorAll('tr');
-            for (const fila of filas) {
-                const celdas = fila.querySelectorAll('td');
-                if (celdas.length > 0 && celdas[0].textContent.trim() === codigoPadre) {
-                    // Aquí podrías verificar si ya tiene configuración de pack
-                    // Por ahora, simplemente mostramos el botón quitar si existe alguna configuración
-                    const quitarBtn = document.getElementById('pack-quitar');
-                    if (quitarBtn) {
-                        quitarBtn.style.display = 'inline-block';
-                    }
-                    break;
-                }
-            }
-        }
-    } catch (error) {
-        console.error('❌ Error al cargar datos de pack existente:', error);
-    }
-}
-
-function cerrarModalPack() {
-    const modal = document.getElementById('modal-pack');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-async function guardarPackMapping() {
-    const padreCodigo = document.getElementById('pack-padre-codigo');
-    const hijoCodigo = document.getElementById('pack-hijo-codigo');
-    const unidades = document.getElementById('pack-unidades');
-    const mensaje = document.getElementById('pack-mensaje');
-    
-    if (!padreCodigo || !hijoCodigo || !unidades || !mensaje) return;
-    
-    // Validaciones
-    if (!hijoCodigo.value.trim()) {
-        mostrarMensajePack('Por favor ingrese el código del artículo hijo', 'error');
-        return;
-    }
-    
-    if (!unidades.value || parseInt(unidades.value) <= 0) {
-        mostrarMensajePack('Por favor ingrese una cantidad válida de unidades', 'error');
-        return;
-    }
-    
-    try {
-        const payload = {
-            padre_codigo_barras: padreCodigo.value.trim(),
-            hijo_codigo_barras: hijoCodigo.value.trim(),
-            unidades: parseInt(unidades.value)
-        };
-        
-        console.log('📤 Guardando mapeo pack:', payload);
-        
-        const response = await fetch('/api/produccion/pack-map', {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            mostrarMensajePack('✅ Mapeo pack guardado correctamente', 'success');
-            mostrarToast('Mapeo pack guardado correctamente', 'success');
-            
-            // Mostrar botón quitar
-            const quitarBtn = document.getElementById('pack-quitar');
-            if (quitarBtn) {
-                quitarBtn.style.display = 'inline-block';
-            }
-            
-            setTimeout(() => {
-                cerrarModalPack();
-                // Recargar ambas vistas: panel principal y resumen
-                refrescarVistasPack();
-            }, 2000);
-        } else {
-            mostrarMensajePack(`❌ ${data.error || 'Error al guardar mapeo pack'}`, 'error');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error al guardar mapeo pack:', error);
-        mostrarMensajePack('❌ Error de conexión', 'error');
-    }
-}
-
-async function quitarPackMapping() {
-    const padreCodigo = document.getElementById('pack-padre-codigo');
-    const mensaje = document.getElementById('pack-mensaje');
-    
-    if (!padreCodigo || !mensaje) return;
-    
-    if (!confirm('¿Está seguro de que desea quitar el mapeo de pack para este artículo?')) {
-        return;
-    }
-    
-    try {
-        const payload = {
-            padre_codigo_barras: padreCodigo.value.trim(),
-            hijo_codigo_barras: null,
-            unidades: null
-        };
-        
-        console.log('📤 Quitando mapeo pack:', payload);
-        
-        const response = await fetch('/api/produccion/pack-map', {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            mostrarMensajePack('✅ Mapeo pack eliminado correctamente', 'success');
-            mostrarToast('Mapeo pack eliminado correctamente', 'success');
-            
-            // Ocultar botón quitar y limpiar campos
-            const quitarBtn = document.getElementById('pack-quitar');
-            const hijoCodigo = document.getElementById('pack-hijo-codigo');
-            const unidades = document.getElementById('pack-unidades');
-            
-            if (quitarBtn) quitarBtn.style.display = 'none';
-            if (hijoCodigo) hijoCodigo.value = '';
-            if (unidades) unidades.value = '';
-            
-            setTimeout(() => {
-                cerrarModalPack();
-                // Recargar ambas vistas: panel principal y resumen
-                refrescarVistasPack();
-            }, 2000);
-        } else {
-            mostrarMensajePack(`❌ ${data.error || 'Error al quitar mapeo pack'}`, 'error');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error al quitar mapeo pack:', error);
-        mostrarMensajePack('❌ Error de conexión', 'error');
-    }
-}
-
-function mostrarMensajePack(texto, tipo) {
-    const mensaje = document.getElementById('pack-mensaje');
-    if (!mensaje) return;
-    
-    mensaje.innerHTML = texto;
-    mensaje.className = tipo === 'error' ? 'mensaje-error' : 
-                       tipo === 'success' ? 'mensaje-exito' : 'mensaje-info';
-    mensaje.style.display = 'block';
-}
-
-function mostrarToast(texto, tipo = 'success') {
-    // Crear elemento toast
-    const toast = document.createElement('div');
-    toast.className = `toast ${tipo === 'error' ? 'error' : ''}`;
-    toast.textContent = texto;
-    
-    // Agregar al DOM
-    document.body.appendChild(toast);
-    
-    // Mostrar con animación
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 100);
-    
-    // Ocultar y remover después de 3 segundos
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 300);
-    }, 3000);
-}
+// NOTA: La implementación activa del modal de pack está en produccion.html (inline)
+// Funciones: window.abrirModalPack(), window.cerrarModalPack()
+// Event listeners: Configurados en DOMContentLoaded de produccion.html
 
 // ===== FUNCIONES UTILITARIAS =====
 
@@ -1020,7 +798,7 @@ window.togglePresupuesto = togglePresupuesto;
 window.abrirModalAsignar = abrirModalAsignar;
 window.abrirModalAsignarArticulo = abrirModalAsignarArticulo;
 window.cerrarModalAsignar = cerrarModalAsignar;
-// window.abrirModalPack = abrirModalPack; // deshabilitado: fuente �nica en produccion.html
+// window.abrirModalPack = abrirModalPack; // deshabilitado: fuente �nica en produccion.html
 window.cerrarModalPack = cerrarModalPack;
 
 console.log('✅ Archivo produccion.js cargado completamente');
