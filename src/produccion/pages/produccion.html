@@ -1193,23 +1193,63 @@
         <div id="modal-pack" class="modal-pack-overlay" style="display:none;">
             <div class="modal-pack-content">
                 <div class="modal-pack-header">
-                    <h3>Configurar Pack</h3>
+                    <h3 id="modal-pack-titulo">Crear nuevo pack</h3>
                     <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalPack()">&times;</button>
                 </div>
                 <div class="modal-pack-body">
-                    <label for="pack-padre-codigo">📦 Artículo Pack Padre (solo lectura):</label>
-                    <input type="text" id="pack-padre-codigo" readonly style="background-color: #e9ecef; font-weight: 600; color: #495057;">
-
-                    <label for="pack-hijo-codigo">🔗 Artículo Hijo:</label>
-                    <input type="text" id="pack-hijo-codigo" placeholder="Código o descripción del artículo hijo">
-
-                    <label for="pack-unidades">🔢 Unidades por Pack:</label>
-                    <input type="number" id="pack-unidades" min="1" placeholder="Ej: 2">
+                    <!-- Información del padre (sin input, solo display) -->
+                    <div style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #6f42c1;">
+                        <div style="font-size: 18px; font-weight: 700; color: #333; margin-bottom: 5px;" id="pack-padre-descripcion">
+                            Cargando...
+                        </div>
+                        <div style="font-size: 12px; color: #6c757d; font-weight: 500;">
+                            Codigo: <span id="pack-padre-codigo-display" style="font-family: monospace;">-</span>
+                        </div>
+                    </div>
                     
-                    <div id="pack-mensaje" class="mensaje-info" style="display:none;"></div>
+                    <!-- Campo oculto para mantener el código del padre -->
+                    <input type="hidden" id="pack-padre-codigo">
+
+                    <!-- Búsqueda de artículo hijo con autocompletado -->
+                    <label for="pack-hijo-busqueda" style="font-weight: 600; margin-bottom: 8px; display: block;">
+                        🔗 Articulo Hijo:
+                    </label>
+                    <div style="position: relative; margin-bottom: 15px;">
+                        <input 
+                            type="text" 
+                            id="pack-hijo-busqueda" 
+                            placeholder="Buscar por codigo o descripcion..."
+                            autocomplete="off"
+                            style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                        
+                        <!-- Lista desplegable de resultados -->
+                        <div id="pack-hijo-resultados" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #6f42c1; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 1001;">
+                            <!-- Resultados dinámicos -->
+                        </div>
+                    </div>
+                    
+                    <!-- Campo oculto para el código del hijo seleccionado -->
+                    <input type="hidden" id="pack-hijo-codigo">
+                    
+                    <!-- Mostrar hijo seleccionado -->
+                    <div id="pack-hijo-seleccionado" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 4px; border-left: 4px solid #28a745;">
+                        <div style="font-weight: 600; color: #155724;" id="pack-hijo-seleccionado-texto"></div>
+                    </div>
+
+                    <label for="pack-unidades" style="font-weight: 600; margin-bottom: 8px; display: block;">
+                        🔢 Unidades por Pack:
+                    </label>
+                    <input 
+                        type="number" 
+                        id="pack-unidades" 
+                        min="1" 
+                        placeholder="Ej: 2"
+                        style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                    
+                    <div id="pack-mensaje" class="mensaje-info" style="display:none; margin-top: 15px;"></div>
                 </div>
                 <div class="modal-pack-footer">
-                    <button id="pack-guardar" class="pack-save-button">Guardar</button>
+                    <button id="pack-guardar" class="pack-save-button" disabled>Guardar</button>
                     <button id="pack-quitar" class="pack-remove-button" style="display:none;">Quitar mapeo</button>
                     <button class="pack-cancel-button" onclick="cerrarModalPack()">Cancelar</button>
                 </div>
@@ -1280,6 +1320,7 @@
 
     <script src="/js/produccion.js?v=8.0"></script>
     <script src="/js/produccion-resumen-expandible.js?v=17.0"></script>
+    <script src="/js/modal-pack-mejorado.js?v=2.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1789,282 +1830,11 @@
         };
 
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
+        // ⚠️ DESHABILITADAS - Ahora se usan las del archivo externo modal-pack-mejorado.js
+        // Las funciones window.abrirModalPack y window.cerrarModalPack están definidas en:
+        // src/produccion/js/modal-pack-mejorado.js (cargado en línea 1323)
         
-        // Función para abrir modal pack (disponible globalmente)
-        window.abrirModalPack = async function(codigoPadre) {
-            const modal = document.getElementById('modal-pack');
-            const padreCodigo = document.getElementById('pack-padre-codigo');
-            const hijoCodigo = document.getElementById('pack-hijo-codigo');
-            const unidades = document.getElementById('pack-unidades');
-            const mensaje = document.getElementById('pack-mensaje');
-            const quitarBtn = document.getElementById('pack-quitar');
-            
-            if (!modal || !padreCodigo) return;
-            
-            // Limpiar formulario inicialmente
-            padreCodigo.value = codigoPadre;
-            hijoCodigo.value = '';
-            unidades.value = '';
-            mensaje.style.display = 'none';
-            mensaje.innerHTML = '';
-            quitarBtn.style.display = 'none';
-            
-            // Mostrar modal
-            modal.style.display = 'flex';
-            
-            console.debug('🧩 [MODAL-PACK] Modal abierto para:', codigoPadre);
-            
-            // Cargar descripción del padre y datos del pack desde stock_real_consolidado
-            try {
-                console.debug('🔍 [MODAL-PACK] Consultando stock_real_consolidado...');
-                
-                // Buscar artículo padre en stock_real_consolidado
-                const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(codigoPadre)}&exact=true`);
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    if (result.success && result.articulos && result.articulos.length > 0) {
-                        const articulo = result.articulos.find(art => 
-                            art.codigo === codigoPadre || art.codigo.toString() === codigoPadre.toString()
-                        );
-                        
-                        if (articulo) {
-                            // ✅ Mostrar DESCRIPCIÓN del padre en el label
-                            const labelPadre = document.querySelector('label[for="pack-padre-codigo"]');
-                            if (labelPadre) {
-                                labelPadre.textContent = `Artículo Padre: ${articulo.descripcion || codigoPadre}`;
-                            }
-                            
-                            // Si tiene pack configurado, precargar datos
-                            if (articulo.pack_hijo_codigo && articulo.pack_unidades) {
-                                hijoCodigo.value = articulo.pack_hijo_codigo;
-                                unidades.value = articulo.pack_unidades;
-                                quitarBtn.style.display = 'inline-block';
-                                
-                                // Buscar descripción del hijo
-                                const hijoResp = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(articulo.pack_hijo_codigo)}&exact=true`);
-                                if (hijoResp.ok) {
-                                    const hijoResult = await hijoResp.json();
-                                    if (hijoResult.success && hijoResult.articulos && hijoResult.articulos.length > 0) {
-                                        const hijoArt = hijoResult.articulos[0];
-                                        const hijoDesc = hijoArt.descripcion || articulo.pack_hijo_codigo;
-                                        
-                                        // Actualizar label del hijo con descripción
-                                        const labelHijo = document.querySelector('label[for="pack-hijo-codigo"]');
-                                        if (labelHijo) {
-                                            labelHijo.textContent = `Artículo Hijo: ${hijoDesc}`;
-                                        }
-                                        
-                                        mostrarMensajePack(`📦 Pack configurado: ${articulo.pack_unidades} unidades de "${hijoDesc}"`, 'info');
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-            } catch (error) {
-                console.error('❌ [MODAL-PACK] Error al cargar datos:', error);
-            }
-        };
-
-        // Función para cerrar modal pack (disponible globalmente)
-        window.cerrarModalPack = function() {
-            const modal = document.getElementById('modal-pack');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        };
-
-        // Función para mostrar mensajes en el modal pack
-        function mostrarMensajePack(texto, tipo) {
-            const mensaje = document.getElementById('pack-mensaje');
-            if (!mensaje) return;
-            
-            mensaje.innerHTML = texto;
-            mensaje.className = tipo === 'error' ? 'mensaje-error' : 
-                               tipo === 'success' ? 'mensaje-exito' : 'mensaje-info';
-            mensaje.style.display = 'block';
-        }
-
-        // Función para mostrar toast notifications
-        function mostrarToast(texto, tipo = 'success') {
-            // Crear elemento toast
-            const toast = document.createElement('div');
-            toast.className = `toast ${tipo === 'error' ? 'error' : ''}`;
-            toast.textContent = texto;
-            
-            // Agregar al DOM
-            document.body.appendChild(toast);
-            
-            // Mostrar con animación
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 100);
-            
-            // Ocultar y remover después de 3 segundos
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                }, 300);
-            }, 3000);
-        }
-
-        // Configurar event listeners para el modal pack cuando se carga la página
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('[INIT] PASO 3 - Configurando event listeners del modal pack');
-            
-            const packGuardar = document.getElementById('pack-guardar');
-            const packQuitar = document.getElementById('pack-quitar');
-            
-            console.log('[INIT] Botones del modal pack:', {
-                guardar: !!packGuardar,
-                quitar: !!packQuitar
-            });
-            
-            if (packGuardar) {
-                packGuardar.addEventListener('click', async function() {
-                    const padreCodigo = document.getElementById('pack-padre-codigo');
-                    const hijoCodigo = document.getElementById('pack-hijo-codigo');
-                    const unidades = document.getElementById('pack-unidades');
-                    
-                    if (!padreCodigo || !hijoCodigo || !unidades) return;
-                    
-                    // Validaciones
-                    if (!hijoCodigo.value.trim()) {
-                        mostrarMensajePack('Por favor ingrese el código del artículo hijo', 'error');
-                        return;
-                    }
-                    
-                    if (!unidades.value || parseInt(unidades.value) <= 0) {
-                        mostrarMensajePack('Por favor ingrese una cantidad válida de unidades', 'error');
-                        return;
-                    }
-                    
-                    try {
-                        // ✅ FORMATO OFICIAL: Usar nombres neutros (padre_articulo, hijo_articulo)
-                        const payload = {
-                            padre_articulo: padreCodigo.value.trim(),
-                            hijo_articulo: hijoCodigo.value.trim(),
-                            unidades: parseInt(unidades.value)
-                        };
-                        
-                        console.log('📤 Guardando mapeo pack (formato oficial):', payload);
-                        
-                        const response = await fetch('/api/produccion/pack-map', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success) {
-                            mostrarMensajePack('✅ Mapeo pack guardado correctamente', 'success');
-                            mostrarToast('Mapeo pack guardado correctamente', 'success');
-                            
-                            // Mostrar botón quitar
-                            const quitarBtn = document.getElementById('pack-quitar');
-                            if (quitarBtn) {
-                                quitarBtn.style.display = 'inline-block';
-                            }
-                            
-                            // ✅ INVALIDAR CACHE de pack mappings
-                            console.log('🗑️ [PACK-CACHE] Invalidando cache después de guardar pack');
-                            if (typeof window.invalidarCachePackMappings === 'function') {
-                                window.invalidarCachePackMappings(padreCodigo.value.trim());
-                            }
-                            
-                            setTimeout(() => {
-                                window.cerrarModalPack();
-                                // Actualizar resumen y panel principal
-                                if (typeof window.actualizarResumenFaltantes === 'function') {
-                                    setTimeout(window.actualizarResumenFaltantes, 800);
-                                }
-                            }, 2000);
-                        } else {
-                            mostrarMensajePack(`❌ ${data.error || 'Error al guardar mapeo pack'}`, 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('❌ Error al guardar mapeo pack:', error);
-                        mostrarMensajePack('❌ Error de conexión', 'error');
-                    }
-                });
-            }
-            
-            if (packQuitar) {
-                packQuitar.addEventListener('click', async function() {
-                    const padreCodigo = document.getElementById('pack-padre-codigo');
-                    
-                    if (!padreCodigo) return;
-                    
-                    if (!confirm('¿Está seguro de que desea quitar el mapeo de pack para este artículo?')) {
-                        return;
-                    }
-                    
-                    try {
-                        // ✅ FORMATO OFICIAL: Usar nombres neutros (padre_articulo, hijo_articulo)
-                        const payload = {
-                            padre_articulo: padreCodigo.value.trim(),
-                            hijo_articulo: null,
-                            unidades: null
-                        };
-                        
-                        console.log('📤 Quitando mapeo pack (formato oficial):', payload);
-                        
-                        const response = await fetch('/api/produccion/pack-map', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success) {
-                            mostrarMensajePack('✅ Mapeo pack eliminado correctamente', 'success');
-                            mostrarToast('Mapeo pack eliminado correctamente', 'success');
-                            
-                            // Ocultar botón quitar y limpiar campos
-                            const quitarBtn = document.getElementById('pack-quitar');
-                            const hijoCodigo = document.getElementById('pack-hijo-codigo');
-                            const unidades = document.getElementById('pack-unidades');
-                            
-                            if (quitarBtn) quitarBtn.style.display = 'none';
-                            if (hijoCodigo) hijoCodigo.value = '';
-                            if (unidades) unidades.value = '';
-                            
-                            // ✅ INVALIDAR CACHE de pack mappings
-                            console.log('🗑️ [PACK-CACHE] Invalidando cache después de quitar pack');
-                            if (typeof window.invalidarCachePackMappings === 'function') {
-                                window.invalidarCachePackMappings(padreCodigo.value.trim());
-                            }
-                            
-                            setTimeout(() => {
-                                window.cerrarModalPack();
-                                // Actualizar resumen y panel principal
-                                if (typeof window.actualizarResumenFaltantes === 'function') {
-                                    setTimeout(window.actualizarResumenFaltantes, 800);
-                                }
-                            }, 2000);
-                        } else {
-                            mostrarMensajePack(`❌ ${data.error || 'Error al quitar mapeo pack'}`, 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('❌ Error al quitar mapeo pack:', error);
-                        mostrarMensajePack('❌ Error de conexión', 'error');
-                    }
-                });
-            }
-        });
+        console.log('[INIT] PASO 3 - Modal pack: usando versión externa (modal-pack-mejorado.js v2.0)');
 
     </script>
 </body>

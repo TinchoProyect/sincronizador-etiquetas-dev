@@ -577,6 +577,7 @@ function renderizarArticulosPedidos(articulos, totales) {
         return;
     }
     
+    // ✅ ROBUSTEZ: Agregar data-attributes con valores clave para evitar dependencia de posición de celdas
     const html = `
         <table class="articulos-tabla">
             <thead>
@@ -592,7 +593,14 @@ function renderizarArticulosPedidos(articulos, totales) {
             </thead>
             <tbody>
                 ${articulos.map(articulo => `
-                    <tr class="expandible-row" data-articulo="${articulo.articulo_numero}" onclick="handleFilaClick('${articulo.articulo_numero}', event)">
+                    <tr class="expandible-row" 
+                        data-articulo="${articulo.articulo_numero}"
+                        data-descripcion="${articulo.descripcion}"
+                        data-pedido-total="${formatearNumero(articulo.pedido_total)}"
+                        data-stock-disponible="${formatearNumero(articulo.stock_disponible)}"
+                        data-faltante="${formatearNumero(articulo.faltante)}"
+                        data-estado="${articulo.estado}"
+                        onclick="handleFilaClick('${articulo.articulo_numero}', event)">
                         <td>${articulo.articulo_numero}</td>
                         <td>${articulo.descripcion}</td>
                         <td>${formatearNumero(articulo.pedido_total)}</td>
