@@ -762,7 +762,7 @@ function mostrarMensajeModal(texto, tipo) {
 
 // ===== FUNCIONES DE MODAL DE PACK =====
 
-function abrirModalPack(codigoPadre) {
+function abrirModalPack__legacy(codigoPadre) {
     const modal = document.getElementById('modal-pack');
     const padreCodigo = document.getElementById('pack-padre-codigo');
     const hijoCodigo = document.getElementById('pack-hijo-codigo');
@@ -1020,7 +1020,7 @@ window.togglePresupuesto = togglePresupuesto;
 window.abrirModalAsignar = abrirModalAsignar;
 window.abrirModalAsignarArticulo = abrirModalAsignarArticulo;
 window.cerrarModalAsignar = cerrarModalAsignar;
-window.abrirModalPack = abrirModalPack;
+// window.abrirModalPack = abrirModalPack; // deshabilitado: fuente única en produccion.html
 window.cerrarModalPack = cerrarModalPack;
 
 console.log('âœ… Archivo produccion.js cargado completamente');

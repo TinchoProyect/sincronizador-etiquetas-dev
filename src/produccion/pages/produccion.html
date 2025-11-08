@@ -1279,7 +1279,7 @@
     </div>
 
     <script src="/js/produccion.js?v=8.0"></script>
-    <script src="/js/produccion-resumen-expandible.js?v=8.0"></script>
+    <script src="/js/produccion-resumen-expandible.js?v=17.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1316,6 +1316,8 @@
 
         // Función para inicializar el estado de las secciones al cargar la página
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('[INIT] PASO 1 - DOMContentLoaded disparado - Inicializando secciones colapsables');
+            
             // Asegurar que todas las secciones estén colapsadas al inicio
             const collapsibleSections = document.querySelectorAll('.collapsible-content');
             const toggleButtons = document.querySelectorAll('.section-toggle');
@@ -1328,7 +1330,7 @@
                 button.setAttribute('aria-expanded', 'false');
             });
             
-            console.log('Secciones colapsables inicializadas correctamente');
+            console.log('[INIT] PASO 1 COMPLETADO - Secciones colapsables inicializadas correctamente');
         });
 
         // Función para expandir una sección específica (útil para llamadas externas)
@@ -1381,13 +1383,19 @@
 
         // Función para extraer datos directamente del DOM del panel principal
         function obtenerDatosDesdeDOM() {
+            console.log('[RESUMEN] obtenerDatosDesdeDOM() - Iniciando extracción');
             const articulos = [];
             
             try {
                 // Buscar la tabla de artículos en el panel principal
+                const container = document.querySelector('#articulos-container');
+                console.log('[RESUMEN] Container encontrado:', !!container);
+                
                 const tabla = document.querySelector('#articulos-container .articulos-tabla tbody');
+                console.log('[RESUMEN] Tabla encontrada:', !!tabla);
+                
                 if (!tabla) {
-                    console.debug('⚠️ No se encontró tabla de artículos en el DOM');
+                    console.log('[RESUMEN] ⚠️ No se encontró tabla de artículos en el DOM - retornando array vacío');
                     return [];
                 }
                 
@@ -1435,158 +1443,133 @@
             }
         }
 
-        // Función para obtener datos (primero intenta DOM, luego API como fallback)
+        // Función para obtener datos - USA EL MISMO ENDPOINT QUE EL PANEL PRINCIPAL
         async function obtenerDatosArticulosConFiltros() {
-            // Primero intentar extraer del DOM
-            const datosDOM = obtenerDatosDesdeDOM();
-            if (datosDOM.length > 0) {
-                console.debug('✅ Usando datos del DOM:', datosDOM.length, 'artículos');
-                datosArticulosCompartidos = datosDOM;
-                ultimaActualizacion = Date.now();
-                return datosDOM;
-            }
+            console.log('[RESUMEN] obtenerDatosArticulosConFiltros() - Usando endpoint /pedidos-articulos');
             
-            // Fallback: consulta API
             try {
+                // Usar los mismos filtros que el panel principal
                 const fechaCorte = document.getElementById('fecha-corte-articulos')?.value || '';
-                const busqueda = document.getElementById('buscar-articulo')?.value || '';
-                const filtroEstado = document.getElementById('filtro-estado-articulos')?.value || 'todos';
                 
-                let url = '/api/produccion/articulos-pedidos-confirmados';
+                let url = '/api/produccion/pedidos-articulos';
                 const params = new URLSearchParams();
                 
                 if (fechaCorte) params.append('fecha', fechaCorte);
-                if (busqueda) params.append('buscar', busqueda);
-                if (filtroEstado && filtroEstado !== 'todos') params.append('estado', filtroEstado);
+                // NO aplicar filtro de estado aquí - lo haremos después
                 
                 if (params.toString()) {
                     url += '?' + params.toString();
                 }
                 
-                console.debug('🔍 Fallback: Fetching desde API:', url);
+                console.log('[RESUMEN] Fetching desde:', url);
                 
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`Error HTTP: ${response.status}`);
                 }
                 
-                const data = await response.json();
-                console.debug('📊 Dataset API recibido:', data.length, 'artículos');
+                const result = await response.json();
+                console.log('[RESUMEN] Respuesta del servidor:', result);
                 
-                datosArticulosCompartidos = data;
+                // El endpoint retorna { success, data, total_articulos, totales }
+                const articulos = result.data || [];
+                console.log('[RESUMEN] Artículos recibidos:', articulos.length);
+                
+                // Verificar que no hay promesas en las descripciones
+                if (articulos.length > 0) {
+                    const primerArticulo = articulos[0];
+                    console.log('[RESUMEN] Primer artículo:', {
+                        articulo_numero: primerArticulo.articulo_numero,
+                        descripcion: primerArticulo.descripcion,
+                        tipoDescripcion: typeof primerArticulo.descripcion,
+                        esPromise: primerArticulo.descripcion && typeof primerArticulo.descripcion.then === 'function'
+                    });
+                }
+                
+                datosArticulosCompartidos = articulos;
                 ultimaActualizacion = Date.now();
                 
-                return data;
+                return articulos;
             } catch (error) {
-                console.error('❌ Error al obtener datos de artículos:', error);
+                console.error('❌ [RESUMEN] Error al obtener datos:', error);
                 return [];
             }
         }
 
-        // Función para filtrar faltantes y parciales con lógica mejorada
+        // Función para filtrar faltantes y parciales - USA EL CAMPO estado DEL BACKEND
         function filtrarFaltantesYParciales(articulos) {
+            console.log('[RESUMEN] filtrarFaltantesYParciales() - Filtrando', articulos.length, 'artículos');
+            
             if (!Array.isArray(articulos)) {
-                console.debug('⚠️ Dataset no es array:', typeof articulos);
+                console.log('[RESUMEN] ⚠️ Dataset no es array:', typeof articulos);
                 return { faltantes: [], parciales: [] };
             }
 
             const faltantes = [];
             const parciales = [];
             
+            // El backend ya clasifica los artículos con el campo "estado"
+            // Solo necesitamos filtrar por estado !== "COMPLETO"
             articulos.forEach((art, index) => {
-                // Parsear valores numéricos CRUDOS primero
-                const faltanteCrudo = parseNumeroSeguro(art.faltante || art.cantidad_faltante);
-                const stockCrudo = parseNumeroSeguro(art.stock_disponible || art.stock);
-                const pedidoCrudo = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida);
+                const estadoNormalizado = normalizarEstado(art.estado);
                 
-                // REDONDEAR a 2 decimales ANTES de clasificar
-                const faltanteRedondeado = Math.round(faltanteCrudo * 100) / 100;
-                const stockRedondeado = Math.round(stockCrudo * 100) / 100;
-                const pedidoRedondeado = Math.round(pedidoCrudo * 100) / 100;
-                
-                // Log de depuración para el primer elemento
+                // Log del primer elemento
                 if (index === 0) {
-                    console.debug('🔍 Ejemplo artículo (valores redondeados):', {
-                        codigo: art.codigo || art.articulo,
-                        faltanteCrudo: faltanteCrudo,
-                        faltanteRedondeado: faltanteRedondeado,
-                        stockCrudo: stockCrudo,
-                        stockRedondeado: stockRedondeado,
-                        pedidoCrudo: pedidoCrudo,
-                        pedidoRedondeado: pedidoRedondeado
+                    console.log('[RESUMEN] Primer artículo del backend:', {
+                        articulo_numero: art.articulo_numero,
+                        descripcion: art.descripcion,
+                        estado: art.estado,
+                        estadoNormalizado: estadoNormalizado,
+                        tipoDescripcion: typeof art.descripcion
                     });
                 }
                 
-                // NUEVA LÓGICA: Clasificar usando valores REDONDEADOS
-                // Solo procesamos si hay faltante después de redondear
-                if (faltanteRedondeado > 0) {
-                    if (stockRedondeado === 0) {
-                        // Sin stock = FALTANTE TOTAL
-                        faltantes.push({
-                            ...art,
-                            estado: 'FALTANTE',
-                            faltante: faltanteRedondeado,
-                            stock_disponible: stockRedondeado,
-                            pedido_total: pedidoRedondeado
-                        });
-                        console.debug(`  → FALTANTE (stock=0, faltante=${faltanteRedondeado})`);
-                    } else if (stockRedondeado > 0 && stockRedondeado < pedidoRedondeado) {
-                        // Hay algo de stock pero no todo = PARCIAL
-                        parciales.push({
-                            ...art,
-                            estado: 'PARCIAL',
-                            faltante: faltanteRedondeado,
-                            stock_disponible: stockRedondeado,
-                            pedido_total: pedidoRedondeado
-                        });
-                        console.debug(`  → PARCIAL (stock=${stockRedondeado}, pedido=${pedidoRedondeado}, faltante=${faltanteRedondeado})`);
-                    }
+                // Filtrar por estado (excluir COMPLETO)
+                if (estadoNormalizado === 'FALTANTE') {
+                    faltantes.push(art);
+                } else if (estadoNormalizado === 'PARCIAL') {
+                    parciales.push(art);
                 }
-                // Si faltanteRedondeado es 0, no lo incluimos (está completo)
+                // Ignorar COMPLETO
             });
 
-            console.debug('📈 Resultados filtrado (con redondeo previo):', {
+            console.log('[RESUMEN] Resultados del filtrado:', {
                 total: articulos.length,
                 faltantes: faltantes.length,
-                parciales: parciales.length,
-                ejemploFaltantes: faltantes.slice(0, 2).map(f => ({ 
-                    codigo: f.codigo || f.articulo, 
-                    estado: f.estado,
-                    stock: f.stock_disponible,
-                    faltante: f.faltante 
-                })),
-                ejemploParciales: parciales.slice(0, 2).map(p => ({ 
-                    codigo: p.codigo || p.articulo, 
-                    estado: p.estado,
-                    stock: p.stock_disponible,
-                    faltante: p.faltante
-                }))
+                parciales: parciales.length
             });
 
             return { faltantes, parciales };
         }
 
         // Función para renderizar una fila de artículo en el resumen
-        // Ahora usa la versión expandible del módulo externo
+        // VERSIÓN DIRECTA SIN DEPENDENCIA DEL MÓDULO EXTERNO
         function renderizarFilaResumen(articulo, tipo) {
-            // Usar la función del módulo expandible si está disponible
-            if (typeof window.renderizarFilaResumenExpandible === 'function') {
-                return window.renderizarFilaResumenExpandible(articulo, tipo);
-            }
+            console.log('[RENDER-FILA] Entrada:', { articulo, tipo });
             
-            // Fallback: versión simple sin expansión
-            const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
-            const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row' : 'parcial-row expandible-row';
-            const codigoArticulo = articulo.codigo || articulo.articulo || articulo.articulo_numero || '-';
-            
+            // Extraer valores directamente
+            const codigoArticulo = articulo.articulo_numero || articulo.codigo || articulo.articulo || '-';
+            const descripcion = articulo.descripcion || articulo.nombre || '-';
             const pedidoTotal = formatearNumeroResumen(articulo.pedido_total || articulo.cantidad_pedida || 0);
             const stockDisponible = formatearNumeroResumen(articulo.stock_disponible || articulo.stock || 0);
             const faltante = formatearNumeroResumen(articulo.faltante || articulo.cantidad_faltante || 0);
             
-            return `
-                <tr class="${rowClass}" data-articulo="${codigoArticulo}" onclick="if(typeof window.handleFilaClick === 'function') window.handleFilaClick('${codigoArticulo}', event)">
+            console.log('[RENDER-FILA] Valores:', {
+                codigoArticulo,
+                descripcion,
+                tipoDescripcion: typeof descripcion,
+                pedidoTotal,
+                stockDisponible,
+                faltante
+            });
+            
+            const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
+            const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row parent-row' : 'parcial-row expandible-row parent-row';
+            
+            const html = `
+                <tr class="${rowClass}" data-articulo="${codigoArticulo}">
                     <td class="col-articulo">${codigoArticulo}</td>
-                    <td>${articulo.descripcion || articulo.nombre || '-'}</td>
+                    <td class="descripcion-col">${descripcion}</td>
                     <td>${pedidoTotal}</td>
                     <td>${stockDisponible}</td>
                     <td class="cantidad-faltante">${faltante}</td>
@@ -1596,6 +1579,10 @@
                     </td>
                 </tr>
             `;
+            
+            console.log('[RENDER-FILA] HTML generado, tipo:', typeof html, 'longitud:', html.length);
+            
+            return html;
         }
 
         // Función auxiliar para formatear números a 2 decimales en el resumen
@@ -1608,6 +1595,7 @@
 
         // Función para actualizar el resumen (sincronizada con panel principal)
         async function actualizarResumen() {
+            console.log('[RESUMEN] actualizarResumen() - INICIO');
             const loadingEl = document.getElementById('summary-loading');
             const emptyEl = document.getElementById('summary-empty');
             const contentEl = document.getElementById('summary-content');
@@ -1619,8 +1607,24 @@
             contentEl.style.display = 'none';
 
             try {
+                console.log('[RESUMEN] Llamando a obtenerDatosArticulosConFiltros()...');
                 // Obtener datos con los mismos filtros que el panel principal
                 const articulos = await obtenerDatosArticulosConFiltros();
+                
+                console.log('[RESUMEN] Datos recibidos de obtenerDatosArticulosConFiltros():', articulos);
+                
+                // ✅ [RESUMEN] Diagnóstico: Verificar que articulos es un array válido
+                console.log('📊 [RESUMEN] Datos obtenidos:', {
+                    esArray: Array.isArray(articulos),
+                    cantidad: articulos?.length || 0,
+                    primerElemento: articulos?.[0] ? {
+                        codigo: articulos[0].codigo,
+                        descripcion: articulos[0].descripcion,
+                        tipoDescripcion: typeof articulos[0].descripcion,
+                        esPromise: articulos[0].descripcion && typeof articulos[0].descripcion.then === 'function'
+                    } : null
+                });
+                
                 const { faltantes, parciales } = filtrarFaltantesYParciales(articulos);
 
                 // Ocultar loading
@@ -1630,7 +1634,7 @@
                     // Mostrar mensaje de sin faltantes ni parciales
                     emptyEl.style.display = 'block';
                     contentEl.style.display = 'none';
-                    console.debug('✅ Sin faltantes ni parciales encontrados');
+                    console.debug('✅ [RESUMEN] Sin faltantes ni parciales encontrados');
                 } else {
                     // Mostrar tabla con datos
                     emptyEl.style.display = 'none';
@@ -1640,8 +1644,17 @@
                     
                     // Agregar faltantes primero (orden solicitado)
                     if (faltantes.length > 0) {
-                        faltantes.forEach(articulo => {
-                            html += renderizarFilaResumen(articulo, 'FALTANTE');
+                        faltantes.forEach((articulo, idx) => {
+                            console.log(`[RESUMEN-RENDER] Renderizando faltante ${idx + 1}:`, {
+                                articulo_numero: articulo.articulo_numero,
+                                descripcion: articulo.descripcion,
+                                tipoDescripcion: typeof articulo.descripcion,
+                                esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
+                            });
+                            
+                            const filaHtml = renderizarFilaResumen(articulo, 'FALTANTE');
+                            console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
+                            html += filaHtml;
                         });
                     }
 
@@ -1652,17 +1665,27 @@
 
                     // Agregar parciales después
                     if (parciales.length > 0) {
-                        parciales.forEach(articulo => {
-                            html += renderizarFilaResumen(articulo, 'PARCIAL');
+                        parciales.forEach((articulo, idx) => {
+                            console.log(`[RESUMEN-RENDER] Renderizando parcial ${idx + 1}:`, {
+                                articulo_numero: articulo.articulo_numero,
+                                descripcion: articulo.descripcion,
+                                tipoDescripcion: typeof articulo.descripcion,
+                                esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
+                            });
+                            
+                            const filaHtml = renderizarFilaResumen(articulo, 'PARCIAL');
+                            console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
+                            html += filaHtml;
                         });
                     }
 
+                    console.log('[RESUMEN-RENDER] HTML completo generado, longitud:', html.length);
                     tbodyEl.innerHTML = html;
-                    console.debug('✅ Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
+                    console.log('✅ [RESUMEN] Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
                 }
 
             } catch (error) {
-                console.error('❌ Error al actualizar resumen:', error);
+                console.error('❌ [RESUMEN] Error al actualizar resumen:', error);
                 loadingEl.style.display = 'none';
                 emptyEl.innerHTML = '<span style="color: #dc3545;">❌ Error al cargar resumen</span>';
                 emptyEl.style.display = 'block';
@@ -1721,20 +1744,42 @@
 
         // Inicializar el resumen cuando se carga la página
         document.addEventListener('DOMContentLoaded', function() {
-            console.debug('🚀 Inicializando resumen de faltantes y parciales...');
+            console.log('[INIT] PASO 2 - Inicializando resumen de faltantes y parciales');
             
-            // Inicializar después de que se carguen los controles del panel
-            setTimeout(() => {
-                actualizarResumen();
-                sincronizarConInformePrincipal();
+            try {
+                console.log('[RESUMEN] Verificando elementos del DOM...');
+                const loadingEl = document.getElementById('summary-loading');
+                const emptyEl = document.getElementById('summary-empty');
+                const contentEl = document.getElementById('summary-content');
+                const tbodyEl = document.getElementById('summary-tbody');
                 
-                // Actualizar íconos UNA SOLA VEZ después de la carga inicial
+                console.log('[RESUMEN] Elementos encontrados:', {
+                    loading: !!loadingEl,
+                    empty: !!emptyEl,
+                    content: !!contentEl,
+                    tbody: !!tbodyEl
+                });
+                
+                // Inicializar después de que se carguen los controles del panel
+                console.log('[RESUMEN] Programando actualización en 2 segundos...');
                 setTimeout(() => {
-                    if (typeof window.actualizarIconosExpansion === 'function') {
-                        window.actualizarIconosExpansion();
-                    }
-                }, 3000);
-            }, 2000); // Delay mayor para asegurar que el panel principal esté listo
+                    console.log('[RESUMEN] Ejecutando actualización programada');
+                    actualizarResumen();
+                    sincronizarConInformePrincipal();
+                    
+                    // Actualizar íconos UNA SOLA VEZ después de la carga inicial
+                    setTimeout(() => {
+                        if (typeof window.actualizarIconosExpansion === 'function') {
+                            console.log('[RESUMEN] Actualizando íconos de expansión');
+                            window.actualizarIconosExpansion();
+                        }
+                    }, 3000);
+                }, 2000);
+                
+                console.log('[INIT] PASO 2 COMPLETADO - Resumen programado');
+            } catch (error) {
+                console.error('[INIT] ERROR en PASO 2:', error);
+            }
         });
 
         // Función pública para actualizar el resumen (llamada externa)
@@ -1870,8 +1915,15 @@
 
         // Configurar event listeners para el modal pack cuando se carga la página
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('[INIT] PASO 3 - Configurando event listeners del modal pack');
+            
             const packGuardar = document.getElementById('pack-guardar');
             const packQuitar = document.getElementById('pack-quitar');
+            
+            console.log('[INIT] Botones del modal pack:', {
+                guardar: !!packGuardar,
+                quitar: !!packQuitar
+            });
             
             if (packGuardar) {
                 packGuardar.addEventListener('click', async function() {
@@ -1919,6 +1971,12 @@
                             const quitarBtn = document.getElementById('pack-quitar');
                             if (quitarBtn) {
                                 quitarBtn.style.display = 'inline-block';
+                            }
+                            
+                            // ✅ INVALIDAR CACHE de pack mappings
+                            console.log('🗑️ [PACK-CACHE] Invalidando cache después de guardar pack');
+                            if (typeof window.invalidarCachePackMappings === 'function') {
+                                window.invalidarCachePackMappings(padreCodigo.value.trim());
                             }
                             
                             setTimeout(() => {
@@ -1981,6 +2039,12 @@
                             if (hijoCodigo) hijoCodigo.value = '';
                             if (unidades) unidades.value = '';
                             
+                            // ✅ INVALIDAR CACHE de pack mappings
+                            console.log('🗑️ [PACK-CACHE] Invalidando cache después de quitar pack');
+                            if (typeof window.invalidarCachePackMappings === 'function') {
+                                window.invalidarCachePackMappings(padreCodigo.value.trim());
+                            }
+                            
                             setTimeout(() => {
                                 window.cerrarModalPack();
                                 // Actualizar resumen y panel principal
@@ -2001,6 +2065,6 @@
         });
 
     </script>
-<script src="/js/modal-pack-debug.js?v=9.0"></script></body>
+</body>
 </html>
 
