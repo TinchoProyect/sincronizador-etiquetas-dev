@@ -807,9 +807,18 @@ const actualizarPackMapping = async (req, res) => {
             const hijoCodigoTrim = hijo_codigo_barras.trim();
             const padreCodigoTrim = padre_codigo_barras.trim();
             
+            // ✅ VALIDACIÓN 1: Verificar que padre !== hijo (circularidad directa)
+            if (padreCodigoTrim === hijoCodigoTrim) {
+                console.log(`❌ [PACK-MAP] Circularidad directa detectada: padre=${padreCodigoTrim} === hijo=${hijoCodigoTrim}`);
+                return res.status(400).json({
+                    success: false,
+                    error: 'No se puede configurar un artículo como pack de sí mismo'
+                });
+            }
+            
             // Verificar que existe el hijo en stock_real_consolidado
             const verificarHijoQuery = `
-                SELECT codigo_barras 
+                SELECT codigo_barras, es_pack, pack_hijo_codigo
                 FROM public.stock_real_consolidado 
                 WHERE codigo_barras = $1
             `;
@@ -820,11 +829,21 @@ const actualizarPackMapping = async (req, res) => {
                 console.log(`❌ [PACK-MAP] Hijo no encontrado: ${hijoCodigoTrim}`);
                 return res.status(400).json({
                     success: false,
-                    error: `El artículo hijo '${hijoCodigoTrim}' no existe en stock_real_consolidado`
+                    error: `El artículo hijo '${hijoCodigoTrim}' no existe en el sistema`
                 });
             }
             
-            console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`);
+            const hijoData = hijoResult.rows[0];
+            console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`, { es_pack: hijoData.es_pack, pack_hijo_codigo: hijoData.pack_hijo_codigo });
+            
+            // ✅ VALIDACIÓN 2: Verificar ciclo directo (hijo ya tiene al padre como su hijo)
+            if (hijoData.es_pack && hijoData.pack_hijo_codigo === padreCodigoTrim) {
+                console.log(`❌ [PACK-MAP] Ciclo directo detectado: ${padreCodigoTrim} → ${hijoCodigoTrim} → ${padreCodigoTrim}`);
+                return res.status(400).json({
+                    success: false,
+                    error: 'No se puede crear esta relación porque generaría una dependencia circular'
+                });
+            }
             
             // Actualizar mapeo pack - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
             const updateQuery = `
