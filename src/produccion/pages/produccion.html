@@ -1945,13 +1945,14 @@
                     }
                     
                     try {
+                        // ✅ FORMATO OFICIAL: Usar nombres neutros (padre_articulo, hijo_articulo)
                         const payload = {
-                            padre_codigo_barras: padreCodigo.value.trim(),
-                            hijo_codigo_barras: hijoCodigo.value.trim(),
+                            padre_articulo: padreCodigo.value.trim(),
+                            hijo_articulo: hijoCodigo.value.trim(),
                             unidades: parseInt(unidades.value)
                         };
                         
-                        console.log('📤 Guardando mapeo pack:', payload);
+                        console.log('📤 Guardando mapeo pack (formato oficial):', payload);
                         
                         const response = await fetch('/api/produccion/pack-map', {
                             method: 'PATCH',
@@ -2008,13 +2009,14 @@
                     }
                     
                     try {
+                        // ✅ FORMATO OFICIAL: Usar nombres neutros (padre_articulo, hijo_articulo)
                         const payload = {
-                            padre_codigo_barras: padreCodigo.value.trim(),
-                            hijo_codigo_barras: null,
+                            padre_articulo: padreCodigo.value.trim(),
+                            hijo_articulo: null,
                             unidades: null
                         };
                         
-                        console.log('📤 Quitando mapeo pack:', payload);
+                        console.log('📤 Quitando mapeo pack (formato oficial):', payload);
                         
                         const response = await fetch('/api/produccion/pack-map', {
                             method: 'PATCH',

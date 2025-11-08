@@ -733,28 +733,39 @@ const obtenerPedidosArticulos = async (req, res) => {
 
 /**
  * Actualiza el mapeo de pack para un artículo
+ * Acepta nombres de campos nuevos (padre_articulo, hijo_articulo) y legacy (padre_codigo_barras, hijo_codigo_barras)
  */
 const actualizarPackMapping = async (req, res) => {
     try {
         console.log('🧩 [PACK-MAP] Iniciando actualización de mapeo pack...');
         
-        const { padre_codigo_barras, hijo_codigo_barras, unidades } = req.body;
+        // ✅ COMPATIBILIDAD: Aceptar ambos formatos de nombres
+        // Formato OFICIAL (nuevo): padre_articulo, hijo_articulo
+        // Formato LEGACY (compatibilidad): padre_codigo_barras, hijo_codigo_barras
+        const padreArticulo = req.body.padre_articulo || req.body.padre_codigo_barras;
+        const hijoArticulo = req.body.hijo_articulo !== undefined ? req.body.hijo_articulo : req.body.hijo_codigo_barras;
+        const unidades = req.body.unidades;
         
-        // Validación padre_codigo_barras requerido
-        if (!padre_codigo_barras || typeof padre_codigo_barras !== 'string' || !padre_codigo_barras.trim()) {
+        // Validación padre requerido
+        if (!padreArticulo || typeof padreArticulo !== 'string' || !padreArticulo.trim()) {
             return res.status(400).json({
                 success: false,
-                error: 'padre_codigo_barras es requerido y debe ser un string válido'
+                error: 'padre_articulo es requerido y debe ser un string válido'
             });
         }
         
-        console.log('📋 [PACK-MAP] Datos recibidos:', { padre_codigo_barras, hijo_codigo_barras, unidades });
+        console.log('📋 [PACK-MAP] Datos recibidos:', { 
+            padre: padreArticulo, 
+            hijo: hijoArticulo, 
+            unidades,
+            formato_usado: req.body.padre_articulo ? 'nuevo (padre_articulo)' : 'legacy (padre_codigo_barras)'
+        });
         
         // Determinar si es guardar o quitar mapeo
-        const esQuitarMapeo = hijo_codigo_barras === null || hijo_codigo_barras === undefined;
+        const esQuitarMapeo = hijoArticulo === null || hijoArticulo === undefined;
         
         if (esQuitarMapeo) {
-            // QUITAR MAPEO - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
+            // QUITAR MAPEO - Buscar padre por codigo_barras o por articulo_numero
             console.log('🗑️ [PACK-MAP] Quitando mapeo pack...');
             
             const query = `
@@ -771,9 +782,9 @@ const actualizarPackMapping = async (req, res) => {
                    )
             `;
             
-            const result = await pool.query(query, [padre_codigo_barras.trim()]);
+            const result = await pool.query(query, [padreArticulo.trim()]);
             
-            console.log(`🧩 [PACK-MAP] padre=${padre_codigo_barras} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
+            console.log(`🧩 [PACK-MAP] padre=${padreArticulo} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
             
             if (result.rowCount === 0) {
                 return res.status(404).json({
@@ -789,10 +800,10 @@ const actualizarPackMapping = async (req, res) => {
             console.log('💾 [PACK-MAP] Guardando/actualizando mapeo pack...');
             
             // Validaciones para guardar
-            if (!hijo_codigo_barras || typeof hijo_codigo_barras !== 'string' || !hijo_codigo_barras.trim()) {
+            if (!hijoArticulo || typeof hijoArticulo !== 'string' || !hijoArticulo.trim()) {
                 return res.status(400).json({
                     success: false,
-                    error: 'hijo_codigo_barras es requerido y debe ser un string válido'
+                    error: 'hijo_articulo es requerido y debe ser un string válido'
                 });
             }
             
@@ -804,8 +815,8 @@ const actualizarPackMapping = async (req, res) => {
             }
             
             const unidadesInt = parseInt(unidades);
-            const hijoCodigoTrim = hijo_codigo_barras.trim();
-            const padreCodigoTrim = padre_codigo_barras.trim();
+            const hijoCodigoTrim = hijoArticulo.trim();
+            const padreCodigoTrim = padreArticulo.trim();
             
             // ✅ VALIDACIÓN 1: Verificar que padre !== hijo (circularidad directa)
             if (padreCodigoTrim === hijoCodigoTrim) {
