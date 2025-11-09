@@ -562,15 +562,15 @@
         }
 
         /* Fila hijo (subfila) */
-        .summary-table .child-row {
+        .child-row {
             display: none;
             background-color: #f0f8ff;
             border-left: 6px solid #17a2b8;
             animation: slideDown 0.3s ease-out;
         }
 
-        .summary-table .child-row.visible {
-            display: table-row;
+        .child-row.visible {
+            display: table-row !important;
         }
 
         @keyframes slideDown {
@@ -1772,7 +1772,7 @@
     </div>
 
     <script src="/js/produccion.js?v=8.0"></script>
-    <script src="/js/produccion-resumen-expandible.js?v=17.0"></script>
+    <script src="/js/produccion-resumen-expandible.js?v=17.3"></script>
     <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     <script src="/js/configurar-carros-ui.js?v=1.0"></script>
     
@@ -2038,7 +2038,7 @@
         }
 
         // Función para renderizar una fila de artículo en el resumen
-        // VERSIÓN DIRECTA SIN DEPENDENCIA DEL MÓDULO EXTERNO
+        // CON SOPORTE PARA EXPANSIÓN DE HIJOS
         function renderizarFilaResumen(articulo, tipo) {
             console.log('[RENDER-FILA] Entrada:', { articulo, tipo });
             
@@ -2061,8 +2061,10 @@
             const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
             const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row parent-row' : 'parcial-row expandible-row parent-row';
             
+            // IMPORTANTE: Agregar onclick a la fila completa (igual que en produccion.js)
+            // Esto permite que handleFilaClick se ejecute al hacer click en cualquier parte de la fila
             const html = `
-                <tr class="${rowClass}" data-articulo="${codigoArticulo}">
+                <tr class="${rowClass}" data-articulo="${codigoArticulo}" data-articulo-numero="${codigoArticulo}" onclick="if(typeof window.handleFilaClick === 'function') window.handleFilaClick('${codigoArticulo}', event)">
                     <td class="col-articulo">${codigoArticulo}</td>
                     <td class="descripcion-col">${descripcion}</td>
                     <td>${pedidoTotal}</td>
@@ -2178,6 +2180,22 @@
                     tbodyEl.innerHTML = html;
                     console.log('✅ [RESUMEN] Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
                     
+                    // [RESUMEN] Actualizar íconos de expansión INMEDIATAMENTE después de renderizar
+                    if (typeof window.actualizarIconosExpansion === 'function') {
+                        console.log('[RESUMEN] Actualizando íconos de expansión inmediatamente...');
+                        setTimeout(async () => {
+                            await window.actualizarIconosExpansion();
+                            
+                            // Preservar expansión tras re-render
+                            if (typeof window.preservarExpansion === 'function') {
+                                console.log('[RESUMEN] Preservando estado de expansión...');
+                                setTimeout(() => {
+                                    window.preservarExpansion();
+                                }, 200);
+                            }
+                        }, 100);
+                    }
+                    
                     // [RESUMEN] Exponer datos globalmente y emitir evento para sincronización
                     const datosFaltantesYParciales = [...faltantes, ...parciales];
                     window.__resumenFaltantesDatos = datosFaltantesYParciales;
@@ -2272,14 +2290,6 @@
                     console.log('[RESUMEN] Ejecutando actualización programada');
                     actualizarResumen();
                     sincronizarConInformePrincipal();
-                    
-                    // Actualizar íconos UNA SOLA VEZ después de la carga inicial
-                    setTimeout(() => {
-                        if (typeof window.actualizarIconosExpansion === 'function') {
-                            console.log('[RESUMEN] Actualizando íconos de expansión');
-                            window.actualizarIconosExpansion();
-                        }
-                    }, 3000);
                 }, 2000);
                 
                 console.log('[INIT] PASO 2 COMPLETADO - Resumen programado');
