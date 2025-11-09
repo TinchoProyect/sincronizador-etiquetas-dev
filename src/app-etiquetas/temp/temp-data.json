@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "numero": "MFSTx2",
-    "nombre": "Mix/F/Secas/Tropical x 2",
-    "codigo_barras": "6475852378"
-  },
-  "cantidad": "1.00"
+  "numero": "MFST10x300",
+  "nombre": "Mix/F/Secas/Tropical 10 x 300",
+  "codigo_barras": "2582563254",
+  "cantidad": 4
 }

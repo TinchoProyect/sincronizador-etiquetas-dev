@@ -536,6 +536,87 @@
             padding: 10px 12px;
         }
 
+        /* Ocultar columna Artículo (código de barras) */
+        .summary-table .col-articulo {
+            display: none;
+        }
+
+        /* Estilos para filas expandibles de artículos compuestos */
+        .summary-table .parent-row {
+            transition: background-color 0.2s ease;
+        }
+
+        .summary-table .parent-row.has-children {
+            border-left: 4px solid #17a2b8;
+        }
+
+        .summary-table .parent-row.has-children:hover {
+            background-color: rgba(23, 162, 184, 0.1) !important;
+        }
+
+        .summary-table .expand-indicator {
+            display: inline-block;
+            font-size: 14px;
+            transition: transform 0.3s ease;
+            user-select: none;
+        }
+
+        /* Fila hijo (subfila) */
+        .summary-table .child-row {
+            display: none;
+            background-color: #f0f8ff;
+            border-left: 6px solid #17a2b8;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .summary-table .child-row.visible {
+            display: table-row;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .summary-table .child-row td {
+            padding: 10px 12px 10px 50px;
+            font-size: 0.9em;
+            color: #2c5f6f;
+            background: linear-gradient(90deg, rgba(23, 162, 184, 0.05) 0%, transparent 50%);
+        }
+
+        .summary-table .child-description {
+            color: #2c5f6f;
+            font-weight: 500;
+        }
+
+        .summary-table .child-label {
+            display: inline-block;
+            padding: 3px 8px;
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            border-radius: 4px;
+            font-size: 0.75em;
+            margin-right: 10px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary-table .descripcion-col {
+            font-weight: 500;
+        }
+
+        .summary-table .parent-row.has-children .descripcion-col {
+            font-weight: 600;
+            color: #17a2b8;
+        }
+
         /* Estilos compactos para el resumen */
         .summary-table .articulos-tabla th,
         .summary-table .articulos-tabla td {
@@ -700,6 +781,153 @@
 
         .pack-cancel-button:hover {
             background-color: #5a6268;
+        }
+
+        /* Estilos para tabs de búsqueda dual */
+        .search-mode-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 5px;
+        }
+
+        .search-tab {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            position: relative;
+            bottom: -7px;
+        }
+
+        .search-tab.active {
+            color: #6f42c1;
+            border-bottom-color: #6f42c1;
+        }
+
+        .search-tab:hover:not(.active) {
+            color: #5a2d91;
+            background: #f8f9fa;
+        }
+
+        .ayuda-busqueda {
+            font-size: 12px;
+            color: #856404;
+            background: #fff3cd;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .aviso-codigo-barras {
+            font-size: 13px;
+            color: #004085;
+            background: #cce5ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            display: none;
+            border-left: 4px solid #004085;
+        }
+
+        .aviso-codigo-barras button {
+            margin-left: 10px;
+            padding: 4px 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .aviso-codigo-barras button:hover {
+            background: #0056b3;
+        }
+
+        
+        /* Estilos para búsqueda dual en modal pack */
+        .search-mode-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .search-tab {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+            position: relative;
+            bottom: -2px;
+        }
+
+        .search-tab:hover:not(.active) {
+            color: #6f42c1;
+            background-color: #f8f9fa;
+        }
+
+        .search-tab.active {
+            color: #6f42c1;
+            border-bottom-color: #6f42c1;
+            background-color: white;
+        }
+
+        .ayuda-busqueda {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #856404;
+            display: none;
+        }
+
+        .aviso-codigo-barras {
+            margin-top: 8px;
+            padding: 10px 12px;
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #0c5460;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .aviso-codigo-barras button {
+            padding: 4px 12px;
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .aviso-codigo-barras button:hover {
+            background-color: #138496;
         }
 
         /* Toast notification */
@@ -979,13 +1207,13 @@
                 <table class="articulos-tabla summary-table">
                     <thead>
                         <tr>
-                            <th>Artículo</th>
+                            <th class="col-articulo">Artículo</th>
                             <th>Descripción</th>
                             <th>Pedido Total</th>
                             <th>Stock Disponible</th>
                             <th>Faltante</th>
                             <th>Estado</th>
-                            <th>Acciones</th>
+                            <th style="width: 100px;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="summary-tbody">
@@ -1112,23 +1340,91 @@
         <div id="modal-pack" class="modal-pack-overlay" style="display:none;">
             <div class="modal-pack-content">
                 <div class="modal-pack-header">
-                    <h3>Configurar Pack</h3>
+                    <h3 id="modal-pack-titulo">Crear nuevo pack</h3>
                     <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalPack()">&times;</button>
                 </div>
                 <div class="modal-pack-body">
-                    <label for="pack-padre-codigo">Código Padre (solo lectura):</label>
-                    <input type="text" id="pack-padre-codigo" readonly>
+                    <!-- Información del padre (sin input, solo display) -->
+                    <div style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #6f42c1;">
+                        <div style="font-size: 18px; font-weight: 700; color: #333; margin-bottom: 5px;" id="pack-padre-descripcion">
+                            Cargando...
+                        </div>
+                        <div style="font-size: 12px; color: #6c757d; font-weight: 500;">
+                            Codigo: <span id="pack-padre-codigo-display" style="font-family: monospace;">-</span>
+                        </div>
+                    </div>
                     
-                    <label for="pack-hijo-codigo">Código Hijo:</label>
-                    <input type="text" id="pack-hijo-codigo" placeholder="Ingrese código del artículo hijo">
+                    <!-- Campo oculto para mantener el código del padre -->
+                    <input type="hidden" id="pack-padre-codigo">
+
+                    <!-- Búsqueda de artículo hijo con MODO DUAL -->
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">
+                        🔗 Articulo Hijo:
+                    </label>
                     
-                    <label for="pack-unidades">Unidades por Pack:</label>
-                    <input type="number" id="pack-unidades" min="1" placeholder="Ingrese cantidad de unidades">
+                    <!-- Tabs para cambiar modo de búsqueda -->
+                    <div class="search-mode-tabs">
+                        <button type="button" id="btn-busqueda-codigo" class="search-tab active">Busqueda por codigo</button>
+                        <button type="button" id="btn-busqueda-descripcion" class="search-tab">Busqueda por descripcion</button>
+                    </div>
                     
-                    <div id="pack-mensaje" class="mensaje-info" style="display:none;"></div>
+                    <!-- Contenedor wrapper para búsqueda con posicionamiento relativo -->
+                    <div style="position: relative;">
+                        <!-- Input para MODO CÓDIGO (nuevo, activo por defecto) -->
+                        <div id="search-codigo-container" style="margin-bottom: 15px;">
+                            <input 
+                                type="text" 
+                                id="pack-hijo-codigo-input" 
+                                placeholder="Escanear o ingresar codigo de barras..."
+                                autocomplete="off"
+                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                            <div id="ayuda-busqueda-codigo" class="ayuda-busqueda">
+                                Para buscar por texto, usa "Busqueda por descripcion"
+                            </div>
+                        </div>
+                        
+                        <!-- Input para MODO DESCRIPCIÓN (existente, oculto por defecto) -->
+                        <div id="search-descripcion-container" style="margin-bottom: 15px; display: none;">
+                            <input 
+                                type="text" 
+                                id="pack-hijo-busqueda" 
+                                placeholder="Buscar por descripcion (ej: gi 500 a)..."
+                                autocomplete="off"
+                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                            <div id="aviso-codigo-barras" class="aviso-codigo-barras">
+                                Parece un codigo de barras. ¿Queres buscar por codigo?
+                                <button type="button" onclick="cambiarAModoCodigo()">Cambiar a modo codigo</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Lista desplegable de resultados (compartida por ambos modos) -->
+                        <div id="pack-hijo-resultados" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #6f42c1; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 1001; margin-top: -15px;">
+                            <!-- Resultados dinámicos -->
+                        </div>
+                    </div>
+                    
+                    <!-- Campo oculto para el código del hijo seleccionado -->
+                    <input type="hidden" id="pack-hijo-codigo">
+                    
+                    <!-- Mostrar hijo seleccionado -->
+                    <div id="pack-hijo-seleccionado" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 4px; border-left: 4px solid #28a745;">
+                        <div style="font-weight: 600; color: #155724;" id="pack-hijo-seleccionado-texto"></div>
+                    </div>
+
+                    <label for="pack-unidades" style="font-weight: 600; margin-bottom: 8px; display: block;">
+                        🔢 Unidades por Pack:
+                    </label>
+                    <input 
+                        type="number" 
+                        id="pack-unidades" 
+                        min="1" 
+                        placeholder="Ej: 2"
+                        style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                    
+                    <div id="pack-mensaje" class="mensaje-info" style="display:none; margin-top: 15px;"></div>
                 </div>
                 <div class="modal-pack-footer">
-                    <button id="pack-guardar" class="pack-save-button">Guardar</button>
+                    <button id="pack-guardar" class="pack-save-button" disabled>Guardar</button>
                     <button id="pack-quitar" class="pack-remove-button" style="display:none;">Quitar mapeo</button>
                     <button class="pack-cancel-button" onclick="cerrarModalPack()">Cancelar</button>
                 </div>
@@ -1197,7 +1493,9 @@
         </footer>
     </div>
 
-    <script src="/js/produccion.js?v=3.5"></script>
+    <script src="/js/produccion.js?v=8.0"></script>
+    <script src="/js/produccion-resumen-expandible.js?v=17.0"></script>
+    <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1234,6 +1532,8 @@
 
         // Función para inicializar el estado de las secciones al cargar la página
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('[INIT] PASO 1 - DOMContentLoaded disparado - Inicializando secciones colapsables');
+            
             // Asegurar que todas las secciones estén colapsadas al inicio
             const collapsibleSections = document.querySelectorAll('.collapsible-content');
             const toggleButtons = document.querySelectorAll('.section-toggle');
@@ -1246,7 +1546,7 @@
                 button.setAttribute('aria-expanded', 'false');
             });
             
-            console.log('Secciones colapsables inicializadas correctamente');
+            console.log('[INIT] PASO 1 COMPLETADO - Secciones colapsables inicializadas correctamente');
         });
 
         // Función para expandir una sección específica (útil para llamadas externas)
@@ -1299,13 +1599,19 @@
 
         // Función para extraer datos directamente del DOM del panel principal
         function obtenerDatosDesdeDOM() {
+            console.log('[RESUMEN] obtenerDatosDesdeDOM() - Iniciando extracción');
             const articulos = [];
             
             try {
                 // Buscar la tabla de artículos en el panel principal
+                const container = document.querySelector('#articulos-container');
+                console.log('[RESUMEN] Container encontrado:', !!container);
+                
                 const tabla = document.querySelector('#articulos-container .articulos-tabla tbody');
+                console.log('[RESUMEN] Tabla encontrada:', !!tabla);
+                
                 if (!tabla) {
-                    console.debug('⚠️ No se encontró tabla de artículos en el DOM');
+                    console.log('[RESUMEN] ⚠️ No se encontró tabla de artículos en el DOM - retornando array vacío');
                     return [];
                 }
                 
@@ -1353,161 +1659,146 @@
             }
         }
 
-        // Función para obtener datos (primero intenta DOM, luego API como fallback)
+        // Función para obtener datos - USA EL MISMO ENDPOINT QUE EL PANEL PRINCIPAL
         async function obtenerDatosArticulosConFiltros() {
-            // Primero intentar extraer del DOM
-            const datosDOM = obtenerDatosDesdeDOM();
-            if (datosDOM.length > 0) {
-                console.debug('✅ Usando datos del DOM:', datosDOM.length, 'artículos');
-                datosArticulosCompartidos = datosDOM;
-                ultimaActualizacion = Date.now();
-                return datosDOM;
-            }
+            console.log('[RESUMEN] obtenerDatosArticulosConFiltros() - Usando endpoint /pedidos-articulos');
             
-            // Fallback: consulta API
             try {
+                // Usar los mismos filtros que el panel principal
                 const fechaCorte = document.getElementById('fecha-corte-articulos')?.value || '';
-                const busqueda = document.getElementById('buscar-articulo')?.value || '';
-                const filtroEstado = document.getElementById('filtro-estado-articulos')?.value || 'todos';
                 
-                let url = '/api/produccion/articulos-pedidos-confirmados';
+                let url = '/api/produccion/pedidos-articulos';
                 const params = new URLSearchParams();
                 
                 if (fechaCorte) params.append('fecha', fechaCorte);
-                if (busqueda) params.append('buscar', busqueda);
-                if (filtroEstado && filtroEstado !== 'todos') params.append('estado', filtroEstado);
+                // NO aplicar filtro de estado aquí - lo haremos después
                 
                 if (params.toString()) {
                     url += '?' + params.toString();
                 }
                 
-                console.debug('🔍 Fallback: Fetching desde API:', url);
+                console.log('[RESUMEN] Fetching desde:', url);
                 
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`Error HTTP: ${response.status}`);
                 }
                 
-                const data = await response.json();
-                console.debug('📊 Dataset API recibido:', data.length, 'artículos');
+                const result = await response.json();
+                console.log('[RESUMEN] Respuesta del servidor:', result);
                 
-                datosArticulosCompartidos = data;
+                // El endpoint retorna { success, data, total_articulos, totales }
+                const articulos = result.data || [];
+                console.log('[RESUMEN] Artículos recibidos:', articulos.length);
+                
+                // Verificar que no hay promesas en las descripciones
+                if (articulos.length > 0) {
+                    const primerArticulo = articulos[0];
+                    console.log('[RESUMEN] Primer artículo:', {
+                        articulo_numero: primerArticulo.articulo_numero,
+                        descripcion: primerArticulo.descripcion,
+                        tipoDescripcion: typeof primerArticulo.descripcion,
+                        esPromise: primerArticulo.descripcion && typeof primerArticulo.descripcion.then === 'function'
+                    });
+                }
+                
+                datosArticulosCompartidos = articulos;
                 ultimaActualizacion = Date.now();
                 
-                return data;
+                return articulos;
             } catch (error) {
-                console.error('❌ Error al obtener datos de artículos:', error);
+                console.error('❌ [RESUMEN] Error al obtener datos:', error);
                 return [];
             }
         }
 
-        // Función para filtrar faltantes y parciales con lógica mejorada
+        // Función para filtrar faltantes y parciales - USA EL CAMPO estado DEL BACKEND
         function filtrarFaltantesYParciales(articulos) {
+            console.log('[RESUMEN] filtrarFaltantesYParciales() - Filtrando', articulos.length, 'artículos');
+            
             if (!Array.isArray(articulos)) {
-                console.debug('⚠️ Dataset no es array:', typeof articulos);
+                console.log('[RESUMEN] ⚠️ Dataset no es array:', typeof articulos);
                 return { faltantes: [], parciales: [] };
             }
 
             const faltantes = [];
             const parciales = [];
             
+            // El backend ya clasifica los artículos con el campo "estado"
+            // Solo necesitamos filtrar por estado !== "COMPLETO"
             articulos.forEach((art, index) => {
-                // Parsear valores numéricos CRUDOS primero
-                const faltanteCrudo = parseNumeroSeguro(art.faltante || art.cantidad_faltante);
-                const stockCrudo = parseNumeroSeguro(art.stock_disponible || art.stock);
-                const pedidoCrudo = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida);
+                const estadoNormalizado = normalizarEstado(art.estado);
                 
-                // REDONDEAR a 2 decimales ANTES de clasificar
-                const faltanteRedondeado = Math.round(faltanteCrudo * 100) / 100;
-                const stockRedondeado = Math.round(stockCrudo * 100) / 100;
-                const pedidoRedondeado = Math.round(pedidoCrudo * 100) / 100;
-                
-                // Log de depuración para el primer elemento
+                // Log del primer elemento
                 if (index === 0) {
-                    console.debug('🔍 Ejemplo artículo (valores redondeados):', {
-                        codigo: art.codigo || art.articulo,
-                        faltanteCrudo: faltanteCrudo,
-                        faltanteRedondeado: faltanteRedondeado,
-                        stockCrudo: stockCrudo,
-                        stockRedondeado: stockRedondeado,
-                        pedidoCrudo: pedidoCrudo,
-                        pedidoRedondeado: pedidoRedondeado
+                    console.log('[RESUMEN] Primer artículo del backend:', {
+                        articulo_numero: art.articulo_numero,
+                        descripcion: art.descripcion,
+                        estado: art.estado,
+                        estadoNormalizado: estadoNormalizado,
+                        tipoDescripcion: typeof art.descripcion
                     });
                 }
                 
-                // NUEVA LÓGICA: Clasificar usando valores REDONDEADOS
-                // Solo procesamos si hay faltante después de redondear
-                if (faltanteRedondeado > 0) {
-                    if (stockRedondeado === 0) {
-                        // Sin stock = FALTANTE TOTAL
-                        faltantes.push({
-                            ...art,
-                            estado: 'FALTANTE',
-                            faltante: faltanteRedondeado,
-                            stock_disponible: stockRedondeado,
-                            pedido_total: pedidoRedondeado
-                        });
-                        console.debug(`  → FALTANTE (stock=0, faltante=${faltanteRedondeado})`);
-                    } else if (stockRedondeado > 0 && stockRedondeado < pedidoRedondeado) {
-                        // Hay algo de stock pero no todo = PARCIAL
-                        parciales.push({
-                            ...art,
-                            estado: 'PARCIAL',
-                            faltante: faltanteRedondeado,
-                            stock_disponible: stockRedondeado,
-                            pedido_total: pedidoRedondeado
-                        });
-                        console.debug(`  → PARCIAL (stock=${stockRedondeado}, pedido=${pedidoRedondeado}, faltante=${faltanteRedondeado})`);
-                    }
+                // Filtrar por estado (excluir COMPLETO)
+                if (estadoNormalizado === 'FALTANTE') {
+                    faltantes.push(art);
+                } else if (estadoNormalizado === 'PARCIAL') {
+                    parciales.push(art);
                 }
-                // Si faltanteRedondeado es 0, no lo incluimos (está completo)
+                // Ignorar COMPLETO
             });
 
-            console.debug('📈 Resultados filtrado (con redondeo previo):', {
+            console.log('[RESUMEN] Resultados del filtrado:', {
                 total: articulos.length,
                 faltantes: faltantes.length,
-                parciales: parciales.length,
-                ejemploFaltantes: faltantes.slice(0, 2).map(f => ({ 
-                    codigo: f.codigo || f.articulo, 
-                    estado: f.estado,
-                    stock: f.stock_disponible,
-                    faltante: f.faltante 
-                })),
-                ejemploParciales: parciales.slice(0, 2).map(p => ({ 
-                    codigo: p.codigo || p.articulo, 
-                    estado: p.estado,
-                    stock: p.stock_disponible,
-                    faltante: p.faltante
-                }))
+                parciales: parciales.length
             });
 
             return { faltantes, parciales };
         }
 
         // Función para renderizar una fila de artículo en el resumen
+        // VERSIÓN DIRECTA SIN DEPENDENCIA DEL MÓDULO EXTERNO
         function renderizarFilaResumen(articulo, tipo) {
-            const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
-            const rowClass = tipo === 'FALTANTE' ? 'faltante-row' : 'parcial-row';
-            const codigoArticulo = articulo.codigo || articulo.articulo || articulo.articulo_numero || '-';
+            console.log('[RENDER-FILA] Entrada:', { articulo, tipo });
             
-            // Formatear números a 2 decimales
+            // Extraer valores directamente
+            const codigoArticulo = articulo.articulo_numero || articulo.codigo || articulo.articulo || '-';
+            const descripcion = articulo.descripcion || articulo.nombre || '-';
             const pedidoTotal = formatearNumeroResumen(articulo.pedido_total || articulo.cantidad_pedida || 0);
             const stockDisponible = formatearNumeroResumen(articulo.stock_disponible || articulo.stock || 0);
             const faltante = formatearNumeroResumen(articulo.faltante || articulo.cantidad_faltante || 0);
             
-            return `
-                <tr class="${rowClass}">
-                    <td>${codigoArticulo}</td>
-                    <td>${articulo.descripcion || articulo.nombre || '-'}</td>
+            console.log('[RENDER-FILA] Valores:', {
+                codigoArticulo,
+                descripcion,
+                tipoDescripcion: typeof descripcion,
+                pedidoTotal,
+                stockDisponible,
+                faltante
+            });
+            
+            const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
+            const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row parent-row' : 'parcial-row expandible-row parent-row';
+            
+            const html = `
+                <tr class="${rowClass}" data-articulo="${codigoArticulo}">
+                    <td class="col-articulo">${codigoArticulo}</td>
+                    <td class="descripcion-col">${descripcion}</td>
                     <td>${pedidoTotal}</td>
                     <td>${stockDisponible}</td>
                     <td class="cantidad-faltante">${faltante}</td>
                     <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
-                    <td>
-                        <button class="pack-button" onclick="abrirModalPack('${codigoArticulo}')">🧩 Pack</button>
+                    <td onclick="event.stopPropagation()">
+                        <button class="pack-button pack-config-btn" data-codigo="${codigoArticulo}" onclick="abrirModalPack('${codigoArticulo}')">🧩 Pack</button>
                     </td>
                 </tr>
             `;
+            
+            console.log('[RENDER-FILA] HTML generado, tipo:', typeof html, 'longitud:', html.length);
+            
+            return html;
         }
 
         // Función auxiliar para formatear números a 2 decimales en el resumen
@@ -1520,6 +1811,7 @@
 
         // Función para actualizar el resumen (sincronizada con panel principal)
         async function actualizarResumen() {
+            console.log('[RESUMEN] actualizarResumen() - INICIO');
             const loadingEl = document.getElementById('summary-loading');
             const emptyEl = document.getElementById('summary-empty');
             const contentEl = document.getElementById('summary-content');
@@ -1531,8 +1823,24 @@
             contentEl.style.display = 'none';
 
             try {
+                console.log('[RESUMEN] Llamando a obtenerDatosArticulosConFiltros()...');
                 // Obtener datos con los mismos filtros que el panel principal
                 const articulos = await obtenerDatosArticulosConFiltros();
+                
+                console.log('[RESUMEN] Datos recibidos de obtenerDatosArticulosConFiltros():', articulos);
+                
+                // ✅ [RESUMEN] Diagnóstico: Verificar que articulos es un array válido
+                console.log('📊 [RESUMEN] Datos obtenidos:', {
+                    esArray: Array.isArray(articulos),
+                    cantidad: articulos?.length || 0,
+                    primerElemento: articulos?.[0] ? {
+                        codigo: articulos[0].codigo,
+                        descripcion: articulos[0].descripcion,
+                        tipoDescripcion: typeof articulos[0].descripcion,
+                        esPromise: articulos[0].descripcion && typeof articulos[0].descripcion.then === 'function'
+                    } : null
+                });
+                
                 const { faltantes, parciales } = filtrarFaltantesYParciales(articulos);
 
                 // Ocultar loading
@@ -1542,7 +1850,7 @@
                     // Mostrar mensaje de sin faltantes ni parciales
                     emptyEl.style.display = 'block';
                     contentEl.style.display = 'none';
-                    console.debug('✅ Sin faltantes ni parciales encontrados');
+                    console.debug('✅ [RESUMEN] Sin faltantes ni parciales encontrados');
                 } else {
                     // Mostrar tabla con datos
                     emptyEl.style.display = 'none';
@@ -1552,8 +1860,17 @@
                     
                     // Agregar faltantes primero (orden solicitado)
                     if (faltantes.length > 0) {
-                        faltantes.forEach(articulo => {
-                            html += renderizarFilaResumen(articulo, 'FALTANTE');
+                        faltantes.forEach((articulo, idx) => {
+                            console.log(`[RESUMEN-RENDER] Renderizando faltante ${idx + 1}:`, {
+                                articulo_numero: articulo.articulo_numero,
+                                descripcion: articulo.descripcion,
+                                tipoDescripcion: typeof articulo.descripcion,
+                                esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
+                            });
+                            
+                            const filaHtml = renderizarFilaResumen(articulo, 'FALTANTE');
+                            console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
+                            html += filaHtml;
                         });
                     }
 
@@ -1564,17 +1881,27 @@
 
                     // Agregar parciales después
                     if (parciales.length > 0) {
-                        parciales.forEach(articulo => {
-                            html += renderizarFilaResumen(articulo, 'PARCIAL');
+                        parciales.forEach((articulo, idx) => {
+                            console.log(`[RESUMEN-RENDER] Renderizando parcial ${idx + 1}:`, {
+                                articulo_numero: articulo.articulo_numero,
+                                descripcion: articulo.descripcion,
+                                tipoDescripcion: typeof articulo.descripcion,
+                                esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
+                            });
+                            
+                            const filaHtml = renderizarFilaResumen(articulo, 'PARCIAL');
+                            console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
+                            html += filaHtml;
                         });
                     }
 
+                    console.log('[RESUMEN-RENDER] HTML completo generado, longitud:', html.length);
                     tbodyEl.innerHTML = html;
-                    console.debug('✅ Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
+                    console.log('✅ [RESUMEN] Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
                 }
 
             } catch (error) {
-                console.error('❌ Error al actualizar resumen:', error);
+                console.error('❌ [RESUMEN] Error al actualizar resumen:', error);
                 loadingEl.style.display = 'none';
                 emptyEl.innerHTML = '<span style="color: #dc3545;">❌ Error al cargar resumen</span>';
                 emptyEl.style.display = 'block';
@@ -1583,38 +1910,10 @@
         }
 
         // Función para observar cambios en la tabla del panel principal
+        // DESHABILITADA - causaba bucles infinitos al detectar cambios en íconos
         function configurarObservadorTabla() {
-            const articulosContainer = document.getElementById('articulos-container');
-            if (!articulosContainer) {
-                console.debug('⚠️ No se encontró articulos-container para observar');
-                return;
-            }
-
-            // Crear observer para detectar cambios en el contenido de la tabla
-            const observer = new MutationObserver((mutations) => {
-                let tablaModificada = false;
-                
-                mutations.forEach((mutation) => {
-                    // Detectar si se agregaron/removieron nodos o cambió el contenido
-                    if (mutation.type === 'childList' || mutation.type === 'subtree') {
-                        tablaModificada = true;
-                    }
-                });
-                
-                if (tablaModificada) {
-                    console.debug('🔄 Detectado cambio en tabla principal, actualizando resumen...');
-                    setTimeout(actualizarResumen, 300); // Delay corto para que se complete el renderizado
-                }
-            });
-
-            // Observar cambios en el contenedor de artículos y sus descendientes
-            observer.observe(articulosContainer, {
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
-
-            console.debug('✅ Observer de tabla configurado');
+            console.debug('⚠️ Observer de tabla DESHABILITADO para evitar bucles infinitos');
+            return;
         }
 
         // Función para sincronizar con todos los controles del panel principal
@@ -1655,19 +1954,48 @@
                 });
             }
 
-            // Configurar observer para detectar cambios automáticamente en la tabla
-            configurarObservadorTabla();
+            // Observer deshabilitado - usar actualizar manual
+            // configurarObservadorTabla();
         }
 
         // Inicializar el resumen cuando se carga la página
         document.addEventListener('DOMContentLoaded', function() {
-            console.debug('🚀 Inicializando resumen de faltantes y parciales...');
+            console.log('[INIT] PASO 2 - Inicializando resumen de faltantes y parciales');
             
-            // Inicializar después de que se carguen los controles del panel
-            setTimeout(() => {
-                actualizarResumen();
-                sincronizarConInformePrincipal();
-            }, 2000); // Delay mayor para asegurar que el panel principal esté listo
+            try {
+                console.log('[RESUMEN] Verificando elementos del DOM...');
+                const loadingEl = document.getElementById('summary-loading');
+                const emptyEl = document.getElementById('summary-empty');
+                const contentEl = document.getElementById('summary-content');
+                const tbodyEl = document.getElementById('summary-tbody');
+                
+                console.log('[RESUMEN] Elementos encontrados:', {
+                    loading: !!loadingEl,
+                    empty: !!emptyEl,
+                    content: !!contentEl,
+                    tbody: !!tbodyEl
+                });
+                
+                // Inicializar después de que se carguen los controles del panel
+                console.log('[RESUMEN] Programando actualización en 2 segundos...');
+                setTimeout(() => {
+                    console.log('[RESUMEN] Ejecutando actualización programada');
+                    actualizarResumen();
+                    sincronizarConInformePrincipal();
+                    
+                    // Actualizar íconos UNA SOLA VEZ después de la carga inicial
+                    setTimeout(() => {
+                        if (typeof window.actualizarIconosExpansion === 'function') {
+                            console.log('[RESUMEN] Actualizando íconos de expansión');
+                            window.actualizarIconosExpansion();
+                        }
+                    }, 3000);
+                }, 2000);
+                
+                console.log('[INIT] PASO 2 COMPLETADO - Resumen programado');
+            } catch (error) {
+                console.error('[INIT] ERROR en PASO 2:', error);
+            }
         });
 
         // Función pública para actualizar el resumen (llamada externa)
@@ -1677,209 +2005,12 @@
         };
 
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
+        // Las funciones window.abrirModalPack y window.cerrarModalPack están definidas en:
+        // src/produccion/js/modal-pack-dual-search.js (cargado arriba)
         
-        // Función para abrir modal pack (disponible globalmente)
-        window.abrirModalPack = function(codigoPadre) {
-            const modal = document.getElementById('modal-pack');
-            const padreCodigo = document.getElementById('pack-padre-codigo');
-            const hijoCodigo = document.getElementById('pack-hijo-codigo');
-            const unidades = document.getElementById('pack-unidades');
-            const mensaje = document.getElementById('pack-mensaje');
-            const quitarBtn = document.getElementById('pack-quitar');
-            
-            if (!modal || !padreCodigo) return;
-            
-            // Limpiar formulario
-            padreCodigo.value = codigoPadre;
-            hijoCodigo.value = '';
-            unidades.value = '';
-            mensaje.style.display = 'none';
-            mensaje.innerHTML = '';
-            quitarBtn.style.display = 'none';
-            
-            // Mostrar modal
-            modal.style.display = 'flex';
-            
-            console.debug('🧩 Modal pack abierto para:', codigoPadre);
-        };
-
-        // Función para cerrar modal pack (disponible globalmente)
-        window.cerrarModalPack = function() {
-            const modal = document.getElementById('modal-pack');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        };
-
-        // Función para mostrar mensajes en el modal pack
-        function mostrarMensajePack(texto, tipo) {
-            const mensaje = document.getElementById('pack-mensaje');
-            if (!mensaje) return;
-            
-            mensaje.innerHTML = texto;
-            mensaje.className = tipo === 'error' ? 'mensaje-error' : 
-                               tipo === 'success' ? 'mensaje-exito' : 'mensaje-info';
-            mensaje.style.display = 'block';
-        }
-
-        // Función para mostrar toast notifications
-        function mostrarToast(texto, tipo = 'success') {
-            // Crear elemento toast
-            const toast = document.createElement('div');
-            toast.className = `toast ${tipo === 'error' ? 'error' : ''}`;
-            toast.textContent = texto;
-            
-            // Agregar al DOM
-            document.body.appendChild(toast);
-            
-            // Mostrar con animación
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 100);
-            
-            // Ocultar y remover después de 3 segundos
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                }, 300);
-            }, 3000);
-        }
-
-        // Configurar event listeners para el modal pack cuando se carga la página
-        document.addEventListener('DOMContentLoaded', function() {
-            const packGuardar = document.getElementById('pack-guardar');
-            const packQuitar = document.getElementById('pack-quitar');
-            
-            if (packGuardar) {
-                packGuardar.addEventListener('click', async function() {
-                    const padreCodigo = document.getElementById('pack-padre-codigo');
-                    const hijoCodigo = document.getElementById('pack-hijo-codigo');
-                    const unidades = document.getElementById('pack-unidades');
-                    
-                    if (!padreCodigo || !hijoCodigo || !unidades) return;
-                    
-                    // Validaciones
-                    if (!hijoCodigo.value.trim()) {
-                        mostrarMensajePack('Por favor ingrese el código del artículo hijo', 'error');
-                        return;
-                    }
-                    
-                    if (!unidades.value || parseInt(unidades.value) <= 0) {
-                        mostrarMensajePack('Por favor ingrese una cantidad válida de unidades', 'error');
-                        return;
-                    }
-                    
-                    try {
-                        const payload = {
-                            padre_codigo_barras: padreCodigo.value.trim(),
-                            hijo_codigo_barras: hijoCodigo.value.trim(),
-                            unidades: parseInt(unidades.value)
-                        };
-                        
-                        console.log('📤 Guardando mapeo pack:', payload);
-                        
-                        const response = await fetch('/api/produccion/pack-map', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success) {
-                            mostrarMensajePack('✅ Mapeo pack guardado correctamente', 'success');
-                            mostrarToast('Mapeo pack guardado correctamente', 'success');
-                            
-                            // Mostrar botón quitar
-                            const quitarBtn = document.getElementById('pack-quitar');
-                            if (quitarBtn) {
-                                quitarBtn.style.display = 'inline-block';
-                            }
-                            
-                            setTimeout(() => {
-                                window.cerrarModalPack();
-                                // Actualizar resumen y panel principal
-                                if (typeof window.actualizarResumenFaltantes === 'function') {
-                                    setTimeout(window.actualizarResumenFaltantes, 800);
-                                }
-                            }, 2000);
-                        } else {
-                            mostrarMensajePack(`❌ ${data.error || 'Error al guardar mapeo pack'}`, 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('❌ Error al guardar mapeo pack:', error);
-                        mostrarMensajePack('❌ Error de conexión', 'error');
-                    }
-                });
-            }
-            
-            if (packQuitar) {
-                packQuitar.addEventListener('click', async function() {
-                    const padreCodigo = document.getElementById('pack-padre-codigo');
-                    
-                    if (!padreCodigo) return;
-                    
-                    if (!confirm('¿Está seguro de que desea quitar el mapeo de pack para este artículo?')) {
-                        return;
-                    }
-                    
-                    try {
-                        const payload = {
-                            padre_codigo_barras: padreCodigo.value.trim(),
-                            hijo_codigo_barras: null,
-                            unidades: null
-                        };
-                        
-                        console.log('📤 Quitando mapeo pack:', payload);
-                        
-                        const response = await fetch('/api/produccion/pack-map', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success) {
-                            mostrarMensajePack('✅ Mapeo pack eliminado correctamente', 'success');
-                            mostrarToast('Mapeo pack eliminado correctamente', 'success');
-                            
-                            // Ocultar botón quitar y limpiar campos
-                            const quitarBtn = document.getElementById('pack-quitar');
-                            const hijoCodigo = document.getElementById('pack-hijo-codigo');
-                            const unidades = document.getElementById('pack-unidades');
-                            
-                            if (quitarBtn) quitarBtn.style.display = 'none';
-                            if (hijoCodigo) hijoCodigo.value = '';
-                            if (unidades) unidades.value = '';
-                            
-                            setTimeout(() => {
-                                window.cerrarModalPack();
-                                // Actualizar resumen y panel principal
-                                if (typeof window.actualizarResumenFaltantes === 'function') {
-                                    setTimeout(window.actualizarResumenFaltantes, 800);
-                                }
-                            }, 2000);
-                        } else {
-                            mostrarMensajePack(`❌ ${data.error || 'Error al quitar mapeo pack'}`, 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('❌ Error al quitar mapeo pack:', error);
-                        mostrarMensajePack('❌ Error de conexión', 'error');
-                    }
-                });
-            }
-        });
+        console.log('[INIT] PASO 3 - Modal pack: usando busqueda dual (modal-pack-dual-search.js v3.0)');
 
     </script>
 </body>
 </html>
+

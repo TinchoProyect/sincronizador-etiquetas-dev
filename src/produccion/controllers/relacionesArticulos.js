@@ -32,15 +32,15 @@ async function obtenerRelacionesCarro(carroId, usuarioId) {
 
 /**
  * Obtiene una relación por código de artículo de producción
- * @param {string} articuloCodigo 
+ * @param {string} articuloCodigo
  * @returns {Promise<Object|null>}
  */
 async function obtenerRelacionPorArticulo(articuloCodigo) {
     try {
         const query = `
-            SELECT 
-                aper.id, 
-                aper.articulo_produccion_codigo, 
+            SELECT
+                aper.id,
+                aper.articulo_produccion_codigo,
                 aper.articulo_kilo_codigo,
                 COALESCE(aper.multiplicador_ingredientes, 1) as multiplicador_ingredientes,
                 a.nombre as articulo_kilo_nombre,
@@ -54,6 +54,33 @@ async function obtenerRelacionPorArticulo(articuloCodigo) {
         return result.rows[0] || null;
     } catch (error) {
         console.error('Error al obtener relación por artículo:', error);
+        throw error;
+    }
+}
+
+/**
+ * Obtiene relaciones para múltiples códigos de artículos de producción
+ * @param {Array<string>} articuloCodigos - Array de códigos de artículos de producción
+ * @returns {Promise<Array>}
+ */
+async function obtenerRelacionesPorArticulos(articuloCodigos) {
+    try {
+        const query = `
+            SELECT
+                aper.id,
+                aper.articulo_produccion_codigo,
+                aper.articulo_kilo_codigo,
+                COALESCE(aper.multiplicador_ingredientes, 1) as multiplicador_ingredientes,
+                a.nombre as articulo_kilo_nombre,
+                a.codigo_barras as articulo_kilo_codigo_barras
+            FROM articulos_produccion_externa_relacion aper
+            LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
+            WHERE aper.articulo_produccion_codigo = ANY($1)
+        `;
+        const result = await pool.query(query, [articuloCodigos]);
+        return result.rows;
+    } catch (error) {
+        console.error('Error al obtener relaciones por artículos:', error);
         throw error;
     }
 }
@@ -179,6 +206,7 @@ async function eliminarRelacionPorArticulo(articuloCodigo) {
 module.exports = {
     obtenerRelacionesCarro,
     obtenerRelacionPorArticulo,
+    obtenerRelacionesPorArticulos,
     crearRelacion,
     actualizarRelacion,
     eliminarRelacion,

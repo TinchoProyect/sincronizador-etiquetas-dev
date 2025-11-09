@@ -528,6 +528,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                     ac.articulo_numero,
                     ac.pedido_total,
                     COALESCE(
+                        NULLIF(TRIM(src.descripcion), ''),
                         NULLIF(TRIM(a.nombre), ''),
                         ac.articulo_numero
                     ) as descripcion,
@@ -585,13 +586,59 @@ const obtenerPedidosArticulos = async (req, res) => {
         // Aplicar filtros adicionales
         let articulos = result.rows;
         
-        // Filtro por texto (q)
+        // Filtro por texto (q) y búsqueda en stock_real_consolidado para artículos no pedidos
         if (q && q.trim()) {
             const filtroTexto = q.trim().toLowerCase();
+            
+            // Filtrar artículos que ya están en presupuestos
             articulos = articulos.filter(art => 
                 art.articulo_numero.toLowerCase().includes(filtroTexto) ||
                 art.descripcion.toLowerCase().includes(filtroTexto)
             );
+            
+            // Si buscamos por código de barras exacto y NO está en los resultados, buscar en stock_real_consolidado
+            const busquedaExacta = q.trim();
+            const yaExiste = articulos.some(art => art.articulo_numero === busquedaExacta);
+            
+            if (!yaExiste) {
+                console.log(`🔍 [PROD_ART] Artículo ${busquedaExacta} no está en presupuestos, buscando en stock_real_consolidado...`);
+                
+                const stockQuery = `
+                    SELECT 
+                        src.codigo_barras as articulo_numero,
+                        COALESCE(
+                            NULLIF(TRIM(src.descripcion), ''),
+                            src.codigo_barras
+                        ) as descripcion,
+                        0 as pedido_total,
+                        ROUND(COALESCE(
+                            CASE 
+                                WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
+                                ELSE src.stock_consolidado
+                            END, 0
+                        )::numeric, 2) as stock_disponible,
+                        0 as faltante,
+                        'COMPLETO' as estado,
+                        src.es_pack,
+                        src.pack_hijo_codigo,
+                        src.pack_unidades,
+                        hijo.stock_consolidado as stock_hijo
+                    FROM public.stock_real_consolidado src
+                    LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                    WHERE src.codigo_barras = $1 OR src.articulo_numero = $1
+                    LIMIT 1
+                `;
+                
+                const stockResult = await pool.query(stockQuery, [busquedaExacta]);
+                
+                if (stockResult.rows.length > 0) {
+                    console.log(`✅ [PROD_ART] Artículo ${busquedaExacta} encontrado en stock_real_consolidado`);
+                    articulos.push(stockResult.rows[0]);
+                } else {
+                    console.log(`❌ [PROD_ART] Artículo ${busquedaExacta} no encontrado en stock_real_consolidado`);
+                }
+            }
         }
         
         // Filtro por estado
@@ -655,13 +702,17 @@ const obtenerPedidosArticulos = async (req, res) => {
             });
         }
 
-        // Limpiar campos internos del response
-        articulos = articulos.map(art => {
-            const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
-            return articuloLimpio;
-        });
+        // Limpiar campos internos del response SOLO si no se solicita explícitamente incluirlos
+        const includePack = req.query.include_pack === 'true';
+        
+        if (!includePack) {
+            articulos = articulos.map(art => {
+                const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
+                return articuloLimpio;
+            });
+        }
 
-        // Actualizar response con datos limpios
+        // Actualizar response con datos (limpios o con pack según parámetro)
         response.data = articulos;
         
         console.log(`✅ [PROD_ART] Consulta exitosa: ${articulos.length} artículos encontrados`);
@@ -682,28 +733,39 @@ const obtenerPedidosArticulos = async (req, res) => {
 
 /**
  * Actualiza el mapeo de pack para un artículo
+ * Acepta nombres de campos nuevos (padre_articulo, hijo_articulo) y legacy (padre_codigo_barras, hijo_codigo_barras)
  */
 const actualizarPackMapping = async (req, res) => {
     try {
         console.log('🧩 [PACK-MAP] Iniciando actualización de mapeo pack...');
         
-        const { padre_codigo_barras, hijo_codigo_barras, unidades } = req.body;
+        // ✅ COMPATIBILIDAD: Aceptar ambos formatos de nombres
+        // Formato OFICIAL (nuevo): padre_articulo, hijo_articulo
+        // Formato LEGACY (compatibilidad): padre_codigo_barras, hijo_codigo_barras
+        const padreArticulo = req.body.padre_articulo || req.body.padre_codigo_barras;
+        const hijoArticulo = req.body.hijo_articulo !== undefined ? req.body.hijo_articulo : req.body.hijo_codigo_barras;
+        const unidades = req.body.unidades;
         
-        // Validación padre_codigo_barras requerido
-        if (!padre_codigo_barras || typeof padre_codigo_barras !== 'string' || !padre_codigo_barras.trim()) {
+        // Validación padre requerido
+        if (!padreArticulo || typeof padreArticulo !== 'string' || !padreArticulo.trim()) {
             return res.status(400).json({
                 success: false,
-                error: 'padre_codigo_barras es requerido y debe ser un string válido'
+                error: 'padre_articulo es requerido y debe ser un string válido'
             });
         }
         
-        console.log('📋 [PACK-MAP] Datos recibidos:', { padre_codigo_barras, hijo_codigo_barras, unidades });
+        console.log('📋 [PACK-MAP] Datos recibidos:', { 
+            padre: padreArticulo, 
+            hijo: hijoArticulo, 
+            unidades,
+            formato_usado: req.body.padre_articulo ? 'nuevo (padre_articulo)' : 'legacy (padre_codigo_barras)'
+        });
         
         // Determinar si es guardar o quitar mapeo
-        const esQuitarMapeo = hijo_codigo_barras === null || hijo_codigo_barras === undefined;
+        const esQuitarMapeo = hijoArticulo === null || hijoArticulo === undefined;
         
         if (esQuitarMapeo) {
-            // QUITAR MAPEO - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
+            // QUITAR MAPEO - Buscar padre por codigo_barras o por articulo_numero
             console.log('🗑️ [PACK-MAP] Quitando mapeo pack...');
             
             const query = `
@@ -720,9 +782,9 @@ const actualizarPackMapping = async (req, res) => {
                    )
             `;
             
-            const result = await pool.query(query, [padre_codigo_barras.trim()]);
+            const result = await pool.query(query, [padreArticulo.trim()]);
             
-            console.log(`🧩 [PACK-MAP] padre=${padre_codigo_barras} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
+            console.log(`🧩 [PACK-MAP] padre=${padreArticulo} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
             
             if (result.rowCount === 0) {
                 return res.status(404).json({
@@ -738,10 +800,10 @@ const actualizarPackMapping = async (req, res) => {
             console.log('💾 [PACK-MAP] Guardando/actualizando mapeo pack...');
             
             // Validaciones para guardar
-            if (!hijo_codigo_barras || typeof hijo_codigo_barras !== 'string' || !hijo_codigo_barras.trim()) {
+            if (!hijoArticulo || typeof hijoArticulo !== 'string' || !hijoArticulo.trim()) {
                 return res.status(400).json({
                     success: false,
-                    error: 'hijo_codigo_barras es requerido y debe ser un string válido'
+                    error: 'hijo_articulo es requerido y debe ser un string válido'
                 });
             }
             
@@ -753,12 +815,21 @@ const actualizarPackMapping = async (req, res) => {
             }
             
             const unidadesInt = parseInt(unidades);
-            const hijoCodigoTrim = hijo_codigo_barras.trim();
-            const padreCodigoTrim = padre_codigo_barras.trim();
+            const hijoCodigoTrim = hijoArticulo.trim();
+            const padreCodigoTrim = padreArticulo.trim();
+            
+            // ✅ VALIDACIÓN 1: Verificar que padre !== hijo (circularidad directa)
+            if (padreCodigoTrim === hijoCodigoTrim) {
+                console.log(`❌ [PACK-MAP] Circularidad directa detectada: padre=${padreCodigoTrim} === hijo=${hijoCodigoTrim}`);
+                return res.status(400).json({
+                    success: false,
+                    error: 'No se puede configurar un artículo como pack de sí mismo'
+                });
+            }
             
             // Verificar que existe el hijo en stock_real_consolidado
             const verificarHijoQuery = `
-                SELECT codigo_barras 
+                SELECT codigo_barras, es_pack, pack_hijo_codigo
                 FROM public.stock_real_consolidado 
                 WHERE codigo_barras = $1
             `;
@@ -769,11 +840,21 @@ const actualizarPackMapping = async (req, res) => {
                 console.log(`❌ [PACK-MAP] Hijo no encontrado: ${hijoCodigoTrim}`);
                 return res.status(400).json({
                     success: false,
-                    error: `El artículo hijo '${hijoCodigoTrim}' no existe en stock_real_consolidado`
+                    error: `El artículo hijo '${hijoCodigoTrim}' no existe en el sistema`
                 });
             }
             
-            console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`);
+            const hijoData = hijoResult.rows[0];
+            console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`, { es_pack: hijoData.es_pack, pack_hijo_codigo: hijoData.pack_hijo_codigo });
+            
+            // ✅ VALIDACIÓN 2: Verificar ciclo directo (hijo ya tiene al padre como su hijo)
+            if (hijoData.es_pack && hijoData.pack_hijo_codigo === padreCodigoTrim) {
+                console.log(`❌ [PACK-MAP] Ciclo directo detectado: ${padreCodigoTrim} → ${hijoCodigoTrim} → ${padreCodigoTrim}`);
+                return res.status(400).json({
+                    success: false,
+                    error: 'No se puede crear esta relación porque generaría una dependencia circular'
+                });
+            }
             
             // Actualizar mapeo pack - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
             const updateQuery = `
