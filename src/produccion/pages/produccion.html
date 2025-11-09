@@ -783,6 +783,153 @@
             background-color: #5a6268;
         }
 
+        /* Estilos para tabs de búsqueda dual */
+        .search-mode-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 5px;
+        }
+
+        .search-tab {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            position: relative;
+            bottom: -7px;
+        }
+
+        .search-tab.active {
+            color: #6f42c1;
+            border-bottom-color: #6f42c1;
+        }
+
+        .search-tab:hover:not(.active) {
+            color: #5a2d91;
+            background: #f8f9fa;
+        }
+
+        .ayuda-busqueda {
+            font-size: 12px;
+            color: #856404;
+            background: #fff3cd;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .aviso-codigo-barras {
+            font-size: 13px;
+            color: #004085;
+            background: #cce5ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            display: none;
+            border-left: 4px solid #004085;
+        }
+
+        .aviso-codigo-barras button {
+            margin-left: 10px;
+            padding: 4px 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .aviso-codigo-barras button:hover {
+            background: #0056b3;
+        }
+
+        
+        /* Estilos para búsqueda dual en modal pack */
+        .search-mode-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .search-tab {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+            position: relative;
+            bottom: -2px;
+        }
+
+        .search-tab:hover:not(.active) {
+            color: #6f42c1;
+            background-color: #f8f9fa;
+        }
+
+        .search-tab.active {
+            color: #6f42c1;
+            border-bottom-color: #6f42c1;
+            background-color: white;
+        }
+
+        .ayuda-busqueda {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #856404;
+            display: none;
+        }
+
+        .aviso-codigo-barras {
+            margin-top: 8px;
+            padding: 10px 12px;
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #0c5460;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .aviso-codigo-barras button {
+            padding: 4px 12px;
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .aviso-codigo-barras button:hover {
+            background-color: #138496;
+        }
+
         /* Toast notification */
         .toast {
             position: fixed;
@@ -1210,20 +1357,48 @@
                     <!-- Campo oculto para mantener el código del padre -->
                     <input type="hidden" id="pack-padre-codigo">
 
-                    <!-- Búsqueda de artículo hijo con autocompletado -->
-                    <label for="pack-hijo-busqueda" style="font-weight: 600; margin-bottom: 8px; display: block;">
+                    <!-- Búsqueda de artículo hijo con MODO DUAL -->
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">
                         🔗 Articulo Hijo:
                     </label>
-                    <div style="position: relative; margin-bottom: 15px;">
-                        <input 
-                            type="text" 
-                            id="pack-hijo-busqueda" 
-                            placeholder="Buscar por codigo o descripcion..."
-                            autocomplete="off"
-                            style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                    
+                    <!-- Tabs para cambiar modo de búsqueda -->
+                    <div class="search-mode-tabs">
+                        <button type="button" id="btn-busqueda-codigo" class="search-tab active">Busqueda por codigo</button>
+                        <button type="button" id="btn-busqueda-descripcion" class="search-tab">Busqueda por descripcion</button>
+                    </div>
+                    
+                    <!-- Contenedor wrapper para búsqueda con posicionamiento relativo -->
+                    <div style="position: relative;">
+                        <!-- Input para MODO CÓDIGO (nuevo, activo por defecto) -->
+                        <div id="search-codigo-container" style="margin-bottom: 15px;">
+                            <input 
+                                type="text" 
+                                id="pack-hijo-codigo-input" 
+                                placeholder="Escanear o ingresar codigo de barras..."
+                                autocomplete="off"
+                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                            <div id="ayuda-busqueda-codigo" class="ayuda-busqueda">
+                                Para buscar por texto, usa "Busqueda por descripcion"
+                            </div>
+                        </div>
                         
-                        <!-- Lista desplegable de resultados -->
-                        <div id="pack-hijo-resultados" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #6f42c1; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 1001;">
+                        <!-- Input para MODO DESCRIPCIÓN (existente, oculto por defecto) -->
+                        <div id="search-descripcion-container" style="margin-bottom: 15px; display: none;">
+                            <input 
+                                type="text" 
+                                id="pack-hijo-busqueda" 
+                                placeholder="Buscar por descripcion (ej: gi 500 a)..."
+                                autocomplete="off"
+                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                            <div id="aviso-codigo-barras" class="aviso-codigo-barras">
+                                Parece un codigo de barras. ¿Queres buscar por codigo?
+                                <button type="button" onclick="cambiarAModoCodigo()">Cambiar a modo codigo</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Lista desplegable de resultados (compartida por ambos modos) -->
+                        <div id="pack-hijo-resultados" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #6f42c1; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 1001; margin-top: -15px;">
                             <!-- Resultados dinámicos -->
                         </div>
                     </div>
@@ -1320,7 +1495,7 @@
 
     <script src="/js/produccion.js?v=8.0"></script>
     <script src="/js/produccion-resumen-expandible.js?v=17.0"></script>
-    <script src="/js/modal-pack-mejorado.js?v=2.0"></script>
+    <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1830,11 +2005,10 @@
         };
 
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
-        // ⚠️ DESHABILITADAS - Ahora se usan las del archivo externo modal-pack-mejorado.js
         // Las funciones window.abrirModalPack y window.cerrarModalPack están definidas en:
-        // src/produccion/js/modal-pack-mejorado.js (cargado en línea 1323)
+        // src/produccion/js/modal-pack-dual-search.js (cargado arriba)
         
-        console.log('[INIT] PASO 3 - Modal pack: usando versión externa (modal-pack-mejorado.js v2.0)');
+        console.log('[INIT] PASO 3 - Modal pack: usando busqueda dual (modal-pack-dual-search.js v3.0)');
 
     </script>
 </body>
