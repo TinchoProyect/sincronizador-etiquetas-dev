@@ -930,6 +930,240 @@
             background-color: #138496;
         }
 
+        /* ==========================================
+           ESTILOS PARA PANEL CONFIGURAR CARROS
+           ========================================== */
+        
+        .carros-panel-section {
+            margin: 20px 0;
+            padding: 0;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 2px solid #007bff;
+            overflow: hidden;
+        }
+
+        .carros-panel-container {
+            padding: 20px;
+        }
+
+        .carros-usuario-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .carros-usuario-section label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--primary-color);
+        }
+
+        .carros-usuario-select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #007bff;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: white;
+        }
+
+        .carros-usuario-select:focus {
+            outline: none;
+            border-color: #0056b3;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        .carros-resumen-section {
+            margin-bottom: 20px;
+        }
+
+        .carros-resumen-section h3 {
+            margin: 0 0 15px 0;
+            color: var(--primary-color);
+            font-size: 1.1em;
+        }
+
+        .carros-lista-container {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .carros-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        .carros-item:hover {
+            background-color: #e9ecef;
+        }
+
+        .carros-item.faltante {
+            border-left: 4px solid #dc3545;
+        }
+
+        .carros-item.parcial {
+            border-left: 4px solid #ffc107;
+        }
+
+        .carros-item-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .carros-item-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .carros-item-descripcion {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .carros-item-codigo {
+            font-size: 12px;
+            color: #6c757d;
+            font-family: monospace;
+        }
+
+        .carros-item-estado {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .carros-item-estado.faltante {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .carros-item-estado.parcial {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .carros-item-compuesto {
+            font-size: 11px;
+            color: #17a2b8;
+            font-weight: bold;
+        }
+
+        .carros-item-cantidad {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .carros-item-cantidad label {
+            font-size: 12px;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+
+        .carros-item-cantidad input {
+            width: 80px;
+            padding: 6px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .carros-item-cantidad input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+
+        .carros-acciones-section {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #dee2e6;
+        }
+
+        .carros-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .carros-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .carros-btn-primary {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .carros-btn-primary:hover:not(:disabled) {
+            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .carros-btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .carros-btn-secondary:hover:not(:disabled) {
+            background-color: #5a6268;
+        }
+
+        .carros-mensaje {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .carros-mensaje.exito {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .carros-mensaje.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .carros-mensaje.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
         /* Toast notification */
         .toast {
             position: fixed;
@@ -1184,6 +1418,50 @@
             
             <div id="lista-colaboradores" class="lista-colaboradores">
                 <!-- Los colaboradores se cargarán dinámicamente aquí -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Separador Visual -->
+    <div class="section-separator"></div>
+
+    <!-- Panel Lateral: Configurar Carros -->
+    <section class="carros-panel-section">
+        <button class="section-toggle" onclick="toggleSection('carros-panel-content')" aria-expanded="false">
+            <span class="toggle-icon">▶</span>
+            <h2>🛒 Configurar Carros</h2>
+        </button>
+        
+        <div id="carros-panel-content" class="collapsible-content" style="display: none;">
+            <div class="carros-panel-container">
+                <!-- Selector de Usuario -->
+                <div class="carros-usuario-section">
+                    <label for="carros-usuario-select">👤 Usuario asignado:</label>
+                    <select id="carros-usuario-select" class="carros-usuario-select">
+                        <option value="">-- Seleccionar usuario --</option>
+                    </select>
+                </div>
+
+                <!-- Resumen de Faltantes dentro del panel -->
+                <div class="carros-resumen-section">
+                    <h3>📋 Faltantes y Parciales</h3>
+                    <div id="carros-lista-container" class="carros-lista-container">
+                        <p class="mensaje-info">Cargando artículos...</p>
+                    </div>
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="carros-acciones-section">
+                    <button id="carros-armar-uno-btn" class="carros-btn carros-btn-primary" disabled>
+                        🛒 Armar 1 Carro
+                    </button>
+                    <button id="carros-armar-varios-btn" class="carros-btn carros-btn-secondary" disabled title="Funcionalidad en desarrollo">
+                        🛒 Armar Varios Carros (TODO)
+                    </button>
+                </div>
+
+                <!-- Mensajes de Estado -->
+                <div id="carros-mensaje" class="carros-mensaje" style="display: none;"></div>
             </div>
         </div>
     </section>
@@ -1496,6 +1774,7 @@
     <script src="/js/produccion.js?v=8.0"></script>
     <script src="/js/produccion-resumen-expandible.js?v=17.0"></script>
     <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
+    <script src="/js/configurar-carros-ui.js?v=1.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1898,6 +2177,17 @@
                     console.log('[RESUMEN-RENDER] HTML completo generado, longitud:', html.length);
                     tbodyEl.innerHTML = html;
                     console.log('✅ [RESUMEN] Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
+                    
+                    // [RESUMEN] Exponer datos globalmente y emitir evento para sincronización
+                    const datosFaltantesYParciales = [...faltantes, ...parciales];
+                    window.__resumenFaltantesDatos = datosFaltantesYParciales;
+                    console.log(`[RESUMEN] Datos listos (items: ${datosFaltantesYParciales.length})`);
+                    
+                    // Emitir evento para que otros módulos se sincronicen
+                    window.dispatchEvent(new CustomEvent('resumen:faltantes:listo', {
+                        detail: { datos: datosFaltantesYParciales }
+                    }));
+                    console.log('[RESUMEN] Evento "resumen:faltantes:listo" emitido');
                 }
 
             } catch (error) {
