@@ -525,13 +525,14 @@ const obtenerPedidosArticulos = async (req, res) => {
             ),
             valores_redondeados AS (
                 SELECT 
-                    ac.articulo_numero,
+                    ac.articulo_numero as codigo_barras_original,
                     ac.pedido_total,
                     COALESCE(
                         NULLIF(TRIM(src.descripcion), ''),
                         NULLIF(TRIM(a.nombre), ''),
                         ac.articulo_numero
                     ) as descripcion,
+                    COALESCE(a.numero, ac.articulo_numero) as articulo_numero_alfanumerico,
                     ROUND(ac.pedido_total::numeric, 2) as pedido_total_redondeado,
                     ROUND(GREATEST(0, 
                         CASE 
@@ -560,7 +561,8 @@ const obtenerPedidosArticulos = async (req, res) => {
                 LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
             )
             SELECT 
-                articulo_numero,
+                articulo_numero_alfanumerico as articulo_numero,
+                codigo_barras_original as codigo_barras,
                 descripcion,
                 pedido_total_redondeado as pedido_total,
                 stock_disponible_redondeado as stock_disponible,
@@ -605,7 +607,8 @@ const obtenerPedidosArticulos = async (req, res) => {
                 
                 const stockQuery = `
                     SELECT 
-                        src.codigo_barras as articulo_numero,
+                        COALESCE(a.numero, src.codigo_barras) as articulo_numero,
+                        src.codigo_barras as codigo_barras,
                         COALESCE(
                             NULLIF(TRIM(src.descripcion), ''),
                             src.codigo_barras
@@ -626,6 +629,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                         hijo.stock_consolidado as stock_hijo
                     FROM public.stock_real_consolidado src
                     LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                    LEFT JOIN public.articulos a ON a.codigo_barras = src.codigo_barras
                     WHERE src.codigo_barras = $1 OR src.articulo_numero = $1
                     LIMIT 1
                 `;
@@ -717,6 +721,16 @@ const obtenerPedidosArticulos = async (req, res) => {
         
         console.log(`✅ [PROD_ART] Consulta exitosa: ${articulos.length} artículos encontrados`);
         console.log(`📊 [PROD_ART] Totales: ${totales.faltantes} faltantes, ${totales.parciales} parciales, ${totales.completos} completos`);
+        
+        // [PEDIDOS-ART] Log de muestra para diagnóstico
+        if (articulos.length > 0) {
+            const muestra = articulos[0];
+            console.log('[PEDIDOS-ART] resp item =>', {
+                numero: muestra.articulo_numero,
+                barras: muestra.codigo_barras,
+                desc: muestra.descripcion?.substring(0, 30)
+            });
+        }
         
         res.json(response);
         
