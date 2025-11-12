@@ -40,7 +40,8 @@ const obtenerPedidosPorCliente = async (req, res) => {
             fecha = new Date().toISOString().split('T')[0], 
             cliente_id, 
             estado = 'presupuesto/orden',
-            debug
+            debug,
+            ids
         } = req.query;
         
         // Validaciones
@@ -111,7 +112,8 @@ const obtenerPedidosPorCliente = async (req, res) => {
                   AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
-                  AND pcd.id_presupuesto_local IS NULL
+                  AND ($4::text IS NULL OR p.id IN (SELECT unnest(string_to_array($4, ','))::integer))
+                  AND (CASE WHEN $4::text IS NULL THEN pcd.id_presupuesto_local IS NULL ELSE true END)
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -174,7 +176,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             ORDER BY cliente_nombre;
         `;
         
-        const params = [estado, fecha, cliente_id ? parseInt(cliente_id) : null];
+        const params = [estado, fecha, cliente_id ? parseInt(cliente_id) : null, ids || null];
         console.log('🔍 [PROD_PED] Ejecutando consulta con parámetros:', params);
         
         const result = await pool.query(query, params);
