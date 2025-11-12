@@ -25,7 +25,7 @@ import {
 } from './articulos.js';
 
 import { abrirModalIngresoManual } from './ingresoManual.js';
-import { actualizarVisibilidadBotones } from './carroPreparado.js';
+import { actualizarVisibilidadBotones, marcarCarroPreparado, finalizarProduccion, imprimirEtiquetasCarro } from './carroPreparado.js';
 import { imprimirOrdenProduccion } from './ordenProduccion.js';
 import { abrirModalGuardadoIngredientes } from './guardadoIngredientes.js';
 
@@ -55,13 +55,12 @@ window.agregarAlCarro = agregarAlCarro;
 window.cerrarModalReceta = cerrarModalReceta;
 window.abrirModalIngresoManual = abrirModalIngresoManual;
 window.imprimirOrdenProduccion = imprimirOrdenProduccion;
-// 🚀 [DIAGNÓSTICO] Agregar log para verificar que la función está disponible globalmente
-console.log('🔍 [DIAGNÓSTICO] Función abrirModalGuardadoIngredientes disponible globalmente:', typeof window.abrirModalGuardadoIngredientes);
-
 window.abrirModalGuardadoIngredientes = abrirModalGuardadoIngredientes;
 
-// 🚀 [DIAGNÓSTICO] Verificar después de asignar
-console.log('🔍 [DIAGNÓSTICO] Función asignada correctamente:', typeof window.abrirModalGuardadoIngredientes);
+// ✅ Exportar funciones de carroPreparado.js globalmente
+window.marcarCarroPreparado = marcarCarroPreparado;
+window.finalizarProduccion = finalizarProduccion;
+window.imprimirEtiquetasCarro = imprimirEtiquetasCarro;
 
 // Importar y hacer disponibles las funciones del modal simplificado
 import { cerrarModalEditarVinculo, procesarGuardadoVinculo } from './carro.js';

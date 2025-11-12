@@ -1,7 +1,7 @@
 // modal_medicion_interna.js - Sistema de medición centralizado para carros internos
 // Solo funciona con carros de tipo 'interna', sin afectar carros externos
 
-import { formatearTiempo } from './utils/formatearTiempo.js';
+import { formatearTiempo, formatearTiempoCompleto } from './utils/formatearTiempo.js';
 
 // ==========================================
 // ESTADO GLOBAL DEL MODAL
@@ -483,9 +483,28 @@ window.carroListoParaProducirMedicion = async function() {
             throw new Error('Error al iniciar Etapa 2');
         }
         
-        // Invocar handler del carro para marcar como preparado
-        if (typeof window.marcarCarroPreparado === 'function') {
-            await window.marcarCarroPreparado(estadoModal.carroId);
+        // ✅ MANTENER CONCATENACIÓN: Marcar carro como preparado sin actualizar botones del workspace
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
+        
+        if (colaborador && colaborador.id) {
+            log('Marcando carro como preparado en backend...');
+            const response3 = await fetch(`/api/produccion/carro/${estadoModal.carroId}/preparado`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usuarioId: colaborador.id })
+            });
+            
+            if (!response3.ok) {
+                log('Advertencia: No se pudo marcar el carro como preparado', 'error');
+            } else {
+                log('Carro marcado como preparado exitosamente', 'success');
+                
+                // ✅ Actualizar estado del carro en la interfaz si existe la función
+                if (window.actualizarEstadoCarro) {
+                    await window.actualizarEstadoCarro();
+                }
+            }
         }
         
         estadoModal.etapaActual = 2;
@@ -691,7 +710,8 @@ function actualizarTimerTotalEtapa2() {
     
     const display = document.getElementById('timer-total-etapa2');
     if (display) {
-        display.textContent = formatearTiempo(totalMs);
+        // ✅ USAR FORMATO HH:MM:SS PARA ETAPA 2
+        display.textContent = formatearTiempoCompleto(totalMs);
     }
     
     // Ya no es necesario actualizar cada segundo porque solo mostramos finalizados
@@ -778,9 +798,18 @@ function iniciarIntervalEtapa3() {
     const display = document.getElementById('timer-etapa3'); 
     if (display) display.textContent = '⏱ 00:00';
 
+    // ✅ VALIDAR que timer.start existe antes de iniciar el interval
+    if (!timer.start) {
+        log('Error: timer.start no está definido en Etapa 3', 'error');
+        return;
+    }
+
     timer.interval = setInterval(() => {
         const elapsed = Date.now() - timer.start;
-        document.getElementById('timer-etapa3').textContent = formatearTiempo(elapsed);
+        const displayElement = document.getElementById('timer-etapa3');
+        if (displayElement) {
+            displayElement.textContent = formatearTiempo(elapsed);
+        }
     }, 1000);
 }
 
@@ -882,9 +911,10 @@ async function mostrarResumenCompleto() {
     
     // Actualizar tiempos de etapas
     document.getElementById('resumen-etapa1').textContent = formatearTiempo(tiempoEtapa1);
-    document.getElementById('resumen-etapa2').textContent = formatearTiempo(tiempoEtapa2);
+    // ✅ USAR FORMATO HH:MM:SS PARA ETAPA 2 EN RESUMEN
+    document.getElementById('resumen-etapa2').textContent = formatearTiempoCompleto(tiempoEtapa2);
     document.getElementById('resumen-etapa3').textContent = formatearTiempo(tiempoEtapa3);
-    document.getElementById('resumen-total').textContent = formatearTiempo(tiempoTotal);
+    document.getElementById('resumen-total').textContent = formatearTiempoCompleto(tiempoTotal);
     
     // Cargar detalles de artículos de Etapa 2
     await cargarDetallesArticulosResumen();
@@ -1105,13 +1135,20 @@ window.togglePausaContinuarEtapa1 = function() {
 // ==========================================
 
 /**
- * Sincroniza la visibilidad del botón "Carro listo para producir" en todas las vistas
+ * Sincroniza la visibilidad del botón "Carro listo para producir" SOLO en el modal
+ * NO toca el botón del workspace (#carro-preparado) que es controlado por carroPreparado.js
  * @param {boolean} mostrar - true para mostrar, false para ocultar
  */
 function sincronizarBotonesCarroListo(mostrar) {
     try {
-        // Botón en el workspace principal
-        const btnWorkspace = document.getElementById('carro-preparado');
+        // ✅ CRÍTICO: Solo sincronizar si el modal de medición está activo
+        if (!estadoModal.carroId) {
+            log('Modal de medición no activo, no se sincronizan botones', 'info');
+            return;
+        }
+        
+        // ✅ NO TOCAR el botón del workspace - es controlado por carroPreparado.js
+        // const btnWorkspace = document.getElementById('carro-preparado'); // REMOVIDO
         
         // Botón en el modal normal
         const btnModalNormal = document.getElementById('btn-carro-listo-medicion');
@@ -1121,10 +1158,7 @@ function sincronizarBotonesCarroListo(mostrar) {
         
         const displayValue = mostrar ? 'inline-block' : 'none';
         
-        if (btnWorkspace) {
-            btnWorkspace.style.display = displayValue;
-        }
-        
+        // Solo sincronizar botones del modal de medición
         if (btnModalNormal) {
             btnModalNormal.style.display = displayValue;
         }
@@ -1133,7 +1167,7 @@ function sincronizarBotonesCarroListo(mostrar) {
             btnMinimizado.style.display = displayValue;
         }
         
-        log(`Botones "Carro listo" sincronizados: ${mostrar ? 'VISIBLE' : 'OCULTO'}`, 'info');
+        log(`Botones del modal "Carro listo" sincronizados: ${mostrar ? 'VISIBLE' : 'OCULTO'}`, 'info');
         
     } catch (error) {
         log(`Error sincronizando botones: ${error.message}`, 'error');
@@ -1142,6 +1176,262 @@ function sincronizarBotonesCarroListo(mostrar) {
 
 // Hacer función disponible globalmente
 window.sincronizarBotonesCarroListo = sincronizarBotonesCarroListo;
+
+// ==========================================
+// ACTUALIZACIÓN DINÁMICA DE VISTA MINIMIZADA
+// ==========================================
+
+/**
+ * Actualiza la vista minimizada según la etapa actual
+ * Cambia título, timer, botones e instructivo dinámicamente
+ */
+function actualizarVistaMinimizada() {
+    if (!estadoModal.modalMinimizado) return;
+    
+    const titulo = document.getElementById('minimizado-titulo-etapa');
+    const timer = document.getElementById('timer-minimizado');
+    const instructivo = document.getElementById('minimizado-instructivo-texto');
+    const btnPausaContinuar = document.getElementById('btn-pausa-continuar-minimizado');
+    const btnCarroListo = document.getElementById('btn-carro-listo-minimizado');
+    const btnCompletarE2 = document.getElementById('btn-completar-etapa2-minimizado');
+    const btnFinalizar = document.getElementById('btn-finalizar-minimizado');
+    
+    // Ocultar todos los botones de acción primero
+    if (btnCarroListo) btnCarroListo.style.display = 'none';
+    if (btnCompletarE2) btnCompletarE2.style.display = 'none';
+    if (btnFinalizar) btnFinalizar.style.display = 'none';
+    if (btnPausaContinuar) btnPausaContinuar.style.display = 'none';
+    
+    switch (estadoModal.etapaActual) {
+        case 1:
+            if (titulo) titulo.textContent = '⏱️ Etapa 1: Preparación';
+            if (instructivo) instructivo.textContent = '💡 Preparar ingredientes y materiales necesarios';
+            
+            // Actualizar timer
+            if (timer) {
+                const elapsed = estadoModal.etapa1TiempoAcumulado + (Date.now() - estadoModal.timers.etapa1.start);
+                timer.textContent = formatearTiempo(elapsed);
+                timer.classList.add('corriendo');
+                timer.classList.remove('finalizado');
+            }
+            
+            // Mostrar botón pausa/continuar y carro listo
+            if (btnPausaContinuar) btnPausaContinuar.style.display = 'inline-block';
+            if (btnCarroListo) btnCarroListo.style.display = 'inline-block';
+            
+            // Iniciar actualización del timer
+            iniciarActualizacionTimerMinimizado();
+            break;
+            
+        case 2:
+            if (titulo) titulo.textContent = '📦 Etapa 2: Medición por Artículo';
+            if (instructivo) instructivo.textContent = '💡 Medir cada artículo individualmente';
+            
+            // Mostrar total de E2
+            if (timer) {
+                let totalMs = 0;
+                estadoModal.timers.articulos.forEach((t, key) => {
+                    if (estadoModal.articulosMedidos.has(key)) {
+                        totalMs += t.elapsed;
+                    }
+                });
+                timer.textContent = formatearTiempo(totalMs);
+                timer.classList.remove('corriendo', 'finalizado');
+            }
+            
+            // Mostrar botón completar E2 si todos los artículos están medidos
+            const todosMedidos = estadoModal.articulosMedidos.size === estadoModal.totalArticulos;
+            if (btnCompletarE2 && todosMedidos) {
+                btnCompletarE2.style.display = 'inline-block';
+            }
+            break;
+            
+        case 3:
+            if (titulo) titulo.textContent = '✅ Etapa 3: Finalización';
+            if (instructivo) instructivo.textContent = '💡 Completar y cerrar la producción';
+            
+            // Actualizar timer
+            if (timer && estadoModal.timers.etapa3.start) {
+                const elapsed = estadoModal.etapa3TiempoAcumulado + (Date.now() - estadoModal.timers.etapa3.start);
+                timer.textContent = formatearTiempo(elapsed);
+                timer.classList.add('corriendo');
+                timer.classList.remove('finalizado');
+            }
+            
+            // Mostrar botón pausa/continuar y finalizar
+            if (btnPausaContinuar) btnPausaContinuar.style.display = 'inline-block';
+            if (btnFinalizar) btnFinalizar.style.display = 'inline-block';
+            
+            // Iniciar actualización del timer
+            iniciarActualizacionTimerMinimizado();
+            break;
+    }
+    
+    log(`Vista minimizada actualizada para Etapa ${estadoModal.etapaActual}`, 'info');
+}
+
+// Variable para el interval del timer minimizado
+let intervalTimerMinimizado = null;
+
+/**
+ * Inicia la actualización automática del timer en vista minimizada
+ */
+function iniciarActualizacionTimerMinimizado() {
+    // Limpiar interval anterior si existe
+    if (intervalTimerMinimizado) {
+        clearInterval(intervalTimerMinimizado);
+    }
+    
+    const timer = document.getElementById('timer-minimizado');
+    if (!timer) return;
+    
+    intervalTimerMinimizado = setInterval(() => {
+        if (!estadoModal.modalMinimizado) {
+            clearInterval(intervalTimerMinimizado);
+            return;
+        }
+        
+        let elapsed = 0;
+        
+        if (estadoModal.etapaActual === 1 && !estadoModal.etapa1Pausada) {
+            elapsed = estadoModal.etapa1TiempoAcumulado + (Date.now() - estadoModal.timers.etapa1.start);
+        } else if (estadoModal.etapaActual === 3 && !estadoModal.etapa3Pausada) {
+            elapsed = estadoModal.etapa3TiempoAcumulado + (Date.now() - estadoModal.timers.etapa3.start);
+        } else {
+            return; // No actualizar si está pausado o no es E1/E3
+        }
+        
+        timer.textContent = formatearTiempo(elapsed);
+    }, 1000);
+}
+
+// ==========================================
+// PAUSA/CONTINUAR PARA ETAPA 3
+// ==========================================
+
+// Variables de estado para Etapa 3 (reutilizando patrón de E1)
+let etapa3Pausada = false;
+let etapa3TiempoAcumulado = 0;
+
+// Agregar al estado global
+estadoModal.etapa3Pausada = false;
+estadoModal.etapa3TiempoAcumulado = 0;
+
+function pausarEtapa3() {
+    try {
+        log('Pausando Etapa 3...');
+        
+        if (estadoModal.etapa3Pausada) {
+            log('Etapa 3 ya está pausada', 'info');
+            return;
+        }
+        
+        const timer = estadoModal.timers.etapa3;
+        
+        // Acumular tiempo transcurrido
+        estadoModal.etapa3TiempoAcumulado += (Date.now() - timer.start);
+        
+        // Marcar como pausada
+        estadoModal.etapa3Pausada = true;
+        
+        // Actualizar botón
+        actualizarBotonPausaContinuarGenerico();
+        
+        log('Etapa 3 pausada correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error pausando Etapa 3: ${error.message}`, 'error');
+    }
+}
+
+function continuarEtapa3() {
+    try {
+        log('Continuando Etapa 3...');
+        
+        if (!estadoModal.etapa3Pausada) {
+            log('Etapa 3 no está pausada', 'info');
+            return;
+        }
+        
+        const timer = estadoModal.timers.etapa3;
+        
+        // Reiniciar el punto de inicio
+        timer.start = Date.now();
+        
+        // Desmarcar pausa
+        estadoModal.etapa3Pausada = false;
+        
+        // Actualizar botón
+        actualizarBotonPausaContinuarGenerico();
+        
+        log('Etapa 3 continuada correctamente', 'success');
+        
+    } catch (error) {
+        log(`Error continuando Etapa 3: ${error.message}`, 'error');
+    }
+}
+
+function actualizarBotonPausaContinuarGenerico() {
+    const btnPausaContinuar = document.getElementById('btn-pausa-continuar-minimizado');
+    
+    if (!btnPausaContinuar) return;
+    
+    const estaPausada = estadoModal.etapaActual === 1 ? estadoModal.etapa1Pausada : estadoModal.etapa3Pausada;
+    
+    if (estaPausada) {
+        btnPausaContinuar.textContent = '▶️ Continuar';
+        btnPausaContinuar.classList.remove('btn-warning');
+        btnPausaContinuar.classList.add('btn-success');
+    } else {
+        btnPausaContinuar.textContent = '⏸️ Pausar';
+        btnPausaContinuar.classList.remove('btn-success');
+        btnPausaContinuar.classList.add('btn-warning');
+    }
+}
+
+window.togglePausaContinuarGenerico = function() {
+    if (estadoModal.etapaActual === 1) {
+        if (estadoModal.etapa1Pausada) {
+            continuarEtapa1();
+        } else {
+            pausarEtapa1();
+        }
+    } else if (estadoModal.etapaActual === 3) {
+        if (estadoModal.etapa3Pausada) {
+            continuarEtapa3();
+        } else {
+            pausarEtapa3();
+        }
+    }
+};
+
+// ==========================================
+// ACTUALIZAR FUNCIONES EXISTENTES
+// ==========================================
+
+// Actualizar minimizarModal para usar la nueva función
+const minimizarModalOriginal = minimizarModal;
+window.minimizarModal = minimizarModal = function() {
+    minimizarModalOriginal();
+    actualizarVistaMinimizada();
+};
+
+// Actualizar transiciones de etapa para actualizar vista minimizada
+const carroListoOriginal = window.carroListoParaProducirMedicion;
+window.carroListoParaProducirMedicion = async function() {
+    await carroListoOriginal();
+    if (estadoModal.modalMinimizado) {
+        actualizarVistaMinimizada();
+    }
+};
+
+const completarE2Original = window.completarEtapa2Medicion;
+window.completarEtapa2Medicion = async function() {
+    await completarE2Original();
+    if (estadoModal.modalMinimizado) {
+        actualizarVistaMinimizada();
+    }
+};
 
 // Log de inicialización
 log('Módulo de medición interna inicializado correctamente', 'success');

@@ -471,27 +471,42 @@
     <!-- Modal de Medición para Carros Internos -->
     <div id="modalMedicionInterna" class="modal">
         <!-- Vista Minimizada -->
-        <div id="modal-medicion-minimizado" class="modal-minimizado" style="display: none;">
+        <div id="modal-medicion-minimizado" class="modal-minimizado" style="display: none;" ondblclick="restaurarModal()">
             <div class="minimizado-info">
-                <span class="minimizado-titulo">⏱️ Etapa 1: Preparación</span>
+                <span class="minimizado-titulo" id="minimizado-titulo-etapa">⏱️ Etapa 1: Preparación</span>
                 <span class="minimizado-carro">Carro #<span id="carro-id-minimizado"></span></span>
             </div>
             <div class="minimizado-timer">
-                <span id="timer-etapa1-minimizado" class="timer-display corriendo">00:00</span>
+                <span id="timer-minimizado" class="timer-display corriendo">00:00</span>
             </div>
             <div class="minimizado-acciones">
-                <button id="btn-pausa-continuar-etapa1-minimizado" class="btn btn-warning btn-sm" onclick="togglePausaContinuarEtapa1()">
+                <!-- Botón Pausa/Continuar (visible en E1 y E3) -->
+                <button id="btn-pausa-continuar-minimizado" class="btn btn-warning btn-sm" onclick="togglePausaContinuarGenerico()" style="display: none;">
                     ⏸️ Pausar
                 </button>
-                <button class="btn btn-info btn-sm" onclick="restaurarModal()">
+                
+                <!-- Botón Restaurar (siempre visible) -->
+                <button class="btn btn-info btn-sm" onclick="restaurarModal()" title="Restaurar modal">
                     ⬆️ Restaurar
                 </button>
+                
+                <!-- Botón Carro Listo (solo E1) -->
                 <button id="btn-carro-listo-minimizado" class="btn btn-success btn-sm" onclick="carroListoParaProducirMedicion()" style="display: none;">
                     ✅ Carro listo para producir
                 </button>
+                
+                <!-- Botón Completar E2 (solo E2) -->
+                <button id="btn-completar-etapa2-minimizado" class="btn btn-warning btn-sm" onclick="completarEtapa2Medicion()" style="display: none;">
+                    🚀 Completar Etapa 2
+                </button>
+                
+                <!-- Botón Finalizar (solo E3) -->
+                <button id="btn-finalizar-minimizado" class="btn btn-success btn-sm" onclick="finalizarMedicion()" style="display: none;">
+                    🏁 Finalizar Medición
+                </button>
             </div>
             <div class="minimizado-instructivo">
-                <small>💡 Preparar ingredientes y materiales necesarios para la producción</small>
+                <small id="minimizado-instructivo-texto">💡 Preparar ingredientes y materiales necesarios para la producción</small>
             </div>
         </div>
 
@@ -499,7 +514,11 @@
         <div class="modal-content modal-medicion-content">
             <div class="modal-header">
                 <h2>⏱️ Modo Medición </h2>
-                <span class="close-modal" onclick="cerrarModalMedicion()">&times;</span>
+                <div class="modal-controls">
+                    <button class="btn-control btn-minimizar" onclick="minimizarModal()" title="Minimizar">➖</button>
+                    <button class="btn-control btn-restaurar" onclick="restaurarModal()" title="Restaurar">🗖</button>
+                    <span class="close-modal" onclick="cerrarModalMedicion()">&times;</span>
+                </div>
             </div>
             <div class="modal-body">
                 <div class="medicion-info">
