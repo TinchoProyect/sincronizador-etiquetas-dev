@@ -1442,8 +1442,8 @@
 <body>
     <!-- Solapa lateral fija -->
     <div style="position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 999;">
-        <a href="pendientes-compra.html" style="display: block; background: linear-gradient(135deg, #ff6b6b, #ee5a52); color: white; padding: 20px 12px; text-decoration: none; font-weight: bold; font-size: 14px; writing-mode: vertical-rl; text-orientation: mixed; border-radius: 0 8px 8px 0; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); transition: all 0.3s ease;" onmouseover="this.style.paddingRight='16px'" onmouseout="this.style.paddingRight='12px'">
-            🛒 Pendientes de Compra
+        <a href="pendientes-compra.html" id="solapa-pendientes" style="display: block; background: linear-gradient(135deg, #ff6b6b, #ee5a52); color: white; padding: 20px 12px; text-decoration: none; font-weight: bold; font-size: 14px; writing-mode: vertical-rl; text-orientation: mixed; border-radius: 0 8px 8px 0; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); transition: all 0.3s ease;" onmouseover="this.style.paddingRight='16px'" onmouseout="this.style.paddingRight='12px'">
+            🛒 Pendientes de Compra <span id="contador-solapa" class="contador-badge" style="display: none; margin-top: 10px;">0</span>
         </a>
     </div>
 
@@ -2137,6 +2137,7 @@
             
             // Extraer valores directamente
             const codigoArticulo = articulo.articulo_numero || articulo.codigo || articulo.articulo || '-';
+            const codigoBarras = articulo.codigo_barras || ''; // Código de barras real (puede estar vacío)
             const descripcion = articulo.descripcion || articulo.nombre || '-';
             const pedidoTotal = formatearNumeroResumen(articulo.pedido_total || articulo.cantidad_pedida || 0);
             const stockDisponible = formatearNumeroResumen(articulo.stock_disponible || articulo.stock || 0);
@@ -2148,6 +2149,7 @@
             
             console.log('[RENDER-FILA] Valores:', {
                 codigoArticulo,
+                codigoBarras,
                 descripcion,
                 tipoDescripcion: typeof descripcion,
                 pedidoTotal,
@@ -2160,9 +2162,10 @@
             const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
             const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row parent-row' : 'parcial-row expandible-row parent-row';
             
-            // Escapar comillas en descripción para JSON
+            // Escapar comillas para JSON
             const descripcionEscapada = descripcion.replace(/'/g, "\\'");
             const idPresupuestoExtEscapado = String(idPresupuestoExt).replace(/'/g, "\\'");
+            const codigoBarrasEscapado = codigoBarras.replace(/'/g, "\\'");
             
             // IMPORTANTE: Agregar onclick a la fila completa (igual que en produccion.js)
             // Esto permite que handleFilaClick se ejecute al hacer click en cualquier parte de la fila
@@ -2176,7 +2179,7 @@
                     <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
                     <td onclick="event.stopPropagation()">
                         <button class="pack-button pack-config-btn" data-codigo="${codigoArticulo}" onclick="abrirModalPack('${codigoArticulo}')" style="margin-right: 4px;">🧩 Pack</button>
-                        <button class="pack-button" style="background-color: #ff6b6b;" onclick="abrirModalDerivarCompras({articulo_numero: '${codigoArticulo}', codigo_barras: '${codigoArticulo}', cantidad_faltante: ${faltante}, id_presupuesto_local: ${idPresupuestoLocal}, id_presupuesto_ext: '${idPresupuestoExtEscapado}'})">🛒 Derivar</button>
+                        <button class="pack-button" style="background-color: #ff6b6b;" onclick="abrirModalDerivarCompras({articulo_numero: '${codigoArticulo}', codigo_barras: '${codigoBarrasEscapado}', cantidad_faltante: ${faltante}, id_presupuesto_local: ${idPresupuestoLocal}, id_presupuesto_ext: '${idPresupuestoExtEscapado}'})">🛒 Derivar</button>
                     </td>
                 </tr>
             `;
@@ -2407,6 +2410,32 @@
             console.debug('🔄 Actualización externa del resumen solicitada');
             actualizarResumen();
         };
+
+        // Actualizar contador de pendientes de compra
+        async function actualizarContadorPendientes() {
+            try {
+                const response = await fetch('/api/produccion/compras/pendientes');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const pendientes = result.data.filter(p => p.estado === 'En espera') || [];
+                    const idsPresupuestos = [...new Set(pendientes.map(p => p.id_presupuesto_local))];
+                    const total = idsPresupuestos.length;
+                    
+                    const contadorSolapa = document.getElementById('contador-solapa');
+                    if (contadorSolapa) {
+                        contadorSolapa.textContent = total;
+                        contadorSolapa.style.display = total > 0 ? 'inline-block' : 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Error al actualizar contador de pendientes:', error);
+            }
+        }
+
+        // Actualizar contador cada 30 segundos
+        setInterval(actualizarContadorPendientes, 30000);
+        setTimeout(actualizarContadorPendientes, 2000);
 
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
         // Las funciones window.abrirModalPack y window.cerrarModalPack están definidas en:
