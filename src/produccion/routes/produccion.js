@@ -40,6 +40,9 @@ const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, a
 const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes, actualizarPackMapping } = require('../controllers/pedidosPorCliente');
 const { imprimirPresupuestoCliente } = require('../controllers/impresionPresupuestos');
 
+// Controladores para compras pendientes
+const { crearPendienteCompra, obtenerPendientesCompra } = require('../controllers/comprasPendientes');
+
 // Ruta para alternar estado de producción externa (toggle)
 router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) => {
     try {
@@ -2353,6 +2356,48 @@ router.post('/actualizar-secuencia', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Error interno en ruta de actualización de secuencia',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// ==========================================
+// RUTAS PARA COMPRAS PENDIENTES
+// ==========================================
+
+/**
+ * Crear un nuevo pendiente de compra
+ * POST /api/produccion/compras/pendientes
+ */
+router.post('/compras/pendientes', async (req, res) => {
+    try {
+        console.log('🛒 [COMPRAS] Ruta POST /compras/pendientes');
+        await crearPendienteCompra(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de compras pendientes',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Obtener todos los pendientes de compra
+ * GET /api/produccion/compras/pendientes
+ */
+router.get('/compras/pendientes', async (req, res) => {
+    try {
+        console.log('🛒 [COMPRAS] Ruta GET /compras/pendientes');
+        await obtenerPendientesCompra(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de compras pendientes',
             message: error.message,
             timestamp: new Date().toISOString()
         });

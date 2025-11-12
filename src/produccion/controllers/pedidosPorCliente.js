@@ -486,7 +486,7 @@ const obtenerPedidosArticulos = async (req, res) => {
             joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = pc.id';
         }
         
-        // Query consolidada por artículo con lógica pack-aware
+        // Query consolidada por artículo con lógica pack-aware y exclusión de derivados a compras
         const query = `
             WITH presupuestos_confirmados AS (
                 SELECT 
@@ -512,6 +512,13 @@ const obtenerPedidosArticulos = async (req, res) => {
                   AND pc.secuencia != 'Pedido_Listo'
                 GROUP BY pd.articulo
             ),
+            derivados_a_compras AS (
+                SELECT DISTINCT 
+                    fpc.articulo_numero,
+                    fpc.id_presupuesto_local
+                FROM public.faltantes_pendientes_compra fpc
+                WHERE fpc.estado = 'En espera'
+            ),
             pedidos_listos AS (
                 SELECT 
                     pd.articulo as articulo_numero,
@@ -522,6 +529,18 @@ const obtenerPedidosArticulos = async (req, res) => {
                   AND TRIM(pd.articulo) != ''
                   AND pc.secuencia = 'Pedido_Listo'
                 GROUP BY pd.articulo
+            ),
+            primeros_presupuestos AS (
+                SELECT DISTINCT ON (pd.articulo)
+                    pd.articulo as articulo_numero,
+                    pc.id as id_presupuesto_local,
+                    pc.id_presupuesto_ext
+                FROM presupuestos_confirmados pc
+                ${joinClause}
+                WHERE pd.articulo IS NOT NULL 
+                  AND TRIM(pd.articulo) != ''
+                  AND pc.secuencia != 'Pedido_Listo'
+                ORDER BY pd.articulo, pc.fecha DESC, pc.id DESC
             ),
             valores_redondeados AS (
                 SELECT 
@@ -553,12 +572,17 @@ const obtenerPedidosArticulos = async (req, res) => {
                     src.es_pack,
                     src.pack_hijo_codigo,
                     src.pack_unidades,
-                    hijo.stock_consolidado as stock_hijo
+                    hijo.stock_consolidado as stock_hijo,
+                    pp.id_presupuesto_local,
+                    pp.id_presupuesto_ext
                 FROM articulos_consolidados ac
                 LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
+                LEFT JOIN derivados_a_compras dac ON dac.articulo_numero = ac.articulo_numero
+                LEFT JOIN primeros_presupuestos pp ON pp.articulo_numero = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
                 LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
+                WHERE dac.articulo_numero IS NULL
             )
             SELECT 
                 articulo_numero_alfanumerico as articulo_numero,
@@ -575,7 +599,9 @@ const obtenerPedidosArticulos = async (req, res) => {
                 es_pack,
                 pack_hijo_codigo,
                 pack_unidades,
-                stock_hijo
+                stock_hijo,
+                id_presupuesto_local,
+                id_presupuesto_ext
             FROM valores_redondeados
             ORDER BY articulo_numero;
         `;
