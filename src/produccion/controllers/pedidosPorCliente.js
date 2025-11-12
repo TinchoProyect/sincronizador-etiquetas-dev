@@ -92,7 +92,12 @@ const obtenerPedidosPorCliente = async (req, res) => {
         
         // Query consolidada con estado normalizado y fecha robusta
         const query = `
-            WITH presupuestos_confirmados AS (
+            WITH presupuestos_con_derivados AS (
+                SELECT DISTINCT id_presupuesto_local
+                FROM public.faltantes_pendientes_compra
+                WHERE estado = 'En espera'
+            ),
+            presupuestos_confirmados AS (
                 SELECT 
                     p.id,
                     p.id_presupuesto_ext,
@@ -101,10 +106,12 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
+                LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
                 WHERE p.activo = true 
                   AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
+                  AND pcd.id_presupuesto_local IS NULL
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -488,7 +495,12 @@ const obtenerPedidosArticulos = async (req, res) => {
         
         // Query consolidada por artículo con lógica pack-aware y exclusión de derivados a compras
         const query = `
-            WITH presupuestos_confirmados AS (
+            WITH presupuestos_con_derivados AS (
+                SELECT DISTINCT id_presupuesto_local
+                FROM public.faltantes_pendientes_compra
+                WHERE estado = 'En espera'
+            ),
+            presupuestos_confirmados AS (
                 SELECT 
                     p.id,
                     p.id_presupuesto_ext,
@@ -497,9 +509,11 @@ const obtenerPedidosArticulos = async (req, res) => {
                     COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
+                LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
                 WHERE p.activo = true 
                   AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                   AND p.fecha::date <= $2::date
+                  AND pcd.id_presupuesto_local IS NULL
             ),
             articulos_consolidados AS (
                 SELECT 

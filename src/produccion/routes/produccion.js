@@ -2342,6 +2342,24 @@ router.patch('/pack-map', async (req, res) => {
 });
 
 /**
+ * Ruta para revertir un pendiente de compra
+ */
+router.patch('/compras/pendientes/:id/revertir', async (req, res) => {
+    try {
+        const { revertirPendienteCompra } = require('../controllers/comprasPendientes');
+        await revertirPendienteCompra(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes/:id/revertir:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de reversión',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
  * Ruta para actualizar secuencia de presupuestos
  * POST /api/produccion/actualizar-secuencia
  * Body: { presupuestos_ids: ['id1', 'id2'], nueva_secuencia: 'Armar_Pedido' }
