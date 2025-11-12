@@ -495,12 +495,14 @@ const obtenerPedidosArticulos = async (req, res) => {
             joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = pc.id';
         }
         
-        // Query consolidada por artículo con lógica pack-aware y exclusión de derivados a compras
+        // Query consolidada por artículo con exclusión de ítems derivados
         const query = `
-            WITH presupuestos_con_derivados AS (
-                SELECT DISTINCT id_presupuesto_local
-                FROM public.faltantes_pendientes_compra
-                WHERE estado = 'En espera'
+            WITH articulos_derivados_compra AS (
+                SELECT 
+                    fpc.articulo_numero,
+                    fpc.id_presupuesto_local
+                FROM public.faltantes_pendientes_compra fpc
+                WHERE fpc.estado = 'En espera'
             ),
             presupuestos_confirmados AS (
                 SELECT 
@@ -511,29 +513,25 @@ const obtenerPedidosArticulos = async (req, res) => {
                     COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
-                LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
                 WHERE p.activo = true 
                   AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                   AND p.fecha::date <= $2::date
-                  AND pcd.id_presupuesto_local IS NULL
             ),
             articulos_consolidados AS (
                 SELECT 
+                    pc.id as presupuesto_id_local,
                     pd.articulo as articulo_numero,
                     SUM(COALESCE(pd.cantidad, 0)) as pedido_total
                 FROM presupuestos_confirmados pc
                 ${joinClause}
+                LEFT JOIN articulos_derivados_compra adc 
+                    ON adc.articulo_numero = pd.articulo 
+                    AND adc.id_presupuesto_local = pc.id
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
                   AND pc.secuencia != 'Pedido_Listo'
-                GROUP BY pd.articulo
-            ),
-            derivados_a_compras AS (
-                SELECT DISTINCT 
-                    fpc.articulo_numero,
-                    fpc.id_presupuesto_local
-                FROM public.faltantes_pendientes_compra fpc
-                WHERE fpc.estado = 'En espera'
+                  AND adc.articulo_numero IS NULL
+                GROUP BY pc.id, pd.articulo
             ),
             pedidos_listos AS (
                 SELECT 
@@ -545,18 +543,6 @@ const obtenerPedidosArticulos = async (req, res) => {
                   AND TRIM(pd.articulo) != ''
                   AND pc.secuencia = 'Pedido_Listo'
                 GROUP BY pd.articulo
-            ),
-            primeros_presupuestos AS (
-                SELECT DISTINCT ON (pd.articulo)
-                    pd.articulo as articulo_numero,
-                    pc.id as id_presupuesto_local,
-                    pc.id_presupuesto_ext
-                FROM presupuestos_confirmados pc
-                ${joinClause}
-                WHERE pd.articulo IS NOT NULL 
-                  AND TRIM(pd.articulo) != ''
-                  AND pc.secuencia != 'Pedido_Listo'
-                ORDER BY pd.articulo, pc.fecha DESC, pc.id DESC
             ),
             valores_redondeados AS (
                 SELECT 
@@ -589,16 +575,14 @@ const obtenerPedidosArticulos = async (req, res) => {
                     src.pack_hijo_codigo,
                     src.pack_unidades,
                     hijo.stock_consolidado as stock_hijo,
-                    pp.id_presupuesto_local,
-                    pp.id_presupuesto_ext
+                    ac.presupuesto_id_local as id_presupuesto_local,
+                    pc.id_presupuesto_ext
                 FROM articulos_consolidados ac
+                LEFT JOIN presupuestos_confirmados pc ON pc.id = ac.presupuesto_id_local
                 LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
-                LEFT JOIN derivados_a_compras dac ON dac.articulo_numero = ac.articulo_numero
-                LEFT JOIN primeros_presupuestos pp ON pp.articulo_numero = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
                 LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
-                WHERE dac.articulo_numero IS NULL
             )
             SELECT 
                 articulo_numero_alfanumerico as articulo_numero,
@@ -619,6 +603,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                 id_presupuesto_local,
                 id_presupuesto_ext
             FROM valores_redondeados
+            WHERE faltante_redondeado > 0
             ORDER BY articulo_numero;
         `;
         
