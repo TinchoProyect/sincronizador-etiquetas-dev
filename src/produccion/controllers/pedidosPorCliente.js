@@ -498,11 +498,12 @@ const obtenerPedidosArticulos = async (req, res) => {
         // Query consolidada por artículo con exclusión de ítems derivados
         const query = `
             WITH articulos_derivados_compra AS (
-                SELECT 
-                    fpc.articulo_numero,
+                SELECT DISTINCT
+                    fpc.codigo_barras as codigo_barras_derivado,
                     fpc.id_presupuesto_local
                 FROM public.faltantes_pendientes_compra fpc
                 WHERE fpc.estado = 'En espera'
+                  AND fpc.codigo_barras IS NOT NULL
             ),
             presupuestos_confirmados AS (
                 SELECT 
@@ -525,12 +526,12 @@ const obtenerPedidosArticulos = async (req, res) => {
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 LEFT JOIN articulos_derivados_compra adc 
-                    ON adc.articulo_numero = pd.articulo 
+                    ON adc.codigo_barras_derivado = pd.articulo 
                     AND adc.id_presupuesto_local = pc.id
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
                   AND pc.secuencia != 'Pedido_Listo'
-                  AND adc.articulo_numero IS NULL
+                  AND adc.codigo_barras_derivado IS NULL
                 GROUP BY pc.id, pd.articulo
             ),
             pedidos_listos AS (
