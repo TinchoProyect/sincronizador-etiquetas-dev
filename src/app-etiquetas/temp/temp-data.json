@@ -1,6 +1,8 @@
 {
-  "numero": "MFST10x300",
-  "nombre": "Mix/F/Secas/Tropical 10 x 300",
-  "codigo_barras": "2582563254",
-  "cantidad": 4
+  "articulo": {
+    "numero": "PJx2",
+    "nombre": "Pasa/Jumbo x 2",
+    "codigo_barras": "7744440032"
+  },
+  "cantidad": "5.00"
 }

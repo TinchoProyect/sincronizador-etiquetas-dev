@@ -40,7 +40,8 @@ const obtenerPedidosPorCliente = async (req, res) => {
             fecha = new Date().toISOString().split('T')[0], 
             cliente_id, 
             estado = 'presupuesto/orden',
-            debug
+            debug,
+            ids
         } = req.query;
         
         // Validaciones
@@ -92,7 +93,12 @@ const obtenerPedidosPorCliente = async (req, res) => {
         
         // Query consolidada con estado normalizado y fecha robusta
         const query = `
-            WITH presupuestos_confirmados AS (
+            WITH presupuestos_con_derivados AS (
+                SELECT DISTINCT id_presupuesto_local
+                FROM public.faltantes_pendientes_compra
+                WHERE estado = 'En espera'
+            ),
+            presupuestos_confirmados AS (
                 SELECT 
                     p.id,
                     p.id_presupuesto_ext,
@@ -101,10 +107,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
+                LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
                 WHERE p.activo = true 
                   AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
+                  AND ($4::text IS NULL OR p.id IN (SELECT unnest(string_to_array($4, ','))::integer))
+                  AND (CASE WHEN $4::text IS NULL THEN pcd.id_presupuesto_local IS NULL ELSE true END)
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -167,7 +176,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             ORDER BY cliente_nombre;
         `;
         
-        const params = [estado, fecha, cliente_id ? parseInt(cliente_id) : null];
+        const params = [estado, fecha, cliente_id ? parseInt(cliente_id) : null, ids || null];
         console.log('🔍 [PROD_PED] Ejecutando consulta con parámetros:', params);
         
         const result = await pool.query(query, params);
@@ -486,9 +495,17 @@ const obtenerPedidosArticulos = async (req, res) => {
             joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = pc.id';
         }
         
-        // Query consolidada por artículo con lógica pack-aware
+        // Query consolidada por artículo con exclusión de ítems derivados
         const query = `
-            WITH presupuestos_confirmados AS (
+            WITH articulos_derivados_compra AS (
+                SELECT DISTINCT
+                    fpc.codigo_barras as codigo_barras_derivado,
+                    fpc.id_presupuesto_local
+                FROM public.faltantes_pendientes_compra fpc
+                WHERE fpc.estado = 'En espera'
+                  AND fpc.codigo_barras IS NOT NULL
+            ),
+            presupuestos_confirmados AS (
                 SELECT 
                     p.id,
                     p.id_presupuesto_ext,
@@ -503,14 +520,19 @@ const obtenerPedidosArticulos = async (req, res) => {
             ),
             articulos_consolidados AS (
                 SELECT 
+                    pc.id as presupuesto_id_local,
                     pd.articulo as articulo_numero,
                     SUM(COALESCE(pd.cantidad, 0)) as pedido_total
                 FROM presupuestos_confirmados pc
                 ${joinClause}
+                LEFT JOIN articulos_derivados_compra adc 
+                    ON adc.codigo_barras_derivado = pd.articulo 
+                    AND adc.id_presupuesto_local = pc.id
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
                   AND pc.secuencia != 'Pedido_Listo'
-                GROUP BY pd.articulo
+                  AND adc.codigo_barras_derivado IS NULL
+                GROUP BY pc.id, pd.articulo
             ),
             pedidos_listos AS (
                 SELECT 
@@ -553,8 +575,11 @@ const obtenerPedidosArticulos = async (req, res) => {
                     src.es_pack,
                     src.pack_hijo_codigo,
                     src.pack_unidades,
-                    hijo.stock_consolidado as stock_hijo
+                    hijo.stock_consolidado as stock_hijo,
+                    ac.presupuesto_id_local as id_presupuesto_local,
+                    pc.id_presupuesto_ext
                 FROM articulos_consolidados ac
+                LEFT JOIN presupuestos_confirmados pc ON pc.id = ac.presupuesto_id_local
                 LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
@@ -575,8 +600,11 @@ const obtenerPedidosArticulos = async (req, res) => {
                 es_pack,
                 pack_hijo_codigo,
                 pack_unidades,
-                stock_hijo
+                stock_hijo,
+                id_presupuesto_local,
+                id_presupuesto_ext
             FROM valores_redondeados
+            WHERE faltante_redondeado > 0
             ORDER BY articulo_numero;
         `;
         

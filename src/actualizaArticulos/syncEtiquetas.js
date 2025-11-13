@@ -119,12 +119,86 @@ async function sincronizarArticulos() {
 
     await client.query('COMMIT');
     console.log(`✅ Sincronización completada. ${insertados} artículos actualizados.`);
+    
+    // 🔄 RECONCILIACIÓN DE PENDIENTES: Resolver automáticamente pendientes cubiertos por stock
+    await reconciliarPendientesCompra();
+    
   } catch (error) {
     console.error('❌ Error durante la sincronización:', error.message);
     if (client) {
       await client.query('ROLLBACK');
     }
     process.exit(1);
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+}
+
+/**
+ * Reconciliar pendientes de compra tras actualización de stock
+ * Marca como 'Resuelto' los pendientes cuyo stock ahora cubre la cantidad faltante
+ */
+async function reconciliarPendientesCompra() {
+  let client;
+  try {
+    console.log('\n🔄 [RECONCILIAR] Iniciando reconciliación de pendientes...');
+    
+    client = await pool.connect();
+    
+    // Obtener pendientes activos con stock actual
+    const pendientesQuery = `
+      SELECT 
+        fpc.id,
+        fpc.articulo_numero,
+        fpc.cantidad_faltante,
+        fpc.id_presupuesto_local,
+        COALESCE(src.stock_consolidado, 0) as stock_disponible
+      FROM faltantes_pendientes_compra fpc
+      LEFT JOIN stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
+      WHERE fpc.estado = 'En espera'
+    `;
+    
+    const { rows: pendientes } = await client.query(pendientesQuery);
+    
+    if (pendientes.length === 0) {
+      console.log('ℹ️ [RECONCILIAR] No hay pendientes activos');
+      return;
+    }
+    
+    console.log(`📊 [RECONCILIAR] Evaluando ${pendientes.length} pendientes...`);
+    
+    let resueltos = 0;
+    
+    for (const pendiente of pendientes) {
+      const stockDisponible = parseFloat(pendiente.stock_disponible) || 0;
+      const cantidadFaltante = parseFloat(pendiente.cantidad_faltante) || 0;
+      
+      // Si el stock ahora cubre el faltante, marcar como resuelto
+      if (stockDisponible >= cantidadFaltante) {
+        await client.query(
+          `UPDATE faltantes_pendientes_compra
+           SET estado = 'Resuelto',
+               nota = COALESCE(nota || ' | ', '') || 'Resuelto automáticamente - Stock: ' || $1 || ' >= Faltante: ' || $2 || ' - ' || NOW()::text
+           WHERE id = $3`,
+          [stockDisponible, cantidadFaltante, pendiente.id]
+        );
+        
+        resueltos++;
+        console.log(`✅ [RECONCILIAR] Resuelto: ${pendiente.articulo_numero} (stock: ${stockDisponible} >= faltante: ${cantidadFaltante})`);
+      }
+    }
+    
+    if (resueltos > 0) {
+      console.log(`🎉 [RECONCILIAR] ${resueltos} pendiente(s) resuelto(s) automáticamente`);
+    } else {
+      console.log(`ℹ️ [RECONCILIAR] Ningún pendiente pudo resolverse (stock insuficiente)`);
+    }
+    
+  } catch (error) {
+    console.error('❌ [RECONCILIAR] Error en reconciliación:', error);
+    // No lanzar error para no interrumpir el sync principal
   } finally {
     if (client) {
       client.release();

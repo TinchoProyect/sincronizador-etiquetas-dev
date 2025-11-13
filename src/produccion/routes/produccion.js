@@ -40,6 +40,9 @@ const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, a
 const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes, actualizarPackMapping } = require('../controllers/pedidosPorCliente');
 const { imprimirPresupuestoCliente } = require('../controllers/impresionPresupuestos');
 
+// Controladores para compras pendientes
+const { crearPendienteCompra, obtenerPendientesCompra } = require('../controllers/comprasPendientes');
+
 // Ruta para alternar estado de producción externa (toggle)
 router.put('/articulos/:articuloId/toggle-produccion-externa', async (req, res) => {
     try {
@@ -2339,6 +2342,42 @@ router.patch('/pack-map', async (req, res) => {
 });
 
 /**
+ * Ruta para revertir un pendiente de compra
+ */
+router.patch('/compras/pendientes/:id/revertir', async (req, res) => {
+    try {
+        const { revertirPendienteCompra } = require('../controllers/comprasPendientes');
+        await revertirPendienteCompra(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes/:id/revertir:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de reversión',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Ruta para marcar un pendiente como obsoleto (presupuesto eliminado/modificado)
+ */
+router.patch('/compras/pendientes/:id/obsoleto', async (req, res) => {
+    try {
+        const { marcarPendienteObsoleto } = require('../controllers/comprasPendientes');
+        await marcarPendienteObsoleto(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes/:id/obsoleto:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de marcado obsoleto',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
  * Ruta para actualizar secuencia de presupuestos
  * POST /api/produccion/actualizar-secuencia
  * Body: { presupuestos_ids: ['id1', 'id2'], nueva_secuencia: 'Armar_Pedido' }
@@ -2353,6 +2392,67 @@ router.post('/actualizar-secuencia', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Error interno en ruta de actualización de secuencia',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// ==========================================
+// RUTAS PARA COMPRAS PENDIENTES
+// ==========================================
+
+/**
+ * Crear un nuevo pendiente de compra
+ * POST /api/produccion/compras/pendientes
+ */
+router.post('/compras/pendientes', async (req, res) => {
+    try {
+        console.log('🛒 [COMPRAS] Ruta POST /compras/pendientes');
+        await crearPendienteCompra(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de compras pendientes',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Obtener todos los pendientes de compra
+ * GET /api/produccion/compras/pendientes
+ */
+router.get('/compras/pendientes', async (req, res) => {
+    try {
+        console.log('🛒 [COMPRAS] Ruta GET /compras/pendientes');
+        await obtenerPendientesCompra(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de compras pendientes',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Validar que presupuestos existan y estén activos
+ * POST /api/produccion/validar-presupuestos
+ */
+router.post('/validar-presupuestos', async (req, res) => {
+    try {
+        const { validarPresupuestos } = require('../controllers/comprasPendientes');
+        await validarPresupuestos(req, res);
+    } catch (error) {
+        console.error('❌ [VALIDAR-PRES] Error en ruta /validar-presupuestos:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de validación',
             message: error.message,
             timestamp: new Date().toISOString()
         });
