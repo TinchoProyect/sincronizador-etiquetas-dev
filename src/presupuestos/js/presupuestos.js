@@ -311,16 +311,15 @@ async function loadEstados() {
 }
 
 /**
- * Actualizar display de estadísticas
+ * Actualizar display de estadísticas (línea compacta)
  */
 function updateStatsDisplay(stats) {
     console.log('🔍 [PRESUPUESTOS-JS] Actualizando display de estadísticas...');
     console.log('[PRESUP/KPIS] stats=', stats);
     
+    // Solo actualizar los dos valores que se muestran en la línea compacta
     const elements = {
         'total-registros': stats.total_registros || 0,
-        'total-categorias': stats.total_categorias || 0,
-        'monto-total': '—', // <- no mostramos $0,00
         'ultima-sync': stats.ultima_sincronizacion ? 
             formatDate(stats.ultima_sincronizacion) : 'Nunca'
     };
@@ -333,7 +332,7 @@ function updateStatsDisplay(stats) {
         }
     });
     
-    console.log('✅ [PRESUPUESTOS-JS] Display de estadísticas actualizado');
+    console.log('✅ [PRESUPUESTOS-JS] Display de estadísticas actualizado (línea compacta)');
 }
 
 /**
