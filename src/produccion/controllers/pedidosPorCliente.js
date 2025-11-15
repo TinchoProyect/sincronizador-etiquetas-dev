@@ -40,7 +40,8 @@ const obtenerPedidosPorCliente = async (req, res) => {
             fecha = new Date().toISOString().split('T')[0], 
             cliente_id, 
             estado = 'presupuesto/orden',
-            debug
+            debug,
+            ids
         } = req.query;
         
         // Validaciones
@@ -92,7 +93,12 @@ const obtenerPedidosPorCliente = async (req, res) => {
         
         // Query consolidada con estado normalizado y fecha robusta
         const query = `
-            WITH presupuestos_confirmados AS (
+            WITH presupuestos_con_derivados AS (
+                SELECT DISTINCT id_presupuesto_local
+                FROM public.faltantes_pendientes_compra
+                WHERE estado = 'En espera'
+            ),
+            presupuestos_confirmados AS (
                 SELECT 
                     p.id,
                     p.id_presupuesto_ext,
@@ -101,10 +107,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
+                LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
                 WHERE p.activo = true 
                   AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
+                  AND ($4::text IS NULL OR p.id IN (SELECT unnest(string_to_array($4, ','))::integer))
+                  AND (CASE WHEN $4::text IS NULL THEN pcd.id_presupuesto_local IS NULL ELSE true END)
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -167,7 +176,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             ORDER BY cliente_nombre;
         `;
         
-        const params = [estado, fecha, cliente_id ? parseInt(cliente_id) : null];
+        const params = [estado, fecha, cliente_id ? parseInt(cliente_id) : null, ids || null];
         console.log('🔍 [PROD_PED] Ejecutando consulta con parámetros:', params);
         
         const result = await pool.query(query, params);
@@ -486,9 +495,17 @@ const obtenerPedidosArticulos = async (req, res) => {
             joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = pc.id';
         }
         
-        // Query consolidada por artículo con lógica pack-aware
+        // Query consolidada por artículo con exclusión de ítems derivados
         const query = `
-            WITH presupuestos_confirmados AS (
+            WITH articulos_derivados_compra AS (
+                SELECT DISTINCT
+                    fpc.codigo_barras as codigo_barras_derivado,
+                    fpc.id_presupuesto_local
+                FROM public.faltantes_pendientes_compra fpc
+                WHERE fpc.estado = 'En espera'
+                  AND fpc.codigo_barras IS NOT NULL
+            ),
+            presupuestos_confirmados AS (
                 SELECT 
                     p.id,
                     p.id_presupuesto_ext,
@@ -503,14 +520,19 @@ const obtenerPedidosArticulos = async (req, res) => {
             ),
             articulos_consolidados AS (
                 SELECT 
+                    pc.id as presupuesto_id_local,
                     pd.articulo as articulo_numero,
                     SUM(COALESCE(pd.cantidad, 0)) as pedido_total
                 FROM presupuestos_confirmados pc
                 ${joinClause}
+                LEFT JOIN articulos_derivados_compra adc 
+                    ON adc.codigo_barras_derivado = pd.articulo 
+                    AND adc.id_presupuesto_local = pc.id
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
                   AND pc.secuencia != 'Pedido_Listo'
-                GROUP BY pd.articulo
+                  AND adc.codigo_barras_derivado IS NULL
+                GROUP BY pc.id, pd.articulo
             ),
             pedidos_listos AS (
                 SELECT 
@@ -525,13 +547,14 @@ const obtenerPedidosArticulos = async (req, res) => {
             ),
             valores_redondeados AS (
                 SELECT 
-                    ac.articulo_numero,
+                    ac.articulo_numero as codigo_barras_original,
                     ac.pedido_total,
                     COALESCE(
                         NULLIF(TRIM(src.descripcion), ''),
                         NULLIF(TRIM(a.nombre), ''),
                         ac.articulo_numero
                     ) as descripcion,
+                    COALESCE(a.numero, ac.articulo_numero) as articulo_numero_alfanumerico,
                     ROUND(ac.pedido_total::numeric, 2) as pedido_total_redondeado,
                     ROUND(GREATEST(0, 
                         CASE 
@@ -552,15 +575,19 @@ const obtenerPedidosArticulos = async (req, res) => {
                     src.es_pack,
                     src.pack_hijo_codigo,
                     src.pack_unidades,
-                    hijo.stock_consolidado as stock_hijo
+                    hijo.stock_consolidado as stock_hijo,
+                    ac.presupuesto_id_local as id_presupuesto_local,
+                    pc.id_presupuesto_ext
                 FROM articulos_consolidados ac
+                LEFT JOIN presupuestos_confirmados pc ON pc.id = ac.presupuesto_id_local
                 LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
                 LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
                 LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
             )
             SELECT 
-                articulo_numero,
+                articulo_numero_alfanumerico as articulo_numero,
+                codigo_barras_original as codigo_barras,
                 descripcion,
                 pedido_total_redondeado as pedido_total,
                 stock_disponible_redondeado as stock_disponible,
@@ -573,8 +600,11 @@ const obtenerPedidosArticulos = async (req, res) => {
                 es_pack,
                 pack_hijo_codigo,
                 pack_unidades,
-                stock_hijo
+                stock_hijo,
+                id_presupuesto_local,
+                id_presupuesto_ext
             FROM valores_redondeados
+            WHERE faltante_redondeado > 0
             ORDER BY articulo_numero;
         `;
         
@@ -605,7 +635,8 @@ const obtenerPedidosArticulos = async (req, res) => {
                 
                 const stockQuery = `
                     SELECT 
-                        src.codigo_barras as articulo_numero,
+                        COALESCE(a.numero, src.codigo_barras) as articulo_numero,
+                        src.codigo_barras as codigo_barras,
                         COALESCE(
                             NULLIF(TRIM(src.descripcion), ''),
                             src.codigo_barras
@@ -626,6 +657,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                         hijo.stock_consolidado as stock_hijo
                     FROM public.stock_real_consolidado src
                     LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                    LEFT JOIN public.articulos a ON a.codigo_barras = src.codigo_barras
                     WHERE src.codigo_barras = $1 OR src.articulo_numero = $1
                     LIMIT 1
                 `;
@@ -718,6 +750,16 @@ const obtenerPedidosArticulos = async (req, res) => {
         console.log(`✅ [PROD_ART] Consulta exitosa: ${articulos.length} artículos encontrados`);
         console.log(`📊 [PROD_ART] Totales: ${totales.faltantes} faltantes, ${totales.parciales} parciales, ${totales.completos} completos`);
         
+        // [PEDIDOS-ART] Log de muestra para diagnóstico
+        if (articulos.length > 0) {
+            const muestra = articulos[0];
+            console.log('[PEDIDOS-ART] resp item =>', {
+                numero: muestra.articulo_numero,
+                barras: muestra.codigo_barras,
+                desc: muestra.descripcion?.substring(0, 30)
+            });
+        }
+        
         res.json(response);
         
     } catch (error) {
@@ -733,28 +775,39 @@ const obtenerPedidosArticulos = async (req, res) => {
 
 /**
  * Actualiza el mapeo de pack para un artículo
+ * Acepta nombres de campos nuevos (padre_articulo, hijo_articulo) y legacy (padre_codigo_barras, hijo_codigo_barras)
  */
 const actualizarPackMapping = async (req, res) => {
     try {
         console.log('🧩 [PACK-MAP] Iniciando actualización de mapeo pack...');
         
-        const { padre_codigo_barras, hijo_codigo_barras, unidades } = req.body;
+        // ✅ COMPATIBILIDAD: Aceptar ambos formatos de nombres
+        // Formato OFICIAL (nuevo): padre_articulo, hijo_articulo
+        // Formato LEGACY (compatibilidad): padre_codigo_barras, hijo_codigo_barras
+        const padreArticulo = req.body.padre_articulo || req.body.padre_codigo_barras;
+        const hijoArticulo = req.body.hijo_articulo !== undefined ? req.body.hijo_articulo : req.body.hijo_codigo_barras;
+        const unidades = req.body.unidades;
         
-        // Validación padre_codigo_barras requerido
-        if (!padre_codigo_barras || typeof padre_codigo_barras !== 'string' || !padre_codigo_barras.trim()) {
+        // Validación padre requerido
+        if (!padreArticulo || typeof padreArticulo !== 'string' || !padreArticulo.trim()) {
             return res.status(400).json({
                 success: false,
-                error: 'padre_codigo_barras es requerido y debe ser un string válido'
+                error: 'padre_articulo es requerido y debe ser un string válido'
             });
         }
         
-        console.log('📋 [PACK-MAP] Datos recibidos:', { padre_codigo_barras, hijo_codigo_barras, unidades });
+        console.log('📋 [PACK-MAP] Datos recibidos:', { 
+            padre: padreArticulo, 
+            hijo: hijoArticulo, 
+            unidades,
+            formato_usado: req.body.padre_articulo ? 'nuevo (padre_articulo)' : 'legacy (padre_codigo_barras)'
+        });
         
         // Determinar si es guardar o quitar mapeo
-        const esQuitarMapeo = hijo_codigo_barras === null || hijo_codigo_barras === undefined;
+        const esQuitarMapeo = hijoArticulo === null || hijoArticulo === undefined;
         
         if (esQuitarMapeo) {
-            // QUITAR MAPEO - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
+            // QUITAR MAPEO - Buscar padre por codigo_barras o por articulo_numero
             console.log('🗑️ [PACK-MAP] Quitando mapeo pack...');
             
             const query = `
@@ -771,9 +824,9 @@ const actualizarPackMapping = async (req, res) => {
                    )
             `;
             
-            const result = await pool.query(query, [padre_codigo_barras.trim()]);
+            const result = await pool.query(query, [padreArticulo.trim()]);
             
-            console.log(`🧩 [PACK-MAP] padre=${padre_codigo_barras} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
+            console.log(`🧩 [PACK-MAP] padre=${padreArticulo} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
             
             if (result.rowCount === 0) {
                 return res.status(404).json({
@@ -789,10 +842,10 @@ const actualizarPackMapping = async (req, res) => {
             console.log('💾 [PACK-MAP] Guardando/actualizando mapeo pack...');
             
             // Validaciones para guardar
-            if (!hijo_codigo_barras || typeof hijo_codigo_barras !== 'string' || !hijo_codigo_barras.trim()) {
+            if (!hijoArticulo || typeof hijoArticulo !== 'string' || !hijoArticulo.trim()) {
                 return res.status(400).json({
                     success: false,
-                    error: 'hijo_codigo_barras es requerido y debe ser un string válido'
+                    error: 'hijo_articulo es requerido y debe ser un string válido'
                 });
             }
             
@@ -804,12 +857,21 @@ const actualizarPackMapping = async (req, res) => {
             }
             
             const unidadesInt = parseInt(unidades);
-            const hijoCodigoTrim = hijo_codigo_barras.trim();
-            const padreCodigoTrim = padre_codigo_barras.trim();
+            const hijoCodigoTrim = hijoArticulo.trim();
+            const padreCodigoTrim = padreArticulo.trim();
+            
+            // ✅ VALIDACIÓN 1: Verificar que padre !== hijo (circularidad directa)
+            if (padreCodigoTrim === hijoCodigoTrim) {
+                console.log(`❌ [PACK-MAP] Circularidad directa detectada: padre=${padreCodigoTrim} === hijo=${hijoCodigoTrim}`);
+                return res.status(400).json({
+                    success: false,
+                    error: 'No se puede configurar un artículo como pack de sí mismo'
+                });
+            }
             
             // Verificar que existe el hijo en stock_real_consolidado
             const verificarHijoQuery = `
-                SELECT codigo_barras 
+                SELECT codigo_barras, es_pack, pack_hijo_codigo
                 FROM public.stock_real_consolidado 
                 WHERE codigo_barras = $1
             `;
@@ -820,11 +882,21 @@ const actualizarPackMapping = async (req, res) => {
                 console.log(`❌ [PACK-MAP] Hijo no encontrado: ${hijoCodigoTrim}`);
                 return res.status(400).json({
                     success: false,
-                    error: `El artículo hijo '${hijoCodigoTrim}' no existe en stock_real_consolidado`
+                    error: `El artículo hijo '${hijoCodigoTrim}' no existe en el sistema`
                 });
             }
             
-            console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`);
+            const hijoData = hijoResult.rows[0];
+            console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`, { es_pack: hijoData.es_pack, pack_hijo_codigo: hijoData.pack_hijo_codigo });
+            
+            // ✅ VALIDACIÓN 2: Verificar ciclo directo (hijo ya tiene al padre como su hijo)
+            if (hijoData.es_pack && hijoData.pack_hijo_codigo === padreCodigoTrim) {
+                console.log(`❌ [PACK-MAP] Ciclo directo detectado: ${padreCodigoTrim} → ${hijoCodigoTrim} → ${padreCodigoTrim}`);
+                return res.status(400).json({
+                    success: false,
+                    error: 'No se puede crear esta relación porque generaría una dependencia circular'
+                });
+            }
             
             // Actualizar mapeo pack - Buscar padre por codigo_barras o por articulo_numero desde tabla articulos
             const updateQuery = `

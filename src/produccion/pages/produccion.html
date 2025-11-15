@@ -562,15 +562,15 @@
         }
 
         /* Fila hijo (subfila) */
-        .summary-table .child-row {
+        .child-row {
             display: none;
             background-color: #f0f8ff;
             border-left: 6px solid #17a2b8;
             animation: slideDown 0.3s ease-out;
         }
 
-        .summary-table .child-row.visible {
-            display: table-row;
+        .child-row.visible {
+            display: table-row !important;
         }
 
         @keyframes slideDown {
@@ -781,6 +781,432 @@
 
         .pack-cancel-button:hover {
             background-color: #5a6268;
+        }
+
+        /* Estilos para tabs de búsqueda dual */
+        .search-mode-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 5px;
+        }
+
+        .search-tab {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            position: relative;
+            bottom: -7px;
+        }
+
+        .search-tab.active {
+            color: #6f42c1;
+            border-bottom-color: #6f42c1;
+        }
+
+        .search-tab:hover:not(.active) {
+            color: #5a2d91;
+            background: #f8f9fa;
+        }
+
+        .ayuda-busqueda {
+            font-size: 12px;
+            color: #856404;
+            background: #fff3cd;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .aviso-codigo-barras {
+            font-size: 13px;
+            color: #004085;
+            background: #cce5ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+            display: none;
+            border-left: 4px solid #004085;
+        }
+
+        .aviso-codigo-barras button {
+            margin-left: 10px;
+            padding: 4px 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .aviso-codigo-barras button:hover {
+            background: #0056b3;
+        }
+
+        
+        /* Estilos para búsqueda dual en modal pack */
+        .search-mode-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .search-tab {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+            position: relative;
+            bottom: -2px;
+        }
+
+        .search-tab:hover:not(.active) {
+            color: #6f42c1;
+            background-color: #f8f9fa;
+        }
+
+        .search-tab.active {
+            color: #6f42c1;
+            border-bottom-color: #6f42c1;
+            background-color: white;
+        }
+
+        .ayuda-busqueda {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #856404;
+            display: none;
+        }
+
+        .aviso-codigo-barras {
+            margin-top: 8px;
+            padding: 10px 12px;
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #0c5460;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .aviso-codigo-barras button {
+            padding: 4px 12px;
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .aviso-codigo-barras button:hover {
+            background-color: #138496;
+        }
+
+        /* ==========================================
+           ESTILOS PARA PANEL CONFIGURAR CARROS
+           ========================================== */
+        
+        .carros-panel-section {
+            margin: 20px 0;
+            padding: 0;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 2px solid #007bff;
+            overflow: hidden;
+        }
+
+        .carros-panel-container {
+            padding: 20px;
+        }
+
+        .carros-usuario-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .carros-usuario-section label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--primary-color);
+        }
+
+        .carros-usuario-select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #007bff;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: white;
+        }
+
+        .carros-usuario-select:focus {
+            outline: none;
+            border-color: #0056b3;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        .carros-usuario-botonera {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+
+        .carros-usuario-btn {
+            padding: 8px 16px;
+            border: 2px solid #007bff;
+            background-color: white;
+            color: #007bff;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .carros-usuario-btn:hover {
+            background-color: #e7f3ff;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+        }
+
+        .carros-usuario-btn:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        .carros-usuario-btn.activo {
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+            box-shadow: 0 3px 6px rgba(0, 123, 255, 0.3);
+        }
+
+        .carros-usuario-btn.activo:hover {
+            background-color: #0056b3;
+        }
+
+        .carros-resumen-section {
+            margin-bottom: 20px;
+        }
+
+        .carros-resumen-section h3 {
+            margin: 0 0 15px 0;
+            color: var(--primary-color);
+            font-size: 1.1em;
+        }
+
+        .carros-lista-container {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .carros-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        .carros-item:hover {
+            background-color: #e9ecef;
+        }
+
+        .carros-item.faltante {
+            border-left: 4px solid #dc3545;
+        }
+
+        .carros-item.parcial {
+            border-left: 4px solid #ffc107;
+        }
+
+        .carros-item-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .carros-item-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .carros-item-descripcion {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .carros-item-codigo {
+            font-size: 12px;
+            color: #6c757d;
+            font-family: monospace;
+        }
+
+        .carros-item-estado {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .carros-item-estado.faltante {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .carros-item-estado.parcial {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .carros-item-compuesto {
+            font-size: 11px;
+            color: #17a2b8;
+            font-weight: bold;
+        }
+
+        .carros-item-cantidad {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .carros-item-cantidad label {
+            font-size: 12px;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+
+        .carros-item-cantidad input {
+            width: 80px;
+            padding: 6px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .carros-item-cantidad input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+
+        .carros-acciones-section {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #dee2e6;
+        }
+
+        .carros-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .carros-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .carros-btn-primary {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .carros-btn-primary:hover:not(:disabled) {
+            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .carros-btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .carros-btn-secondary:hover:not(:disabled) {
+            background-color: #5a6268;
+        }
+
+        .carros-mensaje {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .carros-mensaje.exito {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .carros-mensaje.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .carros-mensaje.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
         }
 
         /* Toast notification */
@@ -1014,6 +1440,13 @@
     </style>
 </head>
 <body>
+    <!-- Solapa lateral fija -->
+    <div style="position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 999;">
+        <a href="pendientes-compra.html" id="solapa-pendientes" style="display: block; background: linear-gradient(135deg, #ff6b6b, #ee5a52); color: white; padding: 20px 12px; text-decoration: none; font-weight: bold; font-size: 14px; writing-mode: vertical-rl; text-orientation: mixed; border-radius: 0 8px 8px 0; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); transition: all 0.3s ease;" onmouseover="this.style.paddingRight='16px'" onmouseout="this.style.paddingRight='12px'">
+            🛒 Pendientes de Compra <span id="contador-solapa" class="contador-badge" style="display: none; margin-top: 10px;">0</span>
+        </a>
+    </div>
+
     <div class="container">
         <header>
             <h1>Producción - Abrir Instancia de Producción</h1>
@@ -1037,6 +1470,55 @@
             
             <div id="lista-colaboradores" class="lista-colaboradores">
                 <!-- Los colaboradores se cargarán dinámicamente aquí -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Separador Visual -->
+    <div class="section-separator"></div>
+
+    <!-- Panel Lateral: Configurar Carros -->
+    <section class="carros-panel-section">
+        <button class="section-toggle" onclick="toggleSection('carros-panel-content')" aria-expanded="false">
+            <span class="toggle-icon">▶</span>
+            <h2>🛒 Configurar Carros</h2>
+        </button>
+        
+        <div id="carros-panel-content" class="collapsible-content" style="display: none;">
+            <div class="carros-panel-container">
+                <!-- Selector de Usuario -->
+                <div class="carros-usuario-section">
+                    <label for="carros-usuario-select">👤 Usuario asignado:</label>
+                    <select id="carros-usuario-select" class="carros-usuario-select">
+                        <option value="">-- Seleccionar usuario --</option>
+                    </select>
+                    
+                    <!-- Botonera rápida de usuarios -->
+                    <div id="carros-usuario-botonera" class="carros-usuario-botonera" style="margin-top: 12px;">
+                        <!-- Botones se cargarán dinámicamente -->
+                    </div>
+                </div>
+
+                <!-- Resumen de Faltantes dentro del panel -->
+                <div class="carros-resumen-section">
+                    <h3>📋 Faltantes y Parciales</h3>
+                    <div id="carros-lista-container" class="carros-lista-container">
+                        <p class="mensaje-info">Cargando artículos...</p>
+                    </div>
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="carros-acciones-section">
+                    <button id="carros-armar-uno-btn" class="carros-btn carros-btn-primary" disabled>
+                        🛒 Armar 1 Carro
+                    </button>
+                    <button id="carros-armar-varios-btn" class="carros-btn carros-btn-secondary" disabled title="Funcionalidad en desarrollo">
+                        🛒 Armar Varios Carros (TODO)
+                    </button>
+                </div>
+
+                <!-- Mensajes de Estado -->
+                <div id="carros-mensaje" class="carros-mensaje" style="display: none;"></div>
             </div>
         </div>
     </section>
@@ -1193,25 +1675,128 @@
         <div id="modal-pack" class="modal-pack-overlay" style="display:none;">
             <div class="modal-pack-content">
                 <div class="modal-pack-header">
-                    <h3>Configurar Pack</h3>
+                    <h3 id="modal-pack-titulo">Crear nuevo pack</h3>
                     <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalPack()">&times;</button>
                 </div>
                 <div class="modal-pack-body">
-                    <label for="pack-padre-codigo">📦 Artículo Pack Padre (solo lectura):</label>
-                    <input type="text" id="pack-padre-codigo" readonly style="background-color: #e9ecef; font-weight: 600; color: #495057;">
-
-                    <label for="pack-hijo-codigo">🔗 Artículo Hijo:</label>
-                    <input type="text" id="pack-hijo-codigo" placeholder="Código o descripción del artículo hijo">
-
-                    <label for="pack-unidades">🔢 Unidades por Pack:</label>
-                    <input type="number" id="pack-unidades" min="1" placeholder="Ej: 2">
+                    <!-- Información del padre (sin input, solo display) -->
+                    <div style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #6f42c1;">
+                        <div style="font-size: 18px; font-weight: 700; color: #333; margin-bottom: 5px;" id="pack-padre-descripcion">
+                            Cargando...
+                        </div>
+                        <div style="font-size: 12px; color: #6c757d; font-weight: 500;">
+                            Codigo: <span id="pack-padre-codigo-display" style="font-family: monospace;">-</span>
+                        </div>
+                    </div>
                     
-                    <div id="pack-mensaje" class="mensaje-info" style="display:none;"></div>
+                    <!-- Campo oculto para mantener el código del padre -->
+                    <input type="hidden" id="pack-padre-codigo">
+
+                    <!-- Búsqueda de artículo hijo con MODO DUAL -->
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">
+                        🔗 Articulo Hijo:
+                    </label>
+                    
+                    <!-- Tabs para cambiar modo de búsqueda -->
+                    <div class="search-mode-tabs">
+                        <button type="button" id="btn-busqueda-codigo" class="search-tab active">Busqueda por codigo</button>
+                        <button type="button" id="btn-busqueda-descripcion" class="search-tab">Busqueda por descripcion</button>
+                    </div>
+                    
+                    <!-- Contenedor wrapper para búsqueda con posicionamiento relativo -->
+                    <div style="position: relative;">
+                        <!-- Input para MODO CÓDIGO (nuevo, activo por defecto) -->
+                        <div id="search-codigo-container" style="margin-bottom: 15px;">
+                            <input 
+                                type="text" 
+                                id="pack-hijo-codigo-input" 
+                                placeholder="Escanear o ingresar codigo de barras..."
+                                autocomplete="off"
+                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                            <div id="ayuda-busqueda-codigo" class="ayuda-busqueda">
+                                Para buscar por texto, usa "Busqueda por descripcion"
+                            </div>
+                        </div>
+                        
+                        <!-- Input para MODO DESCRIPCIÓN (existente, oculto por defecto) -->
+                        <div id="search-descripcion-container" style="margin-bottom: 15px; display: none;">
+                            <input 
+                                type="text" 
+                                id="pack-hijo-busqueda" 
+                                placeholder="Buscar por descripcion (ej: gi 500 a)..."
+                                autocomplete="off"
+                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                            <div id="aviso-codigo-barras" class="aviso-codigo-barras">
+                                Parece un codigo de barras. ¿Queres buscar por codigo?
+                                <button type="button" onclick="cambiarAModoCodigo()">Cambiar a modo codigo</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Lista desplegable de resultados (compartida por ambos modos) -->
+                        <div id="pack-hijo-resultados" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #6f42c1; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 1001; margin-top: -15px;">
+                            <!-- Resultados dinámicos -->
+                        </div>
+                    </div>
+                    
+                    <!-- Campo oculto para el código del hijo seleccionado -->
+                    <input type="hidden" id="pack-hijo-codigo">
+                    
+                    <!-- Mostrar hijo seleccionado -->
+                    <div id="pack-hijo-seleccionado" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 4px; border-left: 4px solid #28a745;">
+                        <div style="font-weight: 600; color: #155724;" id="pack-hijo-seleccionado-texto"></div>
+                    </div>
+
+                    <label for="pack-unidades" style="font-weight: 600; margin-bottom: 8px; display: block;">
+                        🔢 Unidades por Pack:
+                    </label>
+                    <input 
+                        type="number" 
+                        id="pack-unidades" 
+                        min="1" 
+                        placeholder="Ej: 2"
+                        style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                    
+                    <div id="pack-mensaje" class="mensaje-info" style="display:none; margin-top: 15px;"></div>
                 </div>
                 <div class="modal-pack-footer">
-                    <button id="pack-guardar" class="pack-save-button">Guardar</button>
+                    <button id="pack-guardar" class="pack-save-button" disabled>Guardar</button>
                     <button id="pack-quitar" class="pack-remove-button" style="display:none;">Quitar mapeo</button>
                     <button class="pack-cancel-button" onclick="cerrarModalPack()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para Derivar a Compras -->
+        <div id="modal-derivar-compras" class="modal-overlay" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🛒 Derivar a Compras</h3>
+                    <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalDerivarCompras()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <label>Artículo:</label>
+                    <input type="text" id="derivar-articulo-numero" readonly style="background-color: #f8f9fa;">
+                    
+                    <label>Código Barras:</label>
+                    <input type="text" id="derivar-codigo-barras" readonly style="background-color: #f8f9fa;">
+                    
+                    <label>ID Presupuesto Local:</label>
+                    <input type="number" id="derivar-id-presupuesto-local" readonly style="background-color: #f8f9fa;">
+                    
+                    <label>ID Presupuesto Ext:</label>
+                    <input type="text" id="derivar-id-presupuesto-ext" readonly style="background-color: #f8f9fa;">
+                    
+                    <label>Cantidad Faltante:</label>
+                    <input type="number" id="derivar-cantidad-faltante" readonly style="background-color: #f8f9fa;" step="0.01">
+                    
+                    <label>Nota (opcional):</label>
+                    <textarea id="derivar-nota" rows="3" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;" placeholder="Observaciones..."></textarea>
+                    
+                    <div id="derivar-mensaje" class="mensaje-info" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button id="btn-confirmar-derivar" class="admin-button" style="background-color: #28a745;" onclick="confirmarDerivarCompras()">Confirmar Derivación</button>
+                    <button class="admin-button" style="background-color: #6c757d;" onclick="cerrarModalDerivarCompras()">Cancelar</button>
                 </div>
             </div>
         </div>
@@ -1279,7 +1864,10 @@
     </div>
 
     <script src="/js/produccion.js?v=8.0"></script>
-    <script src="/js/produccion-resumen-expandible.js?v=8.0"></script>
+    <script src="/js/produccion-resumen-expandible.js?v=18.0"></script>
+    <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
+    <script src="/js/configurar-carros-ui.js?v=2.3"></script>
+    <script src="/js/derivar-compras.js?v=1.0"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -1316,6 +1904,8 @@
 
         // Función para inicializar el estado de las secciones al cargar la página
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('[INIT] PASO 1 - DOMContentLoaded disparado - Inicializando secciones colapsables');
+            
             // Asegurar que todas las secciones estén colapsadas al inicio
             const collapsibleSections = document.querySelectorAll('.collapsible-content');
             const toggleButtons = document.querySelectorAll('.section-toggle');
@@ -1328,7 +1918,7 @@
                 button.setAttribute('aria-expanded', 'false');
             });
             
-            console.log('Secciones colapsables inicializadas correctamente');
+            console.log('[INIT] PASO 1 COMPLETADO - Secciones colapsables inicializadas correctamente');
         });
 
         // Función para expandir una sección específica (útil para llamadas externas)
@@ -1381,13 +1971,19 @@
 
         // Función para extraer datos directamente del DOM del panel principal
         function obtenerDatosDesdeDOM() {
+            console.log('[RESUMEN] obtenerDatosDesdeDOM() - Iniciando extracción');
             const articulos = [];
             
             try {
                 // Buscar la tabla de artículos en el panel principal
+                const container = document.querySelector('#articulos-container');
+                console.log('[RESUMEN] Container encontrado:', !!container);
+                
                 const tabla = document.querySelector('#articulos-container .articulos-tabla tbody');
+                console.log('[RESUMEN] Tabla encontrada:', !!tabla);
+                
                 if (!tabla) {
-                    console.debug('⚠️ No se encontró tabla de artículos en el DOM');
+                    console.log('[RESUMEN] ⚠️ No se encontró tabla de artículos en el DOM - retornando array vacío');
                     return [];
                 }
                 
@@ -1435,167 +2031,162 @@
             }
         }
 
-        // Función para obtener datos (primero intenta DOM, luego API como fallback)
+        // Función para obtener datos - USA EL MISMO ENDPOINT QUE EL PANEL PRINCIPAL
         async function obtenerDatosArticulosConFiltros() {
-            // Primero intentar extraer del DOM
-            const datosDOM = obtenerDatosDesdeDOM();
-            if (datosDOM.length > 0) {
-                console.debug('✅ Usando datos del DOM:', datosDOM.length, 'artículos');
-                datosArticulosCompartidos = datosDOM;
-                ultimaActualizacion = Date.now();
-                return datosDOM;
-            }
+            console.log('[RESUMEN] obtenerDatosArticulosConFiltros() - Usando endpoint /pedidos-articulos');
             
-            // Fallback: consulta API
             try {
+                // Usar los mismos filtros que el panel principal
                 const fechaCorte = document.getElementById('fecha-corte-articulos')?.value || '';
-                const busqueda = document.getElementById('buscar-articulo')?.value || '';
-                const filtroEstado = document.getElementById('filtro-estado-articulos')?.value || 'todos';
                 
-                let url = '/api/produccion/articulos-pedidos-confirmados';
+                let url = '/api/produccion/pedidos-articulos';
                 const params = new URLSearchParams();
                 
                 if (fechaCorte) params.append('fecha', fechaCorte);
-                if (busqueda) params.append('buscar', busqueda);
-                if (filtroEstado && filtroEstado !== 'todos') params.append('estado', filtroEstado);
+                // NO aplicar filtro de estado aquí - lo haremos después
                 
                 if (params.toString()) {
                     url += '?' + params.toString();
                 }
                 
-                console.debug('🔍 Fallback: Fetching desde API:', url);
+                console.log('[RESUMEN] Fetching desde:', url);
                 
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`Error HTTP: ${response.status}`);
                 }
                 
-                const data = await response.json();
-                console.debug('📊 Dataset API recibido:', data.length, 'artículos');
+                const result = await response.json();
+                console.log('[RESUMEN] Respuesta del servidor:', result);
                 
-                datosArticulosCompartidos = data;
+                // El endpoint retorna { success, data, total_articulos, totales }
+                const articulos = result.data || [];
+                console.log('[RESUMEN] Artículos recibidos:', articulos.length);
+                
+                // Verificar que no hay promesas en las descripciones
+                if (articulos.length > 0) {
+                    const primerArticulo = articulos[0];
+                    console.log('[RESUMEN] Primer artículo:', {
+                        articulo_numero: primerArticulo.articulo_numero,
+                        descripcion: primerArticulo.descripcion,
+                        tipoDescripcion: typeof primerArticulo.descripcion,
+                        esPromise: primerArticulo.descripcion && typeof primerArticulo.descripcion.then === 'function'
+                    });
+                }
+                
+                datosArticulosCompartidos = articulos;
                 ultimaActualizacion = Date.now();
                 
-                return data;
+                return articulos;
             } catch (error) {
-                console.error('❌ Error al obtener datos de artículos:', error);
+                console.error('❌ [RESUMEN] Error al obtener datos:', error);
                 return [];
             }
         }
 
-        // Función para filtrar faltantes y parciales con lógica mejorada
+        // Función para filtrar faltantes y parciales - USA EL CAMPO estado DEL BACKEND
         function filtrarFaltantesYParciales(articulos) {
+            console.log('[RESUMEN] filtrarFaltantesYParciales() - Filtrando', articulos.length, 'artículos');
+            
             if (!Array.isArray(articulos)) {
-                console.debug('⚠️ Dataset no es array:', typeof articulos);
+                console.log('[RESUMEN] ⚠️ Dataset no es array:', typeof articulos);
                 return { faltantes: [], parciales: [] };
             }
 
             const faltantes = [];
             const parciales = [];
             
+            // El backend ya clasifica los artículos con el campo "estado"
+            // Solo necesitamos filtrar por estado !== "COMPLETO"
             articulos.forEach((art, index) => {
-                // Parsear valores numéricos CRUDOS primero
-                const faltanteCrudo = parseNumeroSeguro(art.faltante || art.cantidad_faltante);
-                const stockCrudo = parseNumeroSeguro(art.stock_disponible || art.stock);
-                const pedidoCrudo = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida);
+                const estadoNormalizado = normalizarEstado(art.estado);
                 
-                // REDONDEAR a 2 decimales ANTES de clasificar
-                const faltanteRedondeado = Math.round(faltanteCrudo * 100) / 100;
-                const stockRedondeado = Math.round(stockCrudo * 100) / 100;
-                const pedidoRedondeado = Math.round(pedidoCrudo * 100) / 100;
-                
-                // Log de depuración para el primer elemento
+                // Log del primer elemento
                 if (index === 0) {
-                    console.debug('🔍 Ejemplo artículo (valores redondeados):', {
-                        codigo: art.codigo || art.articulo,
-                        faltanteCrudo: faltanteCrudo,
-                        faltanteRedondeado: faltanteRedondeado,
-                        stockCrudo: stockCrudo,
-                        stockRedondeado: stockRedondeado,
-                        pedidoCrudo: pedidoCrudo,
-                        pedidoRedondeado: pedidoRedondeado
+                    console.log('[RESUMEN] Primer artículo del backend:', {
+                        articulo_numero: art.articulo_numero,
+                        descripcion: art.descripcion,
+                        estado: art.estado,
+                        estadoNormalizado: estadoNormalizado,
+                        tipoDescripcion: typeof art.descripcion
                     });
                 }
                 
-                // NUEVA LÓGICA: Clasificar usando valores REDONDEADOS
-                // Solo procesamos si hay faltante después de redondear
-                if (faltanteRedondeado > 0) {
-                    if (stockRedondeado === 0) {
-                        // Sin stock = FALTANTE TOTAL
-                        faltantes.push({
-                            ...art,
-                            estado: 'FALTANTE',
-                            faltante: faltanteRedondeado,
-                            stock_disponible: stockRedondeado,
-                            pedido_total: pedidoRedondeado
-                        });
-                        console.debug(`  → FALTANTE (stock=0, faltante=${faltanteRedondeado})`);
-                    } else if (stockRedondeado > 0 && stockRedondeado < pedidoRedondeado) {
-                        // Hay algo de stock pero no todo = PARCIAL
-                        parciales.push({
-                            ...art,
-                            estado: 'PARCIAL',
-                            faltante: faltanteRedondeado,
-                            stock_disponible: stockRedondeado,
-                            pedido_total: pedidoRedondeado
-                        });
-                        console.debug(`  → PARCIAL (stock=${stockRedondeado}, pedido=${pedidoRedondeado}, faltante=${faltanteRedondeado})`);
-                    }
+                // Filtrar por estado (excluir COMPLETO)
+                if (estadoNormalizado === 'FALTANTE') {
+                    faltantes.push(art);
+                } else if (estadoNormalizado === 'PARCIAL') {
+                    parciales.push(art);
                 }
-                // Si faltanteRedondeado es 0, no lo incluimos (está completo)
+                // Ignorar COMPLETO
             });
 
-            console.debug('📈 Resultados filtrado (con redondeo previo):', {
+            console.log('[RESUMEN] Resultados del filtrado:', {
                 total: articulos.length,
                 faltantes: faltantes.length,
-                parciales: parciales.length,
-                ejemploFaltantes: faltantes.slice(0, 2).map(f => ({ 
-                    codigo: f.codigo || f.articulo, 
-                    estado: f.estado,
-                    stock: f.stock_disponible,
-                    faltante: f.faltante 
-                })),
-                ejemploParciales: parciales.slice(0, 2).map(p => ({ 
-                    codigo: p.codigo || p.articulo, 
-                    estado: p.estado,
-                    stock: p.stock_disponible,
-                    faltante: p.faltante
-                }))
+                parciales: parciales.length
             });
 
             return { faltantes, parciales };
         }
 
         // Función para renderizar una fila de artículo en el resumen
-        // Ahora usa la versión expandible del módulo externo
+        // CON SOPORTE PARA EXPANSIÓN DE HIJOS
         function renderizarFilaResumen(articulo, tipo) {
-            // Usar la función del módulo expandible si está disponible
-            if (typeof window.renderizarFilaResumenExpandible === 'function') {
-                return window.renderizarFilaResumenExpandible(articulo, tipo);
-            }
+            console.log('[RENDER-FILA] Entrada:', { articulo, tipo });
             
-            // Fallback: versión simple sin expansión
-            const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
-            const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row' : 'parcial-row expandible-row';
-            const codigoArticulo = articulo.codigo || articulo.articulo || articulo.articulo_numero || '-';
-            
+            // Extraer valores directamente
+            const codigoArticulo = articulo.articulo_numero || articulo.codigo || articulo.articulo || '-';
+            const codigoBarras = articulo.codigo_barras || ''; // Código de barras real (puede estar vacío)
+            const descripcion = articulo.descripcion || articulo.nombre || '-';
             const pedidoTotal = formatearNumeroResumen(articulo.pedido_total || articulo.cantidad_pedida || 0);
             const stockDisponible = formatearNumeroResumen(articulo.stock_disponible || articulo.stock || 0);
             const faltante = formatearNumeroResumen(articulo.faltante || articulo.cantidad_faltante || 0);
             
-            return `
-                <tr class="${rowClass}" data-articulo="${codigoArticulo}" onclick="if(typeof window.handleFilaClick === 'function') window.handleFilaClick('${codigoArticulo}', event)">
+            // Extraer IDs de presupuesto (vienen del backend en datosArticulosCompartidos)
+            const idPresupuestoLocal = articulo.id_presupuesto_local || articulo.presupuesto_id || 0;
+            const idPresupuestoExt = articulo.id_presupuesto_ext || articulo.presupuesto_ext || '';
+            
+            console.log('[RENDER-FILA] Valores:', {
+                codigoArticulo,
+                codigoBarras,
+                descripcion,
+                tipoDescripcion: typeof descripcion,
+                pedidoTotal,
+                stockDisponible,
+                faltante,
+                idPresupuestoLocal,
+                idPresupuestoExt
+            });
+            
+            const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
+            const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row parent-row' : 'parcial-row expandible-row parent-row';
+            
+            // Escapar comillas para JSON
+            const descripcionEscapada = descripcion.replace(/'/g, "\\'");
+            const idPresupuestoExtEscapado = String(idPresupuestoExt).replace(/'/g, "\\'");
+            const codigoBarrasEscapado = codigoBarras.replace(/'/g, "\\'");
+            
+            // IMPORTANTE: Agregar onclick a la fila completa (igual que en produccion.js)
+            // Esto permite que handleFilaClick se ejecute al hacer click en cualquier parte de la fila
+            const html = `
+                <tr class="${rowClass}" data-articulo="${codigoArticulo}" data-articulo-numero="${codigoArticulo}" onclick="if(typeof window.handleFilaClick === 'function') window.handleFilaClick('${codigoArticulo}', event)">
                     <td class="col-articulo">${codigoArticulo}</td>
-                    <td>${articulo.descripcion || articulo.nombre || '-'}</td>
+                    <td class="descripcion-col">${descripcion}</td>
                     <td>${pedidoTotal}</td>
                     <td>${stockDisponible}</td>
                     <td class="cantidad-faltante">${faltante}</td>
                     <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
                     <td onclick="event.stopPropagation()">
-                        <button class="pack-button pack-config-btn" data-codigo="${codigoArticulo}" onclick="abrirModalPack('${codigoArticulo}')">🧩 Pack</button>
+                        <button class="pack-button pack-config-btn" data-codigo="${codigoArticulo}" onclick="abrirModalPack('${codigoArticulo}')" style="margin-right: 4px;">🧩 Pack</button>
+                        <button class="pack-button" style="background-color: #ff6b6b;" onclick="abrirModalDerivarCompras({articulo_numero: '${codigoArticulo}', codigo_barras: '${codigoBarrasEscapado}', cantidad_faltante: ${faltante}, id_presupuesto_local: ${idPresupuestoLocal}, id_presupuesto_ext: '${idPresupuestoExtEscapado}'})">🛒 Derivar</button>
                     </td>
                 </tr>
             `;
+            
+            console.log('[RENDER-FILA] HTML generado, tipo:', typeof html, 'longitud:', html.length);
+            
+            return html;
         }
 
         // Función auxiliar para formatear números a 2 decimales en el resumen
@@ -1608,6 +2199,7 @@
 
         // Función para actualizar el resumen (sincronizada con panel principal)
         async function actualizarResumen() {
+            console.log('[RESUMEN] actualizarResumen() - INICIO');
             const loadingEl = document.getElementById('summary-loading');
             const emptyEl = document.getElementById('summary-empty');
             const contentEl = document.getElementById('summary-content');
@@ -1619,8 +2211,24 @@
             contentEl.style.display = 'none';
 
             try {
+                console.log('[RESUMEN] Llamando a obtenerDatosArticulosConFiltros()...');
                 // Obtener datos con los mismos filtros que el panel principal
                 const articulos = await obtenerDatosArticulosConFiltros();
+                
+                console.log('[RESUMEN] Datos recibidos de obtenerDatosArticulosConFiltros():', articulos);
+                
+                // ✅ [RESUMEN] Diagnóstico: Verificar que articulos es un array válido
+                console.log('📊 [RESUMEN] Datos obtenidos:', {
+                    esArray: Array.isArray(articulos),
+                    cantidad: articulos?.length || 0,
+                    primerElemento: articulos?.[0] ? {
+                        codigo: articulos[0].codigo,
+                        descripcion: articulos[0].descripcion,
+                        tipoDescripcion: typeof articulos[0].descripcion,
+                        esPromise: articulos[0].descripcion && typeof articulos[0].descripcion.then === 'function'
+                    } : null
+                });
+                
                 const { faltantes, parciales } = filtrarFaltantesYParciales(articulos);
 
                 // Ocultar loading
@@ -1630,7 +2238,7 @@
                     // Mostrar mensaje de sin faltantes ni parciales
                     emptyEl.style.display = 'block';
                     contentEl.style.display = 'none';
-                    console.debug('✅ Sin faltantes ni parciales encontrados');
+                    console.debug('✅ [RESUMEN] Sin faltantes ni parciales encontrados');
                 } else {
                     // Mostrar tabla con datos
                     emptyEl.style.display = 'none';
@@ -1640,8 +2248,17 @@
                     
                     // Agregar faltantes primero (orden solicitado)
                     if (faltantes.length > 0) {
-                        faltantes.forEach(articulo => {
-                            html += renderizarFilaResumen(articulo, 'FALTANTE');
+                        faltantes.forEach((articulo, idx) => {
+                            console.log(`[RESUMEN-RENDER] Renderizando faltante ${idx + 1}:`, {
+                                articulo_numero: articulo.articulo_numero,
+                                descripcion: articulo.descripcion,
+                                tipoDescripcion: typeof articulo.descripcion,
+                                esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
+                            });
+                            
+                            const filaHtml = renderizarFilaResumen(articulo, 'FALTANTE');
+                            console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
+                            html += filaHtml;
                         });
                     }
 
@@ -1652,17 +2269,54 @@
 
                     // Agregar parciales después
                     if (parciales.length > 0) {
-                        parciales.forEach(articulo => {
-                            html += renderizarFilaResumen(articulo, 'PARCIAL');
+                        parciales.forEach((articulo, idx) => {
+                            console.log(`[RESUMEN-RENDER] Renderizando parcial ${idx + 1}:`, {
+                                articulo_numero: articulo.articulo_numero,
+                                descripcion: articulo.descripcion,
+                                tipoDescripcion: typeof articulo.descripcion,
+                                esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
+                            });
+                            
+                            const filaHtml = renderizarFilaResumen(articulo, 'PARCIAL');
+                            console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
+                            html += filaHtml;
                         });
                     }
 
+                    console.log('[RESUMEN-RENDER] HTML completo generado, longitud:', html.length);
                     tbodyEl.innerHTML = html;
-                    console.debug('✅ Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
+                    console.log('✅ [RESUMEN] Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
+                    
+                    // [RESUMEN] Actualizar íconos de expansión INMEDIATAMENTE después de renderizar
+                    if (typeof window.actualizarIconosExpansion === 'function') {
+                        console.log('[RESUMEN] Actualizando íconos de expansión inmediatamente...');
+                        setTimeout(async () => {
+                            await window.actualizarIconosExpansion();
+                            
+                            // Preservar expansión tras re-render
+                            if (typeof window.preservarExpansion === 'function') {
+                                console.log('[RESUMEN] Preservando estado de expansión...');
+                                setTimeout(() => {
+                                    window.preservarExpansion();
+                                }, 200);
+                            }
+                        }, 100);
+                    }
+                    
+                    // [RESUMEN] Exponer datos globalmente y emitir evento para sincronización
+                    const datosFaltantesYParciales = [...faltantes, ...parciales];
+                    window.__resumenFaltantesDatos = datosFaltantesYParciales;
+                    console.log(`[RESUMEN] Datos listos (items: ${datosFaltantesYParciales.length})`);
+                    
+                    // Emitir evento para que otros módulos se sincronicen
+                    window.dispatchEvent(new CustomEvent('resumen:faltantes:listo', {
+                        detail: { datos: datosFaltantesYParciales }
+                    }));
+                    console.log('[RESUMEN] Evento "resumen:faltantes:listo" emitido');
                 }
 
             } catch (error) {
-                console.error('❌ Error al actualizar resumen:', error);
+                console.error('❌ [RESUMEN] Error al actualizar resumen:', error);
                 loadingEl.style.display = 'none';
                 emptyEl.innerHTML = '<span style="color: #dc3545;">❌ Error al cargar resumen</span>';
                 emptyEl.style.display = 'block';
@@ -1721,20 +2375,34 @@
 
         // Inicializar el resumen cuando se carga la página
         document.addEventListener('DOMContentLoaded', function() {
-            console.debug('🚀 Inicializando resumen de faltantes y parciales...');
+            console.log('[INIT] PASO 2 - Inicializando resumen de faltantes y parciales');
             
-            // Inicializar después de que se carguen los controles del panel
-            setTimeout(() => {
-                actualizarResumen();
-                sincronizarConInformePrincipal();
+            try {
+                console.log('[RESUMEN] Verificando elementos del DOM...');
+                const loadingEl = document.getElementById('summary-loading');
+                const emptyEl = document.getElementById('summary-empty');
+                const contentEl = document.getElementById('summary-content');
+                const tbodyEl = document.getElementById('summary-tbody');
                 
-                // Actualizar íconos UNA SOLA VEZ después de la carga inicial
+                console.log('[RESUMEN] Elementos encontrados:', {
+                    loading: !!loadingEl,
+                    empty: !!emptyEl,
+                    content: !!contentEl,
+                    tbody: !!tbodyEl
+                });
+                
+                // Inicializar después de que se carguen los controles del panel
+                console.log('[RESUMEN] Programando actualización en 2 segundos...');
                 setTimeout(() => {
-                    if (typeof window.actualizarIconosExpansion === 'function') {
-                        window.actualizarIconosExpansion();
-                    }
-                }, 3000);
-            }, 2000); // Delay mayor para asegurar que el panel principal esté listo
+                    console.log('[RESUMEN] Ejecutando actualización programada');
+                    actualizarResumen();
+                    sincronizarConInformePrincipal();
+                }, 2000);
+                
+                console.log('[INIT] PASO 2 COMPLETADO - Resumen programado');
+            } catch (error) {
+                console.error('[INIT] ERROR en PASO 2:', error);
+            }
         });
 
         // Función pública para actualizar el resumen (llamada externa)
@@ -1743,264 +2411,39 @@
             actualizarResumen();
         };
 
-        // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
-        
-        // Función para abrir modal pack (disponible globalmente)
-        window.abrirModalPack = async function(codigoPadre) {
-            const modal = document.getElementById('modal-pack');
-            const padreCodigo = document.getElementById('pack-padre-codigo');
-            const hijoCodigo = document.getElementById('pack-hijo-codigo');
-            const unidades = document.getElementById('pack-unidades');
-            const mensaje = document.getElementById('pack-mensaje');
-            const quitarBtn = document.getElementById('pack-quitar');
-            
-            if (!modal || !padreCodigo) return;
-            
-            // Limpiar formulario inicialmente
-            padreCodigo.value = codigoPadre;
-            hijoCodigo.value = '';
-            unidades.value = '';
-            mensaje.style.display = 'none';
-            mensaje.innerHTML = '';
-            quitarBtn.style.display = 'none';
-            
-            // Mostrar modal
-            modal.style.display = 'flex';
-            
-            console.debug('🧩 [MODAL-PACK] Modal abierto para:', codigoPadre);
-            
-            // Cargar descripción del padre y datos del pack desde stock_real_consolidado
+        // Actualizar contador de pendientes de compra
+        async function actualizarContadorPendientes() {
             try {
-                console.debug('🔍 [MODAL-PACK] Consultando stock_real_consolidado...');
+                const response = await fetch('/api/produccion/compras/pendientes');
+                const result = await response.json();
                 
-                // Buscar artículo padre en stock_real_consolidado
-                const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(codigoPadre)}&exact=true`);
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    if (result.success && result.articulos && result.articulos.length > 0) {
-                        const articulo = result.articulos.find(art => 
-                            art.codigo === codigoPadre || art.codigo.toString() === codigoPadre.toString()
-                        );
-                        
-                        if (articulo) {
-                            // ✅ Mostrar DESCRIPCIÓN del padre en el label
-                            const labelPadre = document.querySelector('label[for="pack-padre-codigo"]');
-                            if (labelPadre) {
-                                labelPadre.textContent = `Artículo Padre: ${articulo.descripcion || codigoPadre}`;
-                            }
-                            
-                            // Si tiene pack configurado, precargar datos
-                            if (articulo.pack_hijo_codigo && articulo.pack_unidades) {
-                                hijoCodigo.value = articulo.pack_hijo_codigo;
-                                unidades.value = articulo.pack_unidades;
-                                quitarBtn.style.display = 'inline-block';
-                                
-                                // Buscar descripción del hijo
-                                const hijoResp = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(articulo.pack_hijo_codigo)}&exact=true`);
-                                if (hijoResp.ok) {
-                                    const hijoResult = await hijoResp.json();
-                                    if (hijoResult.success && hijoResult.articulos && hijoResult.articulos.length > 0) {
-                                        const hijoArt = hijoResult.articulos[0];
-                                        const hijoDesc = hijoArt.descripcion || articulo.pack_hijo_codigo;
-                                        
-                                        // Actualizar label del hijo con descripción
-                                        const labelHijo = document.querySelector('label[for="pack-hijo-codigo"]');
-                                        if (labelHijo) {
-                                            labelHijo.textContent = `Artículo Hijo: ${hijoDesc}`;
-                                        }
-                                        
-                                        mostrarMensajePack(`📦 Pack configurado: ${articulo.pack_unidades} unidades de "${hijoDesc}"`, 'info');
-                                    }
-                                }
-                            }
-                        }
+                if (result.success) {
+                    const pendientes = result.data.filter(p => p.estado === 'En espera') || [];
+                    const idsPresupuestos = [...new Set(pendientes.map(p => p.id_presupuesto_local))];
+                    const total = idsPresupuestos.length;
+                    
+                    const contadorSolapa = document.getElementById('contador-solapa');
+                    if (contadorSolapa) {
+                        contadorSolapa.textContent = total;
+                        contadorSolapa.style.display = total > 0 ? 'inline-block' : 'none';
                     }
                 }
-                
             } catch (error) {
-                console.error('❌ [MODAL-PACK] Error al cargar datos:', error);
+                console.error('Error al actualizar contador de pendientes:', error);
             }
-        };
-
-        // Función para cerrar modal pack (disponible globalmente)
-        window.cerrarModalPack = function() {
-            const modal = document.getElementById('modal-pack');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        };
-
-        // Función para mostrar mensajes en el modal pack
-        function mostrarMensajePack(texto, tipo) {
-            const mensaje = document.getElementById('pack-mensaje');
-            if (!mensaje) return;
-            
-            mensaje.innerHTML = texto;
-            mensaje.className = tipo === 'error' ? 'mensaje-error' : 
-                               tipo === 'success' ? 'mensaje-exito' : 'mensaje-info';
-            mensaje.style.display = 'block';
         }
 
-        // Función para mostrar toast notifications
-        function mostrarToast(texto, tipo = 'success') {
-            // Crear elemento toast
-            const toast = document.createElement('div');
-            toast.className = `toast ${tipo === 'error' ? 'error' : ''}`;
-            toast.textContent = texto;
-            
-            // Agregar al DOM
-            document.body.appendChild(toast);
-            
-            // Mostrar con animación
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 100);
-            
-            // Ocultar y remover después de 3 segundos
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                }, 300);
-            }, 3000);
-        }
+        // Actualizar contador cada 30 segundos
+        setInterval(actualizarContadorPendientes, 30000);
+        setTimeout(actualizarContadorPendientes, 2000);
 
-        // Configurar event listeners para el modal pack cuando se carga la página
-        document.addEventListener('DOMContentLoaded', function() {
-            const packGuardar = document.getElementById('pack-guardar');
-            const packQuitar = document.getElementById('pack-quitar');
-            
-            if (packGuardar) {
-                packGuardar.addEventListener('click', async function() {
-                    const padreCodigo = document.getElementById('pack-padre-codigo');
-                    const hijoCodigo = document.getElementById('pack-hijo-codigo');
-                    const unidades = document.getElementById('pack-unidades');
-                    
-                    if (!padreCodigo || !hijoCodigo || !unidades) return;
-                    
-                    // Validaciones
-                    if (!hijoCodigo.value.trim()) {
-                        mostrarMensajePack('Por favor ingrese el código del artículo hijo', 'error');
-                        return;
-                    }
-                    
-                    if (!unidades.value || parseInt(unidades.value) <= 0) {
-                        mostrarMensajePack('Por favor ingrese una cantidad válida de unidades', 'error');
-                        return;
-                    }
-                    
-                    try {
-                        const payload = {
-                            padre_codigo_barras: padreCodigo.value.trim(),
-                            hijo_codigo_barras: hijoCodigo.value.trim(),
-                            unidades: parseInt(unidades.value)
-                        };
-                        
-                        console.log('📤 Guardando mapeo pack:', payload);
-                        
-                        const response = await fetch('/api/produccion/pack-map', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success) {
-                            mostrarMensajePack('✅ Mapeo pack guardado correctamente', 'success');
-                            mostrarToast('Mapeo pack guardado correctamente', 'success');
-                            
-                            // Mostrar botón quitar
-                            const quitarBtn = document.getElementById('pack-quitar');
-                            if (quitarBtn) {
-                                quitarBtn.style.display = 'inline-block';
-                            }
-                            
-                            setTimeout(() => {
-                                window.cerrarModalPack();
-                                // Actualizar resumen y panel principal
-                                if (typeof window.actualizarResumenFaltantes === 'function') {
-                                    setTimeout(window.actualizarResumenFaltantes, 800);
-                                }
-                            }, 2000);
-                        } else {
-                            mostrarMensajePack(`❌ ${data.error || 'Error al guardar mapeo pack'}`, 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('❌ Error al guardar mapeo pack:', error);
-                        mostrarMensajePack('❌ Error de conexión', 'error');
-                    }
-                });
-            }
-            
-            if (packQuitar) {
-                packQuitar.addEventListener('click', async function() {
-                    const padreCodigo = document.getElementById('pack-padre-codigo');
-                    
-                    if (!padreCodigo) return;
-                    
-                    if (!confirm('¿Está seguro de que desea quitar el mapeo de pack para este artículo?')) {
-                        return;
-                    }
-                    
-                    try {
-                        const payload = {
-                            padre_codigo_barras: padreCodigo.value.trim(),
-                            hijo_codigo_barras: null,
-                            unidades: null
-                        };
-                        
-                        console.log('📤 Quitando mapeo pack:', payload);
-                        
-                        const response = await fetch('/api/produccion/pack-map', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success) {
-                            mostrarMensajePack('✅ Mapeo pack eliminado correctamente', 'success');
-                            mostrarToast('Mapeo pack eliminado correctamente', 'success');
-                            
-                            // Ocultar botón quitar y limpiar campos
-                            const quitarBtn = document.getElementById('pack-quitar');
-                            const hijoCodigo = document.getElementById('pack-hijo-codigo');
-                            const unidades = document.getElementById('pack-unidades');
-                            
-                            if (quitarBtn) quitarBtn.style.display = 'none';
-                            if (hijoCodigo) hijoCodigo.value = '';
-                            if (unidades) unidades.value = '';
-                            
-                            setTimeout(() => {
-                                window.cerrarModalPack();
-                                // Actualizar resumen y panel principal
-                                if (typeof window.actualizarResumenFaltantes === 'function') {
-                                    setTimeout(window.actualizarResumenFaltantes, 800);
-                                }
-                            }, 2000);
-                        } else {
-                            mostrarMensajePack(`❌ ${data.error || 'Error al quitar mapeo pack'}`, 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('❌ Error al quitar mapeo pack:', error);
-                        mostrarMensajePack('❌ Error de conexión', 'error');
-                    }
-                });
-            }
-        });
+        // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
+        // Las funciones window.abrirModalPack y window.cerrarModalPack están definidas en:
+        // src/produccion/js/modal-pack-dual-search.js (cargado arriba)
+        
+        console.log('[INIT] PASO 3 - Modal pack: usando busqueda dual (modal-pack-dual-search.js v3.0)');
 
     </script>
-<script src="/js/modal-pack-debug.js?v=9.0"></script></body>
+</body>
 </html>
 

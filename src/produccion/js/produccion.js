@@ -1672,3 +1672,4 @@ function mostrarToast(texto, tipo = 'success') {
 window.abrirModalArmarPedido = abrirModalArmarPedido;
 window.cerrarModalArmarPedido = cerrarModalArmarPedido;
 window.mostrarToast = mostrarToast;
+window.cargarPedidosArticulos = cargarPedidosArticulos;
