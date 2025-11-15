@@ -1158,15 +1158,22 @@ function updateEstadosFilter(estados) {
 }
 
 /**
- * Actualizar indicador de estado
+ * Actualizar indicador de estado compacto
  */
 function updateStatusIndicator(status, message) {
-    const indicator = document.getElementById('status-indicator');
-    const text = document.getElementById('status-text');
+    const indicatorDot = document.getElementById('status-indicator-dot');
     
-    if (indicator && text) {
-        indicator.className = `status-indicator ${status}`;
-        text.textContent = message;
+    if (indicatorDot) {
+        // Remover clases anteriores
+        indicatorDot.className = 'status-indicator-dot';
+        
+        // Agregar clase según estado
+        if (status === 'active') {
+            indicatorDot.classList.add('active');
+        } else if (status === 'error') {
+            indicatorDot.classList.add('error');
+        }
+        // Si es 'loading', usa el estado por defecto (amarillo con pulse)
         
         console.log(`🔍 [PRESUPUESTOS-JS] Estado actualizado: ${status} - ${message}`);
     }
