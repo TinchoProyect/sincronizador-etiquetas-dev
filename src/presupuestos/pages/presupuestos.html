@@ -11,59 +11,60 @@
 <body>
     <div class="container">
         <header>
-            <div class="header-title-container">
-                <h1>📊 Gestión de Presupuestos</h1>
-                <span id="status-indicator-dot" class="status-indicator-dot"></span>
-            </div>
-            <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
-        </header>
-
-        <main>
-
-            <!-- Línea compacta de estadísticas -->
-            <div class="stats-compact">
-                Total registros: <span id="total-registros">-</span> · Última sync: <span id="ultima-sync">-</span>
-            </div>
-
-            <!-- Controles principales -->
-            <div class="controls-section">
-                <div class="controls-left">
-                    <button id="btn-cargar-datos" class="btn-primary">
+            <div class="header-main-bar">
+                <div class="header-left-group">
+                    <div class="header-title-container">
+                        <h1>📊 Gestión de Presupuestos</h1>
+                        <span id="status-indicator-dot" class="status-indicator-dot"></span>
+                    </div>
+                    <button id="btn-cargar-datos" class="btn-primary btn-compact">
                         📊 Cargar Presupuestos
                     </button>
-                    <button id="btn-sincronizar" class="btn-secondary" disabled>
-                        🔄 Sincronizar Google Sheets
+                    <span class="stats-inline">
+                        Total registros: <span id="total-registros">-</span>
+                    </span>
+                </div>
+                <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
+            </div>
+            
+            <div class="header-secondary-bar">
+                <div class="secondary-actions">
+                    <button id="btn-sincronizar" class="btn-secondary btn-compact" disabled>
+                        🔄 Autorizar Google Sheets
                     </button>
-                    <button id="btn-configuracion" class="btn-secondary">
+                    <button id="btn-configuracion" class="btn-secondary btn-compact">
                         ⚙️ Configuración
                     </button>
                 </div>
-                <div class="controls-right">
-                    <button id="btn-nuevo-presupuesto" class="btn-success">
-                        ➕ Nuevo Presupuesto
-                    </button>
-                </div>
+                <span class="stats-inline">
+                    Última sync: <span id="ultima-sync">-</span>
+                </span>
             </div>
+        </header>
 
-            <!-- Filtros -->
-            <div class="filters-section">
-                <div class="filter-group">
+        <main>
+            <!-- Botón flotante Nuevo Presupuesto -->
+            <button id="btn-nuevo-presupuesto" class="btn-floating" title="Nuevo Presupuesto">
+                ➕
+            </button>
+
+            <!-- Filtros compactos -->
+            <div class="filters-section-compact">
+                <div class="filter-item">
                     <label for="filtro-categoria">Filtrar por tipo de comprobante:</label>
                     <select id="filtro-categoria">
                         <option value="">Todos los tipos</option>
                     </select>
                 </div>
-                <div class="filter-group">
+                <div class="filter-item">
                     <label for="buscar-cliente">Buscar cliente:</label>
                     <input type="text" id="buscar-cliente" placeholder="Número (ej: 123) o nombre del cliente...">
-                    <small class="filter-help">💡 Ingrese 3 cifras para buscar por ID o texto para buscar por nombre</small>
                 </div>
-                <div class="filter-group">
+                <div class="filter-item">
                     <label for="filtro-estado">Filtrar por estado:</label>
-                    <select id="filtro-estado" multiple size="4">
+                    <select id="filtro-estado" multiple size="3">
                         <option value="" disabled>Cargando estados...</option>
                     </select>
-                    <small class="filter-help">💡 Mantenga Ctrl/Cmd para seleccionar múltiples estados</small>
                 </div>
             </div>
 
