@@ -11,12 +11,14 @@ console.log('🔍 [PRESUPUESTOS-JS] Inicializando módulo frontend completo...')
 const AUTOLOAD_ON_START = true;
 function autoCargarAlAbrir() {
   if (window.__presupuestosAutocargados) return;
-  const btn = document.getElementById('btn-cargar-datos');
-  if (!btn) return;
   window.__presupuestosAutocargados = true;
-  console.log('[PRESUPUESTOS-JS] Autocarga inicial → disparando click en btn-cargar-datos');
+  console.log('[PRESUPUESTOS-JS] Autocarga inicial → cargando datos con filtros restaurados');
   // Pequeño defer para asegurar que los listeners ya están bindeados
-  setTimeout(() => btn.dispatchEvent(new Event('click')), 0);
+  // Si hay filtros guardados, cargar con maintainFilters=true para aplicarlos
+  const hayFiltrosGuardados = sessionStorage.getItem('presupuestos_filtros_activos');
+  setTimeout(() => {
+    handleCargarDatos(1, hayFiltrosGuardados ? true : false);
+  }, 100);
 }
 
 // Configuración global
@@ -123,6 +125,9 @@ function initializeApp() {
     
     // Actualizar indicador de estado
     updateStatusIndicator('loading', 'Inicializando módulo...');
+    
+    // Restaurar filtros guardados si existen
+    restoreFiltersFromStorage();
     
     // Cargar estadísticas iniciales
     loadEstadisticas();
@@ -856,6 +861,7 @@ function handleFiltroCategoria(event) {
     console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por categoría: ${categoria || 'todas'}`);
     
     appState.filtros.categoria = categoria;
+    saveFiltersToStorage();
     applyFilters();
 }
 
@@ -874,6 +880,7 @@ function handleBuscarCliente(event) {
     
     if (query.trim() === '') {
         hideSugerenciasClientes();
+        saveFiltersToStorage();
         applyFilters();
         return;
     }
@@ -882,11 +889,13 @@ function handleBuscarCliente(event) {
     if (/^\d{1,3}$/.test(query.trim())) {
         appState.filtros.clienteId = query.trim();
         hideSugerenciasClientes();
+        saveFiltersToStorage();
         applyFilters();
     } else {
         // Si es texto → filtrar por nombre y mostrar sugerencias
         appState.filtros.clienteName = query.trim();
         showSugerenciasClientes(query.trim());
+        saveFiltersToStorage();
         applyFilters();
     }
 }
@@ -1093,6 +1102,11 @@ function updateCategoriasFilter(categorias) {
         }
     });
     
+    // Restaurar valor seleccionado si existe en filtros
+    if (appState.filtros.categoria) {
+        select.value = appState.filtros.categoria;
+    }
+    
     console.log('✅ [PRESUPUESTOS-JS] Filtro de categorías actualizado');
 }
 
@@ -1132,6 +1146,11 @@ function updateEstadosFilter(estados) {
             button.dataset.estado = estado;
             button.type = 'button';
             
+            // Marcar como activo si está en los filtros guardados
+            if (appState.filtros.estado.includes(estado)) {
+                button.classList.add('active');
+            }
+            
             // Event listener para toggle del estado
             button.addEventListener('click', function() {
                 toggleEstadoButton(this);
@@ -1168,6 +1187,9 @@ function toggleEstadoButton(button) {
     }
     
     console.log(`🔍 [PRESUPUESTOS-JS] Estados seleccionados: [${appState.filtros.estado.join(', ')}]`);
+    
+    // Guardar filtros
+    saveFiltersToStorage();
     
     // Aplicar filtros
     applyFilters();
@@ -1969,4 +1991,119 @@ document.addEventListener('DOMContentLoaded', async function() {
     }, 2000);
 });
 
-console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación y auto-update');
+/**
+ * ===== SISTEMA DE PERSISTENCIA DE FILTROS =====
+ * Guarda y restaura filtros en sessionStorage para mantenerlos
+ * al navegar entre páginas del módulo de presupuestos
+ */
+
+const STORAGE_KEY_FILTERS = 'presupuestos_filtros_activos';
+
+/**
+ * Guardar filtros actuales en sessionStorage
+ */
+function saveFiltersToStorage() {
+    try {
+        const filtrosParaGuardar = {
+            categoria: appState.filtros.categoria || '',
+            clienteId: appState.filtros.clienteId || '',
+            clienteName: appState.filtros.clienteName || '',
+            concepto: appState.filtros.concepto || '',
+            estado: appState.filtros.estado || [],
+            // Guardar también el texto del input de búsqueda
+            buscarClienteText: document.getElementById('buscar-cliente')?.value || ''
+        };
+        
+        sessionStorage.setItem(STORAGE_KEY_FILTERS, JSON.stringify(filtrosParaGuardar));
+        console.log('💾 [FILTROS-PERSIST] Filtros guardados en sessionStorage:', filtrosParaGuardar);
+    } catch (error) {
+        console.error('❌ [FILTROS-PERSIST] Error al guardar filtros:', error);
+    }
+}
+
+/**
+ * Restaurar filtros desde sessionStorage
+ */
+function restoreFiltersFromStorage() {
+    try {
+        const filtrosGuardados = sessionStorage.getItem(STORAGE_KEY_FILTERS);
+        
+        if (!filtrosGuardados) {
+            console.log('📭 [FILTROS-PERSIST] No hay filtros guardados');
+            return;
+        }
+        
+        const filtros = JSON.parse(filtrosGuardados);
+        console.log('📥 [FILTROS-PERSIST] Restaurando filtros desde sessionStorage:', filtros);
+        
+        // Restaurar en appState
+        appState.filtros.categoria = filtros.categoria || '';
+        appState.filtros.clienteId = filtros.clienteId || '';
+        appState.filtros.clienteName = filtros.clienteName || '';
+        appState.filtros.concepto = filtros.concepto || '';
+        appState.filtros.estado = filtros.estado || [];
+        
+        // Restaurar valores visuales en los controles
+        restoreFilterControls(filtros);
+        
+        // Si hay filtros activos, aplicarlos automáticamente
+        const hayFiltrosActivos = filtros.categoria || 
+                                 filtros.clienteId || 
+                                 filtros.clienteName || 
+                                 filtros.concepto || 
+                                 (filtros.estado && filtros.estado.length > 0);
+        
+        if (hayFiltrosActivos) {
+            console.log('✅ [FILTROS-PERSIST] Filtros activos detectados - se aplicarán automáticamente');
+        }
+        
+    } catch (error) {
+        console.error('❌ [FILTROS-PERSIST] Error al restaurar filtros:', error);
+    }
+}
+
+/**
+ * Restaurar valores visuales en los controles de filtro
+ */
+function restoreFilterControls(filtros) {
+    console.log('🔍 [FILTROS-PERSIST] Restaurando valores visuales en controles...');
+    
+    // Restaurar select de categoría
+    const selectCategoria = document.getElementById('filtro-categoria');
+    if (selectCategoria && filtros.categoria) {
+        // Esperar a que las opciones se carguen
+        setTimeout(() => {
+            selectCategoria.value = filtros.categoria;
+            console.log(`✅ [FILTROS-PERSIST] Categoría restaurada: ${filtros.categoria}`);
+        }, 100);
+    }
+    
+    // Restaurar input de búsqueda de cliente
+    const inputBuscarCliente = document.getElementById('buscar-cliente');
+    if (inputBuscarCliente && filtros.buscarClienteText) {
+        inputBuscarCliente.value = filtros.buscarClienteText;
+        console.log(`✅ [FILTROS-PERSIST] Texto de búsqueda restaurado: ${filtros.buscarClienteText}`);
+    }
+    
+    // Restaurar botones de estado (se hace en updateEstadosFilter cuando se cargan los estados)
+    if (filtros.estado && filtros.estado.length > 0) {
+        console.log(`✅ [FILTROS-PERSIST] Estados a restaurar: [${filtros.estado.join(', ')}]`);
+    }
+}
+
+/**
+ * Limpiar filtros guardados (útil para reset manual)
+ */
+function clearSavedFilters() {
+    try {
+        sessionStorage.removeItem(STORAGE_KEY_FILTERS);
+        console.log('🗑️ [FILTROS-PERSIST] Filtros guardados eliminados');
+    } catch (error) {
+        console.error('❌ [FILTROS-PERSIST] Error al limpiar filtros:', error);
+    }
+}
+
+// Exponer función para uso externo si es necesario
+window.clearSavedFilters = clearSavedFilters;
+
+console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación, auto-update y persistencia de filtros');
