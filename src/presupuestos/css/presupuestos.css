@@ -212,30 +212,35 @@ main {
     position: absolute;
     top: -5px;
     right: 10px;
-    width: 60px;
-    height: 60px;
+    width: 70px;
+    height: 70px;
     background-color: var(--success-color);
-    color: var(--white);
+    color: #ffffff !important;
     border: none;
-    border-radius: 10px;
-    font-size: 2.2em;
+    border-radius: 12px;
+    font-size: 3em;
+    font-weight: 900;
+    line-height: 1;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
+    box-shadow: 0 6px 16px rgba(39, 174, 96, 0.5);
     transition: var(--transition);
     z-index: 100;
     display: flex;
     align-items: center;
     justify-content: center;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    -webkit-text-fill-color: #ffffff;
 }
 
 .btn-floating:hover {
     background-color: #219a52;
-    transform: translateY(-3px);
-    box-shadow: 0 6px 18px rgba(39, 174, 96, 0.5);
+    transform: translateY(-4px) scale(1.05);
+    box-shadow: 0 8px 24px rgba(39, 174, 96, 0.6);
+    color: #ffffff !important;
 }
 
 .btn-floating:active {
-    transform: translateY(-1px);
+    transform: translateY(-2px) scale(1.02);
 }
 
 /* Filtros compactos - Reorganizados para mejor uso del espacio */
