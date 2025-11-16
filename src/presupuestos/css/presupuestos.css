@@ -171,20 +171,63 @@ main {
     position: relative;
 }
 
-/* Botón flotante Nuevo Presupuesto */
+/* Botón solo icono (Configuración) */
+.btn-icon-only {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background-color: var(--secondary-color);
+    color: var(--white);
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Botón icono con color warning (naranja/amarillo) */
+.btn-warning-icon {
+    background-color: var(--warning-color);
+}
+
+.btn-warning-icon:hover {
+    background-color: #e67e22;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(243, 156, 18, 0.3);
+}
+
+.btn-warning-icon:active {
+    transform: translateY(0);
+}
+
+.btn-icon-only:hover {
+    background-color: #2980b9;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
+}
+
+.btn-icon-only:active {
+    transform: translateY(0);
+}
+
+/* Botón flotante Nuevo Presupuesto - Más grande y protagónico */
 .btn-floating {
     position: absolute;
-    top: 0;
-    right: 20px;
-    width: 50px;
-    height: 50px;
+    top: -5px;
+    right: 10px;
+    width: 60px;
+    height: 60px;
     background-color: var(--success-color);
     color: var(--white);
     border: none;
-    border-radius: 8px;
-    font-size: 1.8em;
+    border-radius: 10px;
+    font-size: 2.2em;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
     transition: var(--transition);
     z-index: 100;
     display: flex;
@@ -195,44 +238,46 @@ main {
 .btn-floating:hover {
     background-color: #219a52;
     transform: translateY(-3px);
-    box-shadow: 0 6px 16px rgba(39, 174, 96, 0.4);
+    box-shadow: 0 6px 18px rgba(39, 174, 96, 0.5);
 }
 
 .btn-floating:active {
     transform: translateY(-1px);
 }
 
-/* Filtros compactos en una sola fila */
+/* Filtros compactos - Reorganizados para mejor uso del espacio */
 .filters-section-compact {
     background-color: var(--white);
-    padding: 15px 20px;
+    padding: 12px 20px;
     border-radius: var(--border-radius);
     box-shadow: var(--shadow);
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
+    grid-template-columns: 1fr 1.2fr 2fr;
+    gap: 12px;
     align-items: end;
-    margin-top: 60px; /* Espacio para el botón flotante */
+    margin-top: 10px;
+    position: relative;
+    padding-right: 80px; /* Espacio para el botón flotante */
 }
 
 .filter-item {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
 }
 
 .filter-item label {
     font-weight: 500;
     color: var(--primary-color);
-    font-size: 0.85em;
+    font-size: 0.8em;
 }
 
 .filter-item select,
 .filter-item input {
-    padding: 8px 10px;
+    padding: 7px 10px;
     border: 2px solid var(--border-color);
     border-radius: var(--border-radius);
-    font-size: 0.9em;
+    font-size: 0.85em;
     transition: var(--transition);
 }
 
@@ -243,10 +288,50 @@ main {
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
-/* Select múltiple más compacto */
-.filter-item select[multiple] {
-    min-height: 70px;
-    max-height: 70px;
+/* Botones de estado - Más compactos */
+.botones-estado {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+}
+
+.estado-loading {
+    font-size: 0.8em;
+    color: var(--dark-gray);
+    font-style: italic;
+}
+
+.btn-estado {
+    padding: 5px 10px;
+    border: 2px solid var(--border-color);
+    background-color: var(--white);
+    color: var(--text-color);
+    border-radius: 5px;
+    font-size: 0.75em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.btn-estado:hover {
+    border-color: var(--secondary-color);
+    background-color: #f0f8ff;
+    transform: translateY(-1px);
+}
+
+.btn-estado.active {
+    background-color: var(--secondary-color);
+    color: var(--white);
+    border-color: var(--secondary-color);
+    box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
+}
+
+.btn-estado.active:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
 }
 
 /* Buttons - Versión compacta */
@@ -496,7 +581,7 @@ footer {
 @media (max-width: 1024px) {
     .filters-section-compact {
         grid-template-columns: 1fr 1fr;
-        margin-top: 70px;
+        padding-right: 80px;
     }
     
     .filter-item:last-child {
@@ -562,16 +647,17 @@ footer {
     }
     
     .btn-floating {
-        right: 15px;
-        width: 45px;
-        height: 45px;
-        font-size: 1.5em;
+        right: 10px;
+        width: 50px;
+        height: 50px;
+        font-size: 1.8em;
     }
     
     .filters-section-compact {
         grid-template-columns: 1fr;
-        margin-top: 60px;
+        margin-top: 10px;
         padding: 12px 15px;
+        padding-right: 70px;
     }
     
     .presupuestos-table {
@@ -596,13 +682,14 @@ footer {
     }
     
     .btn-floating {
-        width: 40px;
-        height: 40px;
-        font-size: 1.3em;
+        width: 45px;
+        height: 45px;
+        font-size: 1.6em;
+        right: 8px;
     }
     
     .filters-section-compact {
-        margin-top: 55px;
+        padding-right: 60px;
     }
 }
 

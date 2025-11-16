@@ -174,7 +174,6 @@ function setupEventListeners() {
     // Filtros
     const filtroCategoria = document.getElementById('filtro-categoria');
     const buscarCliente = document.getElementById('buscar-cliente');
-    const filtroEstado = document.getElementById('filtro-estado'); // Nuevo filtro por estado – 2024-12-19
     
     if (filtroCategoria) {
         filtroCategoria.addEventListener('change', handleFiltroCategoria);
@@ -186,11 +185,8 @@ function setupEventListeners() {
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-cliente');
     }
     
-    // Nuevo event listener para filtro por estado - Filtro por Estado – 2024-12-19
-    if (filtroEstado) {
-        filtroEstado.addEventListener('change', handleFiltroEstado);
-        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-estado');
-    }
+    // Los botones de estado se crean dinámicamente en updateEstadosFilter()
+    console.log('✅ [PRESUPUESTOS-JS] Botones de estado se configurarán dinámicamente');
     
     console.log('✅ [PRESUPUESTOS-JS] Event listeners configurados');
     if (AUTOLOAD_ON_START) autoCargarAlAbrir();
@@ -863,18 +859,6 @@ function handleFiltroCategoria(event) {
     applyFilters();
 }
 
-/**
- * Handler: Filtro por estado - Filtro por Estado – 2024-12-19
- */
-function handleFiltroEstado(event) {
-    const select = event.target;
-    const selectedOptions = Array.from(select.selectedOptions).map(option => option.value);
-    
-    console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por estado: [${selectedOptions.join(', ')}]`);
-    
-    appState.filtros.estado = selectedOptions;
-    applyFilters();
-}
 
 /**
  * Handler: Buscar cliente con typeahead - Filtro cliente + Typeahead + Fechas – 2024-12-19
@@ -1113,7 +1097,7 @@ function updateCategoriasFilter(categorias) {
 }
 
 /**
- * Actualizar filtro de estados - Filtro por Estado – 2024-12-19
+ * Actualizar filtro de estados con botones - Filtro por Estado con Botones – 2024-12-19
  */
 function updateEstadosFilter(estados) {
     // Validar que estados sea un array
@@ -1122,38 +1106,71 @@ function updateEstadosFilter(estados) {
         estados = []; // Usar array vacío como fallback
     }
     
-    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados: ${estados.length} estados`);
+    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados con botones: ${estados.length} estados`);
     
-    const select = document.getElementById('filtro-estado');
-    if (!select) {
-        console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento filtro-estado');
+    const container = document.getElementById('botones-estado');
+    if (!container) {
+        console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento botones-estado');
         return;
     }
     
-    // Limpiar opciones existentes (excepto la primera)
-    while (select.children.length > 1) {
-        select.removeChild(select.lastChild);
-    }
+    // Limpiar contenido existente
+    container.innerHTML = '';
     
-    // Agregar nuevas opciones
+    // Si no hay estados, mostrar mensaje
     if (estados.length === 0) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = '(Sin estados)';
-        option.disabled = true;
-        select.appendChild(option);
-    } else {
-        estados.forEach(estado => {
-            if (estado) {
-                const option = document.createElement('option');
-                option.value = estado;
-                option.textContent = estado;
-                select.appendChild(option);
-            }
-        });
+        container.innerHTML = '<span class="estado-loading">(Sin estados disponibles)</span>';
+        return;
     }
     
-    console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado');
+    // Crear botones para cada estado
+    estados.forEach(estado => {
+        if (estado) {
+            const button = document.createElement('button');
+            button.className = 'btn-estado';
+            button.textContent = estado;
+            button.dataset.estado = estado;
+            button.type = 'button';
+            
+            // Event listener para toggle del estado
+            button.addEventListener('click', function() {
+                toggleEstadoButton(this);
+            });
+            
+            container.appendChild(button);
+        }
+    });
+    
+    console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado con botones');
+}
+
+/**
+ * Toggle estado de un botón de filtro
+ */
+function toggleEstadoButton(button) {
+    const estado = button.dataset.estado;
+    const isActive = button.classList.contains('active');
+    
+    if (isActive) {
+        // Desactivar
+        button.classList.remove('active');
+        // Remover del array de filtros
+        appState.filtros.estado = appState.filtros.estado.filter(e => e !== estado);
+        console.log(`🔍 [PRESUPUESTOS-JS] Estado desactivado: ${estado}`);
+    } else {
+        // Activar
+        button.classList.add('active');
+        // Agregar al array de filtros
+        if (!appState.filtros.estado.includes(estado)) {
+            appState.filtros.estado.push(estado);
+        }
+        console.log(`🔍 [PRESUPUESTOS-JS] Estado activado: ${estado}`);
+    }
+    
+    console.log(`🔍 [PRESUPUESTOS-JS] Estados seleccionados: [${appState.filtros.estado.join(', ')}]`);
+    
+    // Aplicar filtros
+    applyFilters();
 }
 
 /**
