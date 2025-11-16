@@ -247,13 +247,13 @@ function updateSyncButtonState(authStatus) {
         btnSincronizar.disabled = true;
         btnSincronizar.className = 'btn btn-secondary';
     } else if (authStatus.authenticated) {
-        btnSincronizar.textContent = '🔄 Sincronizar Google Sheets';
+        btnSincronizar.textContent = '🔄 SINCRONIZAR CON SHEET';
         btnSincronizar.disabled = false;
-        btnSincronizar.className = 'btn btn-primary';
+        btnSincronizar.className = 'btn-warning btn-sync';
     } else {
-        btnSincronizar.textContent = '🔐 Autorizar Google Sheets';
+        btnSincronizar.textContent = '🔄 SINCRONIZAR CON SHEET';
         btnSincronizar.disabled = false;
-        btnSincronizar.className = 'btn btn-warning';
+        btnSincronizar.className = 'btn-warning btn-sync';
     }
 }
 
@@ -1217,29 +1217,27 @@ function setLoading(loading) {
 }
 
 /**
- * Mostrar mensaje al usuario
+ * Mostrar mensaje al usuario - Solo indicador visual sutil
  */
 function showMessage(message, type = 'info') {
-    console.log(`🔍 [PRESUPUESTOS-JS] Mostrando mensaje: ${type} - ${message}`);
+    // Mantener console.log para depuración
+    console.log(`🔍 [PRESUPUESTOS-JS] ${type.toUpperCase()}: ${message}`);
     
     const container = document.getElementById('message-container');
     if (!container) return;
     
+    // Crear solo el círculo de color, sin texto
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
-    messageDiv.innerHTML = `
-        ${escapeHtml(message)}
-        <button class="message-close" onclick="this.parentElement.remove()">&times;</button>
-    `;
     
     container.appendChild(messageDiv);
     
-    // Auto-remove después del timeout
+    // Auto-remove después de 3 segundos
     setTimeout(() => {
         if (messageDiv.parentElement) {
             messageDiv.remove();
         }
-    }, CONFIG.MESSAGES_TIMEOUT);
+    }, 3000);
 }
 
 /**
