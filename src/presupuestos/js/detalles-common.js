@@ -121,8 +121,7 @@ function agregarDetalle() {
 
                 <td>
                     <button type="button" class="btn-remove-detalle"
-                            onclick="window.Detalles.removerDetalle(${window.Detalles.detalleCounter})"
-                            ${tbody.children.length === 0 ? 'disabled' : ''}>
+                            onclick="window.Detalles.removerDetalle(${window.Detalles.detalleCounter})">
                     🗑️
                     </button>
                 </td>
@@ -142,9 +141,12 @@ function agregarDetalle() {
 
 /**
  * Remover fila de detalle
+ * CORREGIDO: Permite eliminar cualquier fila, incluyendo la primera
+ * La validación de "al menos 1 detalle" se hace al guardar, no aquí
  */
 function removerDetalle(id) {
     console.log(`🗑️ [DETALLES-COMMON] Removiendo detalle ${id}...`);
+    console.log(`[EDIT-DETALLE] Click en eliminar fila`, { id_detalle: id });
 
     const row = document.getElementById(`detalle-${id}`);
     const tbody = document.getElementById('detalles-tbody');
@@ -154,16 +156,30 @@ function removerDetalle(id) {
         return;
     }
 
-    // No permitir eliminar si es la única fila
-    if (tbody.children.length <= 1) {
-        window.Detalles.mostrarMensaje('Debe mantener al menos un artículo en el presupuesto', 'error');
+    // Log del estado actual
+    console.log(`[EDIT-DETALLE] Estado antes de eliminar:`, {
+        id_detalle: id,
+        filas_totales: tbody.children.length,
+        fila_existe: !!row
+    });
+
+    if (!row) {
+        console.error(`❌ [DETALLES-COMMON] Fila detalle-${id} no encontrada en el DOM`);
         return;
     }
 
-    if (row) {
-        row.remove();
-        console.log(`✅ [DETALLES-COMMON] Detalle ${id} removido`);
-    }
+    // CORRECCIÓN: Eliminar sin restricciones
+    // La validación de "al menos 1 detalle" se hace al guardar el presupuesto
+    row.remove();
+    
+    console.log(`✅ [DETALLES-COMMON] Detalle ${id} removido correctamente`);
+    console.log(`[EDIT-DETALLE] Estado después de eliminar:`, {
+        id_detalle: id,
+        filas_restantes: tbody.children.length
+    });
+
+    // Recalcular totales después de eliminar
+    recalcTotales();
 }
 
 /**

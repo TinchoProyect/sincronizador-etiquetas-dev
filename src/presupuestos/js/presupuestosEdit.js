@@ -1,29 +1,29 @@
-// MĂłdulo de ediciĂłn de presupuestos - Integrado con detalles-common.js
+﻿// MÄ‚Å‚dulo de ediciÄ‚Å‚n de presupuestos - Integrado con detalles-common.js
 (function() {
-  console.log('[EDIT] Cargando mĂłdulo de ediciĂłn integrado...');
+  console.log('[EDIT] Cargando mÄ‚Å‚dulo de ediciÄ‚Å‚n integrado...');
 
   // Variables globales del editor
   let presupuestoId = null;
   let presupuestoData = null;
   let detallesData = [];
 
-  // Cache para descripciones de artĂ­culos por cĂłdigo de barras
+  // Cache para descripciones de artÄ‚Â­culos por cÄ‚Å‚digo de barras
   const descripcionCache = new Map();
 
   /**
-   * Buscar descripciĂłn de artĂ­culo por cĂłdigo de barras
+   * Buscar descripciÄ‚Å‚n de artÄ‚Â­culo por cÄ‚Å‚digo de barras
    */
   async function buscarDescripcionPorCodigo(codigoBarras) {
     if (!codigoBarras || !codigoBarras.trim()) return null;
 
     // Verificar cache primero
     if (descripcionCache.has(codigoBarras)) {
-      console.log(`đ [PRESUPUESTOS-EDIT] DescripciĂłn cacheada para cĂłdigo: ${codigoBarras}`);
+      console.log(`Ä‘ÂŸÂ“Â‹ [PRESUPUESTOS-EDIT] DescripciÄ‚Å‚n cacheada para cÄ‚Å‚digo: ${codigoBarras}`);
       return descripcionCache.get(codigoBarras);
     }
 
     try {
-      console.log(`đ [PRESUPUESTOS-EDIT] Buscando descripciĂłn para cĂłdigo: ${codigoBarras}`);
+      console.log(`Ä‘ÂŸÂ”Â [PRESUPUESTOS-EDIT] Buscando descripciÄ‚Å‚n para cÄ‚Å‚digo: ${codigoBarras}`);
       const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=1`);
       const result = await response.json();
 
@@ -32,22 +32,22 @@
         const descripcion = articulo.descripcion || articulo.nombre || '';
         // Guardar en cache
         descripcionCache.set(codigoBarras, descripcion);
-        console.log(`â [PRESUPUESTOS-EDIT] DescripciĂłn encontrada: ${descripcion}`);
+        console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] DescripciÄ‚Å‚n encontrada: ${descripcion}`);
         return descripcion;
       } else {
-        console.log(`â ď¸ [PRESUPUESTOS-EDIT] No se encontrĂł descripciĂłn para cĂłdigo: ${codigoBarras}`);
-        // Guardar null en cache para evitar bĂşsquedas repetidas
+        console.log(`Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] No se encontrÄ‚Å‚ descripciÄ‚Å‚n para cÄ‚Å‚digo: ${codigoBarras}`);
+        // Guardar null en cache para evitar bÄ‚ÅŸsquedas repetidas
         descripcionCache.set(codigoBarras, null);
         return null;
       }
     } catch (error) {
-      console.error(`â [PRESUPUESTOS-EDIT] Error al buscar descripciĂłn para cĂłdigo ${codigoBarras}:`, error);
+      console.error(`Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Error al buscar descripciÄ‚Å‚n para cÄ‚Å‚digo ${codigoBarras}:`, error);
       return null;
     }
   }
 
-  // NO sobrescribir funciones del mĂłdulo comĂşn
-  // El mĂłdulo comĂşn ya expone window.Detalles.agregarDetalle, window.Detalles.removerDetalle, etc.
+  // NO sobrescribir funciones del mÄ‚Å‚dulo comÄ‚ÅŸn
+  // El mÄ‚Å‚dulo comÄ‚ÅŸn ya expone window.Detalles.agregarDetalle, window.Detalles.removerDetalle, etc.
   // Solo crear wrappers si NO existen (para compatibilidad con onclick sin namespace)
   
   if (!window.agregarDetalle) {
@@ -55,7 +55,7 @@
       if (window.Detalles && window.Detalles.agregarDetalle) {
         window.Detalles.agregarDetalle();
       } else {
-        console.error('â [PRESUPUESTOS-EDIT] MĂłdulo comĂşn no disponible');
+        console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] MÄ‚Å‚dulo comÄ‚ÅŸn no disponible');
       }
     };
   }
@@ -65,7 +65,7 @@
       if (window.Detalles && window.Detalles.removerDetalle) {
         window.Detalles.removerDetalle(id);
       } else {
-        console.error('â [PRESUPUESTOS-EDIT] MĂłdulo comĂşn no disponible');
+        console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] MÄ‚Å‚dulo comÄ‚ÅŸn no disponible');
       }
     };
   }
@@ -111,12 +111,12 @@
     setNumeric(el, val, 2, 1);
   }
 
-  // InicializaciĂłn
+  // InicializaciÄ‚Å‚n
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('đ [PRESUPUESTOS-EDIT] Inicializando pĂĄgina de ediciĂłn...');
+    console.log('Ä‘ÂŸÂ“Â‹ [PRESUPUESTOS-EDIT] Inicializando pÄ‚Ä„gina de ediciÄ‚Å‚n...');
 
-    // Loguear estado del mĂłdulo comĂşn para debugging
-    console.log('đ [PRESUPUESTOS-EDIT] Estado del mĂłdulo Detalles:', {
+    // Loguear estado del mÄ‚Å‚dulo comÄ‚ÅŸn para debugging
+    console.log('Ä‘ÂŸÂ”Â [PRESUPUESTOS-EDIT] Estado del mÄ‚Å‚dulo Detalles:', {
         disponible: !!window.Detalles,
         calcularPrecio: typeof window.Detalles?.calcularPrecio,
         recalcTotales: typeof window.Detalles?.recalcTotales
@@ -128,11 +128,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (!presupuestoId) {
         console.log('[EDIT] Falta id en querystring y no se puede continuar');
-        mostrarMensaje('â No se especificĂł el ID del presupuesto a editar', 'error');
+        mostrarMensaje('Ã¢ÂÂŒ No se especificÄ‚Å‚ el ID del presupuesto a editar', 'error');
         return;
     }
 
-    console.log(`đ [PRESUPUESTOS-EDIT] ID del presupuesto: ${presupuestoId}`);
+    console.log(`Ä‘ÂŸÂ“Â‹ [PRESUPUESTOS-EDIT] ID del presupuesto: ${presupuestoId}`);
 
     // --- FECHA base primero (evita TDZ) ---
     const fechaInput = document.getElementById('fecha');
@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (fechaInput) {
         fechaInput.value = fechaInput.value || today;
     } else {
-        console.warn('â ď¸ [PRESUPUESTOS-EDIT] Input #fecha no encontrado; se enviarĂĄ fecha del dĂ­a desde JS');
+        console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Input #fecha no encontrado; se enviarÄ‚Ä„ fecha del dÄ‚Â­a desde JS');
     }
 
     // === 1.3 Defaults visibles (solo si corresponde) ===
@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (tipoSel) {
         tipoSel.addEventListener('change', () => {
-            console.log('[PRESUPUESTOS-EDIT] Tipo comprobante â', tipoSel.value);
+            console.log('[PRESUPUESTOS-EDIT] Tipo comprobante Ã¢Â†Â’', tipoSel.value);
             applyIvaModeToAllRows();
         });
     }
@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const puntoInput = document.getElementById('punto_entrega');
     if (puntoInput && !puntoInput.value.trim()) {
-        puntoInput.value = 'Sin direcciĂłn';
+        puntoInput.value = 'Sin direcciÄ‚Å‚n';
     }
 
     const estadoSel = document.getElementById('estado');
@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const fechaEntregaInput = document.getElementById('fecha_entrega');
-    // usar misma fecha que 'fecha' si estĂĄ vacĂ­o
+    // usar misma fecha que 'fecha' si estÄ‚Ä„ vacÄ‚Â­o
     if (fechaEntregaInput && !fechaEntregaInput.value) {
         fechaEntregaInput.value = (fechaInput ? (fechaInput.value || today) : today);
     }
@@ -229,7 +229,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (form) {
         form.addEventListener('submit', handleSubmit);
     } else {
-        console.error('â [PRESUPUESTOS-EDIT] Formulario #form-editar-presupuesto no encontrado');
+        console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Formulario #form-editar-presupuesto no encontrado');
     }
 
     // Configurar autocompletar de clientes
@@ -237,14 +237,14 @@ document.addEventListener('DOMContentLoaded', function() {
         setupClienteAutocomplete();
     }
 
-    // Configurar autocompletar para artĂ­culos usando mĂłdulo comĂşn
+    // Configurar autocompletar para artÄ‚Â­culos usando mÄ‚Å‚dulo comÄ‚ÅŸn
     if (window.Detalles && window.Detalles.setupArticuloAutocomplete) {
         window.Detalles.setupArticuloAutocomplete();
     } else if (typeof setupArticuloAutocomplete === 'function') {
         setupArticuloAutocomplete();
     }
 
-    // NUEVO: Exponer funciĂłn de selecciĂłn para compatibilidad con autocompletar
+    // NUEVO: Exponer funciÄ‚Å‚n de selecciÄ‚Å‚n para compatibilidad con autocompletar
     window.seleccionarArticulo = seleccionarArticulo;
 
     // Cargar datos del presupuesto y detalles en paralelo
@@ -252,7 +252,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('[EDIT] encabezado OK');
         console.log(`[EDIT] detalles: ${detallesData.length} filas`);
 
-        // Renderizar detalles usando mĂłdulo comĂşn
+        // Renderizar detalles usando mÄ‚Å‚dulo comÄ‚ÅŸn
         renderDetallesConModuloComun();
 
         // Aplicar modo IVA y recalcular totales
@@ -262,14 +262,14 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('[EDIT] Error cargando datos:', error);
     });
 
-    console.log('â [PRESUPUESTOS-EDIT] PĂĄgina inicializada correctamente');
+    console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] PÄ‚Ä„gina inicializada correctamente');
 });
 
 /**
  * Cargar datos del presupuesto
  */
 async function cargarPresupuesto() {
-    console.log(`đĽ [PRESUPUESTOS-EDIT] Cargando datos del presupuesto ${presupuestoId}...`);
+    console.log(`Ä‘ÂŸÂ“Ä½ [PRESUPUESTOS-EDIT] Cargando datos del presupuesto ${presupuestoId}...`);
 
     try {
         // Obtener datos del presupuesto
@@ -281,34 +281,34 @@ async function cargarPresupuesto() {
         }
 
         presupuestoData = result.data;
-        console.log('🔍 [PRESUPUESTOS-EDIT] Datos del presupuesto cargados:', presupuestoData);
+        console.log('ðŸ” [PRESUPUESTOS-EDIT] Datos del presupuesto cargados:', presupuestoData);
 
-        // Actualizar información principal (nombre del cliente)
+        // Actualizar informaciÃ³n principal (nombre del cliente)
         if (typeof window.actualizarInfoPrincipal === 'function') {
             window.actualizarInfoPrincipal(presupuestoData);
         }
 
-        // Llenar información de solo lectura
+        // Llenar informaciÃ³n de solo lectura
         llenarInformacionPresupuesto();
 
         // Llenar campos editables
         llenarCamposEditables();
 
-        // NUEVO: Actualizar botón de facturación según estado
+        // NUEVO: Actualizar botÃ³n de facturaciÃ³n segÃºn estado
         const estaFacturado = presupuestoData.esta_facturado || false;
         const facturaId = presupuestoData.factura_id || null;
         
-        console.log(`[FACTURAR] Estado de facturación: estaFacturado=${estaFacturado}, facturaId=${facturaId}`);
+        console.log(`[FACTURAR] Estado de facturaciÃ³n: estaFacturado=${estaFacturado}, facturaId=${facturaId}`);
         
         if (typeof actualizarBotonFacturacion === 'function') {
             actualizarBotonFacturacion(estaFacturado, facturaId);
         } else {
-            console.warn('[FACTURAR] ⚠️ Función actualizarBotonFacturacion no disponible');
+            console.warn('[FACTURAR] âš ï¸ FunciÃ³n actualizarBotonFacturacion no disponible');
         }
 
     } catch (error) {
-        console.error('❌ [PRESUPUESTOS-EDIT] Error al cargar presupuesto:', error);
-        mostrarMensaje(`❌ Error al cargar el presupuesto: ${error.message}`, 'error');
+        console.error('âŒ [PRESUPUESTOS-EDIT] Error al cargar presupuesto:', error);
+        mostrarMensaje(`âŒ Error al cargar el presupuesto: ${error.message}`, 'error');
     }
 }
 
@@ -342,15 +342,15 @@ async function cargarPresupuesto() {
     const precioUnit = pvu || (neto * (1 + ivaDecimal));
 
     return {
-      // cĂłdigos
+      // cÄ‚Å‚digos
       codigo_barras: d?.codigo_barras ?? d?.cod_barra ?? d?.codigo ?? d?.articulo ?? d?.articulo_numero ?? '',
       articulo_numero: d?.articulo_numero ?? d?.articulo ?? '',
-      // descripciĂłn (probamos varias claves comunes)
+      // descripciÄ‚Å‚n (probamos varias claves comunes)
       descripcion: d?.detalle ?? d?.descripcion ?? d?.articulo_descripcion ?? d?.nombre ?? '',
-      // nĂşmeros
+      // nÄ‚ÅŸmeros
       cantidad: toNum(d?.cantidad),
       valor1: neto,            // neto sin IVA
-      iva1: ivaDecimal,        // đ SIEMPRE decimal (0.21)
+      iva1: ivaDecimal,        // Ä‘ÂŸÂ‘Âˆ SIEMPRE decimal (0.21)
       precio1: precioUnit      // unitario con IVA
     };
   }
@@ -359,7 +359,7 @@ async function cargarPresupuesto() {
  * Cargar detalles del presupuesto
  */
 async function cargarDetallesPresupuesto() {
-    console.log(`đŚ [PRESUPUESTOS-EDIT] Cargando detalles del presupuesto ${presupuestoId}...`);
+    console.log(`Ä‘ÂŸÂ“Åš [PRESUPUESTOS-EDIT] Cargando detalles del presupuesto ${presupuestoId}...`);
 
     try {
         const response = await fetch(`/api/presupuestos/${presupuestoId}/detalles`);
@@ -371,24 +371,24 @@ async function cargarDetallesPresupuesto() {
             detallesData = lista.map(normalizarDetalle);
 
             const detallesCount = detallesData.length;
-            document.getElementById('info-detalles').textContent = `${detallesCount} artĂ­culos`;
-            console.log(`đŚ [PRESUPUESTOS-EDIT] Detalles cargados: ${detallesCount} artĂ­culos`);
+            document.getElementById('info-detalles').textContent = `${detallesCount} artÄ‚Â­culos`;
+            console.log(`Ä‘ÂŸÂ“Åš [PRESUPUESTOS-EDIT] Detalles cargados: ${detallesCount} artÄ‚Â­culos`);
         } else {
-            console.warn('â ď¸ [PRESUPUESTOS-EDIT] No se pudieron cargar los detalles');
+            console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] No se pudieron cargar los detalles');
             document.getElementById('info-detalles').textContent = 'No disponible';
         }
 
     } catch (error) {
-        console.error('â [PRESUPUESTOS-EDIT] Error al cargar detalles:', error);
+        console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Error al cargar detalles:', error);
         document.getElementById('info-detalles').textContent = 'Error al cargar';
     }
 }
 
 /**
- * Llenar informaciĂłn de solo lectura
+ * Llenar informaciÄ‚Å‚n de solo lectura
  */
 function llenarInformacionPresupuesto() {
-    console.log('đ [PRESUPUESTOS-EDIT] Llenando informaciĂłn del presupuesto...');
+    console.log('Ä‘ÂŸÂ“Â‹ [PRESUPUESTOS-EDIT] Llenando informaciÄ‚Å‚n del presupuesto...');
     
     document.getElementById('info-id').textContent = presupuestoData.id_presupuesto_ext || presupuestoData.id || '-';
     document.getElementById('info-cliente').textContent = presupuestoData.id_cliente || '-';
@@ -408,7 +408,7 @@ function llenarCamposEditables() {
 
     // punto de entrega
     document.getElementById('punto_entrega').value = 
-        (presupuestoData.punto_entrega && presupuestoData.punto_entrega.trim()) ? presupuestoData.punto_entrega : 'Sin direcciĂłn';
+        (presupuestoData.punto_entrega && presupuestoData.punto_entrega.trim()) ? presupuestoData.punto_entrega : 'Sin direcciÄ‚Å‚n';
 
     // descuento: si viene 0.05 mostrar 5
     const d = Number(presupuestoData.descuento);
@@ -437,15 +437,15 @@ function llenarCamposEditables() {
 }
 
 /**
- * Renderizar detalles desde BD usando el mĂłdulo comĂşn
- * CORREGIDO: Igualar comportamiento con creaciĂłn
+ * Renderizar detalles desde BD usando el mÄ‚Å‚dulo comÄ‚ÅŸn
+ * CORREGIDO: Igualar comportamiento con creaciÄ‚Å‚n
  */
 async function renderDetallesConModuloComun(){
   const tbody = document.getElementById('detalles-tbody');
   if(!tbody) return;
   tbody.innerHTML = '';
   
-  // Resetear contador del mĂłdulo comĂşn
+  // Resetear contador del mÄ‚Å‚dulo comÄ‚ÅŸn
   if (window.Detalles) {
     window.Detalles.detalleCounter = 0;
   }
@@ -453,16 +453,16 @@ async function renderDetallesConModuloComun(){
   const tipoSel = document.getElementById('tipo_comprobante');
   const esRemito = () => tipoSel && tipoSel.value === 'Remito-Efectivo';
 
-  // Procesar cada detalle de forma asĂ­ncrona
+  // Procesar cada detalle de forma asÄ‚Â­ncrona
   for (const det of detallesData) {
-    console.log(`đŚ [PRESUPUESTOS-EDIT] Renderizando detalle:`, det);
+    console.log(`Ä‘ÂŸÂ“Åš [PRESUPUESTOS-EDIT] Renderizando detalle:`, det);
 
-    // CORRECCIĂN: Usar camp2 (alĂ­cuota decimal) en lugar de iva1 (monto)
-    // camp2 contiene la alĂ­cuota correcta (0.21 para 21%)
+    // CORRECCIÄ‚Â“N: Usar camp2 (alÄ‚Â­cuota decimal) en lugar de iva1 (monto)
+    // camp2 contiene la alÄ‚Â­cuota correcta (0.21 para 21%)
     const ivaPctBase = ((det.iva1 || 0) * 100);
     const ivaPctVisible = esRemito() ? (ivaPctBase / 2) : ivaPctBase;
 
-    // Usar funciĂłn del mĂłdulo comĂşn para agregar fila vacĂ­a
+    // Usar funciÄ‚Å‚n del mÄ‚Å‚dulo comÄ‚ÅŸn para agregar fila vacÄ‚Â­a
     agregarDetalle();
     const idx = window.Detalles ? window.Detalles.detalleCounter : 1;
 
@@ -474,24 +474,24 @@ async function renderDetallesConModuloComun(){
     const valorInput = row.querySelector(`input[name="detalles[${idx}][valor1]"]`);
     const ivaInput   = row.querySelector(`input[name="detalles[${idx}][iva1]"]`);
 
-    // Mostrar DESCRIPCIĂN al usuario y guardar CODIGO DE BARRAS en dataset (igual que Crear)
+    // Mostrar DESCRIPCIÄ‚Â“N al usuario y guardar CODIGO DE BARRAS en dataset (igual que Crear)
     if (artInput){
       let descripcionVisible = det.descripcion || '';
 
-      // Si no hay descripciĂłn pero sĂ­ hay cĂłdigo de barras, buscar descripciĂłn
+      // Si no hay descripciÄ‚Å‚n pero sÄ‚Â­ hay cÄ‚Å‚digo de barras, buscar descripciÄ‚Å‚n
       if (!descripcionVisible && det.codigo_barras) {
-        console.log(`đ [PRESUPUESTOS-EDIT] Buscando descripciĂłn para cĂłdigo: ${det.codigo_barras}`);
+        console.log(`Ä‘ÂŸÂ”Â [PRESUPUESTOS-EDIT] Buscando descripciÄ‚Å‚n para cÄ‚Å‚digo: ${det.codigo_barras}`);
         const descripcionEncontrada = await buscarDescripcionPorCodigo(det.codigo_barras);
         if (descripcionEncontrada) {
           descripcionVisible = descripcionEncontrada;
-          console.log(`â [PRESUPUESTOS-EDIT] DescripciĂłn encontrada: ${descripcionVisible}`);
+          console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] DescripciÄ‚Å‚n encontrada: ${descripcionVisible}`);
         } else {
-          // Si no se encuentra descripciĂłn, mostrar el cĂłdigo de barras
+          // Si no se encuentra descripciÄ‚Å‚n, mostrar el cÄ‚Å‚digo de barras
           descripcionVisible = det.codigo_barras;
-          console.log(`â ď¸ [PRESUPUESTOS-EDIT] Usando cĂłdigo de barras como descripciĂłn: ${descripcionVisible}`);
+          console.log(`Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Usando cÄ‚Å‚digo de barras como descripciÄ‚Å‚n: ${descripcionVisible}`);
         }
       } else if (!descripcionVisible) {
-        // Si no hay ni descripciĂłn ni cĂłdigo, usar cĂłdigo de barras como fallback
+        // Si no hay ni descripciÄ‚Å‚n ni cÄ‚Å‚digo, usar cÄ‚Å‚digo de barras como fallback
         descripcionVisible = det.codigo_barras || '';
       }
 
@@ -500,26 +500,26 @@ async function renderDetallesConModuloComun(){
       artInput.dataset.articuloNumero = det.articulo_numero || '';
     }
 
-    // CORRECCIĂN: Setear valores UNITARIOS (igual que en creaciĂłn)
+    // CORRECCIÄ‚Â“N: Setear valores UNITARIOS (igual que en creaciÄ‚Å‚n)
     if (cantInput)  setCantidad(cantInput, det.cantidad || 1);
     if (valorInput) setNumeric(valorInput, det.valor1 || 0, 2, 0);  // Precio unitario SIN IVA
     
-    // CORRECCIĂN: Guardar base IVA y setear porcentaje visible
+    // CORRECCIÄ‚Â“N: Guardar base IVA y setear porcentaje visible
     if (ivaInput){
       ivaInput.dataset.ivaBase = String(ivaPctBase);  // Guardar base para modo Remito
       setNumeric(ivaInput, ivaPctVisible, 2, 21);     // Mostrar porcentaje
     }
 
-    // CORRECCIĂN: NO setear precio1 manualmente, dejar que calcularPrecio() lo haga
-    // Esto asegura que el cĂĄlculo sea idĂŠntico al de creaciĂłn
+    // CORRECCIÄ‚Â“N: NO setear precio1 manualmente, dejar que calcularPrecio() lo haga
+    // Esto asegura que el cÄ‚Ä„lculo sea idÄ‚Å ntico al de creaciÄ‚Å‚n
     
     // Llamar a calcularPrecio() para que calcule precio1 y subtotal
-    // (igual que en creaciĂłn cuando se cambia un valor)
+    // (igual que en creaciÄ‚Å‚n cuando se cambia un valor)
     if (window.Detalles && window.Detalles.calcularPrecio) {
       window.Detalles.calcularPrecio(idx);
     }
     
-    console.log(`â [PRESUPUESTOS-EDIT] Detalle ${idx} renderizado correctamente`);
+    console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Detalle ${idx} renderizado correctamente`);
   }
 
   // Recalcular totales finales
@@ -527,7 +527,7 @@ async function renderDetallesConModuloComun(){
     window.Detalles.recalcTotales();
   }
   
-  console.log(`â [PRESUPUESTOS-EDIT] Todos los detalles renderizados: ${detallesData.length} Ă­tems`);
+  console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Todos los detalles renderizados: ${detallesData.length} Ä‚Â­tems`);
 }
 
 /**
@@ -538,7 +538,7 @@ function formatearFecha(fecha) {
 
     try {
         const date = new Date(fecha);
-        if (isNaN(date.getTime())) return fecha; // Si no es vĂĄlida, devolver original
+        if (isNaN(date.getTime())) return fecha; // Si no es vÄ‚Ä„lida, devolver original
 
         return date.toLocaleDateString('es-ES', {
             year: 'numeric',
@@ -553,8 +553,8 @@ function formatearFecha(fecha) {
 
 
 /**
- * Seleccionar artĂ­culo del autocompletar - CORREGIDO para igualar comportamiento de creaciĂłn
- * SIGNATURA COMPATIBLE: (input, element) como en creaciĂłn
+ * Seleccionar artÄ‚Â­culo del autocompletar - CORREGIDO para igualar comportamiento de creaciÄ‚Å‚n
+ * SIGNATURA COMPATIBLE: (input, element) como en creaciÄ‚Å‚n
  */
 function seleccionarArticulo(input, element) {
     // Si se llama con la signatura antigua (articulo, detalleIndex), adaptarla
@@ -564,15 +564,15 @@ function seleccionarArticulo(input, element) {
         return seleccionarArticuloLegacy(articulo, detalleIndex);
     }
 
-    // NUEVA IMPLEMENTACIĂN: Signatura compatible con creaciĂłn (input, element)
+    // NUEVA IMPLEMENTACIÄ‚Â“N: Signatura compatible con creaciÄ‚Å‚n (input, element)
     const codigoBarras = (element.dataset.codigoBarras || '').toString();
     const articuloNumero = (element.dataset.articuloNumero || '').toString();
     const description = (element.dataset.description || '').toString();
     const stock = parseFloat(element.dataset.stock || 0);
 
-    console.log(`đŚ [PRESUPUESTOS-EDIT] Seleccionando artĂ­culo: ${description} [${articuloNumero}] (Stock: ${stock})`);
+    console.log(`Ä‘ÂŸÂ“Åš [PRESUPUESTOS-EDIT] Seleccionando artÄ‚Â­culo: ${description} [${articuloNumero}] (Stock: ${stock})`);
 
-    // Mostrar descripciĂłn al usuario y guardar cĂłdigos reales para el submit
+    // Mostrar descripciÄ‚Å‚n al usuario y guardar cÄ‚Å‚digos reales para el submit
     input.value = description;
     input.dataset.codigoBarras = codigoBarras;
     input.dataset.articuloNumero = articuloNumero;
@@ -581,7 +581,7 @@ function seleccionarArticulo(input, element) {
     input.style.color = '';
     input.classList.remove('articulo-codigo');
 
-    console.log(`â [PRESUPUESTOS-EDIT] ArtĂ­culo seleccionado: ${description}`);
+    console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] ArtÄ‚Â­culo seleccionado: ${description}`);
     
     // Ocultar sugerencias
     const container = document.querySelector('.articulo-sugerencias');
@@ -612,7 +612,7 @@ function seleccionarArticulo(input, element) {
         window.Detalles.calcularPrecio(detalleId);
     }
 
-    // BUSCAR PRECIOS AUTOMĂTICAMENTE (igual que en creaciĂłn)
+    // BUSCAR PRECIOS AUTOMÄ‚ÂTICAMENTE (igual que en creaciÄ‚Å‚n)
     const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
 
     const fetchPrecios = async (params) => {
@@ -626,7 +626,7 @@ function seleccionarArticulo(input, element) {
     (async () => {
         let valor, iva;
 
-        // 1) Por cĂłdigo de barras
+        // 1) Por cÄ‚Å‚digo de barras
         try {
             const p = new URLSearchParams();
             p.set('cliente_id', String(clienteId));
@@ -635,10 +635,10 @@ function seleccionarArticulo(input, element) {
             valor = Number(body?.data?.valor1);
             iva = Number(body?.data?.iva);
         } catch (e1) {
-            console.warn('â ď¸ [PRESUPUESTOS-EDIT] No respondiĂł por cĂłdigo de barras. Probando por descripciĂłnâŚ', e1);
+            console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] No respondiÄ‚Å‚ por cÄ‚Å‚digo de barras. Probando por descripciÄ‚Å‚nÃ¢Â€Åš', e1);
         }
 
-        // 2) Fallback por descripciĂłn
+        // 2) Fallback por descripciÄ‚Å‚n
         if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
             try {
                 const p2 = new URLSearchParams();
@@ -648,7 +648,7 @@ function seleccionarArticulo(input, element) {
                 valor = Number(body2?.data?.valor1);
                 iva = Number(body2?.data?.iva);
             } catch (e2) {
-                console.warn('â ď¸ [PRESUPUESTOS-EDIT] Tampoco por descripciĂłn:', e2);
+                console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Tampoco por descripciÄ‚Å‚n:', e2);
             }
         }
 
@@ -673,20 +673,20 @@ function seleccionarArticulo(input, element) {
         // Enfocar siguiente campo
         setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
         
-        console.log('â [PRESUPUESTOS-EDIT] Precios actualizados automĂĄticamente');
+        console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Precios actualizados automÄ‚Ä„ticamente');
     })();
 }
 
 /**
- * FunciĂłn legacy para compatibilidad con signatura antigua
+ * FunciÄ‚Å‚n legacy para compatibilidad con signatura antigua
  */
 function seleccionarArticuloLegacy(articulo, detalleIndex) {
-    console.log('đŚ [PRESUPUESTOS-EDIT] Seleccionando artĂ­culo (legacy):', articulo, 'para detalle:', detalleIndex);
+    console.log('Ä‘ÂŸÂ“Åš [PRESUPUESTOS-EDIT] Seleccionando artÄ‚Â­culo (legacy):', articulo, 'para detalle:', detalleIndex);
 
     // Encontrar la fila correspondiente usando el detalleIndex como ID de fila
     const row = document.getElementById(`detalle-${detalleIndex}`);
     if (!row) {
-        console.error('â [PRESUPUESTOS-EDIT] Fila de detalle no encontrada:', detalleIndex);
+        console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Fila de detalle no encontrada:', detalleIndex);
         return;
     }
 
@@ -697,7 +697,7 @@ function seleccionarArticuloLegacy(articulo, detalleIndex) {
     const cantInput = row.querySelector(`input[name="detalles[${detalleIndex}][cantidad]"]`);
 
     if (artInput) {
-        // CORREGIDO: Mostrar descripciĂłn al usuario y guardar cĂłdigo de barras
+        // CORREGIDO: Mostrar descripciÄ‚Å‚n al usuario y guardar cÄ‚Å‚digo de barras
         artInput.value = articulo.descripcion || articulo.description || articulo.nombre || '';
         artInput.dataset.codigoBarras = articulo.codigo_barras || '';
         artInput.dataset.articuloNumero = articulo.articulo_numero || '';
@@ -707,7 +707,7 @@ function seleccionarArticuloLegacy(articulo, detalleIndex) {
         artInput.classList.remove('articulo-codigo');
     }
 
-    // CORREGIDO: Usar los mismos valores que en creaciĂłn
+    // CORREGIDO: Usar los mismos valores que en creaciÄ‚Å‚n
     if (valorInput) {
         const precio = parseFloat(articulo.precio) || parseFloat(articulo.valor1) || 0;
         setNumeric(valorInput, precio, 2, 0);
@@ -727,7 +727,7 @@ function seleccionarArticuloLegacy(articulo, detalleIndex) {
         setCantidad(cantInput, 1);
     }
 
-    console.log('â [PRESUPUESTOS-EDIT] ArtĂ­culo seleccionado y datos actualizados (legacy)');
+    console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] ArtÄ‚Â­culo seleccionado y datos actualizados (legacy)');
 
     // Recalcular precio para esta fila
     if (window.Detalles && window.Detalles.calcularPrecio) {
@@ -737,12 +737,12 @@ function seleccionarArticuloLegacy(articulo, detalleIndex) {
         window.Detalles.recalcTotales();
     }
 
-    // NUEVO: Buscar precios automĂĄticamente como en creaciĂłn
+    // NUEVO: Buscar precios automÄ‚Ä„ticamente como en creaciÄ‚Å‚n
     buscarPreciosAutomaticamente(articulo, detalleIndex);
 }
 
 /**
- * Buscar precios automĂĄticamente como en el flujo de creaciĂłn
+ * Buscar precios automÄ‚Ä„ticamente como en el flujo de creaciÄ‚Å‚n
  */
 async function buscarPreciosAutomaticamente(articulo, detalleIndex) {
     try {
@@ -750,7 +750,7 @@ async function buscarPreciosAutomaticamente(articulo, detalleIndex) {
         const codigoBarras = articulo.codigo_barras || '';
         const descripcion = articulo.descripcion || articulo.description || '';
 
-        console.log(`đ [PRESUPUESTOS-EDIT] Buscando precios para cliente ${clienteId}, cĂłdigo: ${codigoBarras}`);
+        console.log(`Ä‘ÂŸÂ”Â [PRESUPUESTOS-EDIT] Buscando precios para cliente ${clienteId}, cÄ‚Å‚digo: ${codigoBarras}`);
 
         const fetchPrecios = async (params) => {
             const url = `/api/presupuestos/precios?${params.toString()}`;
@@ -762,7 +762,7 @@ async function buscarPreciosAutomaticamente(articulo, detalleIndex) {
 
         let valor, iva;
 
-        // 1) Buscar por cĂłdigo de barras
+        // 1) Buscar por cÄ‚Å‚digo de barras
         try {
             const p = new URLSearchParams();
             p.set('cliente_id', String(clienteId));
@@ -771,10 +771,10 @@ async function buscarPreciosAutomaticamente(articulo, detalleIndex) {
             valor = Number(body?.data?.valor1);
             iva = Number(body?.data?.iva);
         } catch (e1) {
-            console.warn('â ď¸ [PRESUPUESTOS-EDIT] No respondiĂł por cĂłdigo de barras. Probando por descripciĂłnâŚ', e1);
+            console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] No respondiÄ‚Å‚ por cÄ‚Å‚digo de barras. Probando por descripciÄ‚Å‚nÃ¢Â€Åš', e1);
         }
 
-        // 2) Fallback por descripciĂłn
+        // 2) Fallback por descripciÄ‚Å‚n
         if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
             try {
                 const p2 = new URLSearchParams();
@@ -784,7 +784,7 @@ async function buscarPreciosAutomaticamente(articulo, detalleIndex) {
                 valor = Number(body2?.data?.valor1);
                 iva = Number(body2?.data?.iva);
             } catch (e2) {
-                console.warn('â ď¸ [PRESUPUESTOS-EDIT] Tampoco por descripciĂłn:', e2);
+                console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Tampoco por descripciÄ‚Å‚n:', e2);
             }
         }
 
@@ -807,16 +807,16 @@ async function buscarPreciosAutomaticamente(articulo, detalleIndex) {
                 setNumeric(ivaInput, visibleIva, 2, 21);
             }
 
-            // Recalcular despuĂŠs de actualizar precios
+            // Recalcular despuÄ‚Å s de actualizar precios
             if (window.Detalles && window.Detalles.calcularPrecio) {
                 window.Detalles.calcularPrecio(detalleIndex);
             }
         }
 
-        console.log('â [PRESUPUESTOS-EDIT] Precios actualizados automĂĄticamente');
+        console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Precios actualizados automÄ‚Ä„ticamente');
 
     } catch (error) {
-        console.warn('â ď¸ [PRESUPUESTOS-EDIT] Error buscando precios automĂĄticamente:', error);
+        console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Error buscando precios automÄ‚Ä„ticamente:', error);
     }
 }
 
@@ -833,7 +833,7 @@ function getClienteIdActivo() {
 }
 
 /**
- * Obtener ID de detalle desde input (funciĂłn auxiliar)
+ * Obtener ID de detalle desde input (funciÄ‚Å‚n auxiliar)
  */
 function getDetalleIdFromInput(input) {
     if (!input || !input.name) return null;
@@ -842,7 +842,7 @@ function getDetalleIdFromInput(input) {
 }
 
 /**
- * Seleccionar artĂ­culo por click (funciĂłn legacy para compatibilidad)
+ * Seleccionar artÄ‚Â­culo por click (funciÄ‚Å‚n legacy para compatibilidad)
  */
 function seleccionarArticuloPorClick(event) {
     const articuloData = event.target.closest('.articulo-sugerencia-item')?.dataset;
@@ -856,7 +856,7 @@ function seleccionarArticuloPorClick(event) {
         articulo_numero: articuloData.articulo_numero || ''
     };
 
-    // Obtener el ID de detalle desde el botĂłn mĂĄs cercano
+    // Obtener el ID de detalle desde el botÄ‚Å‚n mÄ‚Ä„s cercano
     const detalleId = getDetalleIdFromInput(event.target.closest('tr')?.querySelector('input[name*="articulo"]'));
     if (detalleId !== null) {
         seleccionarArticulo(articulo, detalleId);
@@ -864,7 +864,7 @@ function seleccionarArticuloPorClick(event) {
 }
 
 /**
- * Remover detalle (funciĂłn legacy para compatibilidad)
+ * Remover detalle (funciÄ‚Å‚n legacy para compatibilidad)
  */
 function removerDetalle(detalleId) {
     const row = document.getElementById(`detalle-${detalleId}`);
@@ -875,7 +875,7 @@ function removerDetalle(detalleId) {
 }
 
 /**
- * Seleccionar cliente por click (funciĂłn legacy para compatibilidad)
+ * Seleccionar cliente por click (funciÄ‚Å‚n legacy para compatibilidad)
  */
 function seleccionarClientePorClick(event) {
     const clienteData = event.target.closest('.cliente-sugerencia-item')?.dataset;
@@ -898,12 +898,12 @@ function seleccionarClientePorClick(event) {
 }
 
 /**
- * Manejar envĂ­o del formulario
+ * Manejar envÄ‚Â­o del formulario
  */
 async function handleSubmit(event) {
     event.preventDefault();
     
-    console.log('đ¤ [PRESUPUESTOS-EDIT] Iniciando envĂ­o de formulario...');
+    console.log('Ä‘ÂŸÂ“Â¤ [PRESUPUESTOS-EDIT] Iniciando envÄ‚Â­o de formulario...');
     
     const btnGuardar = document.getElementById('btn-guardar');
     const spinner = btnGuardar.querySelector('.loading-spinner');
@@ -945,7 +945,7 @@ async function handleSubmit(event) {
         // Validar detalles desde el DOM
         const tbody = document.getElementById('detalles-tbody');
         if (!tbody || tbody.querySelectorAll('tr').length === 0) {
-            throw new Error('Debe agregar al menos un detalle de artĂ­culo');
+            throw new Error('Debe agregar al menos un detalle de artÄ‚Â­culo');
         }
 
         // Validar cada fila del DOM
@@ -957,20 +957,20 @@ async function handleSubmit(event) {
             const ivaInput = row.querySelector('input[name*="[iva1]"]');
 
             if (!artInput || !artInput.value.trim()) {
-                throw new Error('Todos los detalles deben tener un artĂ­culo vĂĄlido');
+                throw new Error('Todos los detalles deben tener un artÄ‚Â­culo vÄ‚Ä„lido');
             }
-            // Validar que el artĂ­culo tenga cĂłdigo de barras (seleccionado desde autocompletar)
+            // Validar que el artÄ‚Â­culo tenga cÄ‚Å‚digo de barras (seleccionado desde autocompletar)
             if (!artInput.dataset.codigoBarras || !artInput.dataset.codigoBarras.trim()) {
-                throw new Error(`El artĂ­culo "${artInput.value}" no es vĂĄlido. SelecciĂłnalo desde el autocompletar.`);
+                throw new Error(`El artÄ‚Â­culo "${artInput.value}" no es vÄ‚Ä„lido. SelecciÄ‚Å‚nalo desde el autocompletar.`);
             }
             if (!cantInput || parseFloat(cantInput.value) <= 0) {
                 throw new Error('Todos los detalles deben tener una cantidad mayor a cero');
             }
             if (!valorInput || parseFloat(valorInput.value) < 0) {
-                throw new Error('Todos los detalles deben tener un valor unitario vĂĄlido');
+                throw new Error('Todos los detalles deben tener un valor unitario vÄ‚Ä„lido');
             }
             if (!ivaInput || parseFloat(ivaInput.value) < 0) {
-                throw new Error('Todos los detalles deben tener un IVA vĂĄlido');
+                throw new Error('Todos los detalles deben tener un IVA vÄ‚Ä„lido');
             }
         }
 
@@ -984,7 +984,7 @@ async function handleSubmit(event) {
 
             if (artInput && artInput.dataset.codigoBarras) {
                 detalles.push({
-                    articulo: artInput.dataset.codigoBarras.trim(),  // CĂłdigo de barras
+                    articulo: artInput.dataset.codigoBarras.trim(),  // CÄ‚Å‚digo de barras
                     cantidad: parseFloat(cantInput.value) || 0,      // Cantidad
                     valor1: parseFloat(valorInput.value) || 0,       // Neto unitario
                     iva1: parseFloat(ivaInput.value) || 0            // IVA (% o decimal, backend normaliza)
@@ -994,7 +994,7 @@ async function handleSubmit(event) {
 
         console.log(`[PUT-FRONT] detalles serializados:`, detalles.length, detalles[0]);
 
-        // Enviar actualizaciĂłn del presupuesto (cabecera + detalles)
+        // Enviar actualizaciÄ‚Å‚n del presupuesto (cabecera + detalles)
         const updateData = {
             // Campos existentes (ya funcionan)
             agente: data.agente,
@@ -1029,7 +1029,7 @@ async function handleSubmit(event) {
             throw new Error(result.error || result.message || 'Error al actualizar presupuesto');
         }
 
-        // Restaurar descripciones visibles en los inputs de artĂ­culos
+        // Restaurar descripciones visibles en los inputs de artÄ‚Â­culos
         rows.forEach(row => {
             const artInput = row.querySelector('input[name*="[articulo]"]');
             if (artInput && artInput.dataset.descripcionVisible) {
@@ -1037,21 +1037,21 @@ async function handleSubmit(event) {
             }
         });
 
-        // TODO: Actualizar detalles (no implementado en backend segĂşn lectura previa)
-        // AquĂ­ se podrĂ­a implementar llamada para actualizar detalles si la API lo soporta
+        // TODO: Actualizar detalles (no implementado en backend segÄ‚ÅŸn lectura previa)
+        // AquÄ‚Â­ se podrÄ‚Â­a implementar llamada para actualizar detalles si la API lo soporta
 
-        mostrarMensaje('â Presupuesto actualizado exitosamente', 'success');
+        mostrarMensaje('Ã¢ÂœÂ… Presupuesto actualizado exitosamente', 'success');
 
-        console.log('â [PRESUPUESTOS-EDIT] Presupuesto actualizado correctamente');
+        console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Presupuesto actualizado correctamente');
 
-        // Redirigir despuĂŠs de 2 segundos
+        // Redirigir despuÄ‚Å s de 2 segundos
         setTimeout(() => {
             window.location.href = '/pages/presupuestos.html';
         }, 2000);
 
     } catch (error) {
-        console.error('â [PRESUPUESTOS-EDIT] Error al actualizar presupuesto:', error);
-        mostrarMensaje(`â Error al actualizar presupuesto: ${error.message}`, 'error');
+        console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Error al actualizar presupuesto:', error);
+        mostrarMensaje(`Ã¢ÂÂŒ Error al actualizar presupuesto: ${error.message}`, 'error');
     } finally {
         // Ocultar loading
         btnGuardar.disabled = false;
@@ -1063,7 +1063,7 @@ async function handleSubmit(event) {
  * Mostrar mensaje al usuario
  */
 function mostrarMensaje(texto, tipo = 'info') {
-    console.log(`đŹ [PRESUPUESTOS-EDIT] Mostrando mensaje: ${texto}`);
+    console.log(`Ä‘ÂŸÂ’Å¹ [PRESUPUESTOS-EDIT] Mostrando mensaje: ${texto}`);
     
     const container = document.getElementById('message-container');
     
@@ -1077,7 +1077,7 @@ function mostrarMensaje(texto, tipo = 'info') {
     
     container.appendChild(messageDiv);
     
-    // Auto-ocultar despuĂŠs de 5 segundos (excepto errores)
+    // Auto-ocultar despuÄ‚Å s de 5 segundos (excepto errores)
     if (tipo !== 'error') {
         setTimeout(() => {
             messageDiv.style.display = 'none';
@@ -1085,51 +1085,51 @@ function mostrarMensaje(texto, tipo = 'info') {
     }
 }
 
-  console.log('â [PRESUPUESTOS-EDIT] MĂłdulo de ediciĂłn cargado correctamente');
+  console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] MÄ‚Å‚dulo de ediciÄ‚Å‚n cargado correctamente');
 
 })(); // Cerrar IIFE
 /**
- * Actualizar estado del botón Facturar/Ver factura según estado de facturación
+ * Actualizar estado del botÃ³n Facturar/Ver factura segÃºn estado de facturaciÃ³n
  */
 function actualizarBotonFacturacion(estaFacturado, facturaId) {
     const btn = document.getElementById("btn-facturar");
     if (!btn) return;
 
-    console.log(`[FACTURAR] Actualizando botón: estaFacturado=${estaFacturado}, facturaId=${facturaId}`);
+    console.log(`[FACTURAR] Actualizando botÃ³n: estaFacturado=${estaFacturado}, facturaId=${facturaId}`);
 
     if (estaFacturado && facturaId) {
         // Presupuesto ya facturado - mostrar "Ver factura"
-        btn.textContent = "👁️ Ver Factura";
+        btn.textContent = "ðŸ‘ï¸ Ver Factura";
         btn.className = "btn btn-secondary";
         btn.onclick = () => {
             window.location.href = `http://localhost:3004/pages/ver-factura.html?id=${facturaId}`;
         };
-        console.log(`[FACTURAR] ✅ Botón configurado como "Ver Factura" (ID: ${facturaId})`);
+        console.log(`[FACTURAR] âœ… BotÃ³n configurado como "Ver Factura" (ID: ${facturaId})`);
     } else {
         // Presupuesto no facturado - mostrar "Facturar"
-        btn.textContent = "💳 Facturar";
+        btn.textContent = "ðŸ’³ Facturar";
         btn.className = "btn btn-primary";
         btn.onclick = () => manejarFacturacion();
-        console.log('[FACTURAR] ✅ Botón configurado como "Facturar"');
+        console.log('[FACTURAR] âœ… BotÃ³n configurado como "Facturar"');
     }
 }
 
 /**
- * Manejar proceso de facturación
+ * Manejar proceso de facturaciÃ³n
  */
 async function manejarFacturacion() {
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get("id");
     
     if (!id) {
-        alert("⚠️ No se encontró el ID de presupuesto.");
+        alert("âš ï¸ No se encontrÃ³ el ID de presupuesto.");
         return;
     }
 
     const btn = document.getElementById("btn-facturar");
     const originalText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = "⏳ Facturando...";
+    btn.textContent = "â³ Facturando...";
 
     try {
         const resp = await fetch(`http://localhost:3004/facturacion/presupuestos/${id}/facturar`, {
@@ -1144,30 +1144,31 @@ async function manejarFacturacion() {
             throw new Error(msg);
         }
 
-        console.log('[FACTURAR] ✅ Facturación exitosa:', data);
-        alert("✅ Presupuesto facturado correctamente.");
+        console.log('[FACTURAR] âœ… FacturaciÃ³n exitosa:', data);
+        alert("âœ… Presupuesto facturado correctamente.");
 
-        // IMPORTANTE: Actualizar botón con el factura_id recibido
+        // IMPORTANTE: Actualizar botÃ³n con el factura_id recibido
         if (data.factura_id) {
             actualizarBotonFacturacion(true, data.factura_id);
         } else {
-            // Fallback: recargar página completa para obtener factura_id actualizado
-            console.log('[FACTURAR] ⚠️ factura_id no recibido, recargando página...');
+            // Fallback: recargar pÃ¡gina completa para obtener factura_id actualizado
+            console.log('[FACTURAR] âš ï¸ factura_id no recibido, recargando pÃ¡gina...');
             window.location.reload();
         }
 
     } catch (e) {
-        console.error('[FACTURAR] ❌ Error al facturar:', e);
-        alert("❌ Error al facturar: " + (e?.message || e));
+        console.error('[FACTURAR] âŒ Error al facturar:', e);
+        alert("âŒ Error al facturar: " + (e?.message || e));
         
-        // Restaurar botón en caso de error
+        // Restaurar botÃ³n en caso de error
         btn.disabled = false;
         btn.textContent = originalText;
     }
 }
 
-// Configurar botón al cargar página
+// Configurar botÃ³n al cargar pÃ¡gina
 document.addEventListener("DOMContentLoaded", () => {
-    // El botón se configurará automáticamente al cargar el presupuesto
-    console.log('[FACTURAR] Inicialización del botón de facturación lista');
+    // El botÃ³n se configurarÃ¡ automÃ¡ticamente al cargar el presupuesto
+    console.log('[FACTURAR] InicializaciÃ³n del botÃ³n de facturaciÃ³n lista');
 });
+
