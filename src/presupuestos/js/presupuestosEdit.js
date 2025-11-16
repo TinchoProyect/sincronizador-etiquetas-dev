@@ -283,6 +283,11 @@ async function cargarPresupuesto() {
         presupuestoData = result.data;
         console.log('🔍 [PRESUPUESTOS-EDIT] Datos del presupuesto cargados:', presupuestoData);
 
+        // Actualizar información principal (nombre del cliente)
+        if (typeof window.actualizarInfoPrincipal === 'function') {
+            window.actualizarInfoPrincipal(presupuestoData);
+        }
+
         // Llenar información de solo lectura
         llenarInformacionPresupuesto();
 

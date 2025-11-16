@@ -1192,10 +1192,13 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 p.agente,
                 p.tipo_comprobante,
                 p.estado,
+                p.secuencia,
                 COALESCE(p.nota, '') AS nota,
                 COALESCE(p.punto_entrega, 'Sin dirección') AS punto_entrega,
                 COALESCE(p.descuento, 0) AS descuento,
                 p.activo,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
+                c.cuit,
                 COALESCE(
                     p.factura_id,
                     (SELECT f.id FROM public.factura_facturas f 
@@ -1213,6 +1216,7 @@ const obtenerPresupuestoPorId = async (req, res) => {
                     ELSE false
                 END AS esta_facturado
             FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.id = $1 AND p.activo = true
         `;
         
