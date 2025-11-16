@@ -993,8 +993,7 @@ function seleccionarCliente(element) {
     clienteSeleccionado = {
         cliente_id: parseInt(clienteId, 10),
         numero_fmt: numeroFormateado,
-        nombre: nombreCompleto.split(' ')[0] || '',
-        apellido: nombreCompleto.split(' ').slice(1).join(' ') || '',
+        nombre: nombreCompleto,
         cuit: cuit
     };
 
@@ -1004,6 +1003,14 @@ function seleccionarCliente(element) {
 
     // Log según especificación
     console.log(`✅ [NuevoPresupuesto] Cliente seleccionado`, clienteSeleccionado);
+
+    // Mostrar nombre del cliente en grande
+    if (typeof window.mostrarNombreCliente === 'function') {
+        window.mostrarNombreCliente({
+            nombre: nombreCompleto,
+            cuit: cuit
+        });
+    }
 
     // Ocultar sugerencias
     ocultarSugerencias();
