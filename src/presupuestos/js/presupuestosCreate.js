@@ -5,6 +5,7 @@ let detalleCounter = 0;
 let clienteSeleccionado = null;
 let currentRequest = null;
 let selectedIndex = -1;
+let modoBusqueda = 'descripcion'; // 'descripcion' | 'codigo'
 
 // Exponer funciones usadas por atributos inline (onclick)
 window.agregarDetalle = agregarDetalle;
@@ -12,6 +13,27 @@ window.removerDetalle = removerDetalle;
 window.seleccionarArticuloPorClick = seleccionarArticuloPorClick;
 window.seleccionarArticulo = seleccionarArticulo;
 window.seleccionarClientePorClick = seleccionarClientePorClick;
+window.toggleModoBusqueda = toggleModoBusqueda;
+
+/**
+ * Toggle entre modo descripción y modo código de barras
+ */
+function toggleModoBusqueda() {
+    const btn = document.getElementById('btn-toggle-busqueda');
+    if (!btn) return;
+    
+    if (modoBusqueda === 'descripcion') {
+        modoBusqueda = 'codigo';
+        btn.textContent = '📟 Modo: Código de Barras';
+        btn.classList.add('modo-codigo');
+        console.log('[MODO-BUSQUEDA] Cambiado a: Código de Barras');
+    } else {
+        modoBusqueda = 'descripcion';
+        btn.textContent = '🔍 Modo: Descripción';
+        btn.classList.remove('modo-codigo');
+        console.log('[MODO-BUSQUEDA] Cambiado a: Descripción');
+    }
+}
 
 function getClienteIdActivo() {
   if (clienteSeleccionado && clienteSeleccionado.cliente_id) {
@@ -1071,6 +1093,7 @@ function filtrarArticulosLocal(query, items) {
   const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
 
   console.log('[ARTICULOS-FILTER] Iniciando filtrado...', { 
+    modo: modoBusqueda,
     query_original: query,
     query_normalizado: normalizarTexto(query),
     terms, 
@@ -1078,26 +1101,44 @@ function filtrarArticulosLocal(query, items) {
   });
 
   const out = (items || []).filter(a => {
-    // Solo buscar en la descripción, NO en códigos (evita falsos positivos por códigos de barras)
-    const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
+    let cumple = false;
     
-    // Verificar si TODOS los términos están presentes como SUBCADENAS (fragmentos)
-    // Esto permite buscar "cas" y encontrar "secas", "cascara", etc.
-    const cumple = terms.every(t => descripcionNormalizada.includes(t));
-    
-    // Log detallado para los primeros 5 artículos (debug)
-    if (items.indexOf(a) < 5) {
-      console.log('[ARTICULOS-FILTER] Evaluando artículo:', {
-        descripcion_original: a.description ?? a.descripcion,
-        descripcion_normalizada: descripcionNormalizada,
-        terms_buscados: terms,
-        cumple_todos: cumple,
-        detalles: terms.map(t => ({ 
-          termino: t, 
-          encontrado: descripcionNormalizada.includes(t),
-          posicion: descripcionNormalizada.indexOf(t)
-        }))
-      });
+    if (modoBusqueda === 'codigo') {
+      // MODO CÓDIGO DE BARRAS: Búsqueda exacta en código de barras
+      const codigoBarras = (a.codigo_barras || '').toString().toLowerCase();
+      const queryLower = query.toLowerCase();
+      cumple = codigoBarras.includes(queryLower);
+      
+      // Log detallado para los primeros 5 artículos (debug)
+      if (items.indexOf(a) < 5) {
+        console.log('[ARTICULOS-FILTER] [MODO-CODIGO] Evaluando artículo:', {
+          descripcion: a.description ?? a.descripcion,
+          codigo_barras: a.codigo_barras,
+          query_buscado: queryLower,
+          cumple: cumple
+        });
+      }
+    } else {
+      // MODO DESCRIPCIÓN: Búsqueda por subcadenas en descripción
+      const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
+      
+      // Verificar si TODOS los términos están presentes como SUBCADENAS (fragmentos)
+      cumple = terms.every(t => descripcionNormalizada.includes(t));
+      
+      // Log detallado para los primeros 5 artículos (debug)
+      if (items.indexOf(a) < 5) {
+        console.log('[ARTICULOS-FILTER] [MODO-DESCRIPCION] Evaluando artículo:', {
+          descripcion_original: a.description ?? a.descripcion,
+          descripcion_normalizada: descripcionNormalizada,
+          terms_buscados: terms,
+          cumple_todos: cumple,
+          detalles: terms.map(t => ({ 
+            termino: t, 
+            encontrado: descripcionNormalizada.includes(t),
+            posicion: descripcionNormalizada.indexOf(t)
+          }))
+        });
+      }
     }
     
     return cumple;
@@ -1115,6 +1156,7 @@ function filtrarArticulosLocal(query, items) {
 
   // Log de depuración final
   console.log('[ARTICULOS-FILTER] Filtrado completado:', { 
+    modo: modoBusqueda,
     query, 
     terms, 
     items_recibidos: items.length,

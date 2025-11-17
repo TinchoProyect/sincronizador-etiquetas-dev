@@ -302,6 +302,33 @@
             font-weight: 500;
         }
         
+        /* Botón toggle modo búsqueda */
+        .btn-toggle-busqueda {
+            background-color: #9b59b6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .btn-toggle-busqueda:hover {
+            background-color: #8e44ad;
+            transform: translateY(-2px);
+        }
+        
+        .btn-toggle-busqueda.modo-codigo {
+            background-color: #e67e22;
+        }
+        
+        .btn-toggle-busqueda.modo-codigo:hover {
+            background-color: #d35400;
+        }
+        
         /* Acciones del formulario */
         .form-actions {
             display: flex;
@@ -636,7 +663,12 @@
                     
                     <!-- Detalles de Artículos -->
                     <div class="form-section">
-                        <h3>📦 Artículos del Presupuesto</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="margin: 0; padding-bottom: 0; border-bottom: none;">📦 Artículos del Presupuesto</h3>
+                            <button type="button" id="btn-toggle-busqueda" class="btn-toggle-busqueda" onclick="toggleModoBusqueda()">
+                                🔍 Modo: Descripción
+                            </button>
+                        </div>
                         
                         <table class="detalles-table">
                             <thead>
