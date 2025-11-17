@@ -215,7 +215,8 @@ function agregarDetalle() {
     row.innerHTML = `
                 <td>
                     <input type="text" name="detalles[${detalleCounter}][articulo]"
-                        placeholder="Código o descripción del artículo" required>
+                        placeholder="Código o descripción del artículo" required
+                        autocomplete="off">
                 </td>
                 <td>
                     <input type="number" name="detalles[${detalleCounter}][cantidad]"
@@ -1045,13 +1046,16 @@ function formatearNombreCliente(nombre, apellido) {
 }
 
 /**
- * Normalizar texto para búsqueda (tolerancia a acentos)
+ * Normalizar texto para búsqueda (tolerancia a acentos y caracteres especiales)
  */
 function normalizarTexto(texto) {
     return (texto ?? '')
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+        .replace(/[\u0300-\u036f]/g, '') // Remover acentos
+        .replace(/[^\w\s]/g, ' ') // Reemplazar caracteres especiales (/, -, etc.) por espacios
+        .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
+        .trim();
 }
 // === Cache opcional de artículos + helpers ===
 window.__articulosCache = window.__articulosCache || [];
@@ -1066,12 +1070,37 @@ async function precargarArticulosAll() {
 function filtrarArticulosLocal(query, items) {
   const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
 
+  console.log('[ARTICULOS-FILTER] Iniciando filtrado...', { 
+    query_original: query,
+    query_normalizado: normalizarTexto(query),
+    terms, 
+    items_recibidos: items.length 
+  });
+
   const out = (items || []).filter(a => {
-    const blob = normalizarTexto(
-      [a.description ?? a.descripcion ?? '', a.articulo_numero ?? '', a.codigo_barras ?? ''].join(' ')
-    );
-    // AND: todos los términos deben estar
-    return terms.every(t => blob.includes(t));
+    // Solo buscar en la descripción, NO en códigos (evita falsos positivos por códigos de barras)
+    const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
+    
+    // Verificar si TODOS los términos están presentes como SUBCADENAS (fragmentos)
+    // Esto permite buscar "cas" y encontrar "secas", "cascara", etc.
+    const cumple = terms.every(t => descripcionNormalizada.includes(t));
+    
+    // Log detallado para los primeros 5 artículos (debug)
+    if (items.indexOf(a) < 5) {
+      console.log('[ARTICULOS-FILTER] Evaluando artículo:', {
+        descripcion_original: a.description ?? a.descripcion,
+        descripcion_normalizada: descripcionNormalizada,
+        terms_buscados: terms,
+        cumple_todos: cumple,
+        detalles: terms.map(t => ({ 
+          termino: t, 
+          encontrado: descripcionNormalizada.includes(t),
+          posicion: descripcionNormalizada.indexOf(t)
+        }))
+      });
+    }
+    
+    return cumple;
   });
 
   // Orden: stock>0 primero, luego descripción
@@ -1082,6 +1111,14 @@ function filtrarArticulosLocal(query, items) {
     const la = (A.description ?? A.descripcion ?? '').toString();
     const lb = (B.description ?? B.descripcion ?? '').toString();
     return la.localeCompare(lb);
+  });
+
+  // Log de depuración final
+  console.log('[ARTICULOS-FILTER] Filtrado completado:', { 
+    query, 
+    terms, 
+    items_recibidos: items.length,
+    resultados_filtrados: out.length 
   });
 
   // Limite visual (podés subirlo a 100 si querés)
@@ -1149,10 +1186,19 @@ const handleArticuloInput = debounce(async function(event) {
         const sim = await simularBusquedaArticulos(query);
         items = filtrarArticulosLocal(query, sim.data || []);
       } else {
-        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(query)}&limit=200`);
+        // CORRECCIÓN: Usar solo el primer término para el servidor (más amplio)
+        // y luego filtrar localmente con AND estricto
+        const primerTermino = query.split(/\s+/)[0] || query;
+        const queryParaServidor = primerTermino;
+        
+        console.log(`[ARTICULOS] Query para servidor: "${queryParaServidor}" (filtrado local aplicará AND completo)`);
+        
+        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`);
         if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
         const body = await response.json();
         const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+        
+        // Aplicar filtro local con TODOS los términos del query original
         items = filtrarArticulosLocal(query, arr);
       }
     }

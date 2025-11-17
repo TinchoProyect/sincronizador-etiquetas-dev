@@ -658,12 +658,37 @@ async function precargarArticulosAll() {
 function filtrarArticulosLocal(query, items) {
   const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
 
+  console.log('[ARTICULOS-FILTER] Iniciando filtrado...', { 
+    query_original: query,
+    query_normalizado: normalizarTexto(query),
+    terms, 
+    items_recibidos: items.length 
+  });
+
   const out = (items || []).filter(a => {
-    const blob = normalizarTexto(
-      [a.description ?? a.descripcion ?? '', a.articulo_numero ?? '', a.codigo_barras ?? ''].join(' ')
-    );
-    // AND: todos los términos deben estar
-    return terms.every(t => blob.includes(t));
+    // Solo buscar en la descripción, NO en códigos (evita falsos positivos por códigos de barras)
+    const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
+    
+    // Verificar si TODOS los términos están presentes como SUBCADENAS (fragmentos)
+    // Esto permite buscar "cas" y encontrar "secas", "cascara", etc.
+    const cumple = terms.every(t => descripcionNormalizada.includes(t));
+    
+    // Log detallado para los primeros 5 artículos (debug)
+    if (items.indexOf(a) < 5) {
+      console.log('[ARTICULOS-FILTER] Evaluando artículo:', {
+        descripcion_original: a.description ?? a.descripcion,
+        descripcion_normalizada: descripcionNormalizada,
+        terms_buscados: terms,
+        cumple_todos: cumple,
+        detalles: terms.map(t => ({ 
+          termino: t, 
+          encontrado: descripcionNormalizada.includes(t),
+          posicion: descripcionNormalizada.indexOf(t)
+        }))
+      });
+    }
+    
+    return cumple;
   });
 
   // Orden: stock>0 primero, luego descripción
@@ -674,6 +699,14 @@ function filtrarArticulosLocal(query, items) {
     const la = (A.description ?? A.descripcion ?? '').toString();
     const lb = (B.description ?? B.descripcion ?? '').toString();
     return la.localeCompare(lb);
+  });
+
+  // Log de depuración final
+  console.log('[ARTICULOS-FILTER] Filtrado completado:', { 
+    query, 
+    terms, 
+    items_recibidos: items.length,
+    resultados_filtrados: out.length 
   });
 
   // Limite visual (podés subirlo a 100 si querés)
@@ -1130,15 +1163,15 @@ function seleccionarArticulo(input, element) {
 // ===== FUNCIONES DE UTILIDADES =====
 
 /**
- * Normalizar texto para búsqueda
+ * Normalizar texto para búsqueda (tolerancia a acentos y caracteres especiales)
  */
 function normalizarTexto(texto) {
   return (texto || '').toString()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // Remover acentos
-    .replace(/[^\w\s]/g, ' ') // Reemplazar caracteres especiales por espacios
-    .replace(/\s+/g, ' ') // Normalizar espacios múltiples
+    .replace(/[^\w\s]/g, ' ') // Reemplazar caracteres especiales (/, -, etc.) por espacios
+    .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
     .trim();
 }
 
