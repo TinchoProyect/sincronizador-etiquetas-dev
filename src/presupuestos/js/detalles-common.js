@@ -344,7 +344,7 @@ function setupClienteAutocomplete() {
     const sugerenciasContainer = document.getElementById('cliente-sugerencias');
 
     if (!input || !sugerenciasContainer) {
-        console.error('❌ [DETALLES-COMMON] Elementos de autocompletar no encontrados');
+        console.log('ℹ️ [DETALLES-COMMON] Elementos de autocompletar de clientes no encontrados (normal en página de edición)');
         return;
     }
 

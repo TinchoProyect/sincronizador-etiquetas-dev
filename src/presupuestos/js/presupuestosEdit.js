@@ -942,11 +942,49 @@ async function handleSubmit(event) {
         if (!data.fecha) throw new Error('Fecha es obligatoria');
         if (!data.estado) throw new Error('Estado es obligatorio');
 
-        // Validar detalles desde el DOM
+        // CORRECCIÓN: Validar que haya al menos un detalle
+
+
         const tbody = document.getElementById('detalles-tbody');
-        if (!tbody || tbody.querySelectorAll('tr').length === 0) {
-            throw new Error('Debe agregar al menos un detalle de artÄ‚Â­culo');
+
+
+        const filasDetalles = tbody ? tbody.querySelectorAll('tr') : [];
+
+
+        
+
+
+        console.log('[EDIT-DETALLE] Validación de detalles:', {
+
+
+            tbody_existe: !!tbody,
+
+
+            cantidad_filas: filasDetalles.length
+
+
+        });
+
+
+        
+
+
+        if (!tbody || filasDetalles.length === 0) {
+
+
+            console.error('[EDIT-DETALLE] ❌ Validación fallida: No hay detalles');
+
+
+            throw new Error('El presupuesto debe tener al menos un artículo antes de guardar.');
+
+
         }
+
+
+        
+
+
+        console.log('[EDIT-DETALLE] ✅ Validación de detalles exitosa');
 
         // Validar cada fila del DOM
         const rows = tbody.querySelectorAll('tr');
