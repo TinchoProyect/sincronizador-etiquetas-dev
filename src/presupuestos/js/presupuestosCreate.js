@@ -27,11 +27,54 @@ function toggleModoBusqueda() {
         btn.textContent = '📟 Modo: Código de Barras';
         btn.classList.add('modo-codigo');
         console.log('[MODO-BUSQUEDA] Cambiado a: Código de Barras');
+        
+        // AUTO-FOCUS: Poner foco en el campo de código de barras
+        setTimeout(() => {
+            enfocarCampoCodigoBarras();
+        }, 100);
     } else {
         modoBusqueda = 'descripcion';
         btn.textContent = '🔍 Modo: Descripción';
         btn.classList.remove('modo-codigo');
         console.log('[MODO-BUSQUEDA] Cambiado a: Descripción');
+    }
+}
+
+/**
+ * Enfocar el campo de código de barras apropiado
+ * Busca el primer input vacío o el de la última fila
+ */
+function enfocarCampoCodigoBarras() {
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) {
+        console.warn('[MODO-CODIGO] No se encontró tbody para enfocar');
+        return;
+    }
+    
+    const inputs = tbody.querySelectorAll('input[name*="[articulo]"]');
+    if (inputs.length === 0) {
+        console.warn('[MODO-CODIGO] No hay inputs de artículo disponibles');
+        return;
+    }
+    
+    // Buscar primer input vacío
+    let inputToFocus = null;
+    for (let input of inputs) {
+        if (!input.value || input.value.trim() === '') {
+            inputToFocus = input;
+            break;
+        }
+    }
+    
+    // Si todos tienen valor, usar el último
+    if (!inputToFocus) {
+        inputToFocus = inputs[inputs.length - 1];
+    }
+    
+    if (inputToFocus) {
+        inputToFocus.focus();
+        inputToFocus.select();
+        console.log('[MODO-CODIGO] Foco puesto en campo de código de barras');
     }
 }
 
@@ -1214,6 +1257,12 @@ const handleArticuloInput = debounce(async function(event) {
     return;
   }
 
+  // EN MODO CÓDIGO: No mostrar sugerencias, solo esperar Enter
+  if (modoBusqueda === 'codigo') {
+    console.log('[MODO-CODIGO] Input detectado, esperando Enter para procesar');
+    return;
+  }
+
   try {
     mostrarLoadingArticulo(input);
 
@@ -1327,6 +1376,20 @@ async function simularBusquedaArticulos(query) {
  * Manejar teclas especiales para artículos
  */
 function handleArticuloKeydown(event) {
+    // MODO CÓDIGO DE BARRAS: Detectar Enter para carga directa
+    if (event.key === 'Enter' && modoBusqueda === 'codigo') {
+        event.preventDefault();
+        const input = event.target;
+        const query = (input.value || '').trim();
+        
+        if (query.length > 0) {
+            console.log('[MODO-CODIGO] Enter detectado, procesando código:', query);
+            handleCodigoBarrasEnter(input, query);
+        }
+        return;
+    }
+    
+    // MODO DESCRIPCIÓN: Comportamiento normal con sugerencias
     const sugerenciasContainer = document.querySelector('.articulo-sugerencias');
     if (!sugerenciasContainer || sugerenciasContainer.style.display === 'none') return;
 
@@ -1360,6 +1423,271 @@ function handleArticuloKeydown(event) {
             ocultarSugerenciasArticulo();
             break;
     }
+}
+
+/**
+ * Manejar escaneo de código de barras (Enter en modo código)
+ * Busca el artículo, verifica si ya existe en el detalle, y suma cantidad o agrega nuevo
+ */
+async function handleCodigoBarrasEnter(input, codigoBarras) {
+    console.log('[MODO-CODIGO] Procesando código de barras:', codigoBarras);
+    
+    try {
+        // Ocultar sugerencias si están visibles
+        ocultarSugerenciasArticulo();
+        
+        // Buscar artículo por código exacto
+        const articulo = await buscarArticuloPorCodigoExacto(codigoBarras);
+        
+        if (!articulo) {
+            console.warn('[MODO-CODIGO] No se encontró artículo con código:', codigoBarras);
+            mostrarMensaje(`No se encontró artículo con código: ${codigoBarras}`, 'error');
+            
+            // Limpiar campo y mantener foco
+            input.value = '';
+            input.focus();
+            return;
+        }
+        
+        console.log('[MODO-CODIGO] Artículo encontrado:', articulo);
+        
+        // Verificar si el artículo ya existe en el detalle
+        const filaExistente = buscarArticuloEnDetalle(articulo.codigo_barras);
+        
+        if (filaExistente) {
+            // Artículo ya existe: sumar 1 a la cantidad
+            console.log('[MODO-CODIGO] Artículo ya existe en detalle, sumando cantidad');
+            incrementarCantidadArticulo(filaExistente);
+        } else {
+            // Artículo nuevo: agregar fila con cantidad 1
+            console.log('[MODO-CODIGO] Artículo nuevo, agregando al detalle');
+            await agregarArticuloAlDetalle(articulo, input);
+        }
+        
+        // Limpiar campo y mantener foco para siguiente escaneo
+        input.value = '';
+        input.focus();
+        
+        console.log('[MODO-CODIGO] Código procesado exitosamente, listo para siguiente escaneo');
+        
+    } catch (error) {
+        console.error('[MODO-CODIGO] Error al procesar código de barras:', error);
+        mostrarMensaje(`Error al procesar código: ${error.message}`, 'error');
+        
+        // Limpiar campo y mantener foco
+        input.value = '';
+        input.focus();
+    }
+}
+
+/**
+ * Buscar artículo por código de barras exacto
+ */
+async function buscarArticuloPorCodigoExacto(codigoBarras) {
+    console.log('[MODO-CODIGO] Buscando artículo por código exacto:', codigoBarras);
+    
+    try {
+        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=100`);
+        
+        if (!response.ok) {
+            throw new Error(`Error HTTP ${response.status}`);
+        }
+        
+        const body = await response.json();
+        const articulos = Array.isArray(body) ? body : (body.data || body.items || []);
+        
+        // Buscar coincidencia exacta en código de barras
+        const articuloExacto = articulos.find(a => {
+            const codigo = (a.codigo_barras || '').toString().toLowerCase();
+            return codigo === codigoBarras.toLowerCase();
+        });
+        
+        if (articuloExacto) {
+            console.log('[MODO-CODIGO] Coincidencia exacta encontrada:', articuloExacto);
+            return articuloExacto;
+        }
+        
+        // Si no hay coincidencia exacta, buscar que contenga el código
+        const articuloContiene = articulos.find(a => {
+            const codigo = (a.codigo_barras || '').toString().toLowerCase();
+            return codigo.includes(codigoBarras.toLowerCase());
+        });
+        
+        if (articuloContiene) {
+            console.log('[MODO-CODIGO] Coincidencia parcial encontrada:', articuloContiene);
+            return articuloContiene;
+        }
+        
+        console.log('[MODO-CODIGO] No se encontró artículo con código:', codigoBarras);
+        return null;
+        
+    } catch (error) {
+        console.error('[MODO-CODIGO] Error en búsqueda de artículo:', error);
+        throw error;
+    }
+}
+
+/**
+ * Buscar si un artículo ya existe en el detalle del presupuesto
+ * Retorna la fila (tr) si existe, null si no
+ */
+function buscarArticuloEnDetalle(codigoBarras) {
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) return null;
+    
+    const rows = tbody.querySelectorAll('tr');
+    
+    for (let row of rows) {
+        const articuloInput = row.querySelector('input[name*="[articulo]"]');
+        if (!articuloInput) continue;
+        
+        // Verificar por código de barras guardado en dataset
+        const codigoGuardado = (articuloInput.dataset.codigoBarras || '').toString().toLowerCase();
+        const codigoBuscado = (codigoBarras || '').toString().toLowerCase();
+        
+        if (codigoGuardado && codigoGuardado === codigoBuscado) {
+            console.log('[MODO-CODIGO] Artículo encontrado en detalle:', row.id);
+            return row;
+        }
+    }
+    
+    console.log('[MODO-CODIGO] Artículo no existe en detalle');
+    return null;
+}
+
+/**
+ * Incrementar cantidad de un artículo existente en el detalle
+ */
+function incrementarCantidadArticulo(row) {
+    const cantidadInput = row.querySelector('input[name*="[cantidad]"]');
+    if (!cantidadInput) {
+        console.error('[MODO-CODIGO] No se encontró input de cantidad en la fila');
+        return;
+    }
+    
+    const cantidadActual = parseFloat(cantidadInput.value) || 0;
+    const nuevaCantidad = cantidadActual + 1;
+    
+    console.log(`[MODO-CODIGO] Incrementando cantidad: ${cantidadActual} -> ${nuevaCantidad}`);
+    
+    setCantidad(cantidadInput, nuevaCantidad);
+    
+    // Recalcular precio
+    const detalleId = getDetalleIdFromInput(cantidadInput);
+    if (detalleId != null) {
+        calcularPrecio(detalleId);
+    }
+    
+    // Efecto visual: resaltar fila brevemente
+    row.style.backgroundColor = '#d4edda';
+    setTimeout(() => {
+        row.style.backgroundColor = '';
+    }, 500);
+}
+
+/**
+ * Agregar artículo al detalle (nueva fila)
+ */
+async function agregarArticuloAlDetalle(articulo, inputOriginal) {
+    console.log('[MODO-CODIGO] Agregando artículo al detalle:', articulo);
+    
+    // Buscar la fila del input original
+    const filaActual = inputOriginal.closest('tr');
+    const articuloInputActual = filaActual?.querySelector('input[name*="[articulo]"]');
+    
+    // Si la fila actual está vacía, usarla; si no, crear nueva
+    const usarFilaActual = articuloInputActual && (!articuloInputActual.value || articuloInputActual.value.trim() === '');
+    
+    let targetRow;
+    let targetInput;
+    
+    if (usarFilaActual) {
+        console.log('[MODO-CODIGO] Usando fila actual (vacía)');
+        targetRow = filaActual;
+        targetInput = articuloInputActual;
+    } else {
+        console.log('[MODO-CODIGO] Creando nueva fila');
+        agregarDetalle();
+        
+        // Obtener la última fila agregada
+        const tbody = document.getElementById('detalles-tbody');
+        const rows = tbody.querySelectorAll('tr');
+        targetRow = rows[rows.length - 1];
+        targetInput = targetRow.querySelector('input[name*="[articulo]"]');
+    }
+    
+    if (!targetInput) {
+        console.error('[MODO-CODIGO] No se pudo obtener input de artículo');
+        return;
+    }
+    
+    // Llenar datos del artículo
+    const description = (articulo.description || articulo.descripcion || '').toString();
+    const codigoBarras = (articulo.codigo_barras || '').toString();
+    const articuloNumero = (articulo.articulo_numero || '').toString();
+    
+    targetInput.value = description;
+    targetInput.dataset.codigoBarras = codigoBarras;
+    targetInput.dataset.articuloNumero = articuloNumero;
+    
+    // Establecer cantidad = 1
+    const cantidadInput = targetRow.querySelector('input[name*="[cantidad]"]');
+    if (cantidadInput) {
+        setCantidad(cantidadInput, 1);
+    }
+    
+    // Establecer IVA por defecto
+    const iva1Input = targetRow.querySelector('input[name*="[iva1]"]');
+    if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) {
+        setNumeric(iva1Input, 21, 2, 21);
+    }
+    
+    // Obtener precios del backend
+    const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+    const detalleId = getDetalleIdFromInput(cantidadInput || targetInput);
+    
+    try {
+        const params = new URLSearchParams();
+        params.set('cliente_id', String(clienteId));
+        if (codigoBarras) params.set('codigo_barras', codigoBarras);
+        
+        const url = `/api/presupuestos/precios?${params.toString()}`;
+        console.log('[MODO-CODIGO] Obteniendo precios:', url);
+        
+        const response = await fetch(url);
+        if (response.ok) {
+            const body = await response.json();
+            const valor = Number(body?.data?.valor1);
+            const iva = Number(body?.data?.iva);
+            
+            const valor1Input = targetRow.querySelector('input[name*="[valor1]"]');
+            
+            if (Number.isFinite(valor) && valor1Input) {
+                setNumeric(valor1Input, valor, 2, 0);
+            }
+            
+            if (Number.isFinite(iva) && iva1Input) {
+                iva1Input.dataset.ivaBase = String(iva);
+                const tipoSel = document.getElementById('tipo_comprobante');
+                const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+                setNumeric(iva1Input, visibleIva, 2, 21);
+            }
+            
+            if (detalleId != null) {
+                calcularPrecio(detalleId);
+            }
+        }
+    } catch (error) {
+        console.warn('[MODO-CODIGO] Error al obtener precios:', error);
+    }
+    
+    // Efecto visual: resaltar fila brevemente
+    targetRow.style.backgroundColor = '#d1ecf1';
+    setTimeout(() => {
+        targetRow.style.backgroundColor = '';
+    }, 500);
+    
+    console.log('[MODO-CODIGO] Artículo agregado exitosamente');
 }
 
 /**
