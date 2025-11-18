@@ -280,17 +280,17 @@ function agregarDetalle() {
     row.innerHTML = `
                 <td>
                     <input type="text" name="detalles[${detalleCounter}][articulo]"
-                        placeholder="Código o descripción del artículo" required
+                        placeholder="Código o descripción del artículo"
                         autocomplete="off">
                 </td>
                 <td>
                     <input type="number" name="detalles[${detalleCounter}][cantidad]"
-                        min="0.01" step="0.01" placeholder="1" required
+                        min="0.01" step="0.01" placeholder="1"
                         onchange="calcularPrecio(${detalleCounter})">
                 </td>
                 <td>
                     <input type="number" name="detalles[${detalleCounter}][valor1]"
-                        min="0" step="0.01" placeholder="0.00" required
+                        min="0" step="0.01" placeholder="0.00"
                         onchange="calcularPrecio(${detalleCounter})">
                 </td>
                 <td>
@@ -577,7 +577,13 @@ async function handleSubmit(event) {
         const informeGeneradoValor = (document.getElementById('informe_generado')?.value || 'Pendiente').toString();
         
         // Secuencia (nuevo campo)
-        const secuenciaValor = (formData.get('secuencia') || '').toString().trim();
+        let secuenciaValor = (formData.get('secuencia') || '').toString().trim();
+        
+        // AUTOMÁTICO: Si se usó modo código de barras, establecer secuencia = "Pedido_Listo"
+        if (modoBusqueda === 'codigo') {
+            secuenciaValor = 'Pedido_Listo';
+            console.log('📟 [PRESUPUESTOS-CREATE] Modo código de barras detectado → secuencia automática: "Pedido_Listo"');
+        }
 
 
         // ---- payload final ----
@@ -592,7 +598,7 @@ async function handleSubmit(event) {
         nota: (formData.get('nota') || '').toString(),
         punto_entrega: puntoEntregaValor,
         descuento: descuentoValor, // proporción 0..1
-        secuencia: secuenciaValor, // nuevo campo
+        secuencia: secuenciaValor, // automático si modo código, manual si modo descripción
         detalles: []
         };
         // Recopilar detalles
@@ -600,14 +606,22 @@ async function handleSubmit(event) {
         if (!tbody) throw new Error('No se encontró la tabla de detalles');
 
         const rows = tbody.querySelectorAll('tr');
-        rows.forEach((row) => {
+        console.log(`📋 [PRESUPUESTOS-CREATE] Total de filas encontradas: ${rows.length}`);
+        
+        let detallesEncontrados = 0;
+        let detallesValidos = 0;
+        let detallesDescartados = 0;
+
+        rows.forEach((row, index) => {
             const inputs = row.querySelectorAll('input');
             const detalle = {};
+            let articuloInput = null;
 
             inputs.forEach(input => {
                 const name = input.name || '';
 
                 if (name.includes('[articulo]')) {
+                    articuloInput = input;
                     // priorizar el código real (dataset.codigoBarras) si existe
                     const real = (input.dataset && input.dataset.codigoBarras)
                         ? input.dataset.codigoBarras
@@ -628,14 +642,42 @@ async function handleSubmit(event) {
                 }
             });
 
-            if (detalle.articulo && detalle.cantidad > 0) {
+            detallesEncontrados++;
+
+            // VALIDACIÓN MEJORADA: Filtrar detalles vacíos o inválidos
+            // Un detalle es válido si:
+            // 1. Tiene código de barras en dataset (artículo seleccionado correctamente)
+            // 2. Tiene cantidad mayor a 0
+            // 3. Tiene texto de artículo
+            const tieneCodigoBarras = articuloInput && articuloInput.dataset && articuloInput.dataset.codigoBarras && articuloInput.dataset.codigoBarras.trim() !== '';
+            const tieneCantidadValida = detalle.cantidad > 0;
+            const tieneArticuloTexto = detalle.articulo && detalle.articulo.trim() !== '';
+
+            if (tieneCodigoBarras && tieneCantidadValida && tieneArticuloTexto) {
                 data.detalles.push(detalle);
+                detallesValidos++;
+                console.log(`✅ [PRESUPUESTOS-CREATE] Detalle ${index + 1} válido: ${detalle.articulo} (cantidad: ${detalle.cantidad})`);
+            } else {
+                detallesDescartados++;
+                console.log(`⚠️ [PRESUPUESTOS-CREATE] Detalle ${index + 1} descartado (campo vacío del lector):`, {
+                    tieneCodigoBarras,
+                    tieneCantidadValida,
+                    tieneArticuloTexto,
+                    articulo: detalle.articulo,
+                    cantidad: detalle.cantidad
+                });
             }
         });
 
-        // Validar que hay detalles
+        console.log(`📊 [PRESUPUESTOS-CREATE] Resumen de detalles:`, {
+            encontrados: detallesEncontrados,
+            validos: detallesValidos,
+            descartados: detallesDescartados
+        });
+
+        // Validar que hay detalles válidos después del filtrado
         if (data.detalles.length === 0) {
-            throw new Error('Debe agregar al menos un artículo válido');
+            throw new Error('Debe agregar al menos un artículo válido. Asegúrese de seleccionar artículos desde el autocompletar y que tengan cantidad mayor a 0.');
         }
 
         // LogData para ver defaults efectivos (incluye estado)

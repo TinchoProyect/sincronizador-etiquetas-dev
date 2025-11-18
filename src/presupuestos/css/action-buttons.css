@@ -44,6 +44,22 @@
     transform: none;
 }
 
+/* Botón de imprimir */
+.btn-print {
+    background-color: #f3e5f5;
+    border-color: #9c27b0;
+    color: #7b1fa2;
+}
+
+.btn-print:hover {
+    background-color: #e1bee7;
+    border-color: #7b1fa2;
+}
+
+.btn-print:active {
+    background-color: #ce93d8;
+}
+
 /* Botón de editar */
 .btn-edit {
     background-color: #e3f2fd;

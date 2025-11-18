@@ -1,4 +1,4 @@
-﻿// MÄ‚Å‚dulo de ediciÄ‚Å‚n de presupuestos - Integrado con detalles-common.js
+﻿﻿// MÄ‚Å‚dulo de ediciÄ‚Å‚n de presupuestos - Integrado con detalles-common.js
 (function() {
   console.log('[EDIT] Cargando mÄ‚Å‚dulo de ediciÄ‚Å‚n integrado...');
 

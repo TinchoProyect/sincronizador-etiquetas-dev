@@ -1050,6 +1050,9 @@ function updatePresupuestosTable(data) {
             </td>
             <td class="text-center">
                 <div class="action-buttons">
+                    <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
+                        🖨️
+                    </button>
                     <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
                         ✏️
                     </button>
@@ -1688,6 +1691,16 @@ function handleNuevoPresupuesto() {
     
     // Redirigir a la página de crear presupuesto
     window.location.href = '/pages/crear-presupuesto.html';
+}
+
+/**
+ * Imprimir presupuesto desde la tabla
+ */
+function imprimirPresupuestoDesdeTabla(presupuestoId) {
+    console.log(`🖨️ [PRESUPUESTOS-JS] Navegando a imprimir presupuesto ID: ${presupuestoId}`);
+    
+    // Redirigir a la página de impresión con el ID
+    window.location.href = `/pages/imprimir-presupuesto.html?id=${presupuestoId}`;
 }
 
 /**
