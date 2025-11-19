@@ -5,6 +5,7 @@ let detalleCounter = 0;
 let clienteSeleccionado = null;
 let currentRequest = null;
 let selectedIndex = -1;
+let modoBusqueda = 'descripcion'; // 'descripcion' | 'codigo'
 
 // Exponer funciones usadas por atributos inline (onclick)
 window.agregarDetalle = agregarDetalle;
@@ -12,6 +13,70 @@ window.removerDetalle = removerDetalle;
 window.seleccionarArticuloPorClick = seleccionarArticuloPorClick;
 window.seleccionarArticulo = seleccionarArticulo;
 window.seleccionarClientePorClick = seleccionarClientePorClick;
+window.toggleModoBusqueda = toggleModoBusqueda;
+
+/**
+ * Toggle entre modo descripción y modo código de barras
+ */
+function toggleModoBusqueda() {
+    const btn = document.getElementById('btn-toggle-busqueda');
+    if (!btn) return;
+    
+    if (modoBusqueda === 'descripcion') {
+        modoBusqueda = 'codigo';
+        btn.textContent = '📟 Modo: Código de Barras';
+        btn.classList.add('modo-codigo');
+        console.log('[MODO-BUSQUEDA] Cambiado a: Código de Barras');
+        
+        // AUTO-FOCUS: Poner foco en el campo de código de barras
+        setTimeout(() => {
+            enfocarCampoCodigoBarras();
+        }, 100);
+    } else {
+        modoBusqueda = 'descripcion';
+        btn.textContent = '🔍 Modo: Descripción';
+        btn.classList.remove('modo-codigo');
+        console.log('[MODO-BUSQUEDA] Cambiado a: Descripción');
+    }
+}
+
+/**
+ * Enfocar el campo de código de barras apropiado
+ * Busca el primer input vacío o el de la última fila
+ */
+function enfocarCampoCodigoBarras() {
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) {
+        console.warn('[MODO-CODIGO] No se encontró tbody para enfocar');
+        return;
+    }
+    
+    const inputs = tbody.querySelectorAll('input[name*="[articulo]"]');
+    if (inputs.length === 0) {
+        console.warn('[MODO-CODIGO] No hay inputs de artículo disponibles');
+        return;
+    }
+    
+    // Buscar primer input vacío
+    let inputToFocus = null;
+    for (let input of inputs) {
+        if (!input.value || input.value.trim() === '') {
+            inputToFocus = input;
+            break;
+        }
+    }
+    
+    // Si todos tienen valor, usar el último
+    if (!inputToFocus) {
+        inputToFocus = inputs[inputs.length - 1];
+    }
+    
+    if (inputToFocus) {
+        inputToFocus.focus();
+        inputToFocus.select();
+        console.log('[MODO-CODIGO] Foco puesto en campo de código de barras');
+    }
+}
 
 function getClienteIdActivo() {
   if (clienteSeleccionado && clienteSeleccionado.cliente_id) {
@@ -215,16 +280,17 @@ function agregarDetalle() {
     row.innerHTML = `
                 <td>
                     <input type="text" name="detalles[${detalleCounter}][articulo]"
-                        placeholder="Código o descripción del artículo" required>
+                        placeholder="Código o descripción del artículo"
+                        autocomplete="off">
                 </td>
                 <td>
                     <input type="number" name="detalles[${detalleCounter}][cantidad]"
-                        min="0.01" step="0.01" placeholder="1" required
+                        min="0.01" step="0.01" placeholder="1"
                         onchange="calcularPrecio(${detalleCounter})">
                 </td>
                 <td>
                     <input type="number" name="detalles[${detalleCounter}][valor1]"
-                        min="0" step="0.01" placeholder="0.00" required
+                        min="0" step="0.01" placeholder="0.00"
                         onchange="calcularPrecio(${detalleCounter})">
                 </td>
                 <td>
@@ -511,7 +577,13 @@ async function handleSubmit(event) {
         const informeGeneradoValor = (document.getElementById('informe_generado')?.value || 'Pendiente').toString();
         
         // Secuencia (nuevo campo)
-        const secuenciaValor = (formData.get('secuencia') || '').toString().trim();
+        let secuenciaValor = (formData.get('secuencia') || '').toString().trim();
+        
+        // AUTOMÁTICO: Si se usó modo código de barras, establecer secuencia = "Pedido_Listo"
+        if (modoBusqueda === 'codigo') {
+            secuenciaValor = 'Pedido_Listo';
+            console.log('📟 [PRESUPUESTOS-CREATE] Modo código de barras detectado → secuencia automática: "Pedido_Listo"');
+        }
 
 
         // ---- payload final ----
@@ -526,7 +598,7 @@ async function handleSubmit(event) {
         nota: (formData.get('nota') || '').toString(),
         punto_entrega: puntoEntregaValor,
         descuento: descuentoValor, // proporción 0..1
-        secuencia: secuenciaValor, // nuevo campo
+        secuencia: secuenciaValor, // automático si modo código, manual si modo descripción
         detalles: []
         };
         // Recopilar detalles
@@ -534,14 +606,22 @@ async function handleSubmit(event) {
         if (!tbody) throw new Error('No se encontró la tabla de detalles');
 
         const rows = tbody.querySelectorAll('tr');
-        rows.forEach((row) => {
+        console.log(`📋 [PRESUPUESTOS-CREATE] Total de filas encontradas: ${rows.length}`);
+        
+        let detallesEncontrados = 0;
+        let detallesValidos = 0;
+        let detallesDescartados = 0;
+
+        rows.forEach((row, index) => {
             const inputs = row.querySelectorAll('input');
             const detalle = {};
+            let articuloInput = null;
 
             inputs.forEach(input => {
                 const name = input.name || '';
 
                 if (name.includes('[articulo]')) {
+                    articuloInput = input;
                     // priorizar el código real (dataset.codigoBarras) si existe
                     const real = (input.dataset && input.dataset.codigoBarras)
                         ? input.dataset.codigoBarras
@@ -562,14 +642,42 @@ async function handleSubmit(event) {
                 }
             });
 
-            if (detalle.articulo && detalle.cantidad > 0) {
+            detallesEncontrados++;
+
+            // VALIDACIÓN MEJORADA: Filtrar detalles vacíos o inválidos
+            // Un detalle es válido si:
+            // 1. Tiene código de barras en dataset (artículo seleccionado correctamente)
+            // 2. Tiene cantidad mayor a 0
+            // 3. Tiene texto de artículo
+            const tieneCodigoBarras = articuloInput && articuloInput.dataset && articuloInput.dataset.codigoBarras && articuloInput.dataset.codigoBarras.trim() !== '';
+            const tieneCantidadValida = detalle.cantidad > 0;
+            const tieneArticuloTexto = detalle.articulo && detalle.articulo.trim() !== '';
+
+            if (tieneCodigoBarras && tieneCantidadValida && tieneArticuloTexto) {
                 data.detalles.push(detalle);
+                detallesValidos++;
+                console.log(`✅ [PRESUPUESTOS-CREATE] Detalle ${index + 1} válido: ${detalle.articulo} (cantidad: ${detalle.cantidad})`);
+            } else {
+                detallesDescartados++;
+                console.log(`⚠️ [PRESUPUESTOS-CREATE] Detalle ${index + 1} descartado (campo vacío del lector):`, {
+                    tieneCodigoBarras,
+                    tieneCantidadValida,
+                    tieneArticuloTexto,
+                    articulo: detalle.articulo,
+                    cantidad: detalle.cantidad
+                });
             }
         });
 
-        // Validar que hay detalles
+        console.log(`📊 [PRESUPUESTOS-CREATE] Resumen de detalles:`, {
+            encontrados: detallesEncontrados,
+            validos: detallesValidos,
+            descartados: detallesDescartados
+        });
+
+        // Validar que hay detalles válidos después del filtrado
         if (data.detalles.length === 0) {
-            throw new Error('Debe agregar al menos un artículo válido');
+            throw new Error('Debe agregar al menos un artículo válido. Asegúrese de seleccionar artículos desde el autocompletar y que tengan cantidad mayor a 0.');
         }
 
         // LogData para ver defaults efectivos (incluye estado)
@@ -993,8 +1101,7 @@ function seleccionarCliente(element) {
     clienteSeleccionado = {
         cliente_id: parseInt(clienteId, 10),
         numero_fmt: numeroFormateado,
-        nombre: nombreCompleto.split(' ')[0] || '',
-        apellido: nombreCompleto.split(' ').slice(1).join(' ') || '',
+        nombre: nombreCompleto,
         cuit: cuit
     };
 
@@ -1004,6 +1111,14 @@ function seleccionarCliente(element) {
 
     // Log según especificación
     console.log(`✅ [NuevoPresupuesto] Cliente seleccionado`, clienteSeleccionado);
+
+    // Mostrar nombre del cliente en grande
+    if (typeof window.mostrarNombreCliente === 'function') {
+        window.mostrarNombreCliente({
+            nombre: nombreCompleto,
+            cuit: cuit
+        });
+    }
 
     // Ocultar sugerencias
     ocultarSugerencias();
@@ -1038,13 +1153,16 @@ function formatearNombreCliente(nombre, apellido) {
 }
 
 /**
- * Normalizar texto para búsqueda (tolerancia a acentos)
+ * Normalizar texto para búsqueda (tolerancia a acentos y caracteres especiales)
  */
 function normalizarTexto(texto) {
     return (texto ?? '')
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+        .replace(/[\u0300-\u036f]/g, '') // Remover acentos
+        .replace(/[^\w\s]/g, ' ') // Reemplazar caracteres especiales (/, -, etc.) por espacios
+        .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
+        .trim();
 }
 // === Cache opcional de artículos + helpers ===
 window.__articulosCache = window.__articulosCache || [];
@@ -1059,12 +1177,56 @@ async function precargarArticulosAll() {
 function filtrarArticulosLocal(query, items) {
   const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
 
+  console.log('[ARTICULOS-FILTER] Iniciando filtrado...', { 
+    modo: modoBusqueda,
+    query_original: query,
+    query_normalizado: normalizarTexto(query),
+    terms, 
+    items_recibidos: items.length 
+  });
+
   const out = (items || []).filter(a => {
-    const blob = normalizarTexto(
-      [a.description ?? a.descripcion ?? '', a.articulo_numero ?? '', a.codigo_barras ?? ''].join(' ')
-    );
-    // AND: todos los términos deben estar
-    return terms.every(t => blob.includes(t));
+    let cumple = false;
+    
+    if (modoBusqueda === 'codigo') {
+      // MODO CÓDIGO DE BARRAS: Búsqueda exacta en código de barras
+      const codigoBarras = (a.codigo_barras || '').toString().toLowerCase();
+      const queryLower = query.toLowerCase();
+      cumple = codigoBarras.includes(queryLower);
+      
+      // Log detallado para los primeros 5 artículos (debug)
+      if (items.indexOf(a) < 5) {
+        console.log('[ARTICULOS-FILTER] [MODO-CODIGO] Evaluando artículo:', {
+          descripcion: a.description ?? a.descripcion,
+          codigo_barras: a.codigo_barras,
+          query_buscado: queryLower,
+          cumple: cumple
+        });
+      }
+    } else {
+      // MODO DESCRIPCIÓN: Búsqueda por subcadenas en descripción
+      const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
+      
+      // Verificar si TODOS los términos están presentes como SUBCADENAS (fragmentos)
+      cumple = terms.every(t => descripcionNormalizada.includes(t));
+      
+      // Log detallado para los primeros 5 artículos (debug)
+      if (items.indexOf(a) < 5) {
+        console.log('[ARTICULOS-FILTER] [MODO-DESCRIPCION] Evaluando artículo:', {
+          descripcion_original: a.description ?? a.descripcion,
+          descripcion_normalizada: descripcionNormalizada,
+          terms_buscados: terms,
+          cumple_todos: cumple,
+          detalles: terms.map(t => ({ 
+            termino: t, 
+            encontrado: descripcionNormalizada.includes(t),
+            posicion: descripcionNormalizada.indexOf(t)
+          }))
+        });
+      }
+    }
+    
+    return cumple;
   });
 
   // Orden: stock>0 primero, luego descripción
@@ -1075,6 +1237,15 @@ function filtrarArticulosLocal(query, items) {
     const la = (A.description ?? A.descripcion ?? '').toString();
     const lb = (B.description ?? B.descripcion ?? '').toString();
     return la.localeCompare(lb);
+  });
+
+  // Log de depuración final
+  console.log('[ARTICULOS-FILTER] Filtrado completado:', { 
+    modo: modoBusqueda,
+    query, 
+    terms, 
+    items_recibidos: items.length,
+    resultados_filtrados: out.length 
   });
 
   // Limite visual (podés subirlo a 100 si querés)
@@ -1128,6 +1299,12 @@ const handleArticuloInput = debounce(async function(event) {
     return;
   }
 
+  // EN MODO CÓDIGO: No mostrar sugerencias, solo esperar Enter
+  if (modoBusqueda === 'codigo') {
+    console.log('[MODO-CODIGO] Input detectado, esperando Enter para procesar');
+    return;
+  }
+
   try {
     mostrarLoadingArticulo(input);
 
@@ -1142,10 +1319,19 @@ const handleArticuloInput = debounce(async function(event) {
         const sim = await simularBusquedaArticulos(query);
         items = filtrarArticulosLocal(query, sim.data || []);
       } else {
-        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(query)}&limit=200`);
+        // CORRECCIÓN: Usar solo el primer término para el servidor (más amplio)
+        // y luego filtrar localmente con AND estricto
+        const primerTermino = query.split(/\s+/)[0] || query;
+        const queryParaServidor = primerTermino;
+        
+        console.log(`[ARTICULOS] Query para servidor: "${queryParaServidor}" (filtrado local aplicará AND completo)`);
+        
+        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`);
         if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
         const body = await response.json();
         const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+        
+        // Aplicar filtro local con TODOS los términos del query original
         items = filtrarArticulosLocal(query, arr);
       }
     }
@@ -1232,6 +1418,20 @@ async function simularBusquedaArticulos(query) {
  * Manejar teclas especiales para artículos
  */
 function handleArticuloKeydown(event) {
+    // MODO CÓDIGO DE BARRAS: Detectar Enter para carga directa
+    if (event.key === 'Enter' && modoBusqueda === 'codigo') {
+        event.preventDefault();
+        const input = event.target;
+        const query = (input.value || '').trim();
+        
+        if (query.length > 0) {
+            console.log('[MODO-CODIGO] Enter detectado, procesando código:', query);
+            handleCodigoBarrasEnter(input, query);
+        }
+        return;
+    }
+    
+    // MODO DESCRIPCIÓN: Comportamiento normal con sugerencias
     const sugerenciasContainer = document.querySelector('.articulo-sugerencias');
     if (!sugerenciasContainer || sugerenciasContainer.style.display === 'none') return;
 
@@ -1265,6 +1465,271 @@ function handleArticuloKeydown(event) {
             ocultarSugerenciasArticulo();
             break;
     }
+}
+
+/**
+ * Manejar escaneo de código de barras (Enter en modo código)
+ * Busca el artículo, verifica si ya existe en el detalle, y suma cantidad o agrega nuevo
+ */
+async function handleCodigoBarrasEnter(input, codigoBarras) {
+    console.log('[MODO-CODIGO] Procesando código de barras:', codigoBarras);
+    
+    try {
+        // Ocultar sugerencias si están visibles
+        ocultarSugerenciasArticulo();
+        
+        // Buscar artículo por código exacto
+        const articulo = await buscarArticuloPorCodigoExacto(codigoBarras);
+        
+        if (!articulo) {
+            console.warn('[MODO-CODIGO] No se encontró artículo con código:', codigoBarras);
+            mostrarMensaje(`No se encontró artículo con código: ${codigoBarras}`, 'error');
+            
+            // Limpiar campo y mantener foco
+            input.value = '';
+            input.focus();
+            return;
+        }
+        
+        console.log('[MODO-CODIGO] Artículo encontrado:', articulo);
+        
+        // Verificar si el artículo ya existe en el detalle
+        const filaExistente = buscarArticuloEnDetalle(articulo.codigo_barras);
+        
+        if (filaExistente) {
+            // Artículo ya existe: sumar 1 a la cantidad
+            console.log('[MODO-CODIGO] Artículo ya existe en detalle, sumando cantidad');
+            incrementarCantidadArticulo(filaExistente);
+        } else {
+            // Artículo nuevo: agregar fila con cantidad 1
+            console.log('[MODO-CODIGO] Artículo nuevo, agregando al detalle');
+            await agregarArticuloAlDetalle(articulo, input);
+        }
+        
+        // Limpiar campo y mantener foco para siguiente escaneo
+        input.value = '';
+        input.focus();
+        
+        console.log('[MODO-CODIGO] Código procesado exitosamente, listo para siguiente escaneo');
+        
+    } catch (error) {
+        console.error('[MODO-CODIGO] Error al procesar código de barras:', error);
+        mostrarMensaje(`Error al procesar código: ${error.message}`, 'error');
+        
+        // Limpiar campo y mantener foco
+        input.value = '';
+        input.focus();
+    }
+}
+
+/**
+ * Buscar artículo por código de barras exacto
+ */
+async function buscarArticuloPorCodigoExacto(codigoBarras) {
+    console.log('[MODO-CODIGO] Buscando artículo por código exacto:', codigoBarras);
+    
+    try {
+        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=100`);
+        
+        if (!response.ok) {
+            throw new Error(`Error HTTP ${response.status}`);
+        }
+        
+        const body = await response.json();
+        const articulos = Array.isArray(body) ? body : (body.data || body.items || []);
+        
+        // Buscar coincidencia exacta en código de barras
+        const articuloExacto = articulos.find(a => {
+            const codigo = (a.codigo_barras || '').toString().toLowerCase();
+            return codigo === codigoBarras.toLowerCase();
+        });
+        
+        if (articuloExacto) {
+            console.log('[MODO-CODIGO] Coincidencia exacta encontrada:', articuloExacto);
+            return articuloExacto;
+        }
+        
+        // Si no hay coincidencia exacta, buscar que contenga el código
+        const articuloContiene = articulos.find(a => {
+            const codigo = (a.codigo_barras || '').toString().toLowerCase();
+            return codigo.includes(codigoBarras.toLowerCase());
+        });
+        
+        if (articuloContiene) {
+            console.log('[MODO-CODIGO] Coincidencia parcial encontrada:', articuloContiene);
+            return articuloContiene;
+        }
+        
+        console.log('[MODO-CODIGO] No se encontró artículo con código:', codigoBarras);
+        return null;
+        
+    } catch (error) {
+        console.error('[MODO-CODIGO] Error en búsqueda de artículo:', error);
+        throw error;
+    }
+}
+
+/**
+ * Buscar si un artículo ya existe en el detalle del presupuesto
+ * Retorna la fila (tr) si existe, null si no
+ */
+function buscarArticuloEnDetalle(codigoBarras) {
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) return null;
+    
+    const rows = tbody.querySelectorAll('tr');
+    
+    for (let row of rows) {
+        const articuloInput = row.querySelector('input[name*="[articulo]"]');
+        if (!articuloInput) continue;
+        
+        // Verificar por código de barras guardado en dataset
+        const codigoGuardado = (articuloInput.dataset.codigoBarras || '').toString().toLowerCase();
+        const codigoBuscado = (codigoBarras || '').toString().toLowerCase();
+        
+        if (codigoGuardado && codigoGuardado === codigoBuscado) {
+            console.log('[MODO-CODIGO] Artículo encontrado en detalle:', row.id);
+            return row;
+        }
+    }
+    
+    console.log('[MODO-CODIGO] Artículo no existe en detalle');
+    return null;
+}
+
+/**
+ * Incrementar cantidad de un artículo existente en el detalle
+ */
+function incrementarCantidadArticulo(row) {
+    const cantidadInput = row.querySelector('input[name*="[cantidad]"]');
+    if (!cantidadInput) {
+        console.error('[MODO-CODIGO] No se encontró input de cantidad en la fila');
+        return;
+    }
+    
+    const cantidadActual = parseFloat(cantidadInput.value) || 0;
+    const nuevaCantidad = cantidadActual + 1;
+    
+    console.log(`[MODO-CODIGO] Incrementando cantidad: ${cantidadActual} -> ${nuevaCantidad}`);
+    
+    setCantidad(cantidadInput, nuevaCantidad);
+    
+    // Recalcular precio
+    const detalleId = getDetalleIdFromInput(cantidadInput);
+    if (detalleId != null) {
+        calcularPrecio(detalleId);
+    }
+    
+    // Efecto visual: resaltar fila brevemente
+    row.style.backgroundColor = '#d4edda';
+    setTimeout(() => {
+        row.style.backgroundColor = '';
+    }, 500);
+}
+
+/**
+ * Agregar artículo al detalle (nueva fila)
+ */
+async function agregarArticuloAlDetalle(articulo, inputOriginal) {
+    console.log('[MODO-CODIGO] Agregando artículo al detalle:', articulo);
+    
+    // Buscar la fila del input original
+    const filaActual = inputOriginal.closest('tr');
+    const articuloInputActual = filaActual?.querySelector('input[name*="[articulo]"]');
+    
+    // Si la fila actual está vacía, usarla; si no, crear nueva
+    const usarFilaActual = articuloInputActual && (!articuloInputActual.value || articuloInputActual.value.trim() === '');
+    
+    let targetRow;
+    let targetInput;
+    
+    if (usarFilaActual) {
+        console.log('[MODO-CODIGO] Usando fila actual (vacía)');
+        targetRow = filaActual;
+        targetInput = articuloInputActual;
+    } else {
+        console.log('[MODO-CODIGO] Creando nueva fila');
+        agregarDetalle();
+        
+        // Obtener la última fila agregada
+        const tbody = document.getElementById('detalles-tbody');
+        const rows = tbody.querySelectorAll('tr');
+        targetRow = rows[rows.length - 1];
+        targetInput = targetRow.querySelector('input[name*="[articulo]"]');
+    }
+    
+    if (!targetInput) {
+        console.error('[MODO-CODIGO] No se pudo obtener input de artículo');
+        return;
+    }
+    
+    // Llenar datos del artículo
+    const description = (articulo.description || articulo.descripcion || '').toString();
+    const codigoBarras = (articulo.codigo_barras || '').toString();
+    const articuloNumero = (articulo.articulo_numero || '').toString();
+    
+    targetInput.value = description;
+    targetInput.dataset.codigoBarras = codigoBarras;
+    targetInput.dataset.articuloNumero = articuloNumero;
+    
+    // Establecer cantidad = 1
+    const cantidadInput = targetRow.querySelector('input[name*="[cantidad]"]');
+    if (cantidadInput) {
+        setCantidad(cantidadInput, 1);
+    }
+    
+    // Establecer IVA por defecto
+    const iva1Input = targetRow.querySelector('input[name*="[iva1]"]');
+    if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) {
+        setNumeric(iva1Input, 21, 2, 21);
+    }
+    
+    // Obtener precios del backend
+    const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+    const detalleId = getDetalleIdFromInput(cantidadInput || targetInput);
+    
+    try {
+        const params = new URLSearchParams();
+        params.set('cliente_id', String(clienteId));
+        if (codigoBarras) params.set('codigo_barras', codigoBarras);
+        
+        const url = `/api/presupuestos/precios?${params.toString()}`;
+        console.log('[MODO-CODIGO] Obteniendo precios:', url);
+        
+        const response = await fetch(url);
+        if (response.ok) {
+            const body = await response.json();
+            const valor = Number(body?.data?.valor1);
+            const iva = Number(body?.data?.iva);
+            
+            const valor1Input = targetRow.querySelector('input[name*="[valor1]"]');
+            
+            if (Number.isFinite(valor) && valor1Input) {
+                setNumeric(valor1Input, valor, 2, 0);
+            }
+            
+            if (Number.isFinite(iva) && iva1Input) {
+                iva1Input.dataset.ivaBase = String(iva);
+                const tipoSel = document.getElementById('tipo_comprobante');
+                const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+                setNumeric(iva1Input, visibleIva, 2, 21);
+            }
+            
+            if (detalleId != null) {
+                calcularPrecio(detalleId);
+            }
+        }
+    } catch (error) {
+        console.warn('[MODO-CODIGO] Error al obtener precios:', error);
+    }
+    
+    // Efecto visual: resaltar fila brevemente
+    targetRow.style.backgroundColor = '#d1ecf1';
+    setTimeout(() => {
+        targetRow.style.backgroundColor = '';
+    }, 500);
+    
+    console.log('[MODO-CODIGO] Artículo agregado exitosamente');
 }
 
 /**

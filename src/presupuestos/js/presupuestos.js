@@ -11,12 +11,14 @@ console.log('🔍 [PRESUPUESTOS-JS] Inicializando módulo frontend completo...')
 const AUTOLOAD_ON_START = true;
 function autoCargarAlAbrir() {
   if (window.__presupuestosAutocargados) return;
-  const btn = document.getElementById('btn-cargar-datos');
-  if (!btn) return;
   window.__presupuestosAutocargados = true;
-  console.log('[PRESUPUESTOS-JS] Autocarga inicial → disparando click en btn-cargar-datos');
+  console.log('[PRESUPUESTOS-JS] Autocarga inicial → cargando datos con filtros restaurados');
   // Pequeño defer para asegurar que los listeners ya están bindeados
-  setTimeout(() => btn.dispatchEvent(new Event('click')), 0);
+  // Si hay filtros guardados, cargar con maintainFilters=true para aplicarlos
+  const hayFiltrosGuardados = sessionStorage.getItem('presupuestos_filtros_activos');
+  setTimeout(() => {
+    handleCargarDatos(1, hayFiltrosGuardados ? true : false);
+  }, 100);
 }
 
 // Configuración global
@@ -124,6 +126,9 @@ function initializeApp() {
     // Actualizar indicador de estado
     updateStatusIndicator('loading', 'Inicializando módulo...');
     
+    // Restaurar filtros guardados si existen
+    restoreFiltersFromStorage();
+    
     // Cargar estadísticas iniciales
     loadEstadisticas();
     
@@ -174,7 +179,6 @@ function setupEventListeners() {
     // Filtros
     const filtroCategoria = document.getElementById('filtro-categoria');
     const buscarCliente = document.getElementById('buscar-cliente');
-    const filtroEstado = document.getElementById('filtro-estado'); // Nuevo filtro por estado – 2024-12-19
     
     if (filtroCategoria) {
         filtroCategoria.addEventListener('change', handleFiltroCategoria);
@@ -186,11 +190,8 @@ function setupEventListeners() {
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-cliente');
     }
     
-    // Nuevo event listener para filtro por estado - Filtro por Estado – 2024-12-19
-    if (filtroEstado) {
-        filtroEstado.addEventListener('change', handleFiltroEstado);
-        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-estado');
-    }
+    // Los botones de estado se crean dinámicamente en updateEstadosFilter()
+    console.log('✅ [PRESUPUESTOS-JS] Botones de estado se configurarán dinámicamente');
     
     console.log('✅ [PRESUPUESTOS-JS] Event listeners configurados');
     if (AUTOLOAD_ON_START) autoCargarAlAbrir();
@@ -251,13 +252,13 @@ function updateSyncButtonState(authStatus) {
         btnSincronizar.disabled = true;
         btnSincronizar.className = 'btn btn-secondary';
     } else if (authStatus.authenticated) {
-        btnSincronizar.textContent = '🔄 Sincronizar Google Sheets';
+        btnSincronizar.textContent = '🔄 SINCRONIZAR CON SHEET';
         btnSincronizar.disabled = false;
-        btnSincronizar.className = 'btn btn-primary';
+        btnSincronizar.className = 'btn-warning btn-sync';
     } else {
-        btnSincronizar.textContent = '🔐 Autorizar Google Sheets';
+        btnSincronizar.textContent = '🔄 SINCRONIZAR CON SHEET';
         btnSincronizar.disabled = false;
-        btnSincronizar.className = 'btn btn-warning';
+        btnSincronizar.className = 'btn-warning btn-sync';
     }
 }
 
@@ -311,16 +312,15 @@ async function loadEstados() {
 }
 
 /**
- * Actualizar display de estadísticas
+ * Actualizar display de estadísticas (línea compacta)
  */
 function updateStatsDisplay(stats) {
     console.log('🔍 [PRESUPUESTOS-JS] Actualizando display de estadísticas...');
     console.log('[PRESUP/KPIS] stats=', stats);
     
+    // Solo actualizar los dos valores que se muestran en la línea compacta
     const elements = {
         'total-registros': stats.total_registros || 0,
-        'total-categorias': stats.total_categorias || 0,
-        'monto-total': '—', // <- no mostramos $0,00
         'ultima-sync': stats.ultima_sincronizacion ? 
             formatDate(stats.ultima_sincronizacion) : 'Nunca'
     };
@@ -333,7 +333,7 @@ function updateStatsDisplay(stats) {
         }
     });
     
-    console.log('✅ [PRESUPUESTOS-JS] Display de estadísticas actualizado');
+    console.log('✅ [PRESUPUESTOS-JS] Display de estadísticas actualizado (línea compacta)');
 }
 
 /**
@@ -861,21 +861,10 @@ function handleFiltroCategoria(event) {
     console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por categoría: ${categoria || 'todas'}`);
     
     appState.filtros.categoria = categoria;
+    saveFiltersToStorage();
     applyFilters();
 }
 
-/**
- * Handler: Filtro por estado - Filtro por Estado – 2024-12-19
- */
-function handleFiltroEstado(event) {
-    const select = event.target;
-    const selectedOptions = Array.from(select.selectedOptions).map(option => option.value);
-    
-    console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por estado: [${selectedOptions.join(', ')}]`);
-    
-    appState.filtros.estado = selectedOptions;
-    applyFilters();
-}
 
 /**
  * Handler: Buscar cliente con typeahead - Filtro cliente + Typeahead + Fechas – 2024-12-19
@@ -891,6 +880,7 @@ function handleBuscarCliente(event) {
     
     if (query.trim() === '') {
         hideSugerenciasClientes();
+        saveFiltersToStorage();
         applyFilters();
         return;
     }
@@ -899,11 +889,13 @@ function handleBuscarCliente(event) {
     if (/^\d{1,3}$/.test(query.trim())) {
         appState.filtros.clienteId = query.trim();
         hideSugerenciasClientes();
+        saveFiltersToStorage();
         applyFilters();
     } else {
         // Si es texto → filtrar por nombre y mostrar sugerencias
         appState.filtros.clienteName = query.trim();
         showSugerenciasClientes(query.trim());
+        saveFiltersToStorage();
         applyFilters();
     }
 }
@@ -1058,6 +1050,9 @@ function updatePresupuestosTable(data) {
             </td>
             <td class="text-center">
                 <div class="action-buttons">
+                    <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
+                        🖨️
+                    </button>
                     <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
                         ✏️
                     </button>
@@ -1110,11 +1105,16 @@ function updateCategoriasFilter(categorias) {
         }
     });
     
+    // Restaurar valor seleccionado si existe en filtros
+    if (appState.filtros.categoria) {
+        select.value = appState.filtros.categoria;
+    }
+    
     console.log('✅ [PRESUPUESTOS-JS] Filtro de categorías actualizado');
 }
 
 /**
- * Actualizar filtro de estados - Filtro por Estado – 2024-12-19
+ * Actualizar filtro de estados con botones - Filtro por Estado con Botones – 2024-12-19
  */
 function updateEstadosFilter(estados) {
     // Validar que estados sea un array
@@ -1123,50 +1123,98 @@ function updateEstadosFilter(estados) {
         estados = []; // Usar array vacío como fallback
     }
     
-    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados: ${estados.length} estados`);
+    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados con botones: ${estados.length} estados`);
     
-    const select = document.getElementById('filtro-estado');
-    if (!select) {
-        console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento filtro-estado');
+    const container = document.getElementById('botones-estado');
+    if (!container) {
+        console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento botones-estado');
         return;
     }
     
-    // Limpiar opciones existentes (excepto la primera)
-    while (select.children.length > 1) {
-        select.removeChild(select.lastChild);
-    }
+    // Limpiar contenido existente
+    container.innerHTML = '';
     
-    // Agregar nuevas opciones
+    // Si no hay estados, mostrar mensaje
     if (estados.length === 0) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = '(Sin estados)';
-        option.disabled = true;
-        select.appendChild(option);
-    } else {
-        estados.forEach(estado => {
-            if (estado) {
-                const option = document.createElement('option');
-                option.value = estado;
-                option.textContent = estado;
-                select.appendChild(option);
-            }
-        });
+        container.innerHTML = '<span class="estado-loading">(Sin estados disponibles)</span>';
+        return;
     }
     
-    console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado');
+    // Crear botones para cada estado
+    estados.forEach(estado => {
+        if (estado) {
+            const button = document.createElement('button');
+            button.className = 'btn-estado';
+            button.textContent = estado;
+            button.dataset.estado = estado;
+            button.type = 'button';
+            
+            // Marcar como activo si está en los filtros guardados
+            if (appState.filtros.estado.includes(estado)) {
+                button.classList.add('active');
+            }
+            
+            // Event listener para toggle del estado
+            button.addEventListener('click', function() {
+                toggleEstadoButton(this);
+            });
+            
+            container.appendChild(button);
+        }
+    });
+    
+    console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado con botones');
 }
 
 /**
- * Actualizar indicador de estado
+ * Toggle estado de un botón de filtro
+ */
+function toggleEstadoButton(button) {
+    const estado = button.dataset.estado;
+    const isActive = button.classList.contains('active');
+    
+    if (isActive) {
+        // Desactivar
+        button.classList.remove('active');
+        // Remover del array de filtros
+        appState.filtros.estado = appState.filtros.estado.filter(e => e !== estado);
+        console.log(`🔍 [PRESUPUESTOS-JS] Estado desactivado: ${estado}`);
+    } else {
+        // Activar
+        button.classList.add('active');
+        // Agregar al array de filtros
+        if (!appState.filtros.estado.includes(estado)) {
+            appState.filtros.estado.push(estado);
+        }
+        console.log(`🔍 [PRESUPUESTOS-JS] Estado activado: ${estado}`);
+    }
+    
+    console.log(`🔍 [PRESUPUESTOS-JS] Estados seleccionados: [${appState.filtros.estado.join(', ')}]`);
+    
+    // Guardar filtros
+    saveFiltersToStorage();
+    
+    // Aplicar filtros
+    applyFilters();
+}
+
+/**
+ * Actualizar indicador de estado compacto
  */
 function updateStatusIndicator(status, message) {
-    const indicator = document.getElementById('status-indicator');
-    const text = document.getElementById('status-text');
+    const indicatorDot = document.getElementById('status-indicator-dot');
     
-    if (indicator && text) {
-        indicator.className = `status-indicator ${status}`;
-        text.textContent = message;
+    if (indicatorDot) {
+        // Remover clases anteriores
+        indicatorDot.className = 'status-indicator-dot';
+        
+        // Agregar clase según estado
+        if (status === 'active') {
+            indicatorDot.classList.add('active');
+        } else if (status === 'error') {
+            indicatorDot.classList.add('error');
+        }
+        // Si es 'loading', usa el estado por defecto (amarillo con pulse)
         
         console.log(`🔍 [PRESUPUESTOS-JS] Estado actualizado: ${status} - ${message}`);
     }
@@ -1194,29 +1242,27 @@ function setLoading(loading) {
 }
 
 /**
- * Mostrar mensaje al usuario
+ * Mostrar mensaje al usuario - Solo indicador visual sutil
  */
 function showMessage(message, type = 'info') {
-    console.log(`🔍 [PRESUPUESTOS-JS] Mostrando mensaje: ${type} - ${message}`);
+    // Mantener console.log para depuración
+    console.log(`🔍 [PRESUPUESTOS-JS] ${type.toUpperCase()}: ${message}`);
     
     const container = document.getElementById('message-container');
     if (!container) return;
     
+    // Crear solo el círculo de color, sin texto
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
-    messageDiv.innerHTML = `
-        ${escapeHtml(message)}
-        <button class="message-close" onclick="this.parentElement.remove()">&times;</button>
-    `;
     
     container.appendChild(messageDiv);
     
-    // Auto-remove después del timeout
+    // Auto-remove después de 3 segundos
     setTimeout(() => {
         if (messageDiv.parentElement) {
             messageDiv.remove();
         }
-    }, CONFIG.MESSAGES_TIMEOUT);
+    }, 3000);
 }
 
 /**
@@ -1648,6 +1694,16 @@ function handleNuevoPresupuesto() {
 }
 
 /**
+ * Imprimir presupuesto desde la tabla
+ */
+function imprimirPresupuestoDesdeTabla(presupuestoId) {
+    console.log(`🖨️ [PRESUPUESTOS-JS] Navegando a imprimir presupuesto ID: ${presupuestoId}`);
+    
+    // Redirigir a la página de impresión con el ID
+    window.location.href = `/pages/imprimir-presupuesto.html?id=${presupuestoId}`;
+}
+
+/**
  * Editar presupuesto
  */
 function editarPresupuesto(presupuestoId) {
@@ -1948,4 +2004,119 @@ document.addEventListener('DOMContentLoaded', async function() {
     }, 2000);
 });
 
-console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación y auto-update');
+/**
+ * ===== SISTEMA DE PERSISTENCIA DE FILTROS =====
+ * Guarda y restaura filtros en sessionStorage para mantenerlos
+ * al navegar entre páginas del módulo de presupuestos
+ */
+
+const STORAGE_KEY_FILTERS = 'presupuestos_filtros_activos';
+
+/**
+ * Guardar filtros actuales en sessionStorage
+ */
+function saveFiltersToStorage() {
+    try {
+        const filtrosParaGuardar = {
+            categoria: appState.filtros.categoria || '',
+            clienteId: appState.filtros.clienteId || '',
+            clienteName: appState.filtros.clienteName || '',
+            concepto: appState.filtros.concepto || '',
+            estado: appState.filtros.estado || [],
+            // Guardar también el texto del input de búsqueda
+            buscarClienteText: document.getElementById('buscar-cliente')?.value || ''
+        };
+        
+        sessionStorage.setItem(STORAGE_KEY_FILTERS, JSON.stringify(filtrosParaGuardar));
+        console.log('💾 [FILTROS-PERSIST] Filtros guardados en sessionStorage:', filtrosParaGuardar);
+    } catch (error) {
+        console.error('❌ [FILTROS-PERSIST] Error al guardar filtros:', error);
+    }
+}
+
+/**
+ * Restaurar filtros desde sessionStorage
+ */
+function restoreFiltersFromStorage() {
+    try {
+        const filtrosGuardados = sessionStorage.getItem(STORAGE_KEY_FILTERS);
+        
+        if (!filtrosGuardados) {
+            console.log('📭 [FILTROS-PERSIST] No hay filtros guardados');
+            return;
+        }
+        
+        const filtros = JSON.parse(filtrosGuardados);
+        console.log('📥 [FILTROS-PERSIST] Restaurando filtros desde sessionStorage:', filtros);
+        
+        // Restaurar en appState
+        appState.filtros.categoria = filtros.categoria || '';
+        appState.filtros.clienteId = filtros.clienteId || '';
+        appState.filtros.clienteName = filtros.clienteName || '';
+        appState.filtros.concepto = filtros.concepto || '';
+        appState.filtros.estado = filtros.estado || [];
+        
+        // Restaurar valores visuales en los controles
+        restoreFilterControls(filtros);
+        
+        // Si hay filtros activos, aplicarlos automáticamente
+        const hayFiltrosActivos = filtros.categoria || 
+                                 filtros.clienteId || 
+                                 filtros.clienteName || 
+                                 filtros.concepto || 
+                                 (filtros.estado && filtros.estado.length > 0);
+        
+        if (hayFiltrosActivos) {
+            console.log('✅ [FILTROS-PERSIST] Filtros activos detectados - se aplicarán automáticamente');
+        }
+        
+    } catch (error) {
+        console.error('❌ [FILTROS-PERSIST] Error al restaurar filtros:', error);
+    }
+}
+
+/**
+ * Restaurar valores visuales en los controles de filtro
+ */
+function restoreFilterControls(filtros) {
+    console.log('🔍 [FILTROS-PERSIST] Restaurando valores visuales en controles...');
+    
+    // Restaurar select de categoría
+    const selectCategoria = document.getElementById('filtro-categoria');
+    if (selectCategoria && filtros.categoria) {
+        // Esperar a que las opciones se carguen
+        setTimeout(() => {
+            selectCategoria.value = filtros.categoria;
+            console.log(`✅ [FILTROS-PERSIST] Categoría restaurada: ${filtros.categoria}`);
+        }, 100);
+    }
+    
+    // Restaurar input de búsqueda de cliente
+    const inputBuscarCliente = document.getElementById('buscar-cliente');
+    if (inputBuscarCliente && filtros.buscarClienteText) {
+        inputBuscarCliente.value = filtros.buscarClienteText;
+        console.log(`✅ [FILTROS-PERSIST] Texto de búsqueda restaurado: ${filtros.buscarClienteText}`);
+    }
+    
+    // Restaurar botones de estado (se hace en updateEstadosFilter cuando se cargan los estados)
+    if (filtros.estado && filtros.estado.length > 0) {
+        console.log(`✅ [FILTROS-PERSIST] Estados a restaurar: [${filtros.estado.join(', ')}]`);
+    }
+}
+
+/**
+ * Limpiar filtros guardados (útil para reset manual)
+ */
+function clearSavedFilters() {
+    try {
+        sessionStorage.removeItem(STORAGE_KEY_FILTERS);
+        console.log('🗑️ [FILTROS-PERSIST] Filtros guardados eliminados');
+    } catch (error) {
+        console.error('❌ [FILTROS-PERSIST] Error al limpiar filtros:', error);
+    }
+}
+
+// Exponer función para uso externo si es necesario
+window.clearSavedFilters = clearSavedFilters;
+
+console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación, auto-update y persistencia de filtros');

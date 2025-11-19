@@ -11,81 +11,60 @@
 <body>
     <div class="container">
         <header>
-            <h1>📊 Módulo de Presupuestos</h1>
-            <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
+            <div class="header-main-bar">
+                <div class="header-left-group">
+                    <div class="header-title-container">
+                        <h1>📊 Gestión de Presupuestos</h1>
+                        <span id="status-indicator-dot" class="status-indicator-dot"></span>
+                    </div>
+                    <button id="btn-cargar-datos" class="btn-primary btn-compact">
+                        📊 Cargar Presupuestos
+                    </button>
+                    <span class="stats-inline">
+                        Total registros: <span id="total-registros">-</span>
+                    </span>
+                </div>
+                <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
+            </div>
+            
+            <div class="header-secondary-bar">
+                <div class="secondary-actions">
+                    <button id="btn-sincronizar" class="btn-warning btn-sync" disabled>
+                        🔄 SINCRONIZAR CON SHEET
+                    </button>
+                    <button id="btn-configuracion" class="btn-warning btn-config-icon" title="Configuración">
+                        ⚙️
+                    </button>
+                </div>
+                <span class="stats-inline">
+                    Última sync: <span id="ultima-sync">-</span>
+                </span>
+            </div>
         </header>
 
         <main>
-            <div class="welcome-section">
-                <h2>Gestión de Presupuestos</h2>
-                <p>Visualización y sincronización de presupuestos desde Google Sheets</p>
-                
-                <!-- Indicador de estado del módulo -->
-                <div id="status-indicator" class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span id="status-text">Cargando módulo...</span>
-                </div>
-            </div>
+            <!-- Botón flotante Nuevo Presupuesto -->
+            <button id="btn-nuevo-presupuesto" class="btn-floating" title="Nuevo Presupuesto">
+                +
+            </button>
 
-            <!-- Panel de estadísticas -->
-            <div class="stats-panel">
-                <div class="stat-card">
-                    <h3>Total Registros</h3>
-                    <span id="total-registros" class="stat-value">-</span>
-                </div>
-                <div class="stat-card">
-                    <h3>Tipos de comprobante</h3>
-                    <span id="total-categorias" class="stat-value">-</span>
-                </div>
-                <div class="stat-card">
-                    <h3>Monto Total</h3>
-                    <span id="monto-total" class="stat-value">$-</span>
-                </div>
-                <div class="stat-card">
-                    <h3>Última Sync</h3>
-                    <span id="ultima-sync" class="stat-value">-</span>
-                </div>
-            </div>
-
-            <!-- Controles principales -->
-            <div class="controls-section">
-                <div class="controls-left">
-                    <button id="btn-cargar-datos" class="btn-primary">
-                        📊 Cargar Presupuestos
-                    </button>
-                    <button id="btn-sincronizar" class="btn-secondary" disabled>
-                        🔄 Sincronizar Google Sheets
-                    </button>
-                    <button id="btn-configuracion" class="btn-secondary">
-                        ⚙️ Configuración
-                    </button>
-                </div>
-                <div class="controls-right">
-                    <button id="btn-nuevo-presupuesto" class="btn-success">
-                        ➕ Nuevo Presupuesto
-                    </button>
-                </div>
-            </div>
-
-            <!-- Filtros -->
-            <div class="filters-section">
-                <div class="filter-group">
+            <!-- Filtros compactos -->
+            <div class="filters-section-compact">
+                <div class="filter-item">
                     <label for="filtro-categoria">Filtrar por tipo de comprobante:</label>
                     <select id="filtro-categoria">
                         <option value="">Todos los tipos</option>
                     </select>
                 </div>
-                <div class="filter-group">
+                <div class="filter-item">
                     <label for="buscar-cliente">Buscar cliente:</label>
                     <input type="text" id="buscar-cliente" placeholder="Número (ej: 123) o nombre del cliente...">
-                    <small class="filter-help">💡 Ingrese 3 cifras para buscar por ID o texto para buscar por nombre</small>
                 </div>
-                <div class="filter-group">
-                    <label for="filtro-estado">Filtrar por estado:</label>
-                    <select id="filtro-estado" multiple size="4">
-                        <option value="" disabled>Cargando estados...</option>
-                    </select>
-                    <small class="filter-help">💡 Mantenga Ctrl/Cmd para seleccionar múltiples estados</small>
+                <div class="filter-item filter-item-estados">
+                    <label>Filtrar por estado:</label>
+                    <div id="botones-estado" class="botones-estado">
+                        <span class="estado-loading">Cargando estados...</span>
+                    </div>
                 </div>
             </div>
 
