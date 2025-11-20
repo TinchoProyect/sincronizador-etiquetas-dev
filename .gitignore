@@ -104,3 +104,8 @@ secrets/*.json
 !src/
 !src/actualizaPrecios/
 !src/actualizaPrecios/**
+
+# -----------------------
+# ⛔ Ignorar TODOS los informes .md (diagnósticos, notas, testing)
+# -----------------------
+*.md
