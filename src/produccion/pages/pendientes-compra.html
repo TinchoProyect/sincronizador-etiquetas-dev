@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pendientes de Compra - Gestiones Lamda</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        .pendientes-container {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .pendientes-header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .pendientes-header h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        .tabla-pendientes {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .tabla-pendientes thead {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color-dark, #5092a7));
+            color: white;
+        }
+
+        .tabla-pendientes th {
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .tabla-pendientes td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 13px;
+        }
+
+        .tabla-pendientes tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .badge-estado {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-en-espera {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .articulo-derivado {
+            background-color: #ffcccc !important;
+            border-left: 6px solid #dc3545 !important;
+            box-shadow: inset 0 0 0 1px #dc3545;
+        }
+
+        .articulo-derivado td {
+            font-weight: 700 !important;
+            color: #721c24 !important;
+        }
+
+        .articulo-derivado td:first-child {
+            background-color: #dc3545 !important;
+            color: white !important;
+            font-weight: 800 !important;
+        }
+
+        .contador-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-left: 15px;
+            box-shadow: 0 3px 8px rgba(220, 53, 69, 0.3);
+        }
+
+        .contador-header {
+            font-size: 3em;
+            color: #dc3545;
+            font-weight: bold;
+            margin: 0 10px;
+        }
+
+        .mensaje-vacio {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+            font-size: 16px;
+        }
+
+        .mensaje-vacio span {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 15px;
+        }
+
+        .mensaje-error {
+            text-align: center;
+            padding: 40px 20px;
+            color: #dc3545;
+            background: #f8d7da;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Pendientes de Compra</h1>
+            <a href="produccion.html" class="back-button">← Volver a Producción</a>
+        </header>
+
+        <main class="pendientes-container">
+            <div class="pendientes-header">
+                <h1>🛒 Artículos Pendientes de Compra <span id="contador-header" class="contador-header">0</span></h1>
+                <p style="color: #6c757d;">Presupuestos con artículos derivados desde el Resumen de Faltantes</p>
+            </div>
+
+            <div id="tabla-container">
+                <p style="text-align: center; padding: 40px; color: #6c757d;">Cargando...</p>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Gestiones Lamda</p>
+        </footer>
+    </div>
+
+    <script>
+        async function cargarPendientes() {
+            const container = document.getElementById('tabla-container');
+            
+            try {
+                const response = await fetch('/api/produccion/compras/pendientes');
+                const result = await response.json();
+
+                if (!result.success) {
+                    container.innerHTML = `
+                        <div class="mensaje-error">
+                            <strong>Error:</strong> ${result.error || 'No se pudieron cargar los pendientes'}
+                        </div>
+                    `;
+                    return;
+                }
+
+                const pendientes = result.data.filter(p => p.estado === 'En espera') || [];
+                
+                console.log('📊 Pendientes cargados:', pendientes.length);
+                console.log('📊 Datos RAW del backend:', result.data);
+                pendientes.forEach(p => {
+                    console.log('  - Pendiente COMPLETO:', {
+                        id: p.id,
+                        articulo_numero: p.articulo_numero,
+                        codigo_barras: p.codigo_barras,
+                        codigo_barras_real: p.codigo_barras_real,
+                        id_presupuesto_local: p.id_presupuesto_local
+                    });
+                });
+
+                if (pendientes.length === 0) {
+                    container.innerHTML = `
+                        <div class="mensaje-vacio">
+                            <span>✅</span>
+                            <p>No hay artículos pendientes de compra</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const idsPresupuestos = [...new Set(pendientes.map(p => p.id_presupuesto_local))];
+                
+                console.log('🔍 Consultando presupuestos con IDs:', idsPresupuestos);
+                
+                const presupuestosResponse = await fetch(`/api/produccion/pedidos-por-cliente?ids=${idsPresupuestos.join(',')}`);
+                const presupuestosData = await presupuestosResponse.json();
+                
+                console.log('📊 Respuesta presupuestos:', presupuestosData);
+                
+                if (!presupuestosData.success || !presupuestosData.data) {
+                    throw new Error('No se pudieron cargar datos de presupuestos');
+                }
+
+                // VALIDACIÓN: Verificar que presupuestos existan Y estén activos
+                const validacionResponse = await fetch(`/api/produccion/validar-presupuestos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids_presupuestos: idsPresupuestos })
+                });
+                
+                const validacionData = await validacionResponse.json();
+                
+                if (validacionData.success && validacionData.presupuestos_invalidos.length > 0) {
+                    console.warn('⚠️ Presupuestos inválidos detectados:', validacionData.presupuestos_invalidos);
+                    
+                    // Marcar como obsoletos automáticamente
+                    try {
+                        for (const invalido of validacionData.presupuestos_invalidos) {
+                            const pendientesObsoletos = pendientes.filter(p => p.id_presupuesto_local === invalido.id);
+                            
+                            for (const pendiente of pendientesObsoletos) {
+                                await fetch(`/api/produccion/compras/pendientes/${pendiente.id}/obsoleto`, {
+                                    method: 'PATCH'
+                                });
+                            }
+                        }
+                        
+                        console.log('✅ Pendientes obsoletos marcados automáticamente');
+                        
+                        // Recargar para mostrar solo los válidos
+                        setTimeout(() => cargarPendientes(), 1000);
+                        return;
+                    } catch (error) {
+                        console.error('Error al marcar obsoletos:', error);
+                    }
+                }
+
+                // Filtrar solo presupuestos válidos para renderizar
+                const presupuestosValidos = new Set(validacionData.presupuestos_validos.map(p => p.id));
+                const presupuestosEncontrados = new Set();
+                
+                presupuestosData.data.forEach(cliente => {
+                    cliente.articulos.forEach(art => {
+                        const idLocal = art.id_presupuesto_local || art.presupuesto_id_local;
+                        if (idLocal && presupuestosValidos.has(idLocal)) {
+                            presupuestosEncontrados.add(idLocal);
+                        }
+                    });
+                });
+
+                // Crear mapa de pendientes usando codigo_barras_real (del JOIN con articulos)
+                const pendientesMap = new Map();
+                pendientes.forEach(p => {
+                    // Usar codigo_barras_real que viene del JOIN con articulos
+                    const codigoBarras = p.codigo_barras_real || p.codigo_barras || p.articulo_numero;
+                    const key = `${codigoBarras}_${p.id_presupuesto_local}`;
+                    pendientesMap.set(key, p);
+                    console.log('📌 Pendiente mapeado:', key, '→', p.id, '(articulo_numero:', p.articulo_numero, ')');
+                });
+
+                const html = presupuestosData.data.map(cliente => {
+                    const presupuestosMap = new Map();
+                    
+                    cliente.articulos.forEach(articulo => {
+                        const presupId = articulo.presupuesto_id;
+                        if (!presupuestosMap.has(presupId)) {
+                            presupuestosMap.set(presupId, {
+                                presupuesto_id: presupId,
+                                presupuesto_id_local: articulo.id_presupuesto_local || articulo.presupuesto_id_local,
+                                presupuesto_fecha: articulo.presupuesto_fecha,
+                                articulos: []
+                            });
+                        }
+                        presupuestosMap.get(presupId).articulos.push(articulo);
+                    });
+                    
+                    console.log('📊 Presupuestos mapeados:', Array.from(presupuestosMap.values()).map(p => ({
+                        id: p.presupuesto_id,
+                        id_local: p.presupuesto_id_local,
+                        articulos: p.articulos.length
+                    })));
+                    
+                    const presupuestos = Array.from(presupuestosMap.values());
+                    
+                    return `
+                        <div class="cliente-acordeon">
+                            <div class="cliente-header" onclick="toggleCliente('cliente-${cliente.cliente_id}')" style="padding: 15px; background-color: #e9ecef; cursor: pointer; font-weight: bold;">
+                                <span class="indicador-estado indicador-${cliente.indicador_estado.toLowerCase()}">${cliente.indicador_estado}</span>
+                                ${cliente.cliente_nombre} (${cliente.total_articulos} artículos, ${cliente.total_presupuestos} presupuestos)
+                            </div>
+                            <div id="cliente-${cliente.cliente_id}" class="cliente-contenido" style="display: none; padding: 10px;">
+                                ${presupuestos.map((presupuesto, idx) => {
+                                    const fechaFormateada = new Date(presupuesto.presupuesto_fecha).toLocaleDateString('es-AR');
+                                    
+                                    return `
+                                        <div style="margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 4px; overflow: hidden;">
+                                            <div onclick="togglePresupuesto('presupuesto-${cliente.cliente_id}-${idx}')" style="padding: 12px 15px; background-color: #f8f9fa; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                                                <div>
+                                                    <strong>Presupuesto ${presupuesto.presupuesto_id}</strong>
+                                                    <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span>
+                                                    <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>
+                                                </div>
+                                                <span class="toggle-icon" style="font-size: 1.2em;">▼</span>
+                                            </div>
+                                            <div id="presupuesto-${cliente.cliente_id}-${idx}" style="display: none;">
+                                                <table class="articulos-tabla">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Artículo</th>
+                                                            <th>Descripción</th>
+                                                            <th>Cantidad</th>
+                                                            <th>Stock</th>
+                                                            <th>Faltante</th>
+                                                            <th>Acciones</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        ${presupuesto.articulos.map(articulo => {
+                                                            // RESALTAR TODOS LOS ARTÍCULOS CON FALTANTE > 0
+                                                            const faltante = parseFloat(articulo.faltante) || 0;
+                                                            const tieneFaltante = faltante > 0;
+                                                            
+                                                            // También buscar si hay pendiente específico
+                                                            const codigoBarras = articulo.articulo_numero;
+                                                            const presupuestoIdLocal = articulo.id_presupuesto_local || articulo.presupuesto_id_local || presupuesto.presupuesto_id_local;
+                                                            const key = `${codigoBarras}_${presupuestoIdLocal}`;
+                                                            const pendiente = pendientesMap.get(key);
+                                                            
+                                                            console.log('🔍 Artículo:', {
+                                                                codigo: codigoBarras,
+                                                                faltante,
+                                                                tieneFaltante,
+                                                                tienePendiente: !!pendiente,
+                                                                seResaltara: tieneFaltante
+                                                            });
+                                                            
+                                                            return `
+                                                                <tr ${tieneFaltante ? 'class="articulo-derivado"' : ''}>
+                                                                    <td>${articulo.articulo_numero}</td>
+                                                                    <td>${articulo.descripcion}</td>
+                                                                    <td>${parseFloat(articulo.pedido_total).toFixed(2)}</td>
+                                                                    <td>${parseFloat(articulo.stock_disponible).toFixed(2)}</td>
+                                                                    <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${parseFloat(articulo.faltante).toFixed(2)}</td>
+                                                                    <td>
+                                                                        ${tieneFaltante && pendiente ? `<button class="admin-button" style="background-color: #ffc107; padding: 6px 12px; font-size: 12px;" onclick="revertirPendiente(${pendiente.id})">↩️ Revertir</button>` : (tieneFaltante ? '-' : '-')}
+                                                                    </td>
+                                                                </tr>
+                                                            `;
+                                                        }).join('')}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                container.innerHTML = html;
+
+                const contadorHeader = document.getElementById('contador-header');
+                if (contadorHeader) {
+                    contadorHeader.textContent = idsPresupuestos.length;
+                }
+
+            } catch (error) {
+                console.error('Error al cargar pendientes:', error);
+                container.innerHTML = `
+                    <div class="mensaje-error">
+                        <strong>Error:</strong> No se pudieron cargar los pendientes de compra
+                    </div>
+                `;
+            }
+        }
+
+        function toggleCliente(clienteId) {
+            const contenido = document.getElementById(clienteId);
+            if (contenido) {
+                contenido.style.display = contenido.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        function togglePresupuesto(presupuestoId) {
+            const contenido = document.getElementById(presupuestoId);
+            const header = document.querySelector(`[onclick="togglePresupuesto('${presupuestoId}')"]`);
+            const icon = header ? header.querySelector('.toggle-icon') : null;
+            
+            if (contenido) {
+                if (contenido.style.display === 'none' || contenido.style.display === '') {
+                    contenido.style.display = 'block';
+                    if (icon) icon.style.transform = 'rotate(180deg)';
+                } else {
+                    contenido.style.display = 'none';
+                    if (icon) icon.style.transform = 'rotate(0deg)';
+                }
+            }
+        }
+
+        async function revertirPendiente(id) {
+            if (!confirm('¿Revertir esta derivación?')) return;
+
+            try {
+                const response = await fetch(`/api/produccion/compras/pendientes/${id}/revertir`, {
+                    method: 'PATCH'
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert('Error: ' + (result.error || 'No se pudo revertir'));
+                    return;
+                }
+
+                alert('Revertido');
+                cargarPendientes();
+
+            } catch (error) {
+                console.error('Error al revertir:', error);
+                alert('Error al revertir');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', cargarPendientes);
+    </script>
+</body>
+</html>

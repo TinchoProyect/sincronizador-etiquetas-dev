@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Imprimir Presupuesto - Gestiones Lamda</title>
+    <link rel="stylesheet" href="../css/imprimir-presupuesto.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <!-- JsBarcode para generar códigos de barras -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+</head>
+<body>
+    <!-- Botones de acción (no se imprimen) -->
+    <div class="print-actions no-print">
+        <button id="btn-volver" class="btn btn-secondary" onclick="volverALista()">
+            ← Volver a Presupuestos
+        </button>
+        
+        <!-- Selector de formato de impresión -->
+        <div class="formato-selector">
+            <label class="formato-label">Formato:</label>
+            <div class="formato-toggle">
+                <button id="btn-formato-discriminado" class="btn-formato active" onclick="cambiarFormato('IVA_DISCRIMINADO')">
+                    📊 IVA Discriminado
+                </button>
+                <button id="btn-formato-incluido" class="btn-formato" onclick="cambiarFormato('IVA_INCLUIDO')">
+                    💰 IVA Incluido
+                </button>
+            </div>
+        </div>
+        
+        <button id="btn-imprimir" class="btn btn-primary" onclick="imprimirPresupuesto()">
+            🖨️ Imprimir / Guardar PDF
+        </button>
+    </div>
+
+    <!-- Contenedor principal del presupuesto -->
+    <div id="presupuesto-container" class="presupuesto-container">
+        <!-- Loading inicial -->
+        <div id="loading-container" class="loading-container">
+            <div class="spinner"></div>
+            <p>Cargando presupuesto...</p>
+        </div>
+
+        <!-- Contenido del presupuesto (se llena dinámicamente) -->
+        <div id="presupuesto-content" class="presupuesto-content" style="display: none;">
+            <!-- Encabezado de la empresa -->
+            <div class="empresa-header">
+                <div class="empresa-principal">
+                    <h1>LAMDA</h1>
+                    <p class="empresa-fecha">Fecha: <span id="presupuesto-fecha">-</span></p>
+                </div>
+                <div class="empresa-datos-grupo">
+                    <p class="empresa-alias">ALIAS: LAMDA.SER.MARTIN</p>
+                    <p class="empresa-dato">CUIT: 23-24892174-9</p>
+                    <p class="empresa-dato">WhatsApp: (221) 6615746</p>
+                </div>
+            </div>
+
+            <!-- Título del documento (una línea horizontal) -->
+            <div class="documento-titulo">
+                <span class="titulo-texto"><strong id="documento-tipo">PRESUPUESTO</strong></span>
+                <span class="documento-numero">N° <span id="presupuesto-numero">-</span></span>
+            </div>
+
+            <!-- Información del cliente (una línea horizontal) -->
+            <div class="info-cliente">
+                <span><strong>Cliente N°:</strong> <span id="cliente-numero">-</span></span>
+                <span class="separador">|</span>
+                <span><strong>Nombre:</strong> <span id="cliente-nombre">-</span></span>
+            </div>
+
+            <!-- Tabla de artículos (sin título) -->
+            <div class="articulos-section">
+                <!-- Tabla para formato IVA_DISCRIMINADO (con columna IVA) -->
+                <table class="articulos-table" id="tabla-discriminado" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th class="col-articulo">Artículo</th>
+                            <th class="col-cantidad">Cantidad</th>
+                            <th class="col-precio">Precio Unit.</th>
+                            <th class="col-iva">IVA</th>
+                            <th class="col-subtotal">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="articulos-tbody-discriminado">
+                        <!-- Se llena dinámicamente -->
+                    </tbody>
+                </table>
+                
+                <!-- Tabla para formato IVA_INCLUIDO (sin columna IVA) -->
+                <table class="articulos-table" id="tabla-incluido" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th class="col-articulo">Artículo</th>
+                            <th class="col-cantidad">Cantidad</th>
+                            <th class="col-precio">Precio Unit.</th>
+                            <th class="col-subtotal">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="articulos-tbody-incluido">
+                        <!-- Se llena dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Totales -->
+            <div class="totales-section">
+                <div class="totales-grid">
+                    <div class="total-row">
+                        <span class="total-label">Subtotal:</span>
+                        <span class="total-value" id="total-subtotal">$ 0,00</span>
+                    </div>
+                    <div class="total-row" id="descuento-row" style="display: none;">
+                        <span class="total-label">Descuento (<span id="descuento-porcentaje">0</span>%):</span>
+                        <span class="total-value" id="total-descuento">$ 0,00</span>
+                    </div>
+                    <div class="total-row" id="iva-21-row" style="display: none;">
+                        <span class="total-label">IVA 21%:</span>
+                        <span class="total-value" id="total-iva-21">$ 0,00</span>
+                    </div>
+                    <div class="total-row" id="iva-105-row" style="display: none;">
+                        <span class="total-label">IVA 10,5%:</span>
+                        <span class="total-value" id="total-iva-105">$ 0,00</span>
+                    </div>
+                    <div class="total-row total-final">
+                        <span class="total-label">TOTAL:</span>
+                        <span class="total-value" id="total-final">$ 0,00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Observaciones -->
+            <div class="observaciones-section" id="observaciones-section" style="display: none;">
+                <h3>Observaciones</h3>
+                <p id="presupuesto-nota">-</p>
+            </div>
+
+            <!-- Pie de página -->
+            <div class="footer-info">
+                <p class="footer-text">Gracias por su preferencia</p>
+                <p class="footer-date">Documento generado el <span id="fecha-generacion">-</span></p>
+                
+                <!-- Código de barras al final -->
+                <div class="barcode-footer">
+                    <svg id="barcode"></svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error container -->
+        <div id="error-container" class="error-container" style="display: none;">
+            <div class="error-content">
+                <h2>❌ Error al Cargar Presupuesto</h2>
+                <p id="error-message">No se pudo cargar el presupuesto</p>
+                <button class="btn btn-primary" onclick="volverALista()">
+                    ← Volver a Presupuestos
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/imprimir-presupuesto.js"></script>
+</body>
+</html>

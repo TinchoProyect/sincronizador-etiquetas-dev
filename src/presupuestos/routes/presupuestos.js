@@ -15,7 +15,8 @@ const {
     obtenerEstadisticas,
     obtenerConfiguracion,
     obtenerResumen,
-    obtenerPrecioArticuloCliente   // <-- NUEVO
+    obtenerPrecioArticuloCliente,
+    obtenerDatosCliente
 } = require('../controllers/presupuestos');
 
 
@@ -64,7 +65,8 @@ const {
     editarPresupuesto: editarPresupuestoWrite,
     eliminarPresupuesto: eliminarPresupuestoWrite,
     reintentarPresupuesto,
-    obtenerEstadoPresupuesto
+    obtenerEstadoPresupuesto,
+    actualizarFormatoImpresion
 } = require('../controllers/presupuestosWrite');
 
 // Importar middleware
@@ -184,6 +186,26 @@ router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), as
         res.status(500).json({
             success: false,
             error: 'Error interno en la ruta de sugerencias de clientes',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/clientes/:id_cliente
+ * @desc Obtener datos del cliente por ID (incluyendo condicion_iva)
+ * @access Privado
+ */
+router.get('/clientes/:id_cliente', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente - Obteniendo datos del cliente');
+    
+    try {
+        await obtenerDatosCliente(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /clientes/:id_cliente:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener datos del cliente',
             message: error.message
         });
     }
@@ -408,6 +430,27 @@ router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdP
         res.status(500).json({
             success: false,
             error: 'Error interno al actualizar estado',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route PATCH /api/presupuestos/:id/formato-impresion
+ * @desc Actualizar formato de impresión del presupuesto
+ * @access Privado
+ */
+router.patch('/:id/formato-impresion', validatePermissions('presupuestos.update'), validarIdPresupuesto, sanitizarDatos, async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔍 [PRESUPUESTOS] Ruta PATCH /:id/formato-impresion - Actualizando formato de impresión ID: ${id}`);
+    
+    try {
+        await actualizarFormatoImpresion(req, res);
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] Error en ruta PATCH /:id/formato-impresion (${id}):`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al actualizar formato de impresión',
             message: error.message
         });
     }

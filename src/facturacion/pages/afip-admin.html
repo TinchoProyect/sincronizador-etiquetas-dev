@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración AFIP - Facturación</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .section-title {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .info-value.success {
+            color: #10b981;
+        }
+
+        .info-value.error {
+            color: #ef4444;
+        }
+
+        .info-value.warning {
+            color: #f59e0b;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 5px 15px rgba(107, 114, 128, 0.4);
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid #10b981;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #ef4444;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: white;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-size: 14px;
+            transition: opacity 0.3s;
+        }
+
+        .back-link:hover {
+            opacity: 0.8;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/pages/facturas.html" class="back-link">
+            ← Volver a Facturas
+        </a>
+
+        <div class="card">
+            <h1>🔐 Administración AFIP</h1>
+            <p class="subtitle">Gestión de autenticación y tokens de acceso</p>
+
+            <!-- Alertas -->
+            <div id="alert" class="alert"></div>
+
+            <!-- Sección: Estado del TA -->
+            <div class="section">
+                <div class="section-title">Estado del Token de Acceso (TA)</div>
+                
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Entorno</div>
+                        <div class="info-value" id="entorno">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Servicio</div>
+                        <div class="info-value" id="servicio">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Estado</div>
+                        <div class="info-value" id="estado">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Expira</div>
+                        <div class="info-value" id="expira">-</div>
+                    </div>
+                </div>
+
+                <div class="info-item" style="margin-bottom: 20px;">
+                    <div class="info-label">Token (primeros 50 caracteres)</div>
+                    <div class="info-value" id="token" style="font-size: 12px; word-break: break-all;">-</div>
+                </div>
+
+                <div class="timestamp" id="ultima-actualizacion">
+                    Última actualización: -
+                </div>
+            </div>
+
+            <!-- Sección: Acciones -->
+            <div class="section">
+                <div class="section-title">Acciones</div>
+                
+                <button id="btnRenovar" class="btn" onclick="renovarTA()">
+                    <span id="btnRenovarText">🔄 Renovar TA (Homologación)</span>
+                    <span id="btnRenovarSpinner" class="spinner" style="display: none;"></span>
+                </button>
+
+                <button class="btn btn-secondary" onclick="window.location.href='/pages/facturas.html'" style="margin-left: 10px;">
+                    📋 Ir a Facturas
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mostrar alerta
+        function mostrarAlerta(mensaje, tipo = 'info') {
+            const alert = document.getElementById('alert');
+            alert.className = `alert alert-${tipo} show`;
+            alert.textContent = mensaje;
+            
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        // Renovar TA
+        async function renovarTA() {
+            console.log('🔄 Renovando TA...');
+            
+            const btn = document.getElementById('btnRenovar');
+            const btnText = document.getElementById('btnRenovarText');
+            const btnSpinner = document.getElementById('btnRenovarSpinner');
+            
+            // Deshabilitar botón
+            btn.disabled = true;
+            btnText.style.display = 'none';
+            btnSpinner.style.display = 'inline-block';
+            
+            try {
+                const response = await fetch('http://localhost:3004/facturacion/afip/homo/ta/refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                console.log('📥 Respuesta:', data);
+                
+                if (data.success) {
+                    // Mensaje personalizado según si renovó o no
+                    const tipoAlerta = data.renovado === false ? 'info' : 'success';
+                    mostrarAlerta(`✅ ${data.mensaje}`, tipoAlerta);
+                    
+                    // Actualizar UI
+                    document.getElementById('entorno').textContent = data.entorno;
+                    document.getElementById('servicio').textContent = data.servicio;
+                    document.getElementById('estado').textContent = data.vigente ? 'Vigente' : 'Expirado';
+                    document.getElementById('estado').className = `info-value ${data.vigente ? 'success' : 'error'}`;
+                    document.getElementById('expira').textContent = data.expira_en_formatted || data.expira_en;
+                    document.getElementById('token').textContent = '-'; // No mostrar token por seguridad
+                    document.getElementById('ultima-actualizacion').textContent = `Última actualización: ${new Date().toLocaleString('es-AR')}`;
+                    
+                    // Log adicional con tiempo restante
+                    if (data.minutos_restantes) {
+                        const horas = Math.floor(data.minutos_restantes / 60);
+                        const minutos = data.minutos_restantes % 60;
+                        console.log(`⏱️ Tiempo restante: ${horas}h ${minutos}m`);
+                    }
+                } else {
+                    mostrarAlerta(`❌ Error: ${data.message || data.error}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                mostrarAlerta(`❌ Error de conexión: ${error.message}`, 'error');
+            } finally {
+                // Rehabilitar botón
+                btn.disabled = false;
+                btnText.style.display = 'inline';
+                btnSpinner.style.display = 'none';
+            }
+        }
+
+        // Cargar estado inicial al cargar la página
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('📄 Página cargada');
+            mostrarAlerta('ℹ️ Haz clic en "Renovar TA" para obtener un nuevo token de acceso de AFIP', 'info');
+        });
+    </script>
+</body>
+</html>
