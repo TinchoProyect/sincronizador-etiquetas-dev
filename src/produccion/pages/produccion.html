@@ -2420,8 +2420,19 @@
                 
                 if (result.success) {
                     const pendientes = result.data.filter(p => p.estado === 'En espera') || [];
-                    const idsPresupuestos = [...new Set(pendientes.map(p => p.id_presupuesto_local))];
-                    const total = idsPresupuestos.length;
+                    
+                    // CORRECCIÓN: Contar ARTÍCULOS derivados, no presupuestos
+                    const total = pendientes.length;
+                    
+                    console.log(`📊 [CONTADOR-PENDIENTES] Total artículos derivados a compra: ${total}`);
+                    if (pendientes.length > 0) {
+                        console.log(`📋 [CONTADOR-PENDIENTES] Artículos derivados:`, pendientes.map(p => ({
+                            id: p.id,
+                            articulo: p.articulo_numero,
+                            presupuesto: p.id_presupuesto_local,
+                            cantidad: p.cantidad_faltante
+                        })));
+                    }
                     
                     const contadorSolapa = document.getElementById('contador-solapa');
                     const solapaPendientes = document.getElementById('solapa-pendientes');
@@ -2442,7 +2453,7 @@
                     }
                 }
             } catch (error) {
-                console.error('Error al actualizar contador de pendientes:', error);
+                console.error('❌ [CONTADOR-PENDIENTES] Error al actualizar contador:', error);
             }
         }
 
