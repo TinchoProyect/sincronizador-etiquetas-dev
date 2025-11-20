@@ -376,25 +376,6 @@ const listarFacturas = async (req, res) => {
 const generarPDF = async (req, res) => {
     const { id } = req.params;
     console.log(`📄 [FACTURACION-CTRL] POST /facturas/${id}/pdf - Generar PDF`);
-<<<<<<< HEAD
-<<<<<<< HEAD
-    
-    try {
-        // STUB: Implementación pendiente
-        console.log('⚠️ [FACTURACION-CTRL] STUB: Generación de PDF pendiente');
-        
-        res.status(200).json({
-            success: true,
-            message: 'Funcionalidad de PDF en desarrollo',
-            data: { id }
-        });
-        
-    } catch (error) {
-        console.error('❌ [FACTURACION-CTRL] Error generando PDF:', error.message);
-        
-=======
-=======
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
 
     try {
         // Obtener datos completos de la factura
@@ -447,10 +428,6 @@ const generarPDF = async (req, res) => {
         console.error('❌ [FACTURACION-CTRL] Error generando PDF:', error.message);
         console.error('❌ [FACTURACION-CTRL] Stack:', error.stack);
 
-<<<<<<< HEAD
->>>>>>> 20413e89ff18263ab5934bfdd02ecdee0727387e
-=======
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
         res.status(500).json({
             success: false,
             error: 'Error generando PDF',

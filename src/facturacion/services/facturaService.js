@@ -396,44 +396,14 @@ const calcularTotales = (items) => {
 };
 
 /**
-<<<<<<< HEAD
-<<<<<<< HEAD
- * Obtener factura por ID
- * @param {number} id - ID de la factura
- * @returns {Promise<Object>} Factura
-=======
  * Obtener factura por ID con datos completos (incluye razón social y descuento del presupuesto)
  * @param {number} id - ID de la factura
  * @returns {Promise<Object>} Factura con datos completos
->>>>>>> 20413e89ff18263ab5934bfdd02ecdee0727387e
-=======
- * Obtener factura por ID con datos completos (incluye razón social y descuento del presupuesto)
- * @param {number} id - ID de la factura
- * @returns {Promise<Object>} Factura con datos completos
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
  */
 const obtenerPorId = async (id) => {
     console.log(`🔍 [FACTURACION-SERVICE] Obteniendo factura ID: ${id}`);
     
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
-        const query = `
-            SELECT * FROM factura_facturas WHERE id = $1
-        `;
-        
-        const resultado = await pool.query(query, [id]);
-        
-        if (resultado.rows.length === 0) {
-            throw new Error(`Factura ${id} no encontrada`);
-        }
-        
-        console.log('✅ [FACTURACION-SERVICE] Factura obtenida');
-        
-        return resultado.rows[0];
-=======
-=======
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
         // Obtener factura con datos del cliente (apellido = razón social) y descuento del presupuesto
         const queryFactura = `
             SELECT 
@@ -474,10 +444,6 @@ const obtenerPorId = async (id) => {
         console.log(`   - Descuento: ${(parseFloat(factura.descuento) * 100).toFixed(2)}%`);
         
         return factura;
-<<<<<<< HEAD
->>>>>>> 20413e89ff18263ab5934bfdd02ecdee0727387e
-=======
->>>>>>> 77f5dfcaa5fbe9cf755fbac5db75b3f150d5346b
         
     } catch (error) {
         console.error('❌ [FACTURACION-SERVICE] Error obteniendo factura:', error.message);
