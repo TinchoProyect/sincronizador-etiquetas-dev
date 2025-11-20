@@ -109,3 +109,6 @@ secrets/*.json
 # ⛔ Ignorar TODOS los informes .md (diagnósticos, notas, testing)
 # -----------------------
 *.md
+# Archivos backup locales
+*.backup
+*-backup.js
