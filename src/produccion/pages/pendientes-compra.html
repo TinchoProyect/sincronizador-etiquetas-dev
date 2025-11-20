@@ -168,15 +168,17 @@
 
                 const pendientes = result.data.filter(p => p.estado === 'En espera') || [];
                 
-                console.log('📊 Pendientes cargados:', pendientes.length);
-                console.log('📊 Datos RAW del backend:', result.data);
+                console.log('📊 [PENDIENTES-COMPRA] Total pendientes cargados:', pendientes.length);
+                console.log('📊 [PENDIENTES-COMPRA] Datos RAW del backend:', result.data);
                 pendientes.forEach(p => {
-                    console.log('  - Pendiente COMPLETO:', {
+                    console.log('  🔴 [PENDIENTE-DERIVADO]:', {
                         id: p.id,
                         articulo_numero: p.articulo_numero,
                         codigo_barras: p.codigo_barras,
                         codigo_barras_real: p.codigo_barras_real,
-                        id_presupuesto_local: p.id_presupuesto_local
+                        id_presupuesto_local: p.id_presupuesto_local,
+                        presupuesto_estado: p.presupuesto_estado,
+                        presupuesto_secuencia: p.presupuesto_secuencia
                     });
                 });
 
@@ -250,25 +252,51 @@
                     });
                 });
 
-                // Crear mapa de pendientes usando codigo_barras_real (del JOIN con articulos)
+                // Crear mapa de pendientes usando CODIGO_BARRAS + id_presupuesto_local
                 const pendientesMap = new Map();
                 pendientes.forEach(p => {
-                    // Usar codigo_barras_real que viene del JOIN con articulos
+                    // CLAVE: codigo_barras_real (o codigo_barras) + id_presupuesto_local
+                    // Esto coincide con articulo_numero que viene en los presupuestos (que es el código de barras)
                     const codigoBarras = p.codigo_barras_real || p.codigo_barras || p.articulo_numero;
                     const key = `${codigoBarras}_${p.id_presupuesto_local}`;
                     pendientesMap.set(key, p);
-                    console.log('📌 Pendiente mapeado:', key, '→', p.id, '(articulo_numero:', p.articulo_numero, ')');
+                    console.log('📌 [MAPA-PENDIENTES] Agregando clave:', {
+                        clave: key,
+                        id_pendiente: p.id,
+                        codigo_barras_usado: codigoBarras,
+                        articulo_numero_original: p.articulo_numero,
+                        id_presupuesto_local: p.id_presupuesto_local,
+                        tipo_codigo: typeof codigoBarras,
+                        tipo_presupuesto: typeof p.id_presupuesto_local
+                    });
                 });
+                
+                console.log(`📊 [MAPA-PENDIENTES] Total claves en mapa: ${pendientesMap.size}`);
+                console.log(`📊 [MAPA-PENDIENTES] Todas las claves:`, Array.from(pendientesMap.keys()));
 
                 const html = presupuestosData.data.map(cliente => {
                     const presupuestosMap = new Map();
                     
-                    cliente.articulos.forEach(articulo => {
+                    cliente.articulos.forEach((articulo, idx) => {
+                        // Log del primer artículo para ver qué campos tiene
+                        if (idx === 0) {
+                            console.log('🔍 [PRIMER-ARTICULO] Campos disponibles:', Object.keys(articulo));
+                            console.log('🔍 [PRIMER-ARTICULO] Datos completos:', articulo);
+                        }
+                        
                         const presupId = articulo.presupuesto_id;
                         if (!presupuestosMap.has(presupId)) {
+                            // Buscar id_presupuesto_local en diferentes campos posibles
+                            const idLocal = articulo.id_presupuesto_local || 
+                                          articulo.presupuesto_id_local || 
+                                          articulo.presupuesto_local ||
+                                          articulo.id_local;
+                            
+                            console.log(`📋 [CREAR-PRESUPUESTO] ID: ${presupId}, id_local encontrado:`, idLocal);
+                            
                             presupuestosMap.set(presupId, {
                                 presupuesto_id: presupId,
-                                presupuesto_id_local: articulo.id_presupuesto_local || articulo.presupuesto_id_local,
+                                presupuesto_id_local: idLocal,
                                 presupuesto_fecha: articulo.presupuesto_fecha,
                                 articulos: []
                             });
@@ -318,33 +346,42 @@
                                                     </thead>
                                                     <tbody>
                                                         ${presupuesto.articulos.map(articulo => {
-                                                            // RESALTAR TODOS LOS ARTÍCULOS CON FALTANTE > 0
+                                                            // CORRECCIÓN: Solo marcar en rojo si fue DERIVADO a compra
                                                             const faltante = parseFloat(articulo.faltante) || 0;
-                                                            const tieneFaltante = faltante > 0;
+                                                            const articuloNumero = articulo.articulo_numero;
                                                             
-                                                            // También buscar si hay pendiente específico
-                                                            const codigoBarras = articulo.articulo_numero;
-                                                            const presupuestoIdLocal = articulo.id_presupuesto_local || articulo.presupuesto_id_local || presupuesto.presupuesto_id_local;
-                                                            const key = `${codigoBarras}_${presupuestoIdLocal}`;
-                                                            const pendiente = pendientesMap.get(key);
+                                                            // CORRECCIÓN: Usar presupuesto_id_local del objeto presupuesto padre
+                                                            const presupuestoIdLocal = presupuesto.presupuesto_id_local;
                                                             
-                                                            console.log('🔍 Artículo:', {
-                                                                codigo: codigoBarras,
-                                                                faltante,
-                                                                tieneFaltante,
-                                                                tienePendiente: !!pendiente,
-                                                                seResaltara: tieneFaltante
+                                                            // Buscar si este artículo específico fue derivado a compra
+                                                            // Probar con articulo_numero (código de artículo)
+                                                            const key = `${articuloNumero}_${presupuestoIdLocal}`;
+                                                            let pendiente = pendientesMap.get(key);
+                                                            let fueDerivado = !!pendiente;
+                                                            
+                                                            console.log(`🔍 [RENDER-ARTICULO] ${articulo.descripcion.substring(0, 30)}:`, {
+                                                                articulo_numero: articuloNumero,
+                                                                tipo_articulo: typeof articuloNumero,
+                                                                presupuesto_local: presupuestoIdLocal,
+                                                                tipo_presupuesto: typeof presupuestoIdLocal,
+                                                                clave_generada: key,
+                                                                faltante: faltante,
+                                                                pendiente_encontrado: pendiente ? { id: pendiente.id, articulo: pendiente.articulo_numero } : null,
+                                                                fueDerivado: fueDerivado,
+                                                                seMarcaraRojo: fueDerivado,
+                                                                existe_en_mapa: pendientesMap.has(key),
+                                                                todas_claves_mapa: Array.from(pendientesMap.keys())
                                                             });
                                                             
                                                             return `
-                                                                <tr ${tieneFaltante ? 'class="articulo-derivado"' : ''}>
+                                                                <tr ${fueDerivado ? 'class="articulo-derivado"' : ''}>
                                                                     <td>${articulo.articulo_numero}</td>
                                                                     <td>${articulo.descripcion}</td>
                                                                     <td>${parseFloat(articulo.pedido_total).toFixed(2)}</td>
                                                                     <td>${parseFloat(articulo.stock_disponible).toFixed(2)}</td>
                                                                     <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">${parseFloat(articulo.faltante).toFixed(2)}</td>
                                                                     <td>
-                                                                        ${tieneFaltante && pendiente ? `<button class="admin-button" style="background-color: #ffc107; padding: 6px 12px; font-size: 12px;" onclick="revertirPendiente(${pendiente.id})">↩️ Revertir</button>` : (tieneFaltante ? '-' : '-')}
+                                                                        ${fueDerivado ? `<button class="admin-button" style="background-color: #ffc107; padding: 6px 12px; font-size: 12px;" onclick="revertirPendiente(${pendiente.id})">↩️ Revertir</button>` : '-'}
                                                                     </td>
                                                                 </tr>
                                                             `;
@@ -362,9 +399,11 @@
 
                 container.innerHTML = html;
 
+                // CORRECCIÓN: Mostrar cantidad de ARTÍCULOS derivados, no presupuestos
                 const contadorHeader = document.getElementById('contador-header');
                 if (contadorHeader) {
-                    contadorHeader.textContent = idsPresupuestos.length;
+                    contadorHeader.textContent = pendientes.length;
+                    console.log(`📊 [CONTADOR-HEADER] Mostrando ${pendientes.length} artículos derivados (de ${idsPresupuestos.length} presupuestos)`);
                 }
 
             } catch (error) {

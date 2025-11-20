@@ -126,4 +126,78 @@ tr.ingrediente-vinculado td {
     color: #6c757d;
 }
 
+/* Estilos para solapa de pendientes de compra */
+.solapa-pendientes {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+    color: white;
+    padding: 20px 12px;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 14px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    border-radius: 0 8px 8px 0;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+    transition: all 0.3s ease;
+}
+
+.solapa-pendientes:hover {
+    padding-right: 16px;
+}
+
+/* Solapa con pendientes (roja) */
+.solapa-pendientes.con-pendientes {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+}
+
+/* Texto de la solapa */
+.solapa-texto {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+}
+
+/* Contador de pendientes */
+.contador-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.25);
+    color: white;
+    font-size: 1.6em;
+    font-weight: bold;
+    padding: 8px;
+    border-radius: 50%;
+    min-width: 45px;
+    min-height: 45px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    line-height: 1;
+    writing-mode: horizontal-tb;
+    text-orientation: upright;
+    backdrop-filter: blur(5px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Animación de pulso solo cuando hay pendientes */
+.solapa-pendientes.con-pendientes .contador-badge {
+    animation: pulseCounter 2s ease-in-out infinite;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+@keyframes pulseCounter {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+    50% {
+        transform: scale(1.08);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+}
+
 

@@ -104,28 +104,36 @@
                 </table>
             </div>
 
-            <!-- Totales -->
-            <div class="totales-section">
-                <div class="totales-grid">
-                    <div class="total-row">
-                        <span class="total-label">Subtotal:</span>
-                        <span class="total-value" id="total-subtotal">$ 0,00</span>
-                    </div>
-                    <div class="total-row" id="descuento-row" style="display: none;">
-                        <span class="total-label">Descuento (<span id="descuento-porcentaje">0</span>%):</span>
-                        <span class="total-value" id="total-descuento">$ 0,00</span>
-                    </div>
-                    <div class="total-row" id="iva-21-row" style="display: none;">
-                        <span class="total-label">IVA 21%:</span>
-                        <span class="total-value" id="total-iva-21">$ 0,00</span>
-                    </div>
-                    <div class="total-row" id="iva-105-row" style="display: none;">
-                        <span class="total-label">IVA 10,5%:</span>
-                        <span class="total-value" id="total-iva-105">$ 0,00</span>
-                    </div>
-                    <div class="total-row total-final">
-                        <span class="total-label">TOTAL:</span>
-                        <span class="total-value" id="total-final">$ 0,00</span>
+            <!-- Totales con código de barras a la izquierda -->
+            <div class="totales-barcode-container">
+                <!-- Código de barras a la izquierda -->
+                <div class="barcode-left">
+                    <svg id="barcode"></svg>
+                </div>
+                
+                <!-- Totales a la derecha -->
+                <div class="totales-section">
+                    <div class="totales-grid">
+                        <div class="total-row">
+                            <span class="total-label">Subtotal:</span>
+                            <span class="total-value" id="total-subtotal">$ 0,00</span>
+                        </div>
+                        <div class="total-row" id="descuento-row" style="display: none;">
+                            <span class="total-label">Descuento (<span id="descuento-porcentaje">0</span>%):</span>
+                            <span class="total-value" id="total-descuento">$ 0,00</span>
+                        </div>
+                        <div class="total-row" id="iva-21-row" style="display: none;">
+                            <span class="total-label">IVA 21%:</span>
+                            <span class="total-value" id="total-iva-21">$ 0,00</span>
+                        </div>
+                        <div class="total-row" id="iva-105-row" style="display: none;">
+                            <span class="total-label">IVA 10,5%:</span>
+                            <span class="total-value" id="total-iva-105">$ 0,00</span>
+                        </div>
+                        <div class="total-row total-final">
+                            <span class="total-label">TOTAL:</span>
+                            <span class="total-value" id="total-final">$ 0,00</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -140,11 +148,6 @@
             <div class="footer-info">
                 <p class="footer-text">Gracias por su preferencia</p>
                 <p class="footer-date">Documento generado el <span id="fecha-generacion">-</span></p>
-                
-                <!-- Código de barras al final -->
-                <div class="barcode-footer">
-                    <svg id="barcode"></svg>
-                </div>
             </div>
         </div>
 

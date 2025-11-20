@@ -1442,8 +1442,9 @@
 <body>
     <!-- Solapa lateral fija -->
     <div style="position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 999;">
-        <a href="pendientes-compra.html" id="solapa-pendientes" style="display: block; background: linear-gradient(135deg, #ff6b6b, #ee5a52); color: white; padding: 20px 12px; text-decoration: none; font-weight: bold; font-size: 14px; writing-mode: vertical-rl; text-orientation: mixed; border-radius: 0 8px 8px 0; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); transition: all 0.3s ease;" onmouseover="this.style.paddingRight='16px'" onmouseout="this.style.paddingRight='12px'">
-            🛒 Pendientes de Compra <span id="contador-solapa" class="contador-badge" style="display: none; margin-top: 10px;">0</span>
+        <a href="pendientes-compra.html" id="solapa-pendientes" class="solapa-pendientes">
+            <span class="solapa-texto">🛒 Pendientes de Compra</span>
+            <span id="contador-solapa" class="contador-badge">0</span>
         </a>
     </div>
 
@@ -2419,17 +2420,40 @@
                 
                 if (result.success) {
                     const pendientes = result.data.filter(p => p.estado === 'En espera') || [];
-                    const idsPresupuestos = [...new Set(pendientes.map(p => p.id_presupuesto_local))];
-                    const total = idsPresupuestos.length;
+                    
+                    // CORRECCIÓN: Contar ARTÍCULOS derivados, no presupuestos
+                    const total = pendientes.length;
+                    
+                    console.log(`📊 [CONTADOR-PENDIENTES] Total artículos derivados a compra: ${total}`);
+                    if (pendientes.length > 0) {
+                        console.log(`📋 [CONTADOR-PENDIENTES] Artículos derivados:`, pendientes.map(p => ({
+                            id: p.id,
+                            articulo: p.articulo_numero,
+                            presupuesto: p.id_presupuesto_local,
+                            cantidad: p.cantidad_faltante
+                        })));
+                    }
                     
                     const contadorSolapa = document.getElementById('contador-solapa');
-                    if (contadorSolapa) {
+                    const solapaPendientes = document.getElementById('solapa-pendientes');
+                    
+                    if (contadorSolapa && solapaPendientes) {
                         contadorSolapa.textContent = total;
-                        contadorSolapa.style.display = total > 0 ? 'inline-block' : 'none';
+                        
+                        // Mostrar/ocultar contador y cambiar color según cantidad
+                        if (total > 0) {
+                            // Hay pendientes: mostrar contador y activar color rojo
+                            contadorSolapa.style.display = 'inline-flex';
+                            solapaPendientes.classList.add('con-pendientes');
+                        } else {
+                            // Sin pendientes: ocultar contador y color gris neutro
+                            contadorSolapa.style.display = 'none';
+                            solapaPendientes.classList.remove('con-pendientes');
+                        }
                     }
                 }
             } catch (error) {
-                console.error('Error al actualizar contador de pendientes:', error);
+                console.error('❌ [CONTADOR-PENDIENTES] Error al actualizar contador:', error);
             }
         }
 

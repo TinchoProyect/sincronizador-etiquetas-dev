@@ -391,10 +391,34 @@ body {
     display: none;
 }
 
-/* ===== TOTALES (COMPACTOS) ===== */
+/* ===== CONTENEDOR DE TOTALES Y CÓDIGO DE BARRAS ===== */
 
-.totales-section {
+.totales-barcode-container {
     margin-top: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+/* Código de barras a la izquierda */
+.barcode-left {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+}
+
+.barcode-left svg {
+    max-width: 200px;
+    height: auto;
+}
+
+/* Totales a la derecha */
+.totales-section {
+    flex: 0 0 auto;
     display: flex;
     justify-content: flex-end;
 }
@@ -493,35 +517,6 @@ body {
     margin-bottom: 15px;
 }
 
-/* ===== CÓDIGO DE BARRAS AL FINAL ===== */
-
-.barcode-footer {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 15px;
-    padding: 10px;
-}
-
-#barcode {
-    max-width: 100%;
-    height: auto;
-}
-
-/* Código de barras VISIBLE en impresión */
-@media print {
-    .barcode-footer {
-        display: flex !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    
-    #barcode {
-        display: block !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-}
 
 /* ===== ESTILOS PARA IMPRESIÓN ===== */
 
@@ -562,9 +557,23 @@ body {
     .empresa-header,
     .documento-titulo,
     .info-compacta,
+    .totales-barcode-container,
     .totales-section,
     .observaciones-section {
         page-break-inside: avoid;
+    }
+    
+    /* Asegurar que el código de barras se imprima correctamente */
+    .barcode-left {
+        display: flex !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    .barcode-left svg {
+        display: block !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
 
     /* Tabla de artículos */
@@ -641,7 +650,7 @@ body {
         margin-bottom: 12px;
     }
 
-    .totales-section {
+    .totales-barcode-container {
         margin-top: 12px;
     }
 
@@ -681,8 +690,19 @@ body {
         gap: 10px;
     }
 
-    .barcode-placeholder {
+    /* Layout responsive para código de barras y totales */
+    .totales-barcode-container {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .barcode-left {
         width: 100%;
+        margin-bottom: 15px;
+    }
+    
+    .barcode-left svg {
+        max-width: 100%;
     }
 
     .articulos-table {
