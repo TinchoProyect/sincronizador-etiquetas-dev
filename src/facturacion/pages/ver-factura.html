@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factura - LAMDA Proveedor Comercial</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            opacity: 0.1;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .company-name {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .company-tagline {
+            font-size: 16px;
+            opacity: 0.9;
+            font-weight: 300;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .cliente-destacado {
+            background: linear-gradient(135deg, #e8f4f8 0%, #d1ecf1 100%);
+            border: 2px solid #17a2b8;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(23, 162, 184, 0.15);
+        }
+
+        .cliente-nombre {
+            font-size: 32px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .cliente-info {
+            font-size: 16px;
+            color: #17a2b8;
+            font-weight: 500;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #667eea;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            border: 2px solid #fcc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px;
+            color: #c33;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .badge.borrador {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .badge.aprobada {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge.rechazada {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .info-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .info-card h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-card p {
+            font-size: 18px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .items-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .items-table td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .items-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .items-table .text-right {
+            text-align: right;
+        }
+
+        .totals {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .totals-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            font-size: 16px;
+        }
+
+        .totals-row.total {
+            border-top: 2px solid #667eea;
+            margin-top: 10px;
+            padding-top: 15px;
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .cae-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .cae-box h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+
+        .cae-box .cae-number {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        .cae-box .cae-vto {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            border: 1px solid #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <div class="company-name">LAMDA - Proveedor Comercial</div>
+                <div class="company-tagline">Distribuidora de Frutos Secos</div>
+                <h1>🧾 Factura Electrónica</h1>
+                <p>Sistema de Gestión de Facturación</p>
+            </div>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <p>Cargando factura...</p>
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="content" class="content" style="display: none;">
+            <!-- El contenido se cargará dinámicamente -->
+        </div>
+
+        <div class="actions" id="actions">
+            <button class="btn btn-secondary" onclick="window.close()">Cerrar</button>
+            <button class="btn btn-success" id="btn-obtener-cae" onclick="obtenerCAE()" style="display: none;">
+                📄 Obtener CAE de AFIP
+            </button>
+            <button class="btn btn-success" onclick="descargarPDF()">📄 Descargar PDF</button>
+            <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir Página</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const facturaId = urlParams.get('id');
+
+        if (!facturaId) {
+            mostrarError('No se especificó el ID de la factura');
+        } else {
+            cargarFactura(facturaId);
+        }
+
+        async function cargarFactura(id) {
+            try {
+                console.log('🔍 Cargando factura ID:', id);
+
+                const response = await fetch(`http://localhost:3004/facturacion/facturas/${id}`);
+
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                console.log('✅ Factura cargada:', result);
+
+                if (result.success && result.data) {
+                    renderizarFactura(result.data);
+                } else {
+                    throw new Error(result.message || 'Error al cargar la factura');
+                }
+
+            } catch (error) {
+                console.error('❌ Error:', error);
+                mostrarError(error.message);
+            }
+        }
+
+        function renderizarFactura(factura) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+
+            let badgeClass = 'borrador';
+            if (factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') {
+                badgeClass = 'aprobada';
+            } else if (factura.estado === 'RECHAZADA') {
+                badgeClass = 'rechazada';
+            }
+
+            const formatMoney = (num) => {
+                return new Intl.NumberFormat('es-AR', {
+                    style: 'currency',
+                    currency: 'ARS'
+                }).format(num || 0);
+            };
+
+            const tiposComprobante = {
+                1: 'Factura A',
+                6: 'Factura B',
+                11: 'Factura C',
+                3: 'Nota de Crédito A',
+                8: 'Nota de Crédito B',
+                13: 'Nota de Crédito C'
+            };
+
+            const tipoComprobante = tiposComprobante[factura.tipo_cbte] || `Tipo ${factura.tipo_cbte}`;
+
+            let html = `
+                <span class="badge ${badgeClass}">${factura.estado}</span>
+
+                <div class="cliente-destacado">
+                    <div class="cliente-nombre">${factura.razon_social || 'Cliente'}</div>
+                    <div class="cliente-info">Cliente</div>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h3>Tipo de Comprobante</h3>
+                        <p>${tipoComprobante}</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Número</h3>
+                        <p>${formatNumeroFactura(factura)}</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Fecha de Emisión</h3>
+                        <p>${formatDate(factura.fecha_emision)}</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>ID Factura</h3>
+                        <p>#${factura.id}</p>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">Información del Cliente</h2>
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <h3>Tipo de Documento</h3>
+                            <p>${factura.doc_tipo || '-'}</p>
+                        </div>
+                        <div class="info-card">
+                            <h3>Número de Documento</h3>
+                            <p>${factura.doc_nro || '-'}</p>
+                        </div>
+                        <div class="info-card">
+                            <h3>Condición IVA</h3>
+                            <p>${obtenerCondicionIVA(factura.condicion_iva_id)}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            if (factura.items && factura.items.length > 0) {
+                html += `
+                    <div class="section">
+                        <h2 class="section-title">Detalle de Productos</h2>
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Descripción</th>
+                                    <th class="text-right">Cantidad</th>
+                                    <th class="text-right">Precio Unit.</th>
+                                    <th class="text-right">IVA</th>
+                                    <th class="text-right">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                factura.items.forEach(item => {
+                    const subtotal = (item.qty || 0) * (item.p_unit || 0);
+                    html += `
+                        <tr>
+                            <td>${item.descripcion || 'Sin descripción'}</td>
+                            <td class="text-right">${item.qty || 0}</td>
+                            <td class="text-right">${formatMoney(item.p_unit)}</td>
+                            <td class="text-right">${obtenerAlicuotaIVA(item.alic_iva_id)}</td>
+                            <td class="text-right">${formatMoney(subtotal)}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // Agrupar IVA por alícuota y calcular subtotales
+            const ivasPorAlicuota = {};
+            let subtotalAntesDescuento = 0;
+            
+            // Primero calcular el subtotal antes del descuento
+            factura.items.forEach(item => {
+                const qty = parseFloat(item.qty) || 0;
+                const pUnit = parseFloat(item.p_unit) || 0;
+                subtotalAntesDescuento += qty * pUnit;
+            });
+            
+            // Aplicar descuento para obtener neto
+            const descuento = parseFloat(factura.descuento) || 0;
+            const montoDescuento = subtotalAntesDescuento * descuento;
+            const subtotalConDescuento = subtotalAntesDescuento - montoDescuento;
+            
+            // Ahora calcular gravado/exento y agrupar IVA
+            let netoGravado = 0;
+            let netoExento = 0;
+            
+            factura.items.forEach(item => {
+                const codigo = normalizarCodigoIVA(item.alic_iva_id);
+                const baseImp = parseFloat(item.imp_neto) || 0;  // Este ya tiene descuento aplicado
+                const impIva = parseFloat(item.imp_iva) || 0;
+                
+                if (codigo === 3) {
+                    netoExento += baseImp;
+                } else {
+                    netoGravado += baseImp;
+                    if (!ivasPorAlicuota[codigo]) {
+                        ivasPorAlicuota[codigo] = 0;
+                    }
+                    ivasPorAlicuota[codigo] += impIva;
+                }
+            });
+            
+            html += `<div class="totals">`;
+            
+            // Subtotal y descuento si aplica
+            if (descuento > 0) {
+                html += `
+                    <div class="totals-row">
+                        <span>Subtotal:</span>
+                        <span>${formatMoney(subtotalAntesDescuento)}</span>
+                    </div>
+                `;
+                
+                const porcentajeDesc = (descuento * 100).toFixed(2).replace('.', ',');
+                html += `
+                    <div class="totals-row">
+                        <span>Descuento (${porcentajeDesc}%):</span>
+                        <span>-${formatMoney(montoDescuento)}</span>
+                    </div>
+                `;
+            }
+            
+            // Neto Gravado (ya con descuento aplicado)
+            if (netoGravado > 0) {
+                html += `
+                    <div class="totals-row">
+                        <span>Neto Gravado:</span>
+                        <span>${formatMoney(netoGravado)}</span>
+                    </div>
+                `;
+            }
+            
+            // Neto Exento
+            if (netoExento > 0) {
+                html += `
+                    <div class="totals-row">
+                        <span>Neto Exento:</span>
+                        <span>${formatMoney(netoExento)}</span>
+                    </div>
+                `;
+            }
+            
+            // IVA discriminado por tasa
+            const codigosOrdenados = Object.keys(ivasPorAlicuota).map(Number).sort((a, b) => a - b);
+            
+            if (codigosOrdenados.length > 0) {
+                codigosOrdenados.forEach(codigo => {
+                    const montoIva = ivasPorAlicuota[codigo];
+                    const etiqueta = obtenerAlicuotaIVA(codigo);
+                    
+                    html += `
+                        <div class="totals-row">
+                            <span>IVA ${etiqueta}:</span>
+                            <span>${formatMoney(montoIva)}</span>
+                        </div>
+                    `;
+                });
+                
+                // Total IVA si hay múltiples alícuotas
+                if (codigosOrdenados.length > 1) {
+                    const totalIva = Object.values(ivasPorAlicuota).reduce((sum, val) => sum + val, 0);
+                    html += `
+                        <div class="totals-row" style="font-weight: 600;">
+                            <span>Total IVA:</span>
+                            <span>${formatMoney(totalIva)}</span>
+                        </div>
+                    `;
+                }
+            }
+            
+            if (factura.imp_trib > 0) {
+                html += `
+                    <div class="totals-row">
+                        <span>Otros Tributos:</span>
+                        <span>${formatMoney(factura.imp_trib)}</span>
+                    </div>
+                `;
+            }
+            
+            html += `
+                    <div class="totals-row total">
+                        <span>TOTAL:</span>
+                        <span>${formatMoney(factura.imp_total)}</span>
+                    </div>
+                </div>
+            `;
+
+            if (factura.cae) {
+                html += `
+                    <div class="cae-box">
+                        <h3>Código de Autorización Electrónico (CAE)</h3>
+                        <div class="cae-number">${factura.cae}</div>
+                        <div class="cae-vto">Vencimiento: ${formatDate(factura.cae_vto)}</div>
+                    </div>
+                `;
+            } else if (factura.serie_interna) {
+                html += `
+                    <div class="cae-box">
+                        <h3>Factura Interna</h3>
+                        <div class="cae-number">${factura.serie_interna}-${factura.nro_interno}</div>
+                        <div class="cae-vto">Sin CAE (Facturación Interna)</div>
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="section" style="margin-top: 30px;">
+                    <h2 class="section-title">Información Adicional</h2>
+                    <div class="info-grid">
+                        ${factura.presupuesto_id ? `
+                        <div class="info-card">
+                            <h3>Presupuesto Origen</h3>
+                            <p>#${factura.presupuesto_id}</p>
+                        </div>
+                        ` : ''}
+                        <div class="info-card">
+                            <h3>Moneda</h3>
+                            <p>${factura.moneda || 'PES'} (Cotiz: ${factura.mon_cotiz || 1})</p>
+                        </div>
+                        <div class="info-card">
+                            <h3>Requiere AFIP</h3>
+                            <p>${factura.requiere_afip ? 'Sí' : 'No'}</p>
+                        </div>
+                        <div class="info-card">
+                            <h3>Fecha de Creación</h3>
+                            <p>${new Date(factura.created_at).toLocaleString('es-AR')}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('content').innerHTML = html;
+            
+            // Mostrar botón "Obtener CAE" si:
+            // - Estado es BORRADOR
+            // - Requiere AFIP
+            // - NO tiene CAE todavía
+            if (factura.estado === 'BORRADOR' && factura.requiere_afip && !factura.cae) {
+                document.getElementById('btn-obtener-cae').style.display = 'inline-block';
+                console.log('✅ Botón "Obtener CAE" habilitado (BORRADOR sin CAE)');
+            } else {
+                document.getElementById('btn-obtener-cae').style.display = 'none';
+                console.log('ℹ️ Botón "Obtener CAE" oculto:', {
+                    estado: factura.estado,
+                    requiere_afip: factura.requiere_afip,
+                    tiene_cae: !!factura.cae
+                });
+            }
+        }
+
+        async function obtenerCAE() {
+            if (!confirm('¿Emitir esta factura a AFIP para obtener CAE?')) {
+                return;
+            }
+            
+            const btn = document.getElementById('btn-obtener-cae');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Emitiendo a AFIP...';
+            
+            try {
+                console.log('📤 Emitiendo factura a AFIP, ID:', facturaId);
+                
+                const response = await fetch(`http://localhost:3004/facturacion/facturas/${facturaId}/emitir`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ CAE obtenido exitosamente: ' + result.data.cae);
+                    console.log('✅ CAE obtenido:', result.data);
+                    
+                    // Recargar la página para mostrar el CAE
+                    window.location.reload();
+                } else {
+                    throw new Error(result.message || 'Error al obtener CAE');
+                }
+                
+            } catch (error) {
+                console.error('❌ Error obteniendo CAE:', error);
+                alert('Error al obtener CAE de AFIP:\n\n' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        function formatNumeroFactura(factura) {
+            if (factura.cbte_nro) {
+                // Factura con AFIP: formato 00032 - 00000001
+                const ptoVta = String(factura.pto_vta || 0).padStart(5, '0');
+                const numero = String(factura.cbte_nro).padStart(8, '0');
+                return `${ptoVta} - ${numero}`;
+            } else if (factura.nro_interno) {
+                // Factura interna: formato SERIE - 00000001
+                const serie = factura.serie_interna || 'INT';
+                const numero = String(factura.nro_interno).padStart(8, '0');
+                return `${serie} - ${numero}`;
+            } else {
+                // Borrador sin número asignado
+                return 'Sin número asignado';
+            }
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            if (dateStr.length === 8 && !dateStr.includes('-')) {
+                const year = dateStr.substring(0, 4);
+                const month = dateStr.substring(4, 6);
+                const day = dateStr.substring(6, 8);
+                return `${day}/${month}/${year}`;
+            }
+            const date = new Date(dateStr + 'T00:00:00');
+            return date.toLocaleDateString('es-AR');
+        }
+
+        function obtenerCondicionIVA(id) {
+            const condiciones = {
+                1: 'Responsable Inscripto',
+                2: 'Responsable no Inscripto',
+                4: 'Exento',
+                5: 'Consumidor Final',
+                6: 'Responsable Monotributo'
+            };
+            return condiciones[id] || `Condición ${id}`;
+        }
+
+        function normalizarCodigoIVA(id) {
+            // Normalizar códigos antiguos (convierte 1→5, 2→4)
+            const normalizacion = {
+                1: 5,  // 21%
+                2: 4   // 10.5%
+            };
+            return normalizacion[id] || id;
+        }
+        
+        function obtenerAlicuotaIVA(id) {
+            const codigoNormalizado = normalizarCodigoIVA(id);
+            
+            // Tabla oficial de códigos AFIP
+            const alicuotas = {
+                3: '0%',
+                4: '10,5%',    // Con coma decimal
+                5: '21%',
+                6: '27%',
+                8: '5%',
+                9: '2,5%'      // Con coma decimal
+            };
+            return alicuotas[codigoNormalizado] || `${codigoNormalizado}%`;
+        }
+
+        async function descargarPDF() {
+            try {
+                console.log('📄 Descargando PDF de factura ID:', facturaId);
+                
+                const response = await fetch(`http://localhost:3004/facturacion/facturas/${facturaId}/pdf`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                }
+                
+                // Descargar el PDF
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `factura-${facturaId}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                console.log('✅ PDF descargado exitosamente');
+            } catch (error) {
+                console.error('❌ Error descargando PDF:', error);
+                alert('Error al descargar el PDF: ' + error.message);
+            }
+        }
+
+        function mostrarError(mensaje) {
+            document.getElementById('loading').style.display = 'none';
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = `❌ Error: ${mensaje}`;
+            errorDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
