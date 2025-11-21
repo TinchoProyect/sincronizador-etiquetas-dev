@@ -1195,6 +1195,79 @@ const obtenerEstadoPresupuesto = async (req, res) => {
     }
 };
 
+/**
+ * Actualizar formato de impresión del presupuesto
+ */
+const actualizarFormatoImpresion = async (req, res) => {
+    const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    console.log(`🔍 [PRESUPUESTOS-WRITE] ${requestId} - Actualizando formato de impresión...`);
+
+    try {
+        const { id } = req.params;
+        const { formato_impresion } = req.body;
+
+        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - ID: ${id}, Formato: ${formato_impresion}`);
+
+        // Validar formato
+        const formatosValidos = ['IVA_DISCRIMINADO', 'IVA_INCLUIDO'];
+        if (!formato_impresion || !formatosValidos.includes(formato_impresion)) {
+            console.log(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Formato inválido: ${formato_impresion}`);
+            return res.status(400).json({
+                success: false,
+                error: `Formato inválido. Debe ser: ${formatosValidos.join(' o ')}`,
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        // Actualizar formato en BD
+        const updateQuery = `
+            UPDATE presupuestos
+            SET formato_impresion = $1
+            WHERE id = $2 AND activo = true
+            RETURNING id, id_presupuesto_ext, formato_impresion
+        `;
+
+        const result = await req.db.query(updateQuery, [formato_impresion, parseInt(id)]);
+
+        if (result.rows.length === 0) {
+            console.log(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto no encontrado`);
+            return res.status(404).json({
+                success: false,
+                error: 'Presupuesto no encontrado',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        const presupuesto = result.rows[0];
+        console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Formato actualizado: ${presupuesto.formato_impresion}`);
+
+        res.json({
+            success: true,
+            data: {
+                id: presupuesto.id,
+                id_presupuesto: presupuesto.id_presupuesto_ext,
+                formato_impresion: presupuesto.formato_impresion
+            },
+            message: 'Formato de impresión actualizado exitosamente',
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error al actualizar formato:`, error);
+
+        res.status(500).json({
+            success: false,
+            error: 'Error al actualizar formato de impresión',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS-WRITE] Controlador de escritura configurado');
 
 module.exports = {
@@ -1202,5 +1275,6 @@ module.exports = {
     editarPresupuesto,
     eliminarPresupuesto,
     reintentarPresupuesto,
-    obtenerEstadoPresupuesto
+    obtenerEstadoPresupuesto,
+    actualizarFormatoImpresion
 };

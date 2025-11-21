@@ -1,4 +1,4 @@
-# -----------------------
+﻿# -----------------------
 # ⛔ Ignorar dependencias
 # -----------------------
 node_modules/
@@ -95,9 +95,9 @@ SOLUCION_IMPLEMENTADA.md
 
 # logs
 *.log
-* * / * . b a k 
- 
- .env.bak
+**/*.bak
+
+.env.bak
 secrets/*.json
 .env.local
 # --- permitir la carpeta de sincronización de precios ---
@@ -105,10 +105,10 @@ secrets/*.json
 !src/actualizaPrecios/
 !src/actualizaPrecios/**
 
-# --- permitir módulo de estadísticas ---
-!src/estadisticas/
-!src/estadisticas/**
-# por si hay reglas genéricas:
-!src/estadisticas/pages/**
-!src/estadisticas/css/**
-!src/estadisticas/js/**
+# -----------------------
+# ⛔ Ignorar TODOS los informes .md (diagnósticos, notas, testing)
+# -----------------------
+*.md
+# Archivos backup locales
+*.backup
+*-backup.js

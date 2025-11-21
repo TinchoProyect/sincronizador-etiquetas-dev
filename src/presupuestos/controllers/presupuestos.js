@@ -1192,10 +1192,15 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 p.agente,
                 p.tipo_comprobante,
                 p.estado,
+                p.secuencia,
                 COALESCE(p.nota, '') AS nota,
                 COALESCE(p.punto_entrega, 'Sin dirección') AS punto_entrega,
                 COALESCE(p.descuento, 0) AS descuento,
+                p.formato_impresion,
                 p.activo,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
+                c.cuit,
+                c.condicion_iva,
                 COALESCE(
                     p.factura_id,
                     (SELECT f.id FROM public.factura_facturas f 
@@ -1213,6 +1218,7 @@ const obtenerPresupuestoPorId = async (req, res) => {
                     ELSE false
                 END AS esta_facturado
             FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.id = $1 AND p.activo = true
         `;
         
@@ -1953,6 +1959,76 @@ const actualizarEstadoPresupuesto = async (req, res) => {
     }
 };
 
+/**
+ * Obtener datos del cliente por ID (incluyendo condicion_iva)
+ */
+const obtenerDatosCliente = async (req, res) => {
+    const requestId = `cliente-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🔍 [PRESUPUESTOS] ${requestId} - Obteniendo datos del cliente`);
+    
+    try {
+        const { id_cliente } = req.params;
+        
+        if (!id_cliente) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de cliente requerido',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Buscando cliente ID: ${id_cliente}`);
+        
+        const query = `
+            SELECT 
+                cliente_id as id_cliente,
+                nombre,
+                apellido,
+                condicion_iva
+            FROM public.clientes
+            WHERE cliente_id = $1
+            LIMIT 1
+        `;
+        
+        const result = await req.db.query(query, [parseInt(id_cliente)]);
+        
+        if (result.rows.length === 0) {
+            console.log(`⚠️ [PRESUPUESTOS] ${requestId} - Cliente no encontrado: ${id_cliente}`);
+            return res.status(404).json({
+                success: false,
+                error: 'Cliente no encontrado',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const cliente = result.rows[0];
+        console.log(`✅ [PRESUPUESTOS] ${requestId} - Cliente encontrado:`, {
+            id_cliente: cliente.id_cliente,
+            nombre: cliente.nombre,
+            condicion_iva: cliente.condicion_iva
+        });
+        
+        res.json({
+            success: true,
+            data: cliente,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al obtener datos del cliente:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener datos del cliente',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD completo');
 
 module.exports = {
@@ -1970,5 +2046,6 @@ module.exports = {
     obtenerEstadisticas,
     obtenerConfiguracion,
     obtenerResumen,
-    obtenerPrecioArticuloCliente
+    obtenerPrecioArticuloCliente,
+    obtenerDatosCliente
 };

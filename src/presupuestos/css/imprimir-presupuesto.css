@@ -1,0 +1,761 @@
+/**
+ * ESTILOS PARA VISTA DE IMPRESIÓN DE PRESUPUESTOS
+ * LAMDA - Diseño profesional, compacto y austero para impresión A4
+ */
+
+/* ===== RESET Y BASE ===== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', 'Helvetica', sans-serif;
+    background-color: #f5f5f5;
+    padding: 20px;
+    color: #333;
+    font-size: 11pt;
+    line-height: 1.4;
+}
+
+/* ===== BOTONES DE ACCIÓN (Solo pantalla) ===== */
+
+.print-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 12px 15px;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Selector de formato de impresión */
+.formato-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.formato-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+}
+
+.formato-toggle {
+    display: flex;
+    gap: 5px;
+    background: #f0f0f0;
+    padding: 3px;
+    border-radius: 6px;
+}
+
+.btn-formato {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.btn-formato:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.btn-formato.active {
+    background: #3498db;
+    color: white;
+    box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-primary {
+    background-color: #3498db;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #7f8c8d;
+    transform: translateY(-1px);
+}
+
+/* ===== CONTENEDOR PRINCIPAL ===== */
+
+.presupuesto-container {
+    max-width: 210mm; /* A4 width */
+    margin: 0 auto;
+    background: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-height: 297mm; /* A4 height */
+}
+
+.presupuesto-content {
+    padding: 15mm 20mm;
+}
+
+/* ===== LOADING ===== */
+
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    gap: 15px;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ===== ERROR ===== */
+
+.error-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+}
+
+.error-content {
+    text-align: center;
+    padding: 40px;
+}
+
+.error-content h2 {
+    color: #e74c3c;
+    margin-bottom: 12px;
+    font-size: 18px;
+}
+
+.error-content p {
+    color: #666;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+/* ===== ENCABEZADO DE LA EMPRESA (COMPACTO Y PROFESIONAL) ===== */
+
+.empresa-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #2c3e50;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.empresa-principal {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.empresa-principal h1 {
+    font-size: 28px;
+    color: #2c3e50;
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
+.empresa-fecha {
+    font-size: 11px;
+    color: #555;
+    margin: 0;
+    font-weight: 600;
+}
+
+.empresa-datos-grupo {
+    text-align: right;
+}
+
+.empresa-alias {
+    font-size: 13px;
+    color: #2c3e50;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    margin: 0;
+}
+
+.empresa-dato {
+    font-size: 10px;
+    color: #555;
+    margin: 0;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+/* ===== TÍTULO DEL DOCUMENTO (UNA LÍNEA HORIZONTAL) ===== */
+
+.documento-titulo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+}
+
+.titulo-texto {
+    font-size: 16px;
+    color: #2c3e50;
+}
+
+.titulo-texto strong {
+    font-weight: 700;
+}
+
+.documento-numero {
+    font-size: 14px;
+    color: #555;
+    font-weight: 600;
+}
+
+/* ===== INFORMACIÓN DEL CLIENTE (UNA LÍNEA HORIZONTAL) ===== */
+
+.info-cliente {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    font-size: 10px;
+}
+
+.info-cliente strong {
+    color: #555;
+    font-weight: 600;
+}
+
+.info-cliente span {
+    color: #333;
+}
+
+.info-cliente .separador {
+    color: #ccc;
+    font-weight: 300;
+}
+
+/* ===== SECCIÓN DE ARTÍCULOS (SIN TÍTULO) ===== */
+
+.articulos-section {
+    margin-bottom: 15px;
+}
+
+/* ===== TABLA DE ARTÍCULOS (COMPACTA) ===== */
+
+.articulos-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+    font-size: 10px;
+}
+
+.articulos-table thead {
+    background-color: #2c3e50;
+    color: white;
+}
+
+.articulos-table th {
+    padding: 6px 8px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    border: 1px solid #34495e;
+}
+
+.articulos-table td {
+    padding: 5px 8px;
+    border: 1px solid #ddd;
+    font-size: 10px;
+    vertical-align: middle;
+}
+
+.articulos-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.articulos-table tbody tr:hover {
+    background-color: #f0f0f0;
+}
+
+/* Columnas para formato IVA_DISCRIMINADO (con columna IVA) */
+#tabla-discriminado .col-articulo {
+    width: 45%;
+}
+
+#tabla-discriminado .col-cantidad {
+    width: 13%;
+    text-align: center;
+}
+
+#tabla-discriminado .col-precio {
+    width: 14%;
+    text-align: right;
+}
+
+#tabla-discriminado .col-iva {
+    width: 10%;
+    text-align: center;
+}
+
+#tabla-discriminado .col-subtotal {
+    width: 18%;
+    text-align: right;
+}
+
+/* Columnas para formato IVA_INCLUIDO (sin columna IVA) */
+#tabla-incluido .col-articulo {
+    width: 55%;
+}
+
+#tabla-incluido .col-cantidad {
+    width: 15%;
+    text-align: center;
+}
+
+#tabla-incluido .col-precio {
+    width: 15%;
+    text-align: right;
+}
+
+#tabla-incluido .col-subtotal {
+    width: 15%;
+    text-align: right;
+}
+
+.articulos-table .text-center {
+    text-align: center;
+}
+
+.articulos-table .text-right {
+    text-align: right;
+}
+
+.articulo-descripcion {
+    font-weight: 500;
+    color: #333;
+}
+
+/* NO mostrar código de artículo */
+.articulo-codigo {
+    display: none;
+}
+
+/* ===== CONTENEDOR DE TOTALES Y CÓDIGO DE BARRAS ===== */
+
+.totales-barcode-container {
+    margin-top: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+/* Código de barras a la izquierda */
+.barcode-left {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+}
+
+.barcode-left svg {
+    max-width: 200px;
+    height: auto;
+}
+
+/* Totales a la derecha */
+.totales-section {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.totales-grid {
+    min-width: 280px;
+    border: 1px solid #2c3e50;
+    border-radius: 4px;
+    padding: 10px 12px;
+    background-color: #f9f9f9;
+}
+
+.total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.total-row:last-child {
+    border-bottom: none;
+}
+
+.total-label {
+    font-weight: 600;
+    color: #555;
+    font-size: 11px;
+}
+
+.total-value {
+    font-weight: 600;
+    color: #333;
+    font-size: 11px;
+}
+
+.total-final {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 2px solid #2c3e50 !important;
+}
+
+.total-final .total-label {
+    font-size: 13px;
+    color: #2c3e50;
+    font-weight: 700;
+}
+
+.total-final .total-value {
+    font-size: 14px;
+    color: #2c3e50;
+    font-weight: 700;
+}
+
+/* ===== OBSERVACIONES ===== */
+
+.observaciones-section {
+    margin-top: 15px;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background-color: #fffef7;
+}
+
+.observaciones-section h3 {
+    font-size: 11px;
+    color: #2c3e50;
+    margin-bottom: 6px;
+    font-weight: 700;
+}
+
+.observaciones-section p {
+    font-size: 10px;
+    color: #555;
+    line-height: 1.5;
+}
+
+/* ===== PIE DE PÁGINA ===== */
+
+.footer-info {
+    margin-top: 30px;
+    padding-top: 12px;
+    border-top: 1px solid #ddd;
+    text-align: center;
+}
+
+.footer-text {
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 6px;
+    font-style: italic;
+}
+
+.footer-date {
+    font-size: 9px;
+    color: #999;
+    margin-bottom: 15px;
+}
+
+
+/* ===== ESTILOS PARA IMPRESIÓN ===== */
+
+@media print {
+    /* Ocultar elementos no imprimibles */
+    .no-print,
+    .print-actions {
+        display: none !important;
+    }
+
+    /* Resetear estilos del body */
+    body {
+        background: white;
+        padding: 0;
+        margin: 0;
+        font-size: 10pt;
+    }
+
+    /* Contenedor principal */
+    .presupuesto-container {
+        max-width: 100%;
+        box-shadow: none;
+        margin: 0;
+        min-height: auto;
+    }
+
+    .presupuesto-content {
+        padding: 10mm 15mm;
+    }
+
+    /* Configuración de página */
+    @page {
+        size: A4 portrait;
+        margin: 10mm 15mm;
+    }
+
+    /* Evitar saltos de página en elementos críticos */
+    .empresa-header,
+    .documento-titulo,
+    .info-compacta,
+    .totales-barcode-container,
+    .totales-section,
+    .observaciones-section {
+        page-break-inside: avoid;
+    }
+    
+    /* Asegurar que el código de barras se imprima correctamente */
+    .barcode-left {
+        display: flex !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    .barcode-left svg {
+        display: block !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Tabla de artículos */
+    .articulos-table {
+        page-break-inside: auto;
+    }
+
+    .articulos-table thead {
+        display: table-header-group;
+    }
+
+    .articulos-table tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+
+    /* Ajustar tamaños de fuente para impresión */
+    .empresa-principal h1 {
+        font-size: 22px;
+    }
+
+    .titulo-principal h2 {
+        font-size: 18px;
+    }
+
+    .articulos-section h3 {
+        font-size: 12px;
+    }
+
+    .articulos-table {
+        font-size: 9px;
+    }
+
+    .articulos-table th,
+    .articulos-table td {
+        padding: 4px 6px;
+        font-size: 9px;
+    }
+
+    /* Asegurar que los bordes se impriman */
+    .articulos-table,
+    .articulos-table th,
+    .articulos-table td {
+        border: 1px solid #333 !important;
+    }
+
+    .articulos-table thead {
+        background-color: #2c3e50 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        color: white !important;
+    }
+
+    /* Asegurar que los colores de fondo se impriman */
+    .info-compacta,
+    .totales-grid,
+    .observaciones-section {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Ocultar placeholder de código de barras en impresión */
+    .barcode-placeholder::after {
+        content: '';
+    }
+
+    /* Optimizar espaciado para impresión */
+    .info-compacta {
+        margin-bottom: 12px;
+        padding: 8px;
+    }
+
+    .articulos-section {
+        margin-bottom: 12px;
+    }
+
+    .totales-barcode-container {
+        margin-top: 12px;
+    }
+
+    .footer-info {
+        margin-top: 20px;
+    }
+}
+
+/* ===== RESPONSIVE PARA PANTALLAS PEQUEÑAS ===== */
+
+@media screen and (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .presupuesto-content {
+        padding: 12px;
+    }
+
+    .empresa-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .empresa-datos {
+        text-align: left;
+    }
+
+    .info-compacta {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .documento-titulo {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    /* Layout responsive para código de barras y totales */
+    .totales-barcode-container {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .barcode-left {
+        width: 100%;
+        margin-bottom: 15px;
+    }
+    
+    .barcode-left svg {
+        max-width: 100%;
+    }
+
+    .articulos-table {
+        font-size: 9px;
+    }
+
+    .articulos-table th,
+    .articulos-table td {
+        padding: 4px;
+    }
+
+    .totales-grid {
+        min-width: 100%;
+    }
+
+    .print-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ===== ANIMACIONES ===== */
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.presupuesto-content {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* ===== UTILIDADES ===== */
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-bold {
+    font-weight: 600;
+}

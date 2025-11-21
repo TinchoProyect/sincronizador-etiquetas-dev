@@ -11,18 +11,19 @@ const imprimirPresupuestoCliente = async (req, res) => {
         const { 
             cliente_id, 
             presupuesto_id,
+            presupuestos_ext_ids,
             fecha,
             fecha_desde, 
             fecha_hasta, 
             formato = 'html' 
         } = req.query;
         
-        // Validaciones - cliente_id es opcional si se proporciona fecha
-        if (!cliente_id && !fecha) {
-            console.log('❌ [REMITO-R] Debe proporcionar cliente_id o fecha');
+        // Validaciones - cliente_id es opcional si se proporciona fecha o presupuestos_ext_ids
+        if (!cliente_id && !fecha && !presupuestos_ext_ids) {
+            console.log('❌ [REMITO-R] Debe proporcionar cliente_id, fecha o presupuestos_ext_ids');
             return res.status(400).json({
                 success: false,
-                error: 'Debe proporcionar cliente_id o fecha',
+                error: 'Debe proporcionar cliente_id, fecha o presupuestos_ext_ids',
                 timestamp: new Date().toISOString()
             });
         }
@@ -145,8 +146,96 @@ const imprimirPresupuestoCliente = async (req, res) => {
                 return generarHTML_Rediseñado(res, clienteData);
             }
             
+        } else if (presupuestos_ext_ids) {
+            // CASO 3: Por lista de IDs externos (para "Imprimir todos" del acordeón)
+            const idsArray = presupuestos_ext_ids.split(',').map(id => id.trim()).filter(id => id);
+            console.log(`📋 [REMITO-R] Filtrando por ${idsArray.length} IDs externos:`, idsArray);
+            
+            const placeholders = idsArray.map((_, index) => `$${index + 1}`).join(',');
+            
+            query = `
+                WITH presupuestos_filtrados AS (
+                    SELECT 
+                        p.id,
+                        p.id_presupuesto_ext,
+                        p.id_cliente,
+                        p.fecha,
+                        CAST(p.id_cliente AS integer) as cliente_id_int
+                    FROM public.presupuestos p
+                    WHERE p.activo = true 
+                      AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden'
+                      AND p.id_presupuesto_ext IN (${placeholders})
+                )
+                SELECT 
+                    JSON_AGG(
+                        JSON_BUILD_OBJECT(
+                            'cliente_id', c.cliente_id,
+                            'cliente_nombre', COALESCE(
+                                NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''),
+                                NULLIF(TRIM(c.nombre), ''),
+                                'Cliente ' || c.cliente_id
+                            ),
+                            'presupuestos', (
+                                SELECT JSON_AGG(
+                                    JSON_BUILD_OBJECT(
+                                        'id_presupuesto_ext', pf2.id_presupuesto_ext,
+                                        'fecha', pf2.fecha,
+                                        'articulos', (
+                                            SELECT JSON_AGG(
+                                                JSON_BUILD_OBJECT(
+                                                    'articulo_numero', pd.articulo,
+                                                    'descripcion', COALESCE(
+                                                        NULLIF(TRIM(a.nombre), ''),
+                                                        pd.articulo
+                                                    ),
+                                                    'cantidad', COALESCE(pd.cantidad, 0)
+                                                ) ORDER BY pd.articulo
+                                            )
+                                            FROM public.presupuestos_detalles pd
+                                            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                                            WHERE pd.id_presupuesto_ext = pf2.id_presupuesto_ext
+                                        )
+                                    ) ORDER BY pf2.fecha DESC
+                                )
+                                FROM presupuestos_filtrados pf2
+                                WHERE pf2.cliente_id_int = c.cliente_id
+                            )
+                        ) ORDER BY c.cliente_id
+                    ) as clientes_data
+                FROM public.clientes c
+                WHERE EXISTS (
+                    SELECT 1 FROM presupuestos_filtrados pf3
+                    WHERE pf3.cliente_id_int = c.cliente_id
+                );
+            `;
+            
+            params = idsArray;
+            
+            console.log('🔍 [REMITO-R] Consulta por IDs externos con parámetros:', params);
+            result = await pool.query(query, params);
+            
+            if (result.rows.length === 0 || !result.rows[0].clientes_data) {
+                console.log('❌ [REMITO-R] No se encontraron presupuestos para los IDs externos');
+                return res.status(404).json({
+                    success: false,
+                    error: 'No se encontraron presupuestos confirmados',
+                    detalle: 'No hay presupuestos con estado "Presupuesto/Orden" para los IDs externos especificados',
+                    presupuestos_ext_ids: idsArray,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            const clientesData = result.rows[0].clientes_data;
+            console.log(`✅ [REMITO-R] Datos obtenidos para ${clientesData.length} clientes con IDs externos`);
+            
+            if (formato === 'pdf') {
+                return generarPDF_TodosLosClientes(res, clientesData, fecha);
+            } else {
+                return generarHTML_TodosLosClientes(res, clientesData, fecha);
+            }
+            
         } else {
-            // CASO 3: Todos los presupuestos por fecha (sin cliente específico)
+            // CASO 4: Todos los presupuestos por fecha (sin cliente específico)
             query = `
                 WITH presupuestos_filtrados AS (
                     SELECT 

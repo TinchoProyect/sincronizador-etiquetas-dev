@@ -856,8 +856,11 @@ async function actualizarSecuenciaPresupuestos(presupuestosIds) {
 
 /**
  * Obtiene todos los IDs de presupuestos de un cliente desde los datos cargados
+ * @param {number} clienteId - ID del cliente
+ * @param {Array<string>} secuenciasFiltro - Opcional: filtrar por secuencias
+ * @returns {Array<number>} Array de IDs internos de presupuestos
  */
-function obtenerPresupuestosDeCliente(clienteId) {
+function obtenerPresupuestosDeCliente(clienteId, secuenciasFiltro = null) {
     const presupuestosIds = new Set();
     
     // Buscar en los datos cargados
@@ -865,8 +868,16 @@ function obtenerPresupuestosDeCliente(clienteId) {
         const cliente = window.clientesPedidos.find(c => c.cliente_id === clienteId);
         if (cliente && cliente.articulos) {
             cliente.articulos.forEach(art => {
-                if (art.presupuesto_id) {
-                    presupuestosIds.add(art.presupuesto_id);
+                // Aplicar filtro de secuencia si existe
+                if (secuenciasFiltro && secuenciasFiltro.length > 0) {
+                    const secuenciaArticulo = (art.secuencia || 'Imprimir').trim();
+                    if (secuenciasFiltro.includes(secuenciaArticulo) && art.presupuesto_id) {
+                        presupuestosIds.add(art.presupuesto_id);
+                    }
+                } else {
+                    if (art.presupuesto_id) {
+                        presupuestosIds.add(art.presupuesto_id);
+                    }
                 }
             });
         }
@@ -876,24 +887,48 @@ function obtenerPresupuestosDeCliente(clienteId) {
 }
 
 /**
- * Obtiene todos los IDs de presupuestos de todos los clientes desde los datos cargados
+ * Obtiene todos los IDs EXTERNOS de presupuestos de todos los clientes desde los datos cargados
+ * @param {Array<string>} secuenciasFiltro - Opcional: Array de secuencias para filtrar
+ * @returns {Array<string>} Array de IDs externos de presupuestos (id_presupuesto_ext)
  */
-function obtenerTodosLosPresupuestos() {
-    const presupuestosIds = new Set();
+function obtenerTodosLosPresupuestosExternos(secuenciasFiltro = null) {
+    const presupuestosIdsExternos = new Set();
+    
+    console.log(`📋 [OBTENER-PRESUP-EXT] Filtro de secuencias:`, secuenciasFiltro || 'NINGUNO (todos)');
     
     if (window.clientesPedidos && window.clientesPedidos.length > 0) {
         window.clientesPedidos.forEach(cliente => {
             if (cliente.articulos) {
+                // Agrupar por presupuesto_id para obtener id_presupuesto_ext único
+                const presupuestosMap = new Map();
+                
                 cliente.articulos.forEach(art => {
-                    if (art.presupuesto_id) {
-                        presupuestosIds.add(art.presupuesto_id);
+                    // Si hay filtro de secuencias, verificar que el artículo pertenezca a alguna
+                    const secuenciaArticulo = (art.secuencia || 'Imprimir').trim();
+                    
+                    if (secuenciasFiltro && secuenciasFiltro.length > 0) {
+                        if (secuenciasFiltro.includes(secuenciaArticulo)) {
+                            if (art.presupuesto_id && !presupuestosMap.has(art.presupuesto_id)) {
+                                presupuestosMap.set(art.presupuesto_id, art.presupuesto_id);
+                                presupuestosIdsExternos.add(art.presupuesto_id);
+                            }
+                        }
+                    } else {
+                        // Sin filtro: comportamiento original
+                        if (art.presupuesto_id && !presupuestosMap.has(art.presupuesto_id)) {
+                            presupuestosMap.set(art.presupuesto_id, art.presupuesto_id);
+                            presupuestosIdsExternos.add(art.presupuesto_id);
+                        }
                     }
                 });
             }
         });
     }
     
-    return Array.from(presupuestosIds);
+    const resultado = Array.from(presupuestosIdsExternos);
+    console.log(`📋 [OBTENER-PRESUP-EXT] IDs externos encontrados: ${resultado.length}`, resultado);
+    
+    return resultado;
 }
 
 // Función para imprimir todos los presupuestos de un cliente
@@ -974,17 +1009,31 @@ async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     }
 }
 
-// Función para imprimir TODOS los presupuestos de TODOS los clientes
+// Función para imprimir TODOS los presupuestos del acordeón "Imprimir / Imprimir Modificado"
 async function imprimirTodosLosPresupuestos(fechaCorte) {
-    console.log(`📄 Imprimiendo TODOS los presupuestos hasta fecha: ${fechaCorte}`);
+    console.log(`📄 [IMPRIMIR-TODOS] Imprimiendo presupuestos del acordeón "Imprimir / Imprimir Modificado"`);
     
-    // 1. Obtener todos los IDs de presupuestos
-    const presupuestosIds = obtenerTodosLosPresupuestos();
-    console.log(`📋 Total de presupuestos a imprimir: ${presupuestosIds.length}`);
+    // 1. Obtener IDs EXTERNOS de presupuestos SOLO del acordeón "Imprimir / Imprimir Modificado"
+    const secuenciasFiltro = ['Imprimir', 'Imprimir_Modificado'];
+    const presupuestosIdsExternos = obtenerTodosLosPresupuestosExternos(secuenciasFiltro);
     
-    // 2. Abrir impresión
-    const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=pdf`;
-    const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&formato=html`;
+    console.log(`📋 [IMPRIMIR-TODOS] IDs externos filtrados: ${presupuestosIdsExternos.length}`, presupuestosIdsExternos);
+    
+    if (presupuestosIdsExternos.length === 0) {
+        alert('No hay presupuestos para imprimir en el acordeón "Imprimir / Imprimir Modificado"');
+        return;
+    }
+    
+    // 2. Construir lista de IDs externos para pasar al backend (igual que botón individual)
+    const idsParam = presupuestosIdsExternos.join(',');
+    
+    // 3. Abrir impresión usando el MISMO FORMATO que el botón individual
+    // El botón individual usa: cliente_id + presupuesto_id (id_presupuesto_ext)
+    // Para "todos", usamos: fecha + presupuestos_ext_ids
+    const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=pdf`;
+    const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=html`;
+
+    console.log(`🔗 [IMPRIMIR-TODOS] URL: ${urlHtml}`);
 
     const win = window.open(urlPdf, '_blank');
 
@@ -994,11 +1043,11 @@ async function imprimirTodosLosPresupuestos(fechaCorte) {
         }
     }, 2000);
     
-    // 3. Actualizar secuencia a "Armar_Pedido"
-    if (presupuestosIds.length > 0) {
-        const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
+    // 4. Actualizar secuencia a "Armar_Pedido" (usa IDs externos)
+    if (presupuestosIdsExternos.length > 0) {
+        const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIdsExternos);
         if (actualizado) {
-            // Recargar datos para reflejar el cambio
+            console.log(`✅ [IMPRIMIR-TODOS] Secuencia actualizada para ${presupuestosIdsExternos.length} presupuestos`);
             setTimeout(() => {
                 cargarPedidosPorCliente();
             }, 1000);
@@ -1672,3 +1721,4 @@ function mostrarToast(texto, tipo = 'success') {
 window.abrirModalArmarPedido = abrirModalArmarPedido;
 window.cerrarModalArmarPedido = cerrarModalArmarPedido;
 window.mostrarToast = mostrarToast;
+window.cargarPedidosArticulos = cargarPedidosArticulos;

@@ -482,6 +482,20 @@ async function facturarPresupuesto(presupuestoId) {
         
         console.log(`✅ [PRESUPUESTO-FACTURA] ${items.length} items insertados`);
         
+        // 10. VINCULAR BIDIRECCIONAL: Actualizar presupuesto con factura_id
+        console.log(`🔗 [PRESUPUESTO-FACTURA] Actualizando presupuestos.factura_id = ${facturaId}...`);
+        
+        const updatePresupuestoQuery = `
+            UPDATE presupuestos
+            SET factura_id = $1
+            WHERE id = $2
+        `;
+        
+        await client.query(updatePresupuestoQuery, [facturaId, presupuestoId]);
+        console.log(`✅ [PRESUPUESTO-FACTURA] Vinculación bidireccional completada`);
+        console.log(`   - presupuestos.factura_id → ${facturaId}`);
+        console.log(`   - factura_facturas.presupuesto_id → ${presupuestoId}`);
+        
         await client.query('COMMIT');
         console.log('✅ [PRESUPUESTO-FACTURA] Transacción confirmada');
         console.log('🎯 [PRESUPUESTO-FACTURA] Factura BORRADOR lista para solicitar CAE');
