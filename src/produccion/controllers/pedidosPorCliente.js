@@ -119,6 +119,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 SELECT 
                     pc.cliente_id_int,
                     ${presupuestoIdFieldMain} as presupuesto_id,
+                    pc.id as presupuesto_id_local,
                     pc.fecha as presupuesto_fecha,
                     pc.secuencia,
                     pd.articulo as articulo_numero,
@@ -126,7 +127,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.fecha, pc.secuencia, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.fecha, pc.secuencia, pd.articulo
             )
             SELECT 
                 app.cliente_id_int as cliente_id,
@@ -141,6 +142,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 JSON_AGG(
                     JSON_BUILD_OBJECT(
                         'presupuesto_id', app.presupuesto_id,
+                        'id_presupuesto_local', app.presupuesto_id_local,
                         'presupuesto_fecha', app.presupuesto_fecha,
                         'secuencia', app.secuencia,
                         'articulo_numero', app.articulo_numero,

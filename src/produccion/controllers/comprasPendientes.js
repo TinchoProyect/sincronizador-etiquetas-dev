@@ -57,6 +57,7 @@ const crearPendienteCompra = async (req, res) => {
 /**
  * Obtener todos los pendientes de compra
  * GET /api/produccion/compras/pendientes
+ * FILTRADO: Solo pendientes de presupuestos activos en estado="Presupuesto/Orden" y secuencia="Imprimir"
  */
 const obtenerPendientesCompra = async (req, res) => {
     try {
@@ -71,14 +72,32 @@ const obtenerPendientesCompra = async (req, res) => {
                 fpc.cantidad_faltante,
                 fpc.estado,
                 fpc.nota,
-                fpc.creado_en
+                fpc.creado_en,
+                p.estado as presupuesto_estado,
+                p.secuencia as presupuesto_secuencia
             FROM public.faltantes_pendientes_compra fpc
+            INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
             LEFT JOIN public.articulos a ON a.codigo_barras = fpc.articulo_numero
+            WHERE fpc.estado = 'En espera'
+                AND p.estado = 'Presupuesto/Orden'
+                AND p.secuencia = 'Imprimir'
             ORDER BY fpc.creado_en DESC
         `;
 
         const result = await pool.query(query);
+
+        // Log para debugging
+        console.log(`📊 [PENDIENTES-COMPRA] Total pendientes filtrados: ${result.rows.length}`);
+        if (result.rows.length > 0) {
+            console.log(`📋 [PENDIENTES-COMPRA] Primer pendiente:`, {
+                id: result.rows[0].id,
+                articulo: result.rows[0].articulo_numero,
+                presupuesto_local: result.rows[0].id_presupuesto_local,
+                presupuesto_estado: result.rows[0].presupuesto_estado,
+                presupuesto_secuencia: result.rows[0].presupuesto_secuencia
+            });
+        }
 
         res.json({
             success: true,
@@ -87,7 +106,7 @@ const obtenerPendientesCompra = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error al obtener pendientes de compra:', error);
+        console.error('❌ [PENDIENTES-COMPRA] Error al obtener pendientes de compra:', error);
         res.status(500).json({
             success: false,
             error: 'Error interno del servidor',

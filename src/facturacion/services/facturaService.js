@@ -404,21 +404,46 @@ const obtenerPorId = async (id) => {
     console.log(`🔍 [FACTURACION-SERVICE] Obteniendo factura ID: ${id}`);
     
     try {
-
-        const query = `
-            SELECT * FROM factura_facturas WHERE id = $1
+        // Obtener factura con datos del cliente (apellido = razón social) y descuento del presupuesto
+        const queryFactura = `
+            SELECT 
+                f.*,
+                c.apellido as razon_social,
+                COALESCE(p.descuento, 0) as descuento
+            FROM factura_facturas f
+            LEFT JOIN clientes c ON f.cliente_id = c.cliente_id
+            LEFT JOIN presupuestos p ON f.presupuesto_id = p.id
+            WHERE f.id = $1
         `;
         
-        const resultado = await pool.query(query, [id]);
+        const resultadoFactura = await pool.query(queryFactura, [id]);
         
-        if (resultado.rows.length === 0) {
+        if (resultadoFactura.rows.length === 0) {
             throw new Error(`Factura ${id} no encontrada`);
         }
         
-        console.log('✅ [FACTURACION-SERVICE] Factura obtenida');
+        const factura = resultadoFactura.rows[0];
         
-        return resultado.rows[0];
-
+        // Obtener items de la factura con nombre del artículo
+        const queryItems = `
+            SELECT 
+                i.*,
+                COALESCE(a.nombre, i.descripcion) as descripcion
+            FROM factura_factura_items i
+            LEFT JOIN articulos a ON a.codigo_barras = i.descripcion
+            WHERE i.factura_id = $1
+            ORDER BY i.orden ASC
+        `;
+        
+        const resultadoItems = await pool.query(queryItems, [id]);
+        factura.items = resultadoItems.rows;
+        
+        console.log('✅ [FACTURACION-SERVICE] Factura obtenida con datos completos');
+        console.log(`   - Razón Social: ${factura.razon_social || 'Sin datos'}`);
+        console.log(`   - Items: ${factura.items.length}`);
+        console.log(`   - Descuento: ${(parseFloat(factura.descuento) * 100).toFixed(2)}%`);
+        
+        return factura;
         
     } catch (error) {
         console.error('❌ [FACTURACION-SERVICE] Error obteniendo factura:', error.message);

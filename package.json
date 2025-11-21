@@ -4,11 +4,8 @@
   "description": "Sistema de sincronización e impresión de etiquetas",
   "main": "index.js",
   "scripts": {
-
     "start": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,CLOUDFLARED\" -c \"blue,green,yellow,magenta,cyan\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
     "start:local": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION\" -c \"blue,green,yellow,magenta\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\"",
-
-  
     "dev": "cd src/app-etiquetas && vite",
     "sync": "node src/actualizaArticulos/syncEtiquetas.js",
     "sync:once": "node src/jobs/sync.js --once",

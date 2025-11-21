@@ -191,6 +191,96 @@ async function cambiarFormato(nuevoFormato) {
 }
 
 /**
+ * Normalizar texto para nombre de archivo (eliminar caracteres inválidos de Windows)
+ */
+function normalizarNombreArchivo(texto) {
+    if (!texto) return 'Sin-Datos';
+    
+    // Convertir a string y eliminar espacios al inicio/final
+    let normalizado = String(texto).trim();
+    
+    // Reemplazar caracteres inválidos en Windows: / \ : * ? " < > |
+    normalizado = normalizado.replace(/[\/\\:*?"<>|]/g, '-');
+    
+    // Reemplazar múltiples espacios o guiones consecutivos por uno solo
+    normalizado = normalizado.replace(/\s+/g, ' ').replace(/-+/g, '-');
+    
+    // Eliminar espacios y reemplazar por guiones
+    normalizado = normalizado.replace(/\s/g, '-');
+    
+    // Limitar longitud para evitar nombres muy largos
+    if (normalizado.length > 50) {
+        normalizado = normalizado.substring(0, 50);
+    }
+    
+    return normalizado;
+}
+
+/**
+ * Normalizar fecha para nombre de archivo (formato YYYY-MM-DD)
+ */
+function normalizarFechaArchivo(fechaString) {
+    if (!fechaString) return 'Sin-Fecha';
+    
+    try {
+        // Si ya está en formato YYYY-MM-DD, usarlo directamente
+        if (typeof fechaString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fechaString)) {
+            return fechaString;
+        }
+        
+        // Convertir a Date y formatear como YYYY-MM-DD
+        const fecha = new Date(fechaString);
+        const year = fecha.getFullYear();
+        const month = String(fecha.getMonth() + 1).padStart(2, '0');
+        const day = String(fecha.getDate()).padStart(2, '0');
+        
+        return `${year}-${month}-${day}`;
+    } catch (error) {
+        console.error('❌ [IMPRIMIR-PRESUPUESTO] Error al normalizar fecha:', error);
+        return 'Fecha-Invalida';
+    }
+}
+
+/**
+ * Actualizar título del documento para nombre de archivo PDF
+ */
+function actualizarTituloDocumento(presupuesto) {
+    console.log('📝 [IMPRIMIR-PRESUPUESTO] Actualizando título del documento para nombre de archivo...');
+    
+    // Obtener datos necesarios
+    const numeroPresupuesto = presupuesto.id_presupuesto || presupuesto.id || 'SN';
+    const nombreCliente = presupuesto.nombre_cliente || presupuesto.concepto || 'Sin-Cliente';
+    const fechaPresupuesto = presupuesto.fecha || null;
+    
+    console.log('📊 [IMPRIMIR-PRESUPUESTO] Datos originales para nombre de archivo:');
+    console.log(`   - Número de presupuesto: ${numeroPresupuesto}`);
+    console.log(`   - Nombre del cliente (original): "${nombreCliente}"`);
+    console.log(`   - Fecha del presupuesto (original): "${fechaPresupuesto}"`);
+    
+    // Normalizar datos
+    const numeroNormalizado = String(numeroPresupuesto);
+    const clienteNormalizado = normalizarNombreArchivo(nombreCliente);
+    const fechaNormalizada = normalizarFechaArchivo(fechaPresupuesto);
+    
+    console.log('📊 [IMPRIMIR-PRESUPUESTO] Datos normalizados para nombre de archivo:');
+    console.log(`   - Número de presupuesto: ${numeroNormalizado}`);
+    console.log(`   - Nombre del cliente (normalizado): "${clienteNormalizado}"`);
+    console.log(`   - Fecha del presupuesto (normalizada): "${fechaNormalizada}"`);
+    
+    // Construir nombre de archivo
+    const nombreArchivo = `Presupuesto-${numeroNormalizado}-${clienteNormalizado}-${fechaNormalizada}`;
+    
+    console.log('📄 [IMPRIMIR-PRESUPUESTO] Nombre de archivo final sugerido:');
+    console.log(`   "${nombreArchivo}.pdf"`);
+    
+    // Actualizar título del documento (esto es lo que usa el navegador para el nombre del archivo)
+    document.title = nombreArchivo;
+    
+    console.log('✅ [IMPRIMIR-PRESUPUESTO] Título del documento actualizado correctamente');
+    console.log(`   document.title = "${document.title}"`);
+}
+
+/**
  * Renderizar presupuesto en la vista
  */
 function renderizarPresupuesto(data) {
@@ -203,7 +293,9 @@ function renderizarPresupuesto(data) {
     
     // Título siempre "PRESUPUESTO" (nunca "Factura")
     document.getElementById('documento-tipo').textContent = 'PRESUPUESTO';
-    document.title = `Presupuesto - ${presupuesto.id_presupuesto || presupuesto.id}`;
+    
+    // NUEVO: Actualizar título del documento para nombre de archivo PDF
+    actualizarTituloDocumento(presupuesto);
     
     // Número de presupuesto
     document.getElementById('presupuesto-numero').textContent = 
