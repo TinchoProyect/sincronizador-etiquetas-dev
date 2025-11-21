@@ -15,8 +15,15 @@ const imprimirPresupuestoCliente = async (req, res) => {
             fecha,
             fecha_desde, 
             fecha_hasta, 
-            formato = 'html' 
+            formato = 'html',
+            pendiente_compra = 'false'
         } = req.query;
+        
+        const esPendienteCompra = pendiente_compra === 'true';
+        
+        if (esPendienteCompra) {
+            console.log('🛒 [REMITO-R] MODO PENDIENTE DE COMPRA activado');
+        }
         
         // Validaciones - cliente_id es opcional si se proporciona fecha o presupuestos_ext_ids
         if (!cliente_id && !fecha && !presupuestos_ext_ids) {
@@ -140,10 +147,38 @@ const imprimirPresupuestoCliente = async (req, res) => {
             console.log(`✅ [REMITO-R] Datos obtenidos para cliente: ${clienteData.cliente_nombre}`);
             console.log(`📊 [REMITO-R] Total presupuestos encontrados: ${clienteData.presupuestos.length}`);
             
+            // Si es pendiente de compra, obtener artículos en falta
+            // IMPORTANTE: Usar la misma lógica que comprasPendientes.js con codigo_barras_real
+            let articulosEnFalta = [];
+            if (esPendienteCompra && presupuesto_id) {
+                console.log('🛒 [REMITO-R] Obteniendo artículos en falta para presupuesto:', presupuesto_id);
+                try {
+                    const faltantesQuery = `
+                        SELECT DISTINCT 
+                            fpc.articulo_numero,
+                            fpc.codigo_barras,
+                            COALESCE(a.codigo_barras, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real
+                        FROM faltantes_pendientes_compra fpc
+                        LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
+                        LEFT JOIN public.articulos a ON a.codigo_barras = fpc.articulo_numero
+                        WHERE fpc.id_presupuesto_ext = $1
+                          AND fpc.estado = 'En espera'
+                    `;
+                    const faltantesResult = await pool.query(faltantesQuery, [presupuesto_id]);
+                    // Usar codigo_barras_real que es el que coincide con articulo_numero en presupuestos_detalles
+                    articulosEnFalta = faltantesResult.rows.map(r => r.codigo_barras_real);
+                    console.log('🛒 [REMITO-R] Artículos en falta encontrados (codigo_barras_real):', articulosEnFalta);
+                } catch (error) {
+                    console.error('❌ [REMITO-R] Error al obtener artículos en falta:', error.message);
+                    // Continuar sin artículos en falta si hay error
+                    articulosEnFalta = [];
+                }
+            }
+            
             if (formato === 'pdf') {
-                return generarPDF_Rediseñado(res, clienteData);
+                return generarPDF_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta);
             } else {
-                return generarHTML_Rediseñado(res, clienteData);
+                return generarHTML_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta);
             }
             
         } else if (presupuestos_ext_ids) {
@@ -333,8 +368,10 @@ const imprimirPresupuestoCliente = async (req, res) => {
 /**
  * Genera HTML en formato remito rediseñado (Formato R)
  * REDISEÑO: Una hoja por presupuesto cuando hay múltiples
+ * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
+ * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
-function generarHTML_Rediseñado(res, clienteData) {
+function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = []) {
     try {
         const fechaHoy = new Date().toLocaleDateString('es-AR', {
             year: 'numeric',
@@ -412,6 +449,48 @@ function generarHTML_Rediseñado(res, clienteData) {
             align-items: center;
             justify-content: center;
             border-radius: 4px;
+        }
+        
+        /* ESTILOS PARA ORDEN EN ESPERA */
+        .orden-espera {
+            font-size: 9px;
+            font-weight: bold;
+            color: #dc3545;
+            border: 2px solid #dc3545;
+            background: #fff3cd;
+            padding: 6px 10px;
+            border-radius: 4px;
+            text-align: center;
+            line-height: 1.2;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Artículos en falta - fondo amarillo */
+        .articulo-en-falta {
+            background-color: #fff3cd !important;
+            border-left: 4px solid #ffc107 !important;
+        }
+        
+        .articulo-en-falta td {
+            font-weight: 600 !important;
+            color: #856404 !important;
+        }
+        
+        /* Separador de secciones */
+        .seccion-titulo {
+            background: #f8f9fa;
+            padding: 6px 8px;
+            margin: 12px 0 5px 0;
+            border-left: 4px solid #6c757d;
+            font-weight: bold;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        
+        .seccion-titulo.en-falta {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            color: #856404;
         }
         
         .fecha-emision { 
@@ -593,9 +672,17 @@ function generarHTML_Rediseñado(res, clienteData) {
         
 `;
         
+        // Log de debug
+        console.log('🛒 [REMITO-R-HTML] esPendienteCompra:', esPendienteCompra);
+        console.log('🛒 [REMITO-R-HTML] articulosEnFalta:', articulosEnFalta);
+        console.log('🛒 [REMITO-R-HTML] articulosEnFalta.length:', articulosEnFalta.length);
+        
         // Generar una página por cada presupuesto
         clienteData.presupuestos.forEach((presupuesto, presupIndex) => {
             const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
+            
+            console.log(`🛒 [REMITO-R-HTML] Presupuesto ${presupIndex}: ${presupuesto.id_presupuesto_ext}`);
+            console.log(`🛒 [REMITO-R-HTML] Aplicando título: ${esPendienteCompra ? 'ORDEN EN ESPERA' : 'R'}`);
             
             html += `
     <div class="remito-container${presupIndex < clienteData.presupuestos.length - 1 ? ' page-break' : ''}">
@@ -603,7 +690,10 @@ function generarHTML_Rediseñado(res, clienteData) {
         <div class="header">
             <div class="header-left">
                 <div class="logo-lamda">LAMDA</div>
-                <div class="letra-r">R</div>
+                ${esPendienteCompra ? 
+                    '<div class="orden-espera">ORDEN EN ESPERA</div>' : 
+                    '<div class="letra-r">R</div>'
+                }
             </div>
             <div class="fecha-emision">
                 ${fechaHoy} - ${horaHoy}
@@ -634,11 +724,59 @@ function generarHTML_Rediseñado(res, clienteData) {
             <tbody>
 `;
             
-            // Mostrar artículos de ESTE presupuesto solamente
+            // Mostrar artículos de ESTE presupuesto
             if (presupuesto.articulos && presupuesto.articulos.length > 0) {
-                presupuesto.articulos
-                    .sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero))
-                    .forEach(articulo => {
+                const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
+                
+                console.log(`🛒 [REMITO-R-HTML] Artículos del presupuesto:`, articulosSorted.map(a => a.articulo_numero));
+                console.log(`🛒 [REMITO-R-HTML] Comparando con articulosEnFalta:`, articulosEnFalta);
+                
+                // Si es pendiente de compra, separar artículos en falta
+                if (esPendienteCompra && articulosEnFalta.length > 0) {
+                    const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
+                    const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
+                    
+                    console.log(`🛒 [REMITO-R-HTML] Artículos CON stock:`, articulosConStock.length);
+                    console.log(`🛒 [REMITO-R-HTML] Artículos SIN stock:`, articulosSinStock.length);
+                    
+                    // Primero mostrar artículos CON stock (si hay)
+                    if (articulosConStock.length > 0) {
+                        html += `
+                <tr>
+                    <td colspan="3" class="seccion-titulo">Artículos Disponibles</td>
+                </tr>
+`;
+                        articulosConStock.forEach(articulo => {
+                            html += `
+                <tr>
+                    <td class="col-codigo">${articulo.articulo_numero}</td>
+                    <td class="col-descripcion">${articulo.descripcion}</td>
+                    <td class="col-cantidad">${articulo.cantidad}</td>
+                </tr>
+`;
+                        });
+                    }
+                    
+                    // Luego mostrar artículos EN FALTA (destacados)
+                    if (articulosSinStock.length > 0) {
+                        html += `
+                <tr>
+                    <td colspan="3" class="seccion-titulo en-falta">⚠️ Artículos en Falta</td>
+                </tr>
+`;
+                        articulosSinStock.forEach(articulo => {
+                            html += `
+                <tr class="articulo-en-falta">
+                    <td class="col-codigo">${articulo.articulo_numero}</td>
+                    <td class="col-descripcion">${articulo.descripcion}</td>
+                    <td class="col-cantidad">${articulo.cantidad}</td>
+                </tr>
+`;
+                        });
+                    }
+                } else {
+                    // Modo normal (sin pendientes de compra)
+                    articulosSorted.forEach(articulo => {
                         html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
@@ -647,6 +785,7 @@ function generarHTML_Rediseñado(res, clienteData) {
                 </tr>
 `;
                     });
+                }
             } else {
                 html += `
                 <tr>
@@ -716,8 +855,10 @@ function generarHTML_Rediseñado(res, clienteData) {
 /**
  * Genera PDF en formato remito rediseñado (Formato R)
  * REDISEÑO: Una página por presupuesto cuando hay múltiples
+ * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
+ * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
-function generarPDF_Rediseñado(res, clienteData) {
+function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = []) {
     try {
         let PDFDocument;
         try {
@@ -758,8 +899,21 @@ function generarPDF_Rediseñado(res, clienteData) {
             
             // ENCABEZADO
             doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
-            doc.roundedRect(130, 45, 35, 35, 3).stroke();
-            doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
+            
+            if (esPendienteCompra) {
+                // ORDEN EN ESPERA en lugar de R
+                doc.fillColor('#dc3545').strokeColor('#dc3545').lineWidth(2)
+                   .roundedRect(130, 45, 120, 35, 3).stroke();
+                doc.fillColor('#fff3cd').rect(131, 46, 118, 33).fill();
+                doc.fillColor('#dc3545').fontSize(9).font('Helvetica-Bold')
+                   .text('ORDEN EN ESPERA', 135, 57, { width: 110, align: 'center' });
+                doc.fillColor('black');
+            } else {
+                // R normal
+                doc.roundedRect(130, 45, 35, 35, 3).stroke();
+                doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
+            }
+            
             doc.fontSize(10).font('Helvetica').fillColor('#666666')
                .text(`${fechaHoy} - ${horaHoy}`, 420, 55);
             doc.fillColor('black');
@@ -801,9 +955,110 @@ function generarPDF_Rediseñado(res, clienteData) {
             let currentY = tablaY + rowHeight;
             
             if (presupuesto.articulos && presupuesto.articulos.length > 0) {
-                presupuesto.articulos
-                    .sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero))
-                    .forEach((articulo, index) => {
+                const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
+                
+                // Si es pendiente de compra, separar artículos
+                if (esPendienteCompra && articulosEnFalta.length > 0) {
+                    const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
+                    const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
+                    
+                    // Artículos CON stock
+                    if (articulosConStock.length > 0) {
+                        // Título de sección
+                        doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                        doc.fillColor('#6c757d').fontSize(10).font('Helvetica-Bold')
+                           .text('ARTÍCULOS DISPONIBLES', 55, currentY + 7);
+                        doc.fillColor('black');
+                        currentY += rowHeight;
+                        
+                        articulosConStock.forEach((articulo, index) => {
+                            if (index % 2 === 1) {
+                                doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                            }
+                            doc.fillColor('black');
+                            
+                            // Bordes
+                            doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
+                            doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                            doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                            
+                            doc.fontSize(9).font('Helvetica').fillColor('#495057')
+                               .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
+                            
+                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                            doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                            
+                            let descripcion = articulo.descripcion;
+                            if (descripcion.length > 35) {
+                                descripcion = descripcion.substring(0, 32) + '...';
+                            }
+                            doc.fontSize(14).font('Helvetica').fillColor('black')
+                               .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                            
+                            doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                            
+                            doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
+                               .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
+                                   width: colWidths[2] - 10, 
+                                   align: 'center' 
+                               });
+                            
+                            currentY += rowHeight;
+                        });
+                    }
+                    
+                    // Artículos SIN stock (EN FALTA)
+                    if (articulosSinStock.length > 0) {
+                        // Título de sección
+                        doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                        doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
+                           .text('⚠️ ARTÍCULOS EN FALTA', 55, currentY + 7);
+                        doc.fillColor('black');
+                        currentY += rowHeight;
+                        
+                        articulosSinStock.forEach((articulo, index) => {
+                            // Fondo amarillo para artículos en falta
+                            doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                            doc.fillColor('black');
+                            
+                            // Borde izquierdo naranja
+                            doc.strokeColor('#ffc107').lineWidth(4)
+                               .moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
+                            doc.strokeColor('black').lineWidth(1);
+                            
+                            // Bordes normales
+                            doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                            doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                            
+                            doc.fontSize(9).font('Helvetica-Bold').fillColor('#856404')
+                               .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
+                            
+                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                            doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                            
+                            let descripcion = articulo.descripcion;
+                            if (descripcion.length > 35) {
+                                descripcion = descripcion.substring(0, 32) + '...';
+                            }
+                            doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
+                               .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                            
+                            doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                            
+                            doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
+                               .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
+                                   width: colWidths[2] - 10, 
+                                   align: 'center' 
+                               });
+                            
+                            currentY += rowHeight;
+                        });
+                    }
+                } else {
+                    // Modo normal (sin pendientes de compra)
+                    articulosSorted.forEach((articulo, index) => {
                         if (index % 2 === 1) {
                             doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
                         }
@@ -838,6 +1093,7 @@ function generarPDF_Rediseñado(res, clienteData) {
                         
                         currentY += rowHeight;
                     });
+                }
             } else {
                 doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
                 doc.fillColor('black');

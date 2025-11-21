@@ -211,6 +211,120 @@ const marcarPendienteObsoleto = async (req, res) => {
 };
 
 /**
+ * Obtener pendientes agrupados por secuencia
+ * GET /api/produccion/compras/pendientes-agrupados
+ */
+const obtenerPendientesAgrupados = async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                fpc.id,
+                fpc.articulo_numero,
+                fpc.codigo_barras,
+                COALESCE(a.codigo_barras, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real,
+                fpc.id_presupuesto_local,
+                fpc.id_presupuesto_ext,
+                fpc.cantidad_faltante,
+                fpc.estado,
+                fpc.nota,
+                fpc.creado_en,
+                p.estado as presupuesto_estado,
+                p.secuencia as presupuesto_secuencia
+            FROM public.faltantes_pendientes_compra fpc
+            INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
+            LEFT JOIN public.articulos a ON a.codigo_barras = fpc.articulo_numero
+            WHERE fpc.estado = 'En espera'
+                AND p.estado = 'Presupuesto/Orden'
+                AND p.activo = true
+            ORDER BY p.secuencia, fpc.creado_en DESC
+        `;
+
+        const result = await pool.query(query);
+
+        // Agrupar por secuencia
+        const porImprimir = result.rows.filter(p => p.presupuesto_secuencia === 'Imprimir' || p.presupuesto_secuencia === 'Imprimir_Modificado');
+        const enEspera = result.rows.filter(p => p.presupuesto_secuencia === 'Armar_Pedido');
+
+        console.log(`📊 [PENDIENTES-AGRUPADOS] Por imprimir: ${porImprimir.length}, En espera: ${enEspera.length}`);
+
+        res.json({
+            success: true,
+            data: {
+                por_imprimir: porImprimir,
+                en_espera: enEspera
+            },
+            totales: {
+                por_imprimir: porImprimir.length,
+                en_espera: enEspera.length,
+                total: result.rows.length
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [PENDIENTES-AGRUPADOS] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor',
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Marcar pendiente como impreso (cambiar secuencia del presupuesto)
+ * PATCH /api/produccion/compras/pendientes/presupuesto/:id_presupuesto_local/marcar-impreso
+ */
+const marcarPendienteImpreso = async (req, res) => {
+    try {
+        const { id_presupuesto_local } = req.params;
+
+        if (!id_presupuesto_local || isNaN(parseInt(id_presupuesto_local))) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de presupuesto inválido'
+            });
+        }
+
+        // Cambiar secuencia del presupuesto a "Armar_Pedido"
+        const query = `
+            UPDATE public.presupuestos
+            SET secuencia = 'Armar_Pedido',
+                fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
+            WHERE id = $1 
+                AND estado = 'Presupuesto/Orden'
+                AND activo = true
+            RETURNING id, id_presupuesto_ext, secuencia
+        `;
+
+        const result = await pool.query(query, [parseInt(id_presupuesto_local)]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Presupuesto no encontrado o no se pudo actualizar'
+            });
+        }
+
+        console.log(`✅ [MARCAR-IMPRESO] Presupuesto ${id_presupuesto_local} → secuencia: Armar_Pedido`);
+
+        res.json({
+            success: true,
+            data: result.rows[0],
+            message: 'Pendiente marcado como impreso'
+        });
+
+    } catch (error) {
+        console.error('❌ [MARCAR-IMPRESO] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor',
+            message: error.message
+        });
+    }
+};
+
+/**
  * Validar que presupuestos existan y estén activos
  * POST /api/produccion/validar-presupuestos
  * Body: { ids_presupuestos: [123, 456, 789] }
@@ -284,6 +398,8 @@ const validarPresupuestos = async (req, res) => {
 module.exports = {
     crearPendienteCompra,
     obtenerPendientesCompra,
+    obtenerPendientesAgrupados,
+    marcarPendienteImpreso,
     revertirPendienteCompra,
     marcarPendienteObsoleto,
     validarPresupuestos

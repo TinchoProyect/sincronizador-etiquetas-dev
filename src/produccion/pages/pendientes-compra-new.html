@@ -182,6 +182,29 @@
             margin: 20px 0;
         }
 
+        .cliente-acordeon {
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 10px;
+        }
+
+        .cliente-header {
+            padding: 15px;
+            background-color: #e9ecef;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .cliente-header:hover {
+            background-color: #dee2e6;
+        }
+
+        .cliente-contenido {
+            display: none;
+            padding: 10px;
+        }
+
         .presupuesto-item {
             margin-bottom: 15px;
             border: 1px solid #dee2e6;
@@ -239,6 +262,24 @@
             background-color: #e0a800;
         }
 
+        .indicador-estado {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .indicador-faltantes {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .indicador-parcial {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
         .cantidad-faltante {
             color: #dc3545;
             font-weight: bold;
@@ -262,12 +303,6 @@
             display: block;
             margin-bottom: 5px;
             font-size: 1.1em;
-        }
-
-        /* Estilos para marcar artículos en falta en la impresión */
-        .articulo-en-falta-marca {
-            background-color: #fff3cd !important;
-            border-left: 4px solid #ffc107 !important;
         }
     </style>
 </head>
@@ -341,7 +376,6 @@
         // Cargar pendientes agrupados
         async function cargarPendientesAgrupados() {
             try {
-                console.log('📊 [PENDIENTES] Cargando pendientes agrupados...');
                 const response = await fetch('/api/produccion/compras/pendientes-agrupados');
                 const result = await response.json();
 
@@ -354,7 +388,6 @@
                 const totales = result.totales;
 
                 console.log('📊 [PENDIENTES] Por imprimir:', por_imprimir.length, 'En espera:', en_espera.length);
-                console.log('📊 [PENDIENTES] Totales:', totales);
 
                 // Actualizar contadores
                 document.getElementById('contador-header').textContent = totales.total;
@@ -403,7 +436,6 @@
                         presupuestosMap.set(presupId, {
                             id_local: presupId,
                             id_ext: pendiente.id_presupuesto_ext,
-                            cliente_id: cliente.cliente_id,
                             cliente_nombre: cliente.cliente_nombre,
                             articulos: articulos,
                             pendientes: []
@@ -438,7 +470,7 @@
                             </div>
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 ${tipo === 'imprimir' ? `
-                                    <button class="btn-imprimir-pendiente" onclick="event.stopPropagation(); imprimirPendiente(${presupuesto.id_local}, '${presupuesto.id_ext}', ${presupuesto.cliente_id})">
+                                    <button class="btn-imprimir-pendiente" onclick="event.stopPropagation(); imprimirPendiente(${presupuesto.id_local}, '${presupuesto.id_ext}')">
                                         📄 Imprimir
                                     </button>
                                 ` : ''}
@@ -522,61 +554,38 @@
             }
         }
 
-        // Imprimir pendiente - CORREGIDO para usar el mismo sistema que el flujo principal
-        async function imprimirPendiente(idPresupuestoLocal, idPresupuestoExt, clienteId) {
+        // Imprimir pendiente
+        async function imprimirPendiente(idPresupuestoLocal, idPresupuestoExt) {
             if (!confirm(`¿Imprimir pendiente del presupuesto ${idPresupuestoExt}?\n\nEsto marcará el presupuesto como "En Espera" y pasará al segundo acordeón.`)) {
                 return;
             }
 
             try {
-                console.log(`📄 [IMPRIMIR-PENDIENTE] Iniciando impresión...`);
-                console.log(`📄 [IMPRIMIR-PENDIENTE] Cliente: ${clienteId}, Presupuesto Local: ${idPresupuestoLocal}, Ext: ${idPresupuestoExt}`);
+                console.log(`📄 [IMPRIMIR] Marcando presupuesto ${idPresupuestoLocal} como impreso...`);
                 
-                // 1. Marcar como impreso ANTES de imprimir (cambia secuencia a "Armar_Pedido")
-                console.log(`📄 [IMPRIMIR-PENDIENTE] Marcando presupuesto como impreso...`);
-                const marcarResponse = await fetch(`/api/produccion/compras/pendientes/presupuesto/${idPresupuestoLocal}/marcar-impreso`, {
+                // Marcar como impreso (cambia secuencia a "Armar_Pedido")
+                const response = await fetch(`/api/produccion/compras/pendientes/presupuesto/${idPresupuestoLocal}/marcar-impreso`, {
                     method: 'PATCH'
                 });
 
-                const marcarResult = await marcarResponse.json();
+                const result = await response.json();
 
-                if (!marcarResult.success) {
-                    alert('Error: ' + (marcarResult.error || 'No se pudo marcar como impreso'));
+                if (!result.success) {
+                    alert('Error: ' + (result.error || 'No se pudo marcar como impreso'));
                     return;
                 }
 
-                console.log(`✅ [IMPRIMIR-PENDIENTE] Presupuesto marcado como impreso (secuencia → Armar_Pedido)`);
+                console.log(`✅ [IMPRIMIR] Presupuesto marcado como impreso`);
 
-                // 2. Abrir ventana de impresión usando el MISMO ENDPOINT que el flujo principal
-                // Endpoint: /api/produccion/impresion-presupuesto (formato Remito R)
-                console.log(`📄 [IMPRIMIR-PENDIENTE] Abriendo impresión con formato Remito R del flujo principal...`);
-                
-                // Intentar PDF primero, fallback a HTML
-                // IMPORTANTE: Agregar parámetro pendiente_compra=true para que el backend marque artículos en falta
-                const urlPdf = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=pdf&pendiente_compra=true`;
-                const urlHtml = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=html&pendiente_compra=true`;
-                
-                console.log(`📄 [IMPRIMIR-PENDIENTE] URL PDF: ${urlPdf}`);
-                console.log(`📄 [IMPRIMIR-PENDIENTE] URL HTML (fallback): ${urlHtml}`);
-                
-                const win = window.open(urlPdf, '_blank');
-                
-                // Fallback a HTML si PDF falla
-                setTimeout(() => {
-                    if (!win || win.closed || typeof win.closed == 'undefined') {
-                        console.log(`📄 [IMPRIMIR-PENDIENTE] PDF bloqueado, usando HTML...`);
-                        window.open(urlHtml, '_blank');
-                    }
-                }, 2000);
+                // Abrir ventana de impresión (reutilizar sistema existente)
+                const urlImpresion = `http://localhost:3003/pages/imprimir-presupuesto.html?id=${idPresupuestoLocal}`;
+                window.open(urlImpresion, '_blank');
 
-                // 3. Recargar acordeones después de 1 segundo
-                setTimeout(() => {
-                    console.log(`🔄 [IMPRIMIR-PENDIENTE] Recargando acordeones...`);
-                    cargarPendientesAgrupados();
-                }, 1000);
+                // Recargar acordeones
+                setTimeout(() => cargarPendientesAgrupados(), 1000);
 
             } catch (error) {
-                console.error('❌ [IMPRIMIR-PENDIENTE] Error:', error);
+                console.error('Error al imprimir pendiente:', error);
                 alert('Error al procesar la impresión');
             }
         }

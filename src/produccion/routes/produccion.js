@@ -2441,6 +2441,46 @@ router.get('/compras/pendientes', async (req, res) => {
 });
 
 /**
+ * Obtener pendientes agrupados por secuencia
+ * GET /api/produccion/compras/pendientes-agrupados
+ */
+router.get('/compras/pendientes-agrupados', async (req, res) => {
+    try {
+        console.log('🛒 [COMPRAS] Ruta GET /compras/pendientes-agrupados');
+        const { obtenerPendientesAgrupados } = require('../controllers/comprasPendientes');
+        await obtenerPendientesAgrupados(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes-agrupados:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de pendientes agrupados',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Marcar pendiente como impreso (cambiar secuencia del presupuesto)
+ * PATCH /api/produccion/compras/pendientes/presupuesto/:id_presupuesto_local/marcar-impreso
+ */
+router.patch('/compras/pendientes/presupuesto/:id_presupuesto_local/marcar-impreso', async (req, res) => {
+    try {
+        console.log('🛒 [COMPRAS] Ruta PATCH /compras/pendientes/presupuesto/:id/marcar-impreso');
+        const { marcarPendienteImpreso } = require('../controllers/comprasPendientes');
+        await marcarPendienteImpreso(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/pendientes/presupuesto/:id/marcar-impreso:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de marcar impreso',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
  * Validar que presupuestos existan y estén activos
  * POST /api/produccion/validar-presupuestos
  */
