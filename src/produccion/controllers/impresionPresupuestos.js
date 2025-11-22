@@ -1,6 +1,103 @@
 const pool = require('../config/database');
 
 /**
+ * Guardar snapshot de presupuesto al imprimir
+ * @param {number} id_presupuesto - ID interno del presupuesto
+ * @param {string} id_presupuesto_ext - ID externo del presupuesto
+ * @param {Array} detalles - Array de artículos del presupuesto
+ * @param {string} secuencia - Secuencia actual del presupuesto
+ */
+async function guardarSnapshotImpresion(id_presupuesto, id_presupuesto_ext, detalles, secuencia) {
+    console.log(`📸 [SNAPSHOT] Guardando snapshot para presupuesto ID: ${id_presupuesto} (${id_presupuesto_ext})`);
+    
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        // Desactivar snapshots anteriores
+        const desactivarQuery = `
+            UPDATE presupuestos_snapshots 
+            SET activo = false 
+            WHERE id_presupuesto = $1 AND activo = true
+        `;
+        const desactivarResult = await client.query(desactivarQuery, [id_presupuesto]);
+        console.log(`📸 [SNAPSHOT] Snapshots anteriores desactivados: ${desactivarResult.rowCount}`);
+        
+        // Construir snapshot_detalles como array JSON
+        const snapshot_detalles = detalles.map(item => ({
+            articulo: item.articulo_numero || item.articulo,
+            cantidad: item.cantidad || 0,
+            valor1: item.valor1 || 0,
+            precio1: item.precio1 || item.valor1 || 0,
+            descripcion: item.descripcion || ''
+        }));
+        
+        // Determinar secuencia_en_snapshot según el motivo
+        const motivo = 'primera_impresion';
+        let secuencia_en_snapshot;
+        
+        if (motivo === 'primera_impresion') {
+            // Para primera impresión, SIEMPRE usar 'Armar_Pedido'
+            secuencia_en_snapshot = 'Armar_Pedido';
+            console.log(`📸 [SNAPSHOT] Motivo: ${motivo} -> forzando secuencia_en_snapshot = 'Armar_Pedido'`);
+        } else {
+            // Para otros motivos, usar la secuencia real del presupuesto
+            secuencia_en_snapshot = secuencia || null;
+            console.log(`📸 [SNAPSHOT] Motivo: ${motivo} -> usando secuencia real: ${secuencia || 'NULL'}`);
+        }
+        
+        // Insertar nuevo snapshot
+        const insertQuery = `
+            INSERT INTO presupuestos_snapshots (
+                id_presupuesto,
+                id_presupuesto_ext,
+                snapshot_detalles,
+                secuencia_en_snapshot,
+                motivo,
+                activo
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, fecha_snapshot
+        `;
+        
+        const insertValues = [
+            id_presupuesto,
+            id_presupuesto_ext,
+            JSON.stringify(snapshot_detalles),
+            secuencia_en_snapshot,
+            motivo,
+            true
+        ];
+        
+        const insertResult = await client.query(insertQuery, insertValues);
+        const snapshot = insertResult.rows[0];
+        
+        await client.query('COMMIT');
+        
+        console.log(`✅ [SNAPSHOT] Snapshot guardado exitosamente - ID: ${snapshot.id}, Fecha: ${snapshot.fecha_snapshot}`);
+        console.log(`📸 [SNAPSHOT] Detalles: ${snapshot_detalles.length} artículos, Secuencia: ${secuencia || 'N/A'}`);
+        
+        return {
+            success: true,
+            snapshot_id: snapshot.id,
+            fecha_snapshot: snapshot.fecha_snapshot
+        };
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [SNAPSHOT] Error al guardar snapshot:', error.message);
+        console.error('❌ [SNAPSHOT] Stack:', error.stack);
+        // No lanzar error - la impresión debe continuar
+        return {
+            success: false,
+            error: error.message
+        };
+    } finally {
+        client.release();
+    }
+}
+
+/**
  * Genera impresión de presupuesto por cliente en formato remito rediseñado (PDF o HTML)
  * REDISEÑO: Formato R compacto, moderno y minimalista
  */
@@ -147,6 +244,39 @@ const imprimirPresupuestoCliente = async (req, res) => {
             console.log(`✅ [REMITO-R] Datos obtenidos para cliente: ${clienteData.cliente_nombre}`);
             console.log(`📊 [REMITO-R] Total presupuestos encontrados: ${clienteData.presupuestos.length}`);
             
+            // 📸 GUARDAR SNAPSHOTS para cada presupuesto que se va a imprimir
+            console.log('📸 [SNAPSHOT] Iniciando guardado de snapshots para presupuestos a imprimir...');
+            for (const presupuesto of clienteData.presupuestos) {
+                try {
+                    // Obtener id_presupuesto y secuencia desde la BD
+                    const presupuestoQuery = `
+                        SELECT id, secuencia 
+                        FROM public.presupuestos 
+                        WHERE id_presupuesto_ext = $1 AND activo = true
+                        LIMIT 1
+                    `;
+                    const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id_presupuesto_ext]);
+                    
+                    if (presupuestoResult.rows.length > 0) {
+                        const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
+                        
+                        // Guardar snapshot (no bloquea la impresión si falla)
+                        await guardarSnapshotImpresion(
+                            id_presupuesto,
+                            presupuesto.id_presupuesto_ext,
+                            presupuesto.articulos || [],
+                            secuencia
+                        );
+                    } else {
+                        console.log(`⚠️ [SNAPSHOT] No se encontró presupuesto con id_ext: ${presupuesto.id_presupuesto_ext}`);
+                    }
+                } catch (snapshotError) {
+                    console.error(`❌ [SNAPSHOT] Error al guardar snapshot para ${presupuesto.id_presupuesto_ext}:`, snapshotError.message);
+                    // Continuar con la impresión aunque falle el snapshot
+                }
+            }
+            console.log('📸 [SNAPSHOT] Proceso de snapshots completado');
+            
             // Si es pendiente de compra, obtener artículos en falta
             // IMPORTANTE: Usar la misma lógica que comprasPendientes.js con codigo_barras_real
             let articulosEnFalta = [];
@@ -263,6 +393,41 @@ const imprimirPresupuestoCliente = async (req, res) => {
             const clientesData = result.rows[0].clientes_data;
             console.log(`✅ [REMITO-R] Datos obtenidos para ${clientesData.length} clientes con IDs externos`);
             
+            // 📸 GUARDAR SNAPSHOTS para cada presupuesto que se va a imprimir
+            console.log('📸 [SNAPSHOT] Iniciando guardado de snapshots para "Imprimir Todos"...');
+            for (const cliente of clientesData) {
+                for (const presupuesto of cliente.presupuestos) {
+                    try {
+                        // Obtener id_presupuesto y secuencia desde la BD
+                        const presupuestoQuery = `
+                            SELECT id, secuencia 
+                            FROM public.presupuestos 
+                            WHERE id_presupuesto_ext = $1 AND activo = true
+                            LIMIT 1
+                        `;
+                        const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id_presupuesto_ext]);
+                        
+                        if (presupuestoResult.rows.length > 0) {
+                            const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
+                            
+                            // Guardar snapshot (no bloquea la impresión si falla)
+                            await guardarSnapshotImpresion(
+                                id_presupuesto,
+                                presupuesto.id_presupuesto_ext,
+                                presupuesto.articulos || [],
+                                secuencia
+                            );
+                        } else {
+                            console.log(`⚠️ [SNAPSHOT] No se encontró presupuesto con id_ext: ${presupuesto.id_presupuesto_ext}`);
+                        }
+                    } catch (snapshotError) {
+                        console.error(`❌ [SNAPSHOT] Error al guardar snapshot para ${presupuesto.id_presupuesto_ext}:`, snapshotError.message);
+                        // Continuar con la impresión aunque falle el snapshot
+                    }
+                }
+            }
+            console.log('📸 [SNAPSHOT] Proceso de snapshots completado para "Imprimir Todos"');
+            
             if (formato === 'pdf') {
                 return generarPDF_TodosLosClientes(res, clientesData, fecha);
             } else {
@@ -345,6 +510,41 @@ const imprimirPresupuestoCliente = async (req, res) => {
             
             const clientesData = result.rows[0].clientes_data;
             console.log(`✅ [REMITO-R] Datos obtenidos para ${clientesData.length} clientes`);
+            
+            // 📸 GUARDAR SNAPSHOTS para cada presupuesto que se va a imprimir
+            console.log('📸 [SNAPSHOT] Iniciando guardado de snapshots para impresión por fecha...');
+            for (const cliente of clientesData) {
+                for (const presupuesto of cliente.presupuestos) {
+                    try {
+                        // Obtener id_presupuesto y secuencia desde la BD
+                        const presupuestoQuery = `
+                            SELECT id, secuencia 
+                            FROM public.presupuestos 
+                            WHERE id_presupuesto_ext = $1 AND activo = true
+                            LIMIT 1
+                        `;
+                        const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id_presupuesto_ext]);
+                        
+                        if (presupuestoResult.rows.length > 0) {
+                            const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
+                            
+                            // Guardar snapshot (no bloquea la impresión si falla)
+                            await guardarSnapshotImpresion(
+                                id_presupuesto,
+                                presupuesto.id_presupuesto_ext,
+                                presupuesto.articulos || [],
+                                secuencia
+                            );
+                        } else {
+                            console.log(`⚠️ [SNAPSHOT] No se encontró presupuesto con id_ext: ${presupuesto.id_presupuesto_ext}`);
+                        }
+                    } catch (snapshotError) {
+                        console.error(`❌ [SNAPSHOT] Error al guardar snapshot para ${presupuesto.id_presupuesto_ext}:`, snapshotError.message);
+                        // Continuar con la impresión aunque falle el snapshot
+                    }
+                }
+            }
+            console.log('📸 [SNAPSHOT] Proceso de snapshots completado para impresión por fecha');
             
             if (formato === 'pdf') {
                 return generarPDF_TodosLosClientes(res, clientesData, fecha);
