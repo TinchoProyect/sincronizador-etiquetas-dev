@@ -250,13 +250,14 @@ const crearPresupuesto = async (req, res) => {
                 estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
-                secuencia || 'Imprimir', // Valor predeterminado: "Imprimir"
+                'Imprimir', // SIEMPRE forzar "Imprimir" al crear
                 configHojaUrl,
                 1 // usuario_id = 1 por defecto
             ]);
 
             const presupuestoBD = headerResult.rows[0];
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Encabezado registrado: ID=${presupuestoBD.id}`);
+            console.log(`✅ [PRESUPUESTO] Creando presupuesto nuevo, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuestoId}`);
 
             // Helpers numéricos locales para cálculos
 
@@ -632,11 +633,11 @@ const editarPresupuesto = async (req, res) => {
                 params.push(fecha ? normalizeDate(fecha) : null);
             }
 
-            if (secuencia !== undefined) {
-                paramCount++;
-                updates.push(`secuencia = $${paramCount}`);
-                params.push(secuencia || null);
-            }
+            // FORZAR secuencia = 'Imprimir' SIEMPRE (ignorar valor del frontend)
+            paramCount++;
+            updates.push(`secuencia = $${paramCount}`);
+            params.push('Imprimir');
+            console.log(`[PRESUPUESTO] Forzando secuencia = 'Imprimir' para presupuesto ID: ${id}`);
 
             // Actualizar cabecera si hay campos
             let presupuestoActualizado = presupuesto;
@@ -659,6 +660,7 @@ const editarPresupuesto = async (req, res) => {
                 const updateResult = await client.query(updateQuery, params);
                 presupuestoActualizado = updateResult.rows[0];
                 console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada con timestamp`);
+                console.log(`✅ [PRESUPUESTO] Guardando presupuesto editado, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuesto.id_presupuesto_ext || presupuesto.id}`);
             }
 
             // Determinar si actualizar detalles
