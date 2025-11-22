@@ -191,10 +191,12 @@ async function ejecutarCorreccionFechas(config, db) {
                         INSERT INTO presupuestos 
                         (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
                          nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
-                         activo, fecha_actualizacion, hoja_nombre, hoja_url, usuario_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, true), COALESCE($14, NOW()), $15, $16, $17)
+                         secuencia, activo, fecha_actualizacion, hoja_nombre, hoja_url, usuario_id)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, COALESCE($14, true), COALESCE($15, NOW()), $16, $17, $18)
                         RETURNING id
                     `;
+                    
+                    console.log(`[PRESUPUESTO] Creando presupuesto desde Sheets (corrección masiva), forzando secuencia = 'Imprimir', id_presupuesto_ext: ${presupuesto.id_presupuesto_ext}`);
                     
 
                         // ===== DEBUG PRE-INSERT (PRESUPUESTO) — solo primeros 3 y últimos 3 =====
@@ -225,6 +227,7 @@ async function ejecutarCorreccionFechas(config, db) {
                         presupuesto.cliente_nuevo_id,
                         presupuesto.punto_entrega,
                         presupuesto.descuento,
+                        'Imprimir', // FORZAR secuencia = 'Imprimir' cuando viene de Sheets
                         presupuesto.activo,
                         presupuesto.lastModified,
                         presupuesto.hoja_nombre,
