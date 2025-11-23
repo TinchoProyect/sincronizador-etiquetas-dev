@@ -284,7 +284,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             console.log(`✅ [REMITO-R] Datos obtenidos para cliente: ${clienteData.cliente_nombre}`);
             console.log(`📊 [REMITO-R] Total presupuestos encontrados: ${clienteData.presupuestos.length}`);
             
-            // 📸 GUARDAR SNAPSHOTS para cada presupuesto que se va a imprimir
+            // 📸 GUARDAR SNAPSHOTS Y OBTENER DATOS DE MODIFICACIÓN para cada presupuesto
             console.log('📸 [SNAPSHOT] Iniciando guardado de snapshots para presupuestos a imprimir...');
             for (const presupuesto of clienteData.presupuestos) {
                 try {
@@ -307,6 +307,47 @@ const imprimirPresupuestoCliente = async (req, res) => {
                             presupuesto.articulos || [],
                             secuencia
                         );
+                        
+                        // Obtener datos del snapshot para mostrar en impresión
+                        const snapshotQuery = `
+                            SELECT 
+                                id,
+                                motivo,
+                                secuencia_en_snapshot,
+                                numero_impresion,
+                                fecha_snapshot,
+                                diferencias_detalles
+                            FROM presupuestos_snapshots
+                            WHERE id_presupuesto = $1 AND activo = true
+                            ORDER BY fecha_snapshot DESC
+                            LIMIT 1
+                        `;
+                        
+                        const snapshotResult = await pool.query(snapshotQuery, [id_presupuesto]);
+                        
+                        if (snapshotResult.rows.length > 0) {
+                            const snapshot = snapshotResult.rows[0];
+                            
+                            // Agregar datos del snapshot al presupuesto para usar en la vista
+                            presupuesto._snapshot = {
+                                motivo: snapshot.motivo,
+                                secuencia_en_snapshot: snapshot.secuencia_en_snapshot,
+                                numero_impresion: snapshot.numero_impresion,
+                                fecha_snapshot: snapshot.fecha_snapshot,
+                                diferencias_detalles: snapshot.diferencias_detalles
+                            };
+                            
+                            const esModificado = snapshot.motivo === 'modificado' || 
+                                               snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                            
+                            if (esModificado) {
+                                console.log(`[PRINT-MOD] Usando snapshot modificado (id_snapshot=${snapshot.id}, id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion}, motivo=${snapshot.motivo}, fecha_snapshot=${snapshot.fecha_snapshot})`);
+                            } else {
+                                console.log(`[PRINT-MOD] Sin snapshot activo o primera impresión, impresión normal`);
+                            }
+                        } else {
+                            console.log(`[PRINT-MOD] Sin snapshot activo, impresión normal`);
+                        }
                     } else {
                         console.log(`⚠️ [SNAPSHOT] No se encontró presupuesto con id_ext: ${presupuesto.id_presupuesto_ext}`);
                     }
@@ -433,7 +474,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             const clientesData = result.rows[0].clientes_data;
             console.log(`✅ [REMITO-R] Datos obtenidos para ${clientesData.length} clientes con IDs externos`);
             
-            // 📸 GUARDAR SNAPSHOTS para cada presupuesto que se va a imprimir
+            // 📸 GUARDAR SNAPSHOTS Y OBTENER DATOS DE MODIFICACIÓN para cada presupuesto
             console.log('📸 [SNAPSHOT] Iniciando guardado de snapshots para "Imprimir Todos"...');
             for (const cliente of clientesData) {
                 for (const presupuesto of cliente.presupuestos) {
@@ -457,6 +498,43 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 presupuesto.articulos || [],
                                 secuencia
                             );
+                            
+                            // Obtener datos del snapshot para mostrar en impresión
+                            const snapshotQuery = `
+                                SELECT 
+                                    id,
+                                    motivo,
+                                    secuencia_en_snapshot,
+                                    numero_impresion,
+                                    fecha_snapshot,
+                                    diferencias_detalles
+                                FROM presupuestos_snapshots
+                                WHERE id_presupuesto = $1 AND activo = true
+                                ORDER BY fecha_snapshot DESC
+                                LIMIT 1
+                            `;
+                            
+                            const snapshotResult = await pool.query(snapshotQuery, [id_presupuesto]);
+                            
+                            if (snapshotResult.rows.length > 0) {
+                                const snapshot = snapshotResult.rows[0];
+                                
+                                // Agregar datos del snapshot al presupuesto para usar en la vista
+                                presupuesto._snapshot = {
+                                    motivo: snapshot.motivo,
+                                    secuencia_en_snapshot: snapshot.secuencia_en_snapshot,
+                                    numero_impresion: snapshot.numero_impresion,
+                                    fecha_snapshot: snapshot.fecha_snapshot,
+                                    diferencias_detalles: snapshot.diferencias_detalles
+                                };
+                                
+                                const esModificado = snapshot.motivo === 'modificado' || 
+                                                   snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                                
+                                if (esModificado) {
+                                    console.log(`[PRINT-MOD] Usando snapshot modificado (id_snapshot=${snapshot.id}, id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion}, motivo=${snapshot.motivo}, fecha_snapshot=${snapshot.fecha_snapshot})`);
+                                }
+                            }
                         } else {
                             console.log(`⚠️ [SNAPSHOT] No se encontró presupuesto con id_ext: ${presupuesto.id_presupuesto_ext}`);
                         }
@@ -551,7 +629,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             const clientesData = result.rows[0].clientes_data;
             console.log(`✅ [REMITO-R] Datos obtenidos para ${clientesData.length} clientes`);
             
-            // 📸 GUARDAR SNAPSHOTS para cada presupuesto que se va a imprimir
+            // 📸 GUARDAR SNAPSHOTS Y OBTENER DATOS DE MODIFICACIÓN para cada presupuesto
             console.log('📸 [SNAPSHOT] Iniciando guardado de snapshots para impresión por fecha...');
             for (const cliente of clientesData) {
                 for (const presupuesto of cliente.presupuestos) {
@@ -575,6 +653,43 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 presupuesto.articulos || [],
                                 secuencia
                             );
+                            
+                            // Obtener datos del snapshot para mostrar en impresión
+                            const snapshotQuery = `
+                                SELECT 
+                                    id,
+                                    motivo,
+                                    secuencia_en_snapshot,
+                                    numero_impresion,
+                                    fecha_snapshot,
+                                    diferencias_detalles
+                                FROM presupuestos_snapshots
+                                WHERE id_presupuesto = $1 AND activo = true
+                                ORDER BY fecha_snapshot DESC
+                                LIMIT 1
+                            `;
+                            
+                            const snapshotResult = await pool.query(snapshotQuery, [id_presupuesto]);
+                            
+                            if (snapshotResult.rows.length > 0) {
+                                const snapshot = snapshotResult.rows[0];
+                                
+                                // Agregar datos del snapshot al presupuesto para usar en la vista
+                                presupuesto._snapshot = {
+                                    motivo: snapshot.motivo,
+                                    secuencia_en_snapshot: snapshot.secuencia_en_snapshot,
+                                    numero_impresion: snapshot.numero_impresion,
+                                    fecha_snapshot: snapshot.fecha_snapshot,
+                                    diferencias_detalles: snapshot.diferencias_detalles
+                                };
+                                
+                                const esModificado = snapshot.motivo === 'modificado' || 
+                                                   snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                                
+                                if (esModificado) {
+                                    console.log(`[PRINT-MOD] Usando snapshot modificado (id_snapshot=${snapshot.id}, id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion}, motivo=${snapshot.motivo}, fecha_snapshot=${snapshot.fecha_snapshot})`);
+                                }
+                            }
                         } else {
                             console.log(`⚠️ [SNAPSHOT] No se encontró presupuesto con id_ext: ${presupuesto.id_presupuesto_ext}`);
                         }
@@ -864,6 +979,54 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             color: #856404;
         }
         
+        /* BLOQUE DE CAMBIOS */
+        .bloque-cambios {
+            margin-top: 20px;
+            margin-bottom: 15px;
+            border: 2px solid #ffc107;
+            background: #fffbf0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .bloque-cambios h4 {
+            margin: 0 0 10px 0;
+            font-size: 11px;
+            font-weight: bold;
+            color: #856404;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .cambio-item {
+            font-size: 9px;
+            padding: 4px 0;
+            border-bottom: 1px dashed #ffeaa7;
+            color: #333;
+        }
+        
+        .cambio-item:last-child {
+            border-bottom: none;
+        }
+        
+        .cambio-tipo {
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-right: 5px;
+        }
+        
+        .cambio-tipo.modificado {
+            color: #0066cc;
+        }
+        
+        .cambio-tipo.agregado {
+            color: #28a745;
+        }
+        
+        .cambio-tipo.eliminado {
+            color: #dc3545;
+        }
+        
         /* PIE DE PÁGINA MINIMALISTA */
         .pie-pagina {
             margin-top: 15px;
@@ -934,6 +1097,24 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
                     '<div class="orden-espera">ORDEN EN ESPERA</div>' : 
                     '<div class="letra-r">R</div>'
                 }
+`;
+            
+            // Mostrar indicador de modificación en el encabezado
+            if (presupuesto._snapshot) {
+                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                
+                if (esModificado) {
+                    const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+                    html += `
+                <div style="font-size: 12px; color: #dc3545; font-weight: bold; margin-left: 15px;">
+                    PRESUPUESTO MODIFICADO ${numeroModificacion}
+                </div>
+`;
+                }
+            }
+            
+            html += `
             </div>
             <div class="fecha-emision">
                 ${fechaHoy} - ${horaHoy}
@@ -949,6 +1130,9 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             <div>
                 <div class="codigo-presupuesto">${presupuesto.id_presupuesto_ext}</div>
                 <div style="font-size: 10px; color: #666; margin-top: 4px;">Fecha: ${fechaPresupuesto}</div>
+`;
+            
+            html += `
             </div>
         </div>
         
@@ -1039,6 +1223,65 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             html += `
             </tbody>
         </table>
+`;
+            
+            // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
+            if (presupuesto._snapshot) {
+                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                
+                if (esModificado && presupuesto._snapshot.diferencias_detalles) {
+                    const diferencias = presupuesto._snapshot.diferencias_detalles;
+                    
+                    // Filtrar solo diferencias relevantes (cambios de cantidad)
+                    const diferenciasRelevantes = diferencias.filter(dif => {
+                        if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
+                            return true;
+                        }
+                        if (dif.tipo_cambio === 'modificado') {
+                            const cantAntes = parseFloat(dif.cantidad_antes || 0);
+                            const cantDespues = parseFloat(dif.cantidad_despues || 0);
+                            return cantAntes !== cantDespues;
+                        }
+                        return false;
+                    });
+                    
+                    if (diferenciasRelevantes.length > 0) {
+                        console.log(`[PRINT-MOD] Bloque de cambios agregado a impresión (${diferenciasRelevantes.length} diferencias relevantes)`);
+                        
+                        html += `
+        <!-- BLOQUE DE CAMBIOS -->
+        <div class="bloque-cambios">
+            <h4>📋 Cambios:</h4>
+`;
+                        
+                        diferenciasRelevantes.forEach(dif => {
+                            const tipoClase = dif.tipo_cambio.toLowerCase();
+                            let textoCambio = '';
+                            
+                            if (dif.tipo_cambio === 'modificado') {
+                                textoCambio = `<span class="cambio-tipo ${tipoClase}">MODIFICADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}, cantidad después: ${dif.cantidad_despues}`;
+                            } else if (dif.tipo_cambio === 'agregado') {
+                                textoCambio = `<span class="cambio-tipo ${tipoClase}">AGREGADO:</span> ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
+                            } else if (dif.tipo_cambio === 'eliminado') {
+                                textoCambio = `<span class="cambio-tipo ${tipoClase}">ELIMINADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
+                            }
+                            
+                            html += `
+            <div class="cambio-item">${textoCambio}</div>
+`;
+                        });
+                        
+                        html += `
+        </div>
+`;
+                    } else {
+                        console.log(`[PRINT-MOD] Snapshot modificado sin diferencias relevantes -> no se muestra bloque de cambios`);
+                    }
+                }
+            }
+            
+            html += `
         
         <!-- CONTROL DE ENTREGA REDISEÑADO -->
         <div class="control-entrega">
@@ -1174,10 +1417,32 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                .text(presupuesto.id_presupuesto_ext, 450, 105);
             doc.fontSize(8).fillColor('#999999')
                .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
+            
+            // Indicador de modificación si corresponde
+            let offsetTablaY = 0;
+            if (presupuesto._snapshot) {
+                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                
+                if (esModificado) {
+                    const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+                    const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
+                    
+                    doc.fontSize(9).font('Helvetica-Bold').fillColor('#dc3545')
+                       .text(`📝 Modificado ${numeroModificacion}`, 450, 130);
+                    doc.fontSize(8).font('Helvetica').fillColor('#856404')
+                       .text(`Fecha modificación: ${fechaModificacion}`, 450, 142);
+                    
+                    offsetTablaY = 20; // Mover tabla más abajo
+                    
+                    console.log(`[PRINT-MOD] PDF: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
+                }
+            }
+            
             doc.fillColor('black');
             
             // TABLA DE ARTÍCULOS
-            const tablaY = 150;
+            const tablaY = 150 + offsetTablaY;
             const colWidths = [85, 340, 65];
             const rowHeight = 22;
             
@@ -1349,6 +1614,68 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                        align: 'center' 
                    });
                 currentY += rowHeight;
+            }
+            
+            // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
+            if (presupuesto._snapshot) {
+                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                
+                if (esModificado && presupuesto._snapshot.diferencias_detalles) {
+                    const diferencias = presupuesto._snapshot.diferencias_detalles;
+                    
+                    // Filtrar solo diferencias relevantes
+                    const diferenciasRelevantes = diferencias.filter(dif => {
+                        if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
+                            return true;
+                        }
+                        if (dif.tipo_cambio === 'modificado') {
+                            const cantAntes = parseFloat(dif.cantidad_antes || 0);
+                            const cantDespues = parseFloat(dif.cantidad_despues || 0);
+                            return cantAntes !== cantDespues;
+                        }
+                        return false;
+                    });
+                    
+                    if (diferenciasRelevantes.length > 0) {
+                        currentY += 10;
+                        
+                        // Título del bloque
+                        doc.strokeColor('#ffc107').lineWidth(2)
+                           .roundedRect(50, currentY, 490, 20, 3).stroke();
+                        doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
+                        doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
+                           .text('📋 CAMBIOS:', 60, currentY + 6);
+                        
+                        currentY += 25;
+                        
+                        // Mostrar cada cambio
+                        diferenciasRelevantes.forEach((dif, index) => {
+                            let textoCambio = '';
+                            let colorTexto = '#333333';
+                            
+                            if (dif.tipo_cambio === 'modificado') {
+                                textoCambio = `MODIFICADO: ${dif.descripcion} – cantidad: ${dif.cantidad_antes} → ${dif.cantidad_despues}`;
+                                colorTexto = '#0066cc';
+                            } else if (dif.tipo_cambio === 'agregado') {
+                                textoCambio = `AGREGADO: ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
+                                colorTexto = '#28a745';
+                            } else if (dif.tipo_cambio === 'eliminado') {
+                                textoCambio = `ELIMINADO: ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
+                                colorTexto = '#dc3545';
+                            }
+                            
+                            doc.fontSize(8).font('Helvetica').fillColor(colorTexto)
+                               .text(`• ${textoCambio}`, 60, currentY, { width: 480 });
+                            
+                            currentY += 12;
+                        });
+                        
+                        currentY += 5;
+                        
+                        console.log(`[PRINT-MOD] PDF: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
+                    }
+                }
             }
             
             // CONTROL DE ENTREGA
@@ -1605,6 +1932,54 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
             color: #856404;
         }
         
+        /* BLOQUE DE CAMBIOS */
+        .bloque-cambios {
+            margin-top: 20px;
+            margin-bottom: 15px;
+            border: 2px solid #ffc107;
+            background: #fffbf0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .bloque-cambios h4 {
+            margin: 0 0 10px 0;
+            font-size: 11px;
+            font-weight: bold;
+            color: #856404;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .cambio-item {
+            font-size: 9px;
+            padding: 4px 0;
+            border-bottom: 1px dashed #ffeaa7;
+            color: #333;
+        }
+        
+        .cambio-item:last-child {
+            border-bottom: none;
+        }
+        
+        .cambio-tipo {
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-right: 5px;
+        }
+        
+        .cambio-tipo.modificado {
+            color: #0066cc;
+        }
+        
+        .cambio-tipo.agregado {
+            color: #28a745;
+        }
+        
+        .cambio-tipo.eliminado {
+            color: #dc3545;
+        }
+        
         .pie-pagina {
             margin-top: 15px;
             text-align: center;
@@ -1673,6 +2048,29 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
             <div>
                 <div class="codigo-presupuesto">${presupuesto.id_presupuesto_ext}</div>
                 <div style="font-size: 10px; color: #666; margin-top: 4px;">Fecha: ${fechaPresupuesto}</div>
+`;
+                
+                // Mostrar indicador de modificación si corresponde
+                if (presupuesto._snapshot) {
+                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                    
+                    if (esModificado) {
+                        const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+                        const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
+                        
+                        html += `
+                <div style="font-size: 10px; color: #dc3545; font-weight: bold; margin-top: 4px;">
+                    📝 Modificado ${numeroModificacion}
+                </div>
+                <div style="font-size: 9px; color: #856404; margin-top: 2px;">
+                    Fecha modificación: ${fechaModificacion}
+                </div>
+`;
+                    }
+                }
+                
+                html += `
             </div>
         </div>
         
@@ -1715,6 +2113,65 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
                 html += `
             </tbody>
         </table>
+`;
+                
+                // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
+                if (presupuesto._snapshot) {
+                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                    
+                    if (esModificado && presupuesto._snapshot.diferencias_detalles) {
+                        const diferencias = presupuesto._snapshot.diferencias_detalles;
+                        
+                        // Filtrar solo diferencias relevantes (cambios de cantidad)
+                        const diferenciasRelevantes = diferencias.filter(dif => {
+                            if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
+                                return true;
+                            }
+                            if (dif.tipo_cambio === 'modificado') {
+                                const cantAntes = parseFloat(dif.cantidad_antes || 0);
+                                const cantDespues = parseFloat(dif.cantidad_despues || 0);
+                                return cantAntes !== cantDespues;
+                            }
+                            return false;
+                        });
+                        
+                        if (diferenciasRelevantes.length > 0) {
+                            console.log(`[PRINT-MOD] Bloque de cambios agregado a impresión "Todos" (${diferenciasRelevantes.length} diferencias relevantes)`);
+                            
+                            html += `
+        <!-- BLOQUE DE CAMBIOS -->
+        <div class="bloque-cambios">
+            <h4>📋 Cambios:</h4>
+`;
+                            
+                            diferenciasRelevantes.forEach(dif => {
+                                const tipoClase = dif.tipo_cambio.toLowerCase();
+                                let textoCambio = '';
+                                
+                                if (dif.tipo_cambio === 'modificado') {
+                                    textoCambio = `<span class="cambio-tipo ${tipoClase}">MODIFICADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}, cantidad después: ${dif.cantidad_despues}`;
+                                } else if (dif.tipo_cambio === 'agregado') {
+                                    textoCambio = `<span class="cambio-tipo ${tipoClase}">AGREGADO:</span> ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
+                                } else if (dif.tipo_cambio === 'eliminado') {
+                                    textoCambio = `<span class="cambio-tipo ${tipoClase}">ELIMINADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
+                                }
+                                
+                                html += `
+            <div class="cambio-item">${textoCambio}</div>
+`;
+                            });
+                            
+                            html += `
+        </div>
+`;
+                        } else {
+                            console.log(`[PRINT-MOD] Snapshot modificado sin diferencias relevantes -> no se muestra bloque de cambios`);
+                        }
+                    }
+                }
+                
+                html += `
         
         <div class="control-entrega">
             <h4>Control de Entrega</h4>
@@ -1843,10 +2300,32 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                    .text(presupuesto.id_presupuesto_ext, 450, 105);
                 doc.fontSize(8).fillColor('#999999')
                    .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
+                
+                // Indicador de modificación si corresponde
+                let offsetTablaY = 0;
+                if (presupuesto._snapshot) {
+                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                    
+                    if (esModificado) {
+                        const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+                        const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
+                        
+                        doc.fontSize(9).font('Helvetica-Bold').fillColor('#dc3545')
+                           .text(`📝 Modificado ${numeroModificacion}`, 450, 130);
+                        doc.fontSize(8).font('Helvetica').fillColor('#856404')
+                           .text(`Fecha modificación: ${fechaModificacion}`, 450, 142);
+                        
+                        offsetTablaY = 20; // Mover tabla más abajo
+                        
+                        console.log(`[PRINT-MOD] PDF Todos: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
+                    }
+                }
+                
                 doc.fillColor('black');
                 
                 // TABLA DE ARTÍCULOS
-                const tablaY = 150;
+                const tablaY = 150 + offsetTablaY;
                 const colWidths = [85, 340, 65];
                 const rowHeight = 22;
                 
@@ -1900,6 +2379,68 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                             
                             currentY += rowHeight;
                         });
+                }
+                
+                // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
+                if (presupuesto._snapshot) {
+                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                    
+                    if (esModificado && presupuesto._snapshot.diferencias_detalles) {
+                        const diferencias = presupuesto._snapshot.diferencias_detalles;
+                        
+                        // Filtrar solo diferencias relevantes
+                        const diferenciasRelevantes = diferencias.filter(dif => {
+                            if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
+                                return true;
+                            }
+                            if (dif.tipo_cambio === 'modificado') {
+                                const cantAntes = parseFloat(dif.cantidad_antes || 0);
+                                const cantDespues = parseFloat(dif.cantidad_despues || 0);
+                                return cantAntes !== cantDespues;
+                            }
+                            return false;
+                        });
+                        
+                        if (diferenciasRelevantes.length > 0) {
+                            currentY += 10;
+                            
+                            // Título del bloque
+                            doc.strokeColor('#ffc107').lineWidth(2)
+                               .roundedRect(50, currentY, 490, 20, 3).stroke();
+                            doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
+                            doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
+                               .text('📋 CAMBIOS:', 60, currentY + 6);
+                            
+                            currentY += 25;
+                            
+                            // Mostrar cada cambio
+                            diferenciasRelevantes.forEach((dif, index) => {
+                                let textoCambio = '';
+                                let colorTexto = '#333333';
+                                
+                                if (dif.tipo_cambio === 'modificado') {
+                                    textoCambio = `MODIFICADO: ${dif.descripcion} – cantidad: ${dif.cantidad_antes} → ${dif.cantidad_despues}`;
+                                    colorTexto = '#0066cc';
+                                } else if (dif.tipo_cambio === 'agregado') {
+                                    textoCambio = `AGREGADO: ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
+                                    colorTexto = '#28a745';
+                                } else if (dif.tipo_cambio === 'eliminado') {
+                                    textoCambio = `ELIMINADO: ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
+                                    colorTexto = '#dc3545';
+                                }
+                                
+                                doc.fontSize(8).font('Helvetica').fillColor(colorTexto)
+                                   .text(`• ${textoCambio}`, 60, currentY, { width: 480 });
+                                
+                                currentY += 12;
+                            });
+                            
+                            currentY += 5;
+                            
+                            console.log(`[PRINT-MOD] PDF Todos: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
+                        }
+                    }
                 }
                 
                 // CONTROL DE ENTREGA
