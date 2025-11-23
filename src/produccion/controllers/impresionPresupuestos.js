@@ -8,85 +8,125 @@ const pool = require('../config/database');
  * @param {string} secuencia - Secuencia actual del presupuesto
  */
 async function guardarSnapshotImpresion(id_presupuesto, id_presupuesto_ext, detalles, secuencia) {
-    console.log(`📸 [SNAPSHOT] Guardando snapshot para presupuesto ID: ${id_presupuesto} (${id_presupuesto_ext})`);
+    console.log(`📸 [SNAPSHOT-PRINT] Iniciando guardado de snapshot para presupuesto ID: ${id_presupuesto} (${id_presupuesto_ext})`);
     
     const client = await pool.connect();
     
     try {
         await client.query('BEGIN');
         
-        // Desactivar snapshots anteriores
-        const desactivarQuery = `
-            UPDATE presupuestos_snapshots 
-            SET activo = false 
-            WHERE id_presupuesto = $1 AND activo = true
-        `;
-        const desactivarResult = await client.query(desactivarQuery, [id_presupuesto]);
-        console.log(`📸 [SNAPSHOT] Snapshots anteriores desactivados: ${desactivarResult.rowCount}`);
-        
-        // Construir snapshot_detalles como array JSON
-        const snapshot_detalles = detalles.map(item => ({
-            articulo: item.articulo_numero || item.articulo,
-            cantidad: item.cantidad || 0,
-            valor1: item.valor1 || 0,
-            precio1: item.precio1 || item.valor1 || 0,
-            descripcion: item.descripcion || ''
-        }));
-        
-        // Determinar secuencia_en_snapshot según el motivo
-        const motivo = 'primera_impresion';
-        let secuencia_en_snapshot;
-        
-        if (motivo === 'primera_impresion') {
-            // Para primera impresión, SIEMPRE usar 'Armar_Pedido'
-            secuencia_en_snapshot = 'Armar_Pedido';
-            console.log(`📸 [SNAPSHOT] Motivo: ${motivo} -> forzando secuencia_en_snapshot = 'Armar_Pedido'`);
-        } else {
-            // Para otros motivos, usar la secuencia real del presupuesto
-            secuencia_en_snapshot = secuencia || null;
-            console.log(`📸 [SNAPSHOT] Motivo: ${motivo} -> usando secuencia real: ${secuencia || 'NULL'}`);
-        }
-        
-        // Insertar nuevo snapshot
-        const insertQuery = `
-            INSERT INTO presupuestos_snapshots (
-                id_presupuesto,
-                id_presupuesto_ext,
-                snapshot_detalles,
+        // 1. Verificar si ya existe un snapshot activo
+        const checkSnapshotQuery = `
+            SELECT 
+                id,
                 secuencia_en_snapshot,
                 motivo,
-                activo
-            ) VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, fecha_snapshot
+                numero_impresion,
+                diferencias_detalles
+            FROM presupuestos_snapshots
+            WHERE id_presupuesto = $1 AND activo = true
+            ORDER BY fecha_snapshot DESC
+            LIMIT 1
         `;
         
-        const insertValues = [
-            id_presupuesto,
-            id_presupuesto_ext,
-            JSON.stringify(snapshot_detalles),
-            secuencia_en_snapshot,
-            motivo,
-            true
-        ];
+        const checkResult = await client.query(checkSnapshotQuery, [id_presupuesto]);
         
-        const insertResult = await client.query(insertQuery, insertValues);
-        const snapshot = insertResult.rows[0];
-        
-        await client.query('COMMIT');
-        
-        console.log(`✅ [SNAPSHOT] Snapshot guardado exitosamente - ID: ${snapshot.id}, Fecha: ${snapshot.fecha_snapshot}`);
-        console.log(`📸 [SNAPSHOT] Detalles: ${snapshot_detalles.length} artículos, Secuencia: ${secuencia || 'N/A'}`);
-        
-        return {
-            success: true,
-            snapshot_id: snapshot.id,
-            fecha_snapshot: snapshot.fecha_snapshot
-        };
+        if (checkResult.rows.length > 0) {
+            // YA EXISTE SNAPSHOT ACTIVO - No crear uno nuevo, reutilizar el existente
+            const snapshotExistente = checkResult.rows[0];
+            
+            console.log(`📸 [SNAPSHOT-PRINT] Reimpresión de presupuesto con snapshot existente (no se crea nuevo registro)`);
+            console.log(`📸 [SNAPSHOT-PRINT] Snapshot existente ID: ${snapshotExistente.id}`);
+            console.log(`📸 [SNAPSHOT-PRINT] Manteniendo:`);
+            console.log(`📸 [SNAPSHOT-PRINT]   - secuencia_en_snapshot: ${snapshotExistente.secuencia_en_snapshot}`);
+            console.log(`📸 [SNAPSHOT-PRINT]   - motivo: ${snapshotExistente.motivo}`);
+            console.log(`📸 [SNAPSHOT-PRINT]   - numero_impresion: ${snapshotExistente.numero_impresion}`);
+            console.log(`📸 [SNAPSHOT-PRINT]   - diferencias_detalles: ${snapshotExistente.diferencias_detalles ? 'CON DIFERENCIAS' : 'NULL'}`);
+            
+            // Opcional: actualizar solo fecha_snapshot
+            const updateFechaQuery = `
+                UPDATE presupuestos_snapshots
+                SET fecha_snapshot = NOW()
+                WHERE id = $1
+                RETURNING id, fecha_snapshot
+            `;
+            
+            const updateResult = await client.query(updateFechaQuery, [snapshotExistente.id]);
+            
+            await client.query('COMMIT');
+            
+            console.log(`✅ [SNAPSHOT-PRINT] Snapshot reutilizado (solo actualizada fecha_snapshot)`);
+            
+            return {
+                success: true,
+                snapshot_id: snapshotExistente.id,
+                fecha_snapshot: updateResult.rows[0].fecha_snapshot,
+                reused: true
+            };
+            
+        } else {
+            // NO EXISTE SNAPSHOT - Primera impresión, crear nuevo
+            console.log(`📸 [SNAPSHOT-PRINT] Primera impresión (creando snapshot nuevo)`);
+            
+            // Construir snapshot_detalles como array JSON
+            const snapshot_detalles = detalles.map(item => ({
+                articulo: item.articulo_numero || item.articulo,
+                cantidad: item.cantidad || 0,
+                valor1: item.valor1 || 0,
+                precio1: item.precio1 || item.valor1 || 0,
+                descripcion: item.descripcion || ''
+            }));
+            
+            // Para primera impresión, SIEMPRE usar 'Armar_Pedido'
+            const secuencia_en_snapshot = 'Armar_Pedido';
+            const motivo = 'primera_impresion';
+            
+            console.log(`📸 [SNAPSHOT-PRINT] Motivo: ${motivo} -> secuencia_en_snapshot = '${secuencia_en_snapshot}'`);
+            
+            // Insertar nuevo snapshot
+            const insertQuery = `
+                INSERT INTO presupuestos_snapshots (
+                    id_presupuesto,
+                    id_presupuesto_ext,
+                    snapshot_detalles,
+                    secuencia_en_snapshot,
+                    motivo,
+                    activo,
+                    numero_impresion
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id, fecha_snapshot
+            `;
+            
+            const insertValues = [
+                id_presupuesto,
+                id_presupuesto_ext,
+                JSON.stringify(snapshot_detalles),
+                secuencia_en_snapshot,
+                motivo,
+                true,
+                1 // numero_impresion inicial
+            ];
+            
+            const insertResult = await client.query(insertQuery, insertValues);
+            const snapshot = insertResult.rows[0];
+            
+            await client.query('COMMIT');
+            
+            console.log(`✅ [SNAPSHOT-PRINT] Snapshot nuevo guardado - ID: ${snapshot.id}, Fecha: ${snapshot.fecha_snapshot}`);
+            console.log(`📸 [SNAPSHOT-PRINT] Detalles: ${snapshot_detalles.length} artículos`);
+            
+            return {
+                success: true,
+                snapshot_id: snapshot.id,
+                fecha_snapshot: snapshot.fecha_snapshot,
+                reused: false
+            };
+        }
         
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('❌ [SNAPSHOT] Error al guardar snapshot:', error.message);
-        console.error('❌ [SNAPSHOT] Stack:', error.stack);
+        console.error('❌ [SNAPSHOT-PRINT] Error al guardar snapshot:', error.message);
+        console.error('❌ [SNAPSHOT-PRINT] Stack:', error.stack);
         // No lanzar error - la impresión debe continuar
         return {
             success: false,
