@@ -87,15 +87,37 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
         const detallesResult = await db.query(detallesQuery, [id_presupuesto]);
         const detallesActuales = detallesResult.rows;
         
-        console.log(`📸 [SNAPSHOT-MOD] Artículos en snapshot: ${snapshot.snapshot_detalles.length}, en actual: ${detallesActuales.length}`);
+        console.log(`📸 [SNAPSHOT-MOD] Recalculando diferencias (id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion})`);
+        console.log(`📸 [SNAPSHOT-MOD] Detalles snapshot (foto impresa): ${snapshot.snapshot_detalles.length} items`);
+        console.log(`📸 [SNAPSHOT-MOD] Detalles actuales (BD): ${detallesActuales.length} items`);
         
-        // 4. Comparar y calcular diferencias
+        // Log detallado de los detalles para debug
+        console.log(`📸 [SNAPSHOT-MOD] Snapshot detalles (primeros 3):`, JSON.stringify(snapshot.snapshot_detalles.slice(0, 3), null, 2));
+        console.log(`📸 [SNAPSHOT-MOD] Detalles actuales (primeros 3):`, JSON.stringify(detallesActuales.slice(0, 3), null, 2));
+        
+        // 4. Comparar y calcular diferencias - SIEMPRE RECALCULAR DESDE CERO
         const diferencias = calcularDiferencias(snapshot.snapshot_detalles, detallesActuales);
         
-        console.log(`📸 [SNAPSHOT-MOD] Diferencias detectadas: ${diferencias.length} cambios`);
+        console.log(`📸 [SNAPSHOT-MOD] Diferencias encontradas: ${diferencias.length} cambios`);
+        if (diferencias.length > 0) {
+            console.log(`📸 [SNAPSHOT-MOD] Detalle de diferencias:`, JSON.stringify(diferencias, null, 2));
+        }
         
         if (diferencias.length === 0) {
-            console.log(`📸 [SNAPSHOT-MOD] No hay cambios reales, no se actualiza snapshot`);
+            console.log(`📸 [SNAPSHOT-MOD] Sin cambios reales, diferencias_detalles limpiadas`);
+            
+            // Actualizar snapshot para limpiar diferencias_detalles si ya no hay cambios
+            const clearDifQuery = `
+                UPDATE presupuestos_snapshots
+                SET 
+                    diferencias_detalles = NULL,
+                    fecha_snapshot = NOW()
+                WHERE id = $1
+                RETURNING id
+            `;
+            
+            await db.query(clearDifQuery, [snapshot.id]);
+            
             return {
                 success: true,
                 hasSnapshot: true,
@@ -129,12 +151,13 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
         
         const snapshotActualizado = updateSnapshotResult.rows[0];
         
-        console.log(`✅ [SNAPSHOT-MOD] UPDATE snapshot exitoso (numero_impresion actualizado, motivo, diferencias_detalles, secuencia_en_snapshot)`);
+        console.log(`✅ [SNAPSHOT-MOD] diferencias_detalles sobrescritas correctamente`);
         console.log(`📸 [SNAPSHOT-MOD] Snapshot id=${snapshotActualizado.id} actualizado:`);
-        console.log(`📸 [SNAPSHOT-MOD]   - numero_impresion: ${snapshotActualizado.numero_impresion}`);
+        console.log(`📸 [SNAPSHOT-MOD]   - numero_impresion: ${snapshotActualizado.numero_impresion} (antes: ${snapshot.numero_impresion})`);
         console.log(`📸 [SNAPSHOT-MOD]   - motivo: ${snapshotActualizado.motivo}`);
         console.log(`📸 [SNAPSHOT-MOD]   - secuencia_en_snapshot: ${snapshotActualizado.secuencia_en_snapshot}`);
         console.log(`📸 [SNAPSHOT-MOD]   - diferencias_count: ${diferencias.length}`);
+        console.log(`📸 [SNAPSHOT-MOD]   - snapshot_detalles (NO modificado): ${snapshot.snapshot_detalles.length} items`);
         
         // 6. Actualizar secuencia del presupuesto a 'Imprimir_Modificado'
         const updatePresupuestoQuery = `
@@ -182,6 +205,10 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
 function calcularDiferencias(snapshotDetalles, detallesActuales) {
     const diferencias = [];
     
+    console.log(`📸 [CALC-DIF] Iniciando cálculo de diferencias`);
+    console.log(`📸 [CALC-DIF] Snapshot tiene ${snapshotDetalles.length} items`);
+    console.log(`📸 [CALC-DIF] Actuales tiene ${detallesActuales.length} items`);
+    
     // Crear mapas para comparación rápida
     const snapshotMap = new Map();
     snapshotDetalles.forEach(item => {
@@ -193,6 +220,9 @@ function calcularDiferencias(snapshotDetalles, detallesActuales) {
         actualesMap.set(item.articulo, item);
     });
     
+    console.log(`📸 [CALC-DIF] Artículos en snapshot: [${Array.from(snapshotMap.keys()).join(', ')}]`);
+    console.log(`📸 [CALC-DIF] Artículos en actuales: [${Array.from(actualesMap.keys()).join(', ')}]`);
+    
     // 1. Detectar modificados y eliminados (iterar sobre snapshot)
     snapshotDetalles.forEach(itemSnapshot => {
         const articulo = itemSnapshot.articulo;
@@ -200,6 +230,7 @@ function calcularDiferencias(snapshotDetalles, detallesActuales) {
         
         if (!itemActual) {
             // Artículo eliminado
+            console.log(`📸 [CALC-DIF] ELIMINADO detectado: ${articulo} (${itemSnapshot.descripcion})`);
             diferencias.push({
                 articulo: articulo,
                 descripcion: itemSnapshot.descripcion || '',
@@ -233,6 +264,7 @@ function calcularDiferencias(snapshotDetalles, detallesActuales) {
         
         if (!itemSnapshot) {
             // Artículo agregado
+            console.log(`📸 [CALC-DIF] AGREGADO detectado: ${articulo} (${itemActual.descripcion})`);
             diferencias.push({
                 articulo: articulo,
                 descripcion: itemActual.descripcion || '',
@@ -241,6 +273,13 @@ function calcularDiferencias(snapshotDetalles, detallesActuales) {
                 cantidad_despues: parseFloat(itemActual.cantidad || 0)
             });
         }
+    });
+    
+    console.log(`📸 [CALC-DIF] Total diferencias encontradas: ${diferencias.length}`);
+    console.log(`📸 [CALC-DIF] Resumen por tipo:`, {
+        eliminados: diferencias.filter(d => d.tipo_cambio === 'eliminado').length,
+        agregados: diferencias.filter(d => d.tipo_cambio === 'agregado').length,
+        modificados: diferencias.filter(d => d.tipo_cambio === 'modificado').length
     });
     
     return diferencias;

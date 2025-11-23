@@ -783,7 +783,9 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
         .header-left {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 15px;
+            flex: 1;
         }
         
         .logo-lamda { 
@@ -1107,8 +1109,8 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
                 if (esModificado) {
                     const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
                     html += `
-                <div style="font-size: 12px; color: #dc3545; font-weight: bold; margin-left: 15px;">
-                    PRESUPUESTO MODIFICADO ${numeroModificacion}
+                <div style="font-size: 14px; color: #dc3545; font-weight: bold; text-align: center; flex: 1;">
+                    Modificado ${numeroModificacion}
                 </div>
 `;
                 }
@@ -1252,7 +1254,7 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
                         html += `
         <!-- BLOQUE DE CAMBIOS -->
         <div class="bloque-cambios">
-            <h4>📋 Cambios:</h4>
+            <h4>CAMBIOS:</h4>
 `;
                         
                         diferenciasRelevantes.forEach(dif => {
@@ -1429,7 +1431,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                     const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
                     
                     doc.fontSize(9).font('Helvetica-Bold').fillColor('#dc3545')
-                       .text(`📝 Modificado ${numeroModificacion}`, 450, 130);
+                       .text(`Modificado ${numeroModificacion}`, 450, 130);
                     doc.fontSize(8).font('Helvetica').fillColor('#856404')
                        .text(`Fecha modificación: ${fechaModificacion}`, 450, 142);
                     
@@ -1518,7 +1520,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                         // Título de sección
                         doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
                         doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
-                           .text('⚠️ ARTÍCULOS EN FALTA', 55, currentY + 7);
+                           .text('ARTÍCULOS EN FALTA', 55, currentY + 7);
                         doc.fillColor('black');
                         currentY += rowHeight;
                         
@@ -1645,7 +1647,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                            .roundedRect(50, currentY, 490, 20, 3).stroke();
                         doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
                         doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
-                           .text('📋 CAMBIOS:', 60, currentY + 6);
+                           .text('CAMBIOS:', 60, currentY + 6);
                         
                         currentY += 25;
                         
@@ -2312,7 +2314,7 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                         const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
                         
                         doc.fontSize(9).font('Helvetica-Bold').fillColor('#dc3545')
-                           .text(`📝 Modificado ${numeroModificacion}`, 450, 130);
+                           .text(`Modificado ${numeroModificacion}`, 450, 130);
                         doc.fontSize(8).font('Helvetica').fillColor('#856404')
                            .text(`Fecha modificación: ${fechaModificacion}`, 450, 142);
                         
@@ -2410,7 +2412,7 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                                .roundedRect(50, currentY, 490, 20, 3).stroke();
                             doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
                             doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
-                               .text('📋 CAMBIOS:', 60, currentY + 6);
+                               .text('CAMBIOS:', 60, currentY + 6);
                             
                             currentY += 25;
                             
