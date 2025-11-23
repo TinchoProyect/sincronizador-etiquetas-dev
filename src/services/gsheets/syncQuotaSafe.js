@@ -1210,6 +1210,52 @@ async function pullDetallesDesdeSheets(detallesSheets, idsPresupuestos, db, stat
         console.log(`[PULL-DETALLES] ✅ Insertados ${insertados} detalles`);
         state.metrics.detallesInsertados += insertados;
         
+        // 📸 ACTUALIZAR SNAPSHOTS para presupuestos sincronizados (después del COMMIT)
+        console.log(`[SNAPSHOT-MOD-SYNC] Iniciando actualización de snapshots para ${idsPresupuestos.size} presupuestos sincronizados...`);
+        
+        for (const id_presupuesto_ext of idsPresupuestos) {
+            try {
+                // Obtener id_presupuesto local
+                const presupLocal = await db.query(`
+                    SELECT id FROM public.presupuestos 
+                    WHERE id_presupuesto_ext = $1 AND activo = true
+                `, [id_presupuesto_ext]);
+                
+                if (presupLocal.rowCount === 0) {
+                    console.log(`[SNAPSHOT-MOD-SYNC] ⚠️ Presupuesto no encontrado: ${id_presupuesto_ext}`);
+                    continue;
+                }
+                
+                const id_presupuesto = presupLocal.rows[0].id;
+                
+                // Reutilizar la misma función que usa la edición local
+                const { actualizarSnapshotConDiferencias } = require('../../presupuestos/services/snapshotService');
+                
+                const resultadoSnapshot = await actualizarSnapshotConDiferencias(
+                    id_presupuesto,
+                    id_presupuesto_ext,
+                    db
+                );
+                
+                if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && resultadoSnapshot.hasDifferences) {
+                    console.log(`✅ [SNAPSHOT-MOD-SYNC] Snapshot actualizado para ${id_presupuesto_ext}`);
+                    console.log(`📸 [SNAPSHOT-MOD-SYNC] Diferencias: ${resultadoSnapshot.diferencias_count}, Número impresión: ${resultadoSnapshot.numero_impresion}`);
+                } else if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && !resultadoSnapshot.hasDifferences) {
+                    console.log(`ℹ️ [SNAPSHOT-MOD-SYNC] Presupuesto ${id_presupuesto_ext} sin cambios respecto al snapshot`);
+                } else if (resultadoSnapshot.success && !resultadoSnapshot.hasSnapshot) {
+                    console.log(`ℹ️ [SNAPSHOT-MOD-SYNC] Presupuesto ${id_presupuesto_ext} no tiene snapshot activo, SYNC no modifica snapshots`);
+                } else {
+                    console.error(`❌ [SNAPSHOT-MOD-SYNC] Error al actualizar snapshot para ${id_presupuesto_ext}: ${resultadoSnapshot.error}`);
+                }
+                
+            } catch (snapshotError) {
+                console.error(`❌ [SNAPSHOT-MOD-SYNC] Error en actualización de snapshot para ${id_presupuesto_ext} (no crítico):`, snapshotError.message);
+                // No lanzar error - la sincronización debe continuar
+            }
+        }
+        
+        console.log(`[SNAPSHOT-MOD-SYNC] Proceso de actualización de snapshots completado`);
+        
     } catch (error) {
         await db.query('ROLLBACK');
         console.error('[PULL-DETALLES] ❌ Error en transacción, rollback:', error.message);
