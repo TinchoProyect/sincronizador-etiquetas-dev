@@ -592,32 +592,62 @@ const obtenerPedidosArticulos = async (req, res) => {
                 LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
             )
             SELECT 
-                articulo_numero_alfanumerico as articulo_numero,
-                codigo_barras_original as codigo_barras,
-                descripcion,
-                pedido_total_redondeado as pedido_total,
-                stock_disponible_redondeado as stock_disponible,
-                faltante_redondeado as faltante,
+                vr.articulo_numero_alfanumerico as articulo_numero,
+                vr.codigo_barras_original as codigo_barras,
+                vr.descripcion,
+                vr.pedido_total_redondeado as pedido_total,
+                vr.stock_disponible_redondeado as stock_disponible,
+                vr.faltante_redondeado as faltante,
                 CASE 
-                    WHEN faltante_redondeado = 0 THEN 'COMPLETO'
-                    WHEN stock_disponible_redondeado = 0 THEN 'FALTANTE'
+                    WHEN vr.faltante_redondeado = 0 THEN 'COMPLETO'
+                    WHEN vr.stock_disponible_redondeado = 0 THEN 'FALTANTE'
                     ELSE 'PARCIAL'
                 END as estado,
-                es_pack,
-                pack_hijo_codigo,
-                pack_unidades,
-                stock_hijo,
-                id_presupuesto_local,
-                id_presupuesto_ext
-            FROM valores_redondeados
-            WHERE faltante_redondeado > 0
-            ORDER BY articulo_numero;
+                vr.es_pack,
+                vr.pack_hijo_codigo,
+                vr.pack_unidades,
+                vr.stock_hijo,
+                vr.id_presupuesto_local,
+                vr.id_presupuesto_ext,
+                COALESCE(r_hijo.articulo_sugerido_numero, r_padre.articulo_sugerido_numero) as articulo_sugerido_numero,
+                COALESCE(asug_hijo.nombre, asug_padre.nombre) as articulo_sugerido_nombre,
+                COALESCE(asug_hijo.codigo_barras, asug_padre.codigo_barras) as articulo_sugerido_codigo_barras,
+                ROUND(COALESCE(
+                    CASE 
+                        WHEN src_sug_hijo.es_pack = true AND src_sug_hijo.pack_hijo_codigo IS NOT NULL AND src_sug_hijo.pack_unidades > 0 
+                        THEN FLOOR(COALESCE(hijo_sug_hijo.stock_consolidado, 0) / src_sug_hijo.pack_unidades)
+                        WHEN src_sug_padre.es_pack = true AND src_sug_padre.pack_hijo_codigo IS NOT NULL AND src_sug_padre.pack_unidades > 0 
+                        THEN FLOOR(COALESCE(hijo_sug_padre.stock_consolidado, 0) / src_sug_padre.pack_unidades)
+                        ELSE COALESCE(src_sug_hijo.stock_consolidado, src_sug_padre.stock_consolidado, 0)
+                    END, 0
+                )::numeric, 2) as articulo_sugerido_stock
+            FROM valores_redondeados vr
+            LEFT JOIN public.articulos a_hijo ON a_hijo.codigo_barras = vr.pack_hijo_codigo
+            LEFT JOIN public.recetas r_hijo ON r_hijo.articulo_numero = a_hijo.numero
+            LEFT JOIN public.recetas r_padre ON r_padre.articulo_numero = vr.articulo_numero_alfanumerico
+            LEFT JOIN public.articulos asug_hijo ON asug_hijo.numero = r_hijo.articulo_sugerido_numero
+            LEFT JOIN public.articulos asug_padre ON asug_padre.numero = r_padre.articulo_sugerido_numero
+            LEFT JOIN public.stock_real_consolidado src_sug_hijo ON src_sug_hijo.codigo_barras = asug_hijo.codigo_barras
+            LEFT JOIN public.stock_real_consolidado src_sug_padre ON src_sug_padre.codigo_barras = asug_padre.codigo_barras
+            LEFT JOIN public.stock_real_consolidado hijo_sug_hijo ON hijo_sug_hijo.codigo_barras = src_sug_hijo.pack_hijo_codigo
+            LEFT JOIN public.stock_real_consolidado hijo_sug_padre ON hijo_sug_padre.codigo_barras = src_sug_padre.pack_hijo_codigo
+            WHERE vr.faltante_redondeado > 0
+            ORDER BY vr.articulo_numero_alfanumerico;
         `;
         
         const params = ['presupuesto/orden', fecha];
         console.log('🔍 [PROD_ART] Ejecutando consulta con parámetros:', params);
         
         const result = await pool.query(query, params);
+        
+        // Log de sugerencias encontradas
+        const articulosConSugerencia = result.rows.filter(art => art.articulo_sugerido_numero);
+        if (articulosConSugerencia.length > 0) {
+            console.log(`💡 [SUGERENCIAS] ${articulosConSugerencia.length} artículos con sugerencia configurada:`);
+            articulosConSugerencia.forEach(art => {
+                console.log(`💡 [SUGERENCIAS] ${art.articulo_numero} → ${art.articulo_sugerido_numero} (${art.articulo_sugerido_nombre})`);
+            });
+        }
         
         // Aplicar filtros adicionales
         let articulos = result.rows;
@@ -741,12 +771,30 @@ const obtenerPedidosArticulos = async (req, res) => {
         }
 
         // Limpiar campos internos del response SOLO si no se solicita explícitamente incluirlos
+        // IMPORTANTE: Mantener campos de sugerencias (articulo_sugerido_*)
         const includePack = req.query.include_pack === 'true';
         
         if (!includePack) {
             articulos = articulos.map(art => {
-                const { es_pack, pack_hijo_codigo, pack_unidades, stock_hijo, ...articuloLimpio } = art;
+                const { 
+                    es_pack, 
+                    pack_hijo_codigo, 
+                    pack_unidades, 
+                    stock_hijo, 
+                    id_presupuesto_local,
+                    id_presupuesto_ext,
+                    ...articuloLimpio 
+                } = art;
                 return articuloLimpio;
+            });
+        }
+        
+        // Log de verificación de campos de sugerencias en respuesta
+        const articulosConSugerenciaEnRespuesta = articulos.filter(art => art.articulo_sugerido_numero);
+        if (articulosConSugerenciaEnRespuesta.length > 0) {
+            console.log(`💡 [SUGERENCIAS-RESPONSE] ${articulosConSugerenciaEnRespuesta.length} artículos con sugerencia en respuesta final:`);
+            articulosConSugerenciaEnRespuesta.forEach(art => {
+                console.log(`💡 [SUGERENCIAS-RESPONSE] ${art.articulo_numero} → ${art.articulo_sugerido_numero} (${art.articulo_sugerido_nombre}) stock=${art.articulo_sugerido_stock}`);
             });
         }
 

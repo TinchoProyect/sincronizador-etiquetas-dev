@@ -22,7 +22,11 @@ const {
     obtenerReceta, 
     actualizarReceta,
     obtenerIngredientesExpandidos,
-    eliminarReceta
+    eliminarReceta,
+    // Endpoints de sugerencias de producción
+    obtenerSugerencia,
+    guardarSugerencia,
+    eliminarSugerencia
 } = require('../controllers/recetas');
 const {
     crearCarro,
@@ -734,6 +738,61 @@ router.delete('/recetas/:numero_articulo', async (req, res) => {
     } catch (error) {
         console.error('Error al eliminar receta:', error);
         res.status(500).json({ error: 'Error al eliminar la receta' });
+    }
+});
+
+// ==========================================
+// RUTAS PARA SUGERENCIAS DE PRODUCCIÓN
+// ==========================================
+
+/**
+ * Obtener sugerencia de producción para un artículo
+ * GET /api/produccion/recetas/:numero_articulo/sugerencia
+ */
+router.get('/recetas/:numero_articulo/sugerencia', async (req, res) => {
+    try {
+        console.log('[SUGERENCIAS] Ruta GET /recetas/:numero_articulo/sugerencia');
+        await obtenerSugerencia(req, res);
+    } catch (error) {
+        console.error('[SUGERENCIAS] Error en ruta GET sugerencia:', error);
+        res.status(500).json({ 
+            error: 'Error al obtener sugerencia',
+            detalle: error.message 
+        });
+    }
+});
+
+/**
+ * Guardar o actualizar sugerencia de producción
+ * PUT /api/produccion/recetas/:numero_articulo/sugerencia
+ */
+router.put('/recetas/:numero_articulo/sugerencia', async (req, res) => {
+    try {
+        console.log('[SUGERENCIAS] Ruta PUT /recetas/:numero_articulo/sugerencia');
+        await guardarSugerencia(req, res);
+    } catch (error) {
+        console.error('[SUGERENCIAS] Error en ruta PUT sugerencia:', error);
+        res.status(500).json({ 
+            error: 'Error al guardar sugerencia',
+            detalle: error.message 
+        });
+    }
+});
+
+/**
+ * Eliminar sugerencia de producción
+ * DELETE /api/produccion/recetas/:numero_articulo/sugerencia
+ */
+router.delete('/recetas/:numero_articulo/sugerencia', async (req, res) => {
+    try {
+        console.log('[SUGERENCIAS] Ruta DELETE /recetas/:numero_articulo/sugerencia');
+        await eliminarSugerencia(req, res);
+    } catch (error) {
+        console.error('[SUGERENCIAS] Error en ruta DELETE sugerencia:', error);
+        res.status(500).json({ 
+            error: 'Error al eliminar sugerencia',
+            detalle: error.message 
+        });
     }
 });
 
