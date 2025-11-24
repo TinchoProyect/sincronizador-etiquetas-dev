@@ -166,7 +166,10 @@ const obtenerPedidosPorCliente = async (req, res) => {
                         'es_pack', src.es_pack,
                         'pack_hijo_codigo', src.pack_hijo_codigo,
                         'pack_unidades', src.pack_unidades,
-                        'stock_hijo', hijo.stock_consolidado
+                        'stock_hijo', hijo.stock_consolidado,
+                        'snapshot_motivo', ps.motivo,
+                        'snapshot_numero_impresion', ps.numero_impresion,
+                        'snapshot_secuencia', ps.secuencia_en_snapshot
                     ) ORDER BY app.presupuesto_fecha DESC, app.presupuesto_id, app.articulo_numero
                 ) as articulos
             FROM articulos_por_presupuesto app
@@ -174,6 +177,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = app.articulo_numero
             LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
             LEFT JOIN public.articulos a ON a.codigo_barras = app.articulo_numero
+            LEFT JOIN public.presupuestos_snapshots ps ON ps.id_presupuesto = app.presupuesto_id_local AND ps.activo = true
             GROUP BY app.cliente_id_int, c.nombre, c.apellido
             ORDER BY cliente_nombre;
         `;

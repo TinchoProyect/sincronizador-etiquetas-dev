@@ -322,7 +322,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         contenido.id = `contenido-${containerId}-${cliente.cliente_id}`;
         contenido.style.padding = '10px';
 
-        // Agrupar artículos por presupuesto_id
+        // Agrupar artículos por presupuesto_id y extraer datos de snapshot
         const presupuestosMap = new Map();
         cliente.articulos.forEach(articulo => {
             const presupId = articulo.presupuesto_id;
@@ -330,7 +330,11 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 presupuestosMap.set(presupId, {
                     presupuesto_id: presupId,
                     presupuesto_fecha: articulo.presupuesto_fecha,
-                    articulos: []
+                    articulos: [],
+                    // Datos del snapshot (vienen en cada artículo, tomar del primero)
+                    snapshot_motivo: articulo.snapshot_motivo,
+                    snapshot_numero_impresion: articulo.snapshot_numero_impresion,
+                    snapshot_secuencia: articulo.snapshot_secuencia
                 });
             }
             presupuestosMap.get(presupId).articulos.push(articulo);
@@ -376,6 +380,17 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             
             const fechaFormateada = new Date(presupuesto.presupuesto_fecha).toLocaleDateString('es-AR');
             
+            // Verificar si el presupuesto está modificado
+            const esModificado = presupuesto.snapshot_motivo === 'modificado' || 
+                               presupuesto.snapshot_secuencia === 'Imprimir_Modificado';
+            
+            let textoModificado = '';
+            if (esModificado && presupuesto.snapshot_numero_impresion) {
+                const numeroModificacion = presupuesto.snapshot_numero_impresion - 1;
+                textoModificado = ` <span style="color: #dc3545; font-weight: bold; margin-left: 10px;">📝 Modificado ${numeroModificacion}</span>`;
+                console.log(`[MOD-LIST] Snapshot modificado detectado para presupuesto ${presupuesto.presupuesto_id} - Numero de modificacion: ${numeroModificacion}`);
+            }
+            
             // Parte clickeable (info + icono)
             const clickeableDiv = document.createElement('div');
             clickeableDiv.style.display = 'flex';
@@ -395,7 +410,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             estadoSpan.style.marginRight = '10px';
             
             const infoSpan = document.createElement('span');
-            infoSpan.innerHTML = `<strong>Presupuesto ${presupuesto.presupuesto_id}</strong> <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span> <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>`;
+            infoSpan.innerHTML = `<strong>Presupuesto ${presupuesto.presupuesto_id}</strong> <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span> <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>${textoModificado}`;
             
             clickeableDiv.appendChild(iconSpan);
             clickeableDiv.appendChild(estadoSpan);

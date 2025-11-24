@@ -328,6 +328,13 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         if (snapshotResult.rows.length > 0) {
                             const snapshot = snapshotResult.rows[0];
                             
+                            console.log(`🔍 [SNAPSHOT-DEBUG] Snapshot encontrado para presupuesto ${presupuesto.id_presupuesto_ext}:`);
+                            console.log(`   - id: ${snapshot.id}`);
+                            console.log(`   - motivo: "${snapshot.motivo}"`);
+                            console.log(`   - secuencia_en_snapshot: "${snapshot.secuencia_en_snapshot}"`);
+                            console.log(`   - numero_impresion: ${snapshot.numero_impresion}`);
+                            console.log(`   - diferencias_detalles: ${snapshot.diferencias_detalles ? JSON.stringify(snapshot.diferencias_detalles).substring(0, 100) + '...' : 'NULL'}`);
+                            
                             // Agregar datos del snapshot al presupuesto para usar en la vista
                             presupuesto._snapshot = {
                                 motivo: snapshot.motivo,
@@ -340,13 +347,19 @@ const imprimirPresupuestoCliente = async (req, res) => {
                             const esModificado = snapshot.motivo === 'modificado' || 
                                                snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
                             
+                            console.log(`🔍 [SNAPSHOT-DEBUG] Evaluación esModificado:`);
+                            console.log(`   - motivo === 'modificado': ${snapshot.motivo === 'modificado'}`);
+                            console.log(`   - secuencia_en_snapshot === 'Imprimir_Modificado': ${snapshot.secuencia_en_snapshot === 'Imprimir_Modificado'}`);
+                            console.log(`   - RESULTADO esModificado: ${esModificado}`);
+                            
                             if (esModificado) {
-                                console.log(`[PRINT-MOD] Usando snapshot modificado (id_snapshot=${snapshot.id}, id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion}, motivo=${snapshot.motivo}, fecha_snapshot=${snapshot.fecha_snapshot})`);
+                                console.log(`✅ [PRINT-MOD] PRESUPUESTO MODIFICADO DETECTADO (id_snapshot=${snapshot.id}, id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion}, motivo=${snapshot.motivo}, fecha_snapshot=${snapshot.fecha_snapshot})`);
+                                console.log(`   - presupuesto._snapshot asignado:`, presupuesto._snapshot);
                             } else {
-                                console.log(`[PRINT-MOD] Sin snapshot activo o primera impresión, impresión normal`);
+                                console.log(`ℹ️ [PRINT-MOD] Snapshot encontrado pero NO es modificado (motivo="${snapshot.motivo}", secuencia="${snapshot.secuencia_en_snapshot}")`);
                             }
                         } else {
-                            console.log(`[PRINT-MOD] Sin snapshot activo, impresión normal`);
+                            console.log(`⚠️ [PRINT-MOD] Sin snapshot activo para presupuesto ${presupuesto.id_presupuesto_ext}, impresión normal`);
                         }
                     } else {
                         console.log(`⚠️ [SNAPSHOT] No se encontró presupuesto con id_ext: ${presupuesto.id_presupuesto_ext}`);
