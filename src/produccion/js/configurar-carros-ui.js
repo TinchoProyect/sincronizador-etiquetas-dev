@@ -10,13 +10,14 @@
 (function() {
     'use strict';
 
-    console.log('[CARROS-UI] Módulo cargado v2.0 - Selección de hijos');
+    console.log('[CARROS-UI] Módulo cargado v2.1 - Con visualizacion de ingredientes');
 
     const estadoCarros = {
         usuarioSeleccionado: null,
         articulosSeleccionados: new Map(),
         articulosDisponibles: [],
-        packMappings: new Map()
+        packMappings: new Map(),
+        cacheIngredientes: new Map() // Cache para ingredientes consultados
     };
 
     function inicializarPanelCarros() {
@@ -348,6 +349,11 @@
             hijoInfoDiv.appendChild(hijoCodigoSpan);
             hijoInfoDiv.appendChild(hijoInfoSpan);
             
+            // NUEVA FUNCIONALIDAD: Agregar boton de ingredientes para HIJO
+            const codigoAlfaHijo = packMapping.articulo_kilo_numero || packMapping.articulo_kilo_codigo;
+            const botonIngredientesHijo = await agregarBotonIngredientes(codigoAlfaHijo, hijoDiv);
+            hijoInfoDiv.appendChild(botonIngredientesHijo);
+            
             const hijoCantidadDiv = document.createElement('div');
             hijoCantidadDiv.className = 'carros-item-cantidad';
             
@@ -411,6 +417,10 @@
             infoDiv.appendChild(descripcionSpan);
             infoDiv.appendChild(codigoSpan);
             infoDiv.appendChild(estadoSpan);
+            
+            // NUEVA FUNCIONALIDAD: Agregar boton de ingredientes para SIMPLE
+            const botonIngredientes = await agregarBotonIngredientes(articulo.articulo_numero, itemDiv);
+            infoDiv.appendChild(botonIngredientes);
             
             const cantidadDiv = document.createElement('div');
             cantidadDiv.className = 'carros-item-cantidad';
@@ -756,6 +766,132 @@
                 mensajeDiv.style.display = 'none';
             }, 5000);
         }
+    }
+
+    /**
+     * NUEVA FUNCIONALIDAD: Obtiene los ingredientes de un articulo desde la API
+     * Usa el endpoint existente GET /api/produccion/recetas/:numero_articulo
+     * @param {string} articuloCodigo - Codigo alfanumerico o codigo de barras del articulo
+     * @returns {Promise<Object|null>} Objeto con ingredientes o null si no tiene receta
+     */
+    async function obtenerIngredientesArticulo(articuloCodigo) {
+        // Verificar cache primero
+        if (estadoCarros.cacheIngredientes.has(articuloCodigo)) {
+            console.log(`[INGREDIENTES] Usando cache para ${articuloCodigo}`);
+            return estadoCarros.cacheIngredientes.get(articuloCodigo);
+        }
+
+        try {
+            console.log(`[INGREDIENTES] Consultando receta para ${articuloCodigo}`);
+            const response = await fetch(`/api/produccion/recetas/${articuloCodigo}`);
+            
+            if (response.ok) {
+                const receta = await response.json();
+                console.log(`[INGREDIENTES] Receta encontrada para ${articuloCodigo}:`, receta);
+                
+                const resultado = {
+                    tieneReceta: true,
+                    ingredientes: receta.ingredientes || [],
+                    articulos: receta.articulos || []
+                };
+                
+                // Guardar en cache
+                estadoCarros.cacheIngredientes.set(articuloCodigo, resultado);
+                return resultado;
+            } else if (response.status === 404) {
+                console.log(`[INGREDIENTES] Articulo ${articuloCodigo} sin receta (404)`);
+                const resultado = { tieneReceta: false, ingredientes: [], articulos: [] };
+                estadoCarros.cacheIngredientes.set(articuloCodigo, resultado);
+                return resultado;
+            } else {
+                console.error(`[INGREDIENTES] Error HTTP ${response.status} para ${articuloCodigo}`);
+                return null;
+            }
+        } catch (error) {
+            console.error(`[INGREDIENTES] Error al consultar receta de ${articuloCodigo}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * NUEVA FUNCIONALIDAD: Crea el boton de informacion de ingredientes
+     * El boton es ACTIVO (color) si tiene receta, INACTIVO (gris) si no tiene
+     * @param {string} articuloCodigo - Codigo del articulo
+     * @param {HTMLElement} contenedorPadre - Elemento donde se agregara el boton
+     */
+    async function agregarBotonIngredientes(articuloCodigo, contenedorPadre) {
+        const infoIngredientes = await obtenerIngredientesArticulo(articuloCodigo);
+        
+        const botonInfo = document.createElement('button');
+        botonInfo.className = 'carros-btn-ingredientes';
+        botonInfo.textContent = 'i';
+        botonInfo.title = 'Informacion de ingredientes';
+        
+        if (infoIngredientes && infoIngredientes.tieneReceta && infoIngredientes.ingredientes.length > 0) {
+            // Boton ACTIVO (tiene ingredientes) - COMPACTO
+            botonInfo.style.cssText = 'background: #28a745; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
+            botonInfo.setAttribute('data-tiene-receta', 'true');
+            
+            botonInfo.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleIngredientesPanel(articuloCodigo, contenedorPadre, infoIngredientes);
+            });
+        } else {
+            // Boton INACTIVO (sin ingredientes) - COMPACTO
+            botonInfo.style.cssText = 'background: #6c757d; color: white; border: none; padding: 0; border-radius: 50%; cursor: not-allowed; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; opacity: 0.5;';
+            botonInfo.setAttribute('data-tiene-receta', 'false');
+            botonInfo.disabled = true;
+        }
+        
+        return botonInfo;
+    }
+
+    /**
+     * NUEVA FUNCIONALIDAD: Toggle del panel de ingredientes
+     * Muestra/oculta la lista de ingredientes debajo del articulo
+     */
+    function toggleIngredientesPanel(articuloCodigo, contenedorPadre, infoIngredientes) {
+        console.log(`[INGREDIENTES] Toggle panel para ${articuloCodigo}`);
+        
+        // Buscar panel existente
+        let panel = contenedorPadre.querySelector(`.ingredientes-panel[data-articulo="${articuloCodigo}"]`);
+        
+        if (panel) {
+            // Si existe, toggle visibility
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                console.log(`[INGREDIENTES] Panel expandido para ${articuloCodigo}`);
+            } else {
+                panel.style.display = 'none';
+                console.log(`[INGREDIENTES] Panel colapsado para ${articuloCodigo}`);
+            }
+            return;
+        }
+        
+        // Crear panel nuevo
+        panel = document.createElement('div');
+        panel.className = 'ingredientes-panel';
+        panel.setAttribute('data-articulo', articuloCodigo);
+        panel.style.cssText = 'width: 100%; padding: 12px; background: #e7f5f7; border: 1px solid #17a2b8; border-radius: 4px; margin-top: 8px;';
+        
+        let html = '<div style="font-weight: bold; color: #17a2b8; margin-bottom: 8px;">Ingredientes:</div>';
+        html += '<ul style="margin: 0; padding-left: 20px; list-style: disc;">';
+        
+        infoIngredientes.ingredientes.forEach(ing => {
+            // Formatear cantidad con maximo 2 decimales
+            const cantidadFormateada = parseFloat(ing.cantidad).toFixed(2).replace(/\.00$/, '');
+            html += `
+                <li style="margin-bottom: 4px; color: #2c5f6f;">
+                    <strong>${ing.nombre_ingrediente}</strong>: ${cantidadFormateada} ${ing.unidad_medida}
+                </li>
+            `;
+        });
+        
+        html += '</ul>';
+        panel.innerHTML = html;
+        
+        contenedorPadre.appendChild(panel);
+        console.log(`[INGREDIENTES] Panel creado y mostrado para ${articuloCodigo}`);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
