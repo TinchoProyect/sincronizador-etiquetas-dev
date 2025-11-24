@@ -313,8 +313,7 @@
             hijoDiv.className = `carros-item carros-item-hijo ${estado}`;
             hijoDiv.setAttribute('data-articulo-hijo', packMapping.articulo_kilo_codigo);
             hijoDiv.setAttribute('data-articulo-padre', articulo.articulo_numero);
-            hijoDiv.style.marginLeft = '30px';
-            hijoDiv.style.borderLeft = '3px solid #6c757d';
+            hijoDiv.style.cssText = 'margin-left: 30px; border-left: 3px solid #6c757d; padding: 8px 12px; margin-bottom: 8px;';
             
             const hijoCheckbox = document.createElement('input');
             hijoCheckbox.type = 'checkbox';
@@ -328,6 +327,7 @@
             
             const hijoInfoDiv = document.createElement('div');
             hijoInfoDiv.className = 'carros-item-info';
+            hijoInfoDiv.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 2px;';
             
             const hijoDescSpan = document.createElement('span');
             hijoDescSpan.className = 'carros-item-descripcion';
@@ -387,6 +387,7 @@
             const itemDiv = document.createElement('div');
             itemDiv.className = `carros-item ${estado}`;
             itemDiv.setAttribute('data-articulo', articulo.articulo_numero);
+            itemDiv.style.cssText = 'padding: 8px 12px; margin-bottom: 8px;';
             
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -398,6 +399,7 @@
             
             const infoDiv = document.createElement('div');
             infoDiv.className = 'carros-item-info';
+            infoDiv.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 2px;';
             
             console.log(`[CFG-CARROS] render item => {numero: ${articulo.articulo_numero}, barras: ${articulo.codigo_barras || 'N/A'}, descripcion: ${articulo.descripcion}}`);
             
@@ -849,6 +851,7 @@
     /**
      * NUEVA FUNCIONALIDAD: Toggle del panel de ingredientes
      * Muestra/oculta la lista de ingredientes debajo del articulo
+     * CORRECCION: Multiplica cantidad base por cantidad solicitada del articulo
      */
     function toggleIngredientesPanel(articuloCodigo, contenedorPadre, infoIngredientes) {
         console.log(`[INGREDIENTES] Toggle panel para ${articuloCodigo}`);
@@ -868,6 +871,27 @@
             return;
         }
         
+        // CORRECCION CRITICA: Buscar el input de cantidad del articulo
+        // Para HIJOS: el input tiene data-articulo con el codigo de barras/codigo del hijo
+        // Para SIMPLES: el input tiene data-articulo con el codigo alfanumerico
+        // Buscar en el contenedor padre (hijoDiv o itemDiv) que contiene tanto el boton como el input
+        let inputCantidad = contenedorPadre.querySelector(`input[type="number"][data-articulo="${articuloCodigo}"]`);
+        
+        // Si no se encuentra, puede ser que el codigo sea diferente (barras vs alfanumerico)
+        // Buscar cualquier input de numero en el contenedor
+        if (!inputCantidad) {
+            inputCantidad = contenedorPadre.querySelector(`input[type="number"]`);
+            console.log(`[INGREDIENTES] Input encontrado por selector generico para ${articuloCodigo}`);
+        }
+        
+        const cantidadSolicitada = inputCantidad ? parseFloat(inputCantidad.value) || 1 : 1;
+        
+        console.log(`[INGREDIENTES] Input encontrado:`, !!inputCantidad);
+        console.log(`[INGREDIENTES] Valor del input:`, inputCantidad?.value);
+        console.log(`[INGREDIENTES] Cantidad solicitada parseada: ${cantidadSolicitada}`);
+        console.log(`[INGREDIENTES] Codigo buscado: ${articuloCodigo}`);
+        console.log(`[INGREDIENTES] Data-articulo del input:`, inputCantidad?.getAttribute('data-articulo'));
+        
         // Crear panel nuevo
         panel = document.createElement('div');
         panel.className = 'ingredientes-panel';
@@ -878,11 +902,19 @@
         html += '<ul style="margin: 0; padding-left: 20px; list-style: disc;">';
         
         infoIngredientes.ingredientes.forEach(ing => {
-            // Formatear cantidad con maximo 2 decimales
-            const cantidadFormateada = parseFloat(ing.cantidad).toFixed(2).replace(/\.00$/, '');
+            // Cantidad base de la receta (sin modificar)
+            const cantidadBase = parseFloat(ing.cantidad);
+            const cantidadBaseFormateada = cantidadBase.toFixed(2).replace(/\.00$/, '');
+            
+            // Cantidad total calculada (base × cantidad solicitada)
+            const cantidadTotal = cantidadBase * cantidadSolicitada;
+            const cantidadTotalFormateada = cantidadTotal.toFixed(2).replace(/\.00$/, '');
+            
+            console.log(`[INGREDIENTES] ${ing.nombre_ingrediente}: Base ${cantidadBase} x Solicitada ${cantidadSolicitada} = Total ${cantidadTotal}`);
+            
             html += `
                 <li style="margin-bottom: 4px; color: #2c5f6f;">
-                    <strong>${ing.nombre_ingrediente}</strong>: ${cantidadFormateada} ${ing.unidad_medida}
+                    <strong>${ing.nombre_ingrediente}</strong>: ${cantidadBaseFormateada} ${ing.unidad_medida} (Base Receta) - Total: ${cantidadTotalFormateada} ${ing.unidad_medida}
                 </li>
             `;
         });
