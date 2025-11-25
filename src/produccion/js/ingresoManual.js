@@ -466,12 +466,26 @@ function cerrarModal() {
   }
 }
 
+// 🚀 FUNCIÓN DE BÚSQUEDA MEJORADA - Lógica Multi-Criterio
+function normalizar(texto) {
+  if (!texto) return '';
+  return texto
+    .normalize("NFD") // Descompone caracteres acentuados en letra + acento
+    .replace(/[\u0300-\u036f]/g, "") // Elimina los diacríticos (acentos)
+    .toLowerCase(); // Convierte a minúsculas
+}
+
 function manejarBusqueda() {
-  const query = inputBusqueda.value.trim().toLowerCase();
+  const query = inputBusqueda.value.trim();
+  
+  // Limpiar resultados si la búsqueda es muy corta
   if (query.length < 2) {
     listaResultados.innerHTML = '';
     return;
   }
+
+  // Normalizar y dividir la búsqueda en tokens (palabras)
+  const tokens = normalizar(query).split(' ').filter(t => t.length > 0);
 
   fetch('http://localhost:3002/api/produccion/articulos')
     .then(response => {
@@ -479,46 +493,44 @@ function manejarBusqueda() {
       return response.json();
     })
     .then(data => {
-      const resultados = data.filter(art =>
-        (art.nombre && art.nombre.toLowerCase().includes(query)) ||
-        (art.codigo_barras && art.codigo_barras.toLowerCase().includes(query))
-      );
+      // Filtrar artículos usando la lógica multi-criterio
+      const resultados = data.filter(art => {
+        // Normalizar la descripción del artículo para una comparación consistente
+        const nombreNormalizado = normalizar(art.nombre);
+        
+        // El artículo es un resultado válido si su descripción incluye CADA UNO de los tokens
+        return tokens.every(token => nombreNormalizado.includes(token));
+      });
 
       listaResultados.innerHTML = '';
 
       if (resultados.length === 0) {
-        listaResultados.innerHTML = '<li>No se encontraron artículos</li>';
+        listaResultados.innerHTML = '<li>No se encontraron artículos con esos criterios</li>';
         return;
       }
 
       resultados.forEach(art => {
         const li = document.createElement('li');
-        // Mostrar nombre del artículo y stock disponible con 2 decimales
         const stockDisplay = art.stock_consolidado !== undefined ? Number(art.stock_consolidado).toFixed(2) : '0.00';
         li.textContent = `${art.nombre} — Stock: ${stockDisplay}`;
+        
         li.addEventListener('click', async () => {
           articuloSeleccionado = art;
           inputBusqueda.value = art.nombre;
           listaResultados.innerHTML = '';
           
-          // 🆕 FUNCIONALIDAD MEJORADA: Consultar y configurar campo kilos según UX solicitada
           try {
             console.log('🔍 [ARTÍCULO_SELECCIONADO] Consultando kilos_unidad para:', art.numero);
             const kilosUnidad = await consultarKilosUnidad(art.numero);
-            kilosUnidadOriginal = kilosUnidad; // Guardar valor original
-            
-            // 🆕 Configurar el campo kilos según el nuevo comportamiento UX
+            kilosUnidadOriginal = kilosUnidad;
             configurarCampoKilos(kilosUnidad);
-            
             console.log('✅ [ARTÍCULO_SELECCIONADO] Campo kilos configurado:', {
               articuloNumero: art.numero,
               kilosUnidad: kilosUnidad,
-              valorOriginal: kilosUnidadOriginal,
               comportamiento: kilosUnidad === null || kilosUnidad === 0 ? 'No configurado' : 'Valor existente'
             });
           } catch (error) {
             console.error('❌ [ARTÍCULO_SELECCIONADO] Error al consultar kilos_unidad:', error);
-            // En caso de error, configurar como "No está configurado"
             kilosUnidadOriginal = 0;
             configurarCampoKilos(0);
           }

@@ -200,4 +200,336 @@ tr.ingrediente-vinculado td {
     }
 }
 
+/* ============================================
+ * ESTILOS PARA MÓDULO DE SUGERENCIAS
+ * ============================================ */
+
+/* Overlay del modal */
+.modal-sugerencias-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 10000;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Contenido del modal */
+.modal-sugerencias-content {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Header del modal */
+.modal-sugerencias-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 2px solid #e9ecef;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px 12px 0 0;
+}
+
+.modal-sugerencias-header h3 {
+    margin: 0;
+    color: white;
+    font-size: 1.3em;
+    font-weight: 600;
+}
+
+.modal-sugerencias-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    line-height: 1;
+}
+
+.modal-sugerencias-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+}
+
+/* Body del modal */
+.modal-sugerencias-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Artículo origen */
+.sugerencia-articulo-origen {
+    background: #f8f9fa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border-left: 4px solid #667eea;
+}
+
+.sugerencia-articulo-origen strong {
+    color: #667eea;
+}
+
+/* Contenedor del buscador */
+.sugerencia-buscador-container {
+    margin-bottom: 20px;
+}
+
+.sugerencia-buscador-container label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #495057;
+}
+
+.sugerencia-buscador-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 15px;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.sugerencia-buscador-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Resultados de búsqueda */
+.sugerencia-resultados {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 12px;
+    background: #f8f9fa;
+}
+
+/* Scrollbar personalizado */
+.sugerencia-resultados::-webkit-scrollbar {
+    width: 8px;
+}
+
+.sugerencia-resultados::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.sugerencia-resultados::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.sugerencia-resultados::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Item de resultado */
+.sugerencia-resultado-item {
+    background: white;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.sugerencia-resultado-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.sugerencia-resultado-item:last-child {
+    margin-bottom: 0;
+}
+
+.sugerencia-resultado-item input[type="radio"] {
+    margin-top: 4px;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.sugerencia-resultado-item label {
+    cursor: pointer;
+    flex: 1;
+    margin: 0;
+}
+
+.sugerencia-resultado-item label strong {
+    color: #212529;
+    font-size: 15px;
+}
+
+.sugerencia-resultado-item label small {
+    color: #6c757d;
+    font-size: 13px;
+}
+
+/* Sugerencia actual */
+.sugerencia-actual {
+    background: #d1ecf1;
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 4px solid #17a2b8;
+    color: #0c5460;
+}
+
+/* Mensajes informativos */
+.sugerencia-info {
+    text-align: center;
+    color: #6c757d;
+    padding: 20px;
+    margin: 0;
+    font-style: italic;
+}
+
+.sugerencia-error {
+    text-align: center;
+    color: #dc3545;
+    padding: 20px;
+    margin: 0;
+}
+
+/* Footer del modal */
+.modal-sugerencias-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 20px 24px;
+    border-top: 1px solid #dee2e6;
+    background: #f8f9fa;
+    border-radius: 0 0 12px 12px;
+}
+
+.modal-sugerencias-footer button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-sugerencia-cancelar {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-sugerencia-cancelar:hover {
+    background: #5a6268;
+}
+
+.btn-sugerencia-guardar {
+    background: #28a745;
+    color: white;
+}
+
+.btn-sugerencia-guardar:hover:not(:disabled) {
+    background: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+.btn-sugerencia-guardar:disabled {
+    background: #94d3a2;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn-sugerencia-eliminar {
+    background: #dc3545;
+    color: white;
+    margin-right: auto;
+}
+
+.btn-sugerencia-eliminar:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+}
+
+/* Botón de sugerencia en la lista de artículos */
+.carros-btn-sugerencia {
+    /* Los estilos inline se aplican dinámicamente en JavaScript */
+    transition: all 0.2s ease;
+}
+
+.carros-btn-sugerencia:hover:not(:disabled) {
+    transform: scale(1.15);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .modal-sugerencias-content {
+        width: 95%;
+        max-height: 90vh;
+    }
+    
+    .modal-sugerencias-header h3 {
+        font-size: 1.1em;
+    }
+    
+    .modal-sugerencias-footer {
+        flex-wrap: wrap;
+    }
+    
+    .modal-sugerencias-footer button {
+        flex: 1;
+        min-width: 120px;
+    }
+}
+
 

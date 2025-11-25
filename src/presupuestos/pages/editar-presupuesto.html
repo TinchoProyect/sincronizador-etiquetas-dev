@@ -836,13 +836,14 @@
                             
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="secuencia">Secuencia</label>
-                                    <select id="secuencia" name="secuencia">
-                                        <option value="Imprimir" selected>Imprimir</option>
-                                        <option value="Imprimir_Modificado">Imprimir Modificado</option>
-                                        <option value="Armar_Pedido">Armar Pedido</option>
-                                        <option value="Pedido_Listo">Pedido Listo</option>
-                                    </select>
+                                    <label for="secuencia">Secuencia (automático)</label>
+                                    <input type="text" id="secuencia" name="secuencia" value="Imprimir" 
+                                           disabled readonly
+                                           style="background-color: #f0f0f0; cursor: not-allowed; color: #666;"
+                                           title="Este campo se establece automáticamente en 'Imprimir' al guardar">
+                                    <small style="display: block; color: #666; font-size: 0.85em; margin-top: 4px;">
+                                        ℹ️ Este campo siempre se guarda como "Imprimir" automáticamente
+                                    </small>
                                 </div>
                                 
                                 <div class="form-group">
