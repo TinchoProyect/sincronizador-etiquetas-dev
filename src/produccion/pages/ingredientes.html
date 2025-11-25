@@ -400,41 +400,59 @@
         <div id="modal-mix" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
+                    <h5 id="modal-mix-titulo">Composición del Mix</h5>
                     <span class="close-modal">&times;</span>
-                    <h2>Composición del Mix</h2>
                 </div>
                 
-                <table class="tabla-ingredientes">
-                    <thead>
-                        <tr>
-                            <th>Ingrediente</th>
-                            <th>Cantidad (Kg)</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabla-mix-ingredientes-body">
-                        <!-- Los ingredientes del mix se cargarán dinámicamente aquí -->
-                    </tbody>
-                </table>
-
-                <div style="margin-top: 20px;">
-                    <div class="form-group">
-                        <label for="selector-ingrediente-mix">Ingrediente:</label>
-                        <select id="selector-ingrediente-mix" required>
-                            <!-- Se llenará con el fetch de ingredientes disponibles -->
-                        </select>
+                <!-- Sección de agregar ingrediente (compacta en una línea) -->
+                <div class="agregar-ingrediente-row">
+                    <div class="input-ingrediente-wrapper">
+                        <input 
+                            type="text" 
+                            id="buscar-ingrediente-mix" 
+                            placeholder="Buscar ingrediente..."
+                            autocomplete="off"
+                        >
+                        <ul id="lista-resultados-mix" class="lista-resultados-mix"></ul>
                     </div>
-                    <div class="form-group">
-                        <label for="cantidad-ingrediente-mix">Cantidad (Kg):</label>
-                        <input type="number" id="cantidad-ingrediente-mix" step="0.001" min="0.001" required style="width: 100px;">
-                    </div>
-    <div class="form-actions">
-        <button id="btn-agregar-a-mix" class="btn-agregar">Agregar</button>
-        <button id="btn-guardar-mix" class="btn-agregar" style="background-color: #28a745; margin-left: 10px;">
-          Guardar Receta
-        </button>
-    </div>
+                    <input 
+                        type="number" 
+                        id="cantidad-ingrediente-mix" 
+                        placeholder="Kg"
+                        step="0.001" 
+                        min="0.001"
+                    >
+                    <button id="btn-agregar-a-mix" class="btn-agregar-inline" title="Agregar ingrediente">+</button>
+                </div>
+                
+                <!-- Tabla de composición actual -->
+                <div class="tabla-mix-container">
+                    <table class="tabla-mix-ingredientes">
+                        <thead>
+                            <tr>
+                                <th>Ingrediente</th>
+                                <th>Cantidad</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-mix-ingredientes-body">
+                            <!-- Los ingredientes del mix se cargarán dinámicamente aquí -->
+                        </tbody>
+                        <tfoot>
+                            <tr class="fila-total">
+                                <td><strong>TOTAL</strong></td>
+                                <td><strong id="total-kilos-mix">0.00 Kilo</strong></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
 
+                <!-- Botón de guardar -->
+                <div class="modal-footer">
+                    <button id="btn-guardar-mix" class="btn-guardar-mix">
+                        Guardar Receta
+                    </button>
                 </div>
             </div>
         </div>

@@ -1,23 +1,312 @@
-/* Contenedor principal del formulario para agregar ingredientes */
-.agregar-ingrediente-controls {
+/* ============================================
+   MODAL DE EDICIÓN DE MIX - DISEÑO COMPACTO Y MODERNO
+   ============================================ */
+
+/* Contenedor del modal */
+#modal-mix .modal-content {
+    max-width: 800px;
+    width: 90%;
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* Encabezado del modal - Compacto */
+#modal-mix .modal-header {
     display: flex;
-    align-items: flex-end; /* Alinear items en la base */
-    gap: 15px; /* Espacio entre elementos */
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+#modal-mix .modal-header h5 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+#modal-mix .close-modal {
+    font-size: 28px;
+    font-weight: 300;
+    color: #6c757d;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    line-height: 1;
+    padding: 0;
+    background: none;
+    border: none;
+}
+
+#modal-mix .close-modal:hover {
+    color: #dc3545;
+    transform: scale(1.1);
+}
+
+/* ============================================
+   FILA DE AGREGAR INGREDIENTE - LAYOUT HORIZONTAL
+   ============================================ */
+#modal-mix .agregar-ingrediente-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+}
+
+/* Input de búsqueda de ingrediente (65%) */
+#modal-mix .input-ingrediente-wrapper {
+    flex: 0 0 65%;
+    position: relative;
+}
+
+#modal-mix #buscar-ingrediente-mix {
     width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
 }
 
-/* Grupo del input de ingrediente (buscador) */
-.form-group-ingrediente {
-    width: 70%;
-    position: relative; /* Necesario para la lista de resultados */
+#modal-mix #buscar-ingrediente-mix:focus {
+    outline: none;
+    border-color: #0275d8;
+    box-shadow: 0 0 0 3px rgba(2, 117, 216, 0.1);
 }
 
-/* Grupo del input de cantidad */
-.form-group-cantidad {
-    width: 20%;
+/* Lista de resultados de búsqueda (autocompletado) */
+#modal-mix .lista-resultados-mix {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 2px solid #0275d8;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: none;
 }
 
-/* Botón de agregar */
-#btn-agregar-a-mix {
-    margin-left: auto; /* Empuja el botón a la derecha */
+#modal-mix .lista-resultados-mix li {
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #f1f3f5;
+}
+
+#modal-mix .lista-resultados-mix li:last-child {
+    border-bottom: none;
+}
+
+#modal-mix .lista-resultados-mix li:hover {
+    background-color: #e7f3ff;
+}
+
+/* Input de cantidad (25%) */
+#modal-mix #cantidad-ingrediente-mix {
+    flex: 0 0 25%;
+    padding: 10px 12px;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+#modal-mix #cantidad-ingrediente-mix:focus {
+    outline: none;
+    border-color: #28a745;
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.1);
+}
+
+/* Botón agregar (10%) */
+#modal-mix .btn-agregar-inline {
+    flex: 0 0 10%;
+    padding: 10px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1.3rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#modal-mix .btn-agregar-inline:hover {
+    background-color: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+#modal-mix .btn-agregar-inline:active {
+    transform: translateY(0);
+}
+
+/* ============================================
+   TABLA DE COMPOSICIÓN - COMPACTA Y MODERNA
+   ============================================ */
+#modal-mix .tabla-mix-container {
+    margin-bottom: 20px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
+
+#modal-mix .tabla-mix-ingredientes {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+#modal-mix .tabla-mix-ingredientes thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+#modal-mix .tabla-mix-ingredientes th {
+    padding: 10px 12px;
+    text-align: left;
+    color: white;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#modal-mix .tabla-mix-ingredientes th:last-child {
+    width: 50px;
+    text-align: center;
+}
+
+#modal-mix .tabla-mix-ingredientes tbody tr {
+    border-bottom: 1px solid #e9ecef;
+    transition: background-color 0.15s ease;
+}
+
+#modal-mix .tabla-mix-ingredientes tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+#modal-mix .tabla-mix-ingredientes tbody td {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+/* Botón eliminar como ícono pequeño */
+#modal-mix .tabla-mix-ingredientes tbody td:last-child {
+    text-align: center;
+    width: 50px;
+}
+
+#modal-mix .tabla-mix-ingredientes .btn-eliminar-ingrediente {
+    background: none;
+    border: none;
+    color: #dc3545;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    transition: all 0.2s ease;
+    border-radius: 4px;
+}
+
+#modal-mix .tabla-mix-ingredientes .btn-eliminar-ingrediente:hover {
+    background-color: #dc3545;
+    color: white;
+    transform: scale(1.1);
+}
+
+/* ============================================
+   FILA DE TOTAL - DESTACADA
+   ============================================ */
+#modal-mix .tabla-mix-ingredientes tfoot {
+    background-color: #f8f9fa;
+    border-top: 3px solid #0275d8;
+}
+
+#modal-mix .tabla-mix-ingredientes .fila-total td {
+    padding: 12px;
+    font-size: 1rem;
+    color: #2c3e50;
+}
+
+#modal-mix .tabla-mix-ingredientes .fila-total strong {
+    font-weight: 700;
+}
+
+#modal-mix #total-kilos-mix {
+    color: #0275d8;
+    font-size: 1.05rem;
+}
+
+/* ============================================
+   PIE DEL MODAL - BOTÓN GUARDAR
+   ============================================ */
+#modal-mix .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 16px;
+    border-top: 1px solid #e9ecef;
+}
+
+#modal-mix .btn-guardar-mix {
+    padding: 12px 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+#modal-mix .btn-guardar-mix:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+#modal-mix .btn-guardar-mix:active {
+    transform: translateY(0);
+}
+
+/* ============================================
+   RESPONSIVE - AJUSTES PARA PANTALLAS PEQUEÑAS
+   ============================================ */
+@media (max-width: 768px) {
+    #modal-mix .modal-content {
+        max-width: 95%;
+        padding: 16px;
+    }
+    
+    #modal-mix .agregar-ingrediente-row {
+        flex-wrap: wrap;
+    }
+    
+    #modal-mix .input-ingrediente-wrapper {
+        flex: 0 0 100%;
+        margin-bottom: 8px;
+    }
+    
+    #modal-mix #cantidad-ingrediente-mix {
+        flex: 0 0 70%;
+    }
+    
+    #modal-mix .btn-agregar-inline {
+        flex: 0 0 28%;
+    }
 }

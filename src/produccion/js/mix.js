@@ -101,6 +101,34 @@ function manejarBusquedaMix() {
     }
 }
 
+/**
+ * Calcula y actualiza el total de kilos en el modal
+ */
+function calcularYMostrarTotal() {
+    const tbody = document.querySelector('#tabla-mix-ingredientes-body');
+    if (!tbody) return;
+
+    let total = 0;
+    const filas = tbody.querySelectorAll('tr');
+    
+    filas.forEach(fila => {
+        const celdaCantidad = fila.querySelector('td:nth-child(2)');
+        if (celdaCantidad) {
+            const textoCompleto = celdaCantidad.textContent.trim();
+            // Extraer solo el número (ej: "2.5 Kilo" -> 2.5)
+            const cantidad = parseFloat(textoCompleto.split(' ')[0]);
+            if (!isNaN(cantidad)) {
+                total += cantidad;
+            }
+        }
+    });
+
+    const elementoTotal = document.getElementById('total-kilos-mix');
+    if (elementoTotal) {
+        elementoTotal.textContent = `${total.toFixed(2)} Kilo`;
+    }
+}
+
 export async function abrirEdicionMix(mixId) {
     const modal = document.getElementById('modal-mix');
     if (!modal) {
@@ -122,18 +150,30 @@ export async function abrirEdicionMix(mixId) {
         if (!compResponse.ok) throw new Error('Error al cargar la composición del mix');
         const data = await compResponse.json();
 
-        // Actualizar título y tabla de composición
-        modal.querySelector('h2').textContent = `Editar Composición de Mix: ${data.mix.nombre}`;
+        // Actualizar título
+        const titulo = modal.querySelector('#modal-mix-titulo') || modal.querySelector('h5') || modal.querySelector('h2');
+        if (titulo) {
+            titulo.textContent = `Editar Composición: ${data.mix.nombre}`;
+        }
+
+        // Actualizar tabla de composición con botones de eliminar como íconos
         const tbody = modal.querySelector('#tabla-mix-ingredientes-body');
         tbody.innerHTML = data.composicion.map(item => `
             <tr>
                 <td>${item.nombre_ingrediente}</td>
                 <td>${item.cantidad} ${item.unidad_medida || ''}</td>
                 <td>
-                    <button onclick="window.eliminarIngredienteDeMix(${mixId}, ${item.ingrediente_id})" class="btn btn-danger">Eliminar</button>
+                    <button 
+                        onclick="window.eliminarIngredienteDeMix(${mixId}, ${item.ingrediente_id})" 
+                        class="btn-eliminar-ingrediente"
+                        title="Eliminar ingrediente"
+                    >❌</button>
                 </td>
             </tr>
         `).join('');
+
+        // Calcular y mostrar el total
+        calcularYMostrarTotal();
 
         // Configurar búsqueda
         const inputBusqueda = document.getElementById('buscar-ingrediente-mix');
@@ -148,7 +188,6 @@ export async function abrirEdicionMix(mixId) {
         // Configurar botón de guardar receta
         const btnGuardarMix = modal.querySelector('#btn-guardar-mix');
         btnGuardarMix.onclick = () => guardarRecetaMix(mixId);
-
 
         modal.style.display = 'block';
     } catch (error) {
