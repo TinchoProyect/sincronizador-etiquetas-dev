@@ -327,8 +327,10 @@
     <p class="nombre-ingrediente"></p>
     <div class="tipo-ingrediente-info"></div>
 
-    <label for="busquedaArticulo">Buscar artículo:</label>
-    <input type="text" id="busquedaArticulo" placeholder="Nombre o código de barras" />
+    <div class="busqueda-container">
+      <input type="text" id="busquedaArticulo" placeholder="Escanear código de barras..." />
+      <button id="btnToggleBusqueda" class="btn-toggle-busqueda">🔍 Buscar por Nombre</button>
+    </div>
 
     <ul id="listaArticulos" class="lista-articulos"></ul>
 
