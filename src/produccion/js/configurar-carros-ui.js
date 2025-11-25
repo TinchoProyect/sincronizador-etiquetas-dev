@@ -354,10 +354,13 @@
             hijoInfoDiv.appendChild(hijoInfoSpan);
             
             // NUEVA FUNCIONALIDAD: Agregar botones de ingredientes y sugerencias para HIJO
-            const codigoAlfaHijo = packMapping.articulo_kilo_numero || packMapping.articulo_kilo_codigo;
-            const nombreHijo = packMapping.articulo_kilo_nombre || 'Sin descripción';
-            const botonIngredientesHijo = await agregarBotonIngredientes(codigoAlfaHijo, hijoDiv);
-            const botonSugerenciaHijo = await agregarBotonSugerencia(codigoAlfaHijo, nombreHijo, hijoDiv);
+            const articuloHijo = {
+                articulo_numero: packMapping.articulo_kilo_numero || packMapping.articulo_kilo_codigo,
+                codigo_barras: packMapping.articulo_kilo_codigo_barras || packMapping.articulo_kilo_codigo,
+                descripcion: packMapping.articulo_kilo_nombre || 'Sin descripción'
+            };
+            const botonIngredientesHijo = await agregarBotonIngredientes(articuloHijo, hijoDiv);
+            const botonSugerenciaHijo = await agregarBotonSugerencia(articuloHijo.articulo_numero, articuloHijo.descripcion, hijoDiv);
             hijoInfoDiv.appendChild(botonIngredientesHijo);
             hijoInfoDiv.appendChild(botonSugerenciaHijo);
             
@@ -428,7 +431,7 @@
             infoDiv.appendChild(estadoSpan);
             
             // NUEVA FUNCIONALIDAD: Agregar botones de ingredientes y sugerencias para SIMPLE
-            const botonIngredientes = await agregarBotonIngredientes(articulo.articulo_numero, itemDiv);
+            const botonIngredientes = await agregarBotonIngredientes(articulo, itemDiv);
             const botonSugerencia = await agregarBotonSugerencia(
                 articulo.articulo_numero, 
                 articulo.descripcion || articulo.articulo_numero, 
@@ -789,44 +792,54 @@
      * @param {string} articuloCodigo - Codigo alfanumerico o codigo de barras del articulo
      * @returns {Promise<Object|null>} Objeto con ingredientes o null si no tiene receta
      */
-    async function obtenerIngredientesArticulo(articuloCodigo) {
-        // Verificar cache primero
-        if (estadoCarros.cacheIngredientes.has(articuloCodigo)) {
-            console.log(`[INGREDIENTES] Usando cache para ${articuloCodigo}`);
-            return estadoCarros.cacheIngredientes.get(articuloCodigo);
-        }
+    async function obtenerIngredientesArticulo(articulo) {
+    const cacheKey = articulo.articulo_numero;
+    if (estadoCarros.cacheIngredientes.has(cacheKey)) {
+        console.log(`[INGREDIENTES] Usando cache para ${cacheKey}`);
+        return estadoCarros.cacheIngredientes.get(cacheKey);
+    }
 
+    const buscarPorCodigo = async (codigo, tipo) => {
+        if (!codigo) return null;
         try {
-            console.log(`[INGREDIENTES] Consultando receta para ${articuloCodigo}`);
-            const response = await fetch(`/api/produccion/recetas/${articuloCodigo}`);
+            const codigoEncoded = encodeURIComponent(codigo);
+            console.log(`[INGREDIENTES] (${tipo}) Consultando receta para ${codigo} (${codigoEncoded})`);
+            const response = await fetch(`/api/produccion/recetas/${codigoEncoded}`);
             
             if (response.ok) {
                 const receta = await response.json();
-                console.log(`[INGREDIENTES] Receta encontrada para ${articuloCodigo}:`, receta);
-                
-                const resultado = {
+                console.log(`[INGREDIENTES] (${tipo}) Receta encontrada para ${codigo}:`, receta);
+                return {
                     tieneReceta: true,
                     ingredientes: receta.ingredientes || [],
                     articulos: receta.articulos || []
                 };
-                
-                // Guardar en cache
-                estadoCarros.cacheIngredientes.set(articuloCodigo, resultado);
-                return resultado;
             } else if (response.status === 404) {
-                console.log(`[INGREDIENTES] Articulo ${articuloCodigo} sin receta (404)`);
-                const resultado = { tieneReceta: false, ingredientes: [], articulos: [] };
-                estadoCarros.cacheIngredientes.set(articuloCodigo, resultado);
-                return resultado;
+                console.log(`[INGREDIENTES] (${tipo}) Articulo ${codigo} sin receta (404)`);
+                return { tieneReceta: false };
             } else {
-                console.error(`[INGREDIENTES] Error HTTP ${response.status} para ${articuloCodigo}`);
+                console.error(`[INGREDIENTES] (${tipo}) Error HTTP ${response.status} para ${codigo}`);
                 return null;
             }
         } catch (error) {
-            console.error(`[INGREDIENTES] Error al consultar receta de ${articuloCodigo}:`, error);
+            console.error(`[INGREDIENTES] (${tipo}) Error al consultar receta de ${codigo}:`, error);
             return null;
         }
+    };
+
+    let resultado = await buscarPorCodigo(articulo.articulo_numero, 'numero');
+
+    if (resultado && !resultado.tieneReceta && articulo.codigo_barras) {
+        console.log(`[INGREDIENTES] Fallback: Intentando con codigo de barras ${articulo.codigo_barras}`);
+        resultado = await buscarPorCodigo(articulo.codigo_barras, 'barras');
     }
+    
+    if (resultado) {
+        estadoCarros.cacheIngredientes.set(cacheKey, resultado);
+    }
+
+    return resultado;
+}
 
     /**
      * NUEVA FUNCIONALIDAD: Crea el boton de informacion de ingredientes
@@ -834,8 +847,8 @@
      * @param {string} articuloCodigo - Codigo del articulo
      * @param {HTMLElement} contenedorPadre - Elemento donde se agregara el boton
      */
-    async function agregarBotonIngredientes(articuloCodigo, contenedorPadre) {
-        const infoIngredientes = await obtenerIngredientesArticulo(articuloCodigo);
+    async function agregarBotonIngredientes(articulo, contenedorPadre) {
+        const infoIngredientes = await obtenerIngredientesArticulo(articulo);
         
         const botonInfo = document.createElement('button');
         botonInfo.className = 'carros-btn-ingredientes';
@@ -849,7 +862,7 @@
             
             botonInfo.addEventListener('click', (e) => {
                 e.stopPropagation();
-                toggleIngredientesPanel(articuloCodigo, contenedorPadre, infoIngredientes);
+                toggleIngredientesPanel(articulo.articulo_numero, contenedorPadre, infoIngredientes);
             });
         } else {
             // Boton INACTIVO (sin ingredientes) - COMPACTO
@@ -1544,7 +1557,7 @@
         infoDiv.appendChild(estadoSpan);
         
         // Agregar botones de ingredientes y sugerencias
-        const botonIngredientes = await agregarBotonIngredientes(sugerencia.articulo_numero, itemDiv);
+        const botonIngredientes = await agregarBotonIngredientes(sugerencia, itemDiv);
         const botonSugerencia = await agregarBotonSugerencia(
             sugerencia.articulo_numero, 
             sugerencia.descripcion || sugerencia.articulo_numero, 
