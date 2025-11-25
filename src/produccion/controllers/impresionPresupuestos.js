@@ -796,9 +796,28 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
         .header-left {
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: center; /* Centra el logo y la letra R dentro de su espacio */
             gap: 15px;
-            flex: 1;
+            flex: 0 1 auto; /* No crece, se encoge si es necesario */
+        }
+        
+        .modificacion-container {
+            flex: 1 1 auto; /* Ocupa el espacio central disponible */
+            text-align: center;
+        }
+
+        .modificacion-container h3 {
+            font-size: 14px;
+            color: #dc3545;
+            font-weight: bold;
+            margin: 0;
+            line-height: 1;
+        }
+        
+        .modificacion-container p {
+            font-size: 9px;
+            color: #666;
+            margin: 2px 0 0 0;
         }
         
         .logo-lamda { 
@@ -867,6 +886,8 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             font-size: 10px; 
             text-align: right;
             color: #666;
+            flex: 0 1 auto; /* No crece, se encoge si es necesario */
+            white-space: nowrap;
         }
         
         /* DATOS DEL PEDIDO - COMPACTOS */
@@ -1101,36 +1122,44 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             
             console.log(`🛒 [REMITO-R-HTML] Presupuesto ${presupIndex}: ${presupuesto.id_presupuesto_ext}`);
             console.log(`🛒 [REMITO-R-HTML] Aplicando título: ${esPendienteCompra ? 'ORDEN EN ESPERA' : 'R'}`);
-            
-            html += `
-    <div class="remito-container${presupIndex < clienteData.presupuestos.length - 1 ? ' page-break' : ''}">
-        <!-- ENCABEZADO MODERNO -->
-        <div class="header">
-            <div class="header-left">
-                <div class="logo-lamda">LAMDA</div>
-                ${esPendienteCompra ? 
-                    '<div class="orden-espera">ORDEN EN ESPERA</div>' : 
-                    '<div class="letra-r">R</div>'
-                }
-`;
-            
-            // Mostrar indicador de modificación en el encabezado
+
+            // Determinar si el presupuesto fue modificado y generar el HTML correspondiente
+            let modificacionHtml = '';
             if (presupuesto._snapshot) {
                 const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
                                    presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
                 
                 if (esModificado) {
                     const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
-                    html += `
-                <div style="font-size: 14px; color: #dc3545; font-weight: bold; text-align: center; flex: 1;">
-                    Modificado ${numeroModificacion}
+                    const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR', {
+                        year: 'numeric', month: '2-digit', day: '2-digit'
+                    });
+
+                    modificacionHtml = `
+                <div class="modificacion-container">
+                    <h3>MODIFICADO ${numeroModificacion}</h3>
+                    <p>Fecha de modificación: ${fechaModificacion}</p>
                 </div>
 `;
                 }
             }
             
             html += `
+    <div class="remito-container${presupIndex < clienteData.presupuestos.length - 1 ? ' page-break' : ''}">
+        <!-- ENCABEZADO MODERNO -->
+        <div class="header">
+            <div class="header-left">
+                ${esPendienteCompra ? 
+                    '<div class="orden-espera">ORDEN EN ESPERA</div>' : 
+                    `
+                    <div class="logo-lamda">LAMDA</div>
+                    <div class="letra-r">R</div>
+                    `
+                }
             </div>
+            
+            ${modificacionHtml}
+
             <div class="fecha-emision">
                 ${fechaHoy} - ${horaHoy}
             </div>
@@ -1443,13 +1472,20 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                     const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
                     const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
                     
-                    doc.fontSize(9).font('Helvetica-Bold').fillColor('#dc3545')
-                       .text(`Modificado ${numeroModificacion}`, 450, 130);
-                    doc.fontSize(8).font('Helvetica').fillColor('#856404')
-                       .text(`Fecha modificación: ${fechaModificacion}`, 450, 142);
+                    // Centrar el texto "MODIFICADO" en el ancho de la página
+                    doc.fontSize(12).font('Helvetica-Bold').fillColor('#dc3545')
+                       .text(`MODIFICADO ${numeroModificacion}`, doc.page.margins.left, 60, {
+                           width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+                           align: 'center'
+                       });
                     
-                    offsetTablaY = 20; // Mover tabla más abajo
-                    
+                    // Centrar la fecha de modificación debajo
+                    doc.fontSize(8).font('Helvetica').fillColor('#666')
+                       .text(`Fecha de modificación: ${fechaModificacion}`, doc.page.margins.left, 75, {
+                           width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+                           align: 'center'
+                       });
+
                     console.log(`[PRINT-MOD] PDF: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
                 }
             }
@@ -1457,7 +1493,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
             doc.fillColor('black');
             
             // TABLA DE ARTÍCULOS
-            const tablaY = 150 + offsetTablaY;
+            const tablaY = 150; // Se elimina offsetTablaY porque el texto ya no interfiere
             const colWidths = [85, 340, 65];
             const rowHeight = 22;
             
