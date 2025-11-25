@@ -136,8 +136,9 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
                 numero_impresion = $2,
                 motivo = $3,
                 secuencia_en_snapshot = $4,
+                snapshot_detalles = $5, -- ACTUALIZAR BASELINE PARA FUTUROS CAMBIOS
                 fecha_snapshot = NOW()
-            WHERE id = $5
+            WHERE id = $6
             RETURNING id, numero_impresion, motivo, secuencia_en_snapshot
         `;
         
@@ -146,6 +147,7 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
             nuevoNumeroImpresion,
             'modificado',
             'Imprimir_Modificado',
+            JSON.stringify(detallesActuales), // Nuevo parámetro para el baseline
             snapshot.id
         ]);
         
