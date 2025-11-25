@@ -1,0 +1,23 @@
+/* Contenedor principal del formulario para agregar ingredientes */
+.agregar-ingrediente-controls {
+    display: flex;
+    align-items: flex-end; /* Alinear items en la base */
+    gap: 15px; /* Espacio entre elementos */
+    width: 100%;
+}
+
+/* Grupo del input de ingrediente (buscador) */
+.form-group-ingrediente {
+    width: 70%;
+    position: relative; /* Necesario para la lista de resultados */
+}
+
+/* Grupo del input de cantidad */
+.form-group-cantidad {
+    width: 20%;
+}
+
+/* Botón de agregar */
+#btn-agregar-a-mix {
+    margin-left: auto; /* Empuja el botón a la derecha */
+}

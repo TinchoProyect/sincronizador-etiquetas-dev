@@ -2,48 +2,39 @@
  * Funciones para gestionar la composición de ingredientes (mixes)
  */
 
-// Variable compartida para la lista de ingredientes
 let ingredientesLista = [];
+let ingredienteSeleccionadoId = null; // Variable para guardar el ID del ingrediente seleccionado en el modal
+let mixActual = null;
 
-// Función para actualizar la lista de ingredientes
+// Helper para normalizar texto (ignora acentos y mayúsculas)
+function normalizar(texto) {
+    if (!texto) return '';
+    return texto
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
 export function actualizarListaIngredientes(lista) {
     ingredientesLista = lista;
 }
 
-// Verifica si un ingrediente es un mix consultando si tiene composición
 export async function esMix(ingredienteId) {
     try {
-        console.log('🔍 Verificando si ingrediente es mix:', ingredienteId);
-        
-        // Verificar si tiene composición
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`);
-        if (!response.ok) {
-            if (response.status === 404) {
-                console.log('❌ No tiene composición (404)');
-                return false;
-            }
-            throw new Error('Error al verificar composición');
-        }
+        if (response.status === 404) return false;
+        if (!response.ok) throw new Error('Error al verificar composición');
         const data = await response.json();
-        
-        // Verificar si tiene padre_id
         const ingredienteResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
-        if (!ingredienteResponse.ok) {
-            throw new Error('Error al obtener ingrediente');
-        }
+        if (!ingredienteResponse.ok) throw new Error('Error al obtener ingrediente');
         const ingrediente = await ingredienteResponse.json();
-        
-        // Es mix si tiene composición y no tiene padre_id
-        const result = (data.composicion && data.composicion.length > 0) && !ingrediente.padre_id;
-        console.log('✅ Resultado esMix:', result);
-        return result;
+        return (data.composicion && data.composicion.length > 0) && !ingrediente.padre_id;
     } catch (error) {
         console.error('❌ Error al verificar si es mix:', error);
         return false;
     }
 }
 
-// Actualiza el estado visual de "es mix" y el botón de gestión para cada ingrediente
 export async function actualizarEstadoMix(ingredienteId) {
     const tr = document.querySelector(`tr[data-id="${ingredienteId}"]`);
     if (!tr) return;
@@ -55,12 +46,7 @@ export async function actualizarEstadoMix(ingredienteId) {
         const tieneMix = await esMix(ingredienteId);
         const ingrediente = ingredientesLista.find(i => i.id === parseInt(ingredienteId));
         
-        // Actualizar texto de estado
-        if (esMixStatus) {
-            esMixStatus.textContent = tieneMix ? 'Sí' : 'No (aún)';
-        }
-        
-        // Mostrar botón si es mix o si puede ser mix (no es hijo de otro)
+        if (esMixStatus) esMixStatus.textContent = tieneMix ? 'Sí' : 'No (aún)';
         if (btnGestionar && ingrediente) {
             btnGestionar.style.display = (!ingrediente.padre_id) ? 'inline-block' : 'none';
         }
@@ -70,502 +56,192 @@ export async function actualizarEstadoMix(ingredienteId) {
     }
 }
 
-// Abre el modal de edición de mix
-export async function abrirEdicionMix(mixId) {
-    console.log('🔧 abrirEdicionMix llamado con mixId:', mixId, typeof mixId);
-    
-    const modal = document.getElementById('modal-mix');
-    console.log('🔍 Buscando modal:', modal ? 'Encontrado' : 'No encontrado');
-    if (!modal) {
-        console.error('❌ Modal no encontrado en el DOM');
+/**
+ * Maneja el filtrado y la visualización de resultados de búsqueda de ingredientes en el modal de edición de mix.
+ */
+function manejarBusquedaMix() {
+    const input = document.getElementById('buscar-ingrediente-mix');
+    const listaResultados = document.getElementById('lista-resultados-mix');
+    const query = input.value.trim();
+
+    if (query.length < 2) {
+        listaResultados.innerHTML = '';
+        listaResultados.style.display = 'none';
         return;
     }
 
+    const tokens = normalizar(query).split(' ').filter(t => t.length > 0);
+
+    const resultados = ingredientesLista.filter(ing => {
+        if (ing.categoria === 'Mix' || ing.id === mixActual) return false; // Excluir mixes y el propio mix
+        const nombreNormalizado = normalizar(ing.nombre);
+        return tokens.every(token => nombreNormalizado.includes(token));
+    });
+
+    listaResultados.innerHTML = '';
+    if (resultados.length > 0) {
+        resultados.forEach(ing => {
+            const li = document.createElement('li');
+            const stock = parseFloat(ing.stock_actual || 0).toFixed(2);
+            li.textContent = `${ing.nombre} - Stock: ${stock}`;
+            
+            li.addEventListener('click', () => {
+                ingredienteSeleccionadoId = ing.id;
+                input.value = ing.nombre;
+                listaResultados.innerHTML = '';
+                listaResultados.style.display = 'none';
+            });
+            
+            listaResultados.appendChild(li);
+        });
+        listaResultados.style.display = 'block';
+    } else {
+        listaResultados.innerHTML = '<li>No se encontraron ingredientes</li>';
+        listaResultados.style.display = 'block';
+    }
+}
+
+export async function abrirEdicionMix(mixId) {
+    const modal = document.getElementById('modal-mix');
+    if (!modal) {
+        console.error('❌ Modal #modal-mix no encontrado en el DOM');
+        return;
+    }
+
+    mixActual = mixId;
+    ingredienteSeleccionadoId = null;
+
     try {
-        // Cargar ingredientes si no están disponibles
-        if (!ingredientesLista || ingredientesLista.length === 0) {
-            console.log('📋 Cargando lista de ingredientes...');
-            try {
-                const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
-                if (response.ok) {
-                    ingredientesLista = await response.json();
-                    console.log('✅ Ingredientes cargados:', ingredientesLista.length);
-                } else {
-                    console.error('❌ Error al cargar ingredientes:', response.status);
-                    throw new Error('No se pudieron cargar los ingredientes');
-                }
-            } catch (error) {
-                console.error('❌ Error cargando ingredientes:', error);
-                alert('Error al cargar los ingredientes. Por favor, intente nuevamente.');
-                return;
-            }
+        if (ingredientesLista.length === 0) {
+            const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+            if (!response.ok) throw new Error('No se pudieron cargar los ingredientes');
+            ingredientesLista = await response.json();
         }
-        
-        console.log('🎯 Preparando contenedor principal...');
-        let filtrosContainer = modal.querySelector('.filtros-categorias');
-        if (!filtrosContainer) {
-            filtrosContainer = document.createElement('div');
-            filtrosContainer.className = 'filtros-categorias';
-            const selectContainer = modal.querySelector('#selector-ingrediente-mix').parentElement;
-            selectContainer.insertBefore(filtrosContainer, selectContainer.firstChild);
-        }
-        filtrosContainer.innerHTML = '';
 
-        // Crear contenedor para botones globales (fila superior)
-        const botonesGlobales = document.createElement('div');
-        botonesGlobales.className = 'botones-globales';
-        botonesGlobales.style.cssText = 'margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;';
-        
-        // Botón "Mostrar Todos"
-        const btnTodos = document.createElement('button');
-        btnTodos.textContent = 'Mostrar Todos';
-        btnTodos.className = 'btn-filtro';
-        btnTodos.style.cssText = 'margin: 0 5px 5px 0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; background-color: #fff;';
-        botonesGlobales.appendChild(btnTodos);
+        const compResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`);
+        if (!compResponse.ok) throw new Error('Error al cargar la composición del mix');
+        const data = await compResponse.json();
 
-        // Botón "Ocultar Todos"
-        const btnOcultar = document.createElement('button');
-        btnOcultar.textContent = 'Ocultar Todos';
-        btnOcultar.className = 'btn-filtro';
-        btnOcultar.style.cssText = 'margin: 0 5px 5px 0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; background-color: #fff;';
-        botonesGlobales.appendChild(btnOcultar);
-
-        // Insertar la fila de botones globales en filtrosContainer
-        filtrosContainer.appendChild(botonesGlobales);
-
-        // Contenedor para botones de categoría
-        const categoriasBotones = document.createElement('div');
-        categoriasBotones.className = 'categorias-botones';
-        categoriasBotones.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px;';
-        filtrosContainer.appendChild(categoriasBotones);
-
-        // Obtener y ordenar categorías
-        const categorias = [...new Set(ingredientesLista.map(ing => ing.categoria))]
-            .filter(Boolean)
-            .sort();
-
-        // Crear botones de categoría
-        const botonesCategorias = categorias.map(cat => {
-            const btn = document.createElement('button');
-            btn.textContent = cat;
-            btn.className = 'btn-filtro activo';
-            // Por defecto verde para indicar activo
-            btn.style.cssText = 'padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background-color: #5cb85c;';
-            categoriasBotones.appendChild(btn);
-            return btn;
-        });
-
-        // Estado de filtros activos
-        let filtrosActivos = new Set(categorias);
-
-        // Función para actualizar el select según filtros
-        const actualizarSelect = async () => {
-            const select = modal.querySelector('#selector-ingrediente-mix');
-            select.innerHTML = '';
-
-            for (const ing of ingredientesLista) {
-                // No incluir el mismo mix en su composición
-                if (ing.id === parseInt(mixId)) continue;
-
-                // Excluir ingredientes que sean "Mix"
-                const isMixIngred = await esMix(ing.id);
-                if (isMixIngred) continue;
-
-                // Agregar si coincide con filtros activos (o si no hay ninguno activo)
-                if (filtrosActivos.size > 0 && !filtrosActivos.has(ing.categoria)) {
-                    continue;
-                }
-                const opt = document.createElement('option');
-                opt.value = ing.id;
-                opt.textContent = `${ing.nombre} - ${ing.categoria}`;
-                select.appendChild(opt);
-            }
-
-            // No preseleccionar nada
-            select.selectedIndex = -1;
-        };
-
-        // Evento para "Mostrar Todos"
-        btnTodos.onclick = () => {
-            filtrosActivos = new Set(categorias);
-            botonesCategorias.forEach(btn => {
-                btn.classList.add('activo');
-                btn.style.backgroundColor = '#5cb85c';
-            });
-            actualizarSelect();
-        };
-
-        // Evento para "Ocultar Todos"
-        btnOcultar.onclick = () => {
-            filtrosActivos.clear();
-            botonesCategorias.forEach(btn => {
-                btn.classList.remove('activo');
-                btn.style.backgroundColor = '';
-            });
-            actualizarSelect();
-        };
-
-        // Eventos para cada botón de categoría
-        botonesCategorias.forEach(btn => {
-            btn.onclick = () => {
-                if (btn.classList.contains('activo')) {
-                    btn.classList.remove('activo');
-                    btn.style.backgroundColor = '';
-                    filtrosActivos.delete(btn.textContent);
-                } else {
-                    btn.classList.add('activo');
-                    btn.style.backgroundColor = '#5cb85c';
-                    filtrosActivos.add(btn.textContent);
-                }
-                actualizarSelect();
-            };
-        });
-
-        // Inicializar el select con todos los filtros activos
-        await actualizarSelect();
-
-        // Cargar la composición actual
-        console.log('🔄 Cargando composición para mix ID:', mixId);
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`);
-        if (!response.ok) {
-            console.error('❌ Error al cargar composición:', response.status, response.statusText);
-            throw new Error('Error al cargar la composición del mix');
-        }
-        
-        const data = await response.json();
+        // Actualizar título y tabla de composición
+        modal.querySelector('h2').textContent = `Editar Composición de Mix: ${data.mix.nombre}`;
         const tbody = modal.querySelector('#tabla-mix-ingredientes-body');
-        if (!tbody) return;
-
-        // Limpiar tabla
-        tbody.innerHTML = '';
-
-        // Mostrar ingredientes actuales
-        let totalKg = 0;
-        data.composicion.forEach(item => {
-            // Acumular la cantidad
-            totalKg += Number(item.cantidad || 0);
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
+        tbody.innerHTML = data.composicion.map(item => `
+            <tr>
                 <td>${item.nombre_ingrediente}</td>
                 <td>${item.cantidad} ${item.unidad_medida || ''}</td>
                 <td>
-                    <button class="btn-editar-cantidad" 
-                            data-id="${item.ingrediente_id}"
-                            style="background-color: #0275d8; color: white; border: none; 
-                                   padding: 4px 8px; border-radius: 4px; margin-right: 5px;">
-                        Editar
-                    </button>
-                    <button class="btn-eliminar-ingrediente"
-                            data-id="${item.ingrediente_id}"
-                            style="background-color: #dc3545; color: white; border: none;
-                                   padding: 4px 8px; border-radius: 4px;">
-                        Eliminar
-                    </button>
+                    <button onclick="window.eliminarIngredienteDeMix(${mixId}, ${item.ingrediente_id})" class="btn btn-danger">Eliminar</button>
                 </td>
-            `;
-            tbody.appendChild(tr);
-        });
+            </tr>
+        `).join('');
 
-        // Obtener receta_base_kg actual del mix
-        let recetaBaseActual = totalKg; 
-        try {
-            const mixResp = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}`);
-            if (mixResp.ok) {
-                const mixData = await mixResp.json();
-                // Si ya hay un valor en receta_base_kg, usarlo; en caso contrario, usar la suma
-                if (mixData.receta_base_kg !== null && mixData.receta_base_kg !== undefined) {
-                    recetaBaseActual = Number(mixData.receta_base_kg);
-                }
-            }
-        } catch(e) {
-            console.error('No se pudo obtener receta_base_kg, se usa totalKg');
-        }
-
-        // Mostrar campo para la receta base
-        let recetaBaseContainer = modal.querySelector('.receta-base-container');
-        if (!recetaBaseContainer) {
-            recetaBaseContainer = document.createElement('div');
-            recetaBaseContainer.className = 'receta-base-container';
-            recetaBaseContainer.style.marginTop = '10px';
-            // Insertar antes de los botones finales
-            const subModalContent = modal.querySelector('.modal-content');
-            if (subModalContent) {
-                subModalContent.appendChild(recetaBaseContainer);
-            }
-        }
-        recetaBaseContainer.innerHTML = `
-            <label for="input-receta-base-kg" style="font-weight: bold;">Receta Base (Kg):</label>
-            <input type="number" step="0.001" min="0" id="input-receta-base-kg" style="width: 100px; margin-left: 5px;" />
-            <span id="lbl-suma-total" style="margin-left: 15px; color: #666;">
-              Suma actual: ${totalKg.toFixed(3)} Kg
-            </span>
-        `;
-
-        // Asignar valor inicial al input
-        const inputRecetaBase = modal.querySelector('#input-receta-base-kg');
-        if (inputRecetaBase) {
-            inputRecetaBase.value = recetaBaseActual.toFixed(3);
-        }
+        // Configurar búsqueda
+        const inputBusqueda = document.getElementById('buscar-ingrediente-mix');
+        inputBusqueda.value = '';
+        inputBusqueda.removeEventListener('input', manejarBusquedaMix); // Limpiar listener anterior
+        inputBusqueda.addEventListener('input', manejarBusquedaMix);
 
         // Configurar botón de agregar
         const btnAgregar = modal.querySelector('#btn-agregar-a-mix');
-        if (btnAgregar) {
-            btnAgregar.onclick = async () => {
-                const select = document.getElementById('selector-ingrediente-mix');
-                const cantidad = document.getElementById('cantidad-ingrediente-mix');
-                
-                if (!select.value || !cantidad.value) {
-                    alert('Seleccione un ingrediente y especifique la cantidad');
-                    return;
-                }
+        btnAgregar.onclick = () => agregarIngredienteAMix(mixId);
 
-                try {
-                    console.log('➕ Agregando ingrediente al mix:', select.value, cantidad.value);
-                    
-                    // Agregar ingrediente a la composición
-                    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            ingrediente_id: parseInt(select.value),
-                            cantidad: Number(cantidad.value.replace(',', '.'))
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Error al agregar ingrediente');
-                    }
-
-                    // Actualizar padre_id del ingrediente
-                    const updateResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${select.value}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            padre_id: mixId
-                        })
-                    });
-
-                    if (!updateResponse.ok) {
-                        const error = await updateResponse.json();
-                        throw new Error(error.error || 'Error al actualizar padre_id');
-                    }
-
-                    // Recargar la composición
-                    abrirEdicionMix(mixId);
-                    
-                    // Limpiar campos
-                    select.value = '';
-                    cantidad.value = '';
-                } catch (error) {
-                    alert(error.message);
-                }
-            };
-        }
-
-        // Configurar botones de editar y eliminar
-        tbody.querySelectorAll('.btn-editar-cantidad').forEach(btn => {
-            btn.onclick = async () => {
-                const ingredienteId = btn.dataset.id;
-                const nuevaCantidad = prompt('Ingrese la nueva cantidad:');
-                if (!nuevaCantidad) return;
-
-                try {
-                    console.log('✏️ Editando cantidad de ingrediente:', ingredienteId, nuevaCantidad);
-                    
-                    const response = await fetch(
-                        `http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${ingredienteId}`,
-                        {
-                            method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                cantidad: Number(nuevaCantidad.replace(',', '.'))
-                            })
-                        }
-                    );
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Error al actualizar cantidad');
-                    }
-
-                    // Recargar la composición
-                    abrirEdicionMix(mixId);
-                } catch (error) {
-                    alert(error.message);
-                }
-            };
-        });
-
-        tbody.querySelectorAll('.btn-eliminar-ingrediente').forEach(btn => {
-            btn.onclick = async () => {
-                if (!confirm('¿Está seguro de eliminar este ingrediente del mix?')) return;
-
-                const ingredienteId = btn.dataset.id;
-                try {
-                    console.log('🗑️ Eliminando ingrediente del mix:', ingredienteId);
-                    
-                    // Eliminar de la composición
-                    const response = await fetch(
-                        `http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${ingredienteId}`,
-                        {
-                            method: 'DELETE'
-                        }
-                    );
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Error al eliminar ingrediente');
-                    }
-
-                    // Limpiar padre_id del ingrediente
-                    const updateResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            padre_id: null
-                        })
-                    });
-
-                    if (!updateResponse.ok) {
-                        const error = await updateResponse.json();
-                        throw new Error(error.error || 'Error al actualizar padre_id');
-                    }
-
-                    // Recargar la composición
-                    abrirEdicionMix(mixId);
-                } catch (error) {
-                    alert(error.message);
-                }
-            };
-        });
-
-        // Mostrar modal
-        console.log('🎭 Intentando mostrar modal...');
-        console.log('🔍 Estado del modal ANTES de mostrar:', {
-            display: modal.style.display,
-            computedDisplay: getComputedStyle(modal).display,
-            visibility: getComputedStyle(modal).visibility,
-            opacity: getComputedStyle(modal).opacity,
-            zIndex: getComputedStyle(modal).zIndex,
-            classList: Array.from(modal.classList),
-            offsetWidth: modal.offsetWidth,
-            offsetHeight: modal.offsetHeight,
-            parentElement: modal.parentElement ? modal.parentElement.tagName : 'null'
-        });
-        
-        modal.style.display = 'block';
-        modal.classList.add('show');
-        
-        // Forzar un reflow
-        modal.offsetHeight;
-        
-        console.log('✅ Modal display establecido a block y clase show agregada');
-        console.log('🔍 Estado del modal DESPUÉS de mostrar:', {
-            display: modal.style.display,
-            computedDisplay: getComputedStyle(modal).display,
-            visibility: getComputedStyle(modal).visibility,
-            opacity: getComputedStyle(modal).opacity,
-            zIndex: getComputedStyle(modal).zIndex,
-            classList: Array.from(modal.classList),
-            offsetWidth: modal.offsetWidth,
-            offsetHeight: modal.offsetHeight,
-            isVisible: modal.offsetWidth > 0 && modal.offsetHeight > 0
-        });
-        
-        // Verificar si hay otros elementos que puedan estar ocultando el modal
-        console.log('🔍 Verificando elementos padre:', {
-            bodyOverflow: getComputedStyle(document.body).overflow,
-            htmlOverflow: getComputedStyle(document.documentElement).overflow,
-            modalPosition: getComputedStyle(modal).position,
-            modalTop: getComputedStyle(modal).top,
-            modalLeft: getComputedStyle(modal).left
-        });
-
-        // Manejar el botón "Guardar Receta"
+        // Configurar botón de guardar receta
         const btnGuardarMix = modal.querySelector('#btn-guardar-mix');
-        if (btnGuardarMix) {
-            btnGuardarMix.onclick = async () => {
-                try {
-                    // Tomar el valor del input de receta base y enviarlo al servidor
-                    const valRecetaBase = Number(
-                        document.getElementById('input-receta-base-kg').value
-                    ) || 0;
+        btnGuardarMix.onclick = () => guardarRecetaMix(mixId);
 
-                    console.log('💾 Guardando receta base:', valRecetaBase);
-                    
-                    const putResp = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            receta_base_kg: valRecetaBase
-                        })
-                    });
 
-                    if (!putResp.ok) {
-                        const error = await putResp.json();
-                        throw new Error(error.error || 'Error al actualizar receta_base_kg');
-                    }
-
-                    // Mensaje de éxito
-                    alert('Las cantidades, la composición y la receta base fueron guardadas correctamente.');
-                    
-                    // Actualizar los informes del carro activo si existe
-                    if (window.actualizarResumenIngredientes) {
-                        console.log('🔄 Actualizando informes del carro activo...');
-                        await window.actualizarResumenIngredientes();
-                        console.log('✅ Informes del carro actualizados');
-                    }
-                    
-                    // Cierra modal Mix
-                    modal.style.display = 'none';
-                    modal.classList.remove('show');
-                } catch (error) {
-                    alert(error.message);
-                }
-            };
-        }
-
+        modal.style.display = 'block';
     } catch (error) {
         console.error('Error al abrir edición de mix:', error);
         alert(error.message);
     }
 }
 
+// Funciones expuestas globalmente para onclick
+window.eliminarIngredienteDeMix = async (mixId, ingredienteId) => {
+    if (!confirm('¿Está seguro de eliminar este ingrediente del mix?')) return;
+
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${ingredienteId}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('No se pudo eliminar el ingrediente');
+        
+        const updateResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ padre_id: null })
+        });
+        if (!updateResponse.ok) throw new Error('Error al actualizar padre_id');
+
+        abrirEdicionMix(mixId); // Recargar modal
+    } catch (error) {
+        alert(error.message);
+    }
+};
+
+async function agregarIngredienteAMix(mixId) {
+    const cantidadInput = document.getElementById('cantidad-ingrediente-mix');
+    const cantidad = parseFloat(cantidadInput.value.replace(',', '.'));
+
+    if (!ingredienteSeleccionadoId) {
+        alert('Seleccione un ingrediente de la lista de búsqueda.');
+        return;
+    }
+    if (!cantidad || cantidad <= 0) {
+        alert('Ingrese una cantidad válida.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ingrediente_id: ingredienteSeleccionadoId, cantidad })
+        });
+        if (!response.ok) throw new Error('No se pudo agregar el ingrediente');
+
+        const updateResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteSeleccionadoId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ padre_id: mixId })
+        });
+        if (!updateResponse.ok) throw new Error('Error al actualizar padre_id');
+
+        cantidadInput.value = '';
+        document.getElementById('buscar-ingrediente-mix').value = '';
+        ingredienteSeleccionadoId = null;
+
+        abrirEdicionMix(mixId);
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function guardarRecetaMix(mixId) {
+    const modal = document.getElementById('modal-mix');
+    modal.style.display = 'none';
+    
+    if (window.actualizarResumenIngredientes) {
+        await window.actualizarResumenIngredientes();
+    }
+}
+
+
 // Cerrar modal al hacer clic en la X o fuera del modal
 document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('modal-mix');
     if (!modal) return;
 
-    const closeBtn = modal.querySelector('.close-modal');
-    if (closeBtn) {
-        closeBtn.onclick = () => {
-            modal.style.display = 'none';
-            modal.classList.remove('show');
-        };
-    }
+    const closeButtons = modal.querySelectorAll('.close-modal');
+    closeButtons.forEach(btn => {
+        btn.onclick = () => modal.style.display = 'none';
+    });
 
     window.onclick = (event) => {
-        if (event.target === modal) {
-            modal.style.display = 'none';
-            modal.classList.remove('show');
-        }
+        if (event.target === modal) modal.style.display = 'none';
     };
 });
 
 // Exponer funciones necesarias globalmente
-window.esMix = esMix;
 window.abrirEdicionMix = abrirEdicionMix;
 window.actualizarEstadoMix = actualizarEstadoMix;
 window.actualizarListaIngredientes = actualizarListaIngredientes;
