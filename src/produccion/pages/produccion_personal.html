@@ -141,6 +141,43 @@
                 width: 100%;
             }
         }
+
+        /* Estilos para Acordeones Minimalistas */
+        .seccion-resumen h3 {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            transition: color 0.2s;
+        }
+
+        .seccion-resumen h3:hover {
+            color: #007bff;
+        }
+
+        .seccion-resumen h3 .chevron {
+            font-size: 14px;
+            transition: transform 0.3s ease;
+            color: #6c757d;
+        }
+
+        .seccion-resumen.collapsed h3 .chevron {
+            transform: rotate(-90deg);
+        }
+
+        .seccion-resumen .seccion-body {
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+            opacity: 1;
+        }
+
+        .seccion-resumen.collapsed .seccion-body {
+            max-height: 0;
+            opacity: 0;
+        }
     </style>
 </head>
 <body>
@@ -200,10 +237,13 @@
                 </div>
                 
                 <div class="workspace-right">
-                    <!-- Sección de resumen de ingredientes -->
+                    <!-- Sección de resumen de ingredientes (Acordeón - Desplegado por defecto) -->
                     <div id="resumen-ingredientes" class="seccion-resumen">
-                        <h3>Resumen de Ingredientes Necesarios</h3>
-                        <div id="tabla-resumen-ingredientes"></div>
+                        <h3 onclick="toggleSeccion('resumen-ingredientes')">
+                            <span>Resumen de Ingredientes Necesarios</span>
+                            <span class="chevron">▼</span>
+                        </h3>
+                        <div class="seccion-body" id="tabla-resumen-ingredientes"></div>
                     </div>
 
                     <!-- Nueva sección de resumen de mixes -->
@@ -218,10 +258,13 @@
                         <div id="tabla-resumen-articulos"></div>
                     </div>
 
-                    <!-- Nueva sección de ingresos manuales -->
-                    <div id="resumen-ingresos-manuales" class="seccion-resumen">
-                        <h3>Ingresos Manuales Realizados</h3>
-                        <div id="tabla-ingresos-manuales"></div>
+                    <!-- Nueva sección de ingresos manuales (Acordeón - Plegado por defecto) -->
+                    <div id="resumen-ingresos-manuales" class="seccion-resumen collapsed">
+                        <h3 onclick="toggleSeccion('resumen-ingresos-manuales')">
+                            <span>Ingresos Manuales Realizados</span>
+                            <span class="chevron">▼</span>
+                        </h3>
+                        <div class="seccion-body" id="tabla-ingresos-manuales"></div>
                     </div>
                 </div>
             </div>

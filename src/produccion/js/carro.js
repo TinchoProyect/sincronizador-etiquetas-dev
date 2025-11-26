@@ -771,9 +771,26 @@ export async function seleccionarCarro(carroId) {
     const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
     mostrarResumenIngredientes(ingredientes);
 
-    // Resumen de mixes
-    const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
-    mostrarResumenMixes(mixes);
+    // Obtener tipo de carro para gestionar visibilidad de secciones
+    let tipoCarro = 'interna';
+    try {
+        const estadoResp = await fetch(`/api/produccion/carro/${carroId}/estado`);
+        if (estadoResp.ok) {
+            const estadoData = await estadoResp.json();
+            tipoCarro = estadoData.tipo_carro || 'interna';
+        }
+    } catch (error) {
+        console.warn('⚠️ No se pudo obtener tipo de carro');
+    }
+
+    // Gestionar visibilidad de secciones según tipo de carro ANTES de cargar datos
+    gestionarVisibilidadSeccionesPorTipo(tipoCarro);
+
+    // Resumen de mixes (solo cargar si es carro externo)
+    if (tipoCarro === 'externa') {
+        const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
+        mostrarResumenMixes(mixes);
+    }
 
     // Resumen de artículos (externos)
     const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
@@ -2399,6 +2416,44 @@ document.addEventListener('click', async (e) => {
 // Hacer funciones disponibles globalmente para reactividad
 window.obtenerResumenIngredientesCarro = obtenerResumenIngredientesCarro;
 window.mostrarResumenIngredientes = mostrarResumenIngredientes;
+
+// ==========================================
+// FUNCIONES PARA ACORDEONES Y UI CONTEXTUAL
+// ==========================================
+
+/**
+ * Función genérica para toggle de secciones colapsables (acordeón)
+ * @param {string} seccionId - ID de la sección a colapsar/expandir
+ */
+window.toggleSeccion = function(seccionId) {
+    const seccion = document.getElementById(seccionId);
+    if (!seccion) return;
+    
+    seccion.classList.toggle('collapsed');
+    console.log(`🔄 Sección ${seccionId} ${seccion.classList.contains('collapsed') ? 'colapsada' : 'expandida'}`);
+};
+
+/**
+ * Gestiona la visibilidad de secciones según el tipo de carro
+ * @param {string} tipoCarro - 'interna' o 'externa'
+ */
+export function gestionarVisibilidadSeccionesPorTipo(tipoCarro) {
+    const seccionMixes = document.getElementById('resumen-mixes');
+    
+    if (tipoCarro === 'interna') {
+        // Ocultar sección de ingredientes compuestos para carros internos
+        if (seccionMixes) {
+            seccionMixes.style.display = 'none';
+            console.log('🏭 Carro interno: ocultando sección de ingredientes compuestos');
+        }
+    } else {
+        // Mostrar sección de ingredientes compuestos para carros externos
+        if (seccionMixes) {
+            seccionMixes.style.display = 'block';
+            console.log('🚚 Carro externo: mostrando sección de ingredientes compuestos');
+        }
+    }
+}
 
 // Exportar funciones para uso en módulos ES6
 export {
