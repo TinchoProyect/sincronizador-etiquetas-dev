@@ -964,7 +964,7 @@ export async function obtenerResumenMixesCarro(carroId, usuarioId) {
 
 // Función para mostrar el resumen de ingredientes en la UI
 import { abrirModalIngresoManual } from './ingresoManual.js';
-export function mostrarResumenIngredientes(ingredientes) {
+export async function mostrarResumenIngredientes(ingredientes) {
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (!contenedor) return;
 
@@ -997,16 +997,36 @@ export function mostrarResumenIngredientes(ingredientes) {
         return;
     }
 
+    // Obtener estado del carro para determinar qué columnas mostrar
+    const carroId = localStorage.getItem('carroActivo');
+    let estadoCarro = 'en_preparacion'; // Por defecto
+    
+    if (carroId) {
+        try {
+            const response = await fetch(`/api/produccion/carro/${carroId}/estado`);
+            if (response.ok) {
+                const data = await response.json();
+                estadoCarro = data.estado;
+                console.log(`📊 Estado del carro para tabla: ${estadoCarro}`);
+            }
+        } catch (error) {
+            console.warn('⚠️ No se pudo obtener estado del carro, mostrando tabla completa');
+        }
+    }
+
+    // Determinar si mostrar columnas de stock/estado/acciones
+    const mostrarColumnasSoloPreparacion = estadoCarro === 'en_preparacion';
+
     let html = `
         <table class="tabla-resumen">
             <thead>
                 <tr>
                     <th>Ingrediente</th>
                     <th>Cantidad Necesaria</th>
-                    <th>Stock Actual</th>
-                    <th>Estado</th>
+                    ${mostrarColumnasSoloPreparacion ? '<th>Stock Actual</th>' : ''}
+                    ${mostrarColumnasSoloPreparacion ? '<th>Estado</th>' : ''}
                     <th>Unidad</th>
-                    <th>Acciones</th>
+                    ${mostrarColumnasSoloPreparacion ? '<th>Acciones</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -1025,11 +1045,6 @@ export function mostrarResumenIngredientes(ingredientes) {
             tipoStockRaw: typeof ing.stock_actual,
             objetoCompleto: ing
         });
-
-        const deshabilitado = (window.carroIdGlobal == null);
-        const boton = deshabilitado
-            ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-            : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
 
         // Validación robusta para evitar errores con .toFixed()
         const stockActualRaw = ing.stock_actual;
@@ -1065,32 +1080,47 @@ export function mostrarResumenIngredientes(ingredientes) {
             });
         }
 
+        // Calcular datos de stock (siempre, aunque no se muestren)
         const diferencia = stockActual - cantidadNecesaria;
-        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+        const tieneStock = diferencia >= -0.01;
         const faltante = tieneStock ? 0 : Math.abs(diferencia);
 
-        // Generar indicador visual
+        // Generar indicador visual (solo si se va a mostrar)
         let indicadorEstado = '';
-        if (tieneStock) {
-            indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
-        } else {
-            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
+        if (mostrarColumnasSoloPreparacion) {
+            if (tieneStock) {
+                indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
+            } else {
+                indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
+            }
         }
 
-        // Determinar clases CSS para la fila
-        let clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
+        // Generar botón de acción (solo si se va a mostrar)
+        let botonAccion = '';
+        if (mostrarColumnasSoloPreparacion) {
+            const deshabilitado = (window.carroIdGlobal == null);
+            botonAccion = deshabilitado
+                ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+                : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+        }
+
+        // Determinar clases CSS para la fila (solo aplicar colores en preparación)
+        let clasesFila = '';
+        if (mostrarColumnasSoloPreparacion) {
+            clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
+        }
         if (ing.es_de_articulo_vinculado) {
             clasesFila += ' ingrediente-vinculado';
         }
 
         html += `
-            <tr class="${clasesFila}">
+            <tr class="${clasesFila.trim()}">
                 <td>${ing.nombre || 'Sin nombre'}</td>
                 <td>${cantidadNecesaria.toFixed(2)}</td>
-                <td>${stockActual.toFixed(2)}</td>
-                <td>${indicadorEstado}</td>
+                ${mostrarColumnasSoloPreparacion ? `<td>${stockActual.toFixed(2)}</td>` : ''}
+                ${mostrarColumnasSoloPreparacion ? `<td>${indicadorEstado}</td>` : ''}
                 <td>${ing.unidad_medida || ''}</td>
-                <td>${boton}</td>
+                ${mostrarColumnasSoloPreparacion ? `<td>${botonAccion}</td>` : ''}
             </tr>
         `;
     });
@@ -2365,6 +2395,10 @@ document.addEventListener('click', async (e) => {
         await procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNombre);
     }
 });
+
+// Hacer funciones disponibles globalmente para reactividad
+window.obtenerResumenIngredientesCarro = obtenerResumenIngredientesCarro;
+window.mostrarResumenIngredientes = mostrarResumenIngredientes;
 
 // Exportar funciones para uso en módulos ES6
 export {

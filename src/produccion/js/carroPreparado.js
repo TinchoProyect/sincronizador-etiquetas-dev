@@ -445,6 +445,13 @@ export async function marcarCarroPreparado(carroId) {
             window.actualizarEstadoCarro();
         }
 
+        // 🔄 REACTIVIDAD: Actualizar tabla de ingredientes para reflejar el nuevo estado
+        if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
+            console.log('🔄 Actualizando tabla de ingredientes tras marcar carro preparado...');
+            const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
+            await window.mostrarResumenIngredientes(ingredientes);
+        }
+
     } catch (error) {
         console.error('Error al marcar carro como preparado:', error);
         btnCarroPreparado.disabled = false;
@@ -550,6 +557,13 @@ export async function finalizarProduccion(carroId) {
         // Actualizar el estado del carro en la interfaz si es necesario
         if (window.actualizarEstadoCarro) {
             window.actualizarEstadoCarro();
+        }
+
+        // 🔄 REACTIVIDAD: Actualizar tabla de ingredientes para reflejar el nuevo estado
+        if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
+            console.log('🔄 Actualizando tabla de ingredientes tras finalizar producción...');
+            const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
+            await window.mostrarResumenIngredientes(ingredientes);
         }
 
     } catch (error) {
