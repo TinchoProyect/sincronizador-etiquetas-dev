@@ -35,6 +35,7 @@ async function obtenerComposicionIngrediente(ingredienteId) {
   }
 }
 
+// 🛡️ VARIABLES GLOBALES CON INICIALIZACIÓN SEGURA
 let modal = null;
 let inputBusqueda = null;
 let listaResultados = null;
@@ -44,7 +45,9 @@ let btnConfirmar = null;
 let btnCancelar = null;
 let nombreIngredienteDisplay = null;
 let btnEditarKilos = null;
+let btnToggleBusqueda = null;
 
+let modoBusqueda = 'barras'; // 'barras' o 'texto'
 let ingredienteSeleccionado = null;
 let articuloSeleccionado = null;
 let carroIdGlobal = null;
@@ -61,6 +64,9 @@ let estadoOriginalBoton = {
   innerHTML: ''
 };
 
+// 🛡️ Flag para controlar si el modal está inicializado
+let isModalInitialized = false;
+
 export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
   console.log('✔️ Función abrirModalIngresoManual ejecutada');
   console.log(`Tipo de ingrediente: ${esMix ? 'Mix' : 'Simple'}`);
@@ -69,6 +75,12 @@ export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
 
   if (!modal) inicializarModal();
   limpiarCamposModal();
+
+  // Forzar modo 'barras' al abrir
+  modoBusqueda = 'barras';
+  actualizarModoBusquedaUI();
+  inputBusqueda.focus();
+
 
   obtenerIngrediente(ingredienteId)
     .then(ingrediente => {
@@ -89,115 +101,220 @@ export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
     });
 
   modal.classList.add('show');
+  inputBusqueda.focus();
 }
 
+// 🛡️ FUNCIÓN DE INICIALIZACIÓN CON PROGRAMACIÓN DEFENSIVA
 function inicializarModal() {
-  try {
-    // Verificar que el DOM esté completamente cargado
-    if (document.readyState === 'loading') {
-      console.log('⏳ DOM aún cargando, esperando...');
-      document.addEventListener('DOMContentLoaded', inicializarModal);
-      return;
-    }
+  // Prevenir inicialización múltiple
+  if (isModalInitialized) {
+    console.log('ℹ️ Modal ya inicializado, omitiendo...');
+    return;
+  }
 
-    console.log('🔧 Inicializando modal de ingreso manual...');
+  console.log('🔧 [INIT] Iniciando inicialización del modal de ingreso manual...');
+  console.log('🔧 [INIT] Estado del DOM:', document.readyState);
+  
+  try {
+    // 🛡️ PASO 1: Obtener referencias a elementos del DOM con validación
+    console.log('🔍 [INIT] Buscando elementos del DOM...');
     
-    // Obtener elementos del DOM con validación robusta
     modal = document.getElementById('modalIngresoManual');
     if (!modal) {
-      console.error('❌ No se encontró el modal con id "modalIngresoManual"');
-      return false;
+      console.warn('⚠️ [INIT] Elemento no encontrado: modalIngresoManual - El modal no está disponible en esta página');
+      return; // Salir silenciosamente si el modal no existe
     }
+    console.log('✅ [INIT] Modal principal encontrado');
 
+    // Buscar elementos dentro del modal
     inputBusqueda = document.getElementById('busquedaArticulo');
     if (!inputBusqueda) {
-      console.error('❌ No se encontró el input de búsqueda');
-      return false;
+      console.warn('⚠️ [INIT] Elemento no encontrado: busquedaArticulo');
+    } else {
+      console.log('✅ [INIT] Input de búsqueda encontrado');
+    }
+
+    btnToggleBusqueda = document.getElementById('btnToggleBusqueda');
+    if (!btnToggleBusqueda) {
+      console.warn('⚠️ [INIT] Elemento no encontrado: btnToggleBusqueda');
+    } else {
+      console.log('✅ [INIT] Botón toggle búsqueda encontrado');
     }
 
     listaResultados = document.getElementById('listaArticulos');
     if (!listaResultados) {
-      console.error('❌ No se encontró la lista de artículos');
-      return false;
+      console.warn('⚠️ [INIT] Elemento no encontrado: listaArticulos');
+    } else {
+      console.log('✅ [INIT] Lista de resultados encontrada');
     }
 
     inputKilos = document.getElementById('inputKilos');
     if (!inputKilos) {
-      console.error('❌ No se encontró el input de kilos');
-      return false;
+      console.warn('⚠️ [INIT] Elemento no encontrado: inputKilos');
+    } else {
+      console.log('✅ [INIT] Input de kilos encontrado');
     }
 
     inputCantidad = document.getElementById('inputCantidad');
     if (!inputCantidad) {
-      console.error('❌ No se encontró el input de cantidad');
-      return false;
+      console.warn('⚠️ [INIT] Elemento no encontrado: inputCantidad');
+    } else {
+      console.log('✅ [INIT] Input de cantidad encontrado');
     }
 
     btnConfirmar = document.getElementById('btnConfirmarIngreso');
     if (!btnConfirmar) {
-      console.error('❌ No se encontró el botón confirmar');
-      return false;
+      console.warn('⚠️ [INIT] Elemento no encontrado: btnConfirmarIngreso');
+    } else {
+      console.log('✅ [INIT] Botón confirmar encontrado');
     }
 
     btnCancelar = document.getElementById('btnCancelarIngreso');
     if (!btnCancelar) {
-      console.error('❌ No se encontró el botón cancelar');
-      return false;
+      console.warn('⚠️ [INIT] Elemento no encontrado: btnCancelarIngreso');
+    } else {
+      console.log('✅ [INIT] Botón cancelar encontrado');
     }
 
-    // Buscar el elemento nombre-ingrediente de forma segura
     nombreIngredienteDisplay = modal.querySelector('.nombre-ingrediente');
     if (!nombreIngredienteDisplay) {
-      console.warn('⚠️ No se encontró el elemento .nombre-ingrediente, creando uno temporal');
-      // Crear elemento si no existe para evitar errores
-      nombreIngredienteDisplay = document.createElement('p');
-      nombreIngredienteDisplay.className = 'nombre-ingrediente';
-      modal.insertBefore(nombreIngredienteDisplay, modal.firstChild);
+      console.warn('⚠️ [INIT] Elemento no encontrado: .nombre-ingrediente');
+    } else {
+      console.log('✅ [INIT] Display de nombre de ingrediente encontrado');
     }
 
-    // 🆕 Crear y configurar el botón "Editar" para el campo kilos
-    crearBotonEditarKilos();
+    // 🛡️ PASO 2: Crear botón editar kilos (solo si inputKilos existe)
+    if (inputKilos) {
+      crearBotonEditarKilos();
+    }
 
-    // Agregar event listeners con manejo de errores
-    try {
+    // 🛡️ PASO 3: Asignar event listeners con validación
+    console.log('🔗 [INIT] Asignando event listeners...');
+
+    if (inputBusqueda) {
       inputBusqueda.addEventListener('input', manejarBusqueda);
-      btnConfirmar.addEventListener('click', confirmarIngreso);
-      btnCancelar.addEventListener('click', cerrarModal);
-
-      // Event listener para cerrar modal al hacer click fuera
-      window.addEventListener('click', (e) => {
-        if (e.target === modal) cerrarModal();
+      inputBusqueda.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (modoBusqueda === 'barras') {
+            manejarBusqueda();
+          }
+        }
       });
-
-      console.log('✅ Modal de ingreso manual inicializado correctamente');
-      return true;
-      
-    } catch (eventError) {
-      console.error('❌ Error al agregar event listeners:', eventError);
-      return false;
+      console.log('✅ [INIT] Listeners de inputBusqueda asignados');
     }
+
+    if (btnToggleBusqueda) {
+      btnToggleBusqueda.addEventListener('click', toggleModoBusqueda);
+      console.log('✅ [INIT] Listener de btnToggleBusqueda asignado');
+    }
+
+    if (btnConfirmar) {
+      btnConfirmar.addEventListener('click', confirmarIngreso);
+      console.log('✅ [INIT] Listener de btnConfirmar asignado');
+    }
+
+    if (btnCancelar) {
+      btnCancelar.addEventListener('click', cerrarModal);
+      console.log('✅ [INIT] Listener de btnCancelar asignado');
+    }
+
+    // Listener para cerrar modal al hacer clic fuera
+    window.addEventListener('click', (e) => {
+      if (modal && e.target === modal) {
+        cerrarModal();
+      }
+    });
+    console.log('✅ [INIT] Listener de cierre por clic externo asignado');
+
+    // 🛡️ PASO 4: Marcar como inicializado
+    isModalInitialized = true;
+    console.log('✅ [INIT] Modal de ingreso manual inicializado correctamente');
+    console.log('📊 [INIT] Resumen de elementos:');
+    console.log(`   - Modal: ${modal ? '✅' : '❌'}`);
+    console.log(`   - Input Búsqueda: ${inputBusqueda ? '✅' : '❌'}`);
+    console.log(`   - Botón Toggle: ${btnToggleBusqueda ? '✅' : '❌'}`);
+    console.log(`   - Lista Resultados: ${listaResultados ? '✅' : '❌'}`);
+    console.log(`   - Input Kilos: ${inputKilos ? '✅' : '❌'}`);
+    console.log(`   - Input Cantidad: ${inputCantidad ? '✅' : '❌'}`);
+    console.log(`   - Botón Confirmar: ${btnConfirmar ? '✅' : '❌'}`);
+    console.log(`   - Botón Cancelar: ${btnCancelar ? '✅' : '❌'}`);
 
   } catch (error) {
-    console.error('❌ Error crítico al inicializar modal:', error);
-    console.error('❌ Stack trace:', error.stack);
-    return false;
+    console.error('❌ [INIT] Error crítico durante la inicialización del modal:', error);
+    console.error('❌ [INIT] Stack trace:', error.stack);
+    // No lanzar el error para evitar romper otros scripts
   }
 }
 
+// 🛡️ INICIALIZACIÓN SEGURA CON MÚLTIPLES ESTRATEGIAS
+// Estrategia 1: DOMContentLoaded (preferida)
+if (document.readyState === 'loading') {
+  console.log('📄 [INIT] DOM aún cargando, esperando DOMContentLoaded...');
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('📄 [INIT] DOMContentLoaded disparado, inicializando modal...');
+    inicializarModal();
+  });
+} else {
+  // Estrategia 2: DOM ya cargado, inicializar inmediatamente
+  console.log('📄 [INIT] DOM ya cargado, inicializando modal inmediatamente...');
+  inicializarModal();
+}
+
+// 🛡️ FUNCIÓN TOGGLE CON VALIDACIÓN
+function toggleModoBusqueda() {
+  try {
+    modoBusqueda = modoBusqueda === 'barras' ? 'texto' : 'barras';
+    actualizarModoBusquedaUI();
+  } catch (error) {
+    console.error('❌ Error en toggleModoBusqueda:', error);
+  }
+}
+
+// 🛡️ FUNCIÓN ACTUALIZAR UI CON VALIDACIÓN
+function actualizarModoBusquedaUI() {
+  try {
+    if (!btnToggleBusqueda || !inputBusqueda || !listaResultados) {
+      console.warn('⚠️ No se pueden actualizar elementos del modo de búsqueda (elementos no disponibles)');
+      return;
+    }
+
+    if (modoBusqueda === 'barras') {
+      btnToggleBusqueda.textContent = '🔍 Buscar por Nombre';
+      inputBusqueda.placeholder = 'Escanear código de barras...';
+    } else {
+      btnToggleBusqueda.textContent = '🔫 Modo Lector';
+      inputBusqueda.placeholder = 'Escribir nombre del artículo...';
+    }
+    
+    inputBusqueda.value = '';
+    listaResultados.innerHTML = '';
+    inputBusqueda.focus();
+  } catch (error) {
+    console.error('❌ Error en actualizarModoBusquedaUI:', error);
+  }
+}
+
+// 🛡️ FUNCIÓN LIMPIAR CAMPOS CON VALIDACIÓN
 function limpiarCamposModal() {
-  inputBusqueda.value = '';
-  inputKilos.value = '';
-  inputCantidad.value = '1'; // Restablecer a valor por defecto
-  listaResultados.innerHTML = '';
-  articuloSeleccionado = null;
-  kilosUnidadOriginal = null; // 🆕 Limpiar valor original
-  if (nombreIngredienteDisplay) nombreIngredienteDisplay.textContent = '';
-  
-  // 🆕 Resetear el estado del campo kilos y botón editar
-  resetearEstadoCampoKilos();
-  
-  // 🔒 Resetear el estado del botón al limpiar el modal
-  reactivarBotonConfirmar();
+  try {
+    if (inputBusqueda) inputBusqueda.value = '';
+    if (inputKilos) inputKilos.value = '';
+    if (inputCantidad) inputCantidad.value = '1';
+    if (listaResultados) listaResultados.innerHTML = '';
+    if (nombreIngredienteDisplay) nombreIngredienteDisplay.textContent = '';
+    
+    articuloSeleccionado = null;
+    kilosUnidadOriginal = null;
+    
+    // Resetear el estado del campo kilos y botón editar
+    resetearEstadoCampoKilos();
+    
+    // Resetear el estado del botón
+    reactivarBotonConfirmar();
+  } catch (error) {
+    console.error('❌ Error en limpiarCamposModal:', error);
+  }
 }
 
 // 🆕 Función para crear el botón "Editar" junto al campo kilos
@@ -460,9 +577,16 @@ function reactivarBotonConfirmar() {
   });
 }
 
+// 🛡️ FUNCIÓN CERRAR MODAL CON VALIDACIÓN
 function cerrarModal() {
-  if (modal) {
-    modal.classList.remove('show');
+  try {
+    if (modal) {
+      modal.classList.remove('show');
+    } else {
+      console.warn('⚠️ No se puede cerrar el modal (elemento no disponible)');
+    }
+  } catch (error) {
+    console.error('❌ Error en cerrarModal:', error);
   }
 }
 
@@ -475,73 +599,97 @@ function normalizar(texto) {
     .toLowerCase(); // Convierte a minúsculas
 }
 
+// 🛡️ FUNCIÓN MANEJAR BÚSQUEDA CON VALIDACIÓN
 function manejarBusqueda() {
-  const query = inputBusqueda.value.trim();
-  
-  // Limpiar resultados si la búsqueda es muy corta
-  if (query.length < 2) {
-    listaResultados.innerHTML = '';
-    return;
-  }
+  try {
+    if (!inputBusqueda || !listaResultados) {
+      console.warn('⚠️ No se puede realizar búsqueda (elementos no disponibles)');
+      return;
+    }
 
-  // Normalizar y dividir la búsqueda en tokens (palabras)
-  const tokens = normalizar(query).split(' ').filter(t => t.length > 0);
+    const query = inputBusqueda.value.trim();
 
-  fetch('http://localhost:3002/api/produccion/articulos')
-    .then(response => {
-      if (!response.ok) throw new Error('Error al buscar artículos');
-      return response.json();
-    })
-    .then(data => {
-      // Filtrar artículos usando la lógica multi-criterio
-      const resultados = data.filter(art => {
-        // Normalizar la descripción del artículo para una comparación consistente
-        const nombreNormalizado = normalizar(art.nombre);
-        
-        // El artículo es un resultado válido si su descripción incluye CADA UNO de los tokens
-        return tokens.every(token => nombreNormalizado.includes(token));
-      });
-
+    if (modoBusqueda === 'texto' && query.length < 2) {
       listaResultados.innerHTML = '';
+      return;
+    }
 
-      if (resultados.length === 0) {
-        listaResultados.innerHTML = '<li>No se encontraron artículos con esos criterios</li>';
-        return;
-      }
+    fetch('http://localhost:3002/api/produccion/articulos')
+      .then(response => {
+        if (!response.ok) throw new Error('Error al buscar artículos');
+        return response.json();
+      })
+      .then(data => {
+        let resultados;
 
-      resultados.forEach(art => {
-        const li = document.createElement('li');
-        const stockDisplay = art.stock_consolidado !== undefined ? Number(art.stock_consolidado).toFixed(2) : '0.00';
-        li.textContent = `${art.nombre} — Stock: ${stockDisplay}`;
-        
-        li.addEventListener('click', async () => {
-          articuloSeleccionado = art;
-          inputBusqueda.value = art.nombre;
-          listaResultados.innerHTML = '';
-          
-          try {
-            console.log('🔍 [ARTÍCULO_SELECCIONADO] Consultando kilos_unidad para:', art.numero);
-            const kilosUnidad = await consultarKilosUnidad(art.numero);
-            kilosUnidadOriginal = kilosUnidad;
-            configurarCampoKilos(kilosUnidad);
-            console.log('✅ [ARTÍCULO_SELECCIONADO] Campo kilos configurado:', {
-              articuloNumero: art.numero,
-              kilosUnidad: kilosUnidad,
-              comportamiento: kilosUnidad === null || kilosUnidad === 0 ? 'No configurado' : 'Valor existente'
+        if (modoBusqueda === 'barras') {
+          resultados = data.filter(art => art.codigo_barras === query);
+        } else { // modo 'texto'
+          const tokens = normalizar(query).split(' ').filter(t => t.length > 0);
+          if (tokens.length === 0) {
+            resultados = [];
+          } else {
+            resultados = data.filter(art => {
+              const nombreNormalizado = normalizar(art.nombre);
+              return tokens.every(token => nombreNormalizado.includes(token));
             });
-          } catch (error) {
-            console.error('❌ [ARTÍCULO_SELECCIONADO] Error al consultar kilos_unidad:', error);
-            kilosUnidadOriginal = 0;
-            configurarCampoKilos(0);
           }
+        }
+
+        if (!listaResultados) return; // Validación adicional
+
+        listaResultados.innerHTML = '';
+
+        if (resultados.length === 0) {
+          listaResultados.innerHTML = '<li>No se encontraron artículos</li>';
+          return;
+        }
+
+        resultados.forEach(art => {
+          const li = document.createElement('li');
+          const stockDisplay = art.stock_consolidado !== undefined ? Number(art.stock_consolidado).toFixed(2) : '0.00';
+          li.textContent = `${art.nombre} — Stock: ${stockDisplay}`;
+          
+          li.addEventListener('click', () => seleccionarArticulo(art));
+          listaResultados.appendChild(li);
         });
-        listaResultados.appendChild(li);
+
+        // Auto-selección si hay un solo resultado en modo 'barras' y la consulta no está vacía
+        if (modoBusqueda === 'barras' && query.length > 0 && resultados.length === 1) {
+          seleccionarArticulo(resultados[0]);
+        }
+      })
+      .catch(error => {
+        console.error('❌ Error al buscar artículos:', error);
+        if (listaResultados) {
+          listaResultados.innerHTML = '<li>Error al buscar artículos</li>';
+        }
       });
-    })
-    .catch(error => {
-      console.error('❌ Error al buscar artículos:', error);
-      listaResultados.innerHTML = '<li>Error al buscar artículos</li>';
-    });
+  } catch (error) {
+    console.error('❌ Error en manejarBusqueda:', error);
+  }
+}
+
+async function seleccionarArticulo(art) {
+    articuloSeleccionado = art;
+    inputBusqueda.value = art.nombre;
+    listaResultados.innerHTML = '';
+
+    try {
+        console.log('🔍 [ARTÍCULO_SELECCIONADO] Consultando kilos_unidad para:', art.numero);
+        const kilosUnidad = await consultarKilosUnidad(art.numero);
+        kilosUnidadOriginal = kilosUnidad;
+        configurarCampoKilos(kilosUnidad);
+        console.log('✅ [ARTÍCULO_SELECCIONADO] Campo kilos configurado:', {
+            articuloNumero: art.numero,
+            kilosUnidad: kilosUnidad,
+            comportamiento: kilosUnidad === null || kilosUnidad === 0 ? 'No configurado' : 'Valor existente'
+        });
+    } catch (error) {
+        console.error('❌ [ARTÍCULO_SELECCIONADO] Error al consultar kilos_unidad:', error);
+        kilosUnidadOriginal = 0;
+        configurarCampoKilos(0);
+    }
 }
 
 async function confirmarIngreso() {

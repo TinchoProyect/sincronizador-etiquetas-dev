@@ -119,7 +119,7 @@ async function recargarDatosMantenendoFiltros() {
         
         // Verificar estado de mix para todos los ingredientes
         const ingredientesConEstado = await Promise.all(datos.map(async (ingrediente) => {
-            const tieneMix = await window.esMix(ingrediente.id);
+            const tieneMix = await esMix(ingrediente.id);
             return { ...ingrediente, esMix: tieneMix };
         }));
         
@@ -482,20 +482,19 @@ async function actualizarTablaFiltrada() {
     if (vistaActual === 'deposito') {
         const nombreFiltro = document.getElementById('filtro-nombre')?.value.trim().toLowerCase() || '';
 
+        // Si no hay filtros activos ni búsqueda, mostrar TODOS los ingredientes
         if (
             filtrosActivos.size === 0 &&
             filtrosTipoActivos.size === 0 &&
             filtrosStockActivos.size === 0 &&
             filtrosSectorActivos.size === 0 &&
-            !nombreFiltro // ← esta línea permite filtrar si hay texto
+            !nombreFiltro
         ) {
-            console.log('🔄 No hay filtros activos ni texto de búsqueda - mostrando tabla vacía');
-            await actualizarTablaIngredientes([]);
+            console.log('🔄 No hay filtros activos - mostrando todos los ingredientes');
+            await actualizarTablaIngredientes(ingredientesOriginales);
             return;
         }
 
-
-      
         // Aplicar filtros combinados (AND lógico entre tipos de filtros, OR dentro de cada tipo)
         const ingredientesFiltrados = ingredientesOriginales.filter(ing => {
             // Filtro por nombre (input) - Mari
@@ -599,7 +598,7 @@ async function cargarIngredientes(usuarioId = null) {
             
             // Verificar estado de mix para todos los ingredientes
             const ingredientesConEstado = await Promise.all(datos.map(async (ingrediente) => {
-                const tieneMix = await window.esMix(ingrediente.id);
+                const tieneMix = await esMix(ingrediente.id);
                 return { ...ingrediente, esMix: tieneMix };
             }));
             
