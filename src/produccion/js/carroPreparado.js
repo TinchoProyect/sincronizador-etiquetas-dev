@@ -652,6 +652,7 @@ export async function imprimirEtiquetasCarro(carroId) {
 // Hacer disponibles las funciones globalmente
 window.marcarCarroPreparado = marcarCarroPreparado;
 window.finalizarProduccion = finalizarProduccion;
+window.asentarProduccion = finalizarProduccion; // Alias para compatibilidad
 window.imprimirEtiquetasCarro = imprimirEtiquetasCarro;
 window.actualizarVisibilidadBotones = actualizarVisibilidadBotones;
 
