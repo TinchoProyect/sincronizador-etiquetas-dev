@@ -16,7 +16,9 @@
     <link rel="stylesheet" href="/css/modal-articulos-multiple.css">
     <link rel="stylesheet" href="/css/modal-ingreso-manual.css">
     <link rel="stylesheet" href="/css/modal-guardado-ingredientes.css">
+    <link rel="stylesheet" href="/css/produccion_personal_redesign.css">
     <style>
+        /* ESTILOS LEGACY - Mantener temporalmente para compatibilidad */
         /* Rediseño Topbar - Minimalista y Profesional */
         .topbar-produccion {
             display: flex;
@@ -198,7 +200,7 @@
         </header>
 
         <main>
-            <div class="workspace-content">
+            <div class="workspace-content" id="workspace-container">
                 <div class="workspace-left">
                     
                     <!-- Sección de artículos del carro activo -->
@@ -235,6 +237,9 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Divisor Vertical Ajustable -->
+                <div id="resizer" class="resizer"></div>
                 
                 <div class="workspace-right">
                     <!-- Sección de resumen de ingredientes (Acordeón - Desplegado por defecto) -->
@@ -692,9 +697,10 @@
 
 
  
+ 
     <script type="module" src="/js/produccion_personal.js"></script>
     <script type="module" src="/js/carroPreparado.js"></script>
-    
+    <script src="/js/resizer.js"></script>
 
 
 </body>
