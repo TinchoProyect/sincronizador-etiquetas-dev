@@ -2145,8 +2145,8 @@
             const faltante = formatearNumeroResumen(articulo.faltante || articulo.cantidad_faltante || 0);
             
             // Extraer IDs de presupuesto (vienen del backend en datosArticulosCompartidos)
-            const idPresupuestoLocal = articulo.id_presupuesto_local || articulo.presupuesto_id || 0;
-            const idPresupuestoExt = articulo.id_presupuesto_ext || articulo.presupuesto_ext || '';
+            const idPresupuestoLocal = articulo.presupuesto_id || articulo.id_presupuesto_local || articulo.id_presupuesto || 0;
+            const idPresupuestoExt = articulo.presupuesto_ext || articulo.id_presupuesto_ext || '';
             
             console.log('[RENDER-FILA] Valores:', {
                 codigoArticulo,
