@@ -781,8 +781,6 @@ const obtenerPedidosArticulos = async (req, res) => {
                     pack_hijo_codigo, 
                     pack_unidades, 
                     stock_hijo, 
-                    id_presupuesto_local,
-                    id_presupuesto_ext,
                     ...articuloLimpio 
                 } = art;
                 return articuloLimpio;
