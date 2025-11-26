@@ -422,8 +422,9 @@ function llenarCamposEditables() {
     document.getElementById('estado').value = presupuestoData.estado || 'Presupuesto/Orden';
     document.getElementById('agente').value = presupuestoData.agente || '';
     
-    // Secuencia (nuevo campo) - usar "Imprimir" como fallback
-    document.getElementById('secuencia').value = presupuestoData.secuencia || 'Imprimir';
+    // Secuencia - SIEMPRE forzar "Imprimir" (campo no editable)
+    document.getElementById('secuencia').value = 'Imprimir';
+    console.log('[PRESUPUESTO-EDIT] Campo secuencia fijado en "Imprimir" (no editable por usuario)');
 
     // Fecha de entrega (convertir formato si es necesario)
     if (presupuestoData.fecha_entrega) {
@@ -1046,11 +1047,13 @@ async function handleSubmit(event) {
             estado: data.estado,
             id_cliente: data.id_cliente,
             fecha: data.fecha,
-            secuencia: formData.get('secuencia') || null,
+            secuencia: 'Imprimir', // SIEMPRE forzar "Imprimir" (ignorar valor del formulario)
             
             // Detalles
             detalles: detalles
         };
+
+        console.log(`[PRESUPUESTO] Guardando presupuesto editado, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuestoId}`);
 
         // Enviar PUT para actualizar presupuesto
         const response = await fetch(`/api/presupuestos/${presupuestoId}`, {

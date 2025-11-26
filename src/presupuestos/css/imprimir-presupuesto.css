@@ -233,6 +233,7 @@ body {
 .documento-titulo {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 12px;
     margin-bottom: 12px;
     padding: 8px 10px;

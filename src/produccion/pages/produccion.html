@@ -1045,8 +1045,8 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 12px;
-            margin-bottom: 10px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
             background-color: #f8f9fa;
             border: 1px solid #dee2e6;
             border-radius: 4px;
@@ -1075,7 +1075,7 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
         }
 
         .carros-item-descripcion {
@@ -2415,24 +2415,22 @@
         // Actualizar contador de pendientes de compra
         async function actualizarContadorPendientes() {
             try {
-                const response = await fetch('/api/produccion/compras/pendientes');
+                console.log('📊 [CONTADOR-PENDIENTES] Actualizando contador...');
+                
+                // CORRECCIÓN: Usar endpoint agrupado para contar TODOS los pendientes (ambos acordeones)
+                const response = await fetch('/api/produccion/compras/pendientes-agrupados');
                 const result = await response.json();
                 
                 if (result.success) {
-                    const pendientes = result.data.filter(p => p.estado === 'En espera') || [];
-                    
-                    // CORRECCIÓN: Contar ARTÍCULOS derivados, no presupuestos
-                    const total = pendientes.length;
+                    // Contar TODOS los pendientes (por_imprimir + en_espera)
+                    const total = result.totales.total;
                     
                     console.log(`📊 [CONTADOR-PENDIENTES] Total artículos derivados a compra: ${total}`);
-                    if (pendientes.length > 0) {
-                        console.log(`📋 [CONTADOR-PENDIENTES] Artículos derivados:`, pendientes.map(p => ({
-                            id: p.id,
-                            articulo: p.articulo_numero,
-                            presupuesto: p.id_presupuesto_local,
-                            cantidad: p.cantidad_faltante
-                        })));
-                    }
+                    console.log(`📊 [CONTADOR-PENDIENTES] Desglose:`, {
+                        por_imprimir: result.totales.por_imprimir,
+                        en_espera: result.totales.en_espera,
+                        total: result.totales.total
+                    });
                     
                     const contadorSolapa = document.getElementById('contador-solapa');
                     const solapaPendientes = document.getElementById('solapa-pendientes');
@@ -2445,10 +2443,12 @@
                             // Hay pendientes: mostrar contador y activar color rojo
                             contadorSolapa.style.display = 'inline-flex';
                             solapaPendientes.classList.add('con-pendientes');
+                            console.log(`✅ [CONTADOR-PENDIENTES] Solapa activada (${total} pendientes)`);
                         } else {
                             // Sin pendientes: ocultar contador y color gris neutro
                             contadorSolapa.style.display = 'none';
                             solapaPendientes.classList.remove('con-pendientes');
+                            console.log(`✅ [CONTADOR-PENDIENTES] Solapa desactivada (0 pendientes)`);
                         }
                     }
                 }

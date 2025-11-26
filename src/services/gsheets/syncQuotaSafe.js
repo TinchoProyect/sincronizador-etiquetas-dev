@@ -1210,6 +1210,52 @@ async function pullDetallesDesdeSheets(detallesSheets, idsPresupuestos, db, stat
         console.log(`[PULL-DETALLES] ✅ Insertados ${insertados} detalles`);
         state.metrics.detallesInsertados += insertados;
         
+        // 📸 ACTUALIZAR SNAPSHOTS para presupuestos sincronizados (después del COMMIT)
+        console.log(`[SNAPSHOT-MOD-SYNC] Iniciando actualización de snapshots para ${idsPresupuestos.size} presupuestos sincronizados...`);
+        
+        for (const id_presupuesto_ext of idsPresupuestos) {
+            try {
+                // Obtener id_presupuesto local
+                const presupLocal = await db.query(`
+                    SELECT id FROM public.presupuestos 
+                    WHERE id_presupuesto_ext = $1 AND activo = true
+                `, [id_presupuesto_ext]);
+                
+                if (presupLocal.rowCount === 0) {
+                    console.log(`[SNAPSHOT-MOD-SYNC] ⚠️ Presupuesto no encontrado: ${id_presupuesto_ext}`);
+                    continue;
+                }
+                
+                const id_presupuesto = presupLocal.rows[0].id;
+                
+                // Reutilizar la misma función que usa la edición local
+                const { actualizarSnapshotConDiferencias } = require('../../presupuestos/services/snapshotService');
+                
+                const resultadoSnapshot = await actualizarSnapshotConDiferencias(
+                    id_presupuesto,
+                    id_presupuesto_ext,
+                    db
+                );
+                
+                if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && resultadoSnapshot.hasDifferences) {
+                    console.log(`✅ [SNAPSHOT-MOD-SYNC] Snapshot actualizado para ${id_presupuesto_ext}`);
+                    console.log(`📸 [SNAPSHOT-MOD-SYNC] Diferencias: ${resultadoSnapshot.diferencias_count}, Número impresión: ${resultadoSnapshot.numero_impresion}`);
+                } else if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && !resultadoSnapshot.hasDifferences) {
+                    console.log(`ℹ️ [SNAPSHOT-MOD-SYNC] Presupuesto ${id_presupuesto_ext} sin cambios respecto al snapshot`);
+                } else if (resultadoSnapshot.success && !resultadoSnapshot.hasSnapshot) {
+                    console.log(`ℹ️ [SNAPSHOT-MOD-SYNC] Presupuesto ${id_presupuesto_ext} no tiene snapshot activo, SYNC no modifica snapshots`);
+                } else {
+                    console.error(`❌ [SNAPSHOT-MOD-SYNC] Error al actualizar snapshot para ${id_presupuesto_ext}: ${resultadoSnapshot.error}`);
+                }
+                
+            } catch (snapshotError) {
+                console.error(`❌ [SNAPSHOT-MOD-SYNC] Error en actualización de snapshot para ${id_presupuesto_ext} (no crítico):`, snapshotError.message);
+                // No lanzar error - la sincronización debe continuar
+            }
+        }
+        
+        console.log(`[SNAPSHOT-MOD-SYNC] Proceso de actualización de snapshots completado`);
+        
     } catch (error) {
         await db.query('ROLLBACK');
         console.error('[PULL-DETALLES] ❌ Error en transacción, rollback:', error.message);
@@ -1253,13 +1299,21 @@ function procesarPresupuestoDesdeSheet(row, headers) {
 }
 
 async function insertarPresupuestoLocal(presupuesto, db) {
+    console.log(`[SYNC-DEBUG] [PULL-CAMBIOS] Insertando NUEVO presupuesto desde Sheets para id_presupuesto_ext=${presupuesto.id_presupuesto_ext}`);
+    
     const insertQuery = `
         INSERT INTO presupuestos 
         (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
          nota, estado, informe_generado, cliente_nuevo_id, punto_entrega, descuento,
-         activo, fecha_actualizacion, hoja_nombre, hoja_url, usuario_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         secuencia, activo, fecha_actualizacion, hoja_nombre, hoja_url, usuario_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
     `;
+    
+    console.log('[SYNC-DEBUG] [PULL-CAMBIOS] Valores para INSERT nuevo presupuesto:', {
+        id_presupuesto_ext: presupuesto.id_presupuesto_ext,
+        secuencia_forzada_local: 'Imprimir',
+        estado: presupuesto.estado
+    });
     
     await db.query(insertQuery, [
         presupuesto.id_presupuesto_ext,
@@ -1274,15 +1328,20 @@ async function insertarPresupuestoLocal(presupuesto, db) {
         presupuesto.cliente_nuevo_id,
         presupuesto.punto_entrega,
         presupuesto.descuento,
+        'Imprimir', // FORZAR secuencia = 'Imprimir' cuando viene de Sheets
         presupuesto.activo,
         presupuesto.lastModified,
         presupuesto.hoja_nombre,
         presupuesto.hoja_url,
         presupuesto.usuario_id
     ]);
+    
+    console.log(`[SYNC-DEBUG] [PULL-CAMBIOS] ✅ Presupuesto insertado con secuencia = 'Imprimir'`);
 }
 
 async function actualizarPresupuestoLocal(presupuesto, db) {
+    console.log(`[SYNC-DEBUG] [PULL-CAMBIOS] Actualizando encabezado desde Sheets para id_presupuesto_ext=${presupuesto.id_presupuesto_ext}`);
+    
     const updateQuery = `
         UPDATE presupuestos SET
             id_cliente = $2,
@@ -1296,27 +1355,47 @@ async function actualizarPresupuestoLocal(presupuesto, db) {
             cliente_nuevo_id = $10,
             punto_entrega = $11,
             descuento = $12,
-            activo = $13,
-            fecha_actualizacion = $14
+            secuencia = $13,
+            activo = $14,
+            fecha_actualizacion = $15
         WHERE id_presupuesto_ext = $1
     `;
     
+    console.log('[SYNC-DEBUG] [PULL-CAMBIOS] Valores para UPDATE encabezado:', {
+        id_presupuesto_ext: presupuesto.id_presupuesto_ext,
+        secuencia_forzada_local: 'Imprimir',
+        estado: presupuesto.estado,
+        lastModified: presupuesto.lastModified
+    });
+    
     await db.query(updateQuery, [
-        presupuesto.id_presupuesto_ext,
-        presupuesto.id_cliente,
-        presupuesto.fecha,
-        presupuesto.fecha_entrega,
-        presupuesto.agente,
-        presupuesto.tipo_comprobante,
-        presupuesto.nota,
-        presupuesto.estado,
-        presupuesto.informe_generado,
-        presupuesto.cliente_nuevo_id,
-        presupuesto.punto_entrega,
-        presupuesto.descuento,
-        presupuesto.activo,
-        presupuesto.lastModified
+        presupuesto.id_presupuesto_ext,     // $1
+        presupuesto.id_cliente,             // $2
+        presupuesto.fecha,                  // $3
+        presupuesto.fecha_entrega,          // $4
+        presupuesto.agente,                 // $5
+        presupuesto.tipo_comprobante,       // $6
+        presupuesto.nota,                   // $7
+        presupuesto.estado,                 // $8
+        presupuesto.informe_generado,       // $9
+        presupuesto.cliente_nuevo_id,       // $10
+        presupuesto.punto_entrega,          // $11
+        presupuesto.descuento,              // $12
+        'Imprimir',                         // $13 - FORZAR secuencia = 'Imprimir' cuando viene de Sheets
+        presupuesto.activo,                 // $14
+        presupuesto.lastModified            // $15
     ]);
+    
+    // VERIFICACIÓN POST-UPDATE
+    const check = await db.query(
+        'SELECT secuencia, estado FROM presupuestos WHERE id_presupuesto_ext = $1',
+        [presupuesto.id_presupuesto_ext]
+    );
+    console.log('[SYNC-DEBUG] [PULL-CAMBIOS] Valores en BD después de UPDATE encabezado:', {
+        id_presupuesto_ext: presupuesto.id_presupuesto_ext,
+        secuencia: check.rows[0]?.secuencia,
+        estado: check.rows[0]?.estado
+    });
 }
 
 console.log('[SYNC-QUOTA-SAFE] ✅ Servicio de sincronización tolerante a cuotas configurado');

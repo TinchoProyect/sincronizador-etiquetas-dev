@@ -1,6 +1,17 @@
 import { mostrarError } from './utils.js';
 
 let mixActual = null;
+let ingredienteSeleccionadoId = null;
+let todosLosIngredientes = []; // Cache para la lista de ingredientes
+
+// Helper para normalizar texto (ignora acentos y mayúsculas)
+function normalizar(texto) {
+    if (!texto) return '';
+    return texto
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
 
 /**
  * Muestra el modal para editar la composición de un mix
@@ -9,13 +20,12 @@ let mixActual = null;
 export async function mostrarModalEditarMix(mixId) {
     try {
         mixActual = mixId;
+        ingredienteSeleccionadoId = null; // Resetear selección
         
-        // Obtener la composición actual del mix
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`);
         if (!response.ok) throw new Error('No se pudo obtener la composición del mix');
         const data = await response.json();
         
-        // Crear el modal si no existe
         let modal = document.getElementById('modal-editar-mix');
         if (!modal) {
             modal = document.createElement('div');
@@ -24,7 +34,6 @@ export async function mostrarModalEditarMix(mixId) {
             document.body.appendChild(modal);
         }
 
-        // Contenido del modal
         modal.innerHTML = `
             <div class="modal-content">
                 <div class="modal-header">
@@ -67,9 +76,8 @@ export async function mostrarModalEditarMix(mixId) {
                     </div>
                     <div class="agregar-ingrediente">
                         <h3>Agregar ingrediente</h3>
-                        <select id="select-ingrediente">
-                            <option value="">Seleccionar ingrediente...</option>
-                        </select>
+                        <input type="text" id="buscar-ingrediente-mix" placeholder="Buscar ingrediente..." autocomplete="off">
+                        <ul id="lista-resultados-mix" class="lista-resultados-busqueda"></ul>
                         <input type="number" 
                                id="cantidad-ingrediente" 
                                placeholder="Cantidad"
@@ -81,17 +89,14 @@ export async function mostrarModalEditarMix(mixId) {
             </div>
         `;
 
-        // Mostrar el modal
         modal.style.display = 'block';
 
-        // Manejar cierre del modal
         const span = modal.querySelector('.close');
         span.onclick = () => {
             modal.style.display = 'none';
             mixActual = null;
         };
 
-        // Cerrar al hacer clic fuera del modal
         window.onclick = (event) => {
             if (event.target === modal) {
                 modal.style.display = 'none';
@@ -99,8 +104,8 @@ export async function mostrarModalEditarMix(mixId) {
             }
         };
 
-        // Cargar lista de ingredientes disponibles
-        await cargarIngredientesDisponibles();
+        // Cargar ingredientes a la caché y configurar búsqueda
+        await cargarYConfigurarBusqueda();
 
     } catch (error) {
         console.error('Error al mostrar modal:', error);
@@ -109,29 +114,73 @@ export async function mostrarModalEditarMix(mixId) {
 }
 
 /**
- * Carga la lista de ingredientes disponibles para agregar al mix
+ * Carga los ingredientes en caché y añade el listener al input de búsqueda.
  */
-async function cargarIngredientesDisponibles() {
+async function cargarYConfigurarBusqueda() {
     try {
         const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
         if (!response.ok) throw new Error('No se pudieron cargar los ingredientes');
         
         const ingredientes = await response.json();
-        const select = document.getElementById('select-ingrediente');
+        // Filtrar ingredientes que no son mix para evitar ciclos y guardar en caché
+        todosLosIngredientes = ingredientes.filter(ing => ing.categoria !== 'Mix');
         
-        // Filtrar ingredientes que no son mix para evitar ciclos
-        const ingredientesFiltrados = ingredientes.filter(ing => ing.categoria !== 'Mix');
-        
-        select.innerHTML = '<option value="">Seleccionar ingrediente...</option>' +
-            ingredientesFiltrados.map(ing => 
-                `<option value="${ing.id}">${ing.nombre} (${ing.unidad_medida})</option>`
-            ).join('');
+        const inputBusqueda = document.getElementById('buscar-ingrediente-mix');
+        if(inputBusqueda) {
+            inputBusqueda.addEventListener('input', manejarBusquedaMix);
+        }
             
     } catch (error) {
         console.error('Error al cargar ingredientes:', error);
         mostrarError('No se pudieron cargar los ingredientes disponibles');
     }
 }
+
+/**
+ * Maneja el filtrado y la visualización de resultados de búsqueda de ingredientes.
+ */
+function manejarBusquedaMix() {
+    const input = document.getElementById('buscar-ingrediente-mix');
+    const listaResultados = document.getElementById('lista-resultados-mix');
+    const query = input.value.trim();
+
+    if (query.length < 2) {
+        listaResultados.innerHTML = '';
+        listaResultados.style.display = 'none';
+        return;
+    }
+
+    const tokens = normalizar(query).split(' ').filter(t => t.length > 0);
+
+    const resultados = todosLosIngredientes.filter(ing => {
+        const nombreNormalizado = normalizar(ing.nombre);
+        return tokens.every(token => nombreNormalizado.includes(token));
+    });
+
+    listaResultados.innerHTML = '';
+    if (resultados.length > 0) {
+        resultados.forEach(ing => {
+            const li = document.createElement('li');
+            const stock = parseFloat(ing.stock_actual || 0).toFixed(2);
+            li.textContent = `${ing.nombre} - Stock: ${stock}`;
+            li.dataset.id = ing.id;
+            
+            li.addEventListener('click', () => {
+                ingredienteSeleccionadoId = ing.id;
+                input.value = ing.nombre;
+                listaResultados.innerHTML = '';
+                listaResultados.style.display = 'none';
+            });
+            
+            listaResultados.appendChild(li);
+        });
+        listaResultados.style.display = 'block';
+    } else {
+        listaResultados.innerHTML = '<li>No se encontraron ingredientes</li>';
+        listaResultados.style.display = 'block';
+    }
+}
+
 
 // Funciones globales para los botones del modal
 window.editarCantidadIngrediente = async (mixId, ingredienteId, nuevaCantidad) => {
@@ -146,7 +195,6 @@ window.editarCantidadIngrediente = async (mixId, ingredienteId, nuevaCantidad) =
 
         if (!response.ok) throw new Error('No se pudo actualizar la cantidad');
         
-        // Actualizar la vista del carro si el mix está siendo usado
         if (window.actualizarResumenIngredientes) {
             await window.actualizarResumenIngredientes();
         }
@@ -169,10 +217,8 @@ window.eliminarIngredienteDeMix = async (mixId, ingredienteId) => {
 
         if (!response.ok) throw new Error('No se pudo eliminar el ingrediente');
         
-        // Recargar el modal para mostrar la composición actualizada
         await mostrarModalEditarMix(mixId);
         
-        // Actualizar la vista del carro si el mix está siendo usado
         if (window.actualizarResumenIngredientes) {
             await window.actualizarResumenIngredientes();
         }
@@ -184,14 +230,12 @@ window.eliminarIngredienteDeMix = async (mixId, ingredienteId) => {
 };
 
 window.agregarIngredienteAMix = async (mixId) => {
-    const select = document.getElementById('select-ingrediente');
-    const input = document.getElementById('cantidad-ingrediente');
+    const inputCantidad = document.getElementById('cantidad-ingrediente');
     
-    const ingredienteId = select.value;
-    const cantidad = parseFloat(input.value.replace(',', '.'));
+    const cantidad = parseFloat(inputCantidad.value.replace(',', '.'));
 
-    if (!ingredienteId) {
-        mostrarError('Seleccioná un ingrediente');
+    if (!ingredienteSeleccionadoId) {
+        mostrarError('Seleccioná un ingrediente de la lista');
         return;
     }
 
@@ -207,17 +251,15 @@ window.agregarIngredienteAMix = async (mixId) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                ingrediente_id: parseInt(ingredienteId),
+                ingrediente_id: ingredienteSeleccionadoId,
                 cantidad: cantidad
             })
         });
 
         if (!response.ok) throw new Error('No se pudo agregar el ingrediente');
         
-        // Recargar el modal para mostrar la composición actualizada
         await mostrarModalEditarMix(mixId);
         
-        // Actualizar la vista del carro si el mix está siendo usado
         if (window.actualizarResumenIngredientes) {
             await window.actualizarResumenIngredientes();
         }
@@ -284,25 +326,44 @@ style.textContent = `
         background-color: #f8f9fa;
     }
 
-    .modal input[type="number"] {
-        width: 80px;
+    .modal input[type="number"], .modal input[type="text"] {
+        width: 120px;
         padding: 4px;
     }
+    
+    .agregar-ingrediente {
+        position: relative; /* Para el posicionamiento de la lista de resultados */
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #ddd;
+    }
 
-    .modal select {
-        padding: 4px;
-        margin-right: 10px;
+    .lista-resultados-busqueda {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+        border: 1px solid #ddd;
+        display: none; /* Oculta por defecto */
+        position: absolute;
+        background-color: white;
+        width: 300px; /* Ancho similar al del input */
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1001; /* Encima de otros elementos del modal */
+    }
+
+    .lista-resultados-busqueda li {
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+
+    .lista-resultados-busqueda li:hover {
+        background-color: #f1f1f1;
     }
 
     .modal button {
         padding: 4px 8px;
         margin: 0 4px;
-    }
-
-    .agregar-ingrediente {
-        margin-top: 20px;
-        padding-top: 20px;
-        border-top: 1px solid #ddd;
     }
 `;
 document.head.appendChild(style);

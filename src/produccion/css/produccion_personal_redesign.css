@@ -1,0 +1,355 @@
+/* ==========================================
+   REDISEÑO UI/UX - PRODUCCIÓN PERSONAL
+   Topbar Minimalista + Resizer + Tablas Optimizadas
+   ========================================== */
+
+/* ==========================================
+   1. TOPBAR MINIMALISTA PROFESIONAL
+   ========================================== */
+.topbar-produccion {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 60px;
+    padding: 0 20px;
+    background: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    margin: 0;
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.topbar-titulo {
+    font-size: 18px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+    letter-spacing: -0.3px;
+}
+
+.topbar-volver {
+    font-size: 13px;
+    color: #6c757d;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.topbar-volver:hover {
+    color: #007bff;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.topbar-usuario {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+}
+
+.topbar-usuario-icono {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.topbar-usuario-nombre {
+    font-size: 15px;
+    font-weight: 700;
+    color: #212529;
+    margin: 0;
+}
+
+.topbar-btn-crear {
+    padding: 10px 16px;
+    background: #007bff;
+    color: white;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.topbar-btn-crear:hover {
+    background: #0056b3;
+}
+
+/* ==========================================
+   2. LAYOUT PRINCIPAL CON RESIZER
+   ========================================== */
+.container {
+    padding: 0;
+    max-width: 100%;
+}
+
+main {
+    width: 95%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.workspace-content {
+    display: grid;
+    grid-template-columns: 1fr 10px 450px;
+    gap: 0;
+    margin-top: 0;
+}
+
+.workspace-left {
+    min-width: 300px;
+    overflow: hidden;
+    padding-right: 10px;
+}
+
+.workspace-right {
+    min-width: 300px;
+    overflow: hidden;
+    padding-left: 10px;
+}
+
+/* ==========================================
+   3. DIVISOR VERTICAL AJUSTABLE (RESIZER)
+   ========================================== */
+.resizer {
+    width: 10px;
+    cursor: col-resize;
+    background: #e0e0e0;
+    position: relative;
+    transition: background 0.2s;
+    user-select: none;
+}
+
+.resizer:hover {
+    background: #007bff;
+}
+
+.resizer::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 40px;
+    background: #ffffff;
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.resizer:hover::before {
+    opacity: 0.8;
+}
+
+.resizer.resizing {
+    background: #0056b3;
+}
+
+/* ==========================================
+   4. TABLAS RESPONSIVAS - COLUMNA DERECHA
+   ========================================== */
+.seccion-resumen .seccion-body {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #007bff #f1f1f1;
+}
+
+.seccion-resumen .seccion-body::-webkit-scrollbar {
+    height: 8px;
+}
+
+.seccion-resumen .seccion-body::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.seccion-resumen .seccion-body::-webkit-scrollbar-thumb {
+    background: #007bff;
+    border-radius: 4px;
+}
+
+.seccion-resumen table {
+    width: 100%;
+    min-width: 600px;
+    font-size: 11px;
+    table-layout: auto;
+    border-collapse: collapse;
+}
+
+.seccion-resumen th,
+.seccion-resumen td {
+    padding: 6px 4px;
+    font-size: 11px;
+}
+
+/* Columna 1: Ingrediente */
+.seccion-resumen th:nth-child(1),
+.seccion-resumen td:nth-child(1) {
+    max-width: 150px;
+    white-space: normal;
+    word-wrap: break-word;
+    line-height: 1.2;
+}
+
+/* Columna 2: Cantidad Necesaria */
+.seccion-resumen th:nth-child(2),
+.seccion-resumen td:nth-child(2) {
+    text-align: center;
+    white-space: nowrap;
+    min-width: 60px;
+}
+
+/* Columna 3: Stock Actual */
+.seccion-resumen th:nth-child(3),
+.seccion-resumen td:nth-child(3) {
+    text-align: center;
+    white-space: nowrap;
+    min-width: 55px;
+}
+
+/* Columna 4: Estado */
+.seccion-resumen th:nth-child(4),
+.seccion-resumen td:nth-child(4) {
+    white-space: nowrap;
+    min-width: 120px;
+}
+
+/* Columna 5: Unidad - OCULTA para ahorrar espacio */
+.seccion-resumen th:nth-child(5),
+.seccion-resumen td:nth-child(5) {
+    display: none;
+}
+
+/* Columna 6: Acciones */
+.seccion-resumen th:nth-child(6),
+.seccion-resumen td:nth-child(6) {
+    white-space: nowrap;
+    min-width: 110px;
+}
+
+.seccion-resumen button {
+    font-size: 10px;
+    padding: 4px 8px;
+    white-space: nowrap;
+}
+
+.seccion-resumen th {
+    font-weight: 600;
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-size: 10px;
+}
+
+/* ==========================================
+   5. ACORDEONES MINIMALISTAS
+   ========================================== */
+.seccion-resumen h3 {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    transition: color 0.2s;
+}
+
+.seccion-resumen h3:hover {
+    color: #007bff;
+}
+
+.seccion-resumen h3 .chevron {
+    font-size: 14px;
+    transition: transform 0.3s ease;
+    color: #6c757d;
+}
+
+.seccion-resumen.collapsed h3 .chevron {
+    transform: rotate(-90deg);
+}
+
+.seccion-resumen .seccion-body {
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    opacity: 1;
+}
+
+.seccion-resumen.collapsed .seccion-body {
+    max-height: 0;
+    opacity: 0;
+}
+
+/* ==========================================
+   6. RESPONSIVE
+   ========================================== */
+@media (max-width: 1200px) {
+    .workspace-content {
+        grid-template-columns: 1fr !important;
+    }
+
+    .resizer {
+        display: none;
+    }
+
+    .workspace-right {
+        order: 2;
+        padding-left: 0;
+    }
+
+    .workspace-left {
+        padding-right: 0;
+    }
+
+    main {
+        width: 98%;
+        padding: 15px;
+    }
+}
+
+@media (max-width: 768px) {
+    .topbar-produccion {
+        height: auto;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .topbar-left,
+    .topbar-right {
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .topbar-right {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .topbar-usuario {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .topbar-btn-crear {
+        width: 100%;
+    }
+
+    main {
+        width: 100%;
+        padding: 10px;
+    }
+}

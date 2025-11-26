@@ -215,12 +215,90 @@ function actualizarTablaArticulos(articulos) {
 }
 
 // Funciones de filtrado
+
+/**
+ * Normaliza texto eliminando acentos y convirtiendo a minúsculas
+ * @param {string} texto - Texto a normalizar
+ * @returns {string} - Texto normalizado
+ */
+function normalizarTexto(texto) {
+    if (!texto) return '';
+    return texto
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, ''); // Eliminar acentos
+}
+
+/**
+ * Filtra artículos por nombre usando lógica multi-criterio (AND)
+ * Divide el texto de búsqueda en tokens (grupos de caracteres) separados por espacios
+ * y verifica que TODOS los tokens estén presentes en la descripción del artículo
+ * 
+ * @param {Array} articulos - Array de artículos a filtrar
+ * @param {string} texto - Texto de búsqueda ingresado por el usuario
+ * @returns {Array} - Array de artículos filtrados
+ * 
+ * Ejemplo:
+ * - Búsqueda: "mi la 5"
+ * - Tokens: ["mi", "la", "5"]
+ * - Resultado: Solo artículos cuya descripción contenga "mi" Y "la" Y "5"
+ *   (ej: "Mix Extralight 5 KG" ✅)
+ */
 function filtrarPorNombre(articulos, texto) {
-    if (!texto) return articulos;
-    const textoLower = texto.toLowerCase();
-    return articulos.filter(articulo => 
-        articulo.nombre.toLowerCase().includes(textoLower)
-    );
+    console.log('🔍 [FILTRO-NOMBRE] Iniciando filtrado multi-criterio');
+    console.log('🔍 [FILTRO-NOMBRE] Texto de búsqueda original:', `"${texto}"`);
+    
+    if (!texto || texto.trim() === '') {
+        console.log('🔍 [FILTRO-NOMBRE] Texto vacío, retornando todos los artículos');
+        return articulos;
+    }
+    
+    // 1. Normalizar el texto de búsqueda (eliminar acentos, convertir a minúsculas)
+    const textoNormalizado = normalizarTexto(texto);
+    console.log('🔍 [FILTRO-NOMBRE] Texto normalizado:', `"${textoNormalizado}"`);
+    
+    // 2. Dividir el texto en tokens (grupos de caracteres) usando espacios como separador
+    const tokens = textoNormalizado
+        .split(/\s+/)           // Dividir por uno o más espacios
+        .filter(token => token.length > 0); // Eliminar tokens vacíos
+    
+    console.log('🔍 [FILTRO-NOMBRE] Tokens generados:', tokens);
+    console.log('🔍 [FILTRO-NOMBRE] Total de tokens:', tokens.length);
+    
+    if (tokens.length === 0) {
+        console.log('🔍 [FILTRO-NOMBRE] No hay tokens válidos, retornando todos los artículos');
+        return articulos;
+    }
+    
+    // 3. Filtrar artículos: un artículo pasa el filtro SOLO SI contiene TODOS los tokens
+    const articulosFiltrados = articulos.filter(articulo => {
+        // Normalizar el nombre del artículo para comparación
+        const nombreNormalizado = normalizarTexto(articulo.nombre);
+        
+        // Verificar que TODOS los tokens estén presentes en el nombre (lógica AND)
+        const cumpleTodosLosTokens = tokens.every(token => 
+            nombreNormalizado.includes(token)
+        );
+        
+        // Log detallado para debugging (solo para los primeros 5 artículos)
+        if (articulos.indexOf(articulo) < 5) {
+            console.log(`🔍 [FILTRO-NOMBRE] Artículo: "${articulo.nombre}"`);
+            console.log(`   - Normalizado: "${nombreNormalizado}"`);
+            console.log(`   - Cumple todos los tokens: ${cumpleTodosLosTokens}`);
+            tokens.forEach(token => {
+                const contiene = nombreNormalizado.includes(token);
+                console.log(`   - Contiene "${token}": ${contiene ? '✅' : '❌'}`);
+            });
+        }
+        
+        return cumpleTodosLosTokens;
+    });
+    
+    console.log('✅ [FILTRO-NOMBRE] Filtrado completado');
+    console.log('✅ [FILTRO-NOMBRE] Artículos antes del filtro:', articulos.length);
+    console.log('✅ [FILTRO-NOMBRE] Artículos después del filtro:', articulosFiltrados.length);
+    
+    return articulosFiltrados;
 }
 
 function filtrarPorStock(articulos, condicion) {

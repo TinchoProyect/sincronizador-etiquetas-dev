@@ -1051,13 +1051,13 @@ function updatePresupuestosTable(data) {
             <td class="text-center">
                 <div class="action-buttons">
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
-                        🖨️
+                        Imprimir
                     </button>
                     <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
-                        ✏️
+                        Editar
                     </button>
                     <button class="btn-action btn-delete" onclick="anularPresupuesto(${item.id})" title="Anular presupuesto">
-                        🗑️
+                        Eliminar
                     </button>
                 </div>
             </td>
