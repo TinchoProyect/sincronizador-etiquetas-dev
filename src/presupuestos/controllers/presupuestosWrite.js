@@ -250,13 +250,14 @@ const crearPresupuesto = async (req, res) => {
                 estadoNormalizado,
                 punto_entrega || '',
                 descuentoNormalizado,
-                secuencia || 'Imprimir', // Valor predeterminado: "Imprimir"
+                'Imprimir', // SIEMPRE forzar "Imprimir" al crear
                 configHojaUrl,
                 1 // usuario_id = 1 por defecto
             ]);
 
             const presupuestoBD = headerResult.rows[0];
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Encabezado registrado: ID=${presupuestoBD.id}`);
+            console.log(`✅ [PRESUPUESTO] Creando presupuesto nuevo, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuestoId}`);
 
             // Helpers numéricos locales para cálculos
 
@@ -632,11 +633,11 @@ const editarPresupuesto = async (req, res) => {
                 params.push(fecha ? normalizeDate(fecha) : null);
             }
 
-            if (secuencia !== undefined) {
-                paramCount++;
-                updates.push(`secuencia = $${paramCount}`);
-                params.push(secuencia || null);
-            }
+            // FORZAR secuencia = 'Imprimir' SIEMPRE (ignorar valor del frontend)
+            paramCount++;
+            updates.push(`secuencia = $${paramCount}`);
+            params.push('Imprimir');
+            console.log(`[PRESUPUESTO] Forzando secuencia = 'Imprimir' para presupuesto ID: ${id}`);
 
             // Actualizar cabecera si hay campos
             let presupuestoActualizado = presupuesto;
@@ -659,6 +660,7 @@ const editarPresupuesto = async (req, res) => {
                 const updateResult = await client.query(updateQuery, params);
                 presupuestoActualizado = updateResult.rows[0];
                 console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada con timestamp`);
+                console.log(`✅ [PRESUPUESTO] Guardando presupuesto editado, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuesto.id_presupuesto_ext || presupuesto.id}`);
             }
 
             // Determinar si actualizar detalles
@@ -788,6 +790,39 @@ const editarPresupuesto = async (req, res) => {
             console.log(`[TRACE-EDIT-LOCAL] commit_ok id=${presupuesto.id_presupuesto_ext}`);
 
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Transacción completada`);
+
+            // 📸 ACTUALIZAR SNAPSHOT CON DIFERENCIAS (después del COMMIT exitoso, fuera de la transacción)
+            console.log(`📸 [SNAPSHOT-MOD] ===== INICIO ACTUALIZACIÓN SNAPSHOT =====`);
+            console.log(`📸 [SNAPSHOT-MOD] Entrando a editarPresupuesto, id_presupuesto=${presupuesto.id}, id_ext=${presupuesto.id_presupuesto_ext}`);
+            console.log(`📸 [SNAPSHOT-MOD] Llamando a actualizarSnapshotConDiferencias...`);
+            
+            try {
+                const { actualizarSnapshotConDiferencias } = require('../services/snapshotService');
+                const resultadoSnapshot = await actualizarSnapshotConDiferencias(
+                    presupuesto.id, 
+                    presupuesto.id_presupuesto_ext,
+                    req.db
+                );
+                
+                console.log(`📸 [SNAPSHOT-MOD] Finalizó actualizarSnapshotConDiferencias`);
+                console.log(`📸 [SNAPSHOT-MOD] Resultado:`, JSON.stringify(resultadoSnapshot, null, 2));
+                
+                if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && resultadoSnapshot.hasDifferences) {
+                    console.log(`✅ [SNAPSHOT-MOD] Snapshot actualizado para presupuesto id=${presupuesto.id}`);
+                    console.log(`✅ [SNAPSHOT-MOD] Diferencias: ${resultadoSnapshot.diferencias_count}, Número impresión: ${resultadoSnapshot.numero_impresion}`);
+                } else if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && !resultadoSnapshot.hasDifferences) {
+                    console.log(`ℹ️ [SNAPSHOT-MOD] Presupuesto id=${presupuesto.id} sin cambios respecto al snapshot`);
+                } else if (resultadoSnapshot.success && !resultadoSnapshot.hasSnapshot) {
+                    console.log(`ℹ️ [SNAPSHOT-MOD] Presupuesto id=${presupuesto.id} aún no fue impreso`);
+                } else {
+                    console.error(`❌ [SNAPSHOT-MOD] Error al actualizar snapshot: ${resultadoSnapshot.error}`);
+                }
+            } catch (snapshotError) {
+                console.error(`❌ [SNAPSHOT-MOD] Error en actualización de snapshot (no crítico):`, snapshotError.message);
+                console.error(`❌ [SNAPSHOT-MOD] Stack:`, snapshotError.stack);
+            }
+            
+            console.log(`📸 [SNAPSHOT-MOD] ===== FIN ACTUALIZACIÓN SNAPSHOT =====`);
 
             res.json({
                 success: true,

@@ -16,28 +16,192 @@
     <link rel="stylesheet" href="/css/modal-articulos-multiple.css">
     <link rel="stylesheet" href="/css/modal-ingreso-manual.css">
     <link rel="stylesheet" href="/css/modal-guardado-ingredientes.css">
-    <link rel="stylesheet" href="../css/tiempos.css">
-    <link rel="stylesheet" href="/css/modal-medicion-interna.css">
+    <link rel="stylesheet" href="/css/produccion_personal_redesign.css">
+    <style>
+        /* ESTILOS LEGACY - Mantener temporalmente para compatibilidad */
+        /* Rediseño Topbar - Minimalista y Profesional */
+        .topbar-produccion {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 60px;
+            padding: 0 20px;
+            background: #ffffff;
+            border-bottom: 1px solid #e0e0e0;
+            margin: 0;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .topbar-titulo {
+            font-size: 18px;
+            font-weight: 600;
+            color: #212529;
+            margin: 0;
+            letter-spacing: -0.3px;
+        }
+
+        .topbar-volver {
+            font-size: 13px;
+            color: #6c757d;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .topbar-volver:hover {
+            color: #007bff;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .topbar-usuario {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+        }
+
+        .topbar-usuario-icono {
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        .topbar-usuario-nombre {
+            font-size: 15px;
+            font-weight: 700;
+            color: #212529;
+            margin: 0;
+        }
+
+        .topbar-btn-crear {
+            padding: 10px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .topbar-btn-crear:hover {
+            background: #0056b3;
+        }
+
+        /* Ajuste del contenedor principal */
+        .container {
+            padding: 0;
+            max-width: 100%;
+        }
+
+        main {
+            padding: 20px;
+        }
+
+        /* Eliminar márgenes innecesarios */
+        .workspace-content {
+            margin-top: 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .topbar-produccion {
+                height: auto;
+                flex-direction: column;
+                align-items: stretch;
+                padding: 10px;
+                gap: 10px;
+            }
+
+            .topbar-left,
+            .topbar-right {
+                justify-content: space-between;
+                width: 100%;
+            }
+
+            .topbar-right {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .topbar-usuario {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .topbar-btn-crear {
+                width: 100%;
+            }
+        }
+
+        /* Estilos para Acordeones Minimalistas */
+        .seccion-resumen h3 {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            transition: color 0.2s;
+        }
+
+        .seccion-resumen h3:hover {
+            color: #007bff;
+        }
+
+        .seccion-resumen h3 .chevron {
+            font-size: 14px;
+            transition: transform 0.3s ease;
+            color: #6c757d;
+        }
+
+        .seccion-resumen.collapsed h3 .chevron {
+            transform: rotate(-90deg);
+        }
+
+        .seccion-resumen .seccion-body {
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+            opacity: 1;
+        }
+
+        .seccion-resumen.collapsed .seccion-body {
+            max-height: 0;
+            opacity: 0;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>Espacio de Trabajo - Producción</h1>
-            <a href="#" class="back-button" onclick="window.close(); return false;">← Volver a producción</a>
+        <!-- Nueva Topbar Minimalista -->
+        <header class="topbar-produccion">
+            <div class="topbar-left">
+                <h1 class="topbar-titulo">🏭 Producción</h1>
+                <a href="#" class="topbar-volver" onclick="window.close(); return false;">← Volver</a>
+            </div>
+            <div class="topbar-right">
+                <div class="topbar-usuario">
+                    <span class="topbar-usuario-icono">👤</span>
+                    <p class="topbar-usuario-nombre" id="nombre-colaborador">Cargando...</p>
+                </div>
+                <button id="crear-carro" class="topbar-btn-crear">Crear nuevo carro</button>
+            </div>
         </header>
 
         <main>
-            <div class="colaborador-header">
-                <span class="colaborador-icon">👤</span>
-                <div class="colaborador-info">
-                    <p class="colaborador-nombre" id="nombre-colaborador">Cargando...</p>
-                    <p class="colaborador-subtitulo">Espacio de trabajo personal</p>
-                </div>
-            </div>
-
-            <div class="workspace-content">
+            <div class="workspace-content" id="workspace-container">
                 <div class="workspace-left">
-                    <h2>Área de Trabajo</h2>
                     
                     <!-- Sección de artículos del carro activo -->
                     <div id="lista-articulos" class="seccion-articulos">
@@ -47,8 +211,10 @@
                     <!-- Sección de carros disponibles -->
                     <div class="seccion-carros">
                         <div class="workspace-actions">
-                            <button id="crear-carro" class="btn btn-primary">Crear nuevo carro de producción</button>
-                            <button id="carro-preparado" class="btn btn-success" style="display: none;" onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">Carro listo para producir</button>
+                            <button id="carro-preparado" class="btn btn-success" style="display: none;" onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">
+                                Carro listo para producir
+                            </button>
+                            
                             <button id="imprimir-orden-produccion" class="btn btn-info" style="display: none;" onclick="imprimirOrdenProduccion()">📄 Imprimir orden de producción</button>
                             
                             <!-- Campo para kilos producidos (solo para carros de producción externa) -->
@@ -57,9 +223,13 @@
                                 <input type="number" id="kilos-producidos" min="0.01" step="0.01" placeholder="Ingrese kilos producidos" required>
                                 <small class="help-text">Ingrese la cantidad real de kilos producidos</small>
                             </div>
-
-                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="finalizarProduccion(localStorage.getItem('carroActivo'))">Asentar producción</button>
+                            
+                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="asentarProduccion(localStorage.getItem('carroActivo'))">
+                                Asentar producción
+                            </button>
+                            
                             <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;" onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir etiquetas</button>
+                            
                             <button id="guardado-ingredientes" class="btn btn-success" style="display: none;" onclick="abrirModalGuardadoIngredientes(localStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦 Guardado de ingredientes</button>
                         </div>
                         <div id="carro-actual" class="carro-info">
@@ -68,11 +238,17 @@
                     </div>
                 </div>
                 
+                <!-- Divisor Vertical Ajustable -->
+                <div id="resizer" class="resizer"></div>
+                
                 <div class="workspace-right">
-                    <!-- Sección de resumen de ingredientes -->
+                    <!-- Sección de resumen de ingredientes (Acordeón - Desplegado por defecto) -->
                     <div id="resumen-ingredientes" class="seccion-resumen">
-                        <h3>Resumen de Ingredientes Necesarios</h3>
-                        <div id="tabla-resumen-ingredientes"></div>
+                        <h3 onclick="toggleSeccion('resumen-ingredientes')">
+                            <span>Resumen de Ingredientes Necesarios</span>
+                            <span class="chevron">▼</span>
+                        </h3>
+                        <div class="seccion-body" id="tabla-resumen-ingredientes"></div>
                     </div>
 
                     <!-- Nueva sección de resumen de mixes -->
@@ -87,10 +263,13 @@
                         <div id="tabla-resumen-articulos"></div>
                     </div>
 
-                    <!-- Nueva sección de ingresos manuales -->
-                    <div id="resumen-ingresos-manuales" class="seccion-resumen">
-                        <h3>Ingresos Manuales Realizados</h3>
-                        <div id="tabla-ingresos-manuales"></div>
+                    <!-- Nueva sección de ingresos manuales (Acordeón - Plegado por defecto) -->
+                    <div id="resumen-ingresos-manuales" class="seccion-resumen collapsed">
+                        <h3 onclick="toggleSeccion('resumen-ingresos-manuales')">
+                            <span>Ingresos Manuales Realizados</span>
+                            <span class="chevron">▼</span>
+                        </h3>
+                        <div class="seccion-body" id="tabla-ingresos-manuales"></div>
                     </div>
                 </div>
             </div>
@@ -300,8 +479,10 @@
     <p class="nombre-ingrediente"></p>
     <div class="tipo-ingrediente-info"></div>
 
-    <label for="busquedaArticulo">Buscar artículo:</label>
-    <input type="text" id="busquedaArticulo" placeholder="Nombre o código de barras" />
+    <div class="busqueda-container">
+      <input type="text" id="busquedaArticulo" placeholder="Escanear código de barras..." />
+      <button id="btnToggleBusqueda" class="btn-toggle-busqueda">🔍 Buscar por Nombre</button>
+    </div>
 
     <ul id="listaArticulos" class="lista-articulos"></ul>
 
@@ -322,49 +503,59 @@
     <div id="modal-mix" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Editar Composición de Mix</h2>
+                <h5 id="modal-mix-titulo">Composición del Mix</h5>
                 <span class="close-modal">&times;</span>
             </div>
-            <div class="modal-body">
-                <!-- Filtros de categorías se insertarán aquí dinámicamente -->
-                
-                <div class="agregar-ingrediente-section">
-                    <h3>Agregar Ingrediente</h3>
-                    <div class="form-group">
-                        <label for="selector-ingrediente-mix">Ingrediente:</label>
-                        <select id="selector-ingrediente-mix">
-                            <option value="">Seleccionar ingrediente...</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="cantidad-ingrediente-mix">Cantidad:</label>
-                        <input type="number" id="cantidad-ingrediente-mix" min="0.01" step="0.01" placeholder="Cantidad">
-                    </div>
-                    <button id="btn-agregar-a-mix" class="btn btn-primary">Agregar</button>
+            
+            <!-- Sección de agregar ingrediente (compacta en una línea) -->
+            <div class="agregar-ingrediente-row">
+                <div class="input-ingrediente-wrapper">
+                    <input 
+                        type="text" 
+                        id="buscar-ingrediente-mix" 
+                        placeholder="Buscar ingrediente..."
+                        autocomplete="off"
+                    >
+                    <ul id="lista-resultados-mix" class="lista-resultados-mix"></ul>
                 </div>
+                <input 
+                    type="number" 
+                    id="cantidad-ingrediente-mix" 
+                    placeholder="Kg"
+                    step="0.001" 
+                    min="0.001"
+                >
+                <button id="btn-agregar-a-mix" class="btn-agregar-inline" title="Agregar ingrediente">+</button>
+            </div>
+            
+            <!-- Tabla de composición actual -->
+            <div class="tabla-mix-container">
+                <table class="tabla-mix-ingredientes">
+                    <thead>
+                        <tr>
+                            <th>Ingrediente</th>
+                            <th>Cantidad</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-mix-ingredientes-body">
+                        <!-- Los ingredientes del mix se cargarán dinámicamente aquí -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="fila-total">
+                            <td><strong>TOTAL</strong></td>
+                            <td><strong id="total-kilos-mix">0.00 Kilo</strong></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
 
-                <div class="composicion-actual-section">
-                    <h3>Composición Actual</h3>
-                    <table id="tabla-mix-ingredientes">
-                        <thead>
-                            <tr>
-                                <th>Ingrediente</th>
-                                <th>Cantidad</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabla-mix-ingredientes-body">
-                            <!-- Los ingredientes se cargarán dinámicamente aquí -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- El contenedor para receta base se insertará aquí dinámicamente -->
-                
-                <div class="modal-actions">
-                    <button id="btn-guardar-mix" class="btn btn-success">Guardar Receta</button>
-                    <button class="btn btn-secondary close-modal">Cancelar</button>
-                </div>
+            <!-- Botón de guardar -->
+            <div class="modal-footer">
+                <button id="btn-guardar-mix" class="btn-guardar-mix">
+                    Guardar Receta
+                </button>
             </div>
         </div>
     </div>
@@ -660,11 +851,11 @@
     </div>
 
 
-
+ 
+ 
     <script type="module" src="/js/produccion_personal.js"></script>
     <script type="module" src="/js/carroPreparado.js"></script>
-    <script type="module" src="/js/modal_medicion_interna.js"></script>
-    
+    <script src="/js/resizer.js"></script>
 
 
 </body>

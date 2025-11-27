@@ -606,6 +606,229 @@ async function eliminarReceta(req, res) {
     }
 }
 
+/**
+ * ============================================
+ * MÓDULO DE SUGERENCIAS DE PRODUCCIÓN
+ * ============================================
+ */
+
+/**
+ * Obtiene la sugerencia de producción configurada para un artículo
+ * GET /api/produccion/recetas/:numero_articulo/sugerencia
+ */
+async function obtenerSugerencia(req, res) {
+    const client = await pool.connect();
+    
+    try {
+        const { numero_articulo } = req.params;
+        
+        console.log(`[SUGERENCIAS] Obteniendo sugerencia para artículo: ${numero_articulo}`);
+
+        if (!numero_articulo) {
+            return res.status(400).json({ 
+                error: 'El número de artículo es requerido' 
+            });
+        }
+
+        // Consultar la sugerencia actual
+        const query = `
+            SELECT 
+                r.articulo_numero,
+                r.articulo_sugerido_numero,
+                a.nombre as articulo_sugerido_nombre,
+                a.codigo_barras as articulo_sugerido_codigo_barras
+            FROM recetas r
+            LEFT JOIN articulos a ON a.numero = r.articulo_sugerido_numero
+            WHERE r.articulo_numero = $1
+        `;
+        
+        const result = await client.query(query, [numero_articulo]);
+        
+        if (result.rows.length === 0) {
+            // El artículo no tiene receta registrada
+            console.log(`[SUGERENCIAS] Artículo ${numero_articulo} sin receta registrada`);
+            return res.status(404).json({ 
+                error: 'Receta no encontrada para este artículo',
+                tiene_sugerencia: false
+            });
+        }
+
+        const receta = result.rows[0];
+        const tieneSugerencia = receta.articulo_sugerido_numero !== null;
+
+        console.log(`[SUGERENCIAS] Sugerencia encontrada: ${tieneSugerencia ? receta.articulo_sugerido_numero : 'ninguna'}`);
+
+        res.json({
+            articulo_numero: receta.articulo_numero,
+            tiene_sugerencia: tieneSugerencia,
+            sugerencia: tieneSugerencia ? {
+                articulo_numero: receta.articulo_sugerido_numero,
+                nombre: receta.articulo_sugerido_nombre,
+                codigo_barras: receta.articulo_sugerido_codigo_barras
+            } : null
+        });
+
+    } catch (error) {
+        console.error('[SUGERENCIAS] Error al obtener sugerencia:', error);
+        res.status(500).json({ 
+            error: 'Error al obtener sugerencia de producción' 
+        });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Guarda o actualiza la sugerencia de producción para un artículo
+ * PUT /api/produccion/recetas/:numero_articulo/sugerencia
+ */
+async function guardarSugerencia(req, res) {
+    const client = await pool.connect();
+    
+    try {
+        const { numero_articulo } = req.params;
+        const { articulo_sugerido_numero } = req.body;
+
+        console.log(`[SUGERENCIAS] Guardando sugerencia para ${numero_articulo} → ${articulo_sugerido_numero}`);
+
+        if (!numero_articulo) {
+            return res.status(400).json({ 
+                error: 'El número de artículo es requerido' 
+            });
+        }
+
+        if (!articulo_sugerido_numero) {
+            return res.status(400).json({ 
+                error: 'El artículo sugerido es requerido' 
+            });
+        }
+
+        // Verificar que el artículo sugerido existe
+        const verificarArticuloQuery = `
+            SELECT numero, nombre 
+            FROM articulos 
+            WHERE numero = $1
+        `;
+        const articuloResult = await client.query(verificarArticuloQuery, [articulo_sugerido_numero]);
+        
+        if (articuloResult.rows.length === 0) {
+            return res.status(404).json({ 
+                error: 'El artículo sugerido no existe en el sistema' 
+            });
+        }
+
+        // Verificar que la receta existe
+        const verificarRecetaQuery = `
+            SELECT id 
+            FROM recetas 
+            WHERE articulo_numero = $1
+        `;
+        const recetaResult = await client.query(verificarRecetaQuery, [numero_articulo]);
+        
+        if (recetaResult.rows.length === 0) {
+            return res.status(404).json({ 
+                error: 'No existe receta para este artículo. Debe crear la receta primero.' 
+            });
+        }
+
+        // Actualizar la sugerencia
+        const updateQuery = `
+            UPDATE recetas 
+            SET articulo_sugerido_numero = $1
+            WHERE articulo_numero = $2
+            RETURNING articulo_numero, articulo_sugerido_numero
+        `;
+        
+        const updateResult = await client.query(updateQuery, [articulo_sugerido_numero, numero_articulo]);
+
+        console.log(`[SUGERENCIAS] ✅ Sugerencia guardada: ${numero_articulo} → ${articulo_sugerido_numero}`);
+
+        res.json({
+            message: 'Sugerencia guardada exitosamente',
+            articulo_numero: updateResult.rows[0].articulo_numero,
+            articulo_sugerido_numero: updateResult.rows[0].articulo_sugerido_numero,
+            articulo_sugerido_nombre: articuloResult.rows[0].nombre
+        });
+
+    } catch (error) {
+        console.error('[SUGERENCIAS] Error al guardar sugerencia:', error);
+        res.status(500).json({ 
+            error: 'Error al guardar sugerencia de producción' 
+        });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Elimina la sugerencia de producción para un artículo (establece en NULL)
+ * DELETE /api/produccion/recetas/:numero_articulo/sugerencia
+ */
+async function eliminarSugerencia(req, res) {
+    const client = await pool.connect();
+    
+    try {
+        const { numero_articulo } = req.params;
+
+        console.log(`[SUGERENCIAS] Eliminando sugerencia para artículo: ${numero_articulo}`);
+
+        if (!numero_articulo) {
+            return res.status(400).json({ 
+                error: 'El número de artículo es requerido' 
+            });
+        }
+
+        // Verificar que la receta existe
+        const verificarRecetaQuery = `
+            SELECT id, articulo_sugerido_numero 
+            FROM recetas 
+            WHERE articulo_numero = $1
+        `;
+        const recetaResult = await client.query(verificarRecetaQuery, [numero_articulo]);
+        
+        if (recetaResult.rows.length === 0) {
+            return res.status(404).json({ 
+                error: 'No existe receta para este artículo' 
+            });
+        }
+
+        const receta = recetaResult.rows[0];
+        
+        if (!receta.articulo_sugerido_numero) {
+            console.log(`[SUGERENCIAS] Artículo ${numero_articulo} no tiene sugerencia configurada`);
+            return res.json({
+                message: 'El artículo no tenía sugerencia configurada',
+                articulo_numero: numero_articulo
+            });
+        }
+
+        // Eliminar la sugerencia (establecer en NULL)
+        const deleteQuery = `
+            UPDATE recetas 
+            SET articulo_sugerido_numero = NULL
+            WHERE articulo_numero = $1
+            RETURNING articulo_numero
+        `;
+        
+        await client.query(deleteQuery, [numero_articulo]);
+
+        console.log(`[SUGERENCIAS] ✅ Sugerencia eliminada para: ${numero_articulo}`);
+
+        res.json({
+            message: 'Sugerencia eliminada exitosamente',
+            articulo_numero: numero_articulo
+        });
+
+    } catch (error) {
+        console.error('[SUGERENCIAS] Error al eliminar sugerencia:', error);
+        res.status(500).json({ 
+            error: 'Error al eliminar sugerencia de producción' 
+        });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     crearReceta,
     obtenerEstadoRecetas,
@@ -613,5 +836,9 @@ module.exports = {
     obtenerReceta,
     actualizarReceta,
     obtenerIngredientesExpandidos,
-    eliminarReceta
+    eliminarReceta,
+    // Nuevos endpoints de sugerencias
+    obtenerSugerencia,
+    guardarSugerencia,
+    eliminarSugerencia
 };

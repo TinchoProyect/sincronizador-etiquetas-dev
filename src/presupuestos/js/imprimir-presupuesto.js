@@ -247,30 +247,36 @@ function normalizarFechaArchivo(fechaString) {
 function actualizarTituloDocumento(presupuesto) {
     console.log('📝 [IMPRIMIR-PRESUPUESTO] Actualizando título del documento para nombre de archivo...');
     
-    // Obtener datos necesarios
+    // Obtener datos necesarios (NUEVO FORMATO: incluye número de cliente)
+    const numeroCliente = presupuesto.id_cliente || 'SIN';
     const numeroPresupuesto = presupuesto.id_presupuesto || presupuesto.id || 'SN';
     const nombreCliente = presupuesto.nombre_cliente || presupuesto.concepto || 'Sin-Cliente';
     const fechaPresupuesto = presupuesto.fecha || null;
     
     console.log('📊 [IMPRIMIR-PRESUPUESTO] Datos originales para nombre de archivo:');
+    console.log(`   - Número de cliente: ${numeroCliente}`);
     console.log(`   - Número de presupuesto: ${numeroPresupuesto}`);
     console.log(`   - Nombre del cliente (original): "${nombreCliente}"`);
     console.log(`   - Fecha del presupuesto (original): "${fechaPresupuesto}"`);
     
     // Normalizar datos
-    const numeroNormalizado = String(numeroPresupuesto);
+    // Número de cliente: rellenar con ceros a la izquierda (3 dígitos)
+    const numeroClienteNormalizado = String(numeroCliente).padStart(3, '0');
+    const numeroPresupuestoNormalizado = String(numeroPresupuesto);
     const clienteNormalizado = normalizarNombreArchivo(nombreCliente);
     const fechaNormalizada = normalizarFechaArchivo(fechaPresupuesto);
     
     console.log('📊 [IMPRIMIR-PRESUPUESTO] Datos normalizados para nombre de archivo:');
-    console.log(`   - Número de presupuesto: ${numeroNormalizado}`);
+    console.log(`   - Número de cliente (normalizado): ${numeroClienteNormalizado}`);
+    console.log(`   - Número de presupuesto: ${numeroPresupuestoNormalizado}`);
     console.log(`   - Nombre del cliente (normalizado): "${clienteNormalizado}"`);
     console.log(`   - Fecha del presupuesto (normalizada): "${fechaNormalizada}"`);
     
-    // Construir nombre de archivo
-    const nombreArchivo = `Presupuesto-${numeroNormalizado}-${clienteNormalizado}-${fechaNormalizada}`;
+    // Construir nombre de archivo con NUEVO FORMATO:
+    // Número de Cliente - Presu - Nombre del Cliente - Número de Presupuesto - Fecha
+    const nombreArchivo = `${numeroClienteNormalizado}-Presu-${clienteNormalizado}-${numeroPresupuestoNormalizado}-${fechaNormalizada}`;
     
-    console.log('📄 [IMPRIMIR-PRESUPUESTO] Nombre de archivo final sugerido:');
+    console.log('📄 [IMPRIMIR-PRESUPUESTO] Nombre de archivo final sugerido (NUEVO FORMATO):');
     console.log(`   "${nombreArchivo}.pdf"`);
     
     // Actualizar título del documento (esto es lo que usa el navegador para el nombre del archivo)

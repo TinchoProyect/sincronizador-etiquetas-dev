@@ -29,14 +29,7 @@ import { actualizarVisibilidadBotones, marcarCarroPreparado, finalizarProduccion
 import { imprimirOrdenProduccion } from './ordenProduccion.js';
 import { abrirModalGuardadoIngredientes } from './guardadoIngredientes.js';
 
-
-
-
-
 window.carroIdGlobal = null;
-
-
-
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
 // Envolver las funciones originales para agregar la actualización de botones

@@ -4,7 +4,6 @@ import { mostrarError, estilosTablaCarros, agruparCarrosPorSemanas, agruparCarro
 import { abrirEdicionMix } from './mix.js';
 import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
 
-
 // Hacer la función disponible globalmente
 window.editarIngredienteCompuesto = async (mixId) => {
     try {
@@ -762,11 +761,9 @@ export async function seleccionarCarro(carroId) {
       throw new Error('No se puede seleccionar este carro');
     }
 
-    // --- Establecer carro activo temprano (para que rehidratación lo lea si lo necesita) ---
+    // --- Establecer carro activo ---
     localStorage.setItem('carroActivo', String(carroId));
     window.carroIdGlobal = carroId;
-
-
 
     // --- Limpiar datos del carro anterior (ingresos manuales, etc.) ---
     limpiarIngresosManualesDelCarro();
@@ -781,9 +778,26 @@ export async function seleccionarCarro(carroId) {
     const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
     mostrarResumenIngredientes(ingredientes);
 
-    // Resumen de mixes
-    const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
-    mostrarResumenMixes(mixes);
+    // Obtener tipo de carro para gestionar visibilidad de secciones
+    let tipoCarro = 'interna';
+    try {
+        const estadoResp = await fetch(`/api/produccion/carro/${carroId}/estado`);
+        if (estadoResp.ok) {
+            const estadoData = await estadoResp.json();
+            tipoCarro = estadoData.tipo_carro || 'interna';
+        }
+    } catch (error) {
+        console.warn('⚠️ No se pudo obtener tipo de carro');
+    }
+
+    // Gestionar visibilidad de secciones según tipo de carro ANTES de cargar datos
+    gestionarVisibilidadSeccionesPorTipo(tipoCarro);
+
+    // Resumen de mixes (solo cargar si es carro externo)
+    if (tipoCarro === 'externa') {
+        const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
+        mostrarResumenMixes(mixes);
+    }
 
     // Resumen de artículos (externos)
     const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
@@ -825,8 +839,6 @@ export async function deseleccionarCarro() {
     
     localStorage.removeItem('carroActivo');
     window.carroIdGlobal = null;
-
-    
     
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
@@ -897,9 +909,7 @@ export async function eliminarCarro(carroId) {
             localStorage.removeItem('carroActivo');
             window.carroIdGlobal = null;
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
-
-           
-            }
+        }
 
         // Actualizar la lista de carros
         await actualizarEstadoCarro();
@@ -981,7 +991,7 @@ export async function obtenerResumenMixesCarro(carroId, usuarioId) {
 
 // Función para mostrar el resumen de ingredientes en la UI
 import { abrirModalIngresoManual } from './ingresoManual.js';
-export function mostrarResumenIngredientes(ingredientes) {
+export async function mostrarResumenIngredientes(ingredientes) {
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (!contenedor) return;
 
@@ -1014,16 +1024,36 @@ export function mostrarResumenIngredientes(ingredientes) {
         return;
     }
 
+    // Obtener estado del carro para determinar qué columnas mostrar
+    const carroId = localStorage.getItem('carroActivo');
+    let estadoCarro = 'en_preparacion'; // Por defecto
+    
+    if (carroId) {
+        try {
+            const response = await fetch(`/api/produccion/carro/${carroId}/estado`);
+            if (response.ok) {
+                const data = await response.json();
+                estadoCarro = data.estado;
+                console.log(`📊 Estado del carro para tabla: ${estadoCarro}`);
+            }
+        } catch (error) {
+            console.warn('⚠️ No se pudo obtener estado del carro, mostrando tabla completa');
+        }
+    }
+
+    // Determinar si mostrar columnas de stock/estado/acciones
+    const mostrarColumnasSoloPreparacion = estadoCarro === 'en_preparacion';
+
     let html = `
         <table class="tabla-resumen">
             <thead>
                 <tr>
                     <th>Ingrediente</th>
                     <th>Cantidad Necesaria</th>
-                    <th>Stock Actual</th>
-                    <th>Estado</th>
+                    ${mostrarColumnasSoloPreparacion ? '<th>Stock Actual</th>' : ''}
+                    ${mostrarColumnasSoloPreparacion ? '<th>Estado</th>' : ''}
                     <th>Unidad</th>
-                    <th>Acciones</th>
+                    ${mostrarColumnasSoloPreparacion ? '<th>Acciones</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -1042,11 +1072,6 @@ export function mostrarResumenIngredientes(ingredientes) {
             tipoStockRaw: typeof ing.stock_actual,
             objetoCompleto: ing
         });
-
-        const deshabilitado = (window.carroIdGlobal == null);
-        const boton = deshabilitado
-            ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-            : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
 
         // Validación robusta para evitar errores con .toFixed()
         const stockActualRaw = ing.stock_actual;
@@ -1082,32 +1107,47 @@ export function mostrarResumenIngredientes(ingredientes) {
             });
         }
 
+        // Calcular datos de stock (siempre, aunque no se muestren)
         const diferencia = stockActual - cantidadNecesaria;
-        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+        const tieneStock = diferencia >= -0.01;
         const faltante = tieneStock ? 0 : Math.abs(diferencia);
 
-        // Generar indicador visual
+        // Generar indicador visual (solo si se va a mostrar)
         let indicadorEstado = '';
-        if (tieneStock) {
-            indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
-        } else {
-            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
+        if (mostrarColumnasSoloPreparacion) {
+            if (tieneStock) {
+                indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
+            } else {
+                indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
+            }
         }
 
-        // Determinar clases CSS para la fila
-        let clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
+        // Generar botón de acción (solo si se va a mostrar)
+        let botonAccion = '';
+        if (mostrarColumnasSoloPreparacion) {
+            const deshabilitado = (window.carroIdGlobal == null);
+            botonAccion = deshabilitado
+                ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+                : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+        }
+
+        // Determinar clases CSS para la fila (solo aplicar colores en preparación)
+        let clasesFila = '';
+        if (mostrarColumnasSoloPreparacion) {
+            clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
+        }
         if (ing.es_de_articulo_vinculado) {
             clasesFila += ' ingrediente-vinculado';
         }
 
         html += `
-            <tr class="${clasesFila}">
+            <tr class="${clasesFila.trim()}">
                 <td>${ing.nombre || 'Sin nombre'}</td>
                 <td>${cantidadNecesaria.toFixed(2)}</td>
-                <td>${stockActual.toFixed(2)}</td>
-                <td>${indicadorEstado}</td>
+                ${mostrarColumnasSoloPreparacion ? `<td>${stockActual.toFixed(2)}</td>` : ''}
+                ${mostrarColumnasSoloPreparacion ? `<td>${indicadorEstado}</td>` : ''}
                 <td>${ing.unidad_medida || ''}</td>
-                <td>${boton}</td>
+                ${mostrarColumnasSoloPreparacion ? `<td>${botonAccion}</td>` : ''}
             </tr>
         `;
     });
@@ -1477,16 +1517,14 @@ export async function mostrarArticulosDelCarro() {
         `;
 
         let html = `
-        <div class="agregar-articulo-container">
-            <button id="agregar-articulo" class="btn btn-secondary">
-            Agregar artículo al carro
-            </button>
-        </div>
-        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div class="agregar-articulo-container">
+                <button id="agregar-articulo" class="btn btn-secondary">
+                    Agregar artículo al carro
+                </button>
+            </div>
             <h3>Artículos en el carro</h3>
-            ${botonMedicion}
-        </div>
-        ...
+
+            <div class="seccion-articulos">
         `;
 
 
@@ -1514,8 +1552,7 @@ export async function mostrarArticulosDelCarro() {
                     </div>
                     <div class="articulo-controls">
                         <button class="toggle-ingredientes">Ver</button>
-                         ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
-
+                        ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
                     </div>
 
                 </div>
@@ -1589,22 +1626,6 @@ export async function mostrarArticulosDelCarro() {
         const contenedor = document.getElementById('lista-articulos');
         if (contenedor) {
             contenedor.innerHTML = html;
-             //Boton modo medicion EventListenet - Mari
-            // Activar botón de temporizador global una vez que está en el DOM         
-                // 🔄 Sincronizar estado del modo medición después de renderizar
-            const botonGlobal = document.getElementById('btn-temporizador-global');
-           
-            // Event listener para abrir modal de medición (solo carros internos)
-            if (botonGlobal && !esExterno) {
-                botonGlobal.addEventListener('click', () => {
-                    console.log('🎯 Abriendo modal de medición para carro interno:', carroId);
-                    if (typeof window.abrirModalMedicion === 'function') {
-                        window.abrirModalMedicion(carroId);
-                    } else {
-                        console.error('❌ abrirModalMedicion no está disponible');
-                    }
-                });
-            }
         } else {
             console.error('No se encontró el contenedor lista-articulos');
         }
@@ -2437,6 +2458,48 @@ document.addEventListener('click', async (e) => {
         await procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNombre);
     }
 });
+
+// Hacer funciones disponibles globalmente para reactividad
+window.obtenerResumenIngredientesCarro = obtenerResumenIngredientesCarro;
+window.mostrarResumenIngredientes = mostrarResumenIngredientes;
+
+// ==========================================
+// FUNCIONES PARA ACORDEONES Y UI CONTEXTUAL
+// ==========================================
+
+/**
+ * Función genérica para toggle de secciones colapsables (acordeón)
+ * @param {string} seccionId - ID de la sección a colapsar/expandir
+ */
+window.toggleSeccion = function(seccionId) {
+    const seccion = document.getElementById(seccionId);
+    if (!seccion) return;
+    
+    seccion.classList.toggle('collapsed');
+    console.log(`🔄 Sección ${seccionId} ${seccion.classList.contains('collapsed') ? 'colapsada' : 'expandida'}`);
+};
+
+/**
+ * Gestiona la visibilidad de secciones según el tipo de carro
+ * @param {string} tipoCarro - 'interna' o 'externa'
+ */
+export function gestionarVisibilidadSeccionesPorTipo(tipoCarro) {
+    const seccionMixes = document.getElementById('resumen-mixes');
+    
+    if (tipoCarro === 'interna') {
+        // Ocultar sección de ingredientes compuestos para carros internos
+        if (seccionMixes) {
+            seccionMixes.style.display = 'none';
+            console.log('🏭 Carro interno: ocultando sección de ingredientes compuestos');
+        }
+    } else {
+        // Mostrar sección de ingredientes compuestos para carros externos
+        if (seccionMixes) {
+            seccionMixes.style.display = 'block';
+            console.log('🚚 Carro externo: mostrando sección de ingredientes compuestos');
+        }
+    }
+}
 
 // Exportar funciones para uso en módulos ES6
 export {
