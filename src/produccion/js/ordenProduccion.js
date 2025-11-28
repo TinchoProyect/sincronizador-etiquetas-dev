@@ -17,17 +17,19 @@ export async function imprimirOrdenProduccion() {
         }
 
         // Obtener datos del carro usando consultas directas a las tablas
-        const [articulosData, operarioData, ingresosData, mixesData] = await Promise.all([
+        const [articulosData, operarioData, ingresosData, mixesData, resumenIngredientesData] = await Promise.all([
             obtenerArticulosCarro(carroId),
             obtenerOperario(colaborador.id),
             obtenerIngresosManuales(carroId),
-            obtenerRecetasMixes(carroId)
+            obtenerRecetasMixes(carroId),
+            obtenerResumenIngredientes(carroId, colaborador.id)
         ]);
 
         console.log('📋 Artículos obtenidos:', articulosData);
         console.log('👤 Operario obtenido:', operarioData);
         console.log('📦 Ingresos manuales obtenidos:', ingresosData);
         console.log('🧪 Mixes obtenidos:', mixesData);
+        console.log('🌿 Resumen de ingredientes obtenido:', resumenIngredientesData);
 
         // Generar HTML de la orden
         const htmlOrden = generarHTMLOrden({
@@ -36,6 +38,7 @@ export async function imprimirOrdenProduccion() {
             articulos: articulosData,
             mixes: mixesData,
             ingresos: ingresosData,
+            resumenIngredientes: resumenIngredientesData,
             fecha: new Date()
         });
 
@@ -117,6 +120,21 @@ async function obtenerOperario(usuarioId) {
     }
 }
 
+// Función para obtener el resumen de ingredientes
+async function obtenerResumenIngredientes(carroId, usuarioId) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
+        if (!response.ok) {
+            throw new Error('No se pudo obtener el resumen de ingredientes');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('❌ Error al obtener resumen de ingredientes:', error);
+        return []; // Devolver array vacío en caso de error
+    }
+}
+
+
 // Función para obtener ingresos manuales realizados (usando la misma fuente que la pantalla)
 async function obtenerIngresosManuales(carroId) {
     try {
@@ -155,6 +173,7 @@ async function obtenerIngresosManuales(carroId) {
         
         // 📋 CONVERTIR AL FORMATO ESPERADO POR EL INFORME IMPRESO
         const ingresosManuales = ingresosUnicos.map(ingreso => ({
+            ingrediente_id: ingreso.ingrediente_id,
             articulo_descripcion: ingreso.articulo_nombre || ingreso.articuloNombre || 'Artículo sin nombre',
             articulo_numero: ingreso.articulo_numero || ingreso.articuloNumero || '',
             codigo_barras: ingreso.codigo_barras || ingreso.codigoBarras || '',
@@ -185,6 +204,7 @@ async function obtenerIngresosManuales(carroId) {
                 );
                 
                 return ingresosDelCarro.map(ingreso => ({
+                    ingrediente_id: ingreso.ingrediente_id,
                     articulo_descripcion: ingreso.articuloNombre || 'Artículo',
                     articulo_numero: ingreso.articuloNumero || '',
                     codigo_barras: ingreso.codigoBarras || '',
@@ -283,7 +303,20 @@ async function obtenerRecetasMixes(carroId) {
 }
 
 // Función para generar HTML de la orden
-function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, fecha }) {
+function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resumenIngredientes, fecha }) {
+    // 🔍 DEBUGGING STOCK REPORTE
+    console.log("🔍 DEBUGGING STOCK REPORTE:");
+    console.log("1. Resumen Ingredientes (Data Cruda):", resumenIngredientes);
+    console.log("2. Ingresos Manuales (Data Cruda):", ingresos);
+    
+    ingresos.forEach(ing => {
+        const match = resumenIngredientes.find(r => r.id === ing.ingrediente_id);
+        console.log(`👉 Cruce para ${ing.articulo_descripcion}:`);
+        console.log(`   - ID Buscado: ${ing.ingrediente_id}`);
+        console.log(`   - Match encontrado:`, match);
+        console.log(`   - Stock en Match:`, match ? match.stock_actual : 'N/A');
+    });
+    
     const fechaFormateada = fecha.toLocaleString('es-AR', {
         year: 'numeric',
         month: '2-digit',
@@ -348,6 +381,16 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, fecha
                 th { 
                     background: #f0f0f0; 
                     font-weight: bold;
+                }
+                .stock-anterior-header {
+                    background: #ff9800 !important;
+                    color: white !important;
+                    font-weight: bold;
+                }
+                .stock-anterior-cell {
+                    background: #fff3e0;
+                    font-weight: bold;
+                    font-size: 13px;
                 }
                 .receta-detalle { 
                     margin-left: 20px; 
@@ -442,20 +485,41 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, fecha
                         <thead>
                             <tr>
                                 <th>Artículo</th>
-                                <th>Kilos Totales</th>
-                                <th>Stock Anterior</th>
+                                <th>Kilos</th>
+                                <th class="stock-anterior-header">⚠️ Stock Anterior</th>
                                 <th>Stock Nuevo</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${ingresos.map(ing => `
+                            ${ingresos.map(ing => {
+                                let stockAnterior = 0;
+                                let stockNuevo = 0;
+                                let ingresoManual = parseFloat(ing.kilos_totales || 0);
+
+                                if (ing.ingrediente_id && resumenIngredientes) {
+                                    const ingredienteResumen = resumenIngredientes.find(ri => ri.id === ing.ingrediente_id);
+                                    if (ingredienteResumen) {
+                                        // stock_actual = Saldo Neto (ya descontado el consumo)
+                                        const stockSaldoNeto = parseFloat(ingredienteResumen.stock_actual || 0);
+                                        // cantidad = Consumo de esta producción
+                                        const consumoProduccion = parseFloat(ingredienteResumen.cantidad || 0);
+                                        
+                                        // Stock Físico Nuevo = Saldo Neto + Consumo
+                                        stockNuevo = stockSaldoNeto + consumoProduccion;
+                                        // Stock Físico Anterior = Stock Físico Nuevo - Ingreso Manual
+                                        stockAnterior = stockNuevo - ingresoManual;
+                                    }
+                                }
+
+                                return `
                                 <tr>
                                     <td>${ing.articulo_descripcion}</td>
-                                    <td>${parseFloat(ing.kilos_totales || 0).toFixed(2)}</td>
-                                    <td>${parseFloat(ing.stock_anterior || 0).toFixed(2)}</td>
-                                    <td>${parseFloat(ing.stock_nuevo || 0).toFixed(2)}</td>
+                                    <td>${ingresoManual.toFixed(2)}</td>
+                                    <td class="stock-anterior-cell">${stockAnterior.toFixed(2)}</td>
+                                    <td>${stockNuevo.toFixed(2)}</td>
                                 </tr>
-                            `).join('')}
+                                `;
+                            }).join('')}
                         </tbody>
                     </table>
                 ` : '<div class="no-data">No se realizaron ingresos manuales</div>'}
