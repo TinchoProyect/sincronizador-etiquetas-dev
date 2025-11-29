@@ -334,55 +334,58 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
             <meta charset="UTF-8">
             <title>Orden de Producción - Carro ${carroId}</title>
             <style>
-                @page { margin: 20mm; }
+                @page { margin: 12mm; }
                 body { 
                     font-family: Arial, sans-serif; 
-                    font-size: 12px; 
-                    line-height: 1.4;
+                    font-size: 10px; 
+                    line-height: 1.2;
                     margin: 0;
                     padding: 0;
                 }
                 .header { 
                     text-align: center; 
                     border-bottom: 2px solid #000; 
-                    padding-bottom: 10px; 
-                    margin-bottom: 20px;
+                    padding-bottom: 6px; 
+                    margin-bottom: 10px;
                 }
                 .header h1 { 
                     margin: 0; 
-                    font-size: 18px; 
+                    font-size: 16px; 
                     font-weight: bold;
                 }
                 .info-carro { 
-                    margin-bottom: 20px; 
+                    margin-bottom: 10px; 
                     background: #f5f5f5; 
-                    padding: 10px; 
-                    border-radius: 5px;
+                    padding: 6px; 
+                    border-radius: 3px;
+                    font-size: 10px;
                 }
                 .seccion { 
-                    margin-bottom: 25px; 
+                    margin-bottom: 12px; 
                     page-break-inside: avoid;
                 }
                 .seccion h2 { 
                     background: #333; 
                     color: white; 
-                    padding: 8px; 
-                    margin: 0 0 10px 0; 
-                    font-size: 14px;
+                    padding: 4px 6px; 
+                    margin: 0 0 6px 0; 
+                    font-size: 12px;
                 }
                 table { 
                     width: 100%; 
                     border-collapse: collapse; 
-                    margin-bottom: 10px;
+                    margin-bottom: 6px;
+                    font-size: 10px;
                 }
                 th, td { 
                     border: 1px solid #ddd; 
-                    padding: 6px; 
+                    padding: 3px 4px; 
                     text-align: left;
                 }
                 th { 
                     background: #f0f0f0; 
                     font-weight: bold;
+                    font-size: 10px;
                 }
                 .stock-anterior-header {
                     background: #ff9800 !important;
@@ -392,20 +395,21 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
                 .stock-anterior-cell {
                     background: #fff3e0;
                     font-weight: bold;
-                    font-size: 13px;
+                    font-size: 10px;
                 }
                 .receta-detalle { 
-                    margin-left: 20px; 
-                    margin-top: 10px;
+                    margin-left: 15px; 
+                    margin-top: 5px;
                     background: #fafafa;
-                    padding: 10px;
-                    border-left: 3px solid #007bff;
+                    padding: 6px;
+                    border-left: 2px solid #007bff;
                 }
                 .no-data { 
                     text-align: center; 
                     color: #666; 
                     font-style: italic; 
-                    padding: 20px;
+                    padding: 10px;
+                    font-size: 10px;
                 }
             </style>
         </head>
@@ -446,38 +450,123 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
 
             <div class="seccion">
                 <h2>🥣 RECETAS DE MIXES</h2>
-                ${mixes.length > 0 ? mixes.map(mix => `
-                    <div style="margin-bottom: 20px;">
-                        <strong>${mix.nombre_mix}</strong> (Cantidad a producir: ${mix.cantidad_total} kg)
-                        <br><em>Receta base para ${mix.receta_base_kg} kg:</em>
-                        <div class="receta-detalle">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Ingrediente</th>
-                                        <th>Cantidad</th>
-                                        <th>Acumulado</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${mix.ingredientes.map((ing, index, arr) => {
-                                        // Calcular el acumulado sumando este ingrediente y todos los anteriores
-                                        const acumulado = arr
-                                            .slice(0, index + 1)
-                                            .reduce((sum, i) => sum + parseFloat(i.cantidad_total || 0), 0);
-                                        return `
-                                            <tr>
-                                                <td>${ing.nombre_ingrediente}</td>
-                                                <td>${parseFloat(ing.cantidad_total || 0).toFixed(2)}</td>
-                                                <td><strong>${acumulado.toFixed(2)}</strong></td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
-                        </div>
+                ${mixes.length > 0 ? mixes.map(mix => {
+                    const cantidadTotal = parseFloat(mix.cantidad_total);
+                    const recetaBase = parseFloat(mix.receta_base_kg);
+                    
+                    // Calcular si hay resto (cantidad que no es múltiplo de la receta base)
+                    const resto = cantidadTotal % recetaBase;
+                    const tieneResto = resto > 0.01; // Tolerancia para decimales
+                    const esMenorQueBase = cantidadTotal < recetaBase;
+                    
+                    console.log(`📊 Mix ${mix.nombre_mix}:`);
+                    console.log(`- Cantidad total: ${cantidadTotal} kg`);
+                    console.log(`- Receta base: ${recetaBase} kg`);
+                    console.log(`- Resto: ${resto} kg`);
+                    console.log(`- ¿Es menor que base?: ${esMenorQueBase}`);
+                    console.log(`- ¿Tiene resto?: ${tieneResto}`);
+                    
+                    return `
+                    <div style="margin-bottom: 12px;">
+                        <strong>${mix.nombre_mix}</strong> (Cantidad a producir: ${cantidadTotal} kg)
+                        
+                        ${esMenorQueBase ? `
+                            <br><em>Receta calculada para ${cantidadTotal} kg:</em>
+                            <div class="receta-detalle" style="margin-top: 5px; padding: 6px;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Ingrediente</th>
+                                            <th>Cantidad</th>
+                                            <th>Acumulado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${mix.ingredientes.map((ing, index, arr) => {
+                                            const proporcion = cantidadTotal / recetaBase;
+                                            const cantidadCalculada = parseFloat(ing.cantidad_total || 0) * proporcion;
+                                            const acumulado = arr
+                                                .slice(0, index + 1)
+                                                .reduce((sum, i) => sum + (parseFloat(i.cantidad_total || 0) * proporcion), 0);
+                                            return `
+                                                <tr>
+                                                    <td>${ing.nombre_ingrediente}</td>
+                                                    <td>${cantidadCalculada.toFixed(2)}</td>
+                                                    <td><strong>${acumulado.toFixed(2)}</strong></td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : `
+                            <br><em>Receta base para ${recetaBase} kg:</em>
+                            <div class="receta-detalle" style="margin-top: 5px; padding: 6px;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Ingrediente</th>
+                                            <th>Cantidad</th>
+                                            <th>Acumulado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${mix.ingredientes.map((ing, index, arr) => {
+                                            const acumulado = arr
+                                                .slice(0, index + 1)
+                                                .reduce((sum, i) => sum + parseFloat(i.cantidad_total || 0), 0);
+                                            return `
+                                                <tr>
+                                                    <td>${ing.nombre_ingrediente}</td>
+                                                    <td>${parseFloat(ing.cantidad_total || 0).toFixed(2)}</td>
+                                                    <td><strong>${acumulado.toFixed(2)}</strong></td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            ${tieneResto ? `
+                                <div style="margin-top: 8px; padding: 6px; background: #fff3cd; border-left: 3px solid #ffc107;">
+                                    <strong style="color: #856404; font-size: 11px;">⚠️ RESTO: ${resto.toFixed(2)} kg</strong>
+                                    <br><em style="font-size: 10px; color: #856404;">Receta para los ${resto.toFixed(2)} kg restantes:</em>
+                                    <div style="margin-top: 4px;">
+                                        <table style="background: white;">
+                                            <thead>
+                                                <tr style="background: #ffc107;">
+                                                    <th style="color: #000;">Ingrediente</th>
+                                                    <th style="color: #000;">Cantidad</th>
+                                                    <th style="color: #000;">Acumulado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${mix.ingredientes.map((ing, index, arr) => {
+                                                    const proporcion = resto / recetaBase;
+                                                    const cantidadResto = parseFloat(ing.cantidad_total || 0) * proporcion;
+                                                    const acumuladoResto = arr
+                                                        .slice(0, index + 1)
+                                                        .reduce((sum, i) => sum + (parseFloat(i.cantidad_total || 0) * proporcion), 0);
+                                                    return `
+                                                        <tr>
+                                                            <td>${ing.nombre_ingrediente}</td>
+                                                            <td>${cantidadResto.toFixed(2)}</td>
+                                                            <td><strong>${acumuladoResto.toFixed(2)}</strong></td>
+                                                        </tr>
+                                                    `;
+                                                }).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p style="margin: 4px 0 0 0; font-size: 9px; color: #856404; font-style: italic;">
+                                        💡 Después de las tandas de ${recetaBase}kg, usar esta tabla para los ${resto.toFixed(2)}kg restantes.
+                                    </p>
+                                </div>
+                            ` : ''}
+                        `}
                     </div>
-                `).join('') : '<div class="no-data">No hay mixes en este carro</div>'}
+                    `;
+                }).join('') : '<div class="no-data">No hay mixes en este carro</div>'}
             </div>
 
             ${(() => {
