@@ -376,6 +376,10 @@ async function confirmarSustitucion() {
         const resultado = await response.json();
         console.log('✅ Sustitución realizada exitosamente:', resultado);
 
+        // 🔧 CORRECCIÓN RACE CONDITION: Esperar a que la transacción se confirme completamente
+        console.log('⏳ Esperando confirmación completa de la transacción en BD...');
+        await new Promise(resolve => setTimeout(resolve, 800)); // 800ms para asegurar commit
+
         // 🔄 FLUJO CONTINUO: NO cerrar modal, actualizar en tiempo real
 
         // 1. Mostrar notificación de éxito DENTRO del modal
@@ -419,21 +423,32 @@ async function confirmarSustitucion() {
         // 6. Actualizar resumen de ingredientes en el fondo (sin cerrar modal)
         console.log('🔄 Actualizando resumen de ingredientes en segundo plano...');
         
-        if (typeof window.actualizarResumenIngredientes === 'function') {
-            await window.actualizarResumenIngredientes();
-            console.log('✅ Resumen actualizado correctamente');
-        }
-
-        // También actualizar resumen de mixes
-        if (typeof window.obtenerResumenMixesCarro === 'function' && typeof window.mostrarResumenMixes === 'function') {
-            const carroId = localStorage.getItem('carroActivo');
-            const colaboradorData = localStorage.getItem('colaboradorActivo');
+        // 🔧 CORRECCIÓN: Llamar directamente a las funciones SIN debounce
+        const carroId = localStorage.getItem('carroActivo');
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        
+        if (carroId && colaboradorData) {
+            const colaborador = JSON.parse(colaboradorData);
             
-            if (carroId && colaboradorData) {
-                const colaborador = JSON.parse(colaboradorData);
+            // Llamar directamente a obtenerResumenIngredientesCarro y mostrarResumenIngredientes
+            // SIN pasar por actualizarResumenIngredientes (que tiene debounce)
+            if (typeof window.obtenerResumenIngredientesCarro === 'function' && 
+                typeof window.mostrarResumenIngredientes === 'function') {
+                console.log('📊 Obteniendo ingredientes actualizados del servidor...');
+                const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
+                console.log('📊 Ingredientes recibidos:', ingredientes.length);
+                window.mostrarResumenIngredientes(ingredientes);
+                console.log('✅ Resumen de ingredientes actualizado DIRECTAMENTE');
+            }
+            
+            // También actualizar resumen de mixes DIRECTAMENTE
+            if (typeof window.obtenerResumenMixesCarro === 'function' && 
+                typeof window.mostrarResumenMixes === 'function') {
+                console.log('🧪 Obteniendo mixes actualizados del servidor...');
                 const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
+                console.log('🧪 Mixes recibidos:', mixes.length);
                 window.mostrarResumenMixes(mixes);
-                console.log('✅ Resumen de mixes actualizado');
+                console.log('✅ Resumen de mixes actualizado DIRECTAMENTE');
             }
         }
 

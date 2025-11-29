@@ -1192,8 +1192,20 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
         
         // Determinar iconografía y texto según el tipo de artículo
         const esMix = tipoArticulo === 'mix';
-        const icono = esMix ? '🧪' : '📦';
-        const tipoBadge = esMix ? 'MIX' : 'Simple';
+        const esSustitucion = tipoArticulo === 'sustitucion';
+        
+        // 🔧 CORRECCIÓN: Íconos diferenciados
+        let icono, tipoBadge;
+        if (esSustitucion) {
+            icono = '🌾'; // Ícono de ingrediente/grano para sustituciones
+            tipoBadge = 'Sustitución';
+        } else if (esMix) {
+            icono = '🧪'; // Ícono de mix
+            tipoBadge = 'MIX';
+        } else {
+            icono = '📦'; // Ícono de artículo/caja
+            tipoBadge = 'Simple';
+        }
         
         // Para MIX, omitir las columnas de stock anterior y nuevo
         const columnasStock = esMix ? 

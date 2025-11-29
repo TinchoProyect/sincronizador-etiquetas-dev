@@ -389,9 +389,9 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                             stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
                             console.log(`Stock usuario encontrado: ${stockActual}`);
                         } else {
-                            console.log(`\n📦 Obteniendo stock REAL para ingrediente ${ingrediente.id} (SOLO desde tabla ingredientes)`);
-                            // 🔧 CORRECCIÓN CRÍTICA: Usar SOLO stock_actual de la tabla ingredientes
-                            // La tabla ingredientes.stock_actual es la fuente única de verdad
+                            console.log(`\n📦 Obteniendo stock REAL para ingrediente ${ingrediente.id} (tabla ingredientes + sustituciones)`);
+                            // 🔧 CORRECCIÓN CRÍTICA: Incluir sustituciones en el cálculo
+                            // Stock = stock_actual de tabla ingredientes (ya incluye trigger de movimientos normales)
                             const queryStockReal = `
                                 SELECT 
                                     i.stock_actual,
@@ -405,7 +405,7 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                                 const stockData = stockResult.rows[0];
                                 stockActual = parseFloat(stockData.stock_actual) || 0;
                                 console.log(`📊 Stock obtenido para ingrediente ${ingrediente.id} (${stockData.ingrediente_nombre}):`);
-                                console.log(`- Stock actual (fuente única de verdad): ${stockActual}`);
+                                console.log(`- Stock actual (incluye trigger automático): ${stockActual}`);
                                 console.log(`- Tipo de dato: ${typeof stockData.stock_actual}`);
                                 console.log(`- Valor raw: ${stockData.stock_actual}`);
                             } else {

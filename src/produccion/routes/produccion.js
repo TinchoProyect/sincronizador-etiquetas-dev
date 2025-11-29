@@ -1721,10 +1721,10 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
         let query;
         
         if (tipoCarro === 'interna') {
-            // 🏭 CARROS INTERNOS: Solo movimientos de artículos (stock_ventas_movimientos)
-            // 🔧 CORRECCIÓN CRÍTICA: NO multiplicar por cantidad porque el frontend ya lo hizo
-            // 🆕 CORRECCIÓN ETIQUETAS: Obtener ingrediente_id desde ingredientes_movimientos relacionados
+            // 🏭 CARROS INTERNOS: Artículos + Sustituciones
+            // 🔧 CORRECCIÓN: Agregar UNION ALL para incluir sustituciones
             query = `
+                -- Parte 1: Movimientos de artículos (ingresos manuales tradicionales)
                 SELECT
                     svm.id,
                     svm.fecha,
@@ -1746,9 +1746,32 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                 LEFT JOIN ingredientes i ON i.id = im.ingrediente_id
                 WHERE svm.carro_id = $1 
                   AND svm.tipo = 'ingreso a producción'
-                ORDER BY svm.fecha DESC
+
+                UNION ALL
+
+                -- Parte 2: Sustituciones de ingredientes (movimientos cruzados)
+                -- 🔧 CORRECCIÓN: Extraer el ID del ingrediente ORIGEN desde observaciones
+                SELECT
+                    im_egreso.id,
+                    im_egreso.fecha,
+                    ABS(im_egreso.kilos) as kilos,
+                    im_egreso.carro_id,
+                    im_egreso.ingrediente_id,
+                    NULL as articulo_numero,
+                    NULL as articulo_nombre,
+                    NULL as codigo_barras,
+                    i_origen.nombre as ingrediente_nombre,
+                    'sustitucion' as tipo_articulo,
+                    'ingredientes_movimientos' as fuente_datos
+                FROM ingredientes_movimientos im_egreso
+                JOIN ingredientes i_origen ON i_origen.id = im_egreso.ingrediente_id
+                WHERE im_egreso.carro_id = $1 
+                  AND im_egreso.tipo = 'egreso'
+                  AND im_egreso.observaciones LIKE 'SUSTITUCIÓN:%'
+
+                ORDER BY fecha DESC
             `;
-            console.log('🏭 Usando consulta para CARRO INTERNO - CORRECCIÓN: con ingrediente_id para etiquetas');
+            console.log('🏭 Usando consulta para CARRO INTERNO - INCLUYE SUSTITUCIONES');
         } else {
             // 🌐 CARROS EXTERNOS: Ambas fuentes (ingredientes_movimientos + stock_ventas_movimientos)
             query = `
