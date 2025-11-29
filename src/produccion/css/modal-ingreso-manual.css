@@ -1,88 +1,330 @@
-/* Estilos para el modal de ingreso manual */
+/* ============================================
+   MODAL DE INGRESO MANUAL
+   Diseño minimalista y profesional
+   Consistente con modal-sustitucion.css
+   ============================================ */
+
+#modalIngresoManual {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.2s ease-out;
+}
+
+#modalIngresoManual.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 #modalIngresoManual .modal-content {
-  background-color: #fefefe;
-  margin: 15% auto;
-  padding: 20px;
-  border: 1px solid #888;
-  width: 80%;
-  max-width: 500px;
-  position: relative;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    width: 90%;
+    max-width: 600px;
+    max-height: 85vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.3s ease-out;
+    margin: 0;
+    padding: 0;
+    border: none;
+    position: relative;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Header del modal */
+#modalIngresoManual .modal-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #f8f9fa;
+    cursor: move;
+    user-select: none;
+}
+
+#modalIngresoManual .modal-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#modalIngresoManual .modal-header .close-modal {
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+    padding: 0;
+    background-color: #dc3545;
+    border: 2px solid #dc3545;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 100;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+#modalIngresoManual .modal-header .close-modal:hover {
+    background-color: #c82333;
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.5);
+}
+
+#modalIngresoManual .modal-header .close-modal:active {
+    transform: scale(0.95);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Body del modal */
+#modalIngresoManual .modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Información del ingrediente */
+.nombre-ingrediente {
+    font-size: 15px;
+    font-weight: 600;
+    color: #004085;
+    margin: 0 0 16px 0;
+    padding: 12px 16px;
+    background-color: #e7f3ff;
+    border-left: 4px solid #007bff;
+    border-radius: 4px;
 }
 
 .tipo-ingrediente-info {
-  margin: 10px 0;
-  padding: 5px 10px;
-  border-radius: 4px;
-  background-color: #f8f9fa;
-  border-left: 4px solid #0275d8;
-  font-size: 0.9em;
+    margin: 0 0 16px 0;
+    padding: 10px 14px;
+    border-radius: 4px;
+    background-color: #f8f9fa;
+    border-left: 4px solid #0275d8;
+    font-size: 13px;
+    color: #495057;
 }
 
-.modal-title {
-  margin-bottom: 20px;
-  color: #333;
-  border-bottom: 2px solid #0275d8;
-  padding-bottom: 10px;
+/* Contenedor de búsqueda */
+.busqueda-container {
+    margin-bottom: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
 }
 
-.nombre-ingrediente {
-  font-size: 1.2em;
-  font-weight: bold;
-  color: #0275d8;
-  margin: 10px 0;
+#busquedaArticulo {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
 }
 
-/* Estilos para la lista de artículos */
+#busquedaArticulo:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.btn-toggle-busqueda {
+    padding: 10px 16px;
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+}
+
+.btn-toggle-busqueda:hover {
+    background-color: #138496;
+}
+
+.btn-toggle-busqueda:active {
+    transform: scale(0.98);
+}
+
+/* Lista de artículos */
 .lista-articulos {
-  list-style: none;
-  padding: 0;
-  margin: 10px 0;
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 16px 0;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
 }
 
 .lista-articulos li {
-  padding: 8px 12px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e9ecef;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 14px;
+    color: #212529;
+}
+
+.lista-articulos li:last-child {
+    border-bottom: none;
 }
 
 .lista-articulos li:hover {
-  background-color: #f5f5f5;
+    background-color: #f8f9fa;
 }
 
 /* Estilos para los inputs */
-#busquedaArticulo,
-#inputKilos,
-#inputCantidad {
-  width: 100%;
-  padding: 8px;
-  margin: 5px 0 15px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+#modalIngresoManual label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+    margin-top: 12px;
 }
 
-/* Estilos para los botones */
+#inputKilos,
+#inputCantidad {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+    margin-bottom: 12px;
+}
+
+#inputKilos:focus,
+#inputCantidad:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* Footer del modal */
+#modalIngresoManual .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: center;
+    background-color: #f8f9fa;
+}
+
+/* Botones */
 .botones-modal {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+}
+
+#btnConfirmarIngreso {
+    padding: 10px 20px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#btnConfirmarIngreso:hover {
+    background-color: #218838;
+}
+
+#btnConfirmarIngreso:active {
+    transform: scale(0.98);
 }
 
 /* 🔒 Estilos para el botón desactivado durante procesamiento */
 #btnConfirmarIngreso:disabled {
-  opacity: 0.6 !important;
-  cursor: not-allowed !important;
-  background-color: #6c757d !important;
-  border-color: #6c757d !important;
-  color: #fff !important;
+    background-color: #c3e6cb;
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 
 #btnConfirmarIngreso:disabled:hover {
-  background-color: #6c757d !important;
-  border-color: #6c757d !important;
-  transform: none !important;
+    background-color: #c3e6cb;
+    transform: none;
+}
+
+/* Scrollbar personalizado */
+.lista-articulos::-webkit-scrollbar {
+    width: 8px;
+}
+
+.lista-articulos::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.lista-articulos::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.lista-articulos::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #modalIngresoManual .modal-content {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    #modalIngresoManual .modal-header,
+    #modalIngresoManual .modal-body,
+    #modalIngresoManual .modal-footer {
+        padding: 16px;
+    }
+
+    .busqueda-container {
+        flex-direction: column;
+    }
+
+    .lista-articulos {
+        max-height: 150px;
+    }
 }

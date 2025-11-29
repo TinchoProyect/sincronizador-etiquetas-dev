@@ -214,18 +214,25 @@ function inicializarModal() {
       console.log('✅ [INIT] Listener de btnConfirmar asignado');
     }
 
-    if (btnCancelar) {
-      btnCancelar.addEventListener('click', cerrarModal);
-      console.log('✅ [INIT] Listener de btnCancelar asignado');
+    // ❌ ELIMINADO: Botón "Cancelar" ya no existe en el HTML
+    // El modal ahora solo se cierra con el botón X del header
+
+    // Agregar listener al botón X de cierre en el header
+    const btnCloseHeader = modal.querySelector('.modal-header .close-modal');
+    if (btnCloseHeader) {
+      btnCloseHeader.addEventListener('click', cerrarModal);
+      console.log('✅ [INIT] Listener del botón X (header) asignado');
+    } else {
+      console.warn('⚠️ [INIT] Botón X del header no encontrado');
     }
 
-    // Listener para cerrar modal al hacer clic fuera
-    window.addEventListener('click', (e) => {
-      if (modal && e.target === modal) {
-        cerrarModal();
-      }
-    });
-    console.log('✅ [INIT] Listener de cierre por clic externo asignado');
+    // ❌ ELIMINADO: Listener para cerrar modal al hacer clic fuera
+    // El modal ahora es ESTÁTICO (no se cierra al hacer clic en el backdrop)
+    console.log('✅ [INIT] Modal configurado como ESTÁTICO (no cierra con clic externo)');
+
+    // ✅ NUEVO: Hacer el modal DRAGGABLE desde el header
+    hacerModalDraggable();
+    console.log('✅ [INIT] Funcionalidad DRAGGABLE habilitada');
 
     // 🛡️ PASO 4: Marcar como inicializado
     isModalInitialized = true;
@@ -1619,6 +1626,78 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
     // Mostrar error al usuario
     alert(`❌ Error al imprimir etiqueta: ${error.message}`);
   }
+}
+
+// ✅ NUEVA FUNCIÓN: Hacer el modal DRAGGABLE
+function hacerModalDraggable() {
+  if (!modal) {
+    console.warn('⚠️ [DRAGGABLE] Modal no disponible');
+    return;
+  }
+
+  const modalContent = modal.querySelector('.modal-content');
+  const modalHeader = modal.querySelector('.modal-header');
+
+  if (!modalContent || !modalHeader) {
+    console.warn('⚠️ [DRAGGABLE] Elementos necesarios no encontrados');
+    return;
+  }
+
+  let isDragging = false;
+  let currentX;
+  let currentY;
+  let initialX;
+  let initialY;
+  let xOffset = 0;
+  let yOffset = 0;
+
+  modalHeader.addEventListener('mousedown', dragStart);
+  document.addEventListener('mousemove', drag);
+  document.addEventListener('mouseup', dragEnd);
+
+  function dragStart(e) {
+    // Solo permitir arrastrar si se hace clic en el header (no en el botón X)
+    if (e.target.classList.contains('close-modal')) {
+      return;
+    }
+
+    initialX = e.clientX - xOffset;
+    initialY = e.clientY - yOffset;
+
+    if (e.target === modalHeader || modalHeader.contains(e.target)) {
+      isDragging = true;
+      modalHeader.style.cursor = 'grabbing';
+    }
+  }
+
+  function drag(e) {
+    if (isDragging) {
+      e.preventDefault();
+
+      currentX = e.clientX - initialX;
+      currentY = e.clientY - initialY;
+
+      xOffset = currentX;
+      yOffset = currentY;
+
+      setTranslate(currentX, currentY, modalContent);
+    }
+  }
+
+  function dragEnd(e) {
+    if (isDragging) {
+      initialX = currentX;
+      initialY = currentY;
+      isDragging = false;
+      modalHeader.style.cursor = 'move';
+    }
+  }
+
+  function setTranslate(xPos, yPos, el) {
+    el.style.transform = `translate(${xPos}px, ${yPos}px)`;
+  }
+
+  console.log('✅ [DRAGGABLE] Modal configurado como draggable');
 }
 
 // Hacer funciones disponibles globalmente
