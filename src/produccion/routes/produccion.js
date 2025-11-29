@@ -2558,4 +2558,88 @@ router.post('/validar-presupuestos', async (req, res) => {
     }
 });
 
+// ==========================================
+// RUTAS PARA SUSTITUCIÓN DE INGREDIENTES
+// ==========================================
+
+const { 
+    obtenerIngredientesConStock, 
+    sustituirIngrediente 
+} = require('../controllers/sustitucionIngredientes');
+
+/**
+ * Obtener ingredientes con stock disponible para sustitución
+ * GET /api/produccion/ingredientes-con-stock?carroId=X
+ */
+router.get('/ingredientes-con-stock', async (req, res) => {
+    try {
+        const { carroId } = req.query;
+        
+        if (!carroId) {
+            return res.status(400).json({ error: 'Se requiere el parámetro carroId' });
+        }
+
+        console.log(`🔍 [SUSTITUCION] Obteniendo ingredientes con stock para carro ${carroId}`);
+        const ingredientes = await obtenerIngredientesConStock(parseInt(carroId));
+        res.json(ingredientes);
+    } catch (error) {
+        console.error('❌ [SUSTITUCION] Error al obtener ingredientes con stock:', error);
+        res.status(500).json({
+            error: 'Error al obtener ingredientes con stock',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Realizar sustitución de ingredientes
+ * POST /api/produccion/sustituir-ingrediente
+ * Body: { ingredienteOrigenId, ingredienteDestinoId, cantidad, carroId, usuarioId }
+ */
+router.post('/sustituir-ingrediente', async (req, res) => {
+    try {
+        const { ingredienteOrigenId, ingredienteDestinoId, cantidad, carroId, usuarioId } = req.body;
+
+        console.log('\n🔄 [SUSTITUCION] Solicitud de sustitución recibida');
+        console.log('==========================================');
+        console.log('Datos:', {
+            ingredienteOrigenId,
+            ingredienteDestinoId,
+            cantidad,
+            carroId,
+            usuarioId
+        });
+
+        // Validar datos de entrada
+        if (!ingredienteOrigenId || !ingredienteDestinoId || !cantidad || !carroId || !usuarioId) {
+            return res.status(400).json({ 
+                error: 'Faltan datos requeridos para la sustitución' 
+            });
+        }
+
+        if (cantidad <= 0) {
+            return res.status(400).json({ 
+                error: 'La cantidad debe ser mayor a 0' 
+            });
+        }
+
+        // Realizar la sustitución
+        const resultado = await sustituirIngrediente({
+            ingredienteOrigenId: parseInt(ingredienteOrigenId),
+            ingredienteDestinoId: parseInt(ingredienteDestinoId),
+            cantidad: parseFloat(cantidad),
+            carroId: parseInt(carroId),
+            usuarioId: parseInt(usuarioId)
+        });
+
+        res.json(resultado);
+    } catch (error) {
+        console.error('❌ [SUSTITUCION] Error al sustituir ingrediente:', error);
+        res.status(500).json({
+            error: 'Error al realizar la sustitución',
+            detalle: error.message
+        });
+    }
+});
+
 module.exports = router;

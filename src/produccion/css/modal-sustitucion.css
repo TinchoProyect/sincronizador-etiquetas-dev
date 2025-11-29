@@ -1,0 +1,503 @@
+/* ============================================
+   MODAL DE SUSTITUCIÓN DE INGREDIENTES
+   Diseño minimalista y profesional
+   ============================================ */
+
+.modal-sustitucion {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modal-sustitucion.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-sustitucion-content {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    width: 90%;
+    max-width: 600px;
+    max-height: 85vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Header del modal */
+.modal-sustitucion-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #f8f9fa;
+    cursor: move;
+    user-select: none;
+}
+
+.modal-sustitucion-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #212529;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-sustitucion-header .close-modal {
+    font-size: 28px;
+    font-weight: 700;
+    color: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+    padding: 0;
+    background-color: #dc3545;
+    border: 2px solid #dc3545;
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 100;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.modal-sustitucion-header .close-modal:hover {
+    background-color: #c82333;
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.5);
+}
+
+.modal-sustitucion-header .close-modal:active {
+    transform: scale(0.95);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Body del modal */
+.modal-sustitucion-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Información del ingrediente destino */
+.ingrediente-destino-info {
+    background-color: #e7f3ff;
+    border-left: 4px solid #007bff;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
+.ingrediente-destino-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #004085;
+}
+
+.ingrediente-destino-info p {
+    margin: 0;
+    font-size: 13px;
+    color: #004085;
+}
+
+.ingrediente-destino-info .faltante-cantidad {
+    font-weight: 700;
+    color: #dc3545;
+}
+
+/* Búsqueda de ingrediente origen */
+.busqueda-ingrediente-origen {
+    margin-bottom: 20px;
+}
+
+.busqueda-ingrediente-origen label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+}
+
+.busqueda-ingrediente-origen input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.busqueda-ingrediente-origen input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* Lista de ingredientes disponibles */
+.lista-ingredientes-origen {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.ingrediente-origen-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid #e9ecef;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ingrediente-origen-item:last-child {
+    border-bottom: none;
+}
+
+.ingrediente-origen-item:hover {
+    background-color: #f8f9fa;
+}
+
+.ingrediente-origen-item.selected {
+    background-color: #e7f3ff;
+    border-left: 4px solid #007bff;
+}
+
+.ingrediente-origen-item .nombre {
+    font-size: 14px;
+    font-weight: 500;
+    color: #212529;
+}
+
+.ingrediente-origen-item .stock {
+    font-size: 13px;
+    color: #28a745;
+    font-weight: 600;
+}
+
+.ingrediente-origen-item .unidad {
+    font-size: 12px;
+    color: #6c757d;
+    margin-left: 4px;
+}
+
+/* Mensaje cuando no hay ingredientes */
+.no-ingredientes-disponibles {
+    padding: 40px 20px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.no-ingredientes-disponibles .icono {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+/* Input de cantidad a sustituir */
+.cantidad-sustituir-container {
+    margin-bottom: 20px;
+}
+
+.cantidad-sustituir-container label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+}
+
+.cantidad-sustituir-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cantidad-sustituir-input-wrapper input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.cantidad-sustituir-input-wrapper input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.cantidad-sustituir-input-wrapper .unidad-medida {
+    font-size: 14px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.cantidad-sustituir-input-wrapper .btn-usar-maximo {
+    padding: 8px 12px;
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+}
+
+.cantidad-sustituir-input-wrapper .btn-usar-maximo:hover {
+    background-color: #138496;
+}
+
+.cantidad-sustituir-input-wrapper .btn-usar-maximo:active {
+    transform: scale(0.98);
+}
+
+.cantidad-max-disponible {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 4px;
+}
+
+.cantidad-max-disponible strong {
+    color: #28a745;
+}
+
+/* Feedback visual de faltante restante */
+.faltante-restante-info {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.faltante-restante-info .icono {
+    font-size: 20px;
+}
+
+.faltante-restante-info .texto {
+    font-size: 14px;
+    color: #856404;
+    font-weight: 500;
+}
+
+.faltante-restante-info strong {
+    color: #dc3545;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+/* Variante cuando el faltante es 0 (completamente cubierto) */
+.faltante-restante-info.completo {
+    background-color: #d4edda;
+    border-left-color: #28a745;
+}
+
+.faltante-restante-info.completo .texto {
+    color: #155724;
+}
+
+.faltante-restante-info.completo strong {
+    color: #28a745;
+}
+
+/* Mensaje de error/validación */
+.mensaje-validacion {
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+}
+
+.mensaje-validacion.error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    display: block;
+}
+
+.mensaje-validacion.warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    display: block;
+}
+
+/* Footer del modal */
+.modal-sustitucion-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    background-color: #f8f9fa;
+}
+
+.modal-sustitucion-footer button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.modal-sustitucion-footer .btn-cancelar {
+    background-color: #6c757d;
+    color: white;
+}
+
+.modal-sustitucion-footer .btn-cancelar:hover {
+    background-color: #5a6268;
+}
+
+.modal-sustitucion-footer .btn-confirmar {
+    background-color: #28a745;
+    color: white;
+}
+
+.modal-sustitucion-footer .btn-confirmar:hover {
+    background-color: #218838;
+}
+
+.modal-sustitucion-footer .btn-confirmar:disabled {
+    background-color: #c3e6cb;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Indicador de carga */
+.modal-sustitucion-loading {
+    display: none;
+    text-align: center;
+    padding: 20px;
+}
+
+.modal-sustitucion-loading.show {
+    display: block;
+}
+
+.modal-sustitucion-loading .spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #007bff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 12px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Estilos para celda con double-click */
+.celda-sustituible {
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.2s;
+}
+
+.celda-sustituible:hover {
+    background-color: #f8f9fa;
+}
+
+.celda-sustituible::after {
+    content: '⇄';
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: #6c757d;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.celda-sustituible:hover::after {
+    opacity: 0.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .modal-sustitucion-content {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .modal-sustitucion-header,
+    .modal-sustitucion-body,
+    .modal-sustitucion-footer {
+        padding: 16px;
+    }
+
+    .lista-ingredientes-origen {
+        max-height: 200px;
+    }
+}
+
+/* Scrollbar personalizado para la lista */
+.lista-ingredientes-origen::-webkit-scrollbar {
+    width: 8px;
+}
+
+.lista-ingredientes-origen::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.lista-ingredientes-origen::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.lista-ingredientes-origen::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}

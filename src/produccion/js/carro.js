@@ -1130,11 +1130,19 @@ export async function mostrarResumenIngredientes(ingredientes) {
             clasesFila += ' ingrediente-vinculado';
         }
 
+        // Agregar clase para celda sustituible si hay faltante
+        const claseCeldaSustituible = (!tieneStock && mostrarColumnasSoloPreparacion) ? 'celda-sustituible' : '';
+        
+        // Evento double-click para sustitución (solo si hay faltante)
+        const eventoDblClick = (!tieneStock && mostrarColumnasSoloPreparacion) 
+            ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${ing.unidad_medida || ''}')"` 
+            : '';
+
         html += `
             <tr class="${clasesFila.trim()}">
                 <td>${ing.nombre || 'Sin nombre'}</td>
                 <td>${cantidadNecesaria.toFixed(2)}</td>
-                ${mostrarColumnasSoloPreparacion ? `<td>${stockActual.toFixed(2)}</td>` : ''}
+                ${mostrarColumnasSoloPreparacion ? `<td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">${stockActual.toFixed(2)}</td>` : ''}
                 ${mostrarColumnasSoloPreparacion ? `<td>${indicadorEstado}</td>` : ''}
                 <td>${ing.unidad_medida || ''}</td>
                 ${mostrarColumnasSoloPreparacion ? `<td>${botonAccion}</td>` : ''}

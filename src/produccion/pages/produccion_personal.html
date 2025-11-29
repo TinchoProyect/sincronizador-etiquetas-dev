@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="/css/modal-articulos-multiple.css">
     <link rel="stylesheet" href="/css/modal-ingreso-manual.css">
     <link rel="stylesheet" href="/css/modal-guardado-ingredientes.css">
+    <link rel="stylesheet" href="/css/modal-sustitucion.css">
     <link rel="stylesheet" href="/css/produccion_personal_redesign.css">
     <style>
         /* ESTILOS LEGACY - Mantener temporalmente para compatibilidad */
@@ -695,11 +696,96 @@
         </div>
     </div>
 
+    <!-- Modal de Sustitución de Ingredientes -->
+    <div id="modal-sustitucion-ingredientes" class="modal-sustitucion">
+        <div class="modal-sustitucion-content">
+            <!-- Header -->
+            <div class="modal-sustitucion-header">
+                <h3>⇄ Sustituir Ingrediente</h3>
+                <button class="close-modal" aria-label="Cerrar" title="Cerrar modal">&times;</button>
+            </div>
 
+            <!-- Body -->
+            <div class="modal-sustitucion-body">
+                <!-- Información del ingrediente destino -->
+                <div class="ingrediente-destino-info">
+                    <h4 id="sustitucion-ingrediente-destino-nombre">Ingrediente destino</h4>
+                    <p>
+                        Faltante: <span class="faltante-cantidad" id="sustitucion-cantidad-faltante">0.00</span>
+                        <span id="sustitucion-unidad-destino">kg</span>
+                    </p>
+                </div>
+
+                <!-- Búsqueda de ingrediente origen -->
+                <div class="busqueda-ingrediente-origen">
+                    <label for="sustitucion-buscar-origen">Buscar ingrediente con stock disponible:</label>
+                    <input 
+                        type="text" 
+                        id="sustitucion-buscar-origen" 
+                        placeholder="Escriba para filtrar ingredientes..."
+                        autocomplete="off"
+                    >
+                </div>
+
+                <!-- Lista de ingredientes disponibles -->
+                <div class="lista-ingredientes-origen" id="sustitucion-lista-ingredientes">
+                    <!-- Se cargará dinámicamente -->
+                </div>
+
+                <!-- Input de cantidad a sustituir -->
+                <div class="cantidad-sustituir-container" id="sustitucion-cantidad-container" style="display: none;">
+                    <label for="sustitucion-cantidad-input">Cantidad a sustituir:</label>
+                    <div class="cantidad-sustituir-input-wrapper">
+                        <input 
+                            type="number" 
+                            id="sustitucion-cantidad-input" 
+                            min="0.01" 
+                            step="0.01" 
+                            placeholder="0.00"
+                        >
+                        <span class="unidad-medida" id="sustitucion-unidad-input">kg</span>
+                        <button type="button" class="btn-usar-maximo" onclick="usarMaximo()" title="Usar todo el stock disponible">
+                            Usar máximo
+                        </button>
+                    </div>
+                    <p class="cantidad-max-disponible">
+                        Máximo disponible: <strong id="sustitucion-max-disponible">0.00</strong> 
+                        <span id="sustitucion-unidad-max">kg</span>
+                    </p>
+                    <!-- Feedback visual de faltante restante -->
+                    <div class="faltante-restante-info" id="sustitucion-faltante-restante" style="display: none;">
+                        <span class="icono">📊</span>
+                        <span class="texto">
+                            Falta cubrir: <strong id="sustitucion-faltante-restante-valor">0.00</strong>
+                            <span id="sustitucion-faltante-restante-unidad">kg</span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Mensaje de validación -->
+                <div class="mensaje-validacion" id="sustitucion-mensaje-validacion"></div>
+
+                <!-- Indicador de carga -->
+                <div class="modal-sustitucion-loading" id="sustitucion-loading">
+                    <div class="spinner"></div>
+                    <p>Procesando sustitución...</p>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="modal-sustitucion-footer">
+                <button class="btn-confirmar" id="sustitucion-btn-confirmar" disabled>Confirmar Sustitución</button>
+            </div>
+        </div>
+    </div>
+
+ 
+ 
  
  
     <script type="module" src="/js/produccion_personal.js"></script>
     <script type="module" src="/js/carroPreparado.js"></script>
+    <script type="module" src="/js/sustitucionIngredientes.js"></script>
     <script src="/js/resizer.js"></script>
 
 
