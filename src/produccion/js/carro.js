@@ -893,12 +893,53 @@ export async function eliminarCarro(carroId) {
             throw new Error('No se pudo eliminar el carro');
         }
 
-        // Si el carro eliminado era el activo, limpiarlo
+        // Si el carro eliminado era el activo, limpiarlo COMPLETAMENTE
         const carroActivo = localStorage.getItem('carroActivo');
         if (carroActivo === String(carroId)) {
+            console.log('🧹 Limpiando UI completa del carro eliminado...');
+            
+            // Limpiar localStorage
             localStorage.removeItem('carroActivo');
             window.carroIdGlobal = null;
+            
+            // Limpiar lista de artículos
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
+            
+            // Limpiar resumen de ingredientes
+            const contenedorIngredientes = document.getElementById('tabla-resumen-ingredientes');
+            if (contenedorIngredientes) {
+                contenedorIngredientes.innerHTML = '<p>No hay carro activo</p>';
+            }
+            
+            // Limpiar resumen de mixes
+            const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+            if (contenedorMixes) {
+                contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
+            }
+            
+            // Limpiar resumen de artículos externos
+            const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
+            if (contenedorArticulos) {
+                contenedorArticulos.innerHTML = '<p>No hay carro activo</p>';
+            }
+            
+            // Ocultar sección de artículos externos
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'none';
+            }
+            
+            // Limpiar informe de ingresos manuales
+            console.log('🧹 Limpiando informe de ingresos manuales...');
+            limpiarInformeIngresosManuales();
+            
+            // Actualizar visibilidad de botones
+            if (typeof window.actualizarVisibilidadBotones === 'function') {
+                console.log('🔄 Actualizando visibilidad de botones...');
+                await window.actualizarVisibilidadBotones();
+            }
+            
+            console.log('✅ UI limpiada completamente');
         }
 
         // Actualizar la lista de carros
