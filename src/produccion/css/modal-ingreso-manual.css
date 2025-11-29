@@ -112,38 +112,107 @@
 
 /* Body del modal */
 #modalIngresoManual .modal-body {
-    padding: 24px;
+    padding: 16px 20px;
     overflow-y: auto;
     flex: 1;
 }
 
 /* Información del ingrediente */
 .nombre-ingrediente {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: #004085;
-    margin: 0 0 16px 0;
-    padding: 12px 16px;
+    margin: 0 0 10px 0;
+    padding: 8px 12px;
     background-color: #e7f3ff;
     border-left: 4px solid #007bff;
     border-radius: 4px;
 }
 
+/* Ocultar elemento vacío que genera espacio innecesario */
 .tipo-ingrediente-info {
-    margin: 0 0 16px 0;
-    padding: 10px 14px;
+    display: none;
+}
+
+/* Si el elemento tiene contenido, mostrarlo compacto */
+.tipo-ingrediente-info:not(:empty) {
+    display: block;
+    margin: 0 0 10px 0;
+    padding: 6px 10px;
     border-radius: 4px;
     background-color: #f8f9fa;
     border-left: 4px solid #0275d8;
-    font-size: 13px;
+    font-size: 12px;
     color: #495057;
+}
+
+/* 🆕 Panel de Artículos Sugeridos */
+.articulos-sugeridos-container {
+    margin: 0 0 12px 0;
+}
+
+.articulos-sugeridos-titulo {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6c757d;
+    margin: 0 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.articulos-sugeridos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+}
+
+.articulo-sugerido-card {
+    background-color: #ffffff;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.articulo-sugerido-card:hover {
+    border-color: #007bff;
+    background-color: #f8f9ff;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.15);
+}
+
+.articulo-sugerido-card:active {
+    transform: translateY(0);
+}
+
+.articulo-sugerido-nombre {
+    font-size: 13px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.articulo-sugerido-stock {
+    font-size: 12px;
+    color: #28a745;
+    font-weight: 600;
+    margin: 0;
+}
+
+.articulo-sugerido-stock.sin-stock {
+    color: #dc3545;
 }
 
 /* Contenedor de búsqueda */
 .busqueda-container {
-    margin-bottom: 16px;
+    margin-bottom: 10px;
     display: flex;
-    gap: 12px;
+    gap: 10px;
     align-items: stretch;
 }
 
@@ -187,20 +256,23 @@
 .lista-articulos {
     list-style: none;
     padding: 0;
-    margin: 0 0 16px 0;
-    max-height: 200px;
+    margin: 0 0 10px 0;
+    max-height: 180px;
     overflow-y: auto;
     border: 1px solid #dee2e6;
     border-radius: 4px;
 }
 
 .lista-articulos li {
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-bottom: 1px solid #e9ecef;
     cursor: pointer;
     transition: background-color 0.2s;
     font-size: 14px;
     color: #212529;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .lista-articulos li:last-child {
@@ -211,25 +283,48 @@
     background-color: #f8f9fa;
 }
 
+.lista-articulos .articulo-nombre {
+    flex: 1;
+    font-weight: 500;
+}
+
+.lista-articulos .articulo-stock {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.lista-articulos .articulo-stock.stock-disponible {
+    color: #28a745;
+    background-color: #d4edda;
+}
+
+.lista-articulos .articulo-stock.stock-cero {
+    color: #dc3545;
+    background-color: #f8d7da;
+}
+
 /* Estilos para los inputs */
 #modalIngresoManual label {
     display: block;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: #495057;
-    margin-bottom: 8px;
-    margin-top: 12px;
+    margin-bottom: 6px;
+    margin-top: 8px;
 }
 
 #inputKilos,
 #inputCantidad {
     width: 100%;
-    padding: 10px 12px;
+    padding: 8px 10px;
     border: 1px solid #ced4da;
     border-radius: 4px;
     font-size: 14px;
     transition: border-color 0.2s;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 #inputKilos:focus,
@@ -241,7 +336,7 @@
 
 /* Footer del modal */
 #modalIngresoManual .modal-footer {
-    padding: 16px 24px;
+    padding: 12px 20px;
     border-top: 1px solid #e0e0e0;
     display: flex;
     justify-content: center;

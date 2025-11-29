@@ -92,6 +92,9 @@ export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
       if (modalTitle) {
         modalTitle.textContent = esMix ? 'Ingreso Manual de Mix' : 'Ingreso Manual de Ingrediente';
       }
+      
+      // 🆕 Cargar artículos sugeridos basados en el nombre del ingrediente
+      cargarArticulosSugeridos(ingrediente.nombre);
     })
     .catch(err => {
       console.error('❌ Error al obtener ingrediente:', err);
@@ -655,7 +658,13 @@ function manejarBusqueda() {
         resultados.forEach(art => {
           const li = document.createElement('li');
           const stockDisplay = art.stock_consolidado !== undefined ? Number(art.stock_consolidado).toFixed(2) : '0.00';
-          li.textContent = `${art.nombre} — Stock: ${stockDisplay}`;
+          
+          // 🆕 Mostrar nombre + stock en el resultado
+          const stockClass = parseFloat(stockDisplay) > 0 ? 'stock-disponible' : 'stock-cero';
+          li.innerHTML = `
+            <span class="articulo-nombre">${art.nombre}</span>
+            <span class="articulo-stock ${stockClass}">Stock: ${stockDisplay} kg</span>
+          `;
           
           li.addEventListener('click', () => seleccionarArticulo(art));
           listaResultados.appendChild(li);
@@ -1625,6 +1634,88 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
     
     // Mostrar error al usuario
     alert(`❌ Error al imprimir etiqueta: ${error.message}`);
+  }
+}
+
+// 🆕 NUEVA FUNCIÓN: Cargar artículos sugeridos basados en HISTORIAL REAL de uso
+async function cargarArticulosSugeridos(nombreIngrediente) {
+  try {
+    console.log('⚡ [SUGERIDOS] Cargando artículos sugeridos basados en historial para ingrediente ID:', ingredienteSeleccionado);
+    
+    const container = document.getElementById('articulos-sugeridos-container');
+    const grid = document.getElementById('articulos-sugeridos-grid');
+    
+    if (!container || !grid) {
+      console.warn('⚠️ [SUGERIDOS] Contenedores no encontrados');
+      return;
+    }
+    
+    // ✅ CORRECCIÓN: Consultar el endpoint de historial real
+    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteSeleccionado}/articulos-sugeridos`);
+    
+    if (!response.ok) {
+      throw new Error('Error al obtener artículos sugeridos del historial');
+    }
+    
+    const articulosSugeridos = await response.json();
+    
+    console.log(`⚡ [SUGERIDOS] Encontrados ${articulosSugeridos.length} artículos del historial real`);
+    
+    if (articulosSugeridos.length === 0) {
+      console.log('ℹ️ [SUGERIDOS] No hay historial de uso para este ingrediente - ocultando panel');
+      container.style.display = 'none';
+      return;
+    }
+    
+    // Generar las tarjetas de sugeridos
+    grid.innerHTML = '';
+    articulosSugeridos.forEach((art, index) => {
+      const stock = parseFloat(art.stock_actual) || 0;
+      const stockClass = stock > 0 ? '' : 'sin-stock';
+      const esMasReciente = index === 0; // El primero es el más reciente
+      
+      const card = document.createElement('div');
+      card.className = 'articulo-sugerido-card';
+      if (esMasReciente) {
+        card.style.borderColor = '#007bff';
+        card.style.backgroundColor = '#f8f9ff';
+      }
+      
+      card.innerHTML = `
+        <p class="articulo-sugerido-nombre">${esMasReciente ? '⭐ ' : ''}${art.articulo_nombre}</p>
+        <p class="articulo-sugerido-stock ${stockClass}">Stock: ${stock.toFixed(2)} kg</p>
+      `;
+      
+      // Al hacer clic, seleccionar el artículo automáticamente
+      card.addEventListener('click', () => {
+        console.log('⚡ [SUGERIDOS] Artículo seleccionado desde historial:', art.articulo_nombre);
+        console.log(`📊 [SUGERIDOS] Última vez usado: ${art.ultima_fecha_uso}, Frecuencia: ${art.frecuencia_uso}`);
+        
+        // Crear objeto artículo compatible con seleccionarArticulo()
+        const articuloParaSeleccionar = {
+          numero: art.articulo_numero,
+          nombre: art.articulo_nombre,
+          codigo_barras: art.codigo_barras,
+          stock_consolidado: art.stock_actual
+        };
+        
+        seleccionarArticulo(articuloParaSeleccionar);
+      });
+      
+      grid.appendChild(card);
+    });
+    
+    // Mostrar el contenedor
+    container.style.display = 'block';
+    console.log('✅ [SUGERIDOS] Panel de sugeridos cargado correctamente desde historial real');
+    
+  } catch (error) {
+    console.error('❌ [SUGERIDOS] Error al cargar artículos sugeridos:', error);
+    // No mostrar el panel si hay error
+    const container = document.getElementById('articulos-sugeridos-container');
+    if (container) {
+      container.style.display = 'none';
+    }
   }
 }
 

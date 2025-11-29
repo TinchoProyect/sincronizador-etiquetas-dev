@@ -1698,6 +1698,87 @@ router.get('/carro/:id/articulos-recetas', async (req, res) => {
     }
 });
 
+// 🆕 Ruta para obtener artículos sugeridos basados en historial de uso
+router.get('/ingredientes/:id/articulos-sugeridos', async (req, res) => {
+    try {
+        const ingredienteId = parseInt(req.params.id);
+        
+        if (isNaN(ingredienteId)) {
+            return res.status(400).json({ error: 'ID de ingrediente inválido' });
+        }
+
+        console.log(`⚡ [SUGERIDOS] Obteniendo artículos sugeridos para ingrediente ${ingredienteId}`);
+        
+        // 🔧 CONSULTA CORREGIDA V2: Priorizar historial real sobre stock disponible
+        // Mostrar artículos sin stock pero indicarlos claramente
+        const query = `
+            WITH historial_uso AS (
+                -- Obtener artículos usados en los últimos 6 meses para este ingrediente
+                -- El vínculo está en ingredientes_movimientos.observaciones = articulo_numero
+                SELECT 
+                    im.observaciones as articulo_numero,
+                    a.nombre as articulo_nombre,
+                    a.codigo_barras,
+                    COALESCE(src.stock_consolidado, 0) as stock_actual,
+                    MAX(im.fecha) as ultima_fecha_uso,
+                    COUNT(*) as frecuencia_uso
+                FROM ingredientes_movimientos im
+                LEFT JOIN articulos a ON a.numero = im.observaciones
+                LEFT JOIN stock_real_consolidado src ON src.articulo_numero = im.observaciones
+                WHERE im.ingrediente_id = $1
+                    AND im.tipo = 'ingreso'
+                    AND im.observaciones IS NOT NULL
+                    AND im.observaciones != ''
+                    AND im.fecha >= NOW() - INTERVAL '6 months'
+                    -- Excluir observaciones que son textos descriptivos (no códigos de artículo)
+                    AND im.observaciones NOT LIKE '%SUSTITUCIÓN%'
+                    AND im.observaciones NOT LIKE '%Ajuste%'
+                GROUP BY im.observaciones, a.nombre, a.codigo_barras, src.stock_consolidado
+            )
+            SELECT 
+                articulo_numero,
+                articulo_nombre,
+                codigo_barras,
+                stock_actual,
+                ultima_fecha_uso,
+                frecuencia_uso,
+                -- Calcular prioridad: el más reciente tiene máxima prioridad
+                CASE 
+                    WHEN ultima_fecha_uso = (SELECT MAX(ultima_fecha_uso) FROM historial_uso) THEN 1
+                    ELSE 2
+                END as prioridad
+            FROM historial_uso
+            WHERE articulo_nombre IS NOT NULL  -- Solo artículos que existen en la tabla articulos
+                AND frecuencia_uso >= 2  -- Filtrar "basura": solo artículos usados al menos 2 veces
+            ORDER BY 
+                prioridad ASC,              -- Primero el más reciente (prioridad 1)
+                ultima_fecha_uso DESC,      -- Luego por fecha
+                stock_actual DESC,          -- Preferir los que tienen stock
+                frecuencia_uso DESC         -- Finalmente por frecuencia
+            LIMIT 3
+        `;
+        
+        const result = await req.db.query(query, [ingredienteId]);
+        
+        console.log(`⚡ [SUGERIDOS] Encontrados ${result.rows.length} artículos sugeridos con stock`);
+        
+        if (result.rows.length > 0) {
+            console.log('📊 [SUGERIDOS] Detalle:');
+            result.rows.forEach((art, index) => {
+                console.log(`  ${index + 1}. ${art.articulo_nombre} - Stock: ${art.stock_actual} - Última vez: ${art.ultima_fecha_uso} - Frecuencia: ${art.frecuencia_uso}`);
+            });
+        }
+        
+        res.json(result.rows);
+    } catch (error) {
+        console.error('❌ [SUGERIDOS] Error al obtener artículos sugeridos:', error);
+        res.status(500).json({ 
+            error: 'Error al obtener artículos sugeridos',
+            detalle: error.message 
+        });
+    }
+});
+
 // Ruta para obtener ingresos manuales de un carro
 router.get('/carro/:id/ingresos-manuales', async (req, res) => {
     try {
