@@ -1153,13 +1153,27 @@ export async function mostrarResumenIngredientes(ingredientes) {
             }
         }
 
-        // Generar botón de acción (solo si se va a mostrar)
-        let botonAccion = '';
+        // Generar botones de acción (solo si se va a mostrar)
+        let botonesAccion = '';
         if (mostrarColumnasSoloPreparacion) {
             const deshabilitado = (window.carroIdGlobal == null);
-            botonAccion = deshabilitado
+            
+            // Botón de ingreso manual
+            const botonIngresoManual = deshabilitado
                 ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
                 : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+            
+            // 🆕 Botón de ajuste rápido
+            const botonAjusteRapido = deshabilitado
+                ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
+                : `<button onclick="abrirModalAjusteRapido(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockActual}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
+            
+            botonesAccion = `
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    ${botonIngresoManual}
+                    ${botonAjusteRapido}
+                </div>
+            `;
         }
 
         // Determinar clases CSS para la fila (solo aplicar colores en preparación)
@@ -1186,7 +1200,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
                 ${mostrarColumnasSoloPreparacion ? `<td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">${stockActual.toFixed(2)}</td>` : ''}
                 ${mostrarColumnasSoloPreparacion ? `<td>${indicadorEstado}</td>` : ''}
                 <td>${ing.unidad_medida || ''}</td>
-                ${mostrarColumnasSoloPreparacion ? `<td>${botonAccion}</td>` : ''}
+                ${mostrarColumnasSoloPreparacion ? `<td>${botonesAccion}</td>` : ''}
             </tr>
         `;
     });
