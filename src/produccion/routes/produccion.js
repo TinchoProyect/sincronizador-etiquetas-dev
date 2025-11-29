@@ -2665,4 +2665,117 @@ router.post('/sustituir-ingrediente', async (req, res) => {
     }
 });
 
+/**
+ * Eliminar una sustitución de ingredientes
+ * DELETE /api/produccion/sustitucion/:id
+ * Body: { carro_id }
+ */
+router.delete('/sustitucion/:id', async (req, res) => {
+    try {
+        const movimientoId = parseInt(req.params.id);
+        const { carro_id } = req.body;
+        
+        console.log('🗑️ [SUSTITUCION] Eliminando sustitución:', { movimientoId, carro_id });
+        
+        // Obtener el movimiento de egreso para encontrar su par de ingreso
+        const queryMovimiento = `
+            SELECT 
+                im.id,
+                im.ingrediente_id,
+                im.kilos,
+                im.observaciones
+            FROM ingredientes_movimientos im
+            WHERE im.id = $1 
+              AND im.carro_id = $2
+              AND im.tipo = 'egreso'
+              AND im.observaciones LIKE 'SUSTITUCIÓN:%'
+        `;
+        
+        const movimientoResult = await req.db.query(queryMovimiento, [movimientoId, carro_id]);
+        
+        if (movimientoResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Movimiento de sustitución no encontrado' });
+        }
+        
+        const movimientoEgreso = movimientoResult.rows[0];
+        
+        // Extraer el ID del ingrediente destino de las observaciones
+        const match = movimientoEgreso.observaciones.match(/\(ID: (\d+)\)/);
+        const ingredienteDestinoId = match ? parseInt(match[1]) : null;
+        
+        if (!ingredienteDestinoId) {
+            return res.status(400).json({ error: 'No se pudo determinar el ingrediente destino' });
+        }
+        
+        console.log('🔍 Movimiento de egreso encontrado:', {
+            id: movimientoEgreso.id,
+            ingrediente_origen_id: movimientoEgreso.ingrediente_id,
+            ingrediente_destino_id: ingredienteDestinoId,
+            kilos: movimientoEgreso.kilos
+        });
+        
+        // Buscar el movimiento de ingreso correspondiente
+        const queryMovimientoIngreso = `
+            SELECT id
+            FROM ingredientes_movimientos
+            WHERE ingrediente_id = $1
+              AND carro_id = $2
+              AND tipo = 'ingreso'
+              AND ABS(kilos - $3) < 0.01
+              AND observaciones LIKE '%SUSTITUCIÓN:%'
+              AND fecha >= (SELECT fecha FROM ingredientes_movimientos WHERE id = $4) - INTERVAL '1 minute'
+              AND fecha <= (SELECT fecha FROM ingredientes_movimientos WHERE id = $4) + INTERVAL '1 minute'
+            ORDER BY fecha ASC
+            LIMIT 1
+        `;
+        
+        const movimientoIngresoResult = await req.db.query(queryMovimientoIngreso, [
+            ingredienteDestinoId,
+            carro_id,
+            Math.abs(movimientoEgreso.kilos),
+            movimientoId
+        ]);
+        
+        if (movimientoIngresoResult.rows.length === 0) {
+            return res.status(404).json({ error: 'No se encontró el movimiento de ingreso correspondiente' });
+        }
+        
+        const movimientoIngresoId = movimientoIngresoResult.rows[0].id;
+        console.log('🔍 Movimiento de ingreso encontrado:', movimientoIngresoId);
+        
+        // Eliminar ambos movimientos en una transacción
+        await req.db.query('BEGIN');
+        
+        try {
+            // Eliminar movimiento de egreso
+            await req.db.query('DELETE FROM ingredientes_movimientos WHERE id = $1', [movimientoId]);
+            console.log('✅ Movimiento de egreso eliminado');
+            
+            // Eliminar movimiento de ingreso
+            await req.db.query('DELETE FROM ingredientes_movimientos WHERE id = $1', [movimientoIngresoId]);
+            console.log('✅ Movimiento de ingreso eliminado');
+            
+            await req.db.query('COMMIT');
+            console.log('✅ Transacción confirmada');
+            
+            res.json({ 
+                success: true, 
+                mensaje: 'Sustitución eliminada correctamente',
+                movimientos_eliminados: {
+                    egreso: movimientoId,
+                    ingreso: movimientoIngresoId
+                }
+            });
+            
+        } catch (error) {
+            await req.db.query('ROLLBACK');
+            throw error;
+        }
+        
+    } catch (error) {
+        console.error('❌ [SUSTITUCION] Error al eliminar sustitución:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;

@@ -1305,7 +1305,7 @@ async function eliminarIngresoManual(ingresoId) {
       const carroId = localStorage.getItem('carroActivo');
       const ingresoIdReal = id;
       
-      // Primero obtener los datos del ingreso para saber si es MIX o simple
+      // Primero obtener los datos del ingreso para saber el tipo
       const ingresosResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`);
       if (!ingresosResponse.ok) {
         throw new Error('Error al obtener información del ingreso');
@@ -1318,11 +1318,33 @@ async function eliminarIngresoManual(ingresoId) {
         throw new Error('Ingreso no encontrado');
       }
       
-      const esMix = ingresoAEliminar.tipo_articulo === 'mix';
-      console.log(`🔍 Tipo de artículo a eliminar: ${esMix ? 'MIX' : 'Simple'}`);
+      const tipoArticulo = ingresoAEliminar.tipo_articulo || 'simple';
+      console.log(`🔍 Tipo de artículo a eliminar: ${tipoArticulo}`);
       
-      if (esMix) {
-        // Para MIX: eliminar de stock_ventas_movimientos y registros relacionados en ingredientes_stock_usuarios
+      if (tipoArticulo === 'sustitucion') {
+        // 🌾 SUSTITUCIÓN: Eliminar movimientos de ingredientes_movimientos
+        console.log('🌾 Eliminando sustitución de ingredientes...');
+        
+        // Eliminar los movimientos de sustitución (egreso e ingreso)
+        const response = await fetch(`http://localhost:3002/api/produccion/sustitucion/${ingresoIdReal}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            carro_id: carroId
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Error al eliminar sustitución: ${errorData.error || 'Error desconocido'}`);
+        }
+
+        console.log('✅ Sustitución eliminada correctamente');
+        
+      } else if (tipoArticulo === 'mix') {
+        // 🧪 MIX: eliminar de stock_ventas_movimientos y registros relacionados
         console.log('🧪 Eliminando artículo MIX y registros relacionados...');
         
         // Eliminar registros de ingredientes_stock_usuarios relacionados
@@ -1355,14 +1377,9 @@ async function eliminarIngresoManual(ingresoId) {
         }
         
       } else {
-        // Para ingredientes simples: usar el endpoint existente
+        // 📦 SIMPLE: usar el endpoint existente
         console.log('📦 Eliminando ingrediente simple...');
-        console.log(`🌐 URL del endpoint: http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`);
-        console.log(`📋 Método: DELETE`);
-        console.log(`🆔 Carro ID: ${carroId}`);
-        console.log(`🆔 Ingreso ID Real: ${ingresoIdReal}`);
         
-        console.log('🚀 ENVIANDO REQUEST DELETE AL BACKEND...');
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`, {
           method: 'DELETE',
           headers: {
@@ -1370,21 +1387,12 @@ async function eliminarIngresoManual(ingresoId) {
           }
         });
 
-        console.log(`📡 Respuesta recibida del servidor:`);
-        console.log(`- Status: ${response.status}`);
-        console.log(`- Status Text: ${response.statusText}`);
-        console.log(`- OK: ${response.ok}`);
-
         if (!response.ok) {
-          console.error('❌ ERROR EN RESPUESTA DEL SERVIDOR');
           const errorData = await response.json();
-          console.error('📋 Datos del error:', errorData);
           throw new Error(`Error al eliminar ingreso: ${errorData.error || 'Error desconocido'}`);
         }
 
-        const result = await response.json();
-        console.log('✅ RESPUESTA EXITOSA DEL SERVIDOR:', result);
-        console.log('🎯 Eliminación completada en el backend');
+        console.log('✅ Ingrediente simple eliminado correctamente');
       }
       
     } else {
