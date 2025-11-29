@@ -174,14 +174,16 @@ async function obtenerIngresosManuales(carroId) {
         // 📋 CONVERTIR AL FORMATO ESPERADO POR EL INFORME IMPRESO
         const ingresosManuales = ingresosUnicos.map(ingreso => ({
             ingrediente_id: ingreso.ingrediente_id,
-            articulo_descripcion: ingreso.articulo_nombre || ingreso.articuloNombre || 'Artículo sin nombre',
+            articulo_descripcion: ingreso.articulo_nombre || ingreso.ingrediente_nombre || ingreso.articuloNombre || 'Artículo sin nombre',
             articulo_numero: ingreso.articulo_numero || ingreso.articuloNumero || '',
             codigo_barras: ingreso.codigo_barras || ingreso.codigoBarras || '',
             kilos_totales: parseFloat(ingreso.kilos || ingreso.kilosTotales || 0),
             cantidad_total: parseFloat(ingreso.cantidad || ingreso.cantidadUnidades || 0),
             tipo_articulo: ingreso.tipo_articulo || 'simple',
             fuente_datos: ingreso.fuente_datos || 'backend',
-            fecha: ingreso.fecha || ingreso.fechaIngreso || new Date().toISOString()
+            fecha: ingreso.fecha || ingreso.fechaIngreso || new Date().toISOString(),
+            ingrediente_destino_nombre: ingreso.ingrediente_destino_nombre || null,
+            observaciones: ingreso.observaciones || null
         }));
         
         console.log(`\n📊 RESULTADO FINAL PARA IMPRESIÓN:`);
@@ -478,52 +480,142 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
                 `).join('') : '<div class="no-data">No hay mixes en este carro</div>'}
             </div>
 
-            <div class="seccion">
-                <h2>📦 INGRESOS MANUALES REALIZADOS</h2>
-                ${ingresos.length > 0 ? `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Artículo</th>
-                                <th>Kilos</th>
-                                <th class="stock-anterior-header">⚠️ Stock Anterior</th>
-                                <th>Stock Nuevo</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${ingresos.map(ing => {
-                                let stockAnterior = 0;
-                                let stockNuevo = 0;
-                                let ingresoManual = parseFloat(ing.kilos_totales || 0);
-
-                                if (ing.ingrediente_id && resumenIngredientes) {
-                                    const ingredienteResumen = resumenIngredientes.find(ri => ri.id === ing.ingrediente_id);
-                                    if (ingredienteResumen) {
-                                        // stock_actual = Saldo Neto (ya descontado el consumo)
-                                        const stockSaldoNeto = parseFloat(ingredienteResumen.stock_actual || 0);
-                                        // cantidad = Consumo de esta producción
-                                        const consumoProduccion = parseFloat(ingredienteResumen.cantidad || 0);
-                                        
-                                        // Stock Físico Nuevo = Saldo Neto + Consumo
-                                        stockNuevo = stockSaldoNeto + consumoProduccion;
-                                        // Stock Físico Anterior = Stock Físico Nuevo - Ingreso Manual
-                                        stockAnterior = stockNuevo - ingresoManual;
-                                    }
-                                }
-
-                                return `
+            ${(() => {
+                // Separar ingresos en dos categorías
+                const ingresosArticulos = ingresos.filter(ing => ing.tipo_articulo !== 'sustitucion');
+                const sustitucionesIngredientes = ingresos.filter(ing => ing.tipo_articulo === 'sustitucion');
+                
+                console.log('📊 Separación de ingresos para PDF:');
+                console.log(`- Artículos: ${ingresosArticulos.length}`);
+                console.log(`- Sustituciones: ${sustitucionesIngredientes.length}`);
+                
+                let html = '';
+                
+                // SECCIÓN A: INSUMOS / BULTOS AGREGADOS (Artículos)
+                if (ingresosArticulos.length > 0) {
+                    html += `
+                    <div class="seccion">
+                        <h2>📦 INSUMOS / BULTOS AGREGADOS</h2>
+                        <table>
+                            <thead>
                                 <tr>
-                                    <td>${ing.articulo_descripcion}</td>
-                                    <td>${ingresoManual.toFixed(2)}</td>
-                                    <td class="stock-anterior-cell">${stockAnterior.toFixed(2)}</td>
-                                    <td>${stockNuevo.toFixed(2)}</td>
+                                    <th>Artículo</th>
+                                    <th>Kilos</th>
+                                    <th class="stock-anterior-header">⚠️ Stock Anterior</th>
+                                    <th>Stock Nuevo</th>
                                 </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                ` : '<div class="no-data">No se realizaron ingresos manuales</div>'}
-            </div>
+                            </thead>
+                            <tbody>
+                                ${ingresosArticulos.map(ing => {
+                                    let stockAnterior = 0;
+                                    let stockNuevo = 0;
+                                    let ingresoManual = parseFloat(ing.kilos_totales || 0);
+
+                                    if (ing.ingrediente_id && resumenIngredientes) {
+                                        const ingredienteResumen = resumenIngredientes.find(ri => ri.id === ing.ingrediente_id);
+                                        if (ingredienteResumen) {
+                                            const stockSaldoNeto = parseFloat(ingredienteResumen.stock_actual || 0);
+                                            const consumoProduccion = parseFloat(ingredienteResumen.cantidad || 0);
+                                            stockNuevo = stockSaldoNeto + consumoProduccion;
+                                            stockAnterior = stockNuevo - ingresoManual;
+                                        }
+                                    }
+
+                                    return `
+                                    <tr>
+                                        <td>${ing.articulo_descripcion}</td>
+                                        <td>${ingresoManual.toFixed(2)}</td>
+                                        <td class="stock-anterior-cell">${stockAnterior.toFixed(2)}</td>
+                                        <td>${stockNuevo.toFixed(2)}</td>
+                                    </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    `;
+                }
+                
+                // SECCIÓN B: SUSTITUCIONES Y REFUERZOS (Ingredientes)
+                if (sustitucionesIngredientes.length > 0) {
+                    console.log('\n🔍 DEBUG PDF - SUSTITUCIONES:');
+                    console.log('==========================================');
+                    console.log('Total de sustituciones:', sustitucionesIngredientes.length);
+                    sustitucionesIngredientes.forEach((sust, index) => {
+                        console.log(`\nSustitución ${index + 1}:`);
+                        console.log('- Datos completos:', sust);
+                        console.log('- articulo_descripcion:', sust.articulo_descripcion);
+                        console.log('- ingrediente_nombre:', sust.ingrediente_nombre);
+                        console.log('- kilos_totales:', sust.kilos_totales);
+                        console.log('- observaciones:', sust.observaciones);
+                        console.log('- ingrediente_destino_nombre:', sust.ingrediente_destino_nombre);
+                    });
+                    console.log('==========================================\n');
+                    
+                    html += `
+                    <div class="seccion">
+                        <h2>🌾 SUSTITUCIONES Y REFUERZOS</h2>
+                        <p style="margin: 0 0 10px 0; font-size: 11px; color: #666;">
+                            <em>Ingredientes utilizados para cubrir faltantes de otros ingredientes en las recetas</em>
+                        </p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ingrediente Utilizado</th>
+                                    <th>Cantidad (kg)</th>
+                                    <th>Asignado a / Cubre</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${sustitucionesIngredientes.map(sust => {
+                                    const cantidad = parseFloat(sust.kilos_totales || 0);
+                                    const ingredienteOrigen = sust.articulo_descripcion || sust.ingrediente_nombre || 'Ingrediente sin nombre';
+                                    
+                                    console.log(`\n🔍 Procesando sustitución para PDF:`);
+                                    console.log(`- Ingrediente origen: "${ingredienteOrigen}"`);
+                                    console.log(`- Cantidad: ${cantidad}`);
+                                    console.log(`- Observaciones: "${sust.observaciones}"`);
+                                    
+                                    // Extraer el nombre del ingrediente destino de las observaciones
+                                    // Formato esperado: "SUSTITUCIÓN: Usado para cubrir [Nombre] (ID: X)"
+                                    let ingredienteDestino = 'No especificado';
+                                    
+                                    if (sust.observaciones) {
+                                        // Intentar extraer del texto de observaciones
+                                        const match = sust.observaciones.match(/cubrir\s+(.+?)\s+\(ID:/i);
+                                        if (match && match[1]) {
+                                            ingredienteDestino = match[1].trim();
+                                            console.log(`✅ Destino extraído: "${ingredienteDestino}"`);
+                                        } else {
+                                            console.log(`⚠️ No se pudo extraer destino del texto: "${sust.observaciones}"`);
+                                        }
+                                    }
+                                    
+                                    return `
+                                    <tr>
+                                        <td><strong>${ingredienteOrigen}</strong></td>
+                                        <td style="text-align: center; font-weight: bold;">${cantidad.toFixed(2)}</td>
+                                        <td style="background: #e3f2fd; font-style: italic;">→ ${ingredienteDestino}</td>
+                                    </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        <p style="margin-top: 10px; font-size: 10px; color: #666; font-style: italic;">
+                            💡 <strong>Instrucción:</strong> Buscar la bolsa del "Ingrediente Utilizado", pesar la cantidad indicada 
+                            y agregarlo junto con el ingrediente que está cubriendo en la receta.
+                        </p>
+                    </div>
+                    `;
+                }
+                
+                // Si no hay ningún ingreso
+                if (ingresosArticulos.length === 0 && sustitucionesIngredientes.length === 0) {
+                    html += '<div class="no-data">No se realizaron ingresos manuales ni sustituciones</div>';
+                }
+                
+                return html;
+            })()}
         </body>
         </html>
     `;

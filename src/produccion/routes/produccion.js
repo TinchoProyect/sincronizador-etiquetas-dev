@@ -1736,7 +1736,9 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                     svm.codigo_barras,
                     COALESCE(i.nombre, a.nombre) as ingrediente_nombre,
                     COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
-                    'stock_ventas_movimientos' as fuente_datos
+                    'stock_ventas_movimientos' as fuente_datos,
+                    NULL as observaciones,
+                    NULL as ingrediente_destino_nombre
                 FROM stock_ventas_movimientos svm
                 LEFT JOIN articulos a ON a.numero = svm.articulo_numero
                 LEFT JOIN ingredientes_movimientos im ON im.carro_id = svm.carro_id 
@@ -1750,7 +1752,7 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                 UNION ALL
 
                 -- Parte 2: Sustituciones de ingredientes (movimientos cruzados)
-                -- 🔧 CORRECCIÓN: Extraer el ID del ingrediente ORIGEN desde observaciones
+                -- 🔧 SIMPLIFICADO: Solo buscar egresos y extraer destino de observaciones
                 SELECT
                     im_egreso.id,
                     im_egreso.fecha,
@@ -1762,7 +1764,9 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                     NULL as codigo_barras,
                     i_origen.nombre as ingrediente_nombre,
                     'sustitucion' as tipo_articulo,
-                    'ingredientes_movimientos' as fuente_datos
+                    'ingredientes_movimientos' as fuente_datos,
+                    im_egreso.observaciones,
+                    NULL as ingrediente_destino_nombre
                 FROM ingredientes_movimientos im_egreso
                 JOIN ingredientes i_origen ON i_origen.id = im_egreso.ingrediente_id
                 WHERE im_egreso.carro_id = $1 
