@@ -1160,14 +1160,15 @@ function formatearNombreCliente(nombre, apellido) {
 }
 
 /**
- * Normalizar texto para búsqueda (tolerancia a acentos y caracteres especiales)
+ * Normalizar texto para búsqueda (tolerancia a acentos, PRESERVANDO caracteres especiales)
+ * NUEVA LÓGICA: Mantiene símbolos como /, +, - para coincidencias exactas
  */
 function normalizarTexto(texto) {
     return (texto ?? '')
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Remover acentos
-        .replace(/[^\w\s]/g, ' ') // Reemplazar caracteres especiales (/, -, etc.) por espacios
+        // NO reemplazar caracteres especiales - los mantenemos para búsqueda exacta
         .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
         .trim();
 }
@@ -1181,14 +1182,24 @@ async function precargarArticulosAll() {
   return [];
 }
 
+/**
+ * Filtrar artículos localmente con lógica de TOKENS ESTRICTOS
+ * NUEVA LÓGICA: Búsqueda exacta de subcadenas preservando caracteres especiales
+ * 
+ * Ejemplo: "nuez cas/36+" genera tokens ["nuez", "cas/36+"]
+ * - Debe encontrar artículos que contengan AMBOS tokens como subcadenas exactas
+ * - "Nuez/Cas/34-36" NO coincide porque "cas/36+" no está presente (tiene "34-36" en su lugar)
+ * - "Nuez Cas/36+ x 5" SÍ coincide porque contiene ambos tokens exactos
+ */
 function filtrarArticulosLocal(query, items) {
+  // Tokenizar: dividir por espacios, preservando caracteres especiales dentro de cada token
   const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
 
-  console.log('[ARTICULOS-FILTER] Iniciando filtrado...', { 
+  console.log('[ARTICULOS-FILTER] Iniciando filtrado ESTRICTO...', { 
     modo: modoBusqueda,
     query_original: query,
     query_normalizado: normalizarTexto(query),
-    terms, 
+    tokens_generados: terms, 
     items_recibidos: items.length 
   });
 
@@ -1201,8 +1212,8 @@ function filtrarArticulosLocal(query, items) {
       const queryLower = query.toLowerCase();
       cumple = codigoBarras.includes(queryLower);
       
-      // Log detallado para los primeros 5 artículos (debug)
-      if (items.indexOf(a) < 5) {
+      // Log detallado para los primeros 3 artículos (debug)
+      if (items.indexOf(a) < 3) {
         console.log('[ARTICULOS-FILTER] [MODO-CODIGO] Evaluando artículo:', {
           descripcion: a.description ?? a.descripcion,
           codigo_barras: a.codigo_barras,
@@ -1211,23 +1222,25 @@ function filtrarArticulosLocal(query, items) {
         });
       }
     } else {
-      // MODO DESCRIPCIÓN: Búsqueda por subcadenas en descripción
+      // MODO DESCRIPCIÓN: Búsqueda ESTRICTA por tokens exactos
       const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
       
-      // Verificar si TODOS los términos están presentes como SUBCADENAS (fragmentos)
-      cumple = terms.every(t => descripcionNormalizada.includes(t));
+      // ✅ LÓGICA ESTRICTA: TODOS los tokens deben estar presentes como SUBCADENAS EXACTAS
+      // Esto significa que "cas/36+" debe aparecer literalmente en la descripción
+      // NO coincidirá con "cas/34-36" porque los caracteres no son idénticos
+      cumple = terms.every(token => descripcionNormalizada.includes(token));
       
-      // Log detallado para los primeros 5 artículos (debug)
-      if (items.indexOf(a) < 5) {
-        console.log('[ARTICULOS-FILTER] [MODO-DESCRIPCION] Evaluando artículo:', {
+      // Log detallado para los primeros 3 artículos (debug)
+      if (items.indexOf(a) < 3) {
+        console.log('[ARTICULOS-FILTER] [MODO-DESCRIPCION-ESTRICTO] Evaluando artículo:', {
           descripcion_original: a.description ?? a.descripcion,
           descripcion_normalizada: descripcionNormalizada,
-          terms_buscados: terms,
+          tokens_buscados: terms,
           cumple_todos: cumple,
-          detalles: terms.map(t => ({ 
-            termino: t, 
-            encontrado: descripcionNormalizada.includes(t),
-            posicion: descripcionNormalizada.indexOf(t)
+          detalles_coincidencia: terms.map(token => ({ 
+            token: token, 
+            encontrado: descripcionNormalizada.includes(token),
+            posicion: descripcionNormalizada.indexOf(token)
           }))
         });
       }
@@ -1247,15 +1260,15 @@ function filtrarArticulosLocal(query, items) {
   });
 
   // Log de depuración final
-  console.log('[ARTICULOS-FILTER] Filtrado completado:', { 
+  console.log('[ARTICULOS-FILTER] Filtrado ESTRICTO completado:', { 
     modo: modoBusqueda,
-    query, 
-    terms, 
+    query_original: query, 
+    tokens: terms, 
     items_recibidos: items.length,
     resultados_filtrados: out.length 
   });
 
-  // Limite visual (podés subirlo a 100 si querés)
+  // Limite visual
   return out.slice(0, 50);
 }
 // ===== FUNCIONES DE AUTOCOMPLETAR DE ARTÍCULOS =====

@@ -662,13 +662,23 @@ async function precargarArticulosAll() {
   return [];
 }
 
+/**
+ * Filtrar artículos localmente con lógica de TOKENS ESTRICTOS
+ * NUEVA LÓGICA: Búsqueda exacta de subcadenas preservando caracteres especiales
+ * 
+ * Ejemplo: "nuez cas/36+" genera tokens ["nuez", "cas/36+"]
+ * - Debe encontrar artículos que contengan AMBOS tokens como subcadenas exactas
+ * - "Nuez/Cas/34-36" NO coincide porque "cas/36+" no está presente (tiene "34-36" en su lugar)
+ * - "Nuez Cas/36+ x 5" SÍ coincide porque contiene ambos tokens exactos
+ */
 function filtrarArticulosLocal(query, items) {
+  // Tokenizar: dividir por espacios, preservando caracteres especiales dentro de cada token
   const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
 
-  console.log('[ARTICULOS-FILTER] Iniciando filtrado...', { 
+  console.log('[ARTICULOS-FILTER] Iniciando filtrado ESTRICTO...', { 
     query_original: query,
     query_normalizado: normalizarTexto(query),
-    terms, 
+    tokens_generados: terms, 
     items_recibidos: items.length 
   });
 
@@ -676,21 +686,22 @@ function filtrarArticulosLocal(query, items) {
     // Solo buscar en la descripción, NO en códigos (evita falsos positivos por códigos de barras)
     const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
     
-    // Verificar si TODOS los términos están presentes como SUBCADENAS (fragmentos)
-    // Esto permite buscar "cas" y encontrar "secas", "cascara", etc.
-    const cumple = terms.every(t => descripcionNormalizada.includes(t));
+    // ✅ LÓGICA ESTRICTA: TODOS los tokens deben estar presentes como SUBCADENAS EXACTAS
+    // Esto significa que "cas/36+" debe aparecer literalmente en la descripción
+    // NO coincidirá con "cas/34-36" porque los caracteres no son idénticos
+    const cumple = terms.every(token => descripcionNormalizada.includes(token));
     
-    // Log detallado para los primeros 5 artículos (debug)
-    if (items.indexOf(a) < 5) {
-      console.log('[ARTICULOS-FILTER] Evaluando artículo:', {
+    // Log detallado para los primeros 3 artículos (debug)
+    if (items.indexOf(a) < 3) {
+      console.log('[ARTICULOS-FILTER] [ESTRICTO] Evaluando artículo:', {
         descripcion_original: a.description ?? a.descripcion,
         descripcion_normalizada: descripcionNormalizada,
-        terms_buscados: terms,
+        tokens_buscados: terms,
         cumple_todos: cumple,
-        detalles: terms.map(t => ({ 
-          termino: t, 
-          encontrado: descripcionNormalizada.includes(t),
-          posicion: descripcionNormalizada.indexOf(t)
+        detalles_coincidencia: terms.map(token => ({ 
+          token: token, 
+          encontrado: descripcionNormalizada.includes(token),
+          posicion: descripcionNormalizada.indexOf(token)
         }))
       });
     }
@@ -709,14 +720,14 @@ function filtrarArticulosLocal(query, items) {
   });
 
   // Log de depuración final
-  console.log('[ARTICULOS-FILTER] Filtrado completado:', { 
-    query, 
-    terms, 
+  console.log('[ARTICULOS-FILTER] Filtrado ESTRICTO completado:', { 
+    query_original: query, 
+    tokens: terms, 
     items_recibidos: items.length,
     resultados_filtrados: out.length 
   });
 
-  // Limite visual (podés subirlo a 100 si querés)
+  // Limite visual
   return out.slice(0, 50);
 }
 
@@ -1170,14 +1181,15 @@ function seleccionarArticulo(input, element) {
 // ===== FUNCIONES DE UTILIDADES =====
 
 /**
- * Normalizar texto para búsqueda (tolerancia a acentos y caracteres especiales)
+ * Normalizar texto para búsqueda (tolerancia a acentos, PRESERVANDO caracteres especiales)
+ * NUEVA LÓGICA: Mantiene símbolos como /, +, - para coincidencias exactas
  */
 function normalizarTexto(texto) {
   return (texto || '').toString()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // Remover acentos
-    .replace(/[^\w\s]/g, ' ') // Reemplazar caracteres especiales (/, -, etc.) por espacios
+    // NO reemplazar caracteres especiales - los mantenemos para búsqueda exacta
     .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
     .trim();
 }
