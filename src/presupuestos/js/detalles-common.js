@@ -463,9 +463,16 @@ function handleClienteKeydown(event) {
             break;
 
         case 'Enter':
-            event.preventDefault();
+            event.preventDefault(); // ✅ Evitar submit del formulario
+            
+            // Si hay un índice seleccionado (navegación con flechas), usar ese
             if (window.Detalles.selectedIndex >= 0 && items[window.Detalles.selectedIndex]) {
                 seleccionarCliente(items[window.Detalles.selectedIndex]);
+            } 
+            // Si no hay índice seleccionado pero hay resultados, auto-seleccionar el primero
+            else if (items.length > 0) {
+                console.log('🔍 [DETALLES-COMMON] Auto-seleccionando primer resultado al presionar Enter');
+                seleccionarCliente(items[0]);
             }
             break;
 
