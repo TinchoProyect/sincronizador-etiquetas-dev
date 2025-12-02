@@ -7,27 +7,32 @@
     <link rel="stylesheet" href="/css/style.css">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>
+        /* ===== TABLA COMPACTA ===== */
         .tabla-articulos {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 15px;
             background-color: white;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             border-radius: 8px;
             overflow: hidden;
+            font-size: 12px; /* Reducido de 14px */
         }
 
         .tabla-articulos th,
         .tabla-articulos td {
-            padding: 12px 15px;
+            padding: 4px 8px; /* Reducido de 12px 15px */
             text-align: left;
             border-bottom: 1px solid var(--border-color);
+            vertical-align: middle; /* Alineación vertical perfecta */
         }
 
         .tabla-articulos th {
             background-color: var(--primary-color);
             color: white;
             font-weight: 600;
+            font-size: 12px;
+            padding: 6px 8px; /* Ligeramente más alto para headers */
         }
 
         .tabla-articulos tr:hover {
@@ -41,48 +46,57 @@
         .mensaje-info {
             text-align: center;
             color: #666;
-            padding: 20px;
+            padding: 15px;
+            font-size: 12px;
         }
 
         .mensaje-error {
             text-align: center;
             color: #dc3545;
-            padding: 20px;
+            padding: 15px;
+            font-size: 12px;
         }
 
+        /* ===== BARRA DE ACCIONES COMPACTA ===== */
         .actions-bar {
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 10px;
+            flex-wrap: wrap; /* Permitir wrap en pantallas pequeñas */
         }
 
         .filters-container {
             display: flex;
-            gap: 20px;
+            gap: 10px; /* Reducido de 20px */
             align-items: center;
+            flex-wrap: wrap;
+            flex: 1;
         }
 
         .filter-group {
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 3px; /* Reducido de 5px */
         }
 
         .filter-group label {
-            font-size: 12px;
+            font-size: 10px; /* Reducido de 12px */
             font-weight: 600;
             color: var(--text-color);
             margin: 0;
+            white-space: nowrap;
         }
 
         .filter-group input,
         .filter-group select {
-            padding: 8px 12px;
+            padding: 5px 8px; /* Reducido de 8px 12px */
             border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            min-width: 200px;
+            border-radius: 3px;
+            font-size: 12px; /* Reducido de 14px */
+            min-width: 120px; /* Reducido de 200px */
+            height: 28px; /* Altura fija para consistencia */
         }
 
         .filter-group input:focus,
@@ -92,16 +106,22 @@
             box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
         }
 
+        /* ===== BOTONES COMPACTOS ===== */
         .primary-button {
             background-color: var(--primary-color);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 6px 12px; /* Reducido de 10px 20px */
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px; /* Reducido de 14px */
             font-weight: 600;
             transition: background-color 0.3s;
+            white-space: nowrap;
+            height: 28px; /* Altura fija para alineación */
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .primary-button:hover {
@@ -112,25 +132,28 @@
         .header-buttons {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
 
         .header-buttons .primary-button {
             text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
+            gap: 4px;
         }
 
         .back-button {
             background-color: #6c757d;
             color: white;
             text-decoration: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
             font-weight: 600;
             transition: background-color 0.3s;
+            white-space: nowrap;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .back-button:hover {
@@ -255,11 +278,13 @@
             background-color: #6c757d;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 6px 12px; /* Reducido de 8px 16px */
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-            margin-right: 10px;
+            font-size: 12px; /* Reducido de 14px */
+            margin-right: 8px;
+            height: 28px;
+            white-space: nowrap;
         }
 
         .secondary-button:hover {
@@ -270,11 +295,13 @@
             background-color: #28a745;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 6px 12px; /* Reducido de 10px 20px */
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px; /* Reducido de 14px */
             font-weight: 600;
+            height: 28px;
+            white-space: nowrap;
         }
 
         .success-button:hover {
@@ -285,10 +312,12 @@
             background-color: #dc3545;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 6px 12px; /* Reducido de 8px 16px */
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px; /* Reducido de 14px */
+            height: 28px;
+            white-space: nowrap;
         }
 
         .danger-button:hover {
@@ -354,16 +383,18 @@
             font-size: 0.9rem;
         }
 
-        /* Estilos para ajustes puntuales */
+        /* ===== ESTILOS PARA AJUSTES PUNTUALES ===== */
         .buttons-container {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
+            flex-shrink: 0; /* Evitar que se compriman */
         }
 
         .checkbox-column {
-            width: 40px;
+            width: 35px; /* Reducido de 40px */
             text-align: center;
+            padding: 4px !important;
         }
 
         .checkbox-header {
@@ -377,19 +408,19 @@
         }
 
         .checkbox-articulo {
-            width: 18px;
-            height: 18px;
+            width: 16px; /* Reducido de 18px */
+            height: 16px; /* Reducido de 18px */
             cursor: pointer;
         }
 
-        /* Estilos adicionales para ajustes puntuales */
+        /* ===== ESTILOS ADICIONALES COMPACTOS ===== */
         #acciones-ajuste {
-            margin-bottom: 20px;
-            padding-bottom: 15px;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
             border-bottom: 1px solid #dee2e6;
             display: flex;
             justify-content: flex-end;
-            gap: 10px;
+            gap: 8px;
         }
 
         .ajuste-item {
@@ -437,11 +468,12 @@
             display: none;
         }
 
-        /* Estilos para los botones de radio */
+        /* ===== BOTONES DE RADIO COMPACTOS ===== */
         .btn-group {
             display: inline-flex;
-            border-radius: 4px;
+            border-radius: 3px;
             overflow: hidden;
+            height: 28px; /* Altura fija para alineación */
         }
 
         .btn-check {
@@ -449,13 +481,17 @@
         }
 
         .btn {
-            padding: 8px 16px;
+            padding: 5px 10px; /* Reducido de 8px 16px */
             border: 1px solid #ddd;
             background-color: white;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 11px; /* Reducido de 14px */
             transition: all 0.3s;
             white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 28px;
         }
 
         .btn:hover {
@@ -503,12 +539,12 @@
             color: #856404;
         }
 
-        /* Toggle Switch Styles */
+        /* ===== TOGGLE SWITCHES MINIATURA ===== */
         .switch {
             position: relative;
             display: inline-block;
-            width: 60px;
-            height: 34px;
+            width: 40px; /* Reducido de 60px */
+            height: 20px; /* Reducido de 34px */
         }
 
         .switch input {
@@ -525,18 +561,18 @@
             right: 0;
             bottom: 0;
             background-color: #ccc;
-            transition: .4s;
+            transition: .3s;
         }
 
         .slider:before {
             position: absolute;
             content: "";
-            height: 26px;
-            width: 26px;
-            left: 4px;
-            bottom: 4px;
+            height: 14px; /* Reducido de 26px */
+            width: 14px; /* Reducido de 26px */
+            left: 3px; /* Ajustado de 4px */
+            bottom: 3px; /* Ajustado de 4px */
             background-color: white;
-            transition: .4s;
+            transition: .3s;
         }
 
         input:checked + .slider {
@@ -548,12 +584,12 @@
         }
 
         input:checked + .slider:before {
-            transform: translateX(26px);
+            transform: translateX(20px); /* Ajustado de 26px */
         }
 
         /* Rounded sliders */
         .slider.round {
-            border-radius: 34px;
+            border-radius: 20px; /* Ajustado de 34px */
         }
 
         .slider.round:before {
@@ -564,7 +600,7 @@
         .produccion-cell {
             text-align: center;
             vertical-align: middle;
-            padding: 8px;
+            padding: 4px 8px; /* Reducido de 8px */
         }
 
         /* Estilos específicos para el modal de diferencias */
@@ -627,6 +663,32 @@
             background-color: #f8d7da;
             color: #721c24;
         }
+
+        /* ===== ESTILOS PARA INPUT DE KILOS UNIDAD ===== */
+        .input-kilos-unidad {
+            width: 70px !important; /* Reducido de 80px */
+            padding: 2px 4px !important; /* Reducido para tabla compacta */
+            border: 1px solid #ddd !important;
+            border-radius: 3px !important;
+            text-align: center !important;
+            background-color: #f5f5f5 !important;
+            font-size: 11px !important; /* Reducido para consistencia */
+            height: 22px !important; /* Altura fija compacta */
+        }
+
+        .input-kilos-unidad:not([disabled]) {
+            background-color: #ffffff !important;
+            border: 2px solid #007bff !important;
+        }
+
+        .kilos-unidad-cell {
+            cursor: pointer;
+            padding: 4px 8px !important;
+        }
+
+        .kilos-unidad-cell:hover {
+            background-color: #f8f9fa;
+        }
     </style>
 </head>
 <body>
@@ -647,7 +709,7 @@
                     <div class="filters-container">
                         <div class="filter-group">
                             <label for="filtro-nombre">Filtrar por nombre:</label>
-                            <input type="text" id="filtro-nombre" placeholder="Escribir nombre del artículo...">
+                <input type="text" id="filtro-nombre" placeholder="Nombre del artículo...">
                         </div>
                         <div class="filter-group">
                             <label for="filtro-stock">Filtrar por stock:</label>
@@ -665,10 +727,10 @@
                                 <label class="btn btn-outline-secondary" for="filtroTodos">Todos</label>
                                 
                                 <input type="radio" class="btn-check" name="filtroProduccion" id="filtroProducidos" value="producidos">
-                                <label class="btn btn-outline-success" for="filtroProducidos">Producidos por LAMDA</label>
+                                <label class="btn btn-outline-success" for="filtroProducidos">Prod. LAMDA</label>
                                 
                                 <input type="radio" class="btn-check" name="filtroProduccion" id="filtroNoProducidos" value="no_producidos">
-                                <label class="btn btn-outline-warning" for="filtroNoProducidos">NO producidos por LAMDA</label>
+                                <label class="btn btn-outline-warning" for="filtroNoProducidos">NO Prod. LAMDA</label>
                             </div>
                         </div>
                         <div class="filter-group">
@@ -678,10 +740,10 @@
                                 <label class="btn btn-outline-secondary" for="filtroExternaTodos">Todos</label>
                                 
                                 <input type="radio" class="btn-check" name="filtroProduccionExterna" id="filtroExternaSi" value="externa_si">
-                                <label class="btn btn-outline-success" for="filtroExternaSi">Solo Prod. Externa</label>
+                                <label class="btn btn-outline-success" for="filtroExternaSi">Prod. Ext.</label>
                                 
                                 <input type="radio" class="btn-check" name="filtroProduccionExterna" id="filtroExternaNo" value="externa_no">
-                                <label class="btn btn-outline-warning" for="filtroExternaNo">NO Prod. Externa</label>
+                                <label class="btn btn-outline-warning" for="filtroExternaNo">NO Prod. Ext.</label>
                             </div>
                         </div>
                     </div>
