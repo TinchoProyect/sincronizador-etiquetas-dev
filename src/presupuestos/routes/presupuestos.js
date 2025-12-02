@@ -16,7 +16,8 @@ const {
     obtenerConfiguracion,
     obtenerResumen,
     obtenerPrecioArticuloCliente,
-    obtenerDatosCliente
+    obtenerDatosCliente,
+    obtenerHistorialEntregasCliente
 } = require('../controllers/presupuestos');
 
 
@@ -206,6 +207,26 @@ router.get('/clientes/:id_cliente', validatePermissions('presupuestos.read'), as
         res.status(500).json({
             success: false,
             error: 'Error interno al obtener datos del cliente',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/clientes/:id_cliente/historial-entregas
+ * @desc Obtener historial de entregas del cliente (productos únicos agrupados por mes)
+ * @access Privado
+ */
+router.get('/clientes/:id_cliente/historial-entregas', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente/historial-entregas - Obteniendo historial de entregas');
+    
+    try {
+        await obtenerHistorialEntregasCliente(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /clientes/:id_cliente/historial-entregas:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener historial de entregas',
             message: error.message
         });
     }

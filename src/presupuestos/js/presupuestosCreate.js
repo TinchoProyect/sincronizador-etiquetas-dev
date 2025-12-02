@@ -1129,6 +1129,9 @@ function seleccionarCliente(element) {
 
     // Ocultar sugerencias
     ocultarSugerencias();
+    
+    // ✅ NUEVO: Cargar historial de entregas del cliente
+    cargarHistorialEntregas(clienteId);
 }
 
 /**
@@ -1926,6 +1929,133 @@ function seleccionarArticuloPorClick(element, event) {
         console.error('❌ [ARTICULOS] No se pudo encontrar input de artículo para selección');
     }
 }
+
+// ===== FUNCIONES DE HISTORIAL DE ENTREGAS =====
+
+/**
+ * Cargar historial de entregas del cliente
+ */
+async function cargarHistorialEntregas(clienteId) {
+    console.log(`📦 [HISTORIAL] Cargando historial de entregas para cliente: ${clienteId}`);
+    
+    const section = document.getElementById('historial-entregas-section');
+    const content = document.getElementById('historial-entregas-content');
+    
+    if (!section || !content) {
+        console.warn('⚠️ [HISTORIAL] Elementos del historial no encontrados');
+        return;
+    }
+    
+    // Mostrar sección y estado de carga
+    section.style.display = 'block';
+    content.innerHTML = '<div class="historial-loading"><p>🔍 Cargando historial de entregas...</p></div>';
+    
+    try {
+        const response = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
+        
+        if (!response.ok) {
+            throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        console.log(`✅ [HISTORIAL] Historial recibido:`, result.data);
+        
+        // Renderizar historial
+        renderizarHistorialEntregas(result.data);
+        
+    } catch (error) {
+        console.error('❌ [HISTORIAL] Error al cargar historial:', error);
+        content.innerHTML = `
+            <div class="historial-error">
+                <p>⚠️ Error al cargar el historial de entregas</p>
+                <p style="font-size: 0.9em; margin-top: 5px;">${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Renderizar historial de entregas agrupado por meses
+ * VERSIÓN COMPACTA: Solo descripción, cantidad y fecha
+ */
+function renderizarHistorialEntregas(data) {
+    const content = document.getElementById('historial-entregas-content');
+    
+    if (!content) return;
+    
+    // Si no hay historial
+    if (data.sin_historial || !data.grupos || data.grupos.length === 0) {
+        content.innerHTML = `
+            <div class="historial-sin-datos">
+                <p>📭 Este cliente no tiene entregas previas registradas</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Construir HTML para cada grupo de mes
+    let html = '';
+    
+    data.grupos.forEach(grupo => {
+        html += `
+            <div class="historial-grupo">
+                <div class="historial-grupo-header">
+                    <span>${grupo.label}</span>
+                    <span class="historial-grupo-badge">${grupo.productos.length}</span>
+                </div>
+                <ul class="historial-productos-list">
+        `;
+        
+        grupo.productos.forEach(producto => {
+            const fechaFormateada = formatearFechaHistorial(producto.fecha_entrega);
+            
+            // ✅ VERSIÓN COMPACTA: Solo descripción, cantidad y fecha (sin código de barras)
+            html += `
+                <li class="historial-producto-item">
+                    <div class="historial-producto-info">
+                        <div class="historial-producto-descripcion" title="${producto.descripcion}">${producto.descripcion}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="historial-producto-cantidad">×${producto.cantidad}</span>
+                        <span class="historial-producto-fecha">${fechaFormateada}</span>
+                    </div>
+                </li>
+            `;
+        });
+        
+        html += `
+                </ul>
+            </div>
+        `;
+    });
+    
+    content.innerHTML = html;
+    
+    console.log(`✅ [HISTORIAL] Historial renderizado: ${data.total_productos_unicos} productos únicos en ${data.grupos.length} grupos`);
+}
+
+/**
+ * Formatear fecha para mostrar en el historial
+ */
+function formatearFechaHistorial(fecha) {
+    if (!fecha) return '-';
+    
+    try {
+        const date = new Date(fecha);
+        if (isNaN(date.getTime())) return fecha;
+        
+        return date.toLocaleDateString('es-ES', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    } catch (error) {
+        return fecha;
+    }
+}
+
+// ===== FIN FUNCIONES DE HISTORIAL DE ENTREGAS =====
 
 /**
  * Seleccionar artículo

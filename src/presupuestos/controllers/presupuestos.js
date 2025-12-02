@@ -2029,6 +2029,203 @@ const obtenerDatosCliente = async (req, res) => {
     }
 };
 
+/**
+ * Obtener historial de entregas de un cliente
+ * Devuelve productos únicos (última entrega) agrupados por mes
+ */
+const obtenerHistorialEntregasCliente = async (req, res) => {
+    const requestId = `historial-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🔍 [PRESUPUESTOS] ${requestId} - Obteniendo historial de entregas del cliente`);
+    
+    try {
+        const { id_cliente } = req.params;
+        
+        if (!id_cliente) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de cliente requerido',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Buscando entregas para cliente ID: ${id_cliente}`);
+        
+        // Consulta para obtener TODOS los detalles de presupuestos entregados del cliente
+        // Incluimos fecha_entrega para ordenar por la más reciente
+        const query = `
+            SELECT 
+                pd.articulo as codigo_barras,
+                pd.articulo as articulo_numero,
+                COALESCE(a.nombre, pd.articulo) as descripcion,
+                pd.cantidad,
+                COALESCE(p.fecha_entrega, p.fecha) as fecha_entrega,
+                p.id as presupuesto_id,
+                p.id_presupuesto_ext
+            FROM public.presupuestos p
+            INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
+            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+            WHERE p.id_cliente = $1
+              AND p.activo = true
+              AND LOWER(p.estado) = 'entregado'
+            ORDER BY fecha_entrega DESC, p.id DESC
+        `;
+        
+        const result = await req.db.query(query, [id_cliente.toString()]);
+        
+        console.log(`📦 [PRESUPUESTOS] ${requestId} - Total detalles encontrados: ${result.rows.length}`);
+        
+        if (result.rows.length === 0) {
+            console.log(`ℹ️ [PRESUPUESTOS] ${requestId} - Cliente sin entregas previas`);
+            return res.json({
+                success: true,
+                data: {
+                    cliente_id: id_cliente,
+                    total_productos: 0,
+                    grupos: [],
+                    sin_historial: true
+                },
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // PASO 1: Eliminar duplicados - quedarse con la entrega más reciente por producto
+        // Clave única: codigo_barras + articulo_numero
+        const productosUnicos = new Map();
+        
+        result.rows.forEach(item => {
+            const clave = `${item.codigo_barras}|${item.articulo_numero}`;
+            
+            // Si no existe o la fecha actual es más reciente, actualizar
+            if (!productosUnicos.has(clave)) {
+                productosUnicos.set(clave, item);
+            } else {
+                const existente = productosUnicos.get(clave);
+                const fechaExistente = new Date(existente.fecha_entrega);
+                const fechaNueva = new Date(item.fecha_entrega);
+                
+                if (fechaNueva > fechaExistente) {
+                    productosUnicos.set(clave, item);
+                }
+            }
+        });
+        
+        const productosUnicosArray = Array.from(productosUnicos.values());
+        console.log(`🔍 [PRESUPUESTOS] ${requestId} - Productos únicos (última entrega): ${productosUnicosArray.length}`);
+        
+        // PASO 2: Agrupar por buckets temporales
+        const ahora = new Date();
+        const mesActual = ahora.getMonth();
+        const añoActual = ahora.getFullYear();
+        
+        // Función helper para calcular diferencia de meses
+        const mesesDiferencia = (fecha) => {
+            const f = new Date(fecha);
+            const diffAnios = añoActual - f.getFullYear();
+            const diffMeses = mesActual - f.getMonth();
+            return diffAnios * 12 + diffMeses;
+        };
+        
+        // Nombres de meses en español
+        const nombresMeses = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ];
+        
+        // Inicializar grupos
+        const grupos = {
+            mes_actual: { label: `${nombresMeses[mesActual]} ${añoActual}`, productos: [] },
+            mes_1: { label: '', productos: [] },
+            mes_2: { label: '', productos: [] },
+            mes_3: { label: '', productos: [] },
+            mes_4: { label: '', productos: [] },
+            mes_5: { label: '', productos: [] },
+            mes_6: { label: '', productos: [] },
+            historico: { label: 'Más de 6 meses', productos: [] }
+        };
+        
+        // Calcular labels para meses anteriores
+        for (let i = 1; i <= 6; i++) {
+            const fecha = new Date(añoActual, mesActual - i, 1);
+            const mes = fecha.getMonth();
+            const año = fecha.getFullYear();
+            grupos[`mes_${i}`].label = `${nombresMeses[mes]} ${año}`;
+        }
+        
+        // Clasificar productos en grupos
+        productosUnicosArray.forEach(producto => {
+            const mesesAtras = mesesDiferencia(producto.fecha_entrega);
+            
+            const productoFormateado = {
+                codigo_barras: producto.codigo_barras,
+                articulo_numero: producto.articulo_numero,
+                descripcion: producto.descripcion,
+                cantidad: parseFloat(producto.cantidad || 0),
+                fecha_entrega: producto.fecha_entrega,
+                presupuesto_id: producto.presupuesto_id
+            };
+            
+            if (mesesAtras === 0) {
+                grupos.mes_actual.productos.push(productoFormateado);
+            } else if (mesesAtras === 1) {
+                grupos.mes_1.productos.push(productoFormateado);
+            } else if (mesesAtras === 2) {
+                grupos.mes_2.productos.push(productoFormateado);
+            } else if (mesesAtras === 3) {
+                grupos.mes_3.productos.push(productoFormateado);
+            } else if (mesesAtras === 4) {
+                grupos.mes_4.productos.push(productoFormateado);
+            } else if (mesesAtras === 5) {
+                grupos.mes_5.productos.push(productoFormateado);
+            } else if (mesesAtras === 6) {
+                grupos.mes_6.productos.push(productoFormateado);
+            } else {
+                grupos.historico.productos.push(productoFormateado);
+            }
+        });
+        
+        // Convertir a array y filtrar grupos vacíos
+        const gruposArray = [
+            { key: 'mes_actual', ...grupos.mes_actual },
+            { key: 'mes_1', ...grupos.mes_1 },
+            { key: 'mes_2', ...grupos.mes_2 },
+            { key: 'mes_3', ...grupos.mes_3 },
+            { key: 'mes_4', ...grupos.mes_4 },
+            { key: 'mes_5', ...grupos.mes_5 },
+            { key: 'mes_6', ...grupos.mes_6 },
+            { key: 'historico', ...grupos.historico }
+        ].filter(grupo => grupo.productos.length > 0);
+        
+        console.log(`✅ [PRESUPUESTOS] ${requestId} - Historial agrupado en ${gruposArray.length} períodos`);
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Distribución:`, 
+            gruposArray.map(g => `${g.label}: ${g.productos.length}`).join(', ')
+        );
+        
+        res.json({
+            success: true,
+            data: {
+                cliente_id: id_cliente,
+                total_productos_unicos: productosUnicosArray.length,
+                total_registros_originales: result.rows.length,
+                grupos: gruposArray
+            },
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al obtener historial de entregas:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener historial de entregas del cliente',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD completo');
 
 module.exports = {
@@ -2047,5 +2244,6 @@ module.exports = {
     obtenerConfiguracion,
     obtenerResumen,
     obtenerPrecioArticuloCliente,
-    obtenerDatosCliente
+    obtenerDatosCliente,
+    obtenerHistorialEntregasCliente
 };

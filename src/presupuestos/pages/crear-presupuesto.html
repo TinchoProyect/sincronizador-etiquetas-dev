@@ -494,6 +494,139 @@
             80%, 100% { content: "..."; }
         }
         
+        /* Estilos para Historial de Entregas - VERSIÓN COMPACTA */
+        .historial-loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        .historial-sin-datos {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+            font-style: italic;
+        }
+        
+        .historial-error {
+            text-align: center;
+            padding: 20px;
+            color: #e74c3c;
+            background-color: #fee;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        
+        .historial-grupo {
+            margin-bottom: 15px;
+        }
+        
+        .historial-grupo-header {
+            background: #f8f9fa;
+            padding: 6px 12px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #495057;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9em;
+        }
+        
+        .historial-grupo-badge {
+            background: #3498db;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        
+        /* ✅ SCROLL INTERNO: Contenedor con altura máxima y scroll */
+        .historial-productos-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 300px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+        }
+        
+        /* ✅ FILAS COMPACTAS: Padding mínimo, altura reducida */
+        .historial-producto-item {
+            padding: 4px 10px;
+            border-bottom: 1px solid #f0f0f0;
+            background: white;
+            transition: background-color 0.15s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 32px;
+        }
+        
+        .historial-producto-item:last-child {
+            border-bottom: none;
+        }
+        
+        .historial-producto-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .historial-producto-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        /* ✅ DESCRIPCIÓN COMPACTA: Sin margen inferior, fuente reducida */
+        .historial-producto-descripcion {
+            font-weight: 500;
+            color: #2c3e50;
+            font-size: 0.85em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* ✅ BADGES COMPACTOS: Tamaño reducido */
+        .historial-producto-cantidad {
+            background: #27ae60;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-right: 8px;
+            white-space: nowrap;
+        }
+        
+        .historial-producto-fecha {
+            color: #7f8c8d;
+            font-size: 0.8em;
+            white-space: nowrap;
+        }
+        
+        /* Scrollbar personalizada para mejor UX */
+        .historial-productos-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .historial-productos-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        .historial-productos-list::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        .historial-productos-list::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
         /* Footer */
         footer {
             background-color: white;
@@ -575,6 +708,20 @@
                         
                         <!-- Info extra del cliente (opcional) -->
                         <div id="cliente-info-extra" class="cliente-info-extra"></div>
+                    </div>
+                    
+                    <!-- Acordeón: Historial de Entregas del Cliente -->
+                    <div id="historial-entregas-section" class="accordion-section" style="display: none;">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <h3>📦 Historial de Productos Entregados</h3>
+                            <span class="accordion-icon">▼</span>
+                        </div>
+                        <div class="accordion-content" id="historial-entregas-content">
+                            <!-- Se llenará dinámicamente con JavaScript -->
+                            <div class="historial-loading" style="text-align: center; padding: 20px; color: #666;">
+                                <p>Cargando historial...</p>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Acordeón: Detalles del Presupuesto (campos secundarios) -->
