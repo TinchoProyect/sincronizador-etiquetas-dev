@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "numero": "MFSTx300",
-    "nombre": "Mix/F/Secas/Tropical x 300",
-    "codigo_barras": "4521563258"
-  },
-  "cantidad": "20.00"
+  "numero": "PMx10M",
+  "nombre": "Pasa/Moscatel x 10 M",
+  "codigo_barras": "7791351141858",
+  "cantidad": 2
 }

@@ -729,6 +729,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
             updatePresupuestosTable(appState.presupuestos);
             updateCategoriasFilter(appState.categorias);
             updatePaginationControls(); // Nueva función para controles de paginación
+            updateStandByAccordion(); // Actualizar acordeón de presupuestos sin confirmar
             
             if (page === 1) {
                 loadEstadisticas(); // Solo actualizar estadísticas en la primera página
@@ -2119,4 +2120,109 @@ function clearSavedFilters() {
 // Exponer función para uso externo si es necesario
 window.clearSavedFilters = clearSavedFilters;
 
-console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación, auto-update y persistencia de filtros');
+/**
+ * ===================================
+ * FUNCIONES PARA ACORDEÓN DE PRESUPUESTOS SIN CONFIRMAR
+ * ===================================
+ */
+
+/**
+ * Toggle del acordeón - expandir/colapsar
+ */
+function toggleAccordion(accordionId) {
+    console.log(`🔍 [ACCORDION] Toggling acordeón: ${accordionId}`);
+    
+    const accordion = document.getElementById(accordionId);
+    if (!accordion) {
+        console.error(`❌ [ACCORDION] No se encontró el acordeón con ID: ${accordionId}`);
+        return;
+    }
+    
+    // Toggle clase expanded
+    accordion.classList.toggle('expanded');
+    
+    const isExpanded = accordion.classList.contains('expanded');
+    console.log(`✅ [ACCORDION] Acordeón ${isExpanded ? 'expandido' : 'colapsado'}`);
+}
+
+/**
+ * Actualizar acordeón de presupuestos sin confirmar (Stand By)
+ * Filtra presupuestos con estado "Muestra de Fraccionados"
+ */
+function updateStandByAccordion() {
+    console.log('🔍 [ACCORDION] Actualizando acordeón de presupuestos sin confirmar...');
+    
+    // Filtrar presupuestos con estado exactamente "Muestra de Fraccionados"
+    const standByPresupuestos = appState.presupuestos.filter(item => 
+        item.estado === 'Muestra de Fraccionados'
+    );
+    
+    console.log(`✅ [ACCORDION] Encontrados ${standByPresupuestos.length} presupuestos sin confirmar`);
+    
+    // Actualizar contador en el header del acordeón
+    const countElement = document.getElementById('standby-count');
+    if (countElement) {
+        countElement.textContent = standByPresupuestos.length;
+    }
+    
+    // Actualizar tabla dentro del acordeón
+    const tbody = document.getElementById('tbody-standby');
+    if (!tbody) {
+        console.error('❌ [ACCORDION] No se encontró tbody-standby');
+        return;
+    }
+    
+    // Si no hay presupuestos, mostrar mensaje
+    if (standByPresupuestos.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="no-data">
+                    No hay presupuestos sin confirmar
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Renderizar filas reutilizando la misma lógica que la tabla principal
+    tbody.innerHTML = standByPresupuestos.map(item => `
+        <tr class="slide-up" data-presupuesto-id="${item.id}">
+            <td class="text-center">
+                <button class="btn-expand" onclick="toggleDetalles(${item.id})" title="Ver detalles de artículos">
+                    <span class="expand-icon">+</span>
+                </button>
+            </td>
+            <td>${escapeHtml(item.categoria || 'Sin tipo')}</td>
+            <td>${escapeHtml(item.concepto || 'Sin cliente')}</td>
+            <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
+            <td class="text-center">
+                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(item.estado || 'Sin estado')}</span>
+            </td>
+            <td class="text-center">
+                <div class="action-buttons">
+                    <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
+                        Imprimir
+                    </button>
+                    <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
+                        Editar
+                    </button>
+                    <button class="btn-action btn-delete" onclick="anularPresupuesto(${item.id})" title="Anular presupuesto">
+                        Eliminar
+                    </button>
+                </div>
+            </td>
+        </tr>
+        <tr class="detalles-row" id="detalles-${item.id}" style="display: none;">
+            <td colspan="6" class="detalles-container">
+                <div class="loading-detalles">Cargando detalles...</div>
+            </td>
+        </tr>
+    `).join('');
+    
+    console.log('✅ [ACCORDION] Acordeón actualizado con presupuestos sin confirmar');
+}
+
+// Exponer función toggleAccordion globalmente para uso en onclick
+window.toggleAccordion = toggleAccordion;
+
+console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación, auto-update, persistencia de filtros y acordeón de stand-by');

@@ -477,16 +477,28 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             tabla.className = 'articulos-tabla';
 
             const thead = document.createElement('thead');
-            thead.innerHTML = `
-                <tr>
-                    <th>Artículo</th>
-                    <th>Descripción</th>
-                    <th>Cantidad</th>
-                    <th>Stock Disponible</th>
-                    <th>Faltante</th>
-                    <th>Estado</th>
-                </tr>
-            `;
+            // Para el acordeón de Stand By, solo mostrar Artículo, Descripción y Cantidad
+            // No mostrar Stock ni Faltante ya que no tenemos forma confiable de obtenerlos
+            if (containerId === 'pedidos-standby-container') {
+                thead.innerHTML = `
+                    <tr>
+                        <th>Artículo</th>
+                        <th>Descripción</th>
+                        <th>Cantidad</th>
+                    </tr>
+                `;
+            } else {
+                thead.innerHTML = `
+                    <tr>
+                        <th>Artículo</th>
+                        <th>Descripción</th>
+                        <th>Cantidad</th>
+                        <th>Stock Disponible</th>
+                        <th>Faltante</th>
+                        <th>Estado</th>
+                    </tr>
+                `;
+            }
             tabla.appendChild(thead);
 
             const tbody = document.createElement('tbody');
@@ -505,21 +517,24 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 tdPedidoTotal.textContent = articulo.pedido_total;
                 tr.appendChild(tdPedidoTotal);
 
-                const tdStockDisponible = document.createElement('td');
-                tdStockDisponible.textContent = articulo.stock_disponible;
-                tr.appendChild(tdStockDisponible);
+                // Solo agregar columnas de stock para acordeones que NO sean Stand By
+                if (containerId !== 'pedidos-standby-container') {
+                    const tdStockDisponible = document.createElement('td');
+                    tdStockDisponible.textContent = articulo.stock_disponible;
+                    tr.appendChild(tdStockDisponible);
 
-                const tdFaltante = document.createElement('td');
-                tdFaltante.textContent = articulo.faltante;
-                tdFaltante.className = articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa';
-                tr.appendChild(tdFaltante);
+                    const tdFaltante = document.createElement('td');
+                    tdFaltante.textContent = articulo.faltante;
+                    tdFaltante.className = articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa';
+                    tr.appendChild(tdFaltante);
 
-                const tdEstado = document.createElement('td');
-                const indicador = document.createElement('span');
-                indicador.className = 'indicador-estado ' + calcularIndicadorEstado(articulo);
-                indicador.textContent = articulo.faltante > 0 ? 'Faltante' : 'Completo';
-                tdEstado.appendChild(indicador);
-                tr.appendChild(tdEstado);
+                    const tdEstado = document.createElement('td');
+                    const indicador = document.createElement('span');
+                    indicador.className = 'indicador-estado ' + calcularIndicadorEstado(articulo);
+                    indicador.textContent = articulo.faltante > 0 ? 'Faltante' : 'Completo';
+                    tdEstado.appendChild(indicador);
+                    tr.appendChild(tdEstado);
+                }
 
                 tbody.appendChild(tr);
             });
@@ -1737,3 +1752,234 @@ window.abrirModalArmarPedido = abrirModalArmarPedido;
 window.cerrarModalArmarPedido = cerrarModalArmarPedido;
 window.mostrarToast = mostrarToast;
 window.cargarPedidosArticulos = cargarPedidosArticulos;
+
+// ==========================================
+// FUNCIONES PARA PRESUPUESTOS SIN CONFIRMAR (STAND BY)
+// ==========================================
+
+/**
+ * Cargar presupuestos sin confirmar (estado "Muestra de Fraccionados")
+ * Usa el mismo formato de renderizado que los otros acordeones
+ */
+async function cargarPresupuestosStandBy() {
+    console.log('🔍 [STANDBY] Cargando presupuestos sin confirmar...');
+    
+    const contenedor = document.getElementById('pedidos-standby-container');
+    const contador = document.getElementById('contador-standby');
+    
+    if (!contenedor) {
+        console.error('❌ [STANDBY] No se encontró contenedor pedidos-standby-container');
+        return;
+    }
+    
+    // Mostrar loading
+    contenedor.innerHTML = '<p class="mensaje-info">Cargando presupuestos...</p>';
+    if (contador) contador.textContent = '0';
+    
+    try {
+        // Llamar al endpoint de presupuestos con filtro por estado
+        // IMPORTANTE: El módulo de presupuestos corre en puerto 3003
+        const response = await fetch('http://localhost:3003/api/presupuestos?estado=Muestra de Fraccionados');
+        
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('📊 [STANDBY] Respuesta del servidor:', data);
+        
+        if (!data.success) {
+            throw new Error(data.message || 'Error al cargar presupuestos');
+        }
+        
+        const presupuestos = data.data || [];
+        console.log(`✅ [STANDBY] Presupuestos recibidos: ${presupuestos.length}`);
+        
+        // Actualizar contador
+        if (contador) {
+            contador.textContent = presupuestos.length;
+        }
+        
+        // Si no hay presupuestos, mostrar mensaje
+        if (presupuestos.length === 0) {
+            contenedor.innerHTML = '<p class="mensaje-info">No hay presupuestos sin confirmar</p>';
+            return;
+        }
+        
+        // Obtener detalles de cada presupuesto (artículos)
+        const presupuestosConDetalles = await Promise.all(
+            presupuestos.map(async (presup) => {
+                try {
+                    const detallesResponse = await fetch(`http://localhost:3003/api/presupuestos/${presup.id}/detalles`);
+                    const detallesData = await detallesResponse.json();
+                    
+                    if (detallesData.success && detallesData.data && detallesData.data.detalles) {
+                        return {
+                            ...presup,
+                            articulos: detallesData.data.detalles
+                        };
+                    }
+                    return { ...presup, articulos: [] };
+                } catch (error) {
+                    console.error(`❌ Error al obtener detalles del presupuesto ${presup.id}:`, error);
+                    return { ...presup, articulos: [] };
+                }
+            })
+        );
+        
+        console.log('📊 [STANDBY] Presupuestos con detalles obtenidos');
+        
+        // Obtener stock de todos los artículos en una sola consulta
+        const todosLosArticulos = new Set();
+        presupuestosConDetalles.forEach(presup => {
+            if (presup.articulos) {
+                presup.articulos.forEach(art => {
+                    const codigo = art.articulo || art.codigo;
+                    if (codigo) todosLosArticulos.add(codigo);
+                });
+            }
+        });
+        
+        // Transformar al formato esperado por renderizarGrupoSecuencia
+        // NO consultamos stock para Stand By - solo mostramos los artículos del presupuesto
+        const clientesMap = new Map();
+        
+        presupuestosConDetalles.forEach(presup => {
+            const clienteKey = presup.concepto || 'Sin cliente';
+            
+            if (!clientesMap.has(clienteKey)) {
+                clientesMap.set(clienteKey, {
+                    cliente_id: clienteKey,
+                    cliente_nombre: clienteKey,
+                    articulos: []
+                });
+            }
+            
+            // Agregar los artículos reales del presupuesto
+            // Para Stand By: solo mostrar artículo, descripción y cantidad
+            if (presup.articulos && presup.articulos.length > 0) {
+                presup.articulos.forEach(art => {
+                    const cantidad = art.cantidad || 0;
+                    const codigoArticulo = art.articulo || art.codigo;
+                    
+                    clientesMap.get(clienteKey).articulos.push({
+                        presupuesto_id: presup.id,
+                        presupuesto_fecha: presup.fecha_registro,
+                        articulo_numero: codigoArticulo || '-',
+                        descripcion: art.descripcion_articulo || art.descripcion || '-',
+                        pedido_total: cantidad,
+                        stock_disponible: 0, // No mostrado en UI
+                        faltante: 0, // No mostrado en UI
+                        secuencia: 'Muestra de Fraccionados',
+                        snapshot_motivo: null,
+                        snapshot_numero_impresion: null,
+                        snapshot_secuencia: null
+                    });
+                });
+            }
+        });
+        
+        const clientesArray = Array.from(clientesMap.values());
+        
+        // Calcular totales por cliente
+        clientesArray.forEach(cliente => {
+            const presupuestosUnicos = new Set(cliente.articulos.map(art => art.presupuesto_id));
+            cliente.total_articulos = cliente.articulos.length;
+            cliente.total_presupuestos = presupuestosUnicos.size;
+        });
+        
+        // Renderizar usando la función existente
+        renderizarGrupoSecuencia('pedidos-standby-container', clientesArray, 'Presupuestos sin Confirmar');
+        
+        console.log('✅ [STANDBY] Presupuestos renderizados con formato estándar y artículos reales');
+        
+    } catch (error) {
+        console.error('❌ [STANDBY] Error al cargar presupuestos:', error);
+        contenedor.innerHTML = `<p class="mensaje-error">Error: ${error.message}</p>`;
+        if (contador) contador.textContent = '0';
+    }
+}
+
+/**
+ * Escapar HTML para prevenir XSS
+ */
+function escapeHtmlStandBy(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Formatear fecha en formato dd/mm/yyyy hh:mm
+ */
+function formatearFechaStandBy(dateString) {
+    if (!dateString) return 'N/A';
+    
+    try {
+        // Para fechas YYYY-MM-DD (solo fecha)
+        if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+            const [y, m, d] = dateString.split('-');
+            return `${d}/${m}/${y} 00:00`;
+        }
+        
+        // Para fechas con hora
+        const date = new Date(dateString);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
+    } catch (error) {
+        console.error('❌ Error al formatear fecha:', error);
+        return 'Fecha inválida';
+    }
+}
+
+/**
+ * Ver detalles de un presupuesto
+ */
+function verDetallesPresupuesto(presupuestoId) {
+    console.log(`👁️ [STANDBY] Ver detalles del presupuesto ${presupuestoId}`);
+    // Redirigir a la página de presupuestos con el ID
+    window.open(`/pages/presupuestos.html?id=${presupuestoId}`, '_blank');
+}
+
+/**
+ * Imprimir presupuesto sin confirmar
+ */
+function imprimirPresupuestoStandBy(presupuestoId) {
+    console.log(`📄 [STANDBY] Imprimir presupuesto ${presupuestoId}`);
+    // Redirigir a la página de impresión de presupuestos
+    window.open(`/pages/imprimir-presupuesto.html?id=${presupuestoId}`, '_blank');
+}
+
+/**
+ * Editar presupuesto sin confirmar
+ */
+function editarPresupuestoStandBy(presupuestoId) {
+    console.log(`✏️ [STANDBY] Editar presupuesto ${presupuestoId}`);
+    // Redirigir a la página de edición de presupuestos
+    window.open(`/pages/editar-presupuesto.html?id=${presupuestoId}`, '_blank');
+}
+
+// Cargar presupuestos sin confirmar al inicializar la página
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 [STANDBY] Inicializando carga de presupuestos sin confirmar...');
+    
+    // Cargar después de 2 segundos para no interferir con otras cargas
+    setTimeout(() => {
+        cargarPresupuestosStandBy();
+    }, 2000);
+    
+    // Recargar cada 60 segundos para mantener actualizado
+    setInterval(() => {
+        cargarPresupuestosStandBy();
+    }, 60000);
+});
+
+// Exponer función globalmente
+window.cargarPresupuestosStandBy = cargarPresupuestosStandBy;
+
+console.log('✅ [STANDBY] Módulo de presupuestos sin confirmar cargado');

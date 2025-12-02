@@ -1613,6 +1613,22 @@
             </div>
         </section>
 
+        <!-- Nueva sección: Presupuestos sin Confirmar (Stand By) -->
+        <section class="pedidos-por-cliente-section collapsible-section">
+            <!-- Botón de Toggle -->
+            <button class="section-toggle" onclick="toggleSection('presupuestos-standby-section')" aria-expanded="false">
+                <span class="toggle-icon">▶</span>
+                <h2>Presupuestos sin Confirmar <span id="contador-standby" class="contador-secuencia">(0)</span></h2>
+            </button>
+            
+            <!-- Contenido Colapsable -->
+            <div id="presupuestos-standby-section" class="collapsible-content" style="display: none;">
+                <div id="pedidos-standby-container" class="pedidos-container">
+                    <!-- Contenido dinámico se cargará aquí con el mismo formato que otros acordeones -->
+                </div>
+            </div>
+        </section>
+
         <!-- Nueva sección: Artículos de Pedidos Confirmados -->
         <section class="pedidos-por-cliente-section collapsible-section">
             <!-- Botón de Toggle -->

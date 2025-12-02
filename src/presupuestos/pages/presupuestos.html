@@ -99,6 +99,40 @@
 
             <!-- Mensajes de estado -->
             <div id="message-container" class="message-container"></div>
+
+            <!-- Acordeón: Presupuestos sin Confirmar (Stand By) -->
+            <div class="accordion-section" id="accordion-standby">
+                <div class="accordion-header" onclick="toggleAccordion('accordion-standby')">
+                    <div class="accordion-title">
+                        <span class="accordion-icon">▶</span>
+                        <h3>Presupuestos sin Confirmar</h3>
+                        <span class="accordion-count" id="standby-count">0</span>
+                    </div>
+                </div>
+                <div class="accordion-content">
+                    <div class="table-container">
+                        <table class="presupuestos-table">
+                            <thead>
+                                <tr>
+                                    <th width="60">Detalles</th>
+                                    <th>Tipo de Comprobante</th>
+                                    <th>Cliente</th>
+                                    <th>Fecha Registro</th>
+                                    <th>Estado</th>
+                                    <th width="120">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-standby">
+                                <tr>
+                                    <td colspan="6" class="no-data">
+                                        No hay presupuestos sin confirmar
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <!-- Modal de Confirmación de Eliminación -->

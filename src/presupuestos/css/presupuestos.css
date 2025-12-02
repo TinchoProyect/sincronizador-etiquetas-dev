@@ -2189,6 +2189,179 @@ footer {
     visibility: visible;
 }
 
+/* ===================================
+   ESTILOS PARA ACORDEÓN DE PRESUPUESTOS SIN CONFIRMAR
+   =================================== */
+
+/* Sección del acordeón */
+.accordion-section {
+    background-color: var(--white);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    margin-top: 20px;
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+/* Header del acordeón - clickeable */
+.accordion-header {
+    background: linear-gradient(135deg, var(--primary-color), #34495e);
+    color: var(--white);
+    padding: 15px 20px;
+    cursor: pointer;
+    transition: var(--transition);
+    user-select: none;
+}
+
+.accordion-header:hover {
+    background: linear-gradient(135deg, #1a252f, #2c3e50);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.accordion-header:active {
+    transform: scale(0.99);
+}
+
+/* Título del acordeón */
+.accordion-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.accordion-title h3 {
+    margin: 0;
+    font-size: 1.2em;
+    font-weight: 600;
+    flex: 1;
+}
+
+/* Icono de expansión */
+.accordion-icon {
+    font-size: 0.9em;
+    transition: transform 0.3s ease;
+    display: inline-block;
+    width: 20px;
+    text-align: center;
+}
+
+.accordion-section.expanded .accordion-icon {
+    transform: rotate(90deg);
+}
+
+/* Contador de presupuestos */
+.accordion-count {
+    background-color: var(--warning-color);
+    color: var(--white);
+    padding: 4px 12px;
+    border-radius: 15px;
+    font-size: 0.85em;
+    font-weight: 600;
+    min-width: 30px;
+    text-align: center;
+}
+
+/* Contenido del acordeón */
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease-out;
+    background-color: var(--white);
+}
+
+.accordion-section.expanded .accordion-content {
+    max-height: 2000px;
+    transition: max-height 0.5s ease-in;
+}
+
+/* Tabla dentro del acordeón - reutiliza estilos existentes */
+.accordion-content .table-container {
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+}
+
+.accordion-content .presupuestos-table {
+    margin: 0;
+}
+
+/* Animación de entrada para las filas del acordeón */
+.accordion-section.expanded .presupuestos-table tbody tr {
+    animation: slideInFromLeft 0.3s ease forwards;
+    opacity: 0;
+}
+
+.accordion-section.expanded .presupuestos-table tbody tr:nth-child(1) {
+    animation-delay: 0.05s;
+}
+
+.accordion-section.expanded .presupuestos-table tbody tr:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.accordion-section.expanded .presupuestos-table tbody tr:nth-child(3) {
+    animation-delay: 0.15s;
+}
+
+.accordion-section.expanded .presupuestos-table tbody tr:nth-child(4) {
+    animation-delay: 0.2s;
+}
+
+.accordion-section.expanded .presupuestos-table tbody tr:nth-child(5) {
+    animation-delay: 0.25s;
+}
+
+@keyframes slideInFromLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Responsive para acordeón */
+@media (max-width: 768px) {
+    .accordion-header {
+        padding: 12px 15px;
+    }
+    
+    .accordion-title h3 {
+        font-size: 1em;
+    }
+    
+    .accordion-icon {
+        font-size: 0.8em;
+        width: 16px;
+    }
+    
+    .accordion-count {
+        font-size: 0.75em;
+        padding: 3px 8px;
+        min-width: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .accordion-section {
+        margin-top: 15px;
+    }
+    
+    .accordion-header {
+        padding: 10px 12px;
+    }
+    
+    .accordion-title {
+        gap: 8px;
+    }
+    
+    .accordion-title h3 {
+        font-size: 0.95em;
+    }
+}
+
 /* Estilos para sugerencias de clientes (compatibilidad) */
 .sugerencias-container {
     position: absolute;

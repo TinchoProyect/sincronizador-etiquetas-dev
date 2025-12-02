@@ -706,6 +706,47 @@ async function seleccionarArticulo(art) {
         kilosUnidadOriginal = 0;
         configurarCampoKilos(0);
     }
+
+    // 🆕 AUTO-FILL: Detectar patrón "x kilo" y sugerir stock disponible
+    try {
+        // Regex para detectar "x kilo" (case insensitive)
+        const patronXKilo = /x\s+kilo/i;
+        
+        // Buscar el patrón en nombre o descripción
+        const textoNombre = art.nombre || '';
+        const textoDescripcion = art.descripcion || '';
+        
+        const tienePatronEnNombre = patronXKilo.test(textoNombre);
+        const tienePatronEnDescripcion = patronXKilo.test(textoDescripcion);
+        
+        if (tienePatronEnNombre || tienePatronEnDescripcion) {
+            // Patrón encontrado - auto-fill con stock disponible
+            const stockDisponible = parseFloat(art.stock_consolidado) || 0;
+            
+            console.log('🎯 [AUTO-FILL] Patrón "x kilo" detectado:', {
+                articuloNombre: art.nombre,
+                articuloDescripcion: art.descripcion,
+                encontradoEnNombre: tienePatronEnNombre,
+                encontradoEnDescripcion: tienePatronEnDescripcion,
+                stockDisponible: stockDisponible
+            });
+            
+            if (stockDisponible > 0) {
+                inputCantidad.value = stockDisponible;
+                console.log(`✅ [AUTO-FILL] Campo "Cantidad" auto-completado con stock: ${stockDisponible}`);
+            } else {
+                inputCantidad.value = 1;
+                console.log('⚠️ [AUTO-FILL] Stock es 0, manteniendo valor default: 1');
+            }
+        } else {
+            // Patrón NO encontrado - mantener valor default
+            inputCantidad.value = 1;
+            console.log('ℹ️ [AUTO-FILL] Patrón "x kilo" NO detectado, valor default: 1');
+        }
+    } catch (error) {
+        console.error('❌ [AUTO-FILL] Error al procesar auto-fill:', error);
+        inputCantidad.value = 1; // Fallback seguro
+    }
 }
 
 async function confirmarIngreso() {
