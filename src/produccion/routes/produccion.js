@@ -1508,6 +1508,48 @@ router.post('/inventario-articulos/finalizar', async (req, res) => {
     }
 });
 
+// ==========================================
+// RUTAS PARA AJUSTES MANUALES DE ARTÍCULOS
+// ==========================================
+
+const { registrarAjusteManual, registrarAjustesBatch } = require('../controllers/ajustesArticulos');
+
+/**
+ * Ruta para registrar un ajuste manual individual de stock de artículo
+ * POST /api/produccion/articulos/ajuste-manual
+ * Body: { articulo_numero, stock_nuevo, observacion, usuario_id }
+ */
+router.post('/articulos/ajuste-manual', async (req, res) => {
+    try {
+        console.log('🔧 [RUTA] Registrando ajuste manual de artículo');
+        await registrarAjusteManual(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /articulos/ajuste-manual:', error);
+        res.status(500).json({
+            error: 'Error al registrar ajuste manual',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Ruta para registrar múltiples ajustes manuales en lote
+ * POST /api/produccion/articulos/ajustes-batch
+ * Body: { ajustes: [{ articulo_numero, stock_nuevo, observacion }], usuario_id }
+ */
+router.post('/articulos/ajustes-batch', async (req, res) => {
+    try {
+        console.log('🔧 [RUTA] Registrando ajustes en lote de artículos');
+        await registrarAjustesBatch(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /articulos/ajustes-batch:', error);
+        res.status(500).json({
+            error: 'Error al registrar ajustes en lote',
+            detalle: error.message
+        });
+    }
+});
+
 // Ruta para agregar stock de ingrediente a un usuario
 router.post('/ingredientes-usuarios/agregar', async (req, res) => {
     try {

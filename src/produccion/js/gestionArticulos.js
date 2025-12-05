@@ -1155,120 +1155,123 @@ function mostrarArticulosSeleccionados() {
 }
 
 async function finalizarAjustes() {
-    console.log('🔧 [AJUSTE PUNTUAL] ===== INICIANDO FINALIZACIÓN DE AJUSTES =====');
+    console.log('🔧 [AJUSTE-MANUAL] ===== INICIANDO FINALIZACIÓN DE AJUSTES MANUALES =====');
     
     if (articulosSeleccionados.size === 0) {
-        console.log('❌ [AJUSTE PUNTUAL] No hay artículos seleccionados');
+        console.log('❌ [AJUSTE-MANUAL] No hay artículos seleccionados');
         mostrarMensaje('No hay artículos seleccionados para ajustar', 'error');
         return;
     }
 
-    // Usar el mismo formato de ajustes que el inventario
+    // Construir array de ajustes para el nuevo endpoint
     const ajustes = [];
     const inputs = document.querySelectorAll('.stock-nuevo');
     let hayAjustes = false;
     
-    console.log(`🔧 [AJUSTE PUNTUAL] Procesando ${inputs.length} inputs de stock`);
+    console.log(`🔧 [AJUSTE-MANUAL] Procesando ${inputs.length} inputs de stock`);
     
     inputs.forEach((input, index) => {
         const articuloNumero = input.dataset.articulo;
         const articulo = articulosSeleccionados.get(articuloNumero);
         
-        console.log(`\n🔧 [AJUSTE PUNTUAL] ===== PROCESANDO ARTÍCULO ${index + 1}/${inputs.length} =====`);
-        console.log(`🔧 [AJUSTE PUNTUAL] Artículo: ${articulo?.nombre || 'DESCONOCIDO'} (${articuloNumero})`);
+        console.log(`\n🔧 [AJUSTE-MANUAL] ===== PROCESANDO ARTÍCULO ${index + 1}/${inputs.length} =====`);
+        console.log(`🔧 [AJUSTE-MANUAL] Artículo: ${articulo?.nombre || 'DESCONOCIDO'} (${articuloNumero})`);
         
-        // 1. Valor RAW del input (antes de cualquier parseo)
+        // Obtener valores
         const valorRawInput = input.value;
-        console.log(`🔧 [AJUSTE PUNTUAL] Valor RAW del input: "${valorRawInput}" (tipo: ${typeof valorRawInput})`);
+        console.log(`🔧 [AJUSTE-MANUAL] Valor RAW del input: "${valorRawInput}"`);
         
-        // 2. Validar si el valor es válido antes del parseo
-        if (valorRawInput === '' || valorRawInput === null || valorRawInput === undefined) {
-            console.log(`⚠️ [AJUSTE PUNTUAL] [ADVERTENCIA] Valor vacío o nulo en input para artículo ${articuloNumero}`);
-        }
-        
-        // 3. Aplicar parseFloat y validar resultado
         const stockNuevoFloat = parseFloat(valorRawInput);
         const stockNuevo = isNaN(stockNuevoFloat) ? 0 : stockNuevoFloat;
         
-        console.log(`🔧 [AJUSTE PUNTUAL] Valor después de parseFloat: ${stockNuevoFloat} (isNaN: ${isNaN(stockNuevoFloat)})`);
-        console.log(`🔧 [AJUSTE PUNTUAL] Valor final a usar: ${stockNuevo}`);
+        console.log(`🔧 [AJUSTE-MANUAL] Stock nuevo parseado: ${stockNuevo}`);
         
-        if (isNaN(stockNuevoFloat)) {
-            console.log(`⚠️ [AJUSTE PUNTUAL] [ADVERTENCIA] Valor no válido en input para artículo ${articuloNumero}: "${valorRawInput}"`);
-        }
-        
-        // 4. Stock actual antes del ajuste
         const stockActual = articulo.stock_consolidado || 0;
-        console.log(`🔧 [AJUSTE PUNTUAL] Stock actual antes del ajuste: ${stockActual} (tipo: ${typeof stockActual})`);
+        console.log(`🔧 [AJUSTE-MANUAL] Stock actual: ${stockActual}`);
         
-        // 5. Calcular diferencia (ajuste)
-        const ajuste = stockNuevo - stockActual;
-        console.log(`🔧 [AJUSTE PUNTUAL] Diferencia calculada (ajuste): ${stockNuevo} - ${stockActual} = ${ajuste}`);
+        const diferencia = stockNuevo - stockActual;
+        console.log(`🔧 [AJUSTE-MANUAL] Diferencia: ${diferencia}`);
         
-        // Solo registrar si hay diferencia, igual que en inventario
-        if (ajuste !== 0) {
-            console.log(`✅ [AJUSTE PUNTUAL] Ajuste necesario detectado: ${ajuste}`);
+        // Solo registrar si hay diferencia significativa
+        const MARGEN_TOLERANCIA = 0.001;
+        if (Math.abs(diferencia) > MARGEN_TOLERANCIA) {
+            console.log(`✅ [AJUSTE-MANUAL] Ajuste necesario detectado: ${diferencia}`);
             hayAjustes = true;
             
             const ajusteData = {
                 articulo_numero: articuloNumero,
-                codigo_barras: articulo.codigo_barras,
-                usuario_id: usuarioAjustes,
-                tipo: 'registro de ajuste', // Usar el mismo tipo que inventario
-                kilos: ajuste,
-                cantidad: ajuste // Mantener consistencia con inventario
+                stock_nuevo: stockNuevo,
+                observacion: `Ajuste manual desde interfaz de gestión`
             };
             
-            console.log(`🔧 [AJUSTE PUNTUAL] Datos del ajuste a enviar:`, JSON.stringify(ajusteData, null, 2));
+            console.log(`🔧 [AJUSTE-MANUAL] Datos del ajuste:`, JSON.stringify(ajusteData, null, 2));
             ajustes.push(ajusteData);
         } else {
-            console.log(`➖ [AJUSTE PUNTUAL] Sin cambios para artículo ${articuloNumero} (ajuste = 0)`);
+            console.log(`➖ [AJUSTE-MANUAL] Sin cambios significativos para ${articuloNumero}`);
         }
     });
 
-    console.log(`\n🔧 [AJUSTE PUNTUAL] ===== RESUMEN DE PROCESAMIENTO =====`);
-    console.log(`🔧 [AJUSTE PUNTUAL] Total ajustes a procesar: ${ajustes.length}`);
-    console.log(`🔧 [AJUSTE PUNTUAL] Hay ajustes: ${hayAjustes}`);
+    console.log(`\n🔧 [AJUSTE-MANUAL] ===== RESUMEN =====`);
+    console.log(`🔧 [AJUSTE-MANUAL] Total ajustes a procesar: ${ajustes.length}`);
+    console.log(`🔧 [AJUSTE-MANUAL] Hay ajustes: ${hayAjustes}`);
 
     if (!hayAjustes) {
-        console.log('ℹ️ [AJUSTE PUNTUAL] No hay ajustes para registrar');
-        mostrarMensaje('No hay ajustes para registrar', 'info');
+        console.log('ℹ️ [AJUSTE-MANUAL] No hay ajustes para registrar');
+        mostrarMensaje('No hay cambios significativos para registrar', 'info');
         cerrarModalAjustes();
         return;
     }
 
     try {
-        console.log(`🔧 [AJUSTE PUNTUAL] ===== ENVIANDO AL BACKEND =====`);
-        console.log(`🔧 [AJUSTE PUNTUAL] Payload completo:`, JSON.stringify({ ajustes }, null, 2));
+        console.log(`🔧 [AJUSTE-MANUAL] ===== ENVIANDO AL NUEVO ENDPOINT =====`);
         
-        // Usar el mismo endpoint y estructura que inventario
-        const response = await fetch('/api/produccion/stock-ventas-movimientos/batch', {
+        const payload = {
+            usuario_id: usuarioAjustes,
+            ajustes: ajustes
+        };
+        
+        console.log(`🔧 [AJUSTE-MANUAL] Payload completo:`, JSON.stringify(payload, null, 2));
+        
+        // ✅ NUEVO ENDPOINT con auditoría completa
+        const response = await fetch('/api/produccion/articulos/ajustes-batch', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ ajustes })
+            body: JSON.stringify(payload)
         });
 
-        console.log(`🔧 [AJUSTE PUNTUAL] Respuesta del servidor - Status: ${response.status}`);
+        console.log(`🔧 [AJUSTE-MANUAL] Respuesta - Status: ${response.status}`);
 
         if (!response.ok) {
             const errorData = await response.json();
-            console.log(`❌ [AJUSTE PUNTUAL] Error del servidor:`, errorData);
+            console.log(`❌ [AJUSTE-MANUAL] Error del servidor:`, errorData);
             throw new Error(errorData.error || 'Error al registrar los ajustes');
         }
 
         const responseData = await response.json();
-        console.log(`✅ [AJUSTE PUNTUAL] Respuesta exitosa del servidor:`, responseData);
+        console.log(`✅ [AJUSTE-MANUAL] Respuesta exitosa:`, responseData);
 
-        mostrarMensaje('Ajustes registrados correctamente', 'info');
+        // Mostrar resumen de resultados
+        const { resultados } = responseData;
+        if (resultados) {
+            const mensaje = `Ajustes completados: ${resultados.exitosos.length} exitosos, ${resultados.fallidos.length} fallidos`;
+            mostrarMensaje(mensaje, resultados.fallidos.length > 0 ? 'error' : 'info');
+            
+            if (resultados.fallidos.length > 0) {
+                console.warn('⚠️ [AJUSTE-MANUAL] Ajustes fallidos:', resultados.fallidos);
+            }
+        } else {
+            mostrarMensaje('Ajustes registrados correctamente', 'info');
+        }
+
         cerrarModalAjustes();
-        await cargarArticulos(); // Recargar artículos después de ajustes
+        await cargarArticulos(); // Recargar artículos
         
-        console.log(`🔧 [AJUSTE PUNTUAL] ===== FINALIZACIÓN COMPLETADA =====`);
+        console.log(`🔧 [AJUSTE-MANUAL] ===== FINALIZACIÓN COMPLETADA =====`);
     } catch (error) {
-        console.error('❌ [AJUSTE PUNTUAL] Error al finalizar ajustes:', error);
-        mostrarMensaje(error.message || 'Error al registrar los ajustes');
+        console.error('❌ [AJUSTE-MANUAL] Error al finalizar ajustes:', error);
+        mostrarMensaje(error.message || 'Error al registrar los ajustes', 'error');
     }
 }
 

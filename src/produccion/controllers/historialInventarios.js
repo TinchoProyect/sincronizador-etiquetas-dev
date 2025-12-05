@@ -167,8 +167,120 @@ async function obtenerDiferencias(req, res) {
     }
 }
 
+/**
+ * Obtiene el historial unificado de inventarios y ajustes manuales
+ * Consume la vista historial_stock_unificado
+ */
+async function obtenerHistorialUnificado(req, res) {
+    try {
+        console.log('🔄 [HISTORIAL-UNIFICADO] Iniciando obtención de historial unificado...');
+        
+        const query = `
+            SELECT 
+                tipo_origen,
+                inventario_id,
+                id_agrupacion,
+                MIN(fecha_creacion) as fecha_creacion,
+                usuario_id,
+                MAX(nombre_usuario) as nombre_usuario,
+                COUNT(*) as total_articulos,
+                SUM(CASE WHEN ABS(diferencia) > 0.001 THEN 1 ELSE 0 END) as total_diferencias
+            FROM historial_stock_unificado
+            GROUP BY tipo_origen, inventario_id, id_agrupacion, usuario_id
+            ORDER BY MIN(fecha_creacion) DESC
+        `;
+        
+        console.log('🔄 [HISTORIAL-UNIFICADO] Ejecutando query de historial unificado...');
+        const result = await pool.query(query);
+        
+        console.log(`✅ [HISTORIAL-UNIFICADO] Historial obtenido: ${result.rows.length} registros encontrados`);
+        
+        if (result.rows.length > 0) {
+            console.log('📋 [HISTORIAL-UNIFICADO] Muestra del primer registro:', {
+                tipo_origen: result.rows[0].tipo_origen,
+                inventario_id: result.rows[0].inventario_id,
+                id_agrupacion: result.rows[0].id_agrupacion,
+                fecha_creacion: result.rows[0].fecha_creacion,
+                usuario: result.rows[0].nombre_usuario,
+                total_articulos: result.rows[0].total_articulos,
+                total_diferencias: result.rows[0].total_diferencias
+            });
+        }
+        
+        res.json(result.rows);
+        
+    } catch (error) {
+        console.error('❌ [HISTORIAL-UNIFICADO] Error al obtener historial unificado:', error);
+        
+        if (error.code === '42P01') {
+            return res.status(500).json({ 
+                error: 'Vista historial_stock_unificado no encontrada. Verifique la estructura de la base de datos.' 
+            });
+        }
+        
+        res.status(500).json({ 
+            error: 'Error interno del servidor al obtener historial unificado',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+}
+
+/**
+ * Obtiene los detalles de un ajuste manual específico
+ */
+async function obtenerDetallesAjuste(req, res) {
+    try {
+        const { ajusteId } = req.params;
+        
+        console.log(`🔄 [DETALLES-AJUSTE] Obteniendo detalles para ajuste ${ajusteId}...`);
+        
+        if (!ajusteId || isNaN(ajusteId)) {
+            return res.status(400).json({ error: 'ID de ajuste inválido' });
+        }
+        
+        const query = `
+            SELECT 
+                aa.id,
+                aa.articulo_numero,
+                a.nombre as nombre_articulo,
+                aa.usuario_id,
+                u.nombre_completo as nombre_usuario,
+                aa.tipo_ajuste,
+                aa.stock_anterior,
+                aa.stock_nuevo,
+                aa.diferencia,
+                aa.observacion,
+                aa.fecha
+            FROM articulos_ajustes aa
+            LEFT JOIN articulos a ON a.numero = aa.articulo_numero
+            LEFT JOIN usuarios u ON u.id = aa.usuario_id
+            WHERE aa.id = $1
+        `;
+        
+        const result = await pool.query(query, [ajusteId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Ajuste no encontrado' });
+        }
+        
+        console.log(`✅ [DETALLES-AJUSTE] Detalles obtenidos para ajuste ${ajusteId}`);
+        
+        res.json(result.rows[0]);
+        
+    } catch (error) {
+        console.error(`❌ [DETALLES-AJUSTE] Error al obtener detalles del ajuste ${req.params.ajusteId}:`, error);
+        
+        res.status(500).json({ 
+            error: 'Error interno del servidor al obtener detalles del ajuste',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+}
+
 module.exports = {
     obtenerHistorialInventarios,
     obtenerStockRegistrado,
-    obtenerDiferencias
+    obtenerDiferencias,
+    obtenerHistorialUnificado,
+    obtenerDetallesAjuste
 };

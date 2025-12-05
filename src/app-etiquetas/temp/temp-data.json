@@ -1,6 +1,8 @@
 {
-  "numero": "PMx10M",
-  "nombre": "Pasa/Moscatel x 10 M",
-  "codigo_barras": "7791351141858",
-  "cantidad": 2
+  "articulo": {
+    "numero": "CHBx2",
+    "nombre": "Chips de Banana x 2 kg",
+    "codigo_barras": "2563632015"
+  },
+  "cantidad": "2.00"
 }

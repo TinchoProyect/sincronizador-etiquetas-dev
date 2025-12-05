@@ -146,31 +146,37 @@ function obtenerNombreUsuario(usuarioId) {
  */
 async function cargarHistorialInventarios() {
     try {
-        console.log('🔄 [HISTORIAL] Iniciando carga de historial de inventarios...');
+        console.log('🔄 [HISTORIAL] Iniciando carga de historial unificado...');
         
         // Primero cargar usuarios para el cache
         await cargarUsuarios();
         
-        // Luego cargar el historial de inventarios
-        console.log('🔄 [HISTORIAL] Consultando endpoint de historial...');
+        // Cargar el historial UNIFICADO (inventarios + ajustes)
+        console.log('🔄 [HISTORIAL] Consultando endpoint de historial unificado...');
         
-        // NOTA: Este endpoint debe ser implementado en el backend
-        // Por ahora, propongo la estructura que debería tener
-        const response = await fetch('/api/produccion/inventarios/historial');
+        const response = await fetch('/api/produccion/inventarios/historial-unificado');
         
         if (!response.ok) {
             if (response.status === 404) {
-                throw new Error('Endpoint de historial no implementado. Contacte al administrador del sistema.');
+                throw new Error('Endpoint de historial unificado no encontrado. Contacte al administrador del sistema.');
             }
             throw new Error(`Error del servidor: ${response.status} - ${response.statusText}`);
         }
         
         const historial = await response.json();
         console.log('✅ [HISTORIAL] Datos recibidos:', historial);
+        console.log('✅ [HISTORIAL] Total registros:', historial.length);
         
         if (!Array.isArray(historial)) {
             throw new Error('Formato de respuesta inválido: se esperaba un array');
         }
+        
+        // Separar por tipo para estadísticas
+        const inventarios = historial.filter(h => h.tipo_origen === 'INVENTARIO');
+        const ajustes = historial.filter(h => h.tipo_origen === 'AJUSTE PUNTUAL');
+        
+        console.log(`📊 [HISTORIAL] Inventarios masivos: ${inventarios.length}`);
+        console.log(`📊 [HISTORIAL] Ajustes puntuales: ${ajustes.length}`);
         
         inventariosData = historial;
         
@@ -185,8 +191,8 @@ async function cargarHistorialInventarios() {
         console.error('❌ [HISTORIAL] Error al cargar historial:', error);
         
         // Mostrar mensaje específico según el tipo de error
-        if (error.message.includes('Endpoint de historial no implementado')) {
-            mostrarError('⚠️ Funcionalidad en desarrollo. El endpoint del historial de inventarios aún no está implementado en el backend.');
+        if (error.message.includes('Endpoint de historial')) {
+            mostrarError('⚠️ Funcionalidad en desarrollo. El endpoint del historial unificado aún no está implementado en el backend.');
         } else if (error.message.includes('Failed to fetch')) {
             mostrarError('❌ Error de conexión. Verifique que el servidor esté funcionando.');
         } else {
@@ -197,23 +203,36 @@ async function cargarHistorialInventarios() {
 
 /**
  * Renderiza la tabla principal con el historial de inventarios
- * @param {Array} inventarios - Lista de inventarios
+ * @param {Array} inventarios - Lista de inventarios y ajustes
  */
 function renderizarTablaHistorial(inventarios) {
-    console.log('🎨 [HISTORIAL] Renderizando tabla con', inventarios.length, 'inventarios');
+    console.log('🎨 [HISTORIAL] Renderizando tabla con', inventarios.length, 'registros');
     
     const tbody = document.getElementById('tabla-historial-body');
     tbody.innerHTML = '';
     
-    inventarios.forEach((inventario, index) => {
+    inventarios.forEach((registro, index) => {
         const tr = document.createElement('tr');
-        tr.dataset.inventarioId = inventario.inventario_id;
+        
+        // Determinar si es inventario o ajuste
+        const esAjustePuntual = registro.tipo_origen === 'AJUSTE PUNTUAL';
+        const esInventario = registro.tipo_origen === 'INVENTARIO';
+        
+        // ID para mostrar
+        const idMostrar = esAjustePuntual 
+            ? `AP-${Math.abs(registro.id_agrupacion)}` 
+            : `#${registro.inventario_id}`;
+        
+        // Badge de tipo
+        const badgeTipo = esAjustePuntual
+            ? '<span class="badge badge-warning">🔧 Ajuste Puntual</span>'
+            : '<span class="badge badge-info">📦 Inventario Masivo</span>';
         
         // Calcular totales
-        const totalArticulos = inventario.total_articulos || 0;
-        const totalDiferencias = inventario.total_diferencias || 0;
+        const totalArticulos = registro.total_articulos || 0;
+        const totalDiferencias = registro.total_diferencias || 0;
         
-        // Determinar badge para diferencias
+        // Badge para diferencias
         let badgeDiferencias = '';
         if (totalDiferencias === 0) {
             badgeDiferencias = '<span class="badge badge-success">Sin diferencias</span>';
@@ -223,33 +242,49 @@ function renderizarTablaHistorial(inventarios) {
             badgeDiferencias = `<span class="badge badge-danger">${totalDiferencias} diferencias</span>`;
         }
         
+        // Guardar datos en el elemento
+        tr.dataset.tipoOrigen = registro.tipo_origen;
+        tr.dataset.inventarioId = registro.inventario_id || '';
+        tr.dataset.idAgrupacion = registro.id_agrupacion;
+        
         tr.innerHTML = `
-            <td><strong>#${inventario.inventario_id}</strong></td>
-            <td>${formatearFecha(inventario.fecha_creacion)}</td>
-            <td>${obtenerNombreUsuario(inventario.usuario_id)}</td>
+            <td>
+                <strong>${idMostrar}</strong><br>
+                ${badgeTipo}
+            </td>
+            <td>${formatearFecha(registro.fecha_creacion)}</td>
+            <td>${registro.nombre_usuario || obtenerNombreUsuario(registro.usuario_id)}</td>
             <td>${totalArticulos}</td>
             <td>${badgeDiferencias}</td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn-detalle" onclick="toggleStockRegistrado(${inventario.inventario_id})">
-                        📋 Ver Stock Registrado
-                    </button>
-                    <button class="btn-diferencias" onclick="toggleDiferencias(${inventario.inventario_id})">
-                        ⚠️ Ver Diferencias
-                    </button>
+                    ${esInventario ? `
+                        <button class="btn-detalle" onclick="toggleStockRegistrado(${registro.inventario_id})">
+                            📋 Ver Stock Registrado
+                        </button>
+                        <button class="btn-diferencias" onclick="toggleDiferencias(${registro.inventario_id})">
+                            ⚠️ Ver Diferencias
+                        </button>
+                    ` : `
+                        <button class="btn-detalle" onclick="verDetallesAjuste(${Math.abs(registro.id_agrupacion)})">
+                            🔍 Ver Detalles
+                        </button>
+                    `}
                 </div>
-                <div id="detalle-stock-${inventario.inventario_id}" class="detalle-section">
-                    <h4>📋 Stock Registrado - Inventario #${inventario.inventario_id}</h4>
-                    <div id="contenido-stock-${inventario.inventario_id}">
-                        <div class="loading">Cargando datos...</div>
+                ${esInventario ? `
+                    <div id="detalle-stock-${registro.inventario_id}" class="detalle-section">
+                        <h4>📋 Stock Registrado - Inventario #${registro.inventario_id}</h4>
+                        <div id="contenido-stock-${registro.inventario_id}">
+                            <div class="loading">Cargando datos...</div>
+                        </div>
                     </div>
-                </div>
-                <div id="detalle-diferencias-${inventario.inventario_id}" class="detalle-section">
-                    <h4>⚠️ Diferencias Encontradas - Inventario #${inventario.inventario_id}</h4>
-                    <div id="contenido-diferencias-${inventario.inventario_id}">
-                        <div class="loading">Cargando datos...</div>
+                    <div id="detalle-diferencias-${registro.inventario_id}" class="detalle-section">
+                        <h4>⚠️ Diferencias Encontradas - Inventario #${registro.inventario_id}</h4>
+                        <div id="contenido-diferencias-${registro.inventario_id}">
+                            <div class="loading">Cargando datos...</div>
+                        </div>
                     </div>
-                </div>
+                ` : ''}
             </td>
         `;
         
@@ -257,6 +292,8 @@ function renderizarTablaHistorial(inventarios) {
     });
     
     console.log('✅ [HISTORIAL] Tabla renderizada correctamente');
+    console.log(`📊 [HISTORIAL] Inventarios: ${inventarios.filter(i => i.tipo_origen === 'INVENTARIO').length}`);
+    console.log(`📊 [HISTORIAL] Ajustes: ${inventarios.filter(i => i.tipo_origen === 'AJUSTE PUNTUAL').length}`);
 }
 
 /**
@@ -470,9 +507,153 @@ function renderizarDiferencias(contenedor, diferenciasData) {
     contenedor.innerHTML = html;
 }
 
+/**
+ * Muestra los detalles de un ajuste manual específico
+ * @param {number} ajusteId - ID del ajuste manual
+ */
+async function verDetallesAjuste(ajusteId) {
+    console.log('🔍 [AJUSTE] Mostrando detalles del ajuste:', ajusteId);
+    
+    try {
+        const response = await fetch(`/api/produccion/ajustes/${ajusteId}/detalles`);
+        
+        if (!response.ok) {
+            throw new Error(`Error al cargar detalles del ajuste: ${response.status}`);
+        }
+        
+        const ajuste = await response.json();
+        console.log('✅ [AJUSTE] Detalles cargados:', ajuste);
+        
+        // Crear modal para mostrar detalles
+        mostrarModalDetallesAjuste(ajuste);
+        
+    } catch (error) {
+        console.error('❌ [AJUSTE] Error al cargar detalles:', error);
+        alert(`Error al cargar detalles del ajuste: ${error.message}`);
+    }
+}
+
+/**
+ * Muestra un modal con los detalles del ajuste manual
+ * @param {Object} ajuste - Datos del ajuste
+ */
+function mostrarModalDetallesAjuste(ajuste) {
+    // Crear modal si no existe
+    let modal = document.getElementById('modal-detalles-ajuste');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-detalles-ajuste';
+        modal.className = 'modal';
+        modal.style.display = 'none';
+        document.body.appendChild(modal);
+    }
+    
+    const diferencia = Number(ajuste.diferencia) || 0;
+    let claseDiferencia = 'diferencia-cero';
+    let simboloDiferencia = '';
+    
+    if (diferencia > 0) {
+        claseDiferencia = 'diferencia-positiva';
+        simboloDiferencia = '+';
+    } else if (diferencia < 0) {
+        claseDiferencia = 'diferencia-negativa';
+    }
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <span class="close" onclick="cerrarModalDetallesAjuste()">&times;</span>
+            <h2>🔧 Detalles del Ajuste Manual</h2>
+            
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <h3 style="margin-top: 0;">📋 Información General</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">ID de Ajuste:</td>
+                        <td style="padding: 8px;">AP-${ajuste.id}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Fecha:</td>
+                        <td style="padding: 8px;">${formatearFecha(ajuste.fecha)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Usuario:</td>
+                        <td style="padding: 8px;">${ajuste.nombre_usuario || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Tipo:</td>
+                        <td style="padding: 8px;">${ajuste.tipo_ajuste || 'ajuste_manual'}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <h3 style="margin-top: 0;">📦 Artículo Ajustado</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Código:</td>
+                        <td style="padding: 8px;">${ajuste.articulo_numero}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Nombre:</td>
+                        <td style="padding: 8px;">${ajuste.nombre_articulo || 'N/A'}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <h3 style="margin-top: 0;">📊 Cambios de Stock</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Stock Anterior:</td>
+                        <td style="padding: 8px;">${formatearNumero(ajuste.stock_anterior)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Stock Nuevo:</td>
+                        <td style="padding: 8px;">${formatearNumero(ajuste.stock_nuevo)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold;">Diferencia:</td>
+                        <td style="padding: 8px;" class="${claseDiferencia}">
+                            <strong>${simboloDiferencia}${formatearNumero(Math.abs(diferencia))}</strong>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            
+            ${ajuste.observacion ? `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                    <h3 style="margin-top: 0;">📝 Observaciones</h3>
+                    <p style="margin: 0;">${ajuste.observacion}</p>
+                </div>
+            ` : ''}
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button onclick="cerrarModalDetallesAjuste()" 
+                        style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+/**
+ * Cierra el modal de detalles de ajuste
+ */
+function cerrarModalDetallesAjuste() {
+    const modal = document.getElementById('modal-detalles-ajuste');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
 // Hacer las funciones globales para que puedan ser llamadas desde el HTML
 window.toggleStockRegistrado = toggleStockRegistrado;
 window.toggleDiferencias = toggleDiferencias;
+window.verDetallesAjuste = verDetallesAjuste;
+window.cerrarModalDetallesAjuste = cerrarModalDetallesAjuste;
 
 // Inicializar cuando se carga la página
 document.addEventListener('DOMContentLoaded', () => {
