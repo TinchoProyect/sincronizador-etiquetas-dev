@@ -1,4 +1,73 @@
 const pool = require('../config/database');
+const JsBarcode = require('jsbarcode');
+const { createCanvas } = require('canvas');
+
+/**
+ * Calcular el total de artículos sumando las cantidades
+ * @param {Array} articulos - Array de artículos con campo cantidad
+ * @returns {number} Total de artículos
+ */
+function calcularTotalArticulos(articulos) {
+    if (!Array.isArray(articulos) || articulos.length === 0) {
+        return 0;
+    }
+    // CORRECCIÓN: Se devuelve la cantidad de ítems (renglones) en lugar de la suma de unidades
+    return articulos.length;
+}
+
+/**
+ * Generar buffer de imagen PNG del código de barras para PDF
+ * @param {string} texto - Texto a codificar (ej: "12345-1")
+ * @returns {Buffer} Buffer de imagen PNG
+ */
+function generarBufferCodigoBarras(texto) {
+    try {
+        const canvas = createCanvas();
+        JsBarcode(canvas, texto, {
+            format: "CODE128",
+            width: 2,
+            height: 40, // Altura ajustada para el pie de página
+            displayValue: true,
+            fontSize: 12,
+            margin: 5
+        });
+        return canvas.toBuffer('image/png');
+    } catch (error) {
+        console.error('❌ Error al generar código de barras:', error);
+        return null;
+    }
+}
+
+/**
+ * Generar string SVG del código de barras para HTML
+ * @param {string} texto - Texto a codificar (ej: "12345-1")
+ * @returns {string} String SVG
+ */
+function generarSVGCodigoBarras(texto) {
+    try {
+        const canvas = createCanvas();
+        JsBarcode(canvas, texto, {
+            format: "CODE128",
+            width: 2,
+            height: 40, // Altura ajustada
+            displayValue: true,
+            fontSize: 12,
+            margin: 5
+        });
+        
+        // Convertir canvas a SVG string
+        const svgString = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="200" height="70" style="display: block; margin: 10px auto;">
+                <rect width="200" height="70" fill="white"/>
+                <image href="${canvas.toDataURL()}" width="200" height="70"/>
+            </svg>
+        `;
+        return svgString;
+    } catch (error) {
+        console.error('❌ Error al generar SVG código de barras:', error);
+        return '';
+    }
+}
 
 /**
  * Guardar snapshot de presupuesto al imprimir
@@ -38,10 +107,10 @@ async function guardarSnapshotImpresion(id_presupuesto, id_presupuesto_ext, deta
             console.log(`📸 [SNAPSHOT-PRINT] Reimpresión de presupuesto con snapshot existente (no se crea nuevo registro)`);
             console.log(`📸 [SNAPSHOT-PRINT] Snapshot existente ID: ${snapshotExistente.id}`);
             console.log(`📸 [SNAPSHOT-PRINT] Manteniendo:`);
-            console.log(`📸 [SNAPSHOT-PRINT]   - secuencia_en_snapshot: ${snapshotExistente.secuencia_en_snapshot}`);
-            console.log(`📸 [SNAPSHOT-PRINT]   - motivo: ${snapshotExistente.motivo}`);
-            console.log(`📸 [SNAPSHOT-PRINT]   - numero_impresion: ${snapshotExistente.numero_impresion}`);
-            console.log(`📸 [SNAPSHOT-PRINT]   - diferencias_detalles: ${snapshotExistente.diferencias_detalles ? 'CON DIFERENCIAS' : 'NULL'}`);
+            console.log(`📸 [SNAPSHOT-PRINT]    - secuencia_en_snapshot: ${snapshotExistente.secuencia_en_snapshot}`);
+            console.log(`📸 [SNAPSHOT-PRINT]    - motivo: ${snapshotExistente.motivo}`);
+            console.log(`📸 [SNAPSHOT-PRINT]    - numero_impresion: ${snapshotExistente.numero_impresion}`);
+            console.log(`📸 [SNAPSHOT-PRINT]    - diferencias_detalles: ${snapshotExistente.diferencias_detalles ? 'CON DIFERENCIAS' : 'NULL'}`);
             
             // Opcional: actualizar solo fecha_snapshot
             const updateFechaQuery = `
@@ -300,6 +369,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     if (presupuestoResult.rows.length > 0) {
                         const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
                         
+                        // Agregar ID presupuesto al objeto para usar en generación
+                        presupuesto._id_presupuesto = id_presupuesto;
+                        
                         // Guardar snapshot (no bloquea la impresión si falla)
                         await guardarSnapshotImpresion(
                             id_presupuesto,
@@ -345,7 +417,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                             };
                             
                             const esModificado = snapshot.motivo === 'modificado' || 
-                                               snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                                                snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
                             
                             console.log(`🔍 [SNAPSHOT-DEBUG] Evaluación esModificado:`);
                             console.log(`   - motivo === 'modificado': ${snapshot.motivo === 'modificado'}`);
@@ -504,6 +576,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         if (presupuestoResult.rows.length > 0) {
                             const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
                             
+                            // Agregar ID presupuesto al objeto para usar en generación
+                            presupuesto._id_presupuesto = id_presupuesto;
+                            
                             // Guardar snapshot (no bloquea la impresión si falla)
                             await guardarSnapshotImpresion(
                                 id_presupuesto,
@@ -542,7 +617,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 };
                                 
                                 const esModificado = snapshot.motivo === 'modificado' || 
-                                                   snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                                                    snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
                                 
                                 if (esModificado) {
                                     console.log(`[PRINT-MOD] Usando snapshot modificado (id_snapshot=${snapshot.id}, id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion}, motivo=${snapshot.motivo}, fecha_snapshot=${snapshot.fecha_snapshot})`);
@@ -659,6 +734,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         if (presupuestoResult.rows.length > 0) {
                             const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
                             
+                            // Agregar ID presupuesto al objeto para usar en generación
+                            presupuesto._id_presupuesto = id_presupuesto;
+                            
                             // Guardar snapshot (no bloquea la impresión si falla)
                             await guardarSnapshotImpresion(
                                 id_presupuesto,
@@ -697,7 +775,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 };
                                 
                                 const esModificado = snapshot.motivo === 'modificado' || 
-                                                   snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                                                    snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
                                 
                                 if (esModificado) {
                                     console.log(`[PRINT-MOD] Usando snapshot modificado (id_snapshot=${snapshot.id}, id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion}, motivo=${snapshot.motivo}, fecha_snapshot=${snapshot.fecha_snapshot})`);
@@ -1120,8 +1198,17 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
         clienteData.presupuestos.forEach((presupuesto, presupIndex) => {
             const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
             
+            // Calcular datos para código de barras y total de artículos
+            const idPresupuesto = presupuesto._id_presupuesto || 0;
+            const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+            const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+            // CORRECCIÓN: Se usa .length para contar items distintos
+            const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
+            const svgCodigoBarras = generarSVGCodigoBarras(codigoBarras);
+            
             console.log(`🛒 [REMITO-R-HTML] Presupuesto ${presupIndex}: ${presupuesto.id_presupuesto_ext}`);
             console.log(`🛒 [REMITO-R-HTML] Aplicando título: ${esPendienteCompra ? 'ORDEN EN ESPERA' : 'R'}`);
+            console.log(`📊 [BARCODE] Código de barras generado: ${codigoBarras}, Total artículos: ${totalArticulos}`);
 
             // Determinar si el presupuesto fue modificado y generar el HTML correspondiente
             let modificacionHtml = '';
@@ -1174,6 +1261,9 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             <div>
                 <div class="codigo-presupuesto">${presupuesto.id_presupuesto_ext}</div>
                 <div style="font-size: 10px; color: #666; margin-top: 4px;">Fecha: ${fechaPresupuesto}</div>
+                <div style="font-size: 11px; font-weight: bold; color: #2c3e50; margin-top: 8px;">
+                    Total Items Distintos: ${totalArticulos}
+                </div>
 `;
             
             html += `
@@ -1351,7 +1441,11 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             </div>
         </div>
         
-        <!-- PIE DE PÁGINA -->
+        <!-- CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL -->
+        <div style="text-align: center; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+            ${svgCodigoBarras}
+        </div>
+
         <div class="pie-pagina">
             Sistema LAMDA - Presupuesto ${presupIndex + 1} de ${clienteData.presupuestos.length} - ${new Date().toLocaleString('es-AR')}
         </div>
@@ -1424,6 +1518,16 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
             
             const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
             
+            // Calcular datos para código de barras y total de artículos
+            const idPresupuesto = presupuesto._id_presupuesto || 0;
+            const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+            const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+            // CORRECCIÓN: Se usa .length para contar items distintos
+            const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
+            const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
+            
+            console.log(`📊 [BARCODE-PDF] Código: ${codigoBarras}, Total: ${totalArticulos}`);
+            
             // ENCABEZADO
             doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
             
@@ -1462,6 +1566,10 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
             doc.fontSize(8).fillColor('#999999')
                .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
             
+            // TOTAL ARTÍCULOS
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#2c3e50')
+               .text(`Items Distintos: ${totalArticulos}`, 450, 130);
+            
             // Indicador de modificación si corresponde
             let offsetTablaY = 0;
             if (presupuesto._snapshot) {
@@ -1474,17 +1582,17 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                     
                     // Centrar el texto "MODIFICADO" en el ancho de la página
                     doc.fontSize(12).font('Helvetica-Bold').fillColor('#dc3545')
-                       .text(`MODIFICADO ${numeroModificacion}`, doc.page.margins.left, 60, {
+                        .text(`MODIFICADO ${numeroModificacion}`, doc.page.margins.left, 60, {
                            width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
                            align: 'center'
-                       });
+                        });
                     
                     // Centrar la fecha de modificación debajo
                     doc.fontSize(8).font('Helvetica').fillColor('#666')
-                       .text(`Fecha de modificación: ${fechaModificacion}`, doc.page.margins.left, 75, {
+                        .text(`Fecha de modificación: ${fechaModificacion}`, doc.page.margins.left, 75, {
                            width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
                            align: 'center'
-                       });
+                        });
 
                     console.log(`[PRINT-MOD] PDF: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
                 }
@@ -1693,7 +1801,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                         
                         // Título del bloque
                         doc.strokeColor('#ffc107').lineWidth(2)
-                           .roundedRect(50, currentY, 490, 20, 3).stroke();
+                           .roundedRect(50, currentY, 490, 20 + (diferenciasRelevantes.length * 12), 3).stroke(); // Ajuste dinámico de altura para el cuadro de cambios
                         doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
                         doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
                            .text('CAMBIOS:', 60, currentY + 6);
@@ -1724,7 +1832,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                         
                         currentY += 5;
                         
-                        console.log(`[PRINT-MOD] PDF: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
+                        console.log(`[PRINT-MOD] PDF Todos: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
                     }
                 }
             }
@@ -1748,8 +1856,19 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
             doc.text('Firma (opcional):', 300, campoY);
             doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
             
+            // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
+            if (bufferCodigoBarras) {
+                try {
+                    // Se dibuja debajo del cuadro de control (controlY + 45) y centrado (x=200 aprox)
+                    doc.image(bufferCodigoBarras, 200, controlY + 45, { width: 140, height: 35 });
+                    console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie`);
+                } catch (imgError) {
+                    console.error(`❌ [BARCODE-PDF] Error al insertar imagen:`, imgError.message);
+                }
+            }
+            
             // PIE DE PÁGINA
-            const pieY = Math.min(controlY + controlHeight + 10, 780);
+            const pieY = Math.min(controlY + controlHeight + 50, 780);
             doc.fontSize(7).font('Helvetica').fillColor('#adb5bd')
                .text(`Sistema LAMDA - Presupuesto ${presupIndex + 1} de ${clienteData.presupuestos.length} - ${new Date().toLocaleString('es-AR')}`,
                      50, pieY, { width: 490, align: 'center' });
@@ -2079,6 +2198,36 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
                 const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
                 const esUltimo = (clienteIndex === clientesData.length - 1) && (presupIndex === cliente.presupuestos.length - 1);
                 
+                // Calcular datos para código de barras y total de artículos
+                const idPresupuesto = presupuesto._id_presupuesto || 0;
+                const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+                const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+                // CORRECCIÓN: Usar length
+                const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
+                const svgCodigoBarras = generarSVGCodigoBarras(codigoBarras);
+                
+                let modificacionInfo = "";
+                if (presupuesto._snapshot) {
+                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                    
+                    if (esModificado) {
+                        const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+                        const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
+                        
+                        modificacionInfo = `
+                <div style="text-align: center;">
+                    <div style="font-size: 10px; color: #dc3545; font-weight: bold; margin-top: 4px;">
+                        📝 Modificado ${numeroModificacion}
+                    </div>
+                    <div style="font-size: 9px; color: #856404; margin-top: 2px;">
+                        Fecha modificación: ${fechaModificacion}
+                    </div>
+                </div>
+`;
+                    }
+                }
+
                 html += `
     <div class="remito-container${!esUltimo ? ' page-break' : ''}">
         <div class="header">
@@ -2086,6 +2235,7 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
                 <div class="logo-lamda">LAMDA</div>
                 <div class="letra-r">R</div>
             </div>
+            ${modificacionInfo}
             <div class="fecha-emision">
                 ${fechaHoy} - ${horaHoy}
             </div>
@@ -2099,27 +2249,10 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
             <div>
                 <div class="codigo-presupuesto">${presupuesto.id_presupuesto_ext}</div>
                 <div style="font-size: 10px; color: #666; margin-top: 4px;">Fecha: ${fechaPresupuesto}</div>
-`;
-                
-                // Mostrar indicador de modificación si corresponde
-                if (presupuesto._snapshot) {
-                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                    
-                    if (esModificado) {
-                        const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
-                        const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
-                        
-                        html += `
-                <div style="font-size: 10px; color: #dc3545; font-weight: bold; margin-top: 4px;">
-                    📝 Modificado ${numeroModificacion}
-                </div>
-                <div style="font-size: 9px; color: #856404; margin-top: 2px;">
-                    Fecha modificación: ${fechaModificacion}
+                <div style="font-size: 11px; font-weight: bold; color: #2c3e50; margin-top: 8px;">
+                    Total Articulos: ${totalArticulos} unidades
                 </div>
 `;
-                    }
-                }
                 
                 html += `
             </div>
@@ -2247,6 +2380,11 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
             </div>
         </div>
         
+        <!-- CÓDIGO DE BARRAS AL FINAL -->
+        <div style="text-align: center; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+            ${svgCodigoBarras}
+        </div>
+
         <div class="pie-pagina">
             Sistema LAMDA - Presupuesto ${presupuestoGlobalIndex} de ${totalPresupuestos} - ${new Date().toLocaleString('es-AR')}
         </div>
@@ -2327,6 +2465,16 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                 
                 const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
                 
+                // Calcular datos para código de barras y total de artículos
+                const idPresupuesto = presupuesto._id_presupuesto || 0;
+                const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+                const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+                // CORRECCIÓN: Usar length
+                const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
+                const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
+                
+                console.log(`📊 [BARCODE-PDF-TODOS] Código: ${codigoBarras}, Total: ${totalArticulos.toFixed(2)}`);
+                
                 // ENCABEZADO
                 doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
                 doc.roundedRect(130, 45, 35, 35, 3).stroke();
@@ -2352,11 +2500,15 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                 doc.fontSize(8).fillColor('#999999')
                    .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
                 
+                // TOTAL ARTÍCULOS
+                doc.fontSize(9).font('Helvetica-Bold').fillColor('#2c3e50')
+                   .text(`📦 Total: ${totalArticulos.toFixed(2)} unidades`, 450, 130);
+                
                 // Indicador de modificación si corresponde
                 let offsetTablaY = 0;
                 if (presupuesto._snapshot) {
-                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                                        presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
                     
                     if (esModificado) {
                         const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
@@ -2423,18 +2575,33 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                             doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
                             
                             doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
-                               .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                                   width: colWidths[2] - 10, 
-                                   align: 'center' 
+                               .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
+                                   width: colWidths[2] - 10, 
+                                   align: 'center' 
                                });
                             
                             currentY += rowHeight;
                         });
+                } else {
+                    doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                    doc.fillColor('black');
+                    doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                    doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                    
+                    doc.fontSize(12).font('Helvetica').fillColor('#6c757d')
+                       .text('No hay artículos registrados', 55, currentY + 8, { 
+                           width: colWidths[0] + colWidths[1] + colWidths[2] - 10, 
+                           align: 'center' 
+                       });
+                    currentY += rowHeight;
                 }
                 
                 // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
                 if (presupuesto._snapshot) {
-                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
                                        presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
                     
                     if (esModificado && presupuesto._snapshot.diferencias_detalles) {
@@ -2458,7 +2625,7 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                             
                             // Título del bloque
                             doc.strokeColor('#ffc107').lineWidth(2)
-                               .roundedRect(50, currentY, 490, 20, 3).stroke();
+                               .roundedRect(50, currentY, 490, 20 + (diferenciasRelevantes.length * 12), 3).stroke(); // Ajuste dinámico de altura para el cuadro de cambios
                             doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
                             doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
                                .text('CAMBIOS:', 60, currentY + 6);
@@ -2513,9 +2680,20 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                 doc.text('Firma (opcional):', 300, campoY);
                 doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
                 
+                // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
+                if (bufferCodigoBarras) {
+                    try {
+                        // Se dibuja debajo del cuadro de control (controlY + 45) y centrado (x=200 aprox)
+                        doc.image(bufferCodigoBarras, 200, controlY + 45, { width: 140, height: 35 });
+                        console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie`);
+                    } catch (imgError) {
+                        console.error(`❌ [BARCODE-PDF] Error al insertar imagen:`, imgError.message);
+                    }
+                }
+                
                 // PIE DE PÁGINA
                 presupuestoGlobalIndex++;
-                const pieY = Math.min(controlY + controlHeight + 10, 780);
+                const pieY = Math.min(controlY + controlHeight + 50, 780);
                 doc.fontSize(7).font('Helvetica').fillColor('#adb5bd')
                    .text(`Sistema LAMDA - Presupuesto ${presupuestoGlobalIndex} de ${totalPresupuestos} - ${new Date().toLocaleString('es-AR')}`,
                          50, pieY, { width: 490, align: 'center' });
@@ -2540,5 +2718,5 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
 }
 
 module.exports = {
-    imprimirPresupuestoCliente
+    imprimirPresupuestoCliente
 };

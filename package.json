@@ -27,11 +27,13 @@
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
+    "canvas": "^3.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^4.18.2",
     "googleapis": "^144.0.0",
     "http-proxy-middleware": "^3.0.5",
+    "jsbarcode": "^3.12.1",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
