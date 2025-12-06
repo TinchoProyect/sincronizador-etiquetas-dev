@@ -1,5 +1,4 @@
 const express = require('express');
-const { Pool } = require('pg');
 const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -72,26 +71,26 @@ app.get('/presupuestos', (req, res) => {
   res.redirect('http://localhost:3003');
 });
 
-// Configurar conexión a la base de datos
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'etiquetas',
-  password: 'ta3Mionga',
-  port: 5432,
-});
+// Importar pool centralizado de usuarios
+const pool = require('../usuarios/pool');
 
-// Verificar conexión a la base de datos
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Error al conectar con la base de datos:', err);
-  } else {
-    console.log('Conexión a la base de datos establecida');
-  }
-});
+console.log('🔌 [ETIQUETAS-SERVER] Usando pool centralizado de usuarios');
 
 // Configurar rutas API existentes
 const router = express.Router();
+
+// Endpoint para obtener el estado del entorno (para indicador visual)
+router.get('/config/status', (req, res) => {
+  const dbName = process.env.DB_NAME || 'etiquetas';
+  const nodeEnv = process.env.NODE_ENV || 'production';
+  
+  res.json({
+    database: dbName,
+    environment: nodeEnv,
+    isProduction: dbName === 'etiquetas' && nodeEnv === 'production',
+    isTest: dbName === 'etiquetas_pruebas' || nodeEnv === 'test'
+  });
+});
 
 router.get('/articulos', async (req, res) => {
   console.log('GET /api/articulos - Obteniendo artículos...');

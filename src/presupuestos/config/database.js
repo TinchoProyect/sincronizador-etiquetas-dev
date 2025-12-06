@@ -1,15 +1,19 @@
+require('dotenv').config();
 const { Pool } = require('pg');
 
 console.log('🔍 [PRESUPUESTOS] Configurando conexión a base de datos...');
 
 // Configuración de la base de datos (misma que el sistema principal)
 const pool = new Pool({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'etiquetas',
-    password: 'ta3Mionga',
-    port: 5432,
+    user: process.env.DB_USER || 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    database: process.env.DB_NAME || 'etiquetas',
+    password: process.env.DB_PASSWORD || 'ta3Mionga',
+    port: parseInt(process.env.DB_PORT || '5432'),
 });
+
+// Log de conexión con información del entorno
+console.log(`🔌 [PRESUPUESTOS] Conectado a BD: ${process.env.DB_NAME || 'etiquetas'} (Entorno: ${process.env.NODE_ENV || 'production'})`);
 
 // Verificar conexión
 pool.query('SELECT NOW()', (err, res) => {

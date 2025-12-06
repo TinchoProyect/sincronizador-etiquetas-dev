@@ -27,9 +27,80 @@
       background-color: var(--primary-color);
       color: white;
     }
+
+    /* Indicador de Entorno */
+    .environment-indicator {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.9em;
+      z-index: 9999;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      display: none;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(-100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .environment-indicator.test {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+      color: white;
+      border: 2px solid #ff4757;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .environment-indicator.production {
+      background-color: #f8f9fa;
+      color: #28a745;
+      border: 1px solid #28a745;
+      padding: 6px 12px;
+      font-size: 0.8em;
+    }
+
+    .environment-indicator .pulse {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: currentColor;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .environment-indicator .icon {
+      font-size: 1.2em;
+    }
   </style>
 </head>
 <body>
+  <!-- Indicador de Entorno -->
+  <div id="environment-indicator" class="environment-indicator">
+    <span class="icon"></span>
+    <span class="text"></span>
+    <span class="pulse"></span>
+  </div>
+
   <div class="container">
     <header style="position: relative;">
       <h1>Gestiones Lamda</h1>

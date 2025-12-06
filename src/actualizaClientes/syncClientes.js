@@ -1,13 +1,20 @@
 const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
+require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'etiquetas',
-  password: 'ta3Mionga',
-  port: 5432,
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME || 'etiquetas',
+  password: process.env.DB_PASSWORD || 'ta3Mionga',
+  port: parseInt(process.env.DB_PORT || '5432'),
 });
+
+// Log de conexión
+console.log('═══════════════════════════════════════════════════════');
+console.log('🔌 [SYNC-CLIENTES] Conectado a BD:', process.env.DB_NAME || 'etiquetas');
+console.log('🌍 [SYNC-CLIENTES] Entorno:', process.env.NODE_ENV || 'production');
+console.log('═══════════════════════════════════════════════════════');
 
 // URL del endpoint de clientes (configurable via variable de entorno)
 const LOMASOFT_CLIENTES_URL = process.env.LOMASOFT_CLIENTES_URL || 'https://api.lamdaser.com/api/clientes';

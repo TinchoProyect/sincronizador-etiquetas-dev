@@ -1,13 +1,23 @@
 const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
+require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'etiquetas',
-  password: 'ta3Mionga',
-  port: 5432,
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME || 'etiquetas',
+  password: process.env.DB_PASSWORD || 'ta3Mionga',
+  port: parseInt(process.env.DB_PORT || '5432'),
 });
+
+// Log de conexión con ADVERTENCIA de operación destructiva
+console.log('═══════════════════════════════════════════════════════');
+console.log('⚠️  [SYNC-ARTICULOS] SCRIPT DE SINCRONIZACIÓN DESTRUCTIVO');
+console.log('═══════════════════════════════════════════════════════');
+console.log(`🔌 Conectado a BD: ${process.env.DB_NAME || 'etiquetas'}`);
+console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'production'}`);
+console.log('⚠️  Este script ejecuta: DELETE FROM articulos');
+console.log('═══════════════════════════════════════════════════════');
 
 async function sincronizarArticulos() {
   let client;

@@ -6,14 +6,23 @@
   "scripts": {
     "start": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,CLOUDFLARED\" -c \"blue,green,yellow,magenta,cyan\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
     "start:local": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION\" -c \"blue,green,yellow,magenta\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\"",
+    "start:test": "node -r dotenv/config src/app-etiquetas/server.js dotenv_config_path=.env.test",
+    "produccion:test": "node -r dotenv/config src/produccion/app.js dotenv_config_path=.env.test",
+    "presupuestos:test": "node -r dotenv/config src/presupuestos/app.js dotenv_config_path=.env.test",
+    "facturacion:test": "node -r dotenv/config src/facturacion/app.js dotenv_config_path=.env.test",
+    "start:test:all": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS-TEST,PRODUCCION-TEST,PRESUPUESTOS-TEST,FACTURACION-TEST\" -c \"blue,green,yellow,magenta\" \"npm run start:test\" \"npm run produccion:test\" \"npm run presupuestos:test\" \"npm run facturacion:test\"",
     "dev": "cd src/app-etiquetas && vite",
     "sync": "node src/actualizaArticulos/syncEtiquetas.js",
+    "sync:articulos:test": "node -r dotenv/config src/actualizaArticulos/syncEtiquetas.js dotenv_config_path=.env.test",
+    "sync:clientes:test": "node -r dotenv/config src/actualizaClientes/syncClientes.js dotenv_config_path=.env.test",
+    "sync:precios:test": "node -r dotenv/config src/actualizaPrecios/syncPrecios.js dotenv_config_path=.env.test",
     "sync:once": "node src/jobs/sync.js --once",
     "sync:watch": "node src/jobs/sync.js",
     "print": "node src/scripts/imprimirEtiqueta.js",
     "produccion": "node src/produccion/app.js",
     "presupuestos": "node src/presupuestos/app.js",
     "facturacion": "node src/facturacion/app.js",
+    "db:check": "node -e \"require('dotenv').config(); console.log('📊 Base de datos actual:', process.env.DB_NAME || 'etiquetas'); console.log('🌍 Entorno:', process.env.NODE_ENV || 'production');\"",
     "kill-ports": "npx kill-port 3000 3002 3003 3004"
   },
   "dependencies": {

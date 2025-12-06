@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "numero": "CHBx2",
-    "nombre": "Chips de Banana x 2 kg",
-    "codigo_barras": "2563632015"
-  },
-  "cantidad": "2.00"
+  "numero": "PJx10",
+  "nombre": "Pasa/Jumbo x 10",
+  "codigo_barras": "5349211857",
+  "cantidad": 4
 }
