@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logística y Reparto - Gestiones Lamda</title>
+    <link rel="stylesheet" href="../css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>🚚 Logística y Reparto</h1>
+                <span class="subtitle">Gestión de Rutas y Entregas</span>
+            </div>
+            <div class="header-right">
+                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'">
+                    ← Volver al Menú Principal
+                </button>
+                <button class="btn-primary" onclick="crearNuevaRuta()">
+                    + Nueva Ruta
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Panel Izquierdo: Pedidos Pendientes -->
+            <div class="left-panel">
+                <div class="panel-header">
+                    <h2>📦 Pedidos Listos para Asignar</h2>
+                    <div class="panel-actions">
+                        <input type="text" id="search-pedidos" placeholder="Buscar pedido..." class="search-input">
+                        <button class="btn-icon" onclick="refrescarPedidos()" title="Refrescar">
+                            🔄
+                        </button>
+                    </div>
+                </div>
+
+                <div class="filters">
+                    <select id="filter-estado" onchange="filtrarPedidos()">
+                        <option value="">Todos los estados</option>
+                        <option value="PENDIENTE_ASIGNAR" selected>Pendientes</option>
+                        <option value="BLOQUEADO_PAGO">Bloqueados</option>
+                    </select>
+                    <select id="filter-zona" onchange="filtrarPedidos()">
+                        <option value="">Todas las zonas</option>
+                        <option value="NORTE">Zona Norte</option>
+                        <option value="SUR">Zona Sur</option>
+                        <option value="CENTRO">Centro</option>
+                    </select>
+                </div>
+
+                <div id="pedidos-list" class="pedidos-list">
+                    <!-- Los pedidos se cargarán dinámicamente -->
+                    <div class="loading">Cargando pedidos...</div>
+                </div>
+            </div>
+
+            <!-- Panel Central: Rutas Activas -->
+            <div class="center-panel">
+                <div class="panel-header">
+                    <h2>🗺️ Rutas del Día</h2>
+                    <div class="panel-actions">
+                        <select id="filter-fecha" onchange="filtrarRutas()">
+                            <option value="hoy" selected>Hoy</option>
+                            <option value="manana">Mañana</option>
+                            <option value="semana">Esta Semana</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="rutas-list" class="rutas-list">
+                    <!-- Las rutas se cargarán dinámicamente -->
+                    <div class="loading">Cargando rutas...</div>
+                </div>
+            </div>
+
+            <!-- Panel Derecho: Mapa -->
+            <div class="right-panel">
+                <div class="panel-header">
+                    <h2>🗺️ Visualización de Ruta</h2>
+                    <div class="panel-actions">
+                        <button class="btn-icon" onclick="centrarMapa()" title="Centrar mapa">
+                            🎯
+                        </button>
+                        <button class="btn-icon" onclick="toggleFullscreen()" title="Pantalla completa">
+                            ⛶
+                        </button>
+                    </div>
+                </div>
+
+                <div id="map" class="map-container">
+                    <!-- El mapa de Google Maps se cargará aquí -->
+                </div>
+
+                <div id="ruta-info" class="ruta-info" style="display: none;">
+                    <h3>Información de la Ruta</h3>
+                    <div id="ruta-detalles"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Nueva Ruta -->
+    <div id="modal-nueva-ruta" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Crear Nueva Ruta</h2>
+                <button class="modal-close" onclick="cerrarModal('modal-nueva-ruta')">&times;</button>
+            </div>
+            <form id="form-nueva-ruta" onsubmit="guardarNuevaRuta(event)">
+                <div class="form-group">
+                    <label for="nombre_ruta">Nombre de la Ruta *</label>
+                    <input type="text" id="nombre_ruta" required placeholder="Ej: Zona Norte - 07/12/2024">
+                </div>
+                <div class="form-group">
+                    <label for="fecha_salida">Fecha y Hora de Salida *</label>
+                    <input type="datetime-local" id="fecha_salida" required>
+                </div>
+                <div class="form-group">
+                    <label for="id_chofer">Chofer *</label>
+                    <select id="id_chofer" required>
+                        <option value="">Seleccione un chofer...</option>
+                        <!-- Se cargarán dinámicamente -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="id_vehiculo">Vehículo (Patente)</label>
+                    <input type="text" id="id_vehiculo" placeholder="Ej: ABC123">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modal-nueva-ruta')">Cancelar</button>
+                    <button type="submit" class="btn-primary">Crear Ruta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Asignar Pedidos -->
+    <div id="modal-asignar-pedidos" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Asignar Pedidos a Ruta</h2>
+                <button class="modal-close" onclick="cerrarModal('modal-asignar-pedidos')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Seleccione los pedidos que desea asignar a la ruta <strong id="ruta-nombre-asignar"></strong>:</p>
+                <div id="pedidos-seleccionables" class="pedidos-seleccionables">
+                    <!-- Se cargarán dinámicamente -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="cerrarModal('modal-asignar-pedidos')">Cancelar</button>
+                <button type="button" class="btn-primary" onclick="confirmarAsignacion()">Asignar Seleccionados</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menú Contextual -->
+    <div id="context-menu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" onclick="abrirModalDomicilios(window.contextMenuPedido)">
+            📍 Gestionar Direcciones
+        </div>
+        <!-- Espacio para futuras opciones -->
+    </div>
+
+    <!-- Modal: Gestión de Domicilios -->
+    <div id="modal-domicilios" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>📍 Gestión de Domicilios</h2>
+                <button class="modal-close" onclick="cerrarModalDomicilios()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="domicilios-info">
+                    <p><strong>Cliente:</strong> <span id="domicilio-cliente-nombre"></span></p>
+                    <p><strong>Presupuesto:</strong> #<span id="domicilio-presupuesto-id"></span></p>
+                </div>
+
+                <div class="domicilios-actions">
+                    <button class="btn-primary btn-sm" onclick="mostrarFormNuevoDomicilio()">
+                        + Agregar Nueva Dirección
+                    </button>
+                </div>
+
+                <!-- Formulario para nuevo domicilio (oculto inicialmente) -->
+                <div id="form-nuevo-domicilio-container" style="display: none;">
+                    <div class="form-section">
+                        <h3>📍 Selecciona la Ubicación en el Mapa</h3>
+                        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 1rem;">
+                            Haz clic en el mapa o arrastra el pin hasta la ubicación exacta del cliente
+                        </p>
+                        
+                        <!-- Contenedor del mapa -->
+                        <div id="mapa-nuevo-domicilio" style="width: 100%; height: 400px; border-radius: 0.5rem; margin-bottom: 1rem;"></div>
+                        
+                        <!-- Coordenadas actuales -->
+                        <div style="background-color: #f8fafc; padding: 0.75rem; border-radius: 0.375rem; margin-bottom: 1rem; font-size: 0.875rem;">
+                            <strong>Coordenadas:</strong> 
+                            <span id="coordenadas-display">Selecciona una ubicación en el mapa</span>
+                        </div>
+                        
+                        <form id="form-nuevo-domicilio" onsubmit="guardarNuevoDomicilio(event)">
+                            <!-- Campos ocultos para coordenadas -->
+                            <input type="hidden" id="nuevo-latitud" required>
+                            <input type="hidden" id="nuevo-longitud" required>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="nuevo-alias">Alias *</label>
+                                    <input type="text" id="nuevo-alias" required placeholder="Ej: Casa, Oficina, Depósito">
+                                </div>
+                                <div class="form-group">
+                                    <label for="nuevo-telefono">Teléfono de Contacto</label>
+                                    <input type="tel" id="nuevo-telefono" placeholder="Ej: 1234567890">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="nuevo-direccion">Dirección Completa</label>
+                                <input type="text" id="nuevo-direccion" placeholder="Se autocompletará desde el mapa (puedes editarla)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="nuevo-localidad">Localidad</label>
+                                    <input type="text" id="nuevo-localidad" placeholder="Se autocompletará">
+                                </div>
+                                <div class="form-group">
+                                    <label for="nuevo-provincia">Provincia</label>
+                                    <input type="text" id="nuevo-provincia" placeholder="Se autocompletará">
+                                </div>
+                                <div class="form-group">
+                                    <label for="nuevo-codigo-postal">Código Postal</label>
+                                    <input type="text" id="nuevo-codigo-postal" placeholder="Se autocompletará">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="nuevo-instrucciones">Instrucciones de Entrega</label>
+                                <textarea id="nuevo-instrucciones" rows="2" placeholder="Ej: Tocar timbre 3 veces, entregar en portería"></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn-secondary btn-sm" onclick="cancelarNuevoDomicilio()">Cancelar</button>
+                                <button type="submit" class="btn-primary btn-sm">Guardar Dirección</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Lista de domicilios existentes -->
+                <div class="domicilios-list">
+                    <h3>Direcciones Disponibles</h3>
+                    <div id="lista-domicilios">
+                        <div class="loading">Cargando domicilios...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="cerrarModalDomicilios()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../js/modules/mapaInteractivo.js"></script>
+    <script src="../js/dashboard.js"></script>
+    <script src="../js/config.js"></script>
+    <script>
+        // Inicializar cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', () => {
+            inicializarDashboard();
+        });
+    </script>
+</body>
+</html>

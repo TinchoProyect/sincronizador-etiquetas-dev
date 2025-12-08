@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test de Factibilidad Logística</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .status { padding: 10px; margin: 5px 0; border-radius: 5px; color: white; }
+        .success { background-color: green; }
+        .error { background-color: red; }
+        .pending { background-color: orange; }
+        button { padding: 10px 20px; font-size: 16px; margin: 10px 0; width: 100%; }
+        #camera-preview { width: 100%; max-width: 300px; display: none; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h2>Diagnóstico de Capacidades</h2>
+    <p>Este test verifica si el dispositivo y el entorno están listos.</p>
+
+    <div id="status-ssl" class="status pending">1. Verificando Conexión Segura (SSL)...</div>
+
+    <div id="status-gps" class="status pending">2. Esperando GPS...</div>
+    <button onclick="probarGPS()">Solicitar GPS</button>
+
+    <div id="status-camera" class="status pending">3. Esperando Cámara...</div>
+    <video id="camera-preview" autoplay playsinline></video>
+    <button onclick="probarCamara()">Solicitar Cámara (Para Sobres)</button>
+
+    <div id="status-maps" class="status pending">4. Test Deep Linking (Google Maps)</div>
+    <button onclick="probarMaps()">Abrir App de Mapas</button>
+
+    <script>
+        // 1. Check SSL (Flexible para localhost)
+        if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+            document.getElementById('status-ssl').textContent = "1. Entorno Seguro (OK)";
+            document.getElementById('status-ssl').className = "status success";
+        } else {
+            document.getElementById('status-ssl').textContent = "1. ERROR: No es HTTPS.";
+            document.getElementById('status-ssl').className = "status error";
+        }
+
+        // 2. Check GPS
+        function probarGPS() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    document.getElementById('status-gps').textContent = 
+                        `2. GPS OK: Lat ${position.coords.latitude.toFixed(4)}, Lon ${position.coords.longitude.toFixed(4)}`;
+                    document.getElementById('status-gps').className = "status success";
+                }, function(error) {
+                    document.getElementById('status-gps').textContent = "2. Error GPS: " + error.message;
+                    document.getElementById('status-gps').className = "status error";
+                });
+            } else {
+                document.getElementById('status-gps').textContent = "2. GPS no soportado.";
+                document.getElementById('status-gps').className = "status error";
+            }
+        }
+
+        // 3. Check Cámara
+        async function probarCamara() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                const video = document.getElementById('camera-preview');
+                video.srcObject = stream;
+                video.style.display = "block";
+                document.getElementById('status-camera').textContent = "3. Cámara OK (Video activo)";
+                document.getElementById('status-camera').className = "status success";
+            } catch (err) {
+                document.getElementById('status-camera').textContent = "3. Error Cámara: " + err.message;
+                document.getElementById('status-camera').className = "status error";
+            }
+        }
+
+        // 4. Check Maps
+        function probarMaps() {
+            // Intenta abrir el Obelisco
+            window.location.href = "https://www.google.com/maps/search/?api=1&query=-34.6037,-58.3816"; 
+            document.getElementById('status-maps').textContent = "4. Comando enviado.";
+            document.getElementById('status-maps').className = "status success";
+        }
+    </script>
+</body>
+</html>

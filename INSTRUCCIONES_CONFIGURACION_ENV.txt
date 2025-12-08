@@ -1,0 +1,74 @@
+═══════════════════════════════════════════════════════════════
+  INSTRUCCIONES PARA CONFIGURAR VARIABLES DE ENTORNO
+  Módulo de Logística - Sistema LAMDA
+═══════════════════════════════════════════════════════════════
+
+PASO 1: Abrir el archivo .env
+─────────────────────────────────────────────────────────────
+
+Ubicación: C:\Users\Martin\Documents\sincronizador-etiquetas - copia\.env
+
+Puedes abrirlo con:
+- VSCode (recomendado)
+- Notepad
+- Cualquier editor de texto
+
+
+PASO 2: Agregar estas líneas AL FINAL del archivo
+─────────────────────────────────────────────────────────────
+
+Copia y pega exactamente estas líneas:
+
+# ===================================
+# MÓDULO DE LOGÍSTICA
+# ===================================
+
+PORT_LOGISTICA=3005
+
+GOOGLE_MAPS_API_KEY=AIzaSyBz4xwmtIwpI-Tfe4l75Vs7QTv3qTt88LE
+
+NGROK_URL=https://7109a0e7d930.ngrok.app
+
+
+PASO 3: Guardar el archivo
+─────────────────────────────────────────────────────────────
+
+- En VSCode: Ctrl+S
+- En Notepad: Archivo > Guardar
+
+
+PASO 4: Verificar que se guardó correctamente
+─────────────────────────────────────────────────────────────
+
+Ejecuta en PowerShell:
+
+node -e "require('dotenv').config(); console.log('PORT_LOGISTICA:', process.env.PORT_LOGISTICA); console.log('GOOGLE_MAPS_API_KEY:', process.env.GOOGLE_MAPS_API_KEY ? 'Configurada' : 'NO configurada'); console.log('NGROK_URL:', process.env.NGROK_URL);"
+
+
+PASO 5: Iniciar el servidor
+─────────────────────────────────────────────────────────────
+
+npm run logistica
+
+
+PASO 6: Probar el endpoint
+─────────────────────────────────────────────────────────────
+
+En otra terminal PowerShell:
+
+# Health check
+curl http://localhost:3005/health
+
+# Listar domicilios
+curl http://localhost:3005/api/logistica/domicilios
+
+
+═══════════════════════════════════════════════════════════════
+  NOTAS IMPORTANTES
+═══════════════════════════════════════════════════════════════
+
+✅ El archivo .env está en .gitignore (no se sube a Git)
+✅ Las API Keys están seguras
+✅ Si cambias el .env, debes reiniciar el servidor
+
+═══════════════════════════════════════════════════════════════
