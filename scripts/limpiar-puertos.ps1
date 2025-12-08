@@ -7,7 +7,7 @@ Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Lista de puertos que usa el proyecto
-$puertos = @(3000, 3002, 3003, 3004)
+$puertos = @(3000, 3002, 3003, 3004, 3005)
 
 # Liberar cada puerto
 foreach ($puerto in $puertos) {
