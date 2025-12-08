@@ -267,6 +267,42 @@ class MapaInteractivo {
     }
     
     /**
+     * Posicionar marcador en coordenadas específicas (para edición)
+     * @param {number} lat - Latitud
+     * @param {number} lng - Longitud
+     */
+    posicionarMarcador(lat, lng) {
+        if (!this.map || !this.marker) {
+            console.warn('[MAPA] Mapa no inicializado');
+            return;
+        }
+        
+        const position = { lat, lng };
+        
+        // Mover marcador
+        this.marker.setPosition(position);
+        
+        // Centrar mapa
+        this.map.setCenter(position);
+        this.map.setZoom(16);
+        
+        // Actualizar coordenadas internas
+        this.coordenadas = { lat, lng };
+        
+        // Disparar callback
+        if (this.onCoordenadasChange) {
+            this.onCoordenadasChange(lat, lng);
+        }
+        
+        // Hacer reverse geocoding
+        this.reverseGeocode(lat, lng).catch(err => {
+            console.warn('[MAPA] Error en reverse geocoding:', err);
+        });
+        
+        console.log('[MAPA] Marcador posicionado en:', lat, lng);
+    }
+    
+    /**
      * Destruir mapa y limpiar recursos
      */
     destruir() {

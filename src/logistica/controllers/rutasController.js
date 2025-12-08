@@ -124,17 +124,11 @@ async function crearRuta(req, res) {
             });
         }
         
-        // Validar fecha de salida (debe ser futura o hoy)
+        // Nota: Permitimos fechas pasadas para registrar rutas retroactivas
+        // La validación de advertencia se hace en el frontend
         const fechaSalida = new Date(fecha_salida);
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        
-        if (fechaSalida < hoy) {
-            console.log('[RUTAS] ⚠️ Fecha de salida es pasada');
-            return res.status(400).json({
-                success: false,
-                error: 'La fecha de salida no puede ser anterior a hoy'
-            });
+        if (fechaSalida < new Date()) {
+            console.log('[RUTAS] ℹ️ Creando ruta con fecha pasada (retroactiva)');
         }
         
         // Crear ruta

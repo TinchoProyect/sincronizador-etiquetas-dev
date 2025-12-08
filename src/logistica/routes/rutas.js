@@ -119,6 +119,77 @@ router.put('/:id/asignar', async (req, res) => {
 });
 
 /**
+ * @route PUT /api/logistica/rutas/:id/reordenar
+ * @desc Reordenar presupuestos en una ruta
+ * @param id - ID de la ruta
+ * @body orden - Array de IDs de presupuestos en el nuevo orden
+ * @access Privado
+ */
+router.put('/:id/reordenar', async (req, res) => {
+    const { id } = req.params;
+    const { orden } = req.body;
+    
+    console.log(`🔍 [RUTAS] Reordenando presupuestos de ruta ${id}`);
+    
+    try {
+        if (!Array.isArray(orden) || orden.length === 0) {
+            throw new Error('Se requiere un array de IDs en el orden deseado');
+        }
+        
+        const client = await req.db.connect();
+        
+        try {
+            await client.query('BEGIN');
+            
+            // Validar que la ruta está en estado ARMANDO
+            const rutaQuery = await client.query(
+                'SELECT estado FROM rutas WHERE id = $1',
+                [id]
+            );
+            
+            if (rutaQuery.rows.length === 0) {
+                throw new Error('Ruta no encontrada');
+            }
+            
+            if (rutaQuery.rows[0].estado !== 'ARMANDO') {
+                throw new Error('Solo se puede reordenar rutas en estado ARMANDO');
+            }
+            
+            // Actualizar orden_entrega de cada presupuesto
+            for (let i = 0; i < orden.length; i++) {
+                await client.query(
+                    `UPDATE presupuestos 
+                     SET orden_entrega = $1
+                     WHERE id = $2 AND id_ruta = $3`,
+                    [i + 1, orden[i], id]
+                );
+            }
+            
+            await client.query('COMMIT');
+            
+            res.json({
+                success: true,
+                message: 'Orden actualizado correctamente',
+                nuevo_orden: orden
+            });
+            
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+        
+    } catch (error) {
+        console.error(`❌ [RUTAS] Error al reordenar:`, error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
  * @route DELETE /api/logistica/rutas/:id/presupuestos/:presupuestoId
  * @desc Desasignar un presupuesto de una ruta
  * @param id - ID de la ruta
@@ -216,6 +287,75 @@ router.put('/:id/estado', async (req, res) => {
 });
 
 /**
+ * @route DELETE /api/logistica/rutas/:id
+ * @desc Eliminar una ruta
+ * @param id - ID de la ruta
+ * @access Privado
+ * 
+ * IMPORTANTE: Solo se pueden eliminar rutas vacías (sin presupuestos asignados)
+ */
+router.delete('/:id', async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔍 [RUTAS] Ruta DELETE /:id - Eliminando ruta ID: ${id}`);
+    
+    try {
+        const client = await req.db.connect();
+        
+        try {
+            await client.query('BEGIN');
+            
+            // Verificar que la ruta existe
+            const rutaQuery = await client.query(
+                'SELECT id, estado FROM rutas WHERE id = $1',
+                [id]
+            );
+            
+            if (rutaQuery.rows.length === 0) {
+                throw new Error('Ruta no encontrada');
+            }
+            
+            // Verificar que no tenga presupuestos asignados
+            const presupuestosQuery = await client.query(
+                'SELECT COUNT(*) as total FROM presupuestos WHERE id_ruta = $1',
+                [id]
+            );
+            
+            const totalPresupuestos = parseInt(presupuestosQuery.rows[0].total);
+            
+            if (totalPresupuestos > 0) {
+                throw new Error('No se puede eliminar una ruta con pedidos asignados. Quítelos primero.');
+            }
+            
+            // Eliminar ruta
+            await client.query(
+                'DELETE FROM rutas WHERE id = $1',
+                [id]
+            );
+            
+            await client.query('COMMIT');
+            
+            res.json({
+                success: true,
+                message: 'Ruta eliminada correctamente'
+            });
+            
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+        
+    } catch (error) {
+        console.error(`❌ [RUTAS] Error al eliminar ruta:`, error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
  * @route PUT /api/logistica/rutas/:id
  * @desc Actualizar una ruta existente
  * @param id - ID de la ruta
@@ -284,7 +424,9 @@ console.log('   - GET    /api/logistica/rutas/:id');
 console.log('   - POST   /api/logistica/rutas');
 console.log('   - PUT    /api/logistica/rutas/:id');
 console.log('   - PUT    /api/logistica/rutas/:id/asignar');
+console.log('   - PUT    /api/logistica/rutas/:id/reordenar');
 console.log('   - DELETE /api/logistica/rutas/:id/presupuestos/:presupuestoId');
+console.log('   - DELETE /api/logistica/rutas/:id');
 console.log('   - PUT    /api/logistica/rutas/:id/estado');
 
 module.exports = router;

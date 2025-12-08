@@ -123,18 +123,21 @@ async function quitarPedidoDeRuta(rutaId, presupuestoId) {
  */
 async function cargarChoferes() {
     try {
-        // TODO: Implementar endpoint de choferes
-        // Por ahora, usar datos mock
-        state.choferes = [
-            { id: 1, nombre: 'Juan Pérez' },
-            { id: 2, nombre: 'María González' },
-            { id: 3, nombre: 'Carlos Rodríguez' }
-        ];
+        const response = await fetch('/api/logistica/usuarios/choferes');
+        const result = await response.json();
         
-        renderizarSelectChoferes();
-        console.log('[DASHBOARD] Choferes cargados:', state.choferes.length);
+        if (result.success) {
+            state.choferes = result.data;
+            renderizarSelectChoferes();
+            console.log('[DASHBOARD] Choferes cargados:', state.choferes.length);
+        } else {
+            throw new Error(result.error || 'Error al cargar choferes');
+        }
     } catch (error) {
         console.error('[DASHBOARD] Error al cargar choferes:', error);
+        // Fallback a datos mock si falla
+        state.choferes = [];
+        renderizarSelectChoferes();
     }
 }
 
@@ -215,10 +218,24 @@ async function renderizarRutas() {
         // Generar lista de pedidos
         let pedidosHTML = '';
         if (ruta.presupuestos && ruta.presupuestos.length > 0) {
+            const rutaId = ruta.id;
+            const esArmando = ruta.estado === 'ARMANDO';
+            
             pedidosHTML = `
-                <div class="ruta-pedidos-lista" style="margin-top: 0.75rem; font-size: 0.75rem;">
+                <div class="ruta-pedidos-lista" 
+                     id="pedidos-ruta-${rutaId}" 
+                     data-ruta-id="${rutaId}"
+                     style="margin-top: 0.75rem; font-size: 0.75rem;">
                     ${ruta.presupuestos.map((p, index) => `
-                        <div class="ruta-pedido-item" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border-bottom: 1px solid #e2e8f0;">
+                        <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''}" 
+                             data-presupuesto-id="${p.id}"
+                             draggable="${esArmando}"
+                             ondragstart="${esArmando ? 'handlePedidoDragStart(event)' : ''}"
+                             ondragover="${esArmando ? 'handlePedidoDragOver(event)' : ''}"
+                             ondrop="${esArmando ? 'handlePedidoDrop(event, ' + rutaId + ')' : ''}"
+                             ondragend="${esArmando ? 'handlePedidoDragEnd(event)' : ''}"
+                             style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border-bottom: 1px solid #e2e8f0; ${esArmando ? 'cursor: move;' : ''}">
+                            ${esArmando ? '<span style="color: #94a3b8; cursor: move;">⋮⋮</span>' : ''}
                             <span style="font-weight: bold; color: #2563eb; min-width: 1.5rem;">${index + 1}.</span>
                             <div style="flex: 1; min-width: 0;">
                                 <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -228,9 +245,9 @@ async function renderizarRutas() {
                                     📍 ${p.domicilio_direccion || 'Sin dirección'}
                                 </div>
                             </div>
-                            ${ruta.estado === 'ARMANDO' ? `
+                            ${esArmando ? `
                                 <button class="btn-icon-danger" 
-                                        onclick="event.stopPropagation(); quitarPedidoDeRuta(${ruta.id}, ${p.id})"
+                                        onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, ${p.id})"
                                         title="Quitar de la ruta"
                                         style="padding: 0.25rem 0.5rem; font-size: 0.875rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
                                     🗑️
@@ -248,7 +265,15 @@ async function renderizarRutas() {
                  onclick="seleccionarRuta(${ruta.id})"
                  ondrop="handleDrop(event, ${ruta.id})" 
                  ondragover="handleDragOver(event)">
-                <div class="ruta-nombre">${ruta.nombre_ruta || `Ruta #${ruta.id}`}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="ruta-nombre">${ruta.nombre_ruta || `Ruta #${ruta.id}`}</div>
+                    <button class="btn-icon-danger" 
+                            onclick="event.stopPropagation(); eliminarRuta(${ruta.id}, ${ruta.presupuestos?.length || 0})"
+                            title="Eliminar ruta"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.875rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                        🗑️
+                    </button>
+                </div>
                 <div class="ruta-chofer">
                     👤 ${ruta.chofer_nombre || 'Sin chofer'}
                 </div>
@@ -290,7 +315,7 @@ function renderizarSelectChoferes() {
     
     select.innerHTML = '<option value="">Seleccione un chofer...</option>' +
         state.choferes.map(chofer => `
-            <option value="${chofer.id}">${chofer.nombre}</option>
+            <option value="${chofer.id}">${chofer.nombre_completo || chofer.nombre}</option>
         `).join('');
 }
 
@@ -455,7 +480,33 @@ function crearNuevaRuta() {
         fechaInput.value = tomorrow.toISOString().slice(0, 16);
     }
     
+    // Pre-seleccionar vehículo LYU622
+    const vehiculoInput = document.getElementById('id_vehiculo');
+    if (vehiculoInput) {
+        vehiculoInput.value = 'LYU622';
+    }
+    
     abrirModal('modal-nueva-ruta');
+}
+
+/**
+ * Generar nombre de ruta automático
+ */
+function generarNombreRuta(fechaSalida) {
+    const fecha = new Date(fechaSalida);
+    
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    
+    const diaSemana = diasSemana[fecha.getDay()];
+    const dia = fecha.getDate();
+    const mes = meses[fecha.getMonth()];
+    const año = fecha.getFullYear();
+    const horas = fecha.getHours().toString().padStart(2, '0');
+    const minutos = fecha.getMinutes().toString().padStart(2, '0');
+    
+    return `${diaSemana} ${dia} de ${mes} ${año} - ${horas}:${minutos}`;
 }
 
 /**
@@ -464,10 +515,41 @@ function crearNuevaRuta() {
 async function guardarNuevaRuta(event) {
     event.preventDefault();
     
+    const fechaSalida = document.getElementById('fecha_salida').value;
+    const idChofer = parseInt(document.getElementById('id_chofer').value);
+    
+    if (!idChofer) {
+        mostrarError('Debe seleccionar un chofer');
+        return;
+    }
+    
+    // Validar si la fecha es en el pasado (advertencia, no bloqueo)
+    const fechaSeleccionada = new Date(fechaSalida);
+    const ahora = new Date();
+    
+    if (fechaSeleccionada < ahora) {
+        const confirmar = confirm(
+            '⚠️ ATENCIÓN: Estás creando una ruta en el pasado.\n\n' +
+            `Fecha seleccionada: ${fechaSeleccionada.toLocaleString()}\n` +
+            `Fecha actual: ${ahora.toLocaleString()}\n\n` +
+            '¿Deseas continuar?'
+        );
+        
+        if (!confirmar) {
+            console.log('[DASHBOARD] Creación de ruta cancelada por el usuario (fecha pasada)');
+            return;
+        }
+        
+        console.log('[DASHBOARD] Usuario confirmó creación de ruta en el pasado');
+    }
+    
+    // Generar nombre automático
+    const nombreRuta = generarNombreRuta(fechaSalida);
+    
     const formData = {
-        nombre_ruta: document.getElementById('nombre_ruta').value,
-        fecha_salida: document.getElementById('fecha_salida').value,
-        id_chofer: parseInt(document.getElementById('id_chofer').value),
+        nombre_ruta: nombreRuta,
+        fecha_salida: fechaSalida,
+        id_chofer: idChofer,
         id_vehiculo: document.getElementById('id_vehiculo').value || null
     };
     
@@ -481,7 +563,7 @@ async function guardarNuevaRuta(event) {
         const result = await response.json();
         
         if (result.success) {
-            mostrarExito('Ruta creada exitosamente');
+            mostrarExito(`Ruta creada: ${nombreRuta}`);
             cerrarModal('modal-nueva-ruta');
             await cargarRutas();
         } else {
@@ -647,6 +729,51 @@ function mostrarMarcadoresRuta(ruta) {
 }
 
 /**
+ * Eliminar ruta
+ */
+async function eliminarRuta(rutaId, cantidadPedidos) {
+    // Validar que la ruta esté vacía
+    if (cantidadPedidos > 0) {
+        mostrarError('La ruta tiene pedidos asignados. Quítelos antes de eliminarla.');
+        return;
+    }
+    
+    if (!confirm('¿Está seguro de eliminar esta ruta?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/logistica/rutas/${rutaId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            mostrarExito('Ruta eliminada correctamente');
+            await cargarRutas();
+            
+            // Limpiar panel de detalles si era la ruta seleccionada
+            if (state.rutaSeleccionada === rutaId) {
+                state.rutaSeleccionada = null;
+                const infoDiv = document.getElementById('ruta-info');
+                if (infoDiv) {
+                    infoDiv.style.display = 'none';
+                }
+                // Limpiar marcadores del mapa
+                state.markers.forEach(marker => marker.setMap(null));
+                state.markers = [];
+            }
+        } else {
+            throw new Error(result.error || 'Error al eliminar ruta');
+        }
+    } catch (error) {
+        console.error('[DASHBOARD] Error al eliminar ruta:', error);
+        mostrarError('Error al eliminar ruta: ' + error.message);
+    }
+}
+
+/**
  * Iniciar ruta
  */
 async function iniciarRuta(rutaId) {
@@ -675,7 +802,7 @@ async function iniciarRuta(rutaId) {
     }
 }
 
-// ===== DRAG & DROP =====
+// ===== DRAG & DROP PEDIDOS A RUTAS =====
 
 let draggedPedidoId = null;
 
@@ -719,6 +846,99 @@ async function handleDrop(event, rutaId) {
         mostrarError('Error al asignar pedido: ' + error.message);
     } finally {
         draggedPedidoId = null;
+    }
+}
+
+// ===== DRAG & DROP REORDENAR PEDIDOS EN RUTA =====
+
+let draggedPedidoEnRuta = null;
+
+function handlePedidoDragStart(event) {
+    draggedPedidoEnRuta = {
+        presupuestoId: parseInt(event.currentTarget.dataset.presupuestoId),
+        element: event.currentTarget
+    };
+    event.currentTarget.style.opacity = '0.5';
+    event.dataTransfer.effectAllowed = 'move';
+}
+
+function handlePedidoDragEnd(event) {
+    event.currentTarget.style.opacity = '1';
+    draggedPedidoEnRuta = null;
+}
+
+function handlePedidoDragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    
+    const item = event.currentTarget;
+    if (item.classList.contains('sortable')) {
+        item.style.borderTop = '2px solid #2563eb';
+    }
+}
+
+async function handlePedidoDrop(event, rutaId) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const dropTarget = event.currentTarget;
+    dropTarget.style.borderTop = '';
+    
+    if (!draggedPedidoEnRuta) return;
+    
+    const targetPresupuestoId = parseInt(dropTarget.dataset.presupuestoId);
+    
+    if (draggedPedidoEnRuta.presupuestoId === targetPresupuestoId) return;
+    
+    // Obtener lista actual
+    const container = document.getElementById(`pedidos-ruta-${rutaId}`);
+    const items = Array.from(container.querySelectorAll('.ruta-pedido-item'));
+    
+    // Obtener IDs en orden actual
+    const ordenActual = items.map(item => parseInt(item.dataset.presupuestoId));
+    
+    // Calcular nuevo orden
+    const draggedIndex = ordenActual.indexOf(draggedPedidoEnRuta.presupuestoId);
+    const targetIndex = ordenActual.indexOf(targetPresupuestoId);
+    
+    // Reordenar array
+    ordenActual.splice(draggedIndex, 1);
+    ordenActual.splice(targetIndex, 0, draggedPedidoEnRuta.presupuestoId);
+    
+    console.log('[REORDEN] Nuevo orden:', ordenActual);
+    
+    // Enviar al backend
+    try {
+        const response = await fetch(`/api/logistica/rutas/${rutaId}/reordenar`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orden: ordenActual })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Recargar rutas para actualizar UI
+            await cargarRutas();
+            
+            // SIEMPRE actualizar el mapa si hay una ruta visible
+            // Obtener datos actualizados de la ruta
+            const responseRuta = await fetch(`/api/logistica/rutas/${rutaId}`);
+            const resultRuta = await responseRuta.json();
+            
+            if (resultRuta.success) {
+                // Actualizar mapa con nuevo orden
+                mostrarMarcadoresRuta(resultRuta.data);
+                console.log('[REORDEN] Mapa actualizado con nuevo orden');
+            }
+        } else {
+            throw new Error(result.error || 'Error al reordenar');
+        }
+    } catch (error) {
+        console.error('[REORDEN] Error:', error);
+        mostrarError('Error al reordenar: ' + error.message);
+        // Recargar para restaurar orden original
+        await cargarRutas();
     }
 }
 
@@ -814,7 +1034,8 @@ let modalDomiciliosContext = {
     presupuestoId: null,
     clienteId: null,
     clienteNombre: null,
-    mapaInteractivo: null
+    mapaInteractivo: null,
+    domicilioEditando: null // ID del domicilio en edición
 };
 
 /**
@@ -951,6 +1172,12 @@ function renderizarDomicilioItem(domicilio) {
                 <button class="btn-select" onclick="seleccionarDomicilio(${domicilio.id})">
                     Seleccionar
                 </button>
+                <button class="btn-edit" onclick="editarDomicilio(${domicilio.id})" title="Editar dirección">
+                    ✏️
+                </button>
+                <button class="btn-delete" onclick="eliminarDomicilio(${domicilio.id})" title="Eliminar dirección" style="background: #ef4444; color: white; border: none; padding: 0.5rem 0.75rem; border-radius: 0.25rem; cursor: pointer;">
+                    🗑️
+                </button>
                 ${!tieneCoordenadas ? `
                     <button class="btn-edit" onclick="geocodificarDomicilio(${domicilio.id})">
                         📍 Geocodificar
@@ -998,11 +1225,109 @@ async function seleccionarDomicilio(domicilioId) {
 }
 
 /**
+ * Editar domicilio existente
+ */
+async function editarDomicilio(domicilioId) {
+    try {
+        // Obtener datos del domicilio
+        const response = await fetch(`/api/logistica/domicilios?id_cliente=${modalDomiciliosContext.clienteId}`);
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error('Error al cargar domicilio');
+        }
+        
+        const domicilio = result.data.find(d => d.id === domicilioId);
+        if (!domicilio) {
+            throw new Error('Domicilio no encontrado');
+        }
+        
+        // Marcar que estamos editando
+        modalDomiciliosContext.domicilioEditando = domicilioId;
+        
+        // Mostrar formulario
+        await mostrarFormNuevoDomicilio();
+        
+        // Pre-cargar datos en el formulario
+        document.getElementById('nuevo-alias').value = domicilio.alias || '';
+        document.getElementById('nuevo-direccion').value = domicilio.direccion || '';
+        document.getElementById('nuevo-localidad').value = domicilio.localidad || '';
+        document.getElementById('nuevo-provincia').value = domicilio.provincia || '';
+        document.getElementById('nuevo-codigo-postal').value = domicilio.codigo_postal || '';
+        document.getElementById('nuevo-telefono').value = domicilio.telefono_contacto || '';
+        document.getElementById('nuevo-instrucciones').value = domicilio.instrucciones_entrega || '';
+        
+        // Si tiene coordenadas, posicionar el marcador
+        if (domicilio.latitud && domicilio.longitud) {
+            const lat = parseFloat(domicilio.latitud);
+            const lng = parseFloat(domicilio.longitud);
+            
+            // Actualizar campos ocultos
+            document.getElementById('nuevo-latitud').value = lat;
+            document.getElementById('nuevo-longitud').value = lng;
+            
+            // Actualizar display
+            document.getElementById('coordenadas-display').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            
+            // Posicionar marcador en el mapa
+            if (modalDomiciliosContext.mapaInteractivo) {
+                modalDomiciliosContext.mapaInteractivo.posicionarMarcador(lat, lng);
+            }
+        }
+        
+        // Cambiar título del formulario
+        const tituloForm = document.querySelector('#form-nuevo-domicilio-container h3');
+        if (tituloForm) {
+            tituloForm.textContent = 'Editar Dirección';
+        }
+        
+        console.log('[DOMICILIOS] Editando domicilio:', domicilioId);
+        
+    } catch (error) {
+        console.error('[DOMICILIOS] Error al editar:', error);
+        mostrarError('Error al cargar domicilio: ' + error.message);
+    }
+}
+
+/**
+ * Eliminar domicilio
+ */
+async function eliminarDomicilio(domicilioId) {
+    if (!confirm('¿Está seguro de eliminar esta dirección?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/logistica/domicilios/${domicilioId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            mostrarExito('Dirección eliminada correctamente');
+            await cargarDomiciliosCliente(modalDomiciliosContext.clienteId);
+        } else {
+            throw new Error(result.error || 'Error al eliminar');
+        }
+    } catch (error) {
+        console.error('[DOMICILIOS] Error al eliminar:', error);
+        mostrarError('Error al eliminar dirección: ' + error.message);
+    }
+}
+
+/**
  * Mostrar formulario de nuevo domicilio
  */
 async function mostrarFormNuevoDomicilio() {
     const container = document.getElementById('form-nuevo-domicilio-container');
     container.style.display = 'block';
+    
+    // Restaurar título si estaba editando
+    const tituloForm = document.querySelector('#form-nuevo-domicilio-container h3');
+    if (tituloForm && !modalDomiciliosContext.domicilioEditando) {
+        tituloForm.textContent = 'Nueva Dirección';
+    }
     
     // Scroll al formulario
     container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1063,6 +1388,9 @@ function cancelarNuevoDomicilio() {
     document.getElementById('form-nuevo-domicilio-container').style.display = 'none';
     document.getElementById('form-nuevo-domicilio').reset();
     
+    // Limpiar modo edición
+    modalDomiciliosContext.domicilioEditando = null;
+    
     // Destruir mapa para liberar recursos
     if (modalDomiciliosContext.mapaInteractivo) {
         modalDomiciliosContext.mapaInteractivo.destruir();
@@ -1110,9 +1438,17 @@ async function guardarNuevoDomicilio(event) {
     };
     
     try {
-        // 1. Crear domicilio
-        const response = await fetch('/api/logistica/domicilios', {
-            method: 'POST',
+        const esEdicion = modalDomiciliosContext.domicilioEditando !== null;
+        
+        // Crear o actualizar domicilio
+        const url = esEdicion 
+            ? `/api/logistica/domicilios/${modalDomiciliosContext.domicilioEditando}`
+            : '/api/logistica/domicilios';
+        
+        const method = esEdicion ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
         });
@@ -1120,22 +1456,24 @@ async function guardarNuevoDomicilio(event) {
         const result = await response.json();
         
         if (!result.success) {
-            throw new Error(result.error || 'Error al crear domicilio');
+            throw new Error(result.error || `Error al ${esEdicion ? 'actualizar' : 'crear'} domicilio`);
         }
         
-        const nuevoDomicilioId = result.data.id;
-        console.log('[DOMICILIOS] Domicilio creado con coordenadas:', nuevoDomicilioId);
+        const domicilioId = esEdicion ? modalDomiciliosContext.domicilioEditando : result.data.id;
+        console.log(`[DOMICILIOS] Domicilio ${esEdicion ? 'actualizado' : 'creado'}:`, domicilioId);
         
-        // 2. Recargar lista de domicilios
+        // Recargar lista de domicilios
         await cargarDomiciliosCliente(clienteId);
         
-        // 3. Ocultar formulario
+        // Ocultar formulario
         cancelarNuevoDomicilio();
         
-        // 4. Auto-seleccionar el nuevo domicilio
-        await seleccionarDomicilio(nuevoDomicilioId);
+        // Auto-seleccionar el domicilio (solo si es nuevo)
+        if (!esEdicion) {
+            await seleccionarDomicilio(domicilioId);
+        }
         
-        mostrarExito('Domicilio creado y asignado correctamente');
+        mostrarExito(`Domicilio ${esEdicion ? 'actualizado' : 'creado y asignado'} correctamente`);
         
     } catch (error) {
         console.error('[DOMICILIOS] Error al guardar domicilio:', error);

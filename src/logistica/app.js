@@ -104,6 +104,10 @@ console.log('[LOGISTICA] ✅ Rutas de Configuración montadas en /api/logistica/
 app.use('/api/logistica/presupuestos', require('./routes/presupuestos'));
 console.log('[LOGISTICA] ✅ Rutas de Presupuestos montadas en /api/logistica/presupuestos');
 
+// Rutas de Usuarios
+app.use('/api/logistica/usuarios', require('./routes/usuarios'));
+console.log('[LOGISTICA] ✅ Rutas de Usuarios montadas en /api/logistica/usuarios');
+
 // Rutas de Diagnóstico (desarrollo)
 app.use('/api/logistica/diagnostico', require('./routes/diagnostico-secuencia'));
 console.log('[LOGISTICA] ✅ Rutas de Diagnóstico montadas en /api/logistica/diagnostico');
