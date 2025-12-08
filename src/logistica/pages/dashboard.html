@@ -152,6 +152,31 @@
         </div>
     </div>
 
+    <!-- Modal: QR de Acceso Rápido -->
+    <div id="modal-qr-acceso" class="modal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <div class="modal-header">
+                <h2>📱 Acceso Rápido - QR</h2>
+                <button class="modal-close" onclick="cerrarModal('modal-qr-acceso')">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 2rem;">
+                <p style="margin-bottom: 1.5rem; color: #64748b;">
+                    Escanea este código QR con tu celular para acceder automáticamente como chofer de esta ruta.
+                </p>
+                <div id="qr-container" style="display: flex; justify-content: center; margin-bottom: 1.5rem;">
+                    <!-- El QR se generará aquí -->
+                </div>
+                <div id="qr-info" style="font-size: 0.875rem; color: #64748b; background: #f8fafc; padding: 1rem; border-radius: 0.5rem;">
+                    <p><strong>Chofer:</strong> <span id="qr-chofer-nombre"></span></p>
+                    <p style="margin-top: 0.5rem;"><strong>Ruta:</strong> <span id="qr-ruta-nombre"></span></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="cerrarModal('modal-qr-acceso')">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Asignar Pedidos -->
     <div id="modal-asignar-pedidos" class="modal">
         <div class="modal-content">
@@ -276,6 +301,9 @@
     </div>
 
     <!-- Scripts -->
+    <!-- Librería QRCode.js desde CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
     <script src="../js/modules/mapaInteractivo.js"></script>
     <script src="../js/dashboard.js"></script>
     <script src="../js/config.js"></script>

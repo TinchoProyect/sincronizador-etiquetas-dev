@@ -40,8 +40,15 @@ const corsOptions = {
             console.log('[LOGISTICA] ✅ CORS_ORIGIN adicional agregado:', process.env.CORS_ORIGIN);
         }
         
+        // Permitir cualquier URL de Ngrok (*.ngrok.app o *.ngrok.io)
+        const isNgrok = origin && (origin.includes('.ngrok.app') || origin.includes('.ngrok.io'));
+        
         // En desarrollo, permitir cualquier origen si no hay origin (ej: Postman, curl)
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        // O si es una URL de Ngrok
+        if (!origin || allowedOrigins.indexOf(origin) !== -1 || isNgrok) {
+            if (isNgrok) {
+                console.log('[LOGISTICA] ✅ Ngrok detectado y permitido:', origin);
+            }
             callback(null, true);
         } else {
             console.warn('[LOGISTICA] ⚠️ Origen no permitido:', origin);
@@ -108,14 +115,13 @@ console.log('[LOGISTICA] ✅ Rutas de Presupuestos montadas en /api/logistica/pr
 app.use('/api/logistica/usuarios', require('./routes/usuarios'));
 console.log('[LOGISTICA] ✅ Rutas de Usuarios montadas en /api/logistica/usuarios');
 
+// Rutas de Móvil
+app.use('/api/logistica/movil', require('./routes/movil'));
+console.log('[LOGISTICA] ✅ Rutas de Móvil montadas en /api/logistica/movil');
+
 // Rutas de Diagnóstico (desarrollo)
 app.use('/api/logistica/diagnostico', require('./routes/diagnostico-secuencia'));
 console.log('[LOGISTICA] ✅ Rutas de Diagnóstico montadas en /api/logistica/diagnostico');
-
-// Rutas pendientes de implementación
-// app.use('/api/logistica/movil', require('./routes/movil'));
-
-console.log('[LOGISTICA] ⚠️ Rutas de Móvil pendientes de implementación');
 
 // Ruta de health check
 app.get('/health', (req, res) => {
@@ -183,19 +189,12 @@ const server = app.listen(PORT, () => {
     console.log('[LOGISTICA] 🎉 ================================');
     console.log('[LOGISTICA] 🎉 SERVIDOR INICIADO EXITOSAMENTE');
     console.log('[LOGISTICA] 🎉 ================================');
-    console.log(`[LOGISTICA] 🌐 URL: http://localhost:${PORT}`);
+    console.log(`[LOGISTICA] 🌐 URL Local: http://localhost:${PORT}`);
     console.log(`[LOGISTICA] 🏥 Health: http://localhost:${PORT}/health`);
     console.log(`[LOGISTICA] 📁 Archivos estáticos: ${staticPath}`);
     console.log('[LOGISTICA] 📊 Base de datos:', process.env.DB_NAME || 'etiquetas');
     console.log('[LOGISTICA] 🌍 Entorno:', process.env.NODE_ENV || 'production');
-    
-    if (process.env.NGROK_URL) {
-        console.log('[LOGISTICA] 🌐 Ngrok URL:', process.env.NGROK_URL);
-    } else {
-        console.log('[LOGISTICA] ⚠️ Ngrok URL no configurada (variable NGROK_URL)');
-    }
-    
-    console.log('[LOGISTICA] 🎉 ================================');
+    console.log('[LOGISTICA] 🎉 ================================\n');
 });
 
 // Manejo de errores del servidor
@@ -219,7 +218,7 @@ process.on('SIGTERM', () => {
 });
 
 process.on('SIGINT', () => {
-    console.log('[LOGISTICA] 🔄 Recibida señal SIGINT, cerrando servidor...');
+    console.log('[LOGISTICA] 🔄 Recibida señal SIGINT (Ctrl+C), cerrando servidor...');
     server.close(() => {
         console.log('[LOGISTICA] ✅ Servidor cerrado exitosamente');
         process.exit(0);

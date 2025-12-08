@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Login - Logística Lamda</title>
+    <link rel="icon" type="image/x-icon" href="../../favicon.ico">
+    <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <!-- Logo y Header -->
+        <div class="login-header">
+            <div class="logo">🚚</div>
+            <h1>Logística Lamda</h1>
+            <p class="subtitle">App para Choferes</p>
+        </div>
+
+        <!-- Formulario de Login -->
+        <form id="form-login" class="login-form">
+            <div class="form-group">
+                <label for="usuario">
+                    <span class="icon">👤</span>
+                    Usuario
+                </label>
+                <input 
+                    type="text" 
+                    id="usuario" 
+                    name="usuario"
+                    placeholder="Ingrese su usuario"
+                    autocomplete="username"
+                    required
+                    autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="password">
+                    <span class="icon">🔒</span>
+                    Contraseña
+                </label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    name="password"
+                    placeholder="Ingrese su contraseña"
+                    autocomplete="current-password"
+                    required>
+            </div>
+
+            <button type="submit" class="btn-login" id="btn-login">
+                Iniciar Sesión
+            </button>
+
+            <div id="error-message" class="error-message" style="display: none;"></div>
+        </form>
+
+        <!-- Footer -->
+        <div class="login-footer">
+            <p>Sistema LAMDA v1.0</p>
+            <p class="version">Módulo de Logística</p>
+        </div>
+    </div>
+
+    <script src="js/mobile.js"></script>
+    <script>
+        // Verificar si ya hay sesión activa
+        document.addEventListener('DOMContentLoaded', () => {
+            const sesion = obtenerSesion();
+            if (sesion && sesion.token) {
+                // Ya hay sesión, redirigir a ruta
+                window.location.href = 'ruta.html';
+            }
+        });
+
+        // Manejar submit del formulario
+        document.getElementById('form-login').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await iniciarSesion();
+        });
+    </script>
+</body>
+</html>

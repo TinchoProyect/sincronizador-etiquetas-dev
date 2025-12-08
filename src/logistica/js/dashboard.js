@@ -293,10 +293,20 @@ async function renderizarRutas() {
                             onclick="event.stopPropagation(); verDetallesRuta(${ruta.id})">
                         Ver en Mapa
                     </button>
+                    <button class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                            onclick="event.stopPropagation(); generarQRAcceso(${ruta.id})"
+                            title="Generar QR de acceso rápido">
+                        📱
+                    </button>
                     ${ruta.estado === 'ARMANDO' ? `
                         <button class="btn-primary" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
                                 onclick="event.stopPropagation(); iniciarRuta(${ruta.id})">
                             Iniciar Ruta
+                        </button>
+                    ` : ruta.estado === 'EN_CAMINO' ? `
+                        <button class="btn-warning" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: #f59e0b; color: white;" 
+                                onclick="event.stopPropagation(); detenerRuta(${ruta.id})">
+                            ⏸️ Detener / Editar
                         </button>
                     ` : ''}
                 </div>
@@ -799,6 +809,35 @@ async function iniciarRuta(rutaId) {
     } catch (error) {
         console.error('[DASHBOARD] Error al iniciar ruta:', error);
         mostrarError('Error al iniciar ruta: ' + error.message);
+    }
+}
+
+/**
+ * Detener ruta (volver a estado ARMANDO)
+ */
+async function detenerRuta(rutaId) {
+    if (!confirm('¿Está seguro de detener esta ruta?\n\nVolverá al estado ARMANDO y podrá agregar o quitar pedidos nuevamente.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/logistica/rutas/${rutaId}/estado`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: 'ARMANDO' })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            mostrarExito('Ruta detenida. Ahora puede editarla nuevamente.');
+            await cargarRutas();
+        } else {
+            throw new Error(result.error || 'Error al detener ruta');
+        }
+    } catch (error) {
+        console.error('[DASHBOARD] Error al detener ruta:', error);
+        mostrarError('Error al detener ruta: ' + error.message);
     }
 }
 
@@ -1512,5 +1551,100 @@ async function geocodificarDomicilio(domicilioId, mostrarMensaje = true) {
             mostrarError('Error al geocodificar: ' + error.message);
         }
         throw error;
+    }
+}
+
+// ===== ACCESO RÁPIDO CON QR =====
+
+/**
+ * Generar QR de acceso rápido para chofer
+ */
+async function generarQRAcceso(rutaId) {
+    console.log('[QR] Generando QR de acceso para ruta:', rutaId);
+    
+    try {
+        // Obtener detalles completos de la ruta
+        const responseRuta = await fetch(`/api/logistica/rutas/${rutaId}`);
+        const resultRuta = await responseRuta.json();
+        
+        if (!resultRuta.success) {
+            throw new Error('Error al cargar datos de la ruta');
+        }
+        
+        const ruta = resultRuta.data;
+        
+        if (!ruta.id_chofer) {
+            mostrarError('Esta ruta no tiene chofer asignado');
+            return;
+        }
+        
+        // Obtener datos del chofer (usuario y contraseña)
+        const responseChofer = await fetch(`/api/logistica/usuarios/${ruta.id_chofer}`);
+        const resultChofer = await responseChofer.json();
+        
+        if (!resultChofer.success) {
+            throw new Error('Error al cargar datos del chofer');
+        }
+        
+        const chofer = resultChofer.data;
+        
+        // Obtener configuración (NGROK_URL)
+        const config = await obtenerConfiguracion();
+        
+        // Usar NGROK_URL si está configurada, sino localhost
+        let baseUrl;
+        if (config.ngrokUrl && config.ngrokUrl.trim() !== '') {
+            baseUrl = config.ngrokUrl;
+            console.log('[QR] Usando Ngrok URL:', baseUrl);
+        } else {
+            baseUrl = window.location.origin;
+            console.warn('[QR] ⚠️ NGROK_URL no configurada, usando localhost (no funcionará en móvil externo)');
+        }
+        
+        // Construir URL de autologin
+        const urlAutologin = `${baseUrl}/public/mobile/index.html?u=${encodeURIComponent(chofer.usuario)}&p=${encodeURIComponent(chofer.contraseña)}&autologin=true`;
+        
+        console.log('[QR] URL generada:', urlAutologin.replace(/p=[^&]+/, 'p=***'));
+        
+        // Actualizar info del modal
+        document.getElementById('qr-chofer-nombre').textContent = chofer.nombre_completo || chofer.usuario;
+        document.getElementById('qr-ruta-nombre').textContent = ruta.nombre_ruta || `Ruta #${ruta.id}`;
+        
+        // Limpiar contenedor de QR
+        const qrContainer = document.getElementById('qr-container');
+        qrContainer.innerHTML = '';
+        
+        // Generar QR
+        new QRCode(qrContainer, {
+            text: urlAutologin,
+            width: 256,
+            height: 256,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+        });
+        
+        // Mostrar modal
+        abrirModal('modal-qr-acceso');
+        
+        console.log('[QR] QR generado exitosamente');
+        
+    } catch (error) {
+        console.error('[QR] Error al generar QR:', error);
+        mostrarError('Error al generar QR: ' + error.message);
+    }
+}
+
+/**
+ * Obtener configuración (helper)
+ */
+async function obtenerConfiguracion() {
+    try {
+        const response = await fetch('/api/logistica/config');
+        const result = await response.json();
+        return result.success ? result.data : {};
+    } catch (error) {
+        console.error('[CONFIG] Error al obtener configuración:', error);
+        return {};
     }
 }

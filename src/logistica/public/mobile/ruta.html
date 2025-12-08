@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Mi Ruta - Logística Lamda</title>
+    <link rel="icon" type="image/x-icon" href="../../favicon.ico">
+    <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body class="ruta-page">
+    <!-- Header Fijo -->
+    <header class="mobile-header">
+        <div class="header-top">
+            <button class="btn-icon" onclick="cerrarSesion()" title="Cerrar sesión">
+                ← Salir
+            </button>
+            <h1 class="header-title">Mi Ruta</h1>
+            <button class="btn-icon" onclick="refrescarRuta()" title="Refrescar">
+                🔄
+            </button>
+        </div>
+        <div class="header-info" id="header-info">
+            <div class="chofer-info">
+                <span class="icon">👤</span>
+                <span id="chofer-nombre">Cargando...</span>
+            </div>
+            <div class="ruta-info">
+                <span class="icon">📅</span>
+                <span id="ruta-nombre">Cargando ruta...</span>
+            </div>
+        </div>
+        <div class="header-stats" id="header-stats">
+            <div class="stat">
+                <div class="stat-value" id="total-entregas">0</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="entregas-completadas">0</div>
+                <div class="stat-label">Completadas</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="entregas-pendientes">0</div>
+                <div class="stat-label">Pendientes</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Lista de Entregas -->
+    <main class="entregas-container" id="entregas-container">
+        <div class="loading-screen">
+            <div class="spinner"></div>
+            <p>Cargando tu ruta...</p>
+        </div>
+    </main>
+
+    <!-- Modal de Confirmación de Entrega (para futuro) -->
+    <div id="modal-confirmar-entrega" class="modal-mobile" style="display: none;">
+        <div class="modal-content-mobile">
+            <div class="modal-header-mobile">
+                <h2>Confirmar Entrega</h2>
+                <button class="modal-close-mobile" onclick="cerrarModalEntrega()">&times;</button>
+            </div>
+            <div class="modal-body-mobile">
+                <p>Funcionalidad de confirmación de entrega en desarrollo...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/mobile.js"></script>
+    <script>
+        // Inicializar cuando el DOM esté listo
+        document.addEventListener('DOMContentLoaded', () => {
+            verificarSesion();
+            cargarRutaActiva();
+        });
+    </script>
+</body>
+</html>

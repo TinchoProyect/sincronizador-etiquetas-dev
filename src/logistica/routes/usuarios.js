@@ -97,9 +97,58 @@ router.get('/choferes', async (req, res) => {
     }
 });
 
+/**
+ * @route GET /api/logistica/usuarios/:id
+ * @desc Obtener datos de un usuario específico (incluyendo contraseña para QR)
+ * @access Privado
+ */
+router.get('/:id', async (req, res) => {
+    console.log('🔍 [USUARIOS] Ruta GET /:id - Obteniendo usuario');
+    
+    try {
+        const { id } = req.params;
+        
+        const query = `
+            SELECT 
+                id,
+                usuario,
+                nombre_completo,
+                contraseña,
+                activo
+            FROM usuarios
+            WHERE id = $1
+        `;
+        
+        const result = await req.db.query(query, [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Usuario no encontrado'
+            });
+        }
+        
+        console.log('[USUARIOS] ✅ Usuario encontrado:', result.rows[0].usuario);
+        
+        res.json({
+            success: true,
+            data: result.rows[0]
+        });
+        
+    } catch (error) {
+        console.error('❌ [USUARIOS] Error al obtener usuario:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener usuario',
+            message: error.message
+        });
+    }
+});
+
 console.log('✅ [USUARIOS] Rutas configuradas exitosamente');
 console.log('📋 [USUARIOS] Rutas disponibles:');
 console.log('   - GET    /api/logistica/usuarios');
 console.log('   - GET    /api/logistica/usuarios/choferes');
+console.log('   - GET    /api/logistica/usuarios/:id');
 
 module.exports = router;
