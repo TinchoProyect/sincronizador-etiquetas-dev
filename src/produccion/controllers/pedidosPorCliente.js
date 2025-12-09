@@ -114,6 +114,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
                   AND ($4::text IS NULL OR p.id IN (SELECT unnest(string_to_array($4, ','))::integer))
                   AND (CASE WHEN $4::text IS NULL THEN pcd.id_presupuesto_local IS NULL ELSE true END)
+                  AND COALESCE(p.secuencia, 'Imprimir') != 'Asignado_Ruta'
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -523,6 +524,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                 WHERE p.activo = true 
                   AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                   AND p.fecha::date <= $2::date
+                  AND COALESCE(p.secuencia, 'Imprimir') != 'Asignado_Ruta'
             ),
             articulos_consolidados AS (
                 SELECT 
