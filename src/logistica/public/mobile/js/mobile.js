@@ -336,31 +336,44 @@ function navegarAEntrega(latitud, longitud, direccion) {
 }
 
 /**
- * Confirmar entrega (placeholder)
+ * Confirmar entrega
+ * Delega a módulo de confirmación
  */
 function confirmarEntrega(presupuestoId) {
     console.log('[ENTREGA] Confirmar entrega de presupuesto:', presupuestoId);
     
-    // TODO: Implementar modal de confirmación con foto y firma
-    alert('Funcionalidad de confirmación de entrega en desarrollo.\n\nPróximamente podrás:\n- Tomar foto del remito\n- Capturar firma del receptor\n- Registrar datos de quien recibe');
+    // Importar dinámicamente el módulo de confirmación
+    import('./modules/confirmacion.js').then(module => {
+        module.mostrarModalOpciones(presupuestoId);
+    }).catch(error => {
+        console.error('[ENTREGA] Error al cargar módulo:', error);
+        alert('Error al cargar módulo de confirmación');
+    });
 }
 
 /**
  * Refrescar ruta
+ * Delega a módulo de ruta
  */
 async function refrescarRuta() {
-    const btn = event?.target;
-    if (btn) {
-        btn.textContent = '⏳';
-        btn.disabled = true;
-    }
-    
-    await cargarRutaActiva();
-    
-    if (btn) {
-        btn.textContent = '🔄';
-        btn.disabled = false;
-    }
+    import('./modules/ruta.js').then(module => {
+        module.refrescarRuta();
+    }).catch(error => {
+        console.error('[RUTA] Error al cargar módulo:', error);
+    });
+}
+
+/**
+ * Finalizar ruta del día
+ * Delega a módulo de ruta
+ */
+function finalizarRutaDelDia() {
+    import('./modules/ruta.js').then(module => {
+        module.finalizarRutaDelDia();
+    }).catch(error => {
+        console.error('[RUTA] Error al cargar módulo:', error);
+        alert('Error al cargar módulo de ruta');
+    });
 }
 
 /**

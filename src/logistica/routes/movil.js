@@ -346,9 +346,267 @@ router.get('/ruta-activa', async (req, res) => {
     }
 });
 
+/**
+ * @route GET /api/logistica/movil/pedidos/:id/detalles
+ * @desc Obtener detalles de artículos de un pedido para checklist
+ * @access Privado (requiere token)
+ */
+router.get('/pedidos/:id/detalles', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta GET /pedidos/:id/detalles - Obteniendo detalles del pedido');
+    
+    try {
+        const { id } = req.params;
+        
+        console.log('[MOVIL] Buscando detalles para presupuesto ID:', id);
+        
+        // Obtener id_presupuesto_ext del presupuesto
+        const presupuestoQuery = `
+            SELECT id_presupuesto_ext
+            FROM presupuestos
+            WHERE id = $1
+        `;
+        
+        const presupuestoResult = await req.db.query(presupuestoQuery, [parseInt(id)]);
+        
+        if (presupuestoResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Presupuesto no encontrado'
+            });
+        }
+        
+        const idPresupuestoExt = presupuestoResult.rows[0].id_presupuesto_ext;
+        
+        // Obtener detalles de artículos
+        const detallesQuery = `
+            SELECT 
+                pd.articulo as codigo_barras,
+                pd.cantidad,
+                COALESCE(a.nombre, pd.articulo) as descripcion
+            FROM presupuestos_detalles pd
+            LEFT JOIN articulos a ON a.codigo_barras = pd.articulo
+            WHERE pd.id_presupuesto_ext = $1
+            ORDER BY pd.articulo
+        `;
+        
+        const detallesResult = await req.db.query(detallesQuery, [idPresupuestoExt]);
+        
+        console.log('[MOVIL] ✅ Detalles encontrados:', detallesResult.rows.length, 'artículos');
+        
+        res.json({
+            success: true,
+            data: detallesResult.rows
+        });
+        
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al obtener detalles:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener detalles del pedido',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/logistica/movil/entregas/confirmar
+ * @desc Confirmar entrega de un pedido (rápida o detallada)
+ * @access Privado (requiere token)
+ */
+router.post('/entregas/confirmar', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta POST /entregas/confirmar - Confirmando entrega');
+    
+    try {
+        const {
+            id_presupuesto,
+            tipo_confirmacion, // 'rapida' o 'detallada'
+            receptor_nombre,
+            receptor_dni,
+            foto_remito_url,
+            foto_bulto_url,
+            firma_digital,
+            latitud,
+            longitud,
+            articulos_checklist // Array de { codigo_barras, confirmado: boolean }
+        } = req.body;
+        
+        console.log('[MOVIL] Confirmando entrega:', {
+            id_presupuesto,
+            tipo_confirmacion,
+            receptor_nombre
+        });
+        
+        const client = await req.db.connect();
+        
+        try {
+            await client.query('BEGIN');
+            
+            // 1. Actualizar presupuesto
+            await client.query(
+                `UPDATE presupuestos 
+                 SET secuencia = 'Entregado',
+                     estado_logistico = 'ENTREGADO',
+                     fecha_entrega_real = NOW()
+                 WHERE id = $1`,
+                [id_presupuesto]
+            );
+            
+            console.log('[MOVIL] ✅ Presupuesto actualizado a ENTREGADO');
+            
+            // 2. Insertar evento de entrega (si es confirmación detallada)
+            if (tipo_confirmacion === 'detallada') {
+                await client.query(
+                    `INSERT INTO entregas_eventos 
+                     (id_presupuesto, receptor_nombre, receptor_vinculo, dni_receptor,
+                      foto_conformidad_url, latitud_confirmacion, longitud_confirmacion,
+                      firma_digital, fecha_entrega, observaciones)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)`,
+                    [
+                        id_presupuesto,
+                        receptor_nombre || null,
+                        'Cliente', // Por defecto
+                        receptor_dni || null,
+                        foto_remito_url || null,
+                        latitud || null,
+                        longitud || null,
+                        firma_digital || null,
+                        foto_bulto_url ? `Foto bulto: ${foto_bulto_url}` : null
+                    ]
+                );
+                
+                console.log('[MOVIL] ✅ Evento de entrega registrado');
+            }
+            
+            await client.query('COMMIT');
+            
+            console.log('[MOVIL] ✅ Entrega confirmada exitosamente');
+            
+            res.json({
+                success: true,
+                message: 'Entrega confirmada correctamente'
+            });
+            
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+        
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al confirmar entrega:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al confirmar entrega',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/logistica/movil/rutas/finalizar
+ * @desc Finalizar ruta del día
+ * @access Privado (requiere token)
+ */
+router.post('/rutas/finalizar', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta POST /rutas/finalizar - Finalizando ruta');
+    
+    try {
+        // Obtener token del header
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Token no proporcionado'
+            });
+        }
+        
+        const token = authHeader.substring(7);
+        
+        // Decodificar token
+        let choferId;
+        try {
+            const decoded = Buffer.from(token, 'base64').toString('utf-8');
+            choferId = parseInt(decoded.split(':')[0]);
+        } catch (error) {
+            return res.status(401).json({
+                success: false,
+                error: 'Token inválido'
+            });
+        }
+        
+        console.log('[MOVIL] Finalizando ruta del chofer ID:', choferId);
+        
+        // Buscar ruta activa
+        const rutaQuery = `
+            SELECT id, nombre_ruta
+            FROM rutas
+            WHERE id_chofer = $1 
+              AND estado = 'EN_CAMINO'
+            ORDER BY id DESC
+            LIMIT 1
+        `;
+        
+        const rutaResult = await req.db.query(rutaQuery, [choferId]);
+        
+        if (rutaResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'No hay ruta activa para finalizar'
+            });
+        }
+        
+        const ruta = rutaResult.rows[0];
+        
+        // Verificar pedidos pendientes
+        const pendientesQuery = `
+            SELECT COUNT(*) as pendientes
+            FROM presupuestos
+            WHERE id_ruta = $1
+              AND estado_logistico != 'ENTREGADO'
+        `;
+        
+        const pendientesResult = await req.db.query(pendientesQuery, [ruta.id]);
+        const pendientes = parseInt(pendientesResult.rows[0].pendientes);
+        
+        // Actualizar estado de ruta
+        await req.db.query(
+            `UPDATE rutas 
+             SET estado = 'FINALIZADA',
+                 fecha_finalizacion = NOW()
+             WHERE id = $1`,
+            [ruta.id]
+        );
+        
+        console.log('[MOVIL] ✅ Ruta finalizada:', ruta.nombre_ruta);
+        
+        res.json({
+            success: true,
+            message: 'Ruta finalizada correctamente',
+            data: {
+                ruta_id: ruta.id,
+                nombre_ruta: ruta.nombre_ruta,
+                pedidos_pendientes: pendientes
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al finalizar ruta:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al finalizar ruta',
+            message: error.message
+        });
+    }
+});
+
 console.log('✅ [MOVIL] Rutas configuradas exitosamente');
 console.log('📋 [MOVIL] Rutas disponibles:');
 console.log('   - POST   /api/logistica/movil/login');
 console.log('   - GET    /api/logistica/movil/ruta-activa');
+console.log('   - GET    /api/logistica/movil/pedidos/:id/detalles');
+console.log('   - POST   /api/logistica/movil/entregas/confirmar');
+console.log('   - POST   /api/logistica/movil/rutas/finalizar');
 
 module.exports = router;

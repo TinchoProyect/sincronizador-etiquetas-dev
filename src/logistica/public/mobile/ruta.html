@@ -56,6 +56,11 @@
         </div>
     </main>
 
+    <!-- Botón Flotante de Finalizar Reparto -->
+    <button class="btn-finalizar-ruta" onclick="finalizarRutaDelDia()" title="Finalizar reparto del día">
+        🏁 Finalizar Reparto
+    </button>
+
     <!-- Modal de Confirmación de Entrega (para futuro) -->
     <div id="modal-confirmar-entrega" class="modal-mobile" style="display: none;">
         <div class="modal-content-mobile">
@@ -69,6 +74,7 @@
         </div>
     </div>
 
+    <!-- Scripts: Primero mobile.js (base), luego módulos se cargan dinámicamente -->
     <script src="js/mobile.js"></script>
     <script>
         // Inicializar cuando el DOM esté listo

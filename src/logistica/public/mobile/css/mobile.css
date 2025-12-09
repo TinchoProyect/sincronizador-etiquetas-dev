@@ -523,6 +523,39 @@ input:focus-visible {
     outline-offset: 2px;
 }
 
+/* ===== BOTÓN FLOTANTE DE FINALIZAR RUTA ===== */
+.btn-finalizar-ruta {
+    position: fixed;
+    bottom: 2rem;
+    right: 1rem;
+    left: 1rem;
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    color: white;
+    border: none;
+    padding: 1rem 1.5rem;
+    border-radius: 1rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 10px 25px rgba(220, 38, 38, 0.4);
+    z-index: 999;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.btn-finalizar-ruta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 30px rgba(220, 38, 38, 0.5);
+}
+
+.btn-finalizar-ruta:active {
+    transform: translateY(0);
+    box-shadow: 0 5px 15px rgba(220, 38, 38, 0.3);
+}
+
 /* ===== ANIMACIONES DE CARGA ===== */
 .fade-in {
     animation: fadeIn 0.3s ease-in;
