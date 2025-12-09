@@ -1118,7 +1118,24 @@ function mostrarArticulosSeleccionados() {
     articulosSeleccionados.forEach(articulo => {
         const div = document.createElement('div');
         div.className = 'ajuste-item';
-        const stockActual = articulo.stock_consolidado || 0;
+        
+        // 🔧 LIMPIEZA DE RESIDUOS DE PRECISIÓN FLOTANTE
+        let stockActual = articulo.stock_consolidado || 0;
+        const stockOriginalModal = stockActual;
+        
+        // Redondear a 2 decimales
+        stockActual = Math.round(stockActual * 100) / 100;
+        
+        // Si está muy cerca de un entero, redondearlo al entero
+        const enteroMasCercano = Math.round(stockActual);
+        const distanciaAlEntero = Math.abs(stockActual - enteroMasCercano);
+        
+        if (distanciaAlEntero < 0.01) {
+            console.log(`🧹 [FRONTEND] Limpieza a entero en modal: ${stockOriginalModal} → ${enteroMasCercano} para ${articulo.numero}`);
+            stockActual = enteroMasCercano;
+        } else if (stockOriginalModal !== stockActual) {
+            console.log(`🧹 [FRONTEND] Limpieza de precisión en modal: ${stockOriginalModal} → ${stockActual} para ${articulo.numero}`);
+        }
         
         div.innerHTML = `
             <h4>${articulo.nombre}</h4>
@@ -1181,10 +1198,30 @@ async function finalizarAjustes() {
         const valorRawInput = input.value;
         console.log(`🔧 [AJUSTE-MANUAL] Valor RAW del input: "${valorRawInput}"`);
         
-        const stockNuevoFloat = parseFloat(valorRawInput);
+        let stockNuevoFloat = parseFloat(valorRawInput);
+        
+        // 🔧 LIMPIEZA DE RESIDUOS EN FRONTEND
+        if (!isNaN(stockNuevoFloat)) {
+            const stockOriginal = stockNuevoFloat;
+            
+            // Redondear a 2 decimales
+            stockNuevoFloat = Math.round(stockNuevoFloat * 100) / 100;
+            
+            // Si está muy cerca de un entero, redondearlo al entero
+            const enteroMasCercano = Math.round(stockNuevoFloat);
+            const distanciaAlEntero = Math.abs(stockNuevoFloat - enteroMasCercano);
+            
+            if (distanciaAlEntero < 0.01) {
+                console.log(`🧹 [FRONTEND] Limpieza a entero: ${stockOriginal} → ${enteroMasCercano}`);
+                stockNuevoFloat = enteroMasCercano;
+            } else if (stockOriginal !== stockNuevoFloat) {
+                console.log(`🧹 [FRONTEND] Limpieza de precisión: ${stockOriginal} → ${stockNuevoFloat}`);
+            }
+        }
+        
         const stockNuevo = isNaN(stockNuevoFloat) ? 0 : stockNuevoFloat;
         
-        console.log(`🔧 [AJUSTE-MANUAL] Stock nuevo parseado: ${stockNuevo}`);
+        console.log(`🔧 [AJUSTE-MANUAL] Stock nuevo limpio: ${stockNuevo}`);
         
         const stockActual = articulo.stock_consolidado || 0;
         console.log(`🔧 [AJUSTE-MANUAL] Stock actual: ${stockActual}`);

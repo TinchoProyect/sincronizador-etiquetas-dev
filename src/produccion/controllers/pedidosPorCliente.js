@@ -152,17 +152,17 @@ const obtenerPedidosPorCliente = async (req, res) => {
                             app.articulo_numero
                         ),
                         'pedido_total', ROUND(app.cantidad::numeric, 2),
-                        'stock_disponible', ROUND((CASE 
+                        'stock_disponible', ROUND(GREATEST(0, (CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                            THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                            ELSE COALESCE(src.stock_consolidado, 0)
-                        END)::numeric, 2),
+                            THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                            ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                        END))::numeric, 2),
                         'faltante', ROUND(GREATEST(0, app.cantidad - 
-                            CASE 
+                            GREATEST(0, (CASE 
                                 WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                                ELSE COALESCE(src.stock_consolidado, 0)
-                            END
+                                THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                                ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                            END))
                         )::numeric, 2),
                         'es_pack', src.es_pack,
                         'pack_hijo_codigo', src.pack_hijo_codigo,
@@ -565,19 +565,19 @@ const obtenerPedidosArticulos = async (req, res) => {
                     COALESCE(a.numero, ac.articulo_numero) as articulo_numero_alfanumerico,
                     ROUND(ac.pedido_total::numeric, 2) as pedido_total_redondeado,
                     ROUND(GREATEST(0, 
-                        CASE 
+                        (CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                            THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                            ELSE COALESCE(src.stock_consolidado, 0)
-                        END - COALESCE(pl.cantidad_en_pedidos_listos, 0)
+                            THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                            ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                        END) - COALESCE(pl.cantidad_en_pedidos_listos, 0)
                     )::numeric, 2) as stock_disponible_redondeado,
                     ROUND(GREATEST(0, ac.pedido_total - 
                         GREATEST(0,
-                            CASE 
+                            (CASE 
                                 WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                                ELSE COALESCE(src.stock_consolidado, 0)
-                            END - COALESCE(pl.cantidad_en_pedidos_listos, 0)
+                                THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                                ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                            END) - COALESCE(pl.cantidad_en_pedidos_listos, 0)
                         )
                     )::numeric, 2) as faltante_redondeado,
                     src.es_pack,
@@ -614,15 +614,15 @@ const obtenerPedidosArticulos = async (req, res) => {
                 COALESCE(r_hijo.articulo_sugerido_numero, r_padre.articulo_sugerido_numero) as articulo_sugerido_numero,
                 COALESCE(asug_hijo.nombre, asug_padre.nombre) as articulo_sugerido_nombre,
                 COALESCE(asug_hijo.codigo_barras, asug_padre.codigo_barras) as articulo_sugerido_codigo_barras,
-                ROUND(COALESCE(
+                ROUND(GREATEST(0, COALESCE(
                     CASE 
                         WHEN src_sug_hijo.es_pack = true AND src_sug_hijo.pack_hijo_codigo IS NOT NULL AND src_sug_hijo.pack_unidades > 0 
-                        THEN FLOOR(COALESCE(hijo_sug_hijo.stock_consolidado, 0) / src_sug_hijo.pack_unidades)
+                        THEN FLOOR(ROUND(COALESCE(hijo_sug_hijo.stock_consolidado, 0), 4) / src_sug_hijo.pack_unidades)
                         WHEN src_sug_padre.es_pack = true AND src_sug_padre.pack_hijo_codigo IS NOT NULL AND src_sug_padre.pack_unidades > 0 
-                        THEN FLOOR(COALESCE(hijo_sug_padre.stock_consolidado, 0) / src_sug_padre.pack_unidades)
-                        ELSE COALESCE(src_sug_hijo.stock_consolidado, src_sug_padre.stock_consolidado, 0)
+                        THEN FLOOR(ROUND(COALESCE(hijo_sug_padre.stock_consolidado, 0), 4) / src_sug_padre.pack_unidades)
+                        ELSE ROUND(COALESCE(src_sug_hijo.stock_consolidado, src_sug_padre.stock_consolidado, 0), 4)
                     END, 0
-                )::numeric, 2) as articulo_sugerido_stock
+                ))::numeric, 2) as articulo_sugerido_stock
             FROM valores_redondeados vr
             LEFT JOIN public.articulos a_hijo ON a_hijo.codigo_barras = vr.pack_hijo_codigo
             LEFT JOIN public.recetas r_hijo ON r_hijo.articulo_numero = a_hijo.numero
@@ -680,13 +680,13 @@ const obtenerPedidosArticulos = async (req, res) => {
                             src.codigo_barras
                         ) as descripcion,
                         0 as pedido_total,
-                        ROUND(COALESCE(
+                        ROUND(GREATEST(0, COALESCE(
                             CASE 
                                 WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                                THEN FLOOR(COALESCE(hijo.stock_consolidado, 0) / src.pack_unidades)
-                                ELSE src.stock_consolidado
+                                THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                                ELSE ROUND(src.stock_consolidado, 0, 4)
                             END, 0
-                        )::numeric, 2) as stock_disponible,
+                        ))::numeric, 2) as stock_disponible,
                         0 as faltante,
                         'COMPLETO' as estado,
                         src.es_pack,

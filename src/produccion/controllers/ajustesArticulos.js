@@ -1,6 +1,25 @@
 const pool = require('../config/database');
 
 /**
+ * Sanitiza un valor numérico para stock
+ * - Redondea a 4 decimales máximo
+ * - Normaliza -0 a 0
+ * @param {number} valor - Valor a sanitizar
+ * @returns {number} - Valor sanitizado
+ */
+function sanitizarStock(valor) {
+    // Redondear a 4 decimales
+    let valorLimpio = Number(valor.toFixed(4));
+    
+    // Normalizar cero negativo a cero positivo
+    if (valorLimpio === 0 || valorLimpio === -0) {
+        valorLimpio = 0;
+    }
+    
+    return valorLimpio;
+}
+
+/**
  * Registra un ajuste manual de stock para un artículo
  * Este controlador maneja ajustes puntuales individuales con auditoría completa
  * 
@@ -49,13 +68,30 @@ async function registrarAjusteManual(req, res) {
         }
         
         // Validar que stock_nuevo sea un número válido
-        const stockNuevoNumerico = parseFloat(stock_nuevo);
+        let stockNuevoNumerico = parseFloat(stock_nuevo);
         if (isNaN(stockNuevoNumerico)) {
             console.error('❌ [AJUSTE-MANUAL] Error: stock_nuevo no es un número válido');
             return res.status(400).json({ 
                 error: 'stock_nuevo debe ser un número válido',
                 detalle: `Valor recibido: ${stock_nuevo}`
             });
+        }
+        
+        // 🔧 LIMPIEZA DE RESIDUOS DE PRECISIÓN FLOTANTE
+        const stockOriginal = stockNuevoNumerico;
+        
+        // Redondear a 2 decimales (suficiente para stock)
+        stockNuevoNumerico = Math.round(stockNuevoNumerico * 100) / 100;
+        
+        // Si está muy cerca de un entero, redondearlo al entero
+        const enteroMasCercano = Math.round(stockNuevoNumerico);
+        const distanciaAlEntero = Math.abs(stockNuevoNumerico - enteroMasCercano);
+        
+        if (distanciaAlEntero < 0.01) {
+            console.log(`🧹 [AJUSTE-MANUAL] Limpieza a entero: ${stockOriginal} → ${enteroMasCercano}`);
+            stockNuevoNumerico = enteroMasCercano;
+        } else if (stockOriginal !== stockNuevoNumerico) {
+            console.log(`🧹 [AJUSTE-MANUAL] Limpieza de precisión: ${stockOriginal} → ${stockNuevoNumerico}`);
         }
         
         // Validar que stock_nuevo no sea negativo
@@ -128,7 +164,10 @@ async function registrarAjusteManual(req, res) {
             // 2. CALCULAR DIFERENCIA
             // ========================================
             
-            const diferencia = stockNuevoNumerico - stock_anterior;
+            let diferencia = stockNuevoNumerico - stock_anterior;
+            
+            // 🧹 SANITIZAR DIFERENCIA ANTES DE GUARDAR
+            diferencia = sanitizarStock(diferencia);
             
             console.log('🧮 [AJUSTE-MANUAL] ===== CÁLCULO DE DIFERENCIA =====');
             console.log(`   - Stock anterior: ${stock_anterior}`);
@@ -210,12 +249,12 @@ async function registrarAjusteManual(req, res) {
                         stock_ajustes,
                         stock_consolidado,
                         ultima_actualizacion
-                    ) VALUES ($1, 0, 0, $2, $2, NOW())
+                    ) VALUES ($1, 0, 0, $2::numeric(10,2), $2::numeric(10,2), NOW())
                 `;
                 
                 await client.query(insertStockQuery, [
                     articulo_numero,
-                    diferencia  // Como es nuevo, la diferencia es el stock_ajustes inicial
+                    sanitizarStock(diferencia)  // Sanitizar antes de guardar
                 ]);
                 
                 console.log(`✅ [AJUSTE-MANUAL] Registro creado:`);
@@ -223,32 +262,45 @@ async function registrarAjusteManual(req, res) {
                 console.log(`   - stock_consolidado: ${diferencia}`);
                 
             } else {
-                // ACTUALIZAR registro existente (UPSERT)
+                // ACTUALIZAR registro existente
                 console.log('🔄 [AJUSTE-MANUAL] Actualizando registro existente...');
                 
-                const upsertStockQuery = `
-                    INSERT INTO stock_real_consolidado (
-                        articulo_numero,
-                        stock_lomasoft,
-                        stock_movimientos,
-                        stock_ajustes,
-                        stock_consolidado,
-                        ultima_actualizacion
-                    ) VALUES ($1, 0, 0, $2, $2, NOW())
-                    ON CONFLICT (articulo_numero) 
-                    DO UPDATE SET
-                        stock_ajustes = COALESCE(stock_real_consolidado.stock_ajustes, 0) + $2,
-                        stock_consolidado = COALESCE(stock_real_consolidado.stock_lomasoft, 0) +
-                                          COALESCE(stock_real_consolidado.stock_movimientos, 0) +
-                                          (COALESCE(stock_real_consolidado.stock_ajustes, 0) + $2),
+                // Leer valores actuales
+                const stockActual = stockResult.rows[0];
+                const stockLomasoft = parseFloat(stockActual.stock_lomasoft) || 0;
+                const stockMovimientos = parseFloat(stockActual.stock_movimientos) || 0;
+                const stockAjustesActual = parseFloat(stockActual.stock_ajustes) || 0;
+                
+                // Calcular nuevo stock_ajustes para llegar al objetivo
+                // stock_consolidado = stock_lomasoft + stock_movimientos + stock_ajustes
+                // Despejando: stock_ajustes = stock_consolidado - stock_lomasoft - stock_movimientos
+                const nuevoStockAjustes = stockNuevoNumerico - stockLomasoft - stockMovimientos;
+                
+                console.log(`🧮 [AJUSTE-MANUAL] Cálculo de nuevo stock_ajustes:`);
+                console.log(`   - Stock objetivo: ${stockNuevoNumerico}`);
+                console.log(`   - Stock lomasoft: ${stockLomasoft}`);
+                console.log(`   - Stock movimientos: ${stockMovimientos}`);
+                console.log(`   - Stock ajustes actual: ${stockAjustesActual}`);
+                console.log(`   - Nuevo stock ajustes: ${nuevoStockAjustes}`);
+                
+                const updateStockQuery = `
+                    UPDATE stock_real_consolidado 
+                    SET 
+                        stock_ajustes = $2::numeric(10,2),
+                        stock_consolidado = $3::numeric(10,2),
                         ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $1
                 `;
                 
-                await client.query(upsertStockQuery, [articulo_numero, diferencia]);
+                await client.query(updateStockQuery, [
+                    articulo_numero,
+                    sanitizarStock(nuevoStockAjustes),
+                    sanitizarStock(stockNuevoNumerico)
+                ]);
                 
                 console.log(`✅ [AJUSTE-MANUAL] Stock actualizado:`);
-                console.log(`   - Diferencia aplicada: ${diferencia}`);
-                console.log(`   - Nuevo stock_ajustes: stock_ajustes_anterior + ${diferencia}`);
+                console.log(`   - Stock ajustes: ${nuevoStockAjustes}`);
+                console.log(`   - Stock consolidado: ${stockNuevoNumerico}`);
             }
             
             // ========================================
@@ -385,6 +437,8 @@ async function registrarAjusteManual(req, res) {
  * @param {Object} res - Response object
  */
 async function registrarAjustesBatch(req, res) {
+    const client = await pool.connect();
+    
     try {
         console.log('🔧 [AJUSTE-BATCH] ===== INICIANDO REGISTRO DE AJUSTES EN LOTE =====');
         
@@ -412,63 +466,139 @@ async function registrarAjustesBatch(req, res) {
         
         console.log('✅ [AJUSTE-BATCH] Validaciones básicas completadas');
         
-        // Procesar cada ajuste
+        // Iniciar UNA SOLA transacción para todos los ajustes
+        await client.query('BEGIN');
+        console.log('🔄 [AJUSTE-BATCH] Transacción única iniciada');
+        
         const resultados = {
             exitosos: [],
             fallidos: [],
             total: ajustes.length
         };
         
+        const MARGEN_TOLERANCIA = 0.001;
+        
         for (let i = 0; i < ajustes.length; i++) {
             const ajuste = ajustes[i];
-            console.log(`\n📦 [AJUSTE ${i + 1}/${ajustes.length}] Procesando...`);
+            console.log(`\n📦 [AJUSTE ${i + 1}/${ajustes.length}] Procesando ${ajuste.articulo_numero}...`);
             
             try {
-                // Simular request para reutilizar la función individual
-                const mockReq = {
-                    body: {
-                        articulo_numero: ajuste.articulo_numero,
-                        stock_nuevo: ajuste.stock_nuevo,
-                        observacion: ajuste.observacion,
-                        usuario_id: usuario_id
-                    },
-                    user: { id: usuario_id }
-                };
-                
-                // Crear un mock response para capturar el resultado
-                let resultado = null;
-                const mockRes = {
-                    json: (data) => { resultado = data; },
-                    status: (code) => ({
-                        json: (data) => { resultado = { statusCode: code, ...data }; }
-                    })
-                };
-                
-                // Ejecutar ajuste individual
-                await registrarAjusteManual(mockReq, mockRes);
-                
-                if (resultado && resultado.success) {
-                    resultados.exitosos.push({
-                        articulo_numero: ajuste.articulo_numero,
-                        resultado: resultado.data
-                    });
-                    console.log(`✅ [AJUSTE ${i + 1}] Exitoso`);
-                } else {
-                    resultados.fallidos.push({
-                        articulo_numero: ajuste.articulo_numero,
-                        error: resultado?.error || 'Error desconocido'
-                    });
-                    console.log(`❌ [AJUSTE ${i + 1}] Fallido`);
+                // Validar datos del ajuste
+                if (!ajuste.articulo_numero || ajuste.stock_nuevo === undefined || ajuste.stock_nuevo === null) {
+                    throw new Error('Datos incompletos en el ajuste');
                 }
                 
+                let stockNuevoNumerico = parseFloat(ajuste.stock_nuevo);
+                if (isNaN(stockNuevoNumerico) || stockNuevoNumerico < 0) {
+                    throw new Error(`Stock inválido: ${ajuste.stock_nuevo}`);
+                }
+                
+                // Limpiar stock nuevo
+                stockNuevoNumerico = sanitizarStock(stockNuevoNumerico);
+                
+                // Leer stock actual
+                const stockQuery = `
+                    SELECT stock_consolidado, stock_ajustes, stock_lomasoft, stock_movimientos
+                    FROM stock_real_consolidado 
+                    WHERE articulo_numero = $1
+                    FOR UPDATE
+                `;
+                
+                const stockResult = await client.query(stockQuery, [ajuste.articulo_numero]);
+                
+                let stock_anterior = 0;
+                let registroExiste = stockResult.rows.length > 0;
+                
+                if (registroExiste) {
+                    stock_anterior = parseFloat(stockResult.rows[0].stock_consolidado) || 0;
+                }
+                
+                // Calcular diferencia
+                let diferencia = stockNuevoNumerico - stock_anterior;
+                diferencia = sanitizarStock(diferencia);
+                
+                console.log(`   Stock anterior: ${stock_anterior}, nuevo: ${stockNuevoNumerico}, diferencia: ${diferencia}`);
+                
+                // Si no hay diferencia significativa, skip
+                if (Math.abs(diferencia) < MARGEN_TOLERANCIA) {
+                    console.log(`   ℹ️ Sin diferencia significativa, omitiendo`);
+                    resultados.exitosos.push({
+                        articulo_numero: ajuste.articulo_numero,
+                        resultado: { message: 'Sin cambios necesarios', ajuste_aplicado: false }
+                    });
+                    continue;
+                }
+                
+                // Registrar en auditoría
+                const insertAjusteQuery = `
+                    INSERT INTO articulos_ajustes (
+                        articulo_numero, usuario_id, tipo_ajuste,
+                        stock_anterior, stock_nuevo, diferencia,
+                        observacion, fecha
+                    ) VALUES ($1, $2, 'ajuste_manual', $3, $4, $5, $6, NOW())
+                    RETURNING id
+                `;
+                
+                const ajusteResult = await client.query(insertAjusteQuery, [
+                    ajuste.articulo_numero,
+                    usuario_id,
+                    stock_anterior,
+                    stockNuevoNumerico,
+                    diferencia,
+                    ajuste.observacion || 'Ajuste manual desde interfaz de gestión'
+                ]);
+                
+                const ajusteId = ajusteResult.rows[0].id;
+                
+                // Actualizar stock_real_consolidado
+                if (!registroExiste) {
+                    await client.query(`
+                        INSERT INTO stock_real_consolidado (
+                            articulo_numero, stock_lomasoft, stock_movimientos,
+                            stock_ajustes, stock_consolidado, ultima_actualizacion
+                        ) VALUES ($1, 0, 0, $2::numeric(10,2), $2::numeric(10,2), NOW())
+                    `, [ajuste.articulo_numero, sanitizarStock(stockNuevoNumerico)]);
+                } else {
+                    // Calcular nuevo stock_ajustes para llegar al objetivo
+                    const stockActual = stockResult.rows[0];
+                    const stockLomasoft = parseFloat(stockActual.stock_lomasoft) || 0;
+                    const stockMovimientos = parseFloat(stockActual.stock_movimientos) || 0;
+                    const nuevoStockAjustes = stockNuevoNumerico - stockLomasoft - stockMovimientos;
+                    
+                    await client.query(`
+                        UPDATE stock_real_consolidado 
+                        SET 
+                            stock_ajustes = $2::numeric(10,2),
+                            stock_consolidado = $3::numeric(10,2),
+                            ultima_actualizacion = NOW()
+                        WHERE articulo_numero = $1
+                    `, [ajuste.articulo_numero, sanitizarStock(nuevoStockAjustes), sanitizarStock(stockNuevoNumerico)]);
+                }
+                
+                resultados.exitosos.push({
+                    articulo_numero: ajuste.articulo_numero,
+                    resultado: {
+                        ajuste_id: ajusteId,
+                        stock_anterior,
+                        stock_nuevo: stockNuevoNumerico,
+                        diferencia
+                    }
+                });
+                
+                console.log(`   ✅ Ajuste exitoso (ID: ${ajusteId})`);
+                
             } catch (error) {
+                console.error(`   ❌ Error: ${error.message}`);
                 resultados.fallidos.push({
                     articulo_numero: ajuste.articulo_numero,
                     error: error.message
                 });
-                console.error(`❌ [AJUSTE ${i + 1}] Error:`, error.message);
             }
         }
+        
+        // Confirmar transacción
+        await client.query('COMMIT');
+        console.log('✅ [AJUSTE-BATCH] Transacción confirmada');
         
         console.log('\n🎉 [AJUSTE-BATCH] ===== PROCESO COMPLETADO =====');
         console.log(`   - Total: ${resultados.total}`);
@@ -482,11 +612,14 @@ async function registrarAjustesBatch(req, res) {
         });
         
     } catch (error) {
-        console.error('❌ [AJUSTE-BATCH] Error crítico:', error);
+        await client.query('ROLLBACK');
+        console.error('❌ [AJUSTE-BATCH] Error crítico, rollback ejecutado:', error);
         res.status(500).json({
             error: 'Error al procesar ajustes en lote',
             detalle: error.message
         });
+    } finally {
+        client.release();
     }
 }
 

@@ -1,6 +1,25 @@
 const pool = require('../config/database');
 
 /**
+ * Sanitiza un valor numérico para stock
+ * - Redondea a 4 decimales máximo
+ * - Normaliza -0 a 0
+ * @param {number} valor - Valor a sanitizar
+ * @returns {number} - Valor sanitizado
+ */
+function sanitizarStock(valor) {
+    // Redondear a 4 decimales
+    let valorLimpio = Number(valor.toFixed(4));
+    
+    // Normalizar cero negativo a cero positivo
+    if (valorLimpio === 0 || valorLimpio === -0) {
+        valorLimpio = 0;
+    }
+    
+    return valorLimpio;
+}
+
+/**
  * Finaliza un inventario de artículos aplicando la lógica completa especificada
  * @param {Object} req - Request object
  * @param {Object} res - Response object
@@ -66,9 +85,32 @@ async function finalizarInventarioArticulos(req, res) {
                     continue;
                 }
                 
-                const stockSistema = parseFloat(stock_sistema) || 0;
-                const stockContado = parseFloat(stock_contado) || 0;
-                const diferencia = stockContado - stockSistema;
+                let stockSistema = parseFloat(stock_sistema) || 0;
+                let stockContado = parseFloat(stock_contado) || 0;
+                
+                // 🔧 LIMPIEZA DE RESIDUOS DE PRECISIÓN FLOTANTE
+                // Redondear a 2 decimales
+                stockSistema = Math.round(stockSistema * 100) / 100;
+                stockContado = Math.round(stockContado * 100) / 100;
+                
+                // Si están muy cerca de un entero, redondearlo
+                const enteroSistema = Math.round(stockSistema);
+                const enteroContado = Math.round(stockContado);
+                
+                if (Math.abs(stockSistema - enteroSistema) < 0.01) {
+                    console.log(`🧹 [INVENTARIO] Limpieza stock sistema: ${stock_sistema} → ${enteroSistema}`);
+                    stockSistema = enteroSistema;
+                }
+                
+                if (Math.abs(stockContado - enteroContado) < 0.01) {
+                    console.log(`🧹 [INVENTARIO] Limpieza stock contado: ${stock_contado} → ${enteroContado}`);
+                    stockContado = enteroContado;
+                }
+                
+                let diferencia = stockContado - stockSistema;
+                
+                // 🧹 SANITIZAR DIFERENCIA ANTES DE GUARDAR
+                diferencia = sanitizarStock(diferencia);
                 
                 console.log(`📊 [ARTICULO ${i + 1}] Análisis:`);
                 console.log(`   - Artículo: ${articulo_numero}`);
@@ -138,17 +180,21 @@ async function finalizarInventarioArticulos(req, res) {
                         const insertStockQuery = `
                             INSERT INTO stock_real_consolidado 
                             (articulo_numero, stock_ajustes, stock_lomasoft, stock_movimientos, stock_consolidado, ultima_actualizacion)
-                            VALUES ($1, $2, 0, 0, $2, NOW())
+                            VALUES ($1, $2::numeric(10,2), 0, 0, $2::numeric(10,2), NOW())
                         `;
-                        await client.query(insertStockQuery, [articulo_numero, diferencia]);
+                        await client.query(insertStockQuery, [articulo_numero, sanitizarStock(diferencia)]);
                         console.log(`✅ [ARTICULO ${i + 1}] Registro creado con stock_ajustes = ${diferencia}`);
                     } else {
                         // Actualizar registro existente
                         const stockActual = checkStockResult.rows[0];
-                        const nuevoStockAjustes = (parseFloat(stockActual.stock_ajustes) || 0) + diferencia;
+                        let nuevoStockAjustes = (parseFloat(stockActual.stock_ajustes) || 0) + diferencia;
                         const stockLomasoft = parseFloat(stockActual.stock_lomasoft) || 0;
                         const stockMovimientos = parseFloat(stockActual.stock_movimientos) || 0;
-                        const nuevoStockConsolidado = stockLomasoft + stockMovimientos + nuevoStockAjustes;
+                        let nuevoStockConsolidado = stockLomasoft + stockMovimientos + nuevoStockAjustes;
+                        
+                        // 🧹 SANITIZAR ANTES DE GUARDAR
+                        nuevoStockAjustes = sanitizarStock(nuevoStockAjustes);
+                        nuevoStockConsolidado = sanitizarStock(nuevoStockConsolidado);
                         
                         console.log(`🔄 [ARTICULO ${i + 1}] Actualizando registro existente:`);
                         console.log(`   - Stock ajustes anterior: ${stockActual.stock_ajustes}`);
@@ -159,8 +205,8 @@ async function finalizarInventarioArticulos(req, res) {
                         const updateStockQuery = `
                             UPDATE stock_real_consolidado 
                             SET 
-                                stock_ajustes = $2,
-                                stock_consolidado = $3,
+                                stock_ajustes = $2::numeric(10,2),
+                                stock_consolidado = $3::numeric(10,2),
                                 ultima_actualizacion = NOW()
                             WHERE articulo_numero = $1
                         `;
