@@ -409,6 +409,52 @@ async function obtenerPresupuestosDisponibles(req, res) {
     }
 }
 
+/**
+ * Eliminar una ruta con restauración automática de presupuestos
+ * DELETE /api/logistica/rutas/:id
+ */
+async function eliminarRuta(req, res) {
+    try {
+        const { id } = req.params;
+        console.log(`[RUTAS] Eliminando ruta ID: ${id}`);
+        
+        // Validar que la ruta existe
+        const rutaExistente = await RutasModel.obtenerPorId(parseInt(id));
+        if (!rutaExistente) {
+            console.log(`[RUTAS] ⚠️ Ruta ${id} no encontrada`);
+            return res.status(404).json({
+                success: false,
+                error: 'Ruta no encontrada'
+            });
+        }
+        
+        // Eliminar ruta (con restauración automática de presupuestos)
+        const resultado = await RutasModel.eliminar(parseInt(id));
+        
+        console.log(`[RUTAS] ✅ Ruta ${id} eliminada`);
+        console.log(`[RUTAS] ✅ ${resultado.presupuestos_restaurados} presupuestos restaurados`);
+        
+        res.json({
+            success: true,
+            message: resultado.presupuestos_restaurados > 0 
+                ? `Ruta eliminada. ${resultado.presupuestos_restaurados} pedido(s) restaurado(s) a estado pendiente.`
+                : 'Ruta eliminada exitosamente',
+            data: {
+                ruta_eliminada: resultado.ruta_eliminada.id,
+                presupuestos_restaurados: resultado.presupuestos_restaurados
+            }
+        });
+        
+    } catch (error) {
+        console.error('[RUTAS] ❌ Error al eliminar ruta:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al eliminar ruta',
+            message: error.message
+        });
+    }
+}
+
 module.exports = {
     obtenerRutas,
     obtenerRutaPorId,
@@ -416,5 +462,6 @@ module.exports = {
     actualizarRuta,
     asignarPresupuestos,
     cambiarEstado,
-    obtenerPresupuestosDisponibles
+    obtenerPresupuestosDisponibles,
+    eliminarRuta
 };

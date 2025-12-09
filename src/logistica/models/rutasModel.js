@@ -387,6 +387,78 @@ class RutasModel {
         const resultado = await pool.query(query, [nuevoEstado, id]);
         return resultado.rows[0];
     }
+    
+    /**
+     * Eliminar una ruta con restauración automática de presupuestos
+     * @param {number} id - ID de la ruta
+     * @returns {Promise<Object>} Resultado de la eliminación
+     */
+    static async eliminar(id) {
+        const client = await pool.connect();
+        
+        try {
+            await client.query('BEGIN');
+            
+            // 1. Obtener cantidad de presupuestos asignados
+            const countQuery = await client.query(
+                'SELECT COUNT(*) as total FROM presupuestos WHERE id_ruta = $1',
+                [id]
+            );
+            
+            const cantidadPresupuestos = parseInt(countQuery.rows[0].total);
+            
+            console.log('[RUTAS-MODEL] Eliminando ruta:', id);
+            console.log('[RUTAS-MODEL] Presupuestos a restaurar:', cantidadPresupuestos);
+            
+            // 2. Restaurar presupuestos (desvincular y resetear estados)
+            if (cantidadPresupuestos > 0) {
+                await client.query(
+                    `UPDATE presupuestos 
+                     SET id_ruta = NULL,
+                         secuencia = 'Pedido_Listo',
+                         estado = CASE 
+                             WHEN estado = 'Entregado' THEN 'Presupuesto/Orden'
+                             ELSE estado
+                         END,
+                         estado_logistico = 'PENDIENTE_ASIGNAR',
+                         orden_entrega = NULL,
+                         fecha_asignacion_ruta = NULL,
+                         fecha_actualizacion = NOW()
+                     WHERE id_ruta = $1`,
+                    [id]
+                );
+                
+                console.log('[RUTAS-MODEL] ✅ Presupuestos restaurados:', cantidadPresupuestos);
+            }
+            
+            // 3. Eliminar la ruta
+            const deleteQuery = await client.query(
+                'DELETE FROM rutas WHERE id = $1 RETURNING *',
+                [id]
+            );
+            
+            if (deleteQuery.rows.length === 0) {
+                throw new Error('Ruta no encontrada');
+            }
+            
+            await client.query('COMMIT');
+            
+            console.log('[RUTAS-MODEL] ✅ Ruta eliminada exitosamente');
+            
+            return {
+                success: true,
+                ruta_eliminada: deleteQuery.rows[0],
+                presupuestos_restaurados: cantidadPresupuestos
+            };
+            
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('[RUTAS-MODEL] ❌ Error al eliminar ruta:', error);
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
 }
 
 module.exports = RutasModel;

@@ -442,16 +442,23 @@ router.post('/entregas/confirmar', async (req, res) => {
             await client.query('BEGIN');
             
             // 1. Actualizar presupuesto
+            // IMPORTANTE: Actualizar también 'estado' y 'fecha_actualizacion'
+            // - estado = 'Entregado' para que Administración vea el pedido cerrado
+            // - fecha_actualizacion = NOW() para que la sincronización con Google Sheets detecte el cambio
             await client.query(
                 `UPDATE presupuestos 
                  SET secuencia = 'Entregado',
+                     estado = 'Entregado',
                      estado_logistico = 'ENTREGADO',
-                     fecha_entrega_real = NOW()
+                     fecha_entrega_real = NOW(),
+                     fecha_actualizacion = NOW()
                  WHERE id = $1`,
                 [id_presupuesto]
             );
             
             console.log('[MOVIL] ✅ Presupuesto actualizado a ENTREGADO');
+            console.log('[MOVIL] ✅ Estado comercial: Entregado');
+            console.log('[MOVIL] ✅ Fecha actualización sincronizada para Google Sheets');
             
             // 2. Insertar evento de entrega (si es confirmación detallada)
             if (tipo_confirmacion === 'detallada') {

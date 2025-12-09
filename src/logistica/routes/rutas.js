@@ -16,7 +16,8 @@ const {
     actualizarRuta,
     asignarPresupuestos,
     cambiarEstado,
-    obtenerPresupuestosDisponibles
+    obtenerPresupuestosDisponibles,
+    eliminarRuta
 } = require('../controllers/rutasController');
 
 /**
@@ -288,69 +289,24 @@ router.put('/:id/estado', async (req, res) => {
 
 /**
  * @route DELETE /api/logistica/rutas/:id
- * @desc Eliminar una ruta
+ * @desc Eliminar una ruta con restauración automática de presupuestos
  * @param id - ID de la ruta
  * @access Privado
  * 
- * IMPORTANTE: Solo se pueden eliminar rutas vacías (sin presupuestos asignados)
+ * NUEVA LÓGICA: Restaura automáticamente los presupuestos a estado pendiente antes de eliminar
  */
 router.delete('/:id', async (req, res) => {
     const { id } = req.params;
     console.log(`🔍 [RUTAS] Ruta DELETE /:id - Eliminando ruta ID: ${id}`);
     
     try {
-        const client = await req.db.connect();
-        
-        try {
-            await client.query('BEGIN');
-            
-            // Verificar que la ruta existe
-            const rutaQuery = await client.query(
-                'SELECT id, estado FROM rutas WHERE id = $1',
-                [id]
-            );
-            
-            if (rutaQuery.rows.length === 0) {
-                throw new Error('Ruta no encontrada');
-            }
-            
-            // Verificar que no tenga presupuestos asignados
-            const presupuestosQuery = await client.query(
-                'SELECT COUNT(*) as total FROM presupuestos WHERE id_ruta = $1',
-                [id]
-            );
-            
-            const totalPresupuestos = parseInt(presupuestosQuery.rows[0].total);
-            
-            if (totalPresupuestos > 0) {
-                throw new Error('No se puede eliminar una ruta con pedidos asignados. Quítelos primero.');
-            }
-            
-            // Eliminar ruta
-            await client.query(
-                'DELETE FROM rutas WHERE id = $1',
-                [id]
-            );
-            
-            await client.query('COMMIT');
-            
-            res.json({
-                success: true,
-                message: 'Ruta eliminada correctamente'
-            });
-            
-        } catch (error) {
-            await client.query('ROLLBACK');
-            throw error;
-        } finally {
-            client.release();
-        }
-        
+        await eliminarRuta(req, res);
     } catch (error) {
         console.error(`❌ [RUTAS] Error al eliminar ruta:`, error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Error interno al eliminar ruta',
+            message: error.message
         });
     }
 });

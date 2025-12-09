@@ -742,13 +742,20 @@ function mostrarMarcadoresRuta(ruta) {
  * Eliminar ruta
  */
 async function eliminarRuta(rutaId, cantidadPedidos) {
-    // Validar que la ruta esté vacía
+    // Nuevo mensaje de confirmación que explica la restauración automática
+    let mensaje = '¿Está seguro de eliminar esta ruta?';
+    
     if (cantidadPedidos > 0) {
-        mostrarError('La ruta tiene pedidos asignados. Quítelos antes de eliminarla.');
-        return;
+        mensaje = `⚠️ ATENCIÓN: Esta ruta tiene ${cantidadPedidos} pedido(s) asignado(s).\n\n` +
+                  `Si la eliminas, los pedidos volverán automáticamente a estado PENDIENTE.\n\n` +
+                  `Esto significa que:\n` +
+                  `• Se desvincularán de la ruta\n` +
+                  `• Volverán a la lista de "Pedidos Listos para Asignar"\n` +
+                  `• Si estaban entregados, volverán a estado "Presupuesto/Orden"\n\n` +
+                  `¿Confirmar eliminación?`;
     }
     
-    if (!confirm('¿Está seguro de eliminar esta ruta?')) {
+    if (!confirm(mensaje)) {
         return;
     }
     
@@ -1477,7 +1484,13 @@ async function guardarNuevoDomicilio(event) {
     };
     
     try {
-        const esEdicion = modalDomiciliosContext.domicilioEditando !== null;
+        const esEdicion = modalDomiciliosContext.domicilioEditando !== null && 
+                          modalDomiciliosContext.domicilioEditando !== undefined;
+        
+        // Validar ID en modo edición
+        if (esEdicion && !modalDomiciliosContext.domicilioEditando) {
+            throw new Error('ID de domicilio inválido para edición');
+        }
         
         // Crear o actualizar domicilio
         const url = esEdicion 
@@ -1485,6 +1498,8 @@ async function guardarNuevoDomicilio(event) {
             : '/api/logistica/domicilios';
         
         const method = esEdicion ? 'PUT' : 'POST';
+        
+        console.log('[DOMICILIOS] Guardando domicilio:', { esEdicion, url, method });
         
         const response = await fetch(url, {
             method: method,
