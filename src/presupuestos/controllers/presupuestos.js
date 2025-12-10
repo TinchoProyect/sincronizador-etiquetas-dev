@@ -2053,6 +2053,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
         
         // Consulta para obtener TODOS los detalles de presupuestos entregados del cliente
         // Incluimos fecha_entrega para ordenar por la más reciente
+        // ✅ NUEVO: Incluir precios actuales de la tabla precios_articulos
         const query = `
             SELECT 
                 pd.articulo as codigo_barras,
@@ -2061,10 +2062,24 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 pd.cantidad,
                 COALESCE(p.fecha_entrega, p.fecha) as fecha_entrega,
                 p.id as presupuesto_id,
-                p.id_presupuesto_ext
+                p.id_presupuesto_ext,
+                
+                -- ✅ NUEVO: Precios actuales del artículo (todas las listas)
+                COALESCE(pa.precio_neg, 0) as precio_actual_lista1,
+                COALESCE(pa.mayorista, 0) as precio_actual_lista2,
+                COALESCE(pa.especial_brus, 0) as precio_actual_lista3,
+                COALESCE(pa.consumidor_final, 0) as precio_actual_lista4,
+                COALESCE(pa.lista_5, 0) as precio_actual_lista5,
+                COALESCE(pa.iva, 0) as iva_actual,
+                
+                -- ✅ NUEVO: Lista de precios del cliente (con CAST explícito para evitar error de tipos)
+                CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente
+                
             FROM public.presupuestos p
             INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
             LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+            LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(a.nombre)
             WHERE p.id_cliente = $1
               AND p.activo = true
               AND LOWER(p.estado) = 'entregado'
@@ -2157,13 +2172,41 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
         productosUnicosArray.forEach(producto => {
             const mesesAtras = mesesDiferencia(producto.fecha_entrega);
             
+            // Helper function para calcular precio según lista
+            const calcularPrecioSegunLista = (lista, precios) => {
+                const listaNum = parseInt(lista) || 1;
+                
+                switch(listaNum) {
+                    case 1: return parseFloat(precios.precio_neg || 0);
+                    case 2: return parseFloat(precios.mayorista || 0);
+                    case 3: return parseFloat(precios.especial_brus || 0);
+                    case 4: return parseFloat(precios.consumidor_final || 0);
+                    case 5: return parseFloat(precios.lista_5 || 0);
+                    default: return parseFloat(precios.precio_neg || 0);
+                }
+            };
+            
             const productoFormateado = {
                 codigo_barras: producto.codigo_barras,
                 articulo_numero: producto.articulo_numero,
                 descripcion: producto.descripcion,
                 cantidad: parseFloat(producto.cantidad || 0),
                 fecha_entrega: producto.fecha_entrega,
-                presupuesto_id: producto.presupuesto_id
+                presupuesto_id: producto.presupuesto_id,
+                
+                // ✅ NUEVO: Precio actual según lista del cliente
+                precio_actual: calcularPrecioSegunLista(
+                    producto.lista_precios_cliente,
+                    {
+                        precio_neg: producto.precio_actual_lista1,
+                        mayorista: producto.precio_actual_lista2,
+                        especial_brus: producto.precio_actual_lista3,
+                        consumidor_final: producto.precio_actual_lista4,
+                        lista_5: producto.precio_actual_lista5
+                    }
+                ),
+                iva_actual: parseFloat(producto.iva_actual || 0),
+                lista_precios: parseInt(producto.lista_precios_cliente || 1)
             };
             
             if (mesesAtras === 0) {

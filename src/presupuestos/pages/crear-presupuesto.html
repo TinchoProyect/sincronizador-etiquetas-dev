@@ -164,6 +164,32 @@
             font-weight: 600;
         }
         
+        /* Botón de imprimir PDF en el historial */
+        .btn-imprimir-pdf {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        
+        .btn-imprimir-pdf:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-imprimir-pdf:active {
+            transform: translateY(0);
+        }
+        
         .accordion-icon {
             font-size: 1.2em;
             transition: transform 0.3s ease;
@@ -713,7 +739,17 @@
                     <!-- Acordeón: Historial de Entregas del Cliente -->
                     <div id="historial-entregas-section" class="accordion-section" style="display: none;">
                         <div class="accordion-header" onclick="toggleAccordion(this)">
-                            <h3>📦 Historial de Productos Entregados</h3>
+                            <div style="display: flex; align-items: center; gap: 15px; flex: 1;">
+                                <h3 style="margin: 0;">📦 Historial de Productos Entregados</h3>
+                                <button type="button" 
+                                        id="btn-imprimir-lista-precios"
+                                        class="btn-imprimir-pdf" 
+                                        onclick="event.stopPropagation(); imprimirListaPreciosPersonalizada()"
+                                        title="Generar PDF con precios actuales"
+                                        style="display: none;">
+                                    📄 Imprimir Actualización de Precios
+                                </button>
+                            </div>
                             <span class="accordion-icon">▼</span>
                         </div>
                         <div class="accordion-content" id="historial-entregas-content">

@@ -1977,7 +1977,7 @@ async function cargarHistorialEntregas(clienteId) {
 
 /**
  * Renderizar historial de entregas agrupado por meses
- * VERSIÓN COMPACTA: Solo descripción, cantidad y fecha
+ * VERSIÓN MEJORADA: Descripción, cantidad, PRECIO ACTUAL y fecha
  */
 function renderizarHistorialEntregas(data) {
     const content = document.getElementById('historial-entregas-content');
@@ -1991,8 +1991,17 @@ function renderizarHistorialEntregas(data) {
                 <p>📭 Este cliente no tiene entregas previas registradas</p>
             </div>
         `;
+        
+        // Ocultar botón de PDF
+        const btnPDF = document.getElementById('btn-imprimir-lista-precios');
+        if (btnPDF) btnPDF.style.display = 'none';
+        
         return;
     }
+    
+    // ✅ MOSTRAR botón de PDF cuando hay historial
+    const btnPDF = document.getElementById('btn-imprimir-lista-precios');
+    if (btnPDF) btnPDF.style.display = 'inline-flex';
     
     // Construir HTML para cada grupo de mes
     let html = '';
@@ -2009,15 +2018,19 @@ function renderizarHistorialEntregas(data) {
         
         grupo.productos.forEach(producto => {
             const fechaFormateada = formatearFechaHistorial(producto.fecha_entrega);
+            const precioActual = producto.precio_actual || 0;
             
-            // ✅ VERSIÓN COMPACTA: Solo descripción, cantidad y fecha (sin código de barras)
+            // ✅ VERSIÓN MEJORADA: Descripción, cantidad, PRECIO ACTUAL y fecha
             html += `
                 <li class="historial-producto-item">
                     <div class="historial-producto-info">
                         <div class="historial-producto-descripcion" title="${producto.descripcion}">${producto.descripcion}</div>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
                         <span class="historial-producto-cantidad">×${producto.cantidad}</span>
+                        <span class="historial-producto-precio" style="font-weight: 600; color: #10b981; min-width: 80px; text-align: right;">
+                            $${precioActual.toFixed(2)}
+                        </span>
                         <span class="historial-producto-fecha">${fechaFormateada}</span>
                     </div>
                 </li>
@@ -2034,6 +2047,37 @@ function renderizarHistorialEntregas(data) {
     
     console.log(`✅ [HISTORIAL] Historial renderizado: ${data.total_productos_unicos} productos únicos en ${data.grupos.length} grupos`);
 }
+
+/**
+ * Imprimir lista de precios personalizada (PDF)
+ */
+async function imprimirListaPreciosPersonalizada() {
+    console.log('[HISTORIAL-PDF] Generando PDF de lista de precios...');
+    
+    if (!clienteSeleccionado || !clienteSeleccionado.cliente_id) {
+        mostrarMensaje('Debe seleccionar un cliente primero', 'error');
+        return;
+    }
+    
+    try {
+        // Generar URL del PDF
+        const pdfUrl = `/api/presupuestos/clientes/${clienteSeleccionado.cliente_id}/lista-precios-pdf`;
+        
+        console.log('[HISTORIAL-PDF] Abriendo PDF:', pdfUrl);
+        
+        // Abrir en nueva ventana
+        window.open(pdfUrl, '_blank');
+        
+        console.log('[HISTORIAL-PDF] PDF solicitado exitosamente');
+        
+    } catch (error) {
+        console.error('[HISTORIAL-PDF] Error al generar PDF:', error);
+        mostrarMensaje('Error al generar PDF: ' + error.message, 'error');
+    }
+}
+
+// Exponer función globalmente
+window.imprimirListaPreciosPersonalizada = imprimirListaPreciosPersonalizada;
 
 /**
  * Formatear fecha para mostrar en el historial

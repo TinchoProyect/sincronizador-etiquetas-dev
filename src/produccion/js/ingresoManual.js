@@ -482,7 +482,9 @@ async function consultarKilosUnidad(articuloNumero) {
       throw new Error('Error al consultar artículos');
     }
     
-    const articulos = await response.json();
+    const responseData = await response.json();
+    // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+    const articulos = responseData.data || responseData;
     const articulo = articulos.find(art => art.numero === articuloNumero);
     
     if (articulo && articulo.kilos_unidad !== null && articulo.kilos_unidad !== undefined) {
@@ -629,7 +631,9 @@ function manejarBusqueda() {
         if (!response.ok) throw new Error('Error al buscar artículos');
         return response.json();
       })
-      .then(data => {
+      .then(responseData => {
+        // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+        const data = responseData.data || responseData;
         let resultados;
 
         if (modoBusqueda === 'barras') {

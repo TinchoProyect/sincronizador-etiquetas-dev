@@ -488,8 +488,13 @@ async function cargarArticulos() {
             throw new Error(errorData.error || 'Error al obtener los artículos');
         }
 
-        const articulos = await response.json();
+        const responseData = await response.json();
         console.log('🔍 [FRONTEND] ===== DATOS RECIBIDOS DEL BACKEND =====');
+        console.log('🔍 [FRONTEND] Respuesta completa:', responseData);
+        
+        // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+        const articulos = responseData.data || responseData;
+        
         console.log('🔍 [FRONTEND] Total artículos recibidos:', articulos.length);
         console.log('🔍 [FRONTEND] Muestra del primer artículo:', articulos[0]);
         
@@ -1329,7 +1334,9 @@ async function compararStock() {
         const response = await fetch('/api/produccion/articulos');
         if (!response.ok) throw new Error('Error al obtener artículos del sistema');
         
-        const articulosDelSistema = await response.json();
+        const responseData = await response.json();
+        // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+        const articulosDelSistema = responseData.data || responseData;
         console.log(`📊 [DIFERENCIAS] Artículos del sistema obtenidos: ${articulosDelSistema.length}`);
         
         // Generar lista de diferencias

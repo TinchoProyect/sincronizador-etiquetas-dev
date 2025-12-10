@@ -1,6 +1,8 @@
 {
-  "numero": "PJx10",
-  "nombre": "Pasa/Jumbo x 10",
-  "codigo_barras": "5349211857",
-  "cantidad": 4
+  "articulo": {
+    "numero": "MSx5",
+    "nombre": "Mix/Salado x 5 kg",
+    "codigo_barras": "2589631326"
+  },
+  "cantidad": "6.00"
 }

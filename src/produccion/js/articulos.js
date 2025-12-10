@@ -95,7 +95,9 @@ export async function abrirModalArticulos() {
                 throw new Error(errorData.error || 'Error al obtener artículos');
             }
 
-            const articulos = await response.json();
+            const responseData = await response.json();
+            // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+            const articulos = responseData.data || responseData;
             
             if (articulos.length === 0) {
                 const mensaje = tipoCarro === 'externa' 
@@ -124,7 +126,9 @@ export async function abrirModalArticulos() {
                 const url = 'http://localhost:3002/api/produccion/articulos';
                 const response = await fetch(url);
                 if (response.ok) {
-                    const articulosOriginales = await response.json();
+                    const responseData = await response.json();
+                    // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+                    const articulosOriginales = responseData.data || responseData;
                     articulosDisponibles = await filtrarArticulosYaAgregados(articulosOriginales, carroId);
                     console.log(`🔍 [FASE 1] Filtro aplicado (caché) - Artículos totales: ${articulosOriginales.length}, Disponibles: ${articulosDisponibles.length}`);
                     
@@ -750,7 +754,9 @@ export async function cargarArticulosDisponibles() {
         if (!response.ok) {
             throw new Error('Error al cargar artículos disponibles');
         }
-        const articulos = await response.json();
+        const responseData = await response.json();
+        // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+        const articulos = responseData.data || responseData;
         state.articulosDisponibles = articulos;
         actualizarSelectorArticulos();
     } catch (error) {

@@ -233,6 +233,31 @@ router.get('/clientes/:id_cliente/historial-entregas', validatePermissions('pres
 });
 
 /**
+ * @route GET /api/presupuestos/clientes/:id_cliente/lista-precios-pdf
+ * @desc Generar PDF con lista de precios personalizada basada en historial del cliente
+ * @access Privado
+ */
+router.get('/clientes/:id_cliente/lista-precios-pdf', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('📄 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente/lista-precios-pdf - Generando PDF de lista de precios');
+    
+    try {
+        const { generarListaPreciosPDF } = require('../controllers/pdfListaPrecios');
+        await generarListaPreciosPDF(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /clientes/:id_cliente/lista-precios-pdf:', error);
+        
+        // Si ya se enviaron headers (PDF iniciado), no podemos enviar JSON
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                error: 'Error al generar PDF de lista de precios',
+                message: error.message
+            });
+        }
+    }
+});
+
+/**
  * @route GET /api/presupuestos/articulos/sugerencias
  * @desc Obtener sugerencias de artículos para autocompletar en detalles
  * @access Privado
