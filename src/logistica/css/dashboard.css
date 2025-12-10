@@ -775,6 +775,95 @@ body {
     position: relative;
 }
 
+/* Acordeón para agrupar rutas */
+.rutas-grupo {
+    margin-bottom: 1.5rem;
+}
+
+.rutas-grupo-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.rutas-grupo-header:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.rutas-grupo-header.activas {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.rutas-grupo-header.finalizadas {
+    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+}
+
+.rutas-grupo-titulo {
+    font-weight: 600;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.rutas-grupo-contador {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.rutas-grupo-icono {
+    font-size: 1.25rem;
+    transition: transform 0.3s;
+}
+
+.rutas-grupo-header.collapsed .rutas-grupo-icono {
+    transform: rotate(-90deg);
+}
+
+.rutas-grupo-contenido {
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+    opacity: 1;
+}
+
+.rutas-grupo-contenido.collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+
+/* Separador de fecha para rutas activas */
+.fecha-separador {
+    background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+    height: 1px;
+    margin: 1.5rem 0 1rem 0;
+    position: relative;
+}
+
+.fecha-separador-texto {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: var(--card-bg);
+    padding: 0.25rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
 /* Responsive */
 @media (max-width: 1400px) {
     .main-content {

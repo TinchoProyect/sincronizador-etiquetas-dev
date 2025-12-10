@@ -1,3 +1,5 @@
+/* global google, QRCode, MapaInteractivo, cargarConfiguracion, cargarGoogleMaps, cargarChoferes */
+
 /**
  * Dashboard de Logística
  * Gestión de rutas y asignación de pedidos
@@ -190,7 +192,7 @@ function renderizarPedidos() {
 }
 
 /**
- * Renderizar lista de rutas
+ * Renderizar lista de rutas con agrupación
  */
 async function renderizarRutas() {
     const container = document.getElementById('rutas-list');
@@ -214,105 +216,250 @@ async function renderizarRutas() {
         })
     );
     
-    container.innerHTML = rutasConDetalles.map(ruta => {
-        // Generar lista de pedidos
-        let pedidosHTML = '';
-        if (ruta.presupuestos && ruta.presupuestos.length > 0) {
-            const rutaId = ruta.id;
-            const esArmando = ruta.estado === 'ARMANDO';
-            
-            pedidosHTML = `
-                <div class="ruta-pedidos-lista" 
-                     id="pedidos-ruta-${rutaId}" 
-                     data-ruta-id="${rutaId}"
-                     style="margin-top: 0.75rem; font-size: 0.75rem;">
-                    ${ruta.presupuestos.map((p, index) => `
-                        <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''}" 
-                             data-presupuesto-id="${p.id}"
-                             draggable="${esArmando}"
-                             ondragstart="${esArmando ? 'handlePedidoDragStart(event)' : ''}"
-                             ondragover="${esArmando ? 'handlePedidoDragOver(event)' : ''}"
-                             ondrop="${esArmando ? 'handlePedidoDrop(event, ' + rutaId + ')' : ''}"
-                             ondragend="${esArmando ? 'handlePedidoDragEnd(event)' : ''}"
-                             style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border-bottom: 1px solid #e2e8f0; ${esArmando ? 'cursor: move;' : ''}">
-                            ${esArmando ? '<span style="color: #94a3b8; cursor: move;">⋮⋮</span>' : ''}
-                            <span style="font-weight: bold; color: #2563eb; min-width: 1.5rem;">${index + 1}.</span>
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                    #${p.id} - ${p.cliente_nombre || 'Sin nombre'}
-                                </div>
-                                <div style="color: #64748b; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                    📍 ${p.domicilio_direccion || 'Sin dirección'}
-                                </div>
-                            </div>
-                            ${esArmando ? `
-                                <button class="btn-icon-danger" 
-                                        onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, ${p.id})"
-                                        title="Quitar de la ruta"
-                                        style="padding: 0.25rem 0.5rem; font-size: 0.875rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
-                                    🗑️
-                                </button>
-                            ` : ''}
-                        </div>
-                    `).join('')}
+    // PASO 1: Separar rutas finalizadas de activas
+    const rutasFinalizadas = rutasConDetalles.filter(r => r.estado === 'FINALIZADA');
+    const rutasActivas = rutasConDetalles.filter(r => r.estado !== 'FINALIZADA');
+    
+    // PASO 2: Agrupar rutas activas por fecha
+    const rutasPorFecha = agruparRutasPorFecha(rutasActivas);
+    
+    // PASO 3: Renderizar HTML con agrupación
+    let html = '';
+    
+    // Renderizar rutas activas agrupadas por fecha
+    if (rutasPorFecha.length > 0) {
+        rutasPorFecha.forEach(grupo => {
+            html += `
+                <div class="fecha-separador">
+                    <span class="fecha-separador-texto">${grupo.fechaTexto}</span>
                 </div>
             `;
-        }
-        
-        return `
-            <div class="ruta-card ${ruta.estado?.toLowerCase() || 'armando'}" 
-                 data-id="${ruta.id}"
-                 onclick="seleccionarRuta(${ruta.id})"
-                 ondrop="handleDrop(event, ${ruta.id})" 
-                 ondragover="handleDragOver(event)">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div class="ruta-nombre">${ruta.nombre_ruta || `Ruta #${ruta.id}`}</div>
-                    <button class="btn-icon-danger" 
-                            onclick="event.stopPropagation(); eliminarRuta(${ruta.id}, ${ruta.presupuestos?.length || 0})"
-                            title="Eliminar ruta"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.875rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
-                        🗑️
-                    </button>
-                </div>
-                <div class="ruta-chofer">
-                    👤 ${ruta.chofer_nombre || 'Sin chofer'}
-                </div>
-                <div class="ruta-stats">
-                    <div class="ruta-stat">
-                        <div class="ruta-stat-value">${ruta.cantidad_presupuestos || ruta.presupuestos?.length || 0}</div>
-                        <div class="ruta-stat-label">Pedidos</div>
+            
+            html += grupo.rutas.map(ruta => renderizarTarjetaRuta(ruta)).join('');
+        });
+    }
+    
+    // Renderizar rutas finalizadas en acordeón (colapsado por defecto)
+    if (rutasFinalizadas.length > 0) {
+        html += `
+            <div class="rutas-grupo">
+                <div class="rutas-grupo-header finalizadas collapsed" onclick="toggleGrupoRutas('finalizadas')">
+                    <div class="rutas-grupo-titulo">
+                        <span>✅ Rutas Finalizadas</span>
+                        <span class="rutas-grupo-contador">${rutasFinalizadas.length}</span>
                     </div>
-                    <div class="ruta-stat">
-                        <div class="ruta-stat-value">${ruta.estado || 'ARMANDO'}</div>
-                        <div class="ruta-stat-label">Estado</div>
-                    </div>
+                    <span class="rutas-grupo-icono">▼</span>
                 </div>
-                ${pedidosHTML}
-                <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
-                    <button class="btn-secondary" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
-                            onclick="event.stopPropagation(); verDetallesRuta(${ruta.id})">
-                        Ver en Mapa
-                    </button>
-                    <button class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
-                            onclick="event.stopPropagation(); generarQRAcceso(${ruta.id})"
-                            title="Generar QR de acceso rápido">
-                        📱
-                    </button>
-                    ${ruta.estado === 'ARMANDO' ? `
-                        <button class="btn-primary" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
-                                onclick="event.stopPropagation(); iniciarRuta(${ruta.id})">
-                            Iniciar Ruta
-                        </button>
-                    ` : ruta.estado === 'EN_CAMINO' ? `
-                        <button class="btn-warning" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: #f59e0b; color: white;" 
-                                onclick="event.stopPropagation(); detenerRuta(${ruta.id})">
-                            ⏸️ Detener / Editar
-                        </button>
-                    ` : ''}
+                <div class="rutas-grupo-contenido collapsed" id="grupo-finalizadas">
+                    ${rutasFinalizadas.map(ruta => renderizarTarjetaRuta(ruta)).join('')}
                 </div>
             </div>
         `;
-    }).join('');
+    }
+    
+    container.innerHTML = html || '<div class="loading">No hay rutas para mostrar</div>';
+}
+
+/**
+ * Agrupar rutas por fecha
+ */
+function agruparRutasPorFecha(rutas) {
+    // Ordenar por fecha ascendente (más próximas primero)
+    const rutasOrdenadas = rutas.sort((a, b) => {
+        const fechaA = new Date(a.fecha_salida);
+        const fechaB = new Date(b.fecha_salida);
+        return fechaA - fechaB;
+    });
+    
+    // Agrupar por fecha (sin hora)
+    const grupos = {};
+    
+    rutasOrdenadas.forEach(ruta => {
+        const fecha = new Date(ruta.fecha_salida);
+        const fechaKey = fecha.toISOString().split('T')[0]; // YYYY-MM-DD
+        
+        if (!grupos[fechaKey]) {
+            grupos[fechaKey] = {
+                fecha: fecha,
+                fechaKey: fechaKey,
+                fechaTexto: formatearFechaGrupo(fecha),
+                rutas: []
+            };
+        }
+        
+        grupos[fechaKey].rutas.push(ruta);
+    });
+    
+    // Convertir objeto a array y ordenar
+    return Object.values(grupos).sort((a, b) => a.fecha - b.fecha);
+}
+
+/**
+ * Formatear fecha para encabezado de grupo
+ */
+function formatearFechaGrupo(fecha) {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    const manana = new Date(hoy);
+    manana.setDate(manana.getDate() + 1);
+    
+    const fechaRuta = new Date(fecha);
+    fechaRuta.setHours(0, 0, 0, 0);
+    
+    // Comparar fechas
+    if (fechaRuta.getTime() === hoy.getTime()) {
+        return '🔥 HOY - ' + formatearFechaCompleta(fecha);
+    } else if (fechaRuta.getTime() === manana.getTime()) {
+        return '⏰ MAÑANA - ' + formatearFechaCompleta(fecha);
+    } else if (fechaRuta < hoy) {
+        return '⏮️ ' + formatearFechaCompleta(fecha) + ' (Pasada)';
+    } else {
+        return '📅 ' + formatearFechaCompleta(fecha);
+    }
+}
+
+/**
+ * Formatear fecha completa (Día de Semana DD de Mes)
+ */
+function formatearFechaCompleta(fecha) {
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    
+    const f = new Date(fecha);
+    const diaSemana = diasSemana[f.getDay()];
+    const dia = f.getDate();
+    const mes = meses[f.getMonth()];
+    
+    return `${diaSemana} ${dia} de ${mes}`;
+}
+
+/**
+ * Toggle acordeón de grupo de rutas
+ */
+function toggleGrupoRutas(grupoId) {
+    const header = document.querySelector(`.rutas-grupo-header.${grupoId}`);
+    const contenido = document.getElementById(`grupo-${grupoId}`);
+    
+    if (!header || !contenido) return;
+    
+    const estaColapsado = header.classList.contains('collapsed');
+    
+    if (estaColapsado) {
+        // Expandir
+        header.classList.remove('collapsed');
+        contenido.classList.remove('collapsed');
+        console.log(`[DASHBOARD] Grupo ${grupoId} expandido`);
+    } else {
+        // Colapsar
+        header.classList.add('collapsed');
+        contenido.classList.add('collapsed');
+        console.log(`[DASHBOARD] Grupo ${grupoId} colapsado`);
+    }
+}
+
+/**
+ * Renderizar tarjeta individual de ruta
+ */
+function renderizarTarjetaRuta(ruta) {
+    // Generar lista de pedidos
+    let pedidosHTML = '';
+    if (ruta.presupuestos && ruta.presupuestos.length > 0) {
+        const rutaId = ruta.id;
+        const esArmando = ruta.estado === 'ARMANDO';
+        
+        pedidosHTML = `
+            <div class="ruta-pedidos-lista" 
+                 id="pedidos-ruta-${rutaId}" 
+                 data-ruta-id="${rutaId}"
+                 style="margin-top: 0.75rem; font-size: 0.75rem;">
+                ${ruta.presupuestos.map((p, index) => `
+                    <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''}" 
+                         data-presupuesto-id="${p.id}"
+                         draggable="${esArmando}"
+                         ondragstart="${esArmando ? 'handlePedidoDragStart(event)' : ''}"
+                         ondragover="${esArmando ? 'handlePedidoDragOver(event)' : ''}"
+                         ondrop="${esArmando ? 'handlePedidoDrop(event, ' + rutaId + ')' : ''}"
+                         ondragend="${esArmando ? 'handlePedidoDragEnd(event)' : ''}"
+                         style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border-bottom: 1px solid #e2e8f0; ${esArmando ? 'cursor: move;' : ''}">
+                        ${esArmando ? '<span style="color: #94a3b8; cursor: move;">⋮⋮</span>' : ''}
+                        <span style="font-weight: bold; color: #2563eb; min-width: 1.5rem;">${index + 1}.</span>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                #${p.id} - ${p.cliente_nombre || 'Sin nombre'}
+                            </div>
+                            <div style="color: #64748b; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                📍 ${p.domicilio_direccion || 'Sin dirección'}
+                            </div>
+                        </div>
+                        ${esArmando ? `
+                            <button class="btn-icon-danger" 
+                                    onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, ${p.id})"
+                                    title="Quitar de la ruta"
+                                    style="padding: 0.25rem 0.5rem; font-size: 0.875rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                🗑️
+                            </button>
+                        ` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    return `
+        <div class="ruta-card ${ruta.estado?.toLowerCase() || 'armando'}" 
+             data-id="${ruta.id}"
+             onclick="seleccionarRuta(${ruta.id})"
+             ondrop="handleDrop(event, ${ruta.id})" 
+             ondragover="handleDragOver(event)">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="ruta-nombre">${ruta.nombre_ruta || `Ruta #${ruta.id}`}</div>
+                <button class="btn-icon-danger" 
+                        onclick="event.stopPropagation(); eliminarRuta(${ruta.id}, ${ruta.presupuestos?.length || 0})"
+                        title="Eliminar ruta"
+                        style="padding: 0.25rem 0.5rem; font-size: 0.875rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                    🗑️
+                </button>
+            </div>
+            <div class="ruta-chofer">
+                👤 ${ruta.chofer_nombre || 'Sin chofer'}
+            </div>
+            <div class="ruta-stats">
+                <div class="ruta-stat">
+                    <div class="ruta-stat-value">${ruta.cantidad_presupuestos || ruta.presupuestos?.length || 0}</div>
+                    <div class="ruta-stat-label">Pedidos</div>
+                </div>
+                <div class="ruta-stat">
+                    <div class="ruta-stat-value">${ruta.estado || 'ARMANDO'}</div>
+                    <div class="ruta-stat-label">Estado</div>
+                </div>
+            </div>
+            ${pedidosHTML}
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+                <button class="btn-secondary" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                        onclick="event.stopPropagation(); verDetallesRuta(${ruta.id})">
+                    Ver en Mapa
+                </button>
+                <button class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                        onclick="event.stopPropagation(); generarQRAcceso(${ruta.id})"
+                        title="Generar QR de acceso rápido">
+                    📱
+                </button>
+                ${ruta.estado === 'ARMANDO' ? `
+                    <button class="btn-primary" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                            onclick="event.stopPropagation(); iniciarRuta(${ruta.id})">
+                        Iniciar Ruta
+                    </button>
+                ` : ruta.estado === 'EN_CAMINO' ? `
+                    <button class="btn-warning" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem; background: #f59e0b; color: white;" 
+                            onclick="event.stopPropagation(); detenerRuta(${ruta.id})">
+                        ⏸️ Detener / Editar
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `;
 }
 
 /**
