@@ -50,34 +50,59 @@ async function obtenerPackMapping(codigoPadre) {
         try {
             console.log(`🔍 [PACK] Buscando info completa del hijo: ${articulo.pack_hijo_codigo}`);
             
-            const hijoResponse = await fetch(`/api/produccion/pedidos-articulos?include_pack=true&q=${encodeURIComponent(articulo.pack_hijo_codigo)}`);
-            if (hijoResponse.ok) {
-                const hijoResult = await hijoResponse.json();
-                console.log(`📊 [PACK] Respuesta hijo:`, hijoResult);
+            // ESTRATEGIA 1: Buscar directamente en tabla articulos por código de barras
+            const articulosResponse = await fetch(`/api/produccion/articulos?codigo_barras=${encodeURIComponent(articulo.pack_hijo_codigo)}`);
+            if (articulosResponse.ok) {
+                const articulosResult = await articulosResponse.json();
+                console.log(`📊 [PACK] Respuesta articulos por código de barras:`, articulosResult);
                 
-                if (hijoResult.success && hijoResult.data && hijoResult.data.length > 0) {
-                    // Buscar por código de barras O código alfanumérico
-                    const hijoData = hijoResult.data.find(art => 
-                        art.codigo_barras === articulo.pack_hijo_codigo || 
-                        art.articulo_numero === articulo.pack_hijo_codigo
-                    );
+                if (articulosResult.success && articulosResult.data && articulosResult.data.length > 0) {
+                    const articuloData = articulosResult.data[0];
+                    hijoDescripcion = articuloData.nombre || articuloData.descripcion;
+                    hijoNumeroAlfanumerico = articuloData.numero || articulo.pack_hijo_codigo;
+                    hijoCodigoBarras = articuloData.codigo_barras || articulo.pack_hijo_codigo;
                     
-                    if (hijoData) {
-                        hijoDescripcion = hijoData.descripcion || hijoData.nombre || hijoData.articulo_descripcion;
-                        hijoNumeroAlfanumerico = hijoData.articulo_numero || articulo.pack_hijo_codigo;
-                        hijoCodigoBarras = hijoData.codigo_barras || articulo.pack_hijo_codigo;
+                    console.log(`✅ [PACK] Info hijo encontrada en articulos:`, {
+                        descripcion: hijoDescripcion,
+                        numero: hijoNumeroAlfanumerico,
+                        barras: hijoCodigoBarras
+                    });
+                }
+            }
+            
+            // ESTRATEGIA 2: Si no encontró, buscar en pedidos-articulos
+            if (!hijoDescripcion) {
+                console.log(`⚠️ [PACK] No encontrado en articulos, probando pedidos-articulos...`);
+                const hijoResponse = await fetch(`/api/produccion/pedidos-articulos?include_pack=true&q=${encodeURIComponent(articulo.pack_hijo_codigo)}`);
+                if (hijoResponse.ok) {
+                    const hijoResult = await hijoResponse.json();
+                    console.log(`📊 [PACK] Respuesta pedidos-articulos:`, hijoResult);
+                    
+                    if (hijoResult.success && hijoResult.data && hijoResult.data.length > 0) {
+                        // Buscar por código de barras O código alfanumérico
+                        const hijoData = hijoResult.data.find(art => 
+                            art.codigo_barras === articulo.pack_hijo_codigo || 
+                            art.articulo_numero === articulo.pack_hijo_codigo
+                        );
                         
-                        console.log(`✅ [PACK] Info hijo encontrada:`, {
-                            descripcion: hijoDescripcion,
-                            numero: hijoNumeroAlfanumerico,
-                            barras: hijoCodigoBarras
-                        });
+                        if (hijoData) {
+                            hijoDescripcion = hijoData.descripcion || hijoData.nombre || hijoData.articulo_descripcion;
+                            hijoNumeroAlfanumerico = hijoData.articulo_numero || articulo.pack_hijo_codigo;
+                            hijoCodigoBarras = hijoData.codigo_barras || articulo.pack_hijo_codigo;
+                            
+                            console.log(`✅ [PACK] Info hijo encontrada en pedidos-articulos:`, {
+                                descripcion: hijoDescripcion,
+                                numero: hijoNumeroAlfanumerico,
+                                barras: hijoCodigoBarras
+                            });
+                        }
                     }
                 }
             }
             
+            // ESTRATEGIA 3: Búsqueda general como último recurso
             if (!hijoDescripcion) {
-                console.log(`⚠️ [PACK] Búsqueda específica falló, probando búsqueda general...`);
+                console.log(`⚠️ [PACK] Búsquedas específicas fallaron, probando búsqueda general...`);
                 const hijoResponse2 = await fetch(`/api/produccion/pedidos-articulos`);
                 if (hijoResponse2.ok) {
                     const hijoResult2 = await hijoResponse2.json();

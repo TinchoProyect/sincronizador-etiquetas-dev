@@ -577,20 +577,29 @@ router.get('/usuarios', async (req, res) => {
 // Rutas para artículos
 router.get('/articulos', async (req, res) => {
     try {
-        const { tipo_carro } = req.query;
+        const { tipo_carro, codigo_barras } = req.query;
         
         // Validación del parámetro tipo_carro
         if (tipo_carro && !['interna', 'externa'].includes(tipo_carro)) {
             return res.status(400).json({ error: 'El tipo de carro debe ser "interna" o "externa"' });
         }
         
-        console.log('Recibida solicitud GET /articulos con filtro:', tipo_carro || 'sin filtro');
-        const articulos = await obtenerArticulos(tipo_carro);
+        console.log('Recibida solicitud GET /articulos con filtros:', { tipo_carro: tipo_carro || 'sin filtro', codigo_barras: codigo_barras || 'sin filtro' });
+        const articulos = await obtenerArticulos(tipo_carro, codigo_barras);
         console.log(`Enviando respuesta con ${articulos.length} artículos`);
-        res.json(articulos);
+        
+        // Formato de respuesta consistente con otros endpoints
+        res.json({
+            success: true,
+            data: articulos,
+            total: articulos.length
+        });
     } catch (error) {
         console.error('Error en ruta GET /articulos:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
     }
 });
 

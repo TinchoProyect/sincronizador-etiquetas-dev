@@ -3,17 +3,29 @@ const pool = require('../config/database');
 /**
  * Obtiene la lista de todos los artículos disponibles
  * @param {string} tipoCarro - Tipo de carro ('interna', 'externa', o null para todos)
+ * @param {string} codigoBarras - Código de barras para búsqueda específica (opcional)
  * @returns {Promise<Array>} Lista de artículos
  */
-async function obtenerArticulos(tipoCarro = null) {
+async function obtenerArticulos(tipoCarro = null, codigoBarras = null) {
     try {
-        // Construir WHERE clause según el tipo de carro
-        let whereClause = '';
+        // Construir WHERE clause según los parámetros
+        let whereClauses = [];
         let params = [];
+        let paramIndex = 1;
         
-        if (tipoCarro === 'externa') {
-            whereClause = 'WHERE COALESCE(src.solo_produccion_externa, false) = true';
+        // Filtro por código de barras (tiene prioridad)
+        if (codigoBarras) {
+            whereClauses.push(`a.codigo_barras = $${paramIndex}`);
+            params.push(codigoBarras);
+            paramIndex++;
         }
+        
+        // Filtro por tipo de carro
+        if (tipoCarro === 'externa') {
+            whereClauses.push('COALESCE(src.solo_produccion_externa, false) = true');
+        }
+        
+        const whereClause = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
         
         const query = `
             SELECT DISTINCT
