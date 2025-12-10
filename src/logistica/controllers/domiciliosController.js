@@ -13,8 +13,27 @@ async function obtenerDomicilios(req, res) {
     try {
         console.log('[DOMICILIOS] Obteniendo domicilios con filtros:', req.query);
         
+        let id_cliente_interno = undefined;
+        
+        // Si se proporciona id_cliente, convertir a ID interno
+        if (req.query.id_cliente) {
+            id_cliente_interno = await DomiciliosModel.obtenerIdInternoCliente(req.query.id_cliente);
+            
+            if (!id_cliente_interno) {
+                console.log(`[DOMICILIOS] ⚠️ Cliente ${req.query.id_cliente} no encontrado`);
+                // Retornar array vacío en lugar de error (el cliente puede no tener domicilios)
+                return res.json({
+                    success: true,
+                    data: [],
+                    total: 0
+                });
+            }
+            
+            console.log(`[DOMICILIOS] Cliente convertido: ${req.query.id_cliente} -> ${id_cliente_interno}`);
+        }
+        
         const filtros = {
-            id_cliente: req.query.id_cliente ? parseInt(req.query.id_cliente) : undefined,
+            id_cliente: id_cliente_interno,
             activo: req.query.activo !== undefined ? req.query.activo === 'true' : true,
             es_predeterminado: req.query.es_predeterminado !== undefined ? req.query.es_predeterminado === 'true' : undefined
         };
@@ -122,15 +141,17 @@ async function crearDomicilio(req, res) {
             });
         }
         
-        // Verificar que el cliente existe
-        const clienteExiste = await DomiciliosModel.clienteExiste(id_cliente);
-        if (!clienteExiste) {
+        // Obtener ID interno del cliente (convierte cliente_id a id)
+        const idInternoCliente = await DomiciliosModel.obtenerIdInternoCliente(id_cliente);
+        if (!idInternoCliente) {
             console.log(`[DOMICILIOS] ⚠️ Cliente ${id_cliente} no existe`);
             return res.status(404).json({
                 success: false,
                 error: 'Cliente no encontrado'
             });
         }
+        
+        console.log(`[DOMICILIOS] Cliente validado: cliente_id=${id_cliente} -> id_interno=${idInternoCliente}`);
         
         // Validar coordenadas si están presentes
         if (latitud && longitud) {
@@ -149,9 +170,9 @@ async function crearDomicilio(req, res) {
             }
         }
         
-        // Crear domicilio
+        // Crear domicilio usando el ID interno
         const nuevoDomicilio = await DomiciliosModel.crear({
-            id_cliente: parseInt(id_cliente),
+            id_cliente: idInternoCliente,
             alias,
             direccion,
             localidad,

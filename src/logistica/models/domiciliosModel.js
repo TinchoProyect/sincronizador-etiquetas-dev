@@ -275,14 +275,39 @@ class DomiciliosModel {
     }
     
     /**
+     * Verificar si un cliente existe y obtener su ID interno
+     * @param {string|number} id_cliente - ID del cliente (puede ser cliente_id o id)
+     * @returns {Promise<number|null>} ID interno del cliente o null si no existe
+     */
+    static async obtenerIdInternoCliente(id_cliente) {
+        const clienteIdInt = parseInt(id_cliente);
+        
+        if (isNaN(clienteIdInt)) {
+            console.log(`[DOMICILIOS-MODEL] ⚠️ ID de cliente inválido: ${id_cliente}`);
+            return null;
+        }
+        
+        // Buscar por cliente_id (campo único que se usa en presupuestos)
+        const query = 'SELECT id FROM clientes WHERE cliente_id = $1';
+        const resultado = await pool.query(query, [clienteIdInt]);
+        
+        if (resultado.rowCount > 0) {
+            console.log(`[DOMICILIOS-MODEL] Cliente encontrado: cliente_id=${clienteIdInt} -> id=${resultado.rows[0].id}`);
+            return resultado.rows[0].id;
+        }
+        
+        console.log(`[DOMICILIOS-MODEL] ⚠️ Cliente ${clienteIdInt} no encontrado`);
+        return null;
+    }
+    
+    /**
      * Verificar si un cliente existe
-     * @param {string} id_cliente - ID del cliente (TEXT)
+     * @param {string|number} id_cliente - ID del cliente
      * @returns {Promise<boolean>} True si existe
      */
     static async clienteExiste(id_cliente) {
-        const query = 'SELECT id FROM clientes WHERE id = $1';
-        const resultado = await pool.query(query, [parseInt(id_cliente)]);
-        return resultado.rowCount > 0;
+        const idInterno = await this.obtenerIdInternoCliente(id_cliente);
+        return idInterno !== null;
     }
     
     /**

@@ -1384,10 +1384,10 @@ async function mostrarFormNuevoDomicilio() {
             modalDomiciliosContext.mapaInteractivo = new MapaInteractivo();
         }
         
-        // Inicializar mapa (Tucumán por defecto)
+        // Inicializar mapa (La Plata por defecto)
         await modalDomiciliosContext.mapaInteractivo.inicializar('mapa-nuevo-domicilio', {
-            lat: -26.8241,
-            lng: -65.2226,
+            lat: -34.9214,
+            lng: -57.9545,
             zoom: 15
         });
         

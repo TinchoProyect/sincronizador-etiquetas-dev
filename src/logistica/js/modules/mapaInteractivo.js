@@ -20,8 +20,8 @@ class MapaInteractivo {
      */
     async inicializar(containerId, opciones = {}) {
         const {
-            lat = -26.8241,  // Tucumán por defecto
-            lng = -65.2226,
+            lat = -34.9214,  // La Plata por defecto
+            lng = -57.9545,
             zoom = 15,
             draggable = true
         } = opciones;

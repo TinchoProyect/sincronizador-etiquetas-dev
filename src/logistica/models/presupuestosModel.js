@@ -4,14 +4,84 @@
  */
 
 /**
+ * Auto-asignar domicilios a presupuestos huérfanos
+ * Busca presupuestos sin domicilio y les asigna el domicilio predeterminado del cliente
+ */
+async function autoAsignarDomicilios(pool) {
+    try {
+        console.log('[AUTO-HEALING] Iniciando auto-asignación de domicilios...');
+        
+        // Query para auto-asignar domicilios predeterminados
+        const query = `
+            WITH presupuestos_huerfanos AS (
+                SELECT 
+                    p.id as presupuesto_id,
+                    p.id_cliente,
+                    c.id as cliente_id_interno
+                FROM presupuestos p
+                INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
+                WHERE 
+                    p.secuencia = 'Pedido_Listo'
+                    AND p.estado = 'Presupuesto/Orden'
+                    AND p.activo = true
+                    AND p.id_domicilio_entrega IS NULL
+            ),
+            domicilios_candidatos AS (
+                SELECT DISTINCT ON (ph.presupuesto_id)
+                    ph.presupuesto_id,
+                    cd.id as domicilio_id,
+                    cd.alias,
+                    cd.es_predeterminado
+                FROM presupuestos_huerfanos ph
+                INNER JOIN clientes_domicilios cd ON cd.id_cliente = ph.cliente_id_interno
+                WHERE cd.activo = true
+                ORDER BY 
+                    ph.presupuesto_id,
+                    cd.es_predeterminado DESC,
+                    cd.fecha_creacion ASC
+            )
+            UPDATE presupuestos p
+            SET id_domicilio_entrega = dc.domicilio_id
+            FROM domicilios_candidatos dc
+            WHERE p.id = dc.presupuesto_id
+            RETURNING p.id, p.id_cliente, dc.domicilio_id, dc.alias
+        `;
+        
+        const result = await pool.query(query);
+        
+        if (result.rowCount > 0) {
+            console.log(`[AUTO-HEALING] ✅ ${result.rowCount} presupuesto(s) auto-asignado(s):`);
+            result.rows.forEach(row => {
+                console.log(`  - Presupuesto ${row.id} → Domicilio "${row.alias}" (ID: ${row.domicilio_id})`);
+            });
+        } else {
+            console.log('[AUTO-HEALING] ℹ️ No hay presupuestos huérfanos para auto-asignar');
+        }
+        
+        return result.rowCount;
+        
+    } catch (error) {
+        console.error('[AUTO-HEALING] ❌ Error en auto-asignación:', error);
+        // No lanzar error, solo loguear (es un proceso auxiliar)
+        return 0;
+    }
+}
+
+/**
  * Obtener presupuestos disponibles para asignar a rutas
  * Criterios:
  * - Secuencia: 'Pedido listo' (CRÍTICO)
  * - Estado logístico: PENDIENTE_ASIGNAR, PENDIENTE o NULL
  * - Tiene domicilio de entrega asignado
  * - Activo: true
+ * 
+ * INCLUYE AUTO-HEALING: Asigna automáticamente domicilios antes de retornar
  */
 async function obtenerPresupuestosDisponibles(pool) {
+    // PASO 1: Auto-asignar domicilios a presupuestos huérfanos
+    await autoAsignarDomicilios(pool);
+    
+    // PASO 2: Obtener presupuestos disponibles
     const query = `
         SELECT 
             p.id,
@@ -140,5 +210,6 @@ async function contarPresupuestosDisponibles(pool) {
 module.exports = {
     obtenerPresupuestosDisponibles,
     obtenerPresupuestosPorRuta,
-    contarPresupuestosDisponibles
+    contarPresupuestosDisponibles,
+    autoAsignarDomicilios
 };
