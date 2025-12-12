@@ -94,6 +94,8 @@ const K = {
   especial_brus:    ['especial_brus', 'Especial (Brus)', 'precio3'],
   consumidor_final: ['consumidor_final', 'Consumidor Final', 'precio4'],
   lista_5:          ['lista_5', 'Lista 5', 'precio5'],
+  rubro:            ['familia', 'rubro', 'Familia', 'Rubro'],
+  sub_rubro:        ['subfamilia', 'sub_rubro', 'Subfamilia', 'SubFamilia', 'Sub Rubro'],
 };
 
 // Convierte a número tolerando strings y coma decimal
@@ -205,8 +207,9 @@ async function sincronizarPrecios() {
     const insertSQL = `
       INSERT INTO ${FULL_TABLE} (
         articulo, descripcion, costo, moneda, iva,
-        precio_neg, mayorista, especial_brus, consumidor_final, lista_5
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        precio_neg, mayorista, especial_brus, consumidor_final, lista_5,
+        rubro, sub_rubro
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
     `;
 
     let procesados = 0;
@@ -222,10 +225,13 @@ async function sincronizarPrecios() {
   const especial_brus    = toNum(pick(a, ...K.especial_brus));
   const consumidor_final = toNum(pick(a, ...K.consumidor_final));
   const lista_5          = toNum(pick(a, ...K.lista_5));
+  const rubro            = pick(a, ...K.rubro);
+  const sub_rubro        = pick(a, ...K.sub_rubro);
 
       await client.query(insertSQL, [
         articulo, descripcion, costo, moneda, iva,
-        precio_neg, mayorista, especial_brus, consumidor_final, lista_5
+        precio_neg, mayorista, especial_brus, consumidor_final, lista_5,
+        rubro, sub_rubro
       ]);
 
       procesados++;
