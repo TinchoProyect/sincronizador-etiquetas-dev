@@ -1141,7 +1141,9 @@
                 throw new Error('Error al obtener artículos');
             }
             
-            const todosLosArticulos = await response.json();
+            const responseData = await response.json();
+            // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
+            const todosLosArticulos = responseData.data || responseData;
             
             // Aplicar filtrado multi-criterio (reutilizar lógica de gestionArticulos.js)
             const articulosFiltrados = filtrarArticulosMultiCriterio(todosLosArticulos, textoBusqueda)

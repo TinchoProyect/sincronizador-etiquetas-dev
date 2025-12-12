@@ -1,6 +1,8 @@
 {
-  "numero": "BF24X50",
-  "nombre": "Barra Flor  24 x 50 g.",
-  "codigo_barras": "6842648535",
-  "cantidad": 6
+  "articulo": {
+    "numero": "MFSx5",
+    "nombre": "Mix/F/Secas x 5",
+    "codigo_barras": "2352648721"
+  },
+  "cantidad": "4.00"
 }
