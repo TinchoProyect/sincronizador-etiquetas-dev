@@ -2054,6 +2054,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
         // Consulta para obtener TODOS los detalles de presupuestos entregados del cliente
         // Incluimos fecha_entrega para ordenar por la más reciente
         // ✅ NUEVO: Incluir precios actuales de la tabla precios_articulos
+        // ✅ ETAPA 2: Agregar rubro, sub_rubro y kilos_unidad para cálculo de precio por kilo
         const query = `
             SELECT 
                 pd.articulo as codigo_barras,
@@ -2072,6 +2073,13 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 COALESCE(pa.lista_5, 0) as precio_actual_lista5,
                 COALESCE(pa.iva, 0) as iva_actual,
                 
+                -- ✅ ETAPA 2: Rubro y Sub-rubro para agrupación
+                COALESCE(pa.rubro, 'Sin categoría') as rubro,
+                COALESCE(pa.sub_rubro, 'Sin subcategoría') as sub_rubro,
+                
+                -- ✅ ETAPA 2: Kilos por unidad para cálculo de precio por kilo
+                COALESCE(src.kilos_unidad, 0) as kilos_unidad,
+                
                 -- ✅ NUEVO: Lista de precios del cliente (con CAST explícito para evitar error de tipos)
                 CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente
                 
@@ -2080,6 +2088,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(a.nombre)
+            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = pd.articulo OR src.articulo_numero = pd.articulo
             WHERE p.id_cliente = $1
               AND p.activo = true
               AND LOWER(p.estado) = 'entregado'
@@ -2186,6 +2195,22 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 }
             };
             
+            // Calcular precio actual según lista del cliente
+            const precioActual = calcularPrecioSegunLista(
+                producto.lista_precios_cliente,
+                {
+                    precio_neg: producto.precio_actual_lista1,
+                    mayorista: producto.precio_actual_lista2,
+                    especial_brus: producto.precio_actual_lista3,
+                    consumidor_final: producto.precio_actual_lista4,
+                    lista_5: producto.precio_actual_lista5
+                }
+            );
+            
+            // ✅ ETAPA 2: Calcular precio por kilo
+            const kilosUnidad = parseFloat(producto.kilos_unidad || 0);
+            const precioPorKilo = kilosUnidad > 0 ? parseFloat((precioActual / kilosUnidad).toFixed(2)) : 0;
+            
             const productoFormateado = {
                 codigo_barras: producto.codigo_barras,
                 articulo_numero: producto.articulo_numero,
@@ -2195,18 +2220,15 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 presupuesto_id: producto.presupuesto_id,
                 
                 // ✅ NUEVO: Precio actual según lista del cliente
-                precio_actual: calcularPrecioSegunLista(
-                    producto.lista_precios_cliente,
-                    {
-                        precio_neg: producto.precio_actual_lista1,
-                        mayorista: producto.precio_actual_lista2,
-                        especial_brus: producto.precio_actual_lista3,
-                        consumidor_final: producto.precio_actual_lista4,
-                        lista_5: producto.precio_actual_lista5
-                    }
-                ),
+                precio_actual: precioActual,
                 iva_actual: parseFloat(producto.iva_actual || 0),
-                lista_precios: parseInt(producto.lista_precios_cliente || 1)
+                lista_precios: parseInt(producto.lista_precios_cliente || 1),
+                
+                // ✅ ETAPA 2: Datos adicionales para agrupación y cálculos
+                rubro: producto.rubro || 'Sin categoría',
+                sub_rubro: producto.sub_rubro || 'Sin subcategoría',
+                kilos_unidad: kilosUnidad,
+                precio_por_kilo: precioPorKilo
             };
             
             if (mesesAtras === 0) {
