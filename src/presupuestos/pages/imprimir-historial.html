@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Imprimir Historial - Gestiones Lamda</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            overflow: hidden;
+        }
+
+        /* Layout principal: 2 paneles */
+        .container {
+            display: flex;
+            height: 100vh;
+            gap: 0;
+        }
+
+        /* Panel izquierdo: Configuración */
+        .panel-config {
+            width: 320px;
+            background: white;
+            border-right: 2px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        .config-header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 20px;
+            border-bottom: 3px solid #3498db;
+        }
+
+        .config-header h2 {
+            font-size: 1.3em;
+            margin-bottom: 5px;
+        }
+
+        .config-header p {
+            font-size: 0.85em;
+            opacity: 0.9;
+        }
+
+        .config-body {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .config-option {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            transition: all 0.2s ease;
+        }
+
+        .config-option:hover {
+            background: #e9ecef;
+            border-left-color: #2980b9;
+        }
+
+        .config-option.active {
+            background: #e3f2fd;
+            border-left-color: #2196f3;
+        }
+
+        .config-option label {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #2c3e50;
+        }
+
+        .config-option input[type="checkbox"],
+        .config-option input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #3498db;
+        }
+
+        .config-help {
+            margin: 8px 0 0 32px;
+            font-size: 0.85em;
+            color: #666;
+            font-style: italic;
+        }
+
+        .config-group {
+            margin-bottom: 25px;
+        }
+
+        .config-group-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 12px;
+            font-size: 0.95em;
+            display: block;
+        }
+
+        .config-actions {
+            padding: 20px;
+            border-top: 2px solid #e0e0e0;
+            background: #f8f9fa;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+            transform: translateY(-2px);
+        }
+
+        /* Panel derecho: Vista previa */
+        .panel-preview {
+            flex: 1;
+            background: #e0e0e0;
+            padding: 30px;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Hoja A4 simulada */
+        .hoja-a4 {
+            width: 210mm;
+            min-height: 297mm;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            padding: 20mm;
+            margin: 0 auto;
+        }
+
+        /* Contenido del informe */
+        .informe-header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }
+
+        .informe-header h1 {
+            font-size: 1.8em;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .informe-header .cliente-nombre {
+            font-size: 1.3em;
+            color: #3498db;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .informe-header .fecha {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        /* Grupo de rubro */
+        .rubro-grupo {
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+
+        .rubro-header {
+            background: #2c3e50;
+            color: white;
+            padding: 8px 12px;
+            font-weight: 600;
+            font-size: 1.1em;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        /* Tabla de productos */
+        .productos-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 0.85em;
+        }
+
+        .productos-table thead {
+            background: #3498db;
+            color: white;
+        }
+
+        .productos-table th {
+            padding: 8px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .productos-table th.text-center {
+            text-align: center;
+        }
+
+        .productos-table th.text-right {
+            text-align: right;
+        }
+
+        .productos-table tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .productos-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .productos-table td.text-center {
+            text-align: center;
+        }
+
+        .productos-table td.text-right {
+            text-align: right;
+            font-weight: 600;
+        }
+
+        .precio-verde {
+            color: #27ae60;
+            font-weight: 700;
+        }
+
+        .precio-kilo {
+            color: #9b59b6;
+            font-weight: 600;
+        }
+
+        .iva-naranja {
+            color: #f39c12;
+            font-weight: 600;
+        }
+
+        /* Totales */
+        .totales-section {
+            margin-top: 30px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 2px solid #3498db;
+        }
+
+        .totales-section .total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 0.95em;
+        }
+
+        .totales-section .total-row.final {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #27ae60;
+            border-top: 2px solid #3498db;
+            padding-top: 10px;
+            margin-top: 10px;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Estilos de impresión */
+        @media print {
+            body {
+                background: white;
+            }
+
+            .panel-config {
+                display: none !important;
+            }
+
+            .panel-preview {
+                padding: 0;
+                background: white;
+            }
+
+            .hoja-a4 {
+                width: 100%;
+                min-height: auto;
+                box-shadow: none;
+                padding: 10mm;
+                margin: 0;
+            }
+
+            .rubro-grupo {
+                page-break-inside: avoid;
+            }
+
+            .productos-table {
+                page-break-inside: auto;
+            }
+
+            .productos-table tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .panel-config {
+                width: 100%;
+                max-height: 40vh;
+                border-right: none;
+                border-bottom: 2px solid #e0e0e0;
+            }
+
+            .panel-preview {
+                padding: 15px;
+            }
+
+            .hoja-a4 {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Panel Izquierdo: Configuración -->
+        <div class="panel-config">
+            <div class="config-header">
+                <h2>⚙️ Configuración</h2>
+                <p>Personaliza tu lista de precios</p>
+            </div>
+
+            <div class="config-body">
+                <!-- Agrupar por Meses -->
+                <div class="config-option">
+                    <label>
+                        <input type="checkbox" id="config-agrupar-meses" checked onchange="renderizarInforme()">
+                        <span>Agrupar por Meses</span>
+                    </label>
+                    <p class="config-help">Organiza productos por mes de última compra</p>
+                </div>
+
+                <!-- Mostrar Precio por Kilo -->
+                <div class="config-option">
+                    <label>
+                        <input type="checkbox" id="config-precio-kilo" checked onchange="renderizarInforme()">
+                        <span>Mostrar Precio por Kilo</span>
+                    </label>
+                    <p class="config-help">Incluye $/Kg cuando esté disponible</p>
+                </div>
+
+                <!-- Modo IVA -->
+                <div class="config-group">
+                    <span class="config-group-title">Visualización de IVA:</span>
+                    
+                    <div class="config-option">
+                        <label>
+                            <input type="radio" name="config-modo-iva" value="incluido" checked onchange="renderizarInforme()">
+                            <span>IVA Incluido en el precio</span>
+                        </label>
+                    </div>
+
+                    <div class="config-option">
+                        <label>
+                            <input type="radio" name="config-modo-iva" value="discriminado" onchange="renderizarInforme()">
+                            <span>IVA Discriminado (+IVA)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-actions">
+                <button class="btn btn-primary" onclick="imprimirInforme()">
+                    🖨️ Imprimir
+                </button>
+                <button class="btn btn-secondary" onclick="volverAtras()">
+                    ← Volver
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel Derecho: Vista Previa -->
+        <div class="panel-preview">
+            <div class="hoja-a4" id="hoja-informe">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>Cargando historial del cliente...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/previewHistorial.js"></script>
+</body>
+</html>
