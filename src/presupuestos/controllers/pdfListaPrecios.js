@@ -24,8 +24,18 @@ function calcularPrecioSegunLista(lista, precios) {
 async function generarListaPreciosPDF(req, res) {
     const { id_cliente } = req.params;
     
+    // ✅ NUEVO: Leer parámetros de configuración desde query string
+    const agruparMeses = req.query.agrupar_meses === '1';
+    const mostrarPrecioKilo = req.query.mostrar_precio_kilo === '1';
+    const modoIva = req.query.modo_iva || 'incluido'; // 'incluido' | 'discriminado'
+    
     const requestId = `pdf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`📄 [PDF-LISTA-PRECIOS] ${requestId} - Generando PDF para cliente: ${id_cliente}`);
+    console.log(`⚙️ [PDF-LISTA-PRECIOS] ${requestId} - Configuración:`, {
+        agruparMeses,
+        mostrarPrecioKilo,
+        modoIva
+    });
     
     try {
         // 1. Obtener datos del cliente
@@ -57,6 +67,7 @@ async function generarListaPreciosPDF(req, res) {
         console.log(`📊 [PDF-LISTA-PRECIOS] ${requestId} - Cliente: ${nombreCliente}, Lista: ${listaPrecios}`);
         
         // 2. Obtener historial con precios actuales (últimos 6 meses, productos únicos)
+        // ✅ MEJORADO: Incluye rubro, sub_rubro y kilos_unidad para configuración avanzada
         const historialQuery = `
             SELECT DISTINCT ON (pd.articulo)
                 pd.articulo as codigo_barras,
@@ -70,12 +81,20 @@ async function generarListaPreciosPDF(req, res) {
                 COALESCE(pa.especial_brus, 0) as precio_lista3,
                 COALESCE(pa.consumidor_final, 0) as precio_lista4,
                 COALESCE(pa.lista_5, 0) as precio_lista5,
-                COALESCE(pa.iva, 0) as iva
+                COALESCE(pa.iva, 0) as iva,
+                
+                -- ✅ NUEVOS CAMPOS para configuración avanzada
+                COALESCE(pa.rubro, 'Sin categoría') as rubro,
+                COALESCE(pa.sub_rubro, 'Sin subcategoría') as sub_rubro,
+                COALESCE(src.kilos_unidad, 0) as kilos_unidad
                 
             FROM public.presupuestos p
             INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
             LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
             LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(a.nombre)
+            LEFT JOIN public.stock_real_consolidado src 
+                ON src.codigo_barras = pd.articulo 
+                OR src.articulo_numero = pd.articulo
             WHERE p.id_cliente = $1
               AND p.activo = true
               AND LOWER(p.estado) = 'entregado'
@@ -95,21 +114,52 @@ async function generarListaPreciosPDF(req, res) {
             });
         }
         
-        // 3. Calcular precio según lista del cliente y ordenar alfabéticamente
-        const productos = historialResult.rows.map(p => ({
-            descripcion: p.descripcion,
-            codigo_barras: p.codigo_barras,
-            ultima_cantidad: parseFloat(p.ultima_cantidad || 0),
-            ultima_fecha: p.ultima_fecha_entrega,
-            precio_actual: calcularPrecioSegunLista(listaPrecios, {
+        // 3. Procesar productos con datos enriquecidos
+        const precioBase = (precios) => calcularPrecioSegunLista(listaPrecios, precios);
+        
+        const productos = historialResult.rows.map(p => {
+            const precioBruto = precioBase({
                 precio_neg: p.precio_lista1,
                 mayorista: p.precio_lista2,
                 especial_brus: p.precio_lista3,
                 consumidor_final: p.precio_lista4,
                 lista_5: p.precio_lista5
-            }),
-            iva: parseFloat(p.iva || 0)
-        })).sort((a, b) => a.descripcion.localeCompare(b.descripcion));
+            });
+            
+            const ivaValor = parseFloat(p.iva || 0);
+            const kilosUnidad = parseFloat(p.kilos_unidad || 0);
+            
+            // Calcular precio según modo IVA
+            const precioFinal = modoIva === 'incluido' 
+                ? precioBruto * (1 + ivaValor / 100)
+                : precioBruto;
+            
+            // Calcular precio por kilo
+            const precioPorKilo = kilosUnidad > 0 
+                ? precioFinal / kilosUnidad 
+                : 0;
+            
+            return {
+                descripcion: p.descripcion,
+                codigo_barras: p.codigo_barras,
+                ultima_cantidad: parseFloat(p.ultima_cantidad || 0),
+                ultima_fecha: p.ultima_fecha_entrega,
+                precio_bruto: precioBruto,
+                precio_final: precioFinal,
+                iva: ivaValor,
+                rubro: p.rubro || 'Sin categoría',
+                sub_rubro: p.sub_rubro || 'Sin subcategoría',
+                kilos_unidad: kilosUnidad,
+                precio_por_kilo: precioPorKilo
+            };
+        });
+        
+        // Ordenar: por rubro primero, luego alfabéticamente
+        productos.sort((a, b) => {
+            const rubroCompare = a.rubro.localeCompare(b.rubro);
+            if (rubroCompare !== 0) return rubroCompare;
+            return a.descripcion.localeCompare(b.descripcion);
+        });
         
         console.log(`✅ [PDF-LISTA-PRECIOS] ${requestId} - Productos procesados y ordenados: ${productos.length}`);
         
@@ -153,130 +203,229 @@ async function generarListaPreciosPDF(req, res) {
         doc.fillColor('#000000');
         doc.moveDown(1.5);
         
-        // === TABLA DE PRODUCTOS ===
-        const tableTop = doc.y;
-        const colWidths = { 
-            descripcion: 320, 
-            cantidad: 70, 
-            precio: 90 
-        };
+        // === AGRUPAR POR RUBRO (siempre) ===
+        const productosPorRubro = {};
+        productos.forEach(p => {
+            if (!productosPorRubro[p.rubro]) {
+                productosPorRubro[p.rubro] = [];
+            }
+            productosPorRubro[p.rubro].push(p);
+        });
         
-        const colPositions = {
-            descripcion: 50,
-            cantidad: 370,
-            precio: 440
-        };
+        const rubros = Object.keys(productosPorRubro).sort();
         
-        // Headers de tabla
-        doc.fontSize(11)
-           .font('Helvetica-Bold')
-           .fillColor('#2563eb');
+        console.log(`📊 [PDF-LISTA-PRECIOS] ${requestId} - Rubros encontrados: ${rubros.length}`);
         
-        doc.text('Producto', colPositions.descripcion, tableTop);
-        doc.text('Últ. Cant.', colPositions.cantidad, tableTop, { width: colWidths.cantidad, align: 'center' });
-        doc.text('Precio Actual', colPositions.precio, tableTop, { width: colWidths.precio, align: 'right' });
+        // === CONFIGURAR COLUMNAS SEGÚN OPCIONES ===
+        let colPositions, colWidths;
         
-        // Línea separadora del header
-        doc.strokeColor('#2563eb')
-           .lineWidth(2)
-           .moveTo(50, tableTop + 18)
-           .lineTo(530, tableTop + 18)
-           .stroke();
+        if (mostrarPrecioKilo && modoIva === 'discriminado') {
+            // 4 columnas: Producto | Cant | Precio | IVA | $/Kg
+            colPositions = {
+                descripcion: 50,
+                cantidad: 300,
+                precio: 360,
+                iva: 430,
+                precioKilo: 480
+            };
+            colWidths = {
+                descripcion: 240,
+                cantidad: 50,
+                precio: 60,
+                iva: 40,
+                precioKilo: 50
+            };
+        } else if (mostrarPrecioKilo) {
+            // 3 columnas: Producto | Cant | Precio | $/Kg
+            colPositions = {
+                descripcion: 50,
+                cantidad: 330,
+                precio: 400,
+                precioKilo: 480
+            };
+            colWidths = {
+                descripcion: 270,
+                cantidad: 60,
+                precio: 70,
+                precioKilo: 50
+            };
+        } else if (modoIva === 'discriminado') {
+            // 3 columnas: Producto | Cant | Precio | IVA
+            colPositions = {
+                descripcion: 50,
+                cantidad: 350,
+                precio: 420,
+                iva: 490
+            };
+            colWidths = {
+                descripcion: 290,
+                cantidad: 60,
+                precio: 60,
+                iva: 40
+            };
+        } else {
+            // 3 columnas básicas: Producto | Cant | Precio
+            colPositions = {
+                descripcion: 50,
+                cantidad: 370,
+                precio: 440
+            };
+            colWidths = {
+                descripcion: 310,
+                cantidad: 60,
+                precio: 90
+            };
+        }
         
-        // Resetear color
-        doc.fillColor('#000000')
-           .strokeColor('#000000')
-           .lineWidth(1);
-        
-        // === PRODUCTOS ===
-        let y = tableTop + 28;
-        doc.font('Helvetica').fontSize(9);
-        
+        // === RENDERIZAR PRODUCTOS ===
+        let y = doc.y;
         let totalProductos = 0;
         let sumaPrecios = 0;
+        let sumaPreciosSinIva = 0;
+        let sumaIva = 0;
         
-        productos.forEach((producto, index) => {
-            // Verificar si necesitamos nueva página
-            if (y > 720) {
+        // Función helper para dibujar headers
+        const dibujarHeaders = (yPos) => {
+            doc.fontSize(10)
+               .font('Helvetica-Bold')
+               .fillColor('#2563eb');
+            
+            doc.text('Producto', colPositions.descripcion, yPos);
+            doc.text('Cant.', colPositions.cantidad, yPos, { width: colWidths.cantidad, align: 'center' });
+            doc.text('Precio', colPositions.precio, yPos, { width: colWidths.precio, align: 'right' });
+            
+            if (modoIva === 'discriminado') {
+                doc.text('IVA%', colPositions.iva, yPos, { width: colWidths.iva, align: 'center' });
+            }
+            
+            if (mostrarPrecioKilo) {
+                doc.text('$/Kg', colPositions.precioKilo, yPos, { width: colWidths.precioKilo, align: 'right' });
+            }
+            
+            // Línea separadora
+            doc.strokeColor('#2563eb')
+               .lineWidth(2)
+               .moveTo(50, yPos + 16)
+               .lineTo(530, yPos + 16)
+               .stroke();
+            
+            doc.fillColor('#000000')
+               .strokeColor('#000000')
+               .lineWidth(1);
+            
+            return yPos + 24;
+        };
+        
+        // Iterar por rubros
+        rubros.forEach((rubro, rubroIndex) => {
+            const productosRubro = productosPorRubro[rubro];
+            
+            // Verificar espacio para header de rubro
+            if (y > 700) {
                 doc.addPage();
                 y = 50;
+            }
+            
+            // Header de rubro
+            doc.fontSize(12)
+               .font('Helvetica-Bold')
+               .fillColor('#2c3e50')
+               .text(`📦 ${rubro}`, 50, y);
+            
+            y += 20;
+            
+            // Headers de columnas
+            y = dibujarHeaders(y);
+            
+            doc.font('Helvetica').fontSize(8);
+            
+            // Productos del rubro
+            productosRubro.forEach((producto, index) => {
+                // Verificar espacio
+                if (y > 720) {
+                    doc.addPage();
+                    y = 50;
+                    y = dibujarHeaders(y);
+                    doc.font('Helvetica').fontSize(8);
+                }
                 
-                // Re-dibujar headers en nueva página
-                doc.fontSize(11)
-                   .font('Helvetica-Bold')
-                   .fillColor('#2563eb');
+                // Fondo alternado
+                if (index % 2 === 0) {
+                    doc.rect(45, y - 2, 490, 18)
+                       .fillAndStroke('#f8fafc', '#f8fafc');
+                }
                 
-                doc.text('Producto', colPositions.descripcion, y);
-                doc.text('Últ. Cant.', colPositions.cantidad, y, { width: colWidths.cantidad, align: 'center' });
-                doc.text('Precio Actual', colPositions.precio, y, { width: colWidths.precio, align: 'right' });
-                
-                doc.strokeColor('#2563eb')
-                   .lineWidth(2)
-                   .moveTo(50, y + 18)
-                   .lineTo(530, y + 18)
-                   .stroke();
+                // Descripción
+                const maxLen = mostrarPrecioKilo ? 40 : 50;
+                const desc = producto.descripcion.length > maxLen 
+                    ? producto.descripcion.substring(0, maxLen - 3) + '...'
+                    : producto.descripcion;
                 
                 doc.fillColor('#000000')
-                   .strokeColor('#000000')
-                   .lineWidth(1);
+                   .text(desc, colPositions.descripcion, y, { 
+                       width: colWidths.descripcion,
+                       ellipsis: true
+                   });
                 
-                y += 28;
-                doc.font('Helvetica').fontSize(9);
-            }
-            
-            // Alternar color de fondo para mejor legibilidad
-            if (index % 2 === 0) {
-                doc.rect(45, y - 3, 490, 22)
-                   .fillAndStroke('#f8fafc', '#f8fafc');
-            }
-            
-            // Descripción (truncar si es muy larga)
-            const descripcionTruncada = producto.descripcion.length > 55 
-                ? producto.descripcion.substring(0, 52) + '...'
-                : producto.descripcion;
-            
-            doc.fillColor('#000000')
-               .text(descripcionTruncada, colPositions.descripcion, y, { 
-                   width: colWidths.descripcion,
-                   ellipsis: true
-               });
-            
-            // Cantidad
-            doc.text(
-                producto.ultima_cantidad.toFixed(2), 
-                colPositions.cantidad, 
-                y, 
-                { width: colWidths.cantidad, align: 'center' }
-            );
-            
-            // Precio (destacado en verde)
-            doc.fillColor('#10b981')
-               .font('Helvetica-Bold')
-               .text(
-                   `$ ${producto.precio_actual.toFixed(2)}`, 
-                   colPositions.precio, 
-                   y, 
-                   { width: colWidths.precio, align: 'right' }
-               );
-            
-            doc.fillColor('#000000')
-               .font('Helvetica');
-            
-            y += 22;
-            
-            // Línea separadora sutil cada 5 productos
-            if ((index + 1) % 5 === 0 && index < productos.length - 1) {
-                doc.strokeColor('#e2e8f0')
-                   .moveTo(50, y - 2)
-                   .lineTo(530, y - 2)
-                   .stroke();
+                // Cantidad
+                doc.text(
+                    producto.ultima_cantidad.toFixed(1), 
+                    colPositions.cantidad, 
+                    y, 
+                    { width: colWidths.cantidad, align: 'center' }
+                );
                 
-                doc.strokeColor('#000000');
-            }
+                // Precio
+                const precioMostrar = modoIva === 'incluido' ? producto.precio_final : producto.precio_bruto;
+                doc.fillColor('#10b981')
+                   .font('Helvetica-Bold')
+                   .text(
+                       `$${precioMostrar.toFixed(2)}`, 
+                       colPositions.precio, 
+                       y, 
+                       { width: colWidths.precio, align: 'right' }
+                   );
+                
+                // IVA (si discriminado)
+                if (modoIva === 'discriminado') {
+                    doc.fillColor('#f39c12')
+                       .font('Helvetica')
+                       .text(
+                           `${producto.iva.toFixed(0)}%`, 
+                           colPositions.iva, 
+                           y, 
+                           { width: colWidths.iva, align: 'center' }
+                       );
+                }
+                
+                // Precio por Kilo (si activado y disponible)
+                if (mostrarPrecioKilo && producto.precio_por_kilo > 0) {
+                    doc.fillColor('#9b59b6')
+                       .font('Helvetica')
+                       .text(
+                           `$${producto.precio_por_kilo.toFixed(2)}`, 
+                           colPositions.precioKilo, 
+                           y, 
+                           { width: colWidths.precioKilo, align: 'right' }
+                       );
+                }
+                
+                doc.fillColor('#000000')
+                   .font('Helvetica');
+                
+                y += 18;
+                
+                // Acumular totales
+                totalProductos++;
+                sumaPrecios += producto.precio_final;
+                sumaPreciosSinIva += producto.precio_bruto;
+                sumaIva += (producto.precio_final - producto.precio_bruto);
+            });
             
-            // Acumular totales
-            totalProductos++;
-            sumaPrecios += producto.precio_actual;
+            // Espacio entre rubros
+            if (rubroIndex < rubros.length - 1) {
+                y += 10;
+            }
         });
         
         // === RESUMEN FINAL ===
@@ -297,27 +446,61 @@ async function generarListaPreciosPDF(req, res) {
            .fillColor('#1e293b');
         
         doc.text(`Total de productos: ${totalProductos}`, 50, y);
-        doc.text(
-            `Suma de precios: $ ${sumaPrecios.toFixed(2)}`, 
-            colPositions.precio - 50, 
-            y, 
-            { width: 180, align: 'right' }
-        );
+        
+        if (modoIva === 'discriminado') {
+            // Mostrar desglose de IVA
+            doc.text(
+                `Subtotal: $${sumaPreciosSinIva.toFixed(2)}`, 
+                380, 
+                y, 
+                { width: 150, align: 'right' }
+            );
+            y += 15;
+            doc.text(
+                `IVA: $${sumaIva.toFixed(2)}`, 
+                380, 
+                y, 
+                { width: 150, align: 'right' }
+            );
+            y += 15;
+            doc.fillColor('#10b981')
+               .text(
+                   `TOTAL: $${sumaPrecios.toFixed(2)}`, 
+                   380, 
+                   y, 
+                   { width: 150, align: 'right' }
+               );
+            doc.fillColor('#1e293b');
+        } else {
+            // Mostrar solo total
+            doc.text(
+                `Total: $${sumaPrecios.toFixed(2)}`, 
+                380, 
+                y, 
+                { width: 150, align: 'right' }
+            );
+        }
         
         y += 25;
         
         // Nota informativa
         doc.fontSize(8)
            .font('Helvetica-Oblique')
-           .fillColor('#64748b')
-           .text(
-               `Nota: Esta lista muestra los productos que el cliente compró en los últimos 6 meses con sus precios actualizados.`,
-               50,
-               y,
-               { width: 480, align: 'justify' }
-           );
+           .fillColor('#64748b');
         
-        y += 25;
+        let notaTexto = `Esta lista muestra los productos que el cliente compró en los últimos 6 meses con sus precios actualizados`;
+        
+        if (modoIva === 'incluido') {
+            notaTexto += ` (IVA incluido)`;
+        } else {
+            notaTexto += ` (IVA discriminado)`;
+        }
+        
+        notaTexto += `.`;
+        
+        doc.text(notaTexto, 50, y, { width: 480, align: 'justify' });
+        
+        y += 20;
         
         doc.text(
             `Los precios corresponden a la Lista ${listaPrecios} asignada al cliente.`,
@@ -325,6 +508,16 @@ async function generarListaPreciosPDF(req, res) {
             y,
             { width: 480, align: 'justify' }
         );
+        
+        if (mostrarPrecioKilo) {
+            y += 20;
+            doc.text(
+                `Los precios por kilogramo ($/Kg) se muestran cuando están disponibles.`,
+                50,
+                y,
+                { width: 480, align: 'justify' }
+            );
+        }
         
         // === FOOTER ===
         const footerY = 750;
@@ -342,7 +535,7 @@ async function generarListaPreciosPDF(req, res) {
         // Finalizar PDF
         doc.end();
         
-        console.log(`✅ [PDF-LISTA-PRECIOS] ${requestId} - PDF generado exitosamente: ${productos.length} productos`);
+        console.log(`✅ [PDF-LISTA-PRECIOS] ${requestId} - PDF generado exitosamente: ${productos.length} productos, ${rubros.length} rubros`);
         
     } catch (error) {
         console.error(`❌ [PDF-LISTA-PRECIOS] ${requestId} - Error al generar PDF:`, error);

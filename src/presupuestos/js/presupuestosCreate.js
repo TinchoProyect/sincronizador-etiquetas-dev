@@ -2050,34 +2050,115 @@ function renderizarHistorialEntregas(data) {
 
 /**
  * Imprimir lista de precios personalizada (PDF)
+ * Ahora abre el modal de configuración en lugar de generar directamente
  */
 async function imprimirListaPreciosPersonalizada() {
-    console.log('[HISTORIAL-PDF] Generando PDF de lista de precios...');
+    console.log('[HISTORIAL-PDF] Abriendo modal de configuración...');
     
     if (!clienteSeleccionado || !clienteSeleccionado.cliente_id) {
         mostrarMensaje('Debe seleccionar un cliente primero', 'error');
         return;
     }
     
-    try {
-        // Generar URL del PDF
-        const pdfUrl = `/api/presupuestos/clientes/${clienteSeleccionado.cliente_id}/lista-precios-pdf`;
-        
-        console.log('[HISTORIAL-PDF] Abriendo PDF:', pdfUrl);
-        
-        // Abrir en nueva ventana
-        window.open(pdfUrl, '_blank');
-        
-        console.log('[HISTORIAL-PDF] PDF solicitado exitosamente');
-        
-    } catch (error) {
-        console.error('[HISTORIAL-PDF] Error al generar PDF:', error);
-        mostrarMensaje('Error al generar PDF: ' + error.message, 'error');
+    // Abrir modal de configuración
+    abrirModalConfigImpresion();
+}
+
+/**
+ * Abrir modal de configuración de impresión
+ */
+function abrirModalConfigImpresion() {
+    const modal = document.getElementById('modal-config-impresion');
+    if (modal) {
+        modal.style.display = 'flex';
+        console.log('[MODAL-CONFIG] Modal abierto');
     }
 }
 
-// Exponer función globalmente
+/**
+ * Cerrar modal de configuración de impresión
+ */
+function cerrarModalConfigImpresion() {
+    const modal = document.getElementById('modal-config-impresion');
+    if (modal) {
+        modal.style.display = 'none';
+        console.log('[MODAL-CONFIG] Modal cerrado');
+    }
+}
+
+/**
+ * Confirmar configuración y generar PDF
+ */
+async function confirmarConfigImpresion() {
+    console.log('[MODAL-CONFIG] Generando PDF con configuración...');
+    
+    if (!clienteSeleccionado || !clienteSeleccionado.cliente_id) {
+        mostrarMensaje('Debe seleccionar un cliente primero', 'error');
+        cerrarModalConfigImpresion();
+        return;
+    }
+    
+    try {
+        // Leer configuración del modal
+        const agruparMeses = document.getElementById('config-agrupar-meses')?.checked || false;
+        const mostrarPrecioKilo = document.getElementById('config-precio-kilo')?.checked || false;
+        const modoIva = document.querySelector('input[name="config-modo-iva"]:checked')?.value || 'incluido';
+        
+        console.log('[MODAL-CONFIG] Configuración seleccionada:', {
+            agruparMeses,
+            mostrarPrecioKilo,
+            modoIva
+        });
+        
+        // Construir URL con parámetros
+        const params = new URLSearchParams({
+            agrupar_meses: agruparMeses ? '1' : '0',
+            mostrar_precio_kilo: mostrarPrecioKilo ? '1' : '0',
+            modo_iva: modoIva
+        });
+        
+        const pdfUrl = `/api/presupuestos/clientes/${clienteSeleccionado.cliente_id}/lista-precios-pdf?${params.toString()}`;
+        
+        console.log('[MODAL-CONFIG] Abriendo PDF:', pdfUrl);
+        
+        // Cerrar modal
+        cerrarModalConfigImpresion();
+        
+        // Abrir PDF en nueva ventana
+        window.open(pdfUrl, '_blank');
+        
+        console.log('[MODAL-CONFIG] PDF solicitado exitosamente');
+        
+    } catch (error) {
+        console.error('[MODAL-CONFIG] Error al generar PDF:', error);
+        mostrarMensaje('Error al generar PDF: ' + error.message, 'error');
+        cerrarModalConfigImpresion();
+    }
+}
+
+// Exponer funciones globalmente
 window.imprimirListaPreciosPersonalizada = imprimirListaPreciosPersonalizada;
+window.abrirModalConfigImpresion = abrirModalConfigImpresion;
+window.cerrarModalConfigImpresion = cerrarModalConfigImpresion;
+window.confirmarConfigImpresion = confirmarConfigImpresion;
+
+// Cerrar modal con tecla Escape
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        const modal = document.getElementById('modal-config-impresion');
+        if (modal && modal.style.display === 'flex') {
+            cerrarModalConfigImpresion();
+        }
+    }
+});
+
+// Cerrar modal al hacer click fuera
+document.addEventListener('click', (event) => {
+    const modal = document.getElementById('modal-config-impresion');
+    if (modal && event.target === modal) {
+        cerrarModalConfigImpresion();
+    }
+});
 
 /**
  * Formatear fecha para mostrar en el historial
