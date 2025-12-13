@@ -1,4 +1,4 @@
-console.log('📄 [PREVIEW-HISTORIAL] Cargando módulo de previsualización...');
+console.log('📄 [PREVIEW-HISTORIAL] Cargando módulo de previsualización REFACTORIZADO...');
 
 // Variables globales
 let datosCliente = null;
@@ -6,7 +6,6 @@ let datosHistorial = null;
 
 /**
  * Formateador de moneda argentina (ARS)
- * Formato: $ 1.500,50 (punto para miles, coma para decimales)
  */
 const formatearMoneda = new Intl.NumberFormat('es-AR', {
     style: 'currency',
@@ -15,26 +14,182 @@ const formatearMoneda = new Intl.NumberFormat('es-AR', {
     maximumFractionDigits: 2
 });
 
-/**
- * Helper: Formatear número como moneda argentina
- * @param {number} valor - Valor numérico a formatear
- * @returns {string} Valor formateado (ej: "$ 1.500,50")
- */
 function formatearPrecio(valor) {
     const numero = parseFloat(valor);
-    if (!Number.isFinite(numero)) {
-        return '$ 0,00';
-    }
-    return formatearMoneda.format(numero);
+    return Number.isFinite(numero) ? formatearMoneda.format(numero) : '$ 0,00';
 }
 
 /**
- * Inicializar página al cargar
+ * Toggle de acordeón
+ */
+function toggleAccordion(id) {
+    const content = document.getElementById(`accordion-${id}`);
+    const header = content.previousElementSibling;
+    
+    if (content.classList.contains('collapsed')) {
+        content.classList.remove('collapsed');
+        header.classList.remove('collapsed');
+    } else {
+        content.classList.add('collapsed');
+        header.classList.add('collapsed');
+    }
+}
+
+/**
+ * Leer configuración actual del panel
+ */
+function leerConfiguracion() {
+    return {
+        // Tipo de informe
+        tipoInforme: document.querySelector('input[name="tipo-informe"]:checked')?.value || 'historico',
+        
+        // Agrupaciones
+        agruparMes: document.getElementById('agrupar-mes')?.checked || false,
+        agruparRubro: document.getElementById('agrupar-rubro')?.checked || false,
+        agruparSubrubro: document.getElementById('agrupar-subrubro')?.checked || false,
+        
+        // Columnas visibles
+        columnas: {
+            descripcion: true, // Siempre visible
+            cantidad: document.getElementById('col-cantidad')?.checked || false,
+            stockVisual: document.getElementById('col-stock-visual')?.checked || false,
+            stockNumerico: document.getElementById('col-stock-numerico')?.checked || false,
+            alicuotaIva: document.getElementById('col-alicuota-iva')?.checked || false,
+            precioSinIva: document.getElementById('col-precio-sin-iva')?.checked || false,
+            precioConIva: document.getElementById('col-precio-con-iva')?.checked || false,
+            precioKgSinIva: document.getElementById('col-precio-kg-sin-iva')?.checked || false,
+            precioKgConIva: document.getElementById('col-precio-kg-con-iva')?.checked || false,
+            valorIva: document.getElementById('col-valor-iva')?.checked || false,
+            valorIvaKg: document.getElementById('col-valor-iva-kg')?.checked || false
+        }
+    };
+}
+
+/**
+ * Definición de columnas disponibles
+ */
+const COLUMNAS_DISPONIBLES = [
+    { id: 'descripcion', label: 'Producto', align: 'left', siempreVisible: true },
+    { id: 'cantidad', label: 'Cant.', align: 'center' },
+    { id: 'stockVisual', label: 'Stock', align: 'center' },
+    { id: 'stockNumerico', label: 'Stock #', align: 'center' },
+    { id: 'alicuotaIva', label: 'IVA%', align: 'center' },
+    { id: 'precioSinIva', label: 'Precio s/IVA', align: 'right' },
+    { id: 'precioConIva', label: 'Precio c/IVA', align: 'right' },
+    { id: 'precioKgSinIva', label: '$/Kg s/IVA', align: 'right' },
+    { id: 'precioKgConIva', label: '$/Kg c/IVA', align: 'right' },
+    { id: 'valorIva', label: 'Valor IVA', align: 'right' },
+    { id: 'valorIvaKg', label: 'IVA/Kg', align: 'right' }
+];
+
+/**
+ * Calcular valores derivados de un producto
+ */
+function calcularValoresProducto(producto) {
+    const precioBase = parseFloat(producto.precio_actual) || 0;
+    const ivaAlicuota = parseFloat(producto.iva_actual) || 0;
+    const kilos = parseFloat(producto.kilos_unidad) || 0;
+    const stock = parseFloat(producto.stock_consolidado) || 0;
+    
+    // Cálculos base
+    const precioConIva = precioBase;
+    const precioSinIva = precioBase / (1 + ivaAlicuota / 100);
+    const valorIva = precioConIva - precioSinIva;
+    
+    // Cálculos por kilo
+    const precioKgConIva = kilos > 0 ? precioConIva / kilos : 0;
+    const precioKgSinIva = kilos > 0 ? precioSinIva / kilos : 0;
+    const valorIvaKg = kilos > 0 ? valorIva / kilos : 0;
+    
+    return {
+        precioConIva,
+        precioSinIva,
+        valorIva,
+        precioKgConIva,
+        precioKgSinIva,
+        valorIvaKg,
+        ivaAlicuota,
+        kilos,
+        stock,
+        stockVisual: stock > 0 ? '✓ Hay' : '✗ No hay'
+    };
+}
+
+/**
+ * Generar HTML de celda según columna
+ */
+function generarCeldaProducto(columnaId, producto, valores) {
+    const alineacion = COLUMNAS_DISPONIBLES.find(c => c.id === columnaId)?.align || 'left';
+    const clase = `text-${alineacion}`;
+    
+    switch (columnaId) {
+        case 'descripcion':
+            return `<td>${producto.descripcion}</td>`;
+        
+        case 'cantidad':
+            return `<td class="${clase}">${parseFloat(producto.cantidad || 0).toFixed(1)}</td>`;
+        
+        case 'stockVisual':
+            return `<td class="${clase}" style="color: ${valores.stock > 0 ? '#27ae60' : '#e74c3c'}; font-weight: 600;">${valores.stockVisual}</td>`;
+        
+        case 'stockNumerico':
+            return `<td class="${clase}">${Math.floor(valores.stock)}</td>`;
+        
+        case 'alicuotaIva':
+            // ✅ FIX: Mostrar decimales (ej: 10.5%)
+            return `<td class="${clase} iva-naranja">${valores.ivaAlicuota.toFixed(1)}%</td>`;
+        
+        case 'precioSinIva':
+            return `<td class="${clase} precio-verde">${formatearPrecio(valores.precioSinIva)}</td>`;
+        
+        case 'precioConIva':
+            return `<td class="${clase} precio-verde">${formatearPrecio(valores.precioConIva)}</td>`;
+        
+        case 'precioKgSinIva':
+            return valores.kilos > 0 
+                ? `<td class="${clase} precio-kilo">${formatearPrecio(valores.precioKgSinIva)}</td>`
+                : `<td class="${clase}">-</td>`;
+        
+        case 'precioKgConIva':
+            return valores.kilos > 0 
+                ? `<td class="${clase} precio-kilo">${formatearPrecio(valores.precioKgConIva)}</td>`
+                : `<td class="${clase}">-</td>`;
+        
+        case 'valorIva':
+            return `<td class="${clase} iva-naranja">${formatearPrecio(valores.valorIva)}</td>`;
+        
+        case 'valorIvaKg':
+            return valores.kilos > 0 
+                ? `<td class="${clase} iva-naranja">${formatearPrecio(valores.valorIvaKg)}</td>`
+                : `<td class="${clase}">-</td>`;
+        
+        default:
+            return `<td class="${clase}">-</td>`;
+    }
+}
+
+/**
+ * Helpers de agrupación temporal
+ */
+function calcularMesesAtras(fechaEntrega) {
+    const ahora = new Date();
+    const fecha = new Date(fechaEntrega);
+    return (ahora.getFullYear() - fecha.getFullYear()) * 12 + (ahora.getMonth() - fecha.getMonth());
+}
+
+function obtenerNombreMes(fechaEntrega) {
+    const fecha = new Date(fechaEntrega);
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return `${meses[fecha.getMonth()]} ${fecha.getFullYear()}`;
+}
+
+/**
+ * Inicializar página
  */
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('🔍 [PREVIEW-HISTORIAL] Inicializando página...');
     
-    // Obtener ID del cliente desde URL
     const urlParams = new URLSearchParams(window.location.search);
     const clienteId = urlParams.get('cliente_id');
     
@@ -43,93 +198,257 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
     
-    console.log(`📊 [PREVIEW-HISTORIAL] Cliente ID: ${clienteId}`);
-    
-    // Cargar datos del cliente y historial
     await cargarDatos(clienteId);
-    
-    // Renderizar informe inicial
     renderizarInforme();
     
-    console.log('✅ [PREVIEW-HISTORIAL] Página inicializada correctamente');
+    console.log('✅ [PREVIEW-HISTORIAL] Página inicializada');
 });
 
 /**
- * Cargar datos del cliente y su historial
+ * Cargar datos del cliente
  */
 async function cargarDatos(clienteId) {
     try {
-        console.log(`🔄 [PREVIEW-HISTORIAL] Cargando datos del cliente ${clienteId}...`);
-        
-        // Cargar historial de entregas
         const response = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
         
         if (!response.ok) {
-            throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`Error HTTP ${response.status}`);
         }
         
         const result = await response.json();
         
         if (!result.success || !result.data) {
-            throw new Error('No se pudieron cargar los datos del historial');
+            throw new Error('No se pudieron cargar los datos');
         }
         
         datosHistorial = result.data;
-        
-        console.log(`✅ [PREVIEW-HISTORIAL] Datos cargados:`, {
-            total_productos: datosHistorial.total_productos_unicos,
-            grupos: datosHistorial.grupos?.length || 0
-        });
+        console.log(`✅ Datos cargados: ${datosHistorial.total_productos_unicos} productos`);
         
     } catch (error) {
-        console.error('❌ [PREVIEW-HISTORIAL] Error al cargar datos:', error);
-        mostrarError(`Error al cargar datos: ${error.message}`);
+        console.error('❌ Error al cargar datos:', error);
+        mostrarError(`Error: ${error.message}`);
         throw error;
     }
 }
 
 /**
- * Renderizar informe según configuración actual
+ * RENDERIZAR INFORME - VERSIÓN REFACTORIZADA CON COLUMNAS DINÁMICAS
  */
 function renderizarInforme() {
     console.log('🎨 [PREVIEW-HISTORIAL] Renderizando informe...');
     
     if (!datosHistorial) {
-        console.warn('⚠️ [PREVIEW-HISTORIAL] No hay datos para renderizar');
+        console.warn('⚠️ No hay datos para renderizar');
         return;
     }
     
-    // Leer configuración actual
-    const agruparMeses = document.getElementById('config-agrupar-meses')?.checked || false;
-    const mostrarPrecioKilo = document.getElementById('config-precio-kilo')?.checked || false;
-    const modoIva = document.querySelector('input[name="config-modo-iva"]:checked')?.value || 'incluido';
+    const config = leerConfiguracion();
+    console.log('⚙️ Configuración:', config);
     
-    console.log('⚙️ [PREVIEW-HISTORIAL] Configuración actual:', {
-        agruparMeses,
-        mostrarPrecioKilo,
-        modoIva
-    });
+    // Obtener columnas activas
+    const columnasActivas = COLUMNAS_DISPONIBLES.filter(col => 
+        col.siempreVisible || config.columnas[col.id]
+    );
     
-    // Obtener todos los productos de todos los grupos
+    console.log(`📊 Columnas activas: ${columnasActivas.length}`);
+    
+    // Obtener todos los productos
     const todosProductos = datosHistorial.grupos?.flatMap(g => g.productos) || [];
     
-    // Agrupar por rubro
-    const productosPorRubro = {};
-    todosProductos.forEach(p => {
-        const rubro = p.rubro || 'Sin categoría';
-        if (!productosPorRubro[rubro]) {
-            productosPorRubro[rubro] = [];
+    // Construir estructura de agrupación
+    let estructuraAgrupacion = construirEstructuraAgrupacion(todosProductos, config);
+    
+    // Construir HTML
+    let html = generarHeaderInforme();
+    
+    // Totales acumulados
+    let totalProductos = 0;
+    let sumaPreciosConIva = 0;
+    let sumaPreciosSinIva = 0;
+    let sumaIva = 0;
+    
+    // Renderizar cada grupo
+    estructuraAgrupacion.forEach(grupo => {
+        if (config.agruparMes && grupo.tipo === 'mes') {
+            // Título de mes
+            html += `
+                <div style="margin: 30px 0 20px 0; padding: 12px 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; font-size: 1.2em; font-weight: 700; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    ${grupo.titulo}
+                </div>
+            `;
+            
+            // Agrupar por rubro dentro del mes si está activo
+            if (config.agruparRubro) {
+                const productosPorRubro = agruparPorRubro(grupo.productos);
+                Object.keys(productosPorRubro).sort().forEach(rubro => {
+                    const resultado = renderizarTablaProductos(rubro, productosPorRubro[rubro], columnasActivas);
+                    html += resultado.html;
+                    totalProductos += resultado.totales.productos;
+                    sumaPreciosConIva += resultado.totales.preciosConIva;
+                    sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                    sumaIva += resultado.totales.iva;
+                });
+            } else {
+                const resultado = renderizarTablaProductos('Productos', grupo.productos, columnasActivas);
+                html += resultado.html;
+                totalProductos += resultado.totales.productos;
+                sumaPreciosConIva += resultado.totales.preciosConIva;
+                sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                sumaIva += resultado.totales.iva;
+            }
+        } else {
+            // Grupo simple (rubro)
+            const resultado = renderizarTablaProductos(grupo.titulo.replace('📦 ', ''), grupo.productos, columnasActivas);
+            html += resultado.html;
+            totalProductos += resultado.totales.productos;
+            sumaPreciosConIva += resultado.totales.preciosConIva;
+            sumaPreciosSinIva += resultado.totales.preciosSinIva;
+            sumaIva += resultado.totales.iva;
         }
-        productosPorRubro[rubro].push(p);
     });
     
-    const rubros = Object.keys(productosPorRubro).sort();
+    // Totales
+    html += generarSeccionTotales(totalProductos, sumaPreciosSinIva, sumaIva, sumaPreciosConIva, config);
     
-    // Construir HTML del informe
-    let html = '';
+    // Insertar en la hoja
+    const hoja = document.getElementById('hoja-informe');
+    if (hoja) {
+        hoja.innerHTML = html;
+        console.log('✅ Informe renderizado exitosamente');
+    }
+}
+
+/**
+ * Construir estructura de agrupación
+ */
+function construirEstructuraAgrupacion(productos, config) {
+    if (config.agruparMes) {
+        return agruparPorMeses(productos);
+    } else if (config.agruparRubro) {
+        const productosPorRubro = agruparPorRubro(productos);
+        return Object.keys(productosPorRubro).sort().map(rubro => ({
+            tipo: 'rubro',
+            titulo: `📦 ${rubro}`,
+            productos: productosPorRubro[rubro]
+        }));
+    } else {
+        return [{
+            tipo: 'simple',
+            titulo: 'Todos los productos',
+            productos
+        }];
+    }
+}
+
+/**
+ * Agrupar productos por meses
+ */
+function agruparPorMeses(productos) {
+    const productosPorMes = {
+        mes_0: { label: 'Mes Actual', productos: [] },
+        mes_1: { label: 'Hace 1 mes', productos: [] },
+        mes_2: { label: 'Hace 2 meses', productos: [] },
+        mes_3: { label: 'Hace 3 meses', productos: [] },
+        mes_4: { label: 'Hace 4 meses', productos: [] },
+        mes_5: { label: 'Hace 5 meses', productos: [] },
+        historico: { label: 'Más de 6 meses', productos: [] }
+    };
     
-    // Header del informe
+    productos.forEach(p => {
+        const mesesAtras = calcularMesesAtras(p.fecha_entrega);
+        const key = mesesAtras <= 5 ? `mes_${mesesAtras}` : 'historico';
+        
+        productosPorMes[key].productos.push(p);
+        
+        if (mesesAtras <= 5 && productosPorMes[key].productos.length === 1) {
+            productosPorMes[key].label = obtenerNombreMes(p.fecha_entrega);
+        }
+    });
+    
+    return Object.entries(productosPorMes)
+        .filter(([key, mes]) => mes.productos.length > 0)
+        .map(([key, mes]) => ({
+            tipo: 'mes',
+            titulo: `📅 ${mes.label}`,
+            productos: mes.productos
+        }));
+}
+
+/**
+ * Agrupar productos por rubro
+ */
+function agruparPorRubro(productos) {
+    const porRubro = {};
+    productos.forEach(p => {
+        const rubro = p.rubro || 'Sin categoría';
+        if (!porRubro[rubro]) porRubro[rubro] = [];
+        porRubro[rubro].push(p);
+    });
+    return porRubro;
+}
+
+/**
+ * Renderizar tabla de productos
+ */
+function renderizarTablaProductos(titulo, productos, columnasActivas) {
+    let html = `
+        <div class="rubro-grupo">
+            <div class="rubro-header">📦 ${titulo}</div>
+            <table class="productos-table">
+                <thead>
+                    <tr>
+    `;
+    
+    // Headers dinámicos
+    columnasActivas.forEach(col => {
+        html += `<th class="text-${col.align}">${col.label}</th>`;
+    });
+    
     html += `
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    // Totales
+    let totales = {
+        productos: 0,
+        preciosConIva: 0,
+        preciosSinIva: 0,
+        iva: 0
+    };
+    
+    // Filas de productos
+    productos.forEach(producto => {
+        const valores = calcularValoresProducto(producto);
+        
+        html += '<tr>';
+        columnasActivas.forEach(col => {
+            html += generarCeldaProducto(col.id, producto, valores);
+        });
+        html += '</tr>';
+        
+        // Acumular totales
+        totales.productos++;
+        totales.preciosConIva += valores.precioConIva;
+        totales.preciosSinIva += valores.precioSinIva;
+        totales.iva += valores.valorIva;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    return { html, totales };
+}
+
+/**
+ * Generar header del informe
+ */
+function generarHeaderInforme() {
+    return `
         <div class="informe-header">
             <h1>LISTA DE PRECIOS PERSONALIZADA</h1>
             <div class="cliente-nombre">Cliente ID: ${datosHistorial.cliente_id}</div>
@@ -143,159 +462,66 @@ function renderizarInforme() {
             </p>
         </div>
     `;
-    
-    // Totales acumulados
-    let totalProductos = 0;
-    let sumaPreciosFinal = 0;
-    let sumaPreciosSinIva = 0;
-    let sumaIva = 0;
-    
-    // Renderizar cada rubro
-    rubros.forEach(rubro => {
-        const productos = productosPorRubro[rubro];
-        
-        html += `
-            <div class="rubro-grupo">
-                <div class="rubro-header">📦 ${rubro}</div>
-                <table class="productos-table">
-                    <thead>
-                        <tr>
-                            <th>Producto</th>
-                            <th class="text-center">Cant.</th>
-                            <th class="text-right">Precio</th>
-                            ${modoIva === 'discriminado' ? '<th class="text-center">IVA%</th>' : ''}
-                            ${mostrarPrecioKilo ? '<th class="text-right">$/Kg</th>' : ''}
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-        
-        productos.forEach(producto => {
-            // Calcular precios según modo IVA
-            const precioBase = producto.precio_actual || 0;
-            const ivaValor = producto.iva_actual || 0;
-            
-            let precioMostrar, precioConIva;
-            if (modoIva === 'incluido') {
-                // Ya viene con IVA incluido desde el backend
-                precioMostrar = precioBase;
-                precioConIva = precioBase;
-            } else {
-                // Discriminado: mostrar sin IVA
-                precioMostrar = precioBase / (1 + ivaValor / 100);
-                precioConIva = precioBase;
-            }
-            
-            const precioPorKilo = producto.precio_por_kilo || 0;
-            
-            html += `
-                <tr>
-                    <td>${producto.descripcion}</td>
-                    <td class="text-center">${producto.cantidad.toFixed(1)}</td>
-                    <td class="text-right precio-verde">${formatearPrecio(precioMostrar)}</td>
-                    ${modoIva === 'discriminado' ? `<td class="text-center iva-naranja">${ivaValor.toFixed(0)}%</td>` : ''}
-                    ${mostrarPrecioKilo && precioPorKilo > 0 ? `<td class="text-right precio-kilo">${formatearPrecio(precioPorKilo)}</td>` : (mostrarPrecioKilo ? '<td class="text-right">-</td>' : '')}
-                </tr>
-            `;
-            
-            // Acumular totales
-            totalProductos++;
-            sumaPreciosFinal += precioConIva;
-            sumaPreciosSinIva += precioMostrar;
-            sumaIva += (precioConIva - precioMostrar);
-        });
-        
-        html += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-    });
-    
-    // Sección de totales
-    html += `
+}
+
+/**
+ * Generar sección de totales
+ */
+function generarSeccionTotales(totalProductos, subtotal, iva, total, config) {
+    return `
         <div class="totales-section">
             <div class="total-row">
                 <span>Total de productos:</span>
                 <span><strong>${totalProductos}</strong></span>
             </div>
-    `;
-    
-    if (modoIva === 'discriminado') {
-        html += `
             <div class="total-row">
                 <span>Subtotal (sin IVA):</span>
-                <span><strong>${formatearPrecio(sumaPreciosSinIva)}</strong></span>
+                <span><strong>${formatearPrecio(subtotal)}</strong></span>
             </div>
             <div class="total-row">
                 <span>IVA:</span>
-                <span><strong>${formatearPrecio(sumaIva)}</strong></span>
+                <span><strong>${formatearPrecio(iva)}</strong></span>
             </div>
-        `;
-    }
-    
-    html += `
             <div class="total-row final">
                 <span>TOTAL:</span>
-                <span>${formatearPrecio(sumaPreciosFinal)}</span>
+                <span>${formatearPrecio(total)}</span>
             </div>
         </div>
-    `;
-    
-    // Notas finales
-    html += `
         <div style="margin-top: 25px; padding: 12px; background: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-            <p style="font-size: 0.85em; color: #666; margin-bottom: 8px;">
-                <strong>Nota:</strong> Esta lista muestra los productos que el cliente compró en los últimos 6 meses con sus precios actualizados
-                ${modoIva === 'incluido' ? '(IVA incluido)' : '(IVA discriminado)'}.
+            <p style="font-size: 0.85em; color: #666;">
+                <strong>Nota:</strong> Esta lista muestra los productos con precios actualizados según la configuración seleccionada.
             </p>
-            ${mostrarPrecioKilo ? '<p style="font-size: 0.85em; color: #666;">Los precios por kilogramo ($/Kg) se muestran cuando están disponibles.</p>' : ''}
         </div>
     `;
-    
-    // Insertar en la hoja
-    const hoja = document.getElementById('hoja-informe');
-    if (hoja) {
-        hoja.innerHTML = html;
-        console.log('✅ [PREVIEW-HISTORIAL] Informe renderizado exitosamente');
-    }
 }
 
 /**
  * Imprimir informe
  */
 function imprimirInforme() {
-    console.log('🖨️ [PREVIEW-HISTORIAL] Iniciando impresión...');
+    console.log('🖨️ Iniciando impresión...');
     window.print();
 }
 
 /**
- * Volver a la página anterior
- * Intenta cerrar la ventana si fue abierta con window.open()
- * Si no puede cerrar, usa history.back()
+ * Volver atrás
  */
 function volverAtras() {
-    console.log('← [PREVIEW-HISTORIAL] Intentando volver/cerrar...');
-    
-    // Intentar cerrar la ventana (funciona si fue abierta con window.open)
+    console.log('← Volviendo...');
     try {
         window.close();
-        
-        // Si después de 100ms la ventana sigue abierta, usar history.back()
         setTimeout(() => {
             if (!window.closed) {
-                console.log('← [PREVIEW-HISTORIAL] No se pudo cerrar ventana, usando history.back()');
                 window.history.back();
             }
         }, 100);
     } catch (error) {
-        console.log('← [PREVIEW-HISTORIAL] Error al cerrar, usando history.back():', error);
         window.history.back();
     }
 }
 
 /**
- * Mostrar error en la hoja
+ * Mostrar error
  */
 function mostrarError(mensaje) {
     const hoja = document.getElementById('hoja-informe');
@@ -313,8 +539,9 @@ function mostrarError(mensaje) {
 }
 
 // Exponer funciones globalmente
+window.toggleAccordion = toggleAccordion;
 window.renderizarInforme = renderizarInforme;
 window.imprimirInforme = imprimirInforme;
 window.volverAtras = volverAtras;
 
-console.log('✅ [PREVIEW-HISTORIAL] Módulo cargado correctamente');
+console.log('✅ [PREVIEW-HISTORIAL] Módulo REFACTORIZADO cargado correctamente');
