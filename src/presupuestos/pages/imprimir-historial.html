@@ -164,16 +164,19 @@
             overflow-y: auto;
             display: flex;
             justify-content: center;
+            align-items: flex-start; /* ✅ Alinea al inicio, no al centro vertical */
         }
 
-        /* Hoja A4 simulada */
+        /* Hoja A4 simulada - SE ESTIRA AUTOMÁTICAMENTE CON EL CONTENIDO */
         .hoja-a4 {
             width: 210mm;
-            min-height: 297mm;
+            min-height: 297mm; /* Mínimo una página A4 */
+            height: auto; /* ✅ Crece automáticamente según contenido */
             background: white;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
             padding: 20mm;
-            margin: 0 auto;
+            margin: 0 auto 30px auto;
+            overflow: visible; /* ✅ Permite que el contenido fluya naturalmente */
         }
 
         /* Contenido del informe */
@@ -326,40 +329,169 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Estilos de impresión */
+        /* Estilos de impresión - VERSIÓN MEJORADA PARA MULTIPÁGINA */
         @media print {
-            body {
-                background: white;
+            /* Configuración de página A4 */
+            @page {
+                size: A4;
+                margin: 15mm 10mm;
             }
 
+            /* Reset de body y contenedores */
+            body {
+                background: white;
+                margin: 0;
+                padding: 0;
+            }
+
+            /* Ocultar panel de configuración completamente */
             .panel-config {
                 display: none !important;
             }
 
+            /* Panel de preview: sin restricciones de altura */
             .panel-preview {
                 padding: 0;
                 background: white;
+                overflow: visible !important;
+                height: auto !important;
+                max-height: none !important;
             }
 
+            /* Hoja A4: permitir flujo natural multipágina */
             .hoja-a4 {
                 width: 100%;
                 min-height: auto;
+                max-height: none;
                 box-shadow: none;
-                padding: 10mm;
+                padding: 0;
                 margin: 0;
+                overflow: visible !important;
             }
 
+            /* Header del informe: solo en primera página */
+            .informe-header {
+                page-break-after: avoid;
+                margin-bottom: 15px;
+            }
+
+            /* Grupos de rubro: intentar mantener juntos */
             .rubro-grupo {
                 page-break-inside: avoid;
+                margin-bottom: 20px;
             }
 
+            /* Header de rubro: no separar del contenido */
+            .rubro-header {
+                page-break-after: avoid;
+                margin-bottom: 8px;
+            }
+
+            /* Tablas: permitir división entre páginas */
             .productos-table {
                 page-break-inside: auto;
+                border-collapse: collapse;
+                width: 100%;
             }
 
+            /* Encabezados de tabla: repetir en cada página */
+            .productos-table thead {
+                display: table-header-group;
+            }
+
+            .productos-table tbody {
+                display: table-row-group;
+            }
+
+            .productos-table tfoot {
+                display: table-footer-group;
+            }
+
+            /* Filas: no cortar por la mitad */
             .productos-table tr {
                 page-break-inside: avoid;
                 page-break-after: auto;
+            }
+
+            /* Celdas: ajustar padding para impresión */
+            .productos-table th,
+            .productos-table td {
+                padding: 4px 6px;
+                font-size: 9pt;
+            }
+
+            .productos-table th {
+                background-color: #2c3e50 !important;
+                color: white !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Totales: mantener juntos y al final */
+            .totales-section {
+                page-break-inside: avoid;
+                margin-top: 20px;
+            }
+
+            /* Colores: forzar impresión de colores */
+            .precio-verde {
+                color: #27ae60 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .precio-kilo {
+                color: #9b59b6 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .iva-naranja {
+                color: #f39c12 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Fondos alternados en tablas */
+            .productos-table tbody tr:nth-child(even) {
+                background-color: #f8f9fa !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Ajustar tamaños de fuente para impresión */
+            .informe-header h1 {
+                font-size: 18pt;
+            }
+
+            .informe-header .cliente-nombre {
+                font-size: 14pt;
+            }
+
+            .informe-header .fecha {
+                font-size: 10pt;
+            }
+
+            .rubro-header {
+                font-size: 11pt;
+                background-color: #2c3e50 !important;
+                color: white !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Totales: destacar */
+            .total-row.final {
+                font-size: 14pt;
+                color: #27ae60 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Notas: reducir tamaño */
+            .totales-section + div {
+                font-size: 8pt;
+                page-break-inside: avoid;
             }
         }
 

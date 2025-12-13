@@ -5,6 +5,30 @@ let datosCliente = null;
 let datosHistorial = null;
 
 /**
+ * Formateador de moneda argentina (ARS)
+ * Formato: $ 1.500,50 (punto para miles, coma para decimales)
+ */
+const formatearMoneda = new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+});
+
+/**
+ * Helper: Formatear número como moneda argentina
+ * @param {number} valor - Valor numérico a formatear
+ * @returns {string} Valor formateado (ej: "$ 1.500,50")
+ */
+function formatearPrecio(valor) {
+    const numero = parseFloat(valor);
+    if (!Number.isFinite(numero)) {
+        return '$ 0,00';
+    }
+    return formatearMoneda.format(numero);
+}
+
+/**
  * Inicializar página al cargar
  */
 document.addEventListener('DOMContentLoaded', async function() {
@@ -168,9 +192,9 @@ function renderizarInforme() {
                 <tr>
                     <td>${producto.descripcion}</td>
                     <td class="text-center">${producto.cantidad.toFixed(1)}</td>
-                    <td class="text-right precio-verde">$${precioMostrar.toFixed(2)}</td>
+                    <td class="text-right precio-verde">${formatearPrecio(precioMostrar)}</td>
                     ${modoIva === 'discriminado' ? `<td class="text-center iva-naranja">${ivaValor.toFixed(0)}%</td>` : ''}
-                    ${mostrarPrecioKilo && precioPorKilo > 0 ? `<td class="text-right precio-kilo">$${precioPorKilo.toFixed(2)}</td>` : (mostrarPrecioKilo ? '<td class="text-right">-</td>' : '')}
+                    ${mostrarPrecioKilo && precioPorKilo > 0 ? `<td class="text-right precio-kilo">${formatearPrecio(precioPorKilo)}</td>` : (mostrarPrecioKilo ? '<td class="text-right">-</td>' : '')}
                 </tr>
             `;
             
@@ -201,11 +225,11 @@ function renderizarInforme() {
         html += `
             <div class="total-row">
                 <span>Subtotal (sin IVA):</span>
-                <span><strong>$${sumaPreciosSinIva.toFixed(2)}</strong></span>
+                <span><strong>${formatearPrecio(sumaPreciosSinIva)}</strong></span>
             </div>
             <div class="total-row">
                 <span>IVA:</span>
-                <span><strong>$${sumaIva.toFixed(2)}</strong></span>
+                <span><strong>${formatearPrecio(sumaIva)}</strong></span>
             </div>
         `;
     }
@@ -213,7 +237,7 @@ function renderizarInforme() {
     html += `
             <div class="total-row final">
                 <span>TOTAL:</span>
-                <span>$${sumaPreciosFinal.toFixed(2)}</span>
+                <span>${formatearPrecio(sumaPreciosFinal)}</span>
             </div>
         </div>
     `;
@@ -247,10 +271,27 @@ function imprimirInforme() {
 
 /**
  * Volver a la página anterior
+ * Intenta cerrar la ventana si fue abierta con window.open()
+ * Si no puede cerrar, usa history.back()
  */
 function volverAtras() {
-    console.log('← [PREVIEW-HISTORIAL] Volviendo atrás...');
-    window.history.back();
+    console.log('← [PREVIEW-HISTORIAL] Intentando volver/cerrar...');
+    
+    // Intentar cerrar la ventana (funciona si fue abierta con window.open)
+    try {
+        window.close();
+        
+        // Si después de 100ms la ventana sigue abierta, usar history.back()
+        setTimeout(() => {
+            if (!window.closed) {
+                console.log('← [PREVIEW-HISTORIAL] No se pudo cerrar ventana, usando history.back()');
+                window.history.back();
+            }
+        }, 100);
+    } catch (error) {
+        console.log('← [PREVIEW-HISTORIAL] Error al cerrar, usando history.back():', error);
+        window.history.back();
+    }
 }
 
 /**
