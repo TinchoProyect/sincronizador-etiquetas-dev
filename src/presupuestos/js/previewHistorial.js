@@ -263,19 +263,35 @@ function handleReordenarRubros(rubro1, rubro2, mesKey) {
 
 async function cargarDatos(clienteId) {
     try {
-        const response = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
+        // Cargar historial de entregas
+        const responseHistorial = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
         
-        if (!response.ok) {
-            throw new Error(`Error HTTP ${response.status}`);
+        if (!responseHistorial.ok) {
+            throw new Error(`Error HTTP ${responseHistorial.status}`);
         }
         
-        const result = await response.json();
+        const resultHistorial = await responseHistorial.json();
         
-        if (!result.success || !result.data) {
+        if (!resultHistorial.success || !resultHistorial.data) {
             throw new Error('No se pudieron cargar los datos');
         }
         
-        datosHistorial = result.data;
+        datosHistorial = resultHistorial.data;
+        
+        // Cargar datos del cliente
+        try {
+            const responseCliente = await fetch(`/api/presupuestos/clientes/${clienteId}/datos`);
+            if (responseCliente.ok) {
+                const resultCliente = await responseCliente.json();
+                if (resultCliente.success && resultCliente.data) {
+                    const cliente = resultCliente.data;
+                    datosHistorial.cliente_nombre = `${cliente.apellido || ''} ${cliente.nombre || ''}`.trim() || null;
+                }
+            }
+        } catch (errorCliente) {
+            console.warn('⚠️ No se pudieron cargar datos del cliente, usando solo ID');
+        }
+        
         console.log(`✅ Datos cargados: ${datosHistorial.total_productos_unicos} productos`);
         
     } catch (error) {
@@ -583,17 +599,14 @@ function renderizarInforme() {
                 
                 rubrosOrdenados.forEach(rubro => {
                     if (config.agruparSubrubro) {
-                        html += `<div class="rubro-header">📦 ${rubro}</div>`;
-                        
+                        // ✅ NUEVA LÓGICA: Tabla unificada con sub-rubros integrados
                         const productosPorSubRubro = agruparPorSubRubro(productosPorRubro[rubro]);
-                        Object.keys(productosPorSubRubro).sort().forEach(subRubro => {
-                            const resultado = renderizarTablaProductos(subRubro, productosPorSubRubro[subRubro], columnasActivas, true);
-                            html += resultado.html;
-                            totalProductos += resultado.totales.productos;
-                            sumaPreciosConIva += resultado.totales.preciosConIva;
-                            sumaPreciosSinIva += resultado.totales.preciosSinIva;
-                            sumaIva += resultado.totales.iva;
-                        });
+                        const resultado = renderizarTablaConSubRubros(rubro, productosPorSubRubro, columnasActivas);
+                        html += resultado.html;
+                        totalProductos += resultado.totales.productos;
+                        sumaPreciosConIva += resultado.totales.preciosConIva;
+                        sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                        sumaIva += resultado.totales.iva;
                     } else {
                         const resultado = renderizarTablaProductos(rubro, productosPorRubro[rubro], columnasActivas);
                         html += resultado.html;
@@ -623,17 +636,14 @@ function renderizarInforme() {
             
             rubrosOrdenados.forEach(rubro => {
                 if (config.agruparSubrubro) {
-                    html += `<div class="rubro-header">📦 ${rubro}</div>`;
-                    
+                    // ✅ NUEVA LÓGICA: Tabla unificada con sub-rubros integrados
                     const productosPorSubRubro = agruparPorSubRubro(productosPorRubro[rubro]);
-                    Object.keys(productosPorSubRubro).sort().forEach(subRubro => {
-                        const resultado = renderizarTablaProductos(subRubro, productosPorSubRubro[subRubro], columnasActivas, true);
-                        html += resultado.html;
-                        totalProductos += resultado.totales.productos;
-                        sumaPreciosConIva += resultado.totales.preciosConIva;
-                        sumaPreciosSinIva += resultado.totales.preciosSinIva;
-                        sumaIva += resultado.totales.iva;
-                    });
+                    const resultado = renderizarTablaConSubRubros(rubro, productosPorSubRubro, columnasActivas);
+                    html += resultado.html;
+                    totalProductos += resultado.totales.productos;
+                    sumaPreciosConIva += resultado.totales.preciosConIva;
+                    sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                    sumaIva += resultado.totales.iva;
                 } else {
                     const resultado = renderizarTablaProductos(rubro, productosPorRubro[rubro], columnasActivas);
                     html += resultado.html;
@@ -662,18 +672,17 @@ function renderizarInforme() {
     }
 }
 
+/**
+ * Renderizar tabla de productos con sub-rubros integrados
+ * ✅ NUEVA LÓGICA: Una sola tabla por rubro, sub-rubros como separadores internos
+ */
 function renderizarTablaProductos(titulo, productos, columnasActivas, esSubRubro = false) {
-    const headerStyle = esSubRubro 
-        ? 'background: #546e7a; color: white; padding: 6px 12px 6px 24px; font-weight: 500; font-size: 0.95em; border-radius: 4px; margin-bottom: 8px; margin-left: 15px;'
-        : '';
-    
-    const grupoClass = esSubRubro ? 'style="margin-left: 15px;"' : '';
-    
+    // ✅ DISEÑO MINIMALISTA: Sin fondos de color, solo tipografía y líneas
     let html = `
-        <div class="rubro-grupo" ${grupoClass}>
+        <div class="rubro-grupo">
             ${esSubRubro 
-                ? `<div style="${headerStyle}">└─ ${titulo}</div>` 
-                : `<div class="rubro-header">📦 ${titulo}</div>`
+                ? `<div class="subrubro-header">${titulo}</div>` 
+                : `<div class="rubro-header">${titulo}</div>`
             }
             <table class="productos-table">
                 <thead><tr>
@@ -711,35 +720,114 @@ function renderizarTablaProductos(titulo, productos, columnasActivas, esSubRubro
     return { html, totales };
 }
 
+/**
+ * Renderizar tabla unificada con sub-rubros como separadores internos
+ * ✅ OPTIMIZACIÓN: Encabezados de columna UNA SOLA VEZ por rubro
+ */
+function renderizarTablaConSubRubros(tituloRubro, productosPorSubRubro, columnasActivas) {
+    let html = `
+        <div class="rubro-grupo">
+            <div class="rubro-header">${tituloRubro}</div>
+            <table class="productos-table">
+                <thead><tr>
+    `;
+    
+    // Encabezados de columna UNA SOLA VEZ
+    columnasActivas.forEach(col => {
+        html += `<th class="text-${col.align}">${col.label}</th>`;
+    });
+    
+    html += `</tr></thead><tbody>`;
+    
+    let totales = {
+        productos: 0,
+        preciosConIva: 0,
+        preciosSinIva: 0,
+        iva: 0
+    };
+    
+    // Ordenar sub-rubros alfabéticamente
+    const subRubrosOrdenados = Object.keys(productosPorSubRubro).sort();
+    
+    subRubrosOrdenados.forEach((subRubro, index) => {
+        const productosSubRubro = productosPorSubRubro[subRubro];
+        
+        // Insertar separador de sub-rubro (excepto el primero)
+        if (index > 0 || subRubrosOrdenados.length > 1) {
+            html += `
+                <tr class="subrubro-separator">
+                    <td colspan="${columnasActivas.length}">${subRubro}</td>
+                </tr>
+            `;
+        }
+        
+        // Productos del sub-rubro
+        productosSubRubro.forEach(producto => {
+            const valores = calcularValoresProducto(producto);
+            html += '<tr>';
+            columnasActivas.forEach(col => {
+                html += generarCeldaProducto(col.id, producto, valores);
+            });
+            html += '</tr>';
+            
+            totales.productos++;
+            totales.preciosConIva += valores.precioConIva;
+            totales.preciosSinIva += valores.precioSinIva;
+            totales.iva += valores.valorIva;
+        });
+    });
+    
+    html += `</tbody></table></div>`;
+    
+    return { html, totales };
+}
+
 function generarHeaderInforme() {
+    const fechaActual = new Date().toLocaleDateString('es-AR', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+    });
+    
     return `
         <div class="informe-header">
-            <h1>LISTA DE PRECIOS PERSONALIZADA</h1>
-            <div class="cliente-nombre">Cliente ID: ${datosHistorial.cliente_id}</div>
-            <div class="fecha">Fecha: ${new Date().toLocaleDateString('es-AR', { 
-                day: '2-digit', month: 'long', year: 'numeric' 
-            })}</div>
-            <p style="margin-top: 10px; font-size: 0.85em; color: #666;">
-                Basado en historial de compras de los últimos 6 meses
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                <div>
+                    <h2 style="font-size: 1.4em; font-weight: 700; color: #2c3e50; margin: 0;">LAMDA</h2>
+                    <p style="font-size: 0.85em; color: #7f8c8d; margin: 2px 0 0 0;">Gestiones Integrales</p>
+                </div>
+                <div style="text-align: right;">
+                    <p style="font-size: 0.85em; color: #7f8c8d; margin: 0;">Fecha: ${fechaActual}</p>
+                </div>
+            </div>
+            
+            <h1 style="font-size: 1.3em; font-weight: 600; color: #34495e; margin: 15px 0 10px 0; text-align: center;">
+                Lista para actualizar precios
+            </h1>
+            
+            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 15px; margin: 15px 0 25px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <p style="font-size: 1.1em; font-weight: 700; color: #2c3e50; margin: 0 0 4px 0;">
+                            Cliente: ${datosHistorial.cliente_nombre || 'Cliente ID: ' + datosHistorial.cliente_id}
+                        </p>
+                        <p style="font-size: 0.8em; color: #7f8c8d; margin: 0;">
+                            N° Cliente: ${datosHistorial.cliente_id}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <p style="font-size: 0.8em; color: #95a5a6; text-align: center; margin: 0 0 20px 0; font-style: italic;">
+                Basado en historial de compras
             </p>
         </div>
     `;
 }
 
 function generarSeccionTotales(totalProductos, subtotal, iva, total, config) {
-    return `
-        <div class="totales-section">
-            <div class="total-row"><span>Total de productos:</span><span><strong>${totalProductos}</strong></span></div>
-            <div class="total-row"><span>Subtotal (sin IVA):</span><span><strong>${formatearPrecio(subtotal)}</strong></span></div>
-            <div class="total-row"><span>IVA:</span><span><strong>${formatearPrecio(iva)}</strong></span></div>
-            <div class="total-row final"><span>TOTAL:</span><span>${formatearPrecio(total)}</span></div>
-        </div>
-        <div style="margin-top: 25px; padding: 12px; background: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-            <p style="font-size: 0.85em; color: #666;">
-                <strong>Nota:</strong> Esta lista muestra los productos con precios actualizados según la configuración seleccionada.
-            </p>
-        </div>
-    `;
+    // ✅ ELIMINADO: No se muestran totales ni notas finales
+    return '';
 }
 
 // ============================================
