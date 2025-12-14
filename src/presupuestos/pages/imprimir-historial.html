@@ -537,6 +537,112 @@
             }
         }
 
+        /* Estilos para Drag & Drop */
+        .filtro-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: move;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filtro-item:hover {
+            background: #f0f8ff;
+            border-color: #3498db;
+            transform: translateX(2px);
+        }
+
+        .filtro-item.dragging {
+            opacity: 0.4;
+            transform: scale(0.95);
+        }
+
+        .filtro-item.drag-over {
+            border-top: 3px solid #3498db;
+            background: #e3f2fd;
+        }
+
+        .filtro-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .filtro-item-label {
+            flex: 1;
+            cursor: move;
+            user-select: none;
+        }
+
+        .filtro-item-drag-handle {
+            color: #999;
+            font-size: 1.2em;
+            cursor: move;
+        }
+
+        /* Estructura jerárquica (meses) */
+        .filtro-mes {
+            margin-bottom: 15px;
+        }
+
+        .filtro-mes-header {
+            background: #34495e;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .filtro-mes-rubros {
+            padding-left: 15px;
+            border-left: 2px solid #3498db;
+            margin-left: 10px;
+        }
+
+        .filtro-empty {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+
+        /* ✅ FIX: Scroll en panel de filtros */
+        #panel-filtros-rubros {
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Estilos de scrollbar para el panel de filtros */
+        #panel-filtros-rubros::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #panel-filtros-rubros::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        #panel-filtros-rubros::-webkit-scrollbar-thumb {
+            background: #3498db;
+            border-radius: 4px;
+        }
+
+        #panel-filtros-rubros::-webkit-scrollbar-thumb:hover {
+            background: #2980b9;
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .container {
@@ -602,7 +708,7 @@
                     <div class="accordion-content" id="accordion-agrupaciones">
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="agrupar-mes" checked onchange="renderizarInforme()">
+                                <input type="checkbox" id="agrupar-mes" checked onchange="manejarCambioAgrupacion()">
                                 <span>Agrupar por Mes</span>
                             </label>
                         </div>
@@ -622,7 +728,22 @@
                     </div>
                 </div>
 
-                <!-- GRUPO 3: CAMPOS VISIBLES -->
+                <!-- GRUPO 3: FILTRAR Y ORDENAR RUBROS -->
+                <div class="config-accordion">
+                    <div class="accordion-header" onclick="toggleAccordion('filtros')">
+                        <span>🎯 FILTRAR Y ORDENAR RUBROS</span>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-content" id="accordion-filtros">
+                        <div id="panel-filtros-rubros">
+                            <div class="filtro-empty">
+                                Selecciona "Agrupar por Rubro" para activar filtros
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GRUPO 4: CAMPOS VISIBLES -->
                 <div class="config-accordion">
                     <div class="accordion-header" onclick="toggleAccordion('campos')">
                         <span>👁️ CAMPOS VISIBLES</span>
@@ -727,6 +848,6 @@
         </div>
     </div>
 
-    <script src="/js/previewHistorial.js"></script>
+    <script type="module" src="/js/previewHistorial.js"></script>
 </body>
 </html>
