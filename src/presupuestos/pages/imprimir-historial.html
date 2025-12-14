@@ -28,12 +28,55 @@
         /* Panel izquierdo: Configuración */
         .panel-config {
             width: 320px;
+            min-width: 250px;
+            max-width: 600px;
             background: white;
             border-right: 2px solid #e0e0e0;
             display: flex;
             flex-direction: column;
             box-shadow: 2px 0 10px rgba(0,0,0,0.1);
             z-index: 10;
+            position: relative;
+        }
+
+        /* Resizer para ajustar ancho del panel */
+        .panel-resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 8px;
+            height: 100%;
+            cursor: col-resize;
+            background: transparent;
+            z-index: 20;
+            transition: background 0.2s ease;
+        }
+
+        .panel-resizer:hover {
+            background: linear-gradient(90deg, transparent, #3498db, transparent);
+        }
+
+        .panel-resizer.resizing {
+            background: #3498db;
+        }
+
+        /* Indicador visual durante resize */
+        .panel-resizer::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 3px;
+            height: 40px;
+            background: #bdc3c7;
+            border-radius: 2px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .panel-resizer:hover::after {
+            opacity: 1;
         }
 
         .config-header {
@@ -669,7 +712,10 @@
 <body>
     <div class="container">
         <!-- Panel Izquierdo: Configuración -->
-        <div class="panel-config">
+        <div class="panel-config" id="panel-config">
+            <!-- Resizer Handle -->
+            <div class="panel-resizer" id="panel-resizer"></div>
+            
             <div class="config-header">
                 <h2>⚙️ Configuración</h2>
                 <p>Personaliza tu lista de precios</p>

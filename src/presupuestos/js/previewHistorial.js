@@ -850,6 +850,64 @@ async function cargarPesoArticulo(event, articuloNumero, descripcion) {
 }
 
 // ============================================
+// PANEL RESIZABLE
+// ============================================
+
+function inicializarPanelResizable() {
+    const panel = document.getElementById('panel-config');
+    const resizer = document.getElementById('panel-resizer');
+    
+    if (!panel || !resizer) {
+        console.warn('⚠️ [RESIZE] Elementos no encontrados');
+        return;
+    }
+    
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+    
+    const minWidth = 250;
+    const maxWidth = 600;
+    
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = panel.offsetWidth;
+        
+        resizer.classList.add('resizing');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        
+        console.log('🔧 [RESIZE] Iniciando resize del panel');
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        
+        const deltaX = e.clientX - startX;
+        const newWidth = startWidth + deltaX;
+        
+        // Aplicar límites
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+            panel.style.width = `${newWidth}px`;
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            resizer.classList.remove('resizing');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            
+            console.log(`✅ [RESIZE] Panel redimensionado a: ${panel.offsetWidth}px`);
+        }
+    });
+    
+    console.log('✅ [RESIZE] Panel resizable inicializado');
+}
+
+// ============================================
 // INICIALIZACIÓN
 // ============================================
 
@@ -865,6 +923,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     
     inicializarEstadoCheckboxes();
+    inicializarPanelResizable();
     
     await cargarDatos(clienteId);
     
