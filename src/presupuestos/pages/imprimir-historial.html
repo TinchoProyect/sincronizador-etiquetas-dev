@@ -155,17 +155,6 @@
             font-style: italic;
         }
 
-        .config-group {
-            margin-bottom: 25px;
-        }
-
-        .config-group-title {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 12px;
-            font-size: 0.95em;
-            display: block;
-        }
 
         .config-actions {
             padding: 20px;
@@ -619,16 +608,16 @@
                         </div>
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="agrupar-rubro" checked onchange="renderizarInforme()">
+                                <input type="checkbox" id="agrupar-rubro" checked onchange="manejarCambioRubro()">
                                 <span>Agrupar por Rubro</span>
                             </label>
                         </div>
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="agrupar-subrubro" onchange="renderizarInforme()">
+                                <input type="checkbox" id="agrupar-subrubro" disabled onchange="renderizarInforme()">
                                 <span>Agrupar por Sub-rubro</span>
                             </label>
-                            <p class="config-help">Requiere datos de sub-rubro</p>
+                            <p class="config-help">Requiere agrupar por Rubro</p>
                         </div>
                     </div>
                 </div>

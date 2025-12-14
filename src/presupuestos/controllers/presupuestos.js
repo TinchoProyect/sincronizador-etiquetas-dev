@@ -2080,6 +2080,9 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 -- ✅ ETAPA 2: Kilos por unidad para cálculo de precio por kilo
                 COALESCE(src.kilos_unidad, 0) as kilos_unidad,
                 
+                -- ✅ ETAPA 2: Stock consolidado para mostrar disponibilidad
+                COALESCE(src.stock_consolidado, 0) as stock_consolidado,
+                
                 -- ✅ NUEVO: Lista de precios del cliente (con CAST explícito para evitar error de tipos)
                 CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente
                 
@@ -2088,7 +2091,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(a.nombre)
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = pd.articulo OR src.articulo_numero = pd.articulo
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
             WHERE p.id_cliente = $1
               AND p.activo = true
               AND LOWER(p.estado) = 'entregado'
@@ -2228,7 +2231,10 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 rubro: producto.rubro || 'Sin categoría',
                 sub_rubro: producto.sub_rubro || 'Sin subcategoría',
                 kilos_unidad: kilosUnidad,
-                precio_por_kilo: precioPorKilo
+                precio_por_kilo: precioPorKilo,
+                
+                // ✅ ETAPA 2: Stock consolidado para visualización
+                stock_consolidado: parseFloat(producto.stock_consolidado || 0)
             };
             
             if (mesesAtras === 0) {

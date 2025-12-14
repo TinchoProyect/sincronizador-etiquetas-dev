@@ -36,6 +36,27 @@ function toggleAccordion(id) {
 }
 
 /**
+ * Manejar cambio en checkbox de Rubro
+ * Habilita/deshabilita Sub-rubro según estado de Rubro
+ */
+function manejarCambioRubro() {
+    const checkRubro = document.getElementById('agrupar-rubro');
+    const checkSubRubro = document.getElementById('agrupar-subrubro');
+    
+    if (checkRubro.checked) {
+        // Habilitar sub-rubro
+        checkSubRubro.disabled = false;
+    } else {
+        // Deshabilitar y destildar sub-rubro
+        checkSubRubro.disabled = true;
+        checkSubRubro.checked = false;
+    }
+    
+    // Renderizar con nueva configuración
+    renderizarInforme();
+}
+
+/**
  * Leer configuración actual del panel
  */
 function leerConfiguracion() {
@@ -111,7 +132,7 @@ function calcularValoresProducto(producto) {
         ivaAlicuota,
         kilos,
         stock,
-        stockVisual: stock > 0 ? '✓ Hay' : '✗ No hay'
+        stockVisual: stock > 0 ? '✅' : 'Sin Stock'
     };
 }
 
@@ -281,12 +302,30 @@ function renderizarInforme() {
             if (config.agruparRubro) {
                 const productosPorRubro = agruparPorRubro(grupo.productos);
                 Object.keys(productosPorRubro).sort().forEach(rubro => {
-                    const resultado = renderizarTablaProductos(rubro, productosPorRubro[rubro], columnasActivas);
-                    html += resultado.html;
-                    totalProductos += resultado.totales.productos;
-                    sumaPreciosConIva += resultado.totales.preciosConIva;
-                    sumaPreciosSinIva += resultado.totales.preciosSinIva;
-                    sumaIva += resultado.totales.iva;
+                    // Si sub-rubro está activo, crear tercer nivel de anidamiento
+                    if (config.agruparSubrubro) {
+                        // Título de rubro
+                        html += `
+                            <div class="rubro-header">📦 ${rubro}</div>
+                        `;
+                        
+                        const productosPorSubRubro = agruparPorSubRubro(productosPorRubro[rubro]);
+                        Object.keys(productosPorSubRubro).sort().forEach(subRubro => {
+                            const resultado = renderizarTablaProductos(subRubro, productosPorSubRubro[subRubro], columnasActivas, true);
+                            html += resultado.html;
+                            totalProductos += resultado.totales.productos;
+                            sumaPreciosConIva += resultado.totales.preciosConIva;
+                            sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                            sumaIva += resultado.totales.iva;
+                        });
+                    } else {
+                        const resultado = renderizarTablaProductos(rubro, productosPorRubro[rubro], columnasActivas);
+                        html += resultado.html;
+                        totalProductos += resultado.totales.productos;
+                        sumaPreciosConIva += resultado.totales.preciosConIva;
+                        sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                        sumaIva += resultado.totales.iva;
+                    }
                 });
             } else {
                 const resultado = renderizarTablaProductos('Productos', grupo.productos, columnasActivas);
@@ -296,9 +335,35 @@ function renderizarInforme() {
                 sumaPreciosSinIva += resultado.totales.preciosSinIva;
                 sumaIva += resultado.totales.iva;
             }
+        } else if (grupo.tipo === 'rubro') {
+            // Grupo de rubro SIN mes
+            // Si sub-rubro está activo, crear segundo nivel de anidamiento
+            if (config.agruparSubrubro) {
+                // Título de rubro
+                html += `
+                    <div class="rubro-header">📦 ${grupo.titulo.replace('📦 ', '')}</div>
+                `;
+                
+                const productosPorSubRubro = agruparPorSubRubro(grupo.productos);
+                Object.keys(productosPorSubRubro).sort().forEach(subRubro => {
+                    const resultado = renderizarTablaProductos(subRubro, productosPorSubRubro[subRubro], columnasActivas, true);
+                    html += resultado.html;
+                    totalProductos += resultado.totales.productos;
+                    sumaPreciosConIva += resultado.totales.preciosConIva;
+                    sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                    sumaIva += resultado.totales.iva;
+                });
+            } else {
+                const resultado = renderizarTablaProductos(grupo.titulo.replace('📦 ', ''), grupo.productos, columnasActivas);
+                html += resultado.html;
+                totalProductos += resultado.totales.productos;
+                sumaPreciosConIva += resultado.totales.preciosConIva;
+                sumaPreciosSinIva += resultado.totales.preciosSinIva;
+                sumaIva += resultado.totales.iva;
+            }
         } else {
-            // Grupo simple (rubro)
-            const resultado = renderizarTablaProductos(grupo.titulo.replace('📦 ', ''), grupo.productos, columnasActivas);
+            // Grupo simple (sin agrupación)
+            const resultado = renderizarTablaProductos(grupo.titulo, grupo.productos, columnasActivas);
             html += resultado.html;
             totalProductos += resultado.totales.productos;
             sumaPreciosConIva += resultado.totales.preciosConIva;
@@ -388,12 +453,39 @@ function agruparPorRubro(productos) {
 }
 
 /**
- * Renderizar tabla de productos
+ * Agrupar productos por sub-rubro
  */
-function renderizarTablaProductos(titulo, productos, columnasActivas) {
+function agruparPorSubRubro(productos) {
+    const porSubRubro = {};
+    productos.forEach(p => {
+        const subRubro = p.sub_rubro || 'Sin subcategoría';
+        if (!porSubRubro[subRubro]) porSubRubro[subRubro] = [];
+        porSubRubro[subRubro].push(p);
+    });
+    return porSubRubro;
+}
+
+/**
+ * Renderizar tabla de productos
+ * @param {string} titulo - Título del grupo
+ * @param {Array} productos - Array de productos
+ * @param {Array} columnasActivas - Columnas a mostrar
+ * @param {boolean} esSubRubro - Si es true, aplica estilos de sub-rubro (indentado)
+ */
+function renderizarTablaProductos(titulo, productos, columnasActivas, esSubRubro = false) {
+    // Estilos diferentes para sub-rubro (más pequeño e indentado)
+    const headerStyle = esSubRubro 
+        ? 'background: #546e7a; color: white; padding: 6px 12px 6px 24px; font-weight: 500; font-size: 0.95em; border-radius: 4px; margin-bottom: 8px; margin-left: 15px;'
+        : '';
+    
+    const grupoClass = esSubRubro ? 'style="margin-left: 15px;"' : '';
+    
     let html = `
-        <div class="rubro-grupo">
-            <div class="rubro-header">📦 ${titulo}</div>
+        <div class="rubro-grupo" ${grupoClass}>
+            ${esSubRubro 
+                ? `<div style="${headerStyle}">└─ ${titulo}</div>` 
+                : `<div class="rubro-header">📦 ${titulo}</div>`
+            }
             <table class="productos-table">
                 <thead>
                     <tr>
@@ -540,6 +632,7 @@ function mostrarError(mensaje) {
 
 // Exponer funciones globalmente
 window.toggleAccordion = toggleAccordion;
+window.manejarCambioRubro = manejarCambioRubro;
 window.renderizarInforme = renderizarInforme;
 window.imprimirInforme = imprimirInforme;
 window.volverAtras = volverAtras;
