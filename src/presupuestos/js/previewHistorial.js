@@ -172,9 +172,19 @@ function generarCeldaProducto(columnaId, producto, valores) {
                 : `<td class="${clase}">-</td>`;
         
         case 'precioKgConIva':
-            return valores.kilos > 0 
-                ? `<td class="${clase} precio-kilo">${formatearPrecio(valores.precioKgConIva)}</td>`
-                : `<td class="${clase}">-</td>`;
+            if (valores.kilos > 0) {
+                return `<td class="${clase} precio-kilo">${formatearPrecio(valores.precioKgConIva)}</td>`;
+            } else {
+                // Mostrar botón para cargar peso si falta
+                return `<td class="${clase}">
+                    <button 
+                        onclick="cargarPesoArticulo(event, '${producto.articulo_numero}', '${producto.descripcion.replace(/'/g, "\\'")}')" 
+                        style="background: #f39c12; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em; display: flex; align-items: center; gap: 4px;"
+                        title="Cargar peso del artículo">
+                        ⚖️ Cargar
+                    </button>
+                </td>`;
+            }
         
         case 'valorIva':
             return `<td class="${clase} iva-naranja">${formatearPrecio(valores.valorIva)}</td>`;
@@ -630,11 +640,120 @@ function mostrarError(mensaje) {
     }
 }
 
+/**
+ * Cargar peso de un artículo
+ * Permite edición rápida del peso sin salir del informe
+ */
+async function cargarPesoArticulo(event, articuloNumero, descripcion) {
+    console.log(`⚖️ [CARGAR-PESO] Iniciando carga de peso para: ${articuloNumero}`);
+    
+    // Prevenir comportamiento por defecto
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    
+    // Solicitar el peso al usuario
+    const pesoStr = prompt(
+        `⚖️ Cargar Peso del Artículo\n\n` +
+        `Producto: ${descripcion}\n` +
+        `Código: ${articuloNumero}\n\n` +
+        `Ingrese la cantidad de Kilos/Unidades por bulto:`,
+        ''
+    );
+    
+    // Si el usuario cancela
+    if (pesoStr === null) {
+        console.log(`⚖️ [CARGAR-PESO] Usuario canceló la operación`);
+        return;
+    }
+    
+    // Validar el valor ingresado
+    const peso = parseFloat(pesoStr);
+    
+    if (isNaN(peso) || peso <= 0) {
+        alert('❌ Error: Debe ingresar un número positivo válido');
+        console.log(`❌ [CARGAR-PESO] Valor inválido: ${pesoStr}`);
+        return;
+    }
+    
+    console.log(`⚖️ [CARGAR-PESO] Peso ingresado: ${peso} kg`);
+    
+    // Guardar referencia al botón y texto original
+    let originalText = '';
+    if (event && event.target) {
+        originalText = event.target.innerHTML;
+        event.target.innerHTML = '⏳ Guardando...';
+        event.target.disabled = true;
+    }
+    
+    try {
+        
+        // Llamar al endpoint de actualización
+        const response = await fetch(`http://localhost:3005/api/logistica/articulos/${articuloNumero}/peso`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                kilos_unidad: peso
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Error al actualizar el peso');
+        }
+        
+        console.log(`✅ [CARGAR-PESO] Peso actualizado exitosamente:`, result.data);
+        
+        // Mostrar mensaje de éxito
+        alert(`✅ Peso actualizado correctamente\n\n` +
+              `Artículo: ${descripcion}\n` +
+              `Peso: ${peso} kg\n\n` +
+              `El informe se recargará para mostrar los nuevos precios por kilo.`);
+        
+        // Recargar los datos y renderizar nuevamente
+        const urlParams = new URLSearchParams(window.location.search);
+        const clienteId = urlParams.get('cliente_id');
+        
+        await cargarDatos(clienteId);
+        renderizarInforme();
+        
+        console.log(`✅ [CARGAR-PESO] Informe actualizado`);
+        
+    } catch (error) {
+        console.error(`❌ [CARGAR-PESO] Error:`, error);
+        
+        // Mensaje de error más específico
+        let mensajeError = error.message;
+        
+        if (error.message.includes('Artículo no encontrado')) {
+            mensajeError = `El artículo no existe en el sistema de stock.\n\n` +
+                          `Código: ${articuloNumero}\n\n` +
+                          `Esto puede ocurrir si:\n` +
+                          `• El artículo es nuevo y aún no se sincronizó\n` +
+                          `• El código de barras no coincide con el sistema\n\n` +
+                          `Por favor, verifique el artículo en el ABM de Stock.`;
+        }
+        
+        alert(`❌ Error al actualizar el peso:\n\n${mensajeError}`);
+        
+        // Restaurar el botón si existe
+        if (event && event.target) {
+            event.target.innerHTML = originalText;
+            event.target.disabled = false;
+        }
+    }
+}
+
 // Exponer funciones globalmente
 window.toggleAccordion = toggleAccordion;
 window.manejarCambioRubro = manejarCambioRubro;
 window.renderizarInforme = renderizarInforme;
 window.imprimirInforme = imprimirInforme;
 window.volverAtras = volverAtras;
+window.cargarPesoArticulo = cargarPesoArticulo;
 
 console.log('✅ [PREVIEW-HISTORIAL] Módulo REFACTORIZADO cargado correctamente');
