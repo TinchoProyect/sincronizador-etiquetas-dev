@@ -216,6 +216,27 @@ function obtenerNombreMes(fechaEntrega) {
 }
 
 /**
+ * Inicializar estado de checkboxes
+ * Ejecuta la lógica de dependencia Rubro → Sub-rubro al cargar la página
+ */
+function inicializarEstadoCheckboxes() {
+    const checkRubro = document.getElementById('agrupar-rubro');
+    const checkSubRubro = document.getElementById('agrupar-subrubro');
+    
+    if (checkRubro && checkSubRubro) {
+        // Aplicar la lógica de dependencia según el estado inicial de Rubro
+        if (checkRubro.checked) {
+            checkSubRubro.disabled = false;
+            console.log('✅ [INIT] Sub-rubro habilitado (Rubro está activo)');
+        } else {
+            checkSubRubro.disabled = true;
+            checkSubRubro.checked = false;
+            console.log('ℹ️ [INIT] Sub-rubro deshabilitado (Rubro está inactivo)');
+        }
+    }
+}
+
+/**
  * Inicializar página
  */
 document.addEventListener('DOMContentLoaded', async function() {
@@ -228,6 +249,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         mostrarError('No se especificó un cliente');
         return;
     }
+    
+    // ✅ FIX: Inicializar estado de checkboxes ANTES de cargar datos
+    inicializarEstadoCheckboxes();
     
     await cargarDatos(clienteId);
     renderizarInforme();
