@@ -85,6 +85,7 @@ function leerConfiguracion() {
             precioConIva: document.getElementById('col-precio-con-iva')?.checked || false,
             precioKgSinIva: document.getElementById('col-precio-kg-sin-iva')?.checked || false,
             precioKgConIva: document.getElementById('col-precio-kg-con-iva')?.checked || false,
+            descuento5Kg: document.getElementById('col-descuento-5-kg')?.checked || false,
             valorIva: document.getElementById('col-valor-iva')?.checked || false,
             valorIvaKg: document.getElementById('col-valor-iva-kg')?.checked || false
         }
@@ -97,10 +98,11 @@ const COLUMNAS_DISPONIBLES = [
     { id: 'stockVisual', label: 'Stock', align: 'center' },
     { id: 'stockNumerico', label: 'Stock #', align: 'center' },
     { id: 'alicuotaIva', label: 'IVA%', align: 'center' },
-    { id: 'precioSinIva', label: 'Precio s/IVA', align: 'right' },
-    { id: 'precioConIva', label: 'Precio c/IVA', align: 'right' },
-    { id: 'precioKgSinIva', label: '$/Kg s/IVA', align: 'right' },
-    { id: 'precioKgConIva', label: '$/Kg c/IVA', align: 'right' },
+    { id: 'precioSinIva', label: 'Precio s/I', align: 'right' },
+    { id: 'precioConIva', label: 'Precio c/I', align: 'right' },
+    { id: 'precioKgSinIva', label: '$/Kg/u s/I', align: 'right' },
+    { id: 'precioKgConIva', label: '$/Kg/u c/I', align: 'right' },
+    { id: 'descuento5Kg', label: '5% U/K c/I', align: 'right' },
     { id: 'valorIva', label: 'Valor IVA', align: 'right' },
     { id: 'valorIvaKg', label: 'IVA/Kg', align: 'right' }
 ];
@@ -263,7 +265,7 @@ function handleReordenarRubros(rubro1, rubro2, mesKey) {
 
 async function cargarDatos(clienteId) {
     try {
-        // Cargar historial de entregas
+        // Cargar historial de entregas (ya incluye datos del cliente desde el backend)
         const responseHistorial = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
         
         if (!responseHistorial.ok) {
@@ -278,21 +280,8 @@ async function cargarDatos(clienteId) {
         
         datosHistorial = resultHistorial.data;
         
-        // Cargar datos del cliente
-        try {
-            const responseCliente = await fetch(`/api/presupuestos/clientes/${clienteId}/datos`);
-            if (responseCliente.ok) {
-                const resultCliente = await responseCliente.json();
-                if (resultCliente.success && resultCliente.data) {
-                    const cliente = resultCliente.data;
-                    datosHistorial.cliente_nombre = `${cliente.apellido || ''} ${cliente.nombre || ''}`.trim() || null;
-                }
-            }
-        } catch (errorCliente) {
-            console.warn('⚠️ No se pudieron cargar datos del cliente, usando solo ID');
-        }
-        
         console.log(`✅ Datos cargados: ${datosHistorial.total_productos_unicos} productos`);
+        console.log(`👤 Cliente: ${datosHistorial.cliente_apellido || ''} ${datosHistorial.cliente_nombre || ''} (ID: ${datosHistorial.cliente_id})`);
         
     } catch (error) {
         console.error('❌ Error al cargar datos:', error);
@@ -319,6 +308,9 @@ function calcularValoresProducto(producto) {
     const precioKgSinIva = kilos > 0 ? precioSinIva / kilos : 0;
     const valorIvaKg = kilos > 0 ? valorIva / kilos : 0;
     
+    // ✅ NUEVO: Precio con 5% de descuento sobre precio x Kg/u con IVA
+    const descuento5PorKg = kilos > 0 ? precioKgConIva * 0.95 : 0;
+    
     return {
         precioConIva,
         precioSinIva,
@@ -326,10 +318,11 @@ function calcularValoresProducto(producto) {
         precioKgConIva,
         precioKgSinIva,
         valorIvaKg,
+        descuento5PorKg,
         ivaAlicuota,
         kilos,
         stock,
-        stockVisual: stock > 0 ? '✅' : 'Sin Stock'
+        stockVisual: stock > 0 ? '✅' : 's/Stk-Consultar'
     };
 }
 
@@ -347,16 +340,16 @@ function generarCeldaProducto(columnaId, producto, valores) {
         case 'stockNumerico':
             return `<td class="${clase}">${Math.floor(valores.stock)}</td>`;
         case 'alicuotaIva':
-            return `<td class="${clase} iva-naranja">${valores.ivaAlicuota.toFixed(1)}%</td>`;
+            return `<td class="${clase}" style="color: #2c3e50;">${valores.ivaAlicuota.toFixed(1)}%</td>`;
         case 'precioSinIva':
-            return `<td class="${clase} precio-verde">${formatearPrecio(valores.precioSinIva)}</td>`;
+            return `<td class="${clase}" style="color: #666; font-weight: 500;">${formatearPrecio(valores.precioSinIva)}</td>`;
         case 'precioConIva':
-            return `<td class="${clase} precio-verde">${formatearPrecio(valores.precioConIva)}</td>`;
+            return `<td class="${clase}" style="color: #2c3e50; font-weight: 600;">${formatearPrecio(valores.precioConIva)}</td>`;
         case 'precioKgSinIva':
-            return valores.kilos > 0 ? `<td class="${clase} precio-kilo">${formatearPrecio(valores.precioKgSinIva)}</td>` : `<td class="${clase}">-</td>`;
+            return valores.kilos > 0 ? `<td class="${clase}" style="color: #666; font-weight: 500;">${formatearPrecio(valores.precioKgSinIva)}</td>` : `<td class="${clase}">-</td>`;
         case 'precioKgConIva':
             if (valores.kilos > 0) {
-                return `<td class="${clase} precio-kilo">${formatearPrecio(valores.precioKgConIva)}</td>`;
+                return `<td class="${clase}" style="color: #2c3e50; font-weight: 600;">${formatearPrecio(valores.precioKgConIva)}</td>`;
             } else {
                 return `<td class="${clase}">
                     <button onclick="cargarPesoArticulo(event, '${producto.articulo_numero}', '${producto.descripcion.replace(/'/g, "\\'")}')" 
@@ -364,10 +357,12 @@ function generarCeldaProducto(columnaId, producto, valores) {
                             title="Cargar peso del artículo">⚖️ Cargar</button>
                 </td>`;
             }
+        case 'descuento5Kg':
+            return valores.kilos > 0 ? `<td class="${clase}" style="color: #e67e22; font-weight: 700;">${formatearPrecio(valores.descuento5PorKg)}</td>` : `<td class="${clase}">-</td>`;
         case 'valorIva':
-            return `<td class="${clase} iva-naranja">${formatearPrecio(valores.valorIva)}</td>`;
+            return `<td class="${clase}" style="color: #2c3e50;">${formatearPrecio(valores.valorIva)}</td>`;
         case 'valorIvaKg':
-            return valores.kilos > 0 ? `<td class="${clase} iva-naranja">${formatearPrecio(valores.valorIvaKg)}</td>` : `<td class="${clase}">-</td>`;
+            return valores.kilos > 0 ? `<td class="${clase}" style="color: #2c3e50;">${formatearPrecio(valores.valorIvaKg)}</td>` : `<td class="${clase}">-</td>`;
         default:
             return `<td class="${clase}">-</td>`;
     }
@@ -573,6 +568,9 @@ function renderizarInforme() {
     estructuraAgrupacion = aplicarFiltros(estructuraAgrupacion, config);
     
     let html = generarHeaderInforme();
+    
+    // ✅ NUEVO: Agregar glosario dinámico de referencias
+    html += generarGlosarioReferencias(columnasActivas);
     
     let totalProductos = 0;
     let sumaPreciosConIva = 0;
@@ -782,6 +780,52 @@ function renderizarTablaConSubRubros(tituloRubro, productosPorSubRubro, columnas
     return { html, totales };
 }
 
+/**
+ * Generar glosario dinámico de referencias
+ * Solo muestra definiciones de columnas activas
+ * Layout: Dos columnas usando CSS Grid
+ */
+function generarGlosarioReferencias(columnasActivas) {
+    // Mapeo de columnas a sus definiciones
+    const definiciones = {
+        'precioSinIva': 'Precio s/I = Precio unitario sin IVA',
+        'precioConIva': 'Precio c/I = Precio unitario con IVA',
+        'precioKgSinIva': '$/Kg/u s/I = Precio por Kilo/Unidad sin IVA',
+        'precioKgConIva': '$/Kg/u c/I = Precio por Kilo/Unidad con IVA',
+        'descuento5Kg': '5% U/K c/I = Precio por Kilo/Unidad con IVA, con 5% de descuento',
+        'alicuotaIva': 'IVA% = Alícuota del impuesto',
+        'valorIva': 'Valor IVA = Monto del impuesto en pesos',
+        'valorIvaKg': 'IVA/Kg = Valor del IVA por Kilo/Unidad'
+    };
+    
+    // Filtrar solo las columnas activas que tienen definición
+    const referenciasActivas = columnasActivas
+        .filter(col => definiciones[col.id])
+        .map(col => definiciones[col.id]);
+    
+    // Si no hay referencias, no mostrar nada
+    if (referenciasActivas.length === 0) {
+        return '';
+    }
+    
+    // Generar items del grid (cada referencia es un div)
+    const itemsHtml = referenciasActivas
+        .map(ref => `<div style="font-size: 0.7rem; color: #546e7a; line-height: 1.4;">${ref}</div>`)
+        .join('');
+    
+    // Generar HTML del glosario con CSS Grid
+    return `
+        <div style="background: #f8f9fa; border-left: 4px solid #3498db; padding: 12px 15px; margin: 0 0 25px 0; border-radius: 4px;">
+            <p style="font-size: 0.75em; color: #2c3e50; margin: 0 0 8px 0; font-weight: 600;">
+                Referencias:
+            </p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px 20px;">
+                ${itemsHtml}
+            </div>
+        </div>
+    `;
+}
+
 function generarHeaderInforme() {
     const fechaActual = new Date().toLocaleDateString('es-AR', { 
         day: '2-digit', 
@@ -789,12 +833,27 @@ function generarHeaderInforme() {
         year: 'numeric' 
     });
     
+    // Construir nombre completo del cliente
+    console.log('📋 [HEADER] Datos del cliente:', {
+        cliente_id: datosHistorial.cliente_id,
+        cliente_nombre: datosHistorial.cliente_nombre,
+        cliente_apellido: datosHistorial.cliente_apellido
+    });
+    
+    const nombreCompleto = `${datosHistorial.cliente_apellido || ''} ${datosHistorial.cliente_nombre || ''}`.trim();
+    const nombreMostrar = nombreCompleto || `Cliente ID: ${datosHistorial.cliente_id}`;
+    
+    console.log('📋 [HEADER] Nombre a mostrar:', nombreMostrar);
+    
     return `
         <div class="informe-header">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
                 <div>
                     <h2 style="font-size: 1.4em; font-weight: 700; color: #2c3e50; margin: 0;">LAMDA</h2>
                     <p style="font-size: 0.85em; color: #7f8c8d; margin: 2px 0 0 0;">Gestiones Integrales</p>
+                    <p style="font-size: 0.9em; color: #27ae60; margin: 4px 0 0 0; font-weight: 600;">
+                        📱 221 661-5746
+                    </p>
                 </div>
                 <div style="text-align: right;">
                     <p style="font-size: 0.85em; color: #7f8c8d; margin: 0;">Fecha: ${fechaActual}</p>
@@ -805,11 +864,11 @@ function generarHeaderInforme() {
                 Lista para actualizar precios
             </h1>
             
-            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 15px; margin: 15px 0 25px 0;">
+            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 15px; margin: 15px 0 15px 0;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <p style="font-size: 1.1em; font-weight: 700; color: #2c3e50; margin: 0 0 4px 0;">
-                            Cliente: ${datosHistorial.cliente_nombre || 'Cliente ID: ' + datosHistorial.cliente_id}
+                            Cliente: ${nombreMostrar}
                         </p>
                         <p style="font-size: 0.8em; color: #7f8c8d; margin: 0;">
                             N° Cliente: ${datosHistorial.cliente_id}
@@ -818,7 +877,7 @@ function generarHeaderInforme() {
                 </div>
             </div>
             
-            <p style="font-size: 0.8em; color: #95a5a6; text-align: center; margin: 0 0 20px 0; font-style: italic;">
+            <p style="font-size: 0.8em; color: #95a5a6; text-align: center; margin: 0 0 15px 0; font-style: italic;">
                 Basado en historial de compras
             </p>
         </div>
@@ -836,7 +895,37 @@ function generarSeccionTotales(totalProductos, subtotal, iva, total, config) {
 
 function imprimirInforme() {
     console.log('🖨️ Iniciando impresión...');
+    
+    // ✅ Actualizar título del documento para nombre de archivo PDF
+    const tituloOriginal = document.title;
+    
+    if (datosHistorial) {
+        const clienteId = datosHistorial.cliente_id || '';
+        const nombreCompleto = `${datosHistorial.cliente_apellido || ''} ${datosHistorial.cliente_nombre || ''}`.trim();
+        const nombreCliente = nombreCompleto || `Cliente ${clienteId}`;
+        
+        // Obtener fecha actual en formato DD-MM-YYYY
+        const ahora = new Date();
+        const dia = String(ahora.getDate()).padStart(2, '0');
+        const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+        const anio = ahora.getFullYear();
+        const fechaFormato = `${dia}-${mes}-${anio}`;
+        
+        // Formato: [Nro Cliente] [Nombre Cliente] - Precios Historial - Gestion-LAMDA - [DD-MM-YYYY]
+        const nuevoTitulo = `${clienteId} ${nombreCliente} - Precios Historial - Gestion-LAMDA - ${fechaFormato}`;
+        
+        console.log(`📄 [IMPRIMIR] Título PDF: "${nuevoTitulo}"`);
+        document.title = nuevoTitulo;
+    }
+    
+    // Ejecutar impresión
     window.print();
+    
+    // Restaurar título original después de imprimir
+    setTimeout(() => {
+        document.title = tituloOriginal;
+        console.log('📄 [IMPRIMIR] Título restaurado');
+    }, 1000);
 }
 
 function volverAtras() {
@@ -1025,6 +1114,63 @@ document.addEventListener('DOMContentLoaded', async function() {
 });
 
 // ============================================
+// GESTIÓN DE ORIENTACIÓN DE PÁGINA
+// ============================================
+
+/**
+ * Cambiar orientación de página (Portrait/Landscape)
+ * Actualiza tanto la vista previa como el CSS de impresión
+ */
+function cambiarOrientacion() {
+    const orientacion = document.querySelector('input[name="orientacion"]:checked')?.value || 'portrait';
+    const hoja = document.getElementById('hoja-informe');
+    
+    console.log(`📄 [ORIENTACION] Cambiando a: ${orientacion}`);
+    
+    if (!hoja) return;
+    
+    // Actualizar dimensiones de la vista previa
+    if (orientacion === 'landscape') {
+        // A4 Apaisada: 297mm x 210mm
+        hoja.style.width = '297mm';
+        hoja.style.minHeight = '210mm';
+    } else {
+        // A4 Vertical: 210mm x 297mm
+        hoja.style.width = '210mm';
+        hoja.style.minHeight = '297mm';
+    }
+    
+    // Actualizar regla @page dinámicamente
+    actualizarReglaPaginaImpresion(orientacion);
+    
+    console.log(`✅ [ORIENTACION] Vista previa actualizada a ${orientacion}`);
+}
+
+/**
+ * Actualizar regla @page para impresión
+ * Inyecta CSS dinámico para controlar la orientación de impresión
+ */
+function actualizarReglaPaginaImpresion(orientacion) {
+    // Buscar o crear el elemento <style> para reglas dinámicas
+    let styleElement = document.getElementById('dynamic-print-styles');
+    
+    if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = 'dynamic-print-styles';
+        document.head.appendChild(styleElement);
+    }
+    
+    // Definir regla @page según orientación
+    const cssRule = orientacion === 'landscape'
+        ? `@media print { @page { size: A4 landscape; margin: 10mm 15mm; } }`
+        : `@media print { @page { size: A4 portrait; margin: 15mm 10mm; } }`;
+    
+    styleElement.textContent = cssRule;
+    
+    console.log(`📄 [ORIENTACION] Regla @page actualizada: ${orientacion}`);
+}
+
+// ============================================
 // EXPONER FUNCIONES GLOBALMENTE
 // ============================================
 
@@ -1037,5 +1183,6 @@ window.volverAtras = volverAtras;
 window.cargarPesoArticulo = cargarPesoArticulo;
 window.handleToggleRubro = handleToggleRubro;
 window.handleToggleMes = handleToggleMes;
+window.cambiarOrientacion = cambiarOrientacion;
 
 console.log('✅ [PREVIEW-HISTORIAL] Módulo principal cargado correctamente');

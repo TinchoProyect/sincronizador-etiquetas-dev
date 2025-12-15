@@ -5,6 +5,28 @@
 
 console.log('📋 [FILTRO-RUBROS] Cargando módulo de filtros...');
 
+// ✅ ORDEN DE PRIORIDAD DE RUBROS (Regla de Negocio LAMDA)
+// Nombres exactos según base de datos
+const ORDEN_PRIORIDAD_RUBROS = [
+    'LAMDA-Productos',
+    'Frutos Secos',
+    'Frutas Disecadas',
+    'Semillas y Especias',
+    'Deshidratados',
+    'Almacen',
+    'Dulces'
+];
+
+/**
+ * Obtener orden de prioridad para un rubro
+ * @param {String} rubro - Nombre del rubro
+ * @returns {Number} Orden de prioridad (menor = más prioritario)
+ */
+function obtenerOrdenPrioridad(rubro) {
+    const index = ORDEN_PRIORIDAD_RUBROS.indexOf(rubro);
+    return index >= 0 ? index : 1000;
+}
+
 /**
  * Estado global de filtros y ordenamiento
  */
@@ -34,7 +56,7 @@ function extraerEstructuraRubros(productos, incluirMeses = false) {
 }
 
 /**
- * Extraer estructura plana de rubros
+ * Extraer estructura plana de rubros con orden de prioridad
  */
 function extraerEstructuraPlana(productos) {
     const rubrosSet = new Set();
@@ -44,8 +66,23 @@ function extraerEstructuraPlana(productos) {
         rubrosSet.add(rubro);
     });
     
-    // Convertir a array y ordenar alfabéticamente
-    const rubros = Array.from(rubrosSet).sort();
+    // ✅ ORDENAR SEGÚN PRIORIDAD DE NEGOCIO
+    const rubros = Array.from(rubrosSet).sort((a, b) => {
+        const ordenA = obtenerOrdenPrioridad(a);
+        const ordenB = obtenerOrdenPrioridad(b);
+        
+        // Si ambos tienen prioridad, ordenar por prioridad
+        if (ordenA < 1000 && ordenB < 1000) {
+            return ordenA - ordenB;
+        }
+        
+        // Si solo uno tiene prioridad, ese va primero
+        if (ordenA < 1000) return -1;
+        if (ordenB < 1000) return 1;
+        
+        // Si ninguno tiene prioridad, orden alfabético
+        return a.localeCompare(b);
+    });
     
     // Crear estructura con estado inicial
     const estructura = {};
@@ -57,11 +94,12 @@ function extraerEstructuraPlana(productos) {
         };
     });
     
+    console.log(`📋 [FILTRO-RUBROS] Orden aplicado:`, rubros);
     return estructura;
 }
 
 /**
- * Extraer estructura jerárquica (Mes → Rubros)
+ * Extraer estructura jerárquica (Mes → Rubros) con orden de prioridad
  * ✅ FIX: Agrupa meses antiguos (>6 meses) en "Más de 6 meses"
  */
 function extraerEstructuraJerarquica(productos) {
@@ -118,9 +156,30 @@ function extraerEstructuraJerarquica(productos) {
     const estructuraOrdenada = {};
     
     mesesOrdenados.forEach((mesKey, index) => {
+        // ✅ ORDENAR RUBROS DENTRO DE CADA MES SEGÚN PRIORIDAD
+        const rubros = estructura[mesKey].rubros;
+        const rubrosOrdenados = Object.keys(rubros).sort((a, b) => {
+            const ordenA = obtenerOrdenPrioridad(a);
+            const ordenB = obtenerOrdenPrioridad(b);
+            
+            if (ordenA < 1000 && ordenB < 1000) return ordenA - ordenB;
+            if (ordenA < 1000) return -1;
+            if (ordenB < 1000) return 1;
+            return a.localeCompare(b);
+        });
+        
+        const rubrosReordenados = {};
+        rubrosOrdenados.forEach((rubro, idx) => {
+            rubrosReordenados[rubro] = {
+                ...rubros[rubro],
+                orden: idx
+            };
+        });
+        
         estructuraOrdenada[mesKey] = {
             ...estructura[mesKey],
-            orden: index
+            orden: index,
+            rubros: rubrosReordenados
         };
     });
     

@@ -2055,6 +2055,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
         // Incluimos fecha_entrega para ordenar por la más reciente
         // ✅ NUEVO: Incluir precios actuales de la tabla precios_articulos
         // ✅ ETAPA 2: Agregar rubro, sub_rubro y kilos_unidad para cálculo de precio por kilo
+        // ✅ ETAPA 3: Cálculo inteligente de stock para packs (stock virtual)
         const query = `
             SELECT 
                 pd.articulo as codigo_barras,
@@ -2080,8 +2081,16 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 -- ✅ ETAPA 2: Kilos por unidad para cálculo de precio por kilo
                 COALESCE(src.kilos_unidad, 0) as kilos_unidad,
                 
-                -- ✅ ETAPA 2: Stock consolidado para mostrar disponibilidad
-                COALESCE(src.stock_consolidado, 0) as stock_consolidado,
+                -- ✅ ETAPA 3: Stock inteligente (considera packs)
+                CASE
+                    -- Si es un pack y tiene hijo asignado
+                    WHEN src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 THEN
+                        -- Calculamos cuántos packs podemos armar (StockHijo / Unidades)
+                        FLOOR(COALESCE(src_hijo.stock_consolidado, 0) / src.pack_unidades)
+                    ELSE
+                        -- Si es un artículo normal, usamos su stock directo
+                        COALESCE(src.stock_consolidado, 0)
+                END as stock_consolidado,
                 
                 -- ✅ NUEVO: Lista de precios del cliente (con CAST explícito para evitar error de tipos)
                 CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente
@@ -2092,6 +2101,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(a.nombre)
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            LEFT JOIN public.stock_real_consolidado src_hijo ON src.pack_hijo_codigo = src_hijo.codigo_barras
             WHERE p.id_cliente = $1
               AND p.activo = true
               AND LOWER(p.estado) = 'entregado'
@@ -2273,10 +2283,39 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             gruposArray.map(g => `${g.label}: ${g.productos.length}`).join(', ')
         );
         
+        // Obtener datos del cliente para el encabezado
+        let datosCliente = {
+            cliente_id: id_cliente,
+            nombre: null,
+            apellido: null
+        };
+        
+        try {
+            const clienteQuery = `
+                SELECT cliente_id, nombre, apellido
+                FROM public.clientes
+                WHERE cliente_id = $1
+                LIMIT 1
+            `;
+            const clienteResult = await req.db.query(clienteQuery, [parseInt(id_cliente)]);
+            
+            if (clienteResult.rows.length > 0) {
+                datosCliente = {
+                    cliente_id: clienteResult.rows[0].cliente_id,
+                    nombre: clienteResult.rows[0].nombre,
+                    apellido: clienteResult.rows[0].apellido
+                };
+            }
+        } catch (errorCliente) {
+            console.warn(`⚠️ [PRESUPUESTOS] ${requestId} - No se pudieron cargar datos del cliente`);
+        }
+        
         res.json({
             success: true,
             data: {
-                cliente_id: id_cliente,
+                cliente_id: datosCliente.cliente_id,
+                cliente_nombre: datosCliente.nombre,
+                cliente_apellido: datosCliente.apellido,
                 total_productos_unicos: productosUnicosArray.length,
                 total_registros_originales: result.rows.length,
                 grupos: gruposArray

@@ -370,20 +370,7 @@
             font-weight: 600;
         }
 
-        .precio-verde {
-            color: #27ae60;
-            font-weight: 700;
-        }
-
-        .precio-kilo {
-            color: #9b59b6;
-            font-weight: 600;
-        }
-
-        .iva-naranja {
-            color: #f39c12;
-            font-weight: 600;
-        }
+        /* Clases de color eliminadas - ahora se usan estilos inline específicos */
 
         /* Totales */
         .totales-section {
@@ -478,15 +465,15 @@
                 margin-bottom: 15px;
             }
 
-            /* Grupos de rubro: intentar mantener juntos */
+            /* Grupos de rubro: flujo continuo sin saltos forzados */
             .rubro-grupo {
-                page-break-inside: avoid;
+                page-break-inside: auto;
                 margin-bottom: 20px;
             }
 
-            /* Header de rubro: no separar del contenido */
+            /* Header de rubro: flujo continuo */
             .rubro-header {
-                page-break-after: avoid;
+                page-break-after: auto;
                 margin-bottom: 8px;
             }
 
@@ -536,23 +523,9 @@
                 margin-top: 20px;
             }
 
-            /* Colores: forzar impresión de colores */
-            .precio-verde {
-                color: #27ae60 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-            .precio-kilo {
-                color: #9b59b6 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-            .iva-naranja {
-                color: #f39c12 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
+            /* Colores de precios para impresión */
+            .text-right {
+                font-weight: 600;
             }
 
             /* Fondos alternados en tablas */
@@ -742,11 +715,11 @@
             <div class="config-body">
                 <!-- GRUPO 1: TIPO DE INFORME -->
                 <div class="config-accordion">
-                    <div class="accordion-header" onclick="toggleAccordion('tipo-informe')">
+                    <div class="accordion-header collapsed" onclick="toggleAccordion('tipo-informe')">
                         <span>📋 TIPO DE INFORME</span>
                         <span class="accordion-icon">▼</span>
                     </div>
-                    <div class="accordion-content" id="accordion-tipo-informe">
+                    <div class="accordion-content collapsed" id="accordion-tipo-informe">
                         <div class="config-option">
                             <label>
                                 <input type="radio" name="tipo-informe" value="historico" checked onchange="renderizarInforme()">
@@ -765,14 +738,14 @@
 
                 <!-- GRUPO 2: AGRUPACIONES -->
                 <div class="config-accordion">
-                    <div class="accordion-header" onclick="toggleAccordion('agrupaciones')">
+                    <div class="accordion-header collapsed" onclick="toggleAccordion('agrupaciones')">
                         <span>🗂️ AGRUPACIONES</span>
                         <span class="accordion-icon">▼</span>
                     </div>
-                    <div class="accordion-content" id="accordion-agrupaciones">
+                    <div class="accordion-content collapsed" id="accordion-agrupaciones">
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="agrupar-mes" checked onchange="manejarCambioAgrupacion()">
+                                <input type="checkbox" id="agrupar-mes" onchange="manejarCambioAgrupacion()">
                                 <span>Agrupar por Mes</span>
                             </label>
                         </div>
@@ -784,7 +757,7 @@
                         </div>
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="agrupar-subrubro" disabled onchange="renderizarInforme()">
+                                <input type="checkbox" id="agrupar-subrubro" checked onchange="renderizarInforme()">
                                 <span>Agrupar por Sub-rubro</span>
                             </label>
                             <p class="config-help">Requiere agrupar por Rubro</p>
@@ -794,11 +767,11 @@
 
                 <!-- GRUPO 3: FILTRAR Y ORDENAR RUBROS -->
                 <div class="config-accordion">
-                    <div class="accordion-header" onclick="toggleAccordion('filtros')">
+                    <div class="accordion-header collapsed" onclick="toggleAccordion('filtros')">
                         <span>🎯 FILTRAR Y ORDENAR RUBROS</span>
                         <span class="accordion-icon">▼</span>
                     </div>
-                    <div class="accordion-content" id="accordion-filtros">
+                    <div class="accordion-content collapsed" id="accordion-filtros">
                         <div id="panel-filtros-rubros">
                             <div class="filtro-empty">
                                 Selecciona "Agrupar por Rubro" para activar filtros
@@ -807,27 +780,50 @@
                     </div>
                 </div>
 
-                <!-- GRUPO 4: CAMPOS VISIBLES -->
+                <!-- GRUPO 4: ORIENTACIÓN DE PÁGINA -->
                 <div class="config-accordion">
-                    <div class="accordion-header" onclick="toggleAccordion('campos')">
+                    <div class="accordion-header collapsed" onclick="toggleAccordion('orientacion')">
+                        <span>📄 ORIENTACIÓN DE PÁGINA</span>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-content collapsed" id="accordion-orientacion">
+                        <div class="config-option">
+                            <label>
+                                <input type="radio" name="orientacion" value="portrait" checked onchange="cambiarOrientacion()">
+                                <span>📄 Vertical (Portrait)</span>
+                            </label>
+                        </div>
+                        <div class="config-option">
+                            <label>
+                                <input type="radio" name="orientacion" value="landscape" onchange="cambiarOrientacion()">
+                                <span>📐 Apaisada (Landscape)</span>
+                            </label>
+                            <p class="config-help">Recomendado para muchas columnas</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GRUPO 5: CAMPOS VISIBLES -->
+                <div class="config-accordion">
+                    <div class="accordion-header collapsed" onclick="toggleAccordion('campos')">
                         <span>👁️ CAMPOS VISIBLES</span>
                         <span class="accordion-icon">▼</span>
                     </div>
-                    <div class="accordion-content" id="accordion-campos">
+                    <div class="accordion-content collapsed" id="accordion-campos">
                         <p style="font-size: 0.85em; color: #666; margin-bottom: 10px; font-style: italic;">
                             Descripción siempre visible
                         </p>
                         
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="col-cantidad" checked onchange="renderizarInforme()">
+                                <input type="checkbox" id="col-cantidad" onchange="renderizarInforme()">
                                 <span>Cantidad</span>
                             </label>
                         </div>
                         
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="col-stock-visual" onchange="renderizarInforme()">
+                                <input type="checkbox" id="col-stock-visual" checked onchange="renderizarInforme()">
                                 <span>Stock (Hay/No hay)</span>
                             </label>
                         </div>
@@ -841,7 +837,7 @@
                         
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="col-alicuota-iva" onchange="renderizarInforme()">
+                                <input type="checkbox" id="col-alicuota-iva" checked onchange="renderizarInforme()">
                                 <span>% Alícuota IVA</span>
                             </label>
                         </div>
@@ -855,14 +851,14 @@
                         
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="col-precio-con-iva" checked onchange="renderizarInforme()">
+                                <input type="checkbox" id="col-precio-con-iva" onchange="renderizarInforme()">
                                 <span>Precio Unit. (Con IVA)</span>
                             </label>
                         </div>
                         
                         <div class="config-option">
                             <label>
-                                <input type="checkbox" id="col-precio-kg-sin-iva" onchange="renderizarInforme()">
+                                <input type="checkbox" id="col-precio-kg-sin-iva" checked onchange="renderizarInforme()">
                                 <span>Precio x Kg (Sin IVA)</span>
                             </label>
                         </div>
@@ -872,6 +868,14 @@
                                 <input type="checkbox" id="col-precio-kg-con-iva" checked onchange="renderizarInforme()">
                                 <span>Precio x Kg (Con IVA)</span>
                             </label>
+                        </div>
+                        
+                        <div class="config-option">
+                            <label>
+                                <input type="checkbox" id="col-descuento-5-kg" onchange="renderizarInforme()">
+                                <span>5% U/K c/I</span>
+                            </label>
+                            <p class="config-help">5% descuento sobre precio x Kg/u con IVA</p>
                         </div>
                         
                         <div class="config-option">
