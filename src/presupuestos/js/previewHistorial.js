@@ -299,6 +299,7 @@ function calcularValoresProducto(producto) {
     const ivaAlicuota = parseFloat(producto.iva_actual) || 0;
     const kilos = parseFloat(producto.kilos_unidad) || 0;
     const stock = parseFloat(producto.stock_consolidado) || 0;
+    const esProducible = producto.es_producible === true;
     
     const precioConIva = precioBase;
     const precioSinIva = precioBase / (1 + ivaAlicuota / 100);
@@ -311,6 +312,25 @@ function calcularValoresProducto(producto) {
     // ✅ NUEVO: Precio con 5% de descuento sobre precio x Kg/u con IVA
     const descuento5PorKg = kilos > 0 ? precioKgConIva * 0.95 : 0;
     
+    // ✅ NUEVO: Stock Inteligente - Determinar visualización según stock y producibilidad
+    let stockVisual;
+    let stockColor;
+    let stockTooltip;
+    
+    if (stock > 0) {
+        stockVisual = '✅';
+        stockColor = '#27ae60';
+        stockTooltip = 'En stock';
+    } else if (esProducible) {
+        stockVisual = '🛠️ Req. Prod.';
+        stockColor = '#d35400';
+        stockTooltip = 'Sin stock - Ingredientes disponibles para producir';
+    } else {
+        stockVisual = 's/Stk-Consultar';
+        stockColor = '#e74c3c';
+        stockTooltip = 'Sin stock';
+    }
+    
     return {
         precioConIva,
         precioSinIva,
@@ -322,7 +342,9 @@ function calcularValoresProducto(producto) {
         ivaAlicuota,
         kilos,
         stock,
-        stockVisual: stock > 0 ? '✅' : 's/Stk-Consultar'
+        stockVisual,
+        stockColor,
+        stockTooltip
     };
 }
 
@@ -336,7 +358,7 @@ function generarCeldaProducto(columnaId, producto, valores) {
         case 'cantidad':
             return `<td class="${clase}">${parseFloat(producto.cantidad || 0).toFixed(1)}</td>`;
         case 'stockVisual':
-            return `<td class="${clase}" style="color: ${valores.stock > 0 ? '#27ae60' : '#e74c3c'}; font-weight: 600;">${valores.stockVisual}</td>`;
+            return `<td class="${clase}" style="color: ${valores.stockColor}; font-weight: 600;" title="${valores.stockTooltip}">${valores.stockVisual}</td>`;
         case 'stockNumerico':
             return `<td class="${clase}">${Math.floor(valores.stock)}</td>`;
         case 'alicuotaIva':

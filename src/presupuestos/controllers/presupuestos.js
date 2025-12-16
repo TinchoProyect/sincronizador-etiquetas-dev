@@ -2097,7 +2097,36 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 COALESCE(src.pack_unidades, 0) as pack_unidades,
                 
                 -- ✅ NUEVO: Lista de precios del cliente (con CAST explícito para evitar error de tipos)
-                CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente
+                CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente,
+                
+                -- ✅ NUEVO: Stock Inteligente - Verificar si es producible cuando stock <= 0
+                CASE
+                    WHEN COALESCE(src.stock_consolidado, 0) > 0 THEN false
+                    WHEN COALESCE(src.stock_consolidado, 0) <= 0 THEN
+                        -- Verificar si tiene receta y todos los ingredientes están disponibles
+                        COALESCE(
+                            (
+                                SELECT 
+                                    CASE 
+                                        WHEN COUNT(ri.id) = 0 THEN false
+                                        WHEN COUNT(ri.id) = COUNT(
+                                            CASE 
+                                                WHEN COALESCE(ing.stock_actual, 0) >= ri.cantidad THEN 1 
+                                            END
+                                        ) THEN true
+                                        ELSE false
+                                    END
+                                FROM recetas r
+                                LEFT JOIN receta_ingredientes ri ON ri.receta_id = r.id
+                                LEFT JOIN ingredientes ing ON ing.id = ri.ingrediente_id
+                                WHERE r.articulo_numero = a.numero
+                                GROUP BY r.id
+                                LIMIT 1
+                            ),
+                            false
+                        )
+                    ELSE false
+                END as es_producible
                 
             FROM public.presupuestos p
             INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
@@ -2252,7 +2281,10 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 
                 // ✅ NUEVO: Datos de PACK para visualización en frontend
                 es_pack: producto.es_pack === true || producto.es_pack === 't',
-                pack_unidades: parseInt(producto.pack_unidades || 0)
+                pack_unidades: parseInt(producto.pack_unidades || 0),
+                
+                // ✅ NUEVO: Stock Inteligente - Indicador de producibilidad
+                es_producible: producto.es_producible === true || producto.es_producible === 't'
             };
             
             if (mesesAtras === 0) {
