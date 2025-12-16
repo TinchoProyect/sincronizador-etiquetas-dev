@@ -2092,6 +2092,10 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                         COALESCE(src.stock_consolidado, 0)
                 END as stock_consolidado,
                 
+                -- ✅ NUEVO: Datos de PACK para visualización en historial de precios
+                COALESCE(src.es_pack, false) as es_pack,
+                COALESCE(src.pack_unidades, 0) as pack_unidades,
+                
                 -- ✅ NUEVO: Lista de precios del cliente (con CAST explícito para evitar error de tipos)
                 CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente
                 
@@ -2244,7 +2248,11 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 precio_por_kilo: precioPorKilo,
                 
                 // ✅ ETAPA 2: Stock consolidado para visualización
-                stock_consolidado: parseFloat(producto.stock_consolidado || 0)
+                stock_consolidado: parseFloat(producto.stock_consolidado || 0),
+                
+                // ✅ NUEVO: Datos de PACK para visualización en frontend
+                es_pack: producto.es_pack === true || producto.es_pack === 't',
+                pack_unidades: parseInt(producto.pack_unidades || 0)
             };
             
             if (mesesAtras === 0) {

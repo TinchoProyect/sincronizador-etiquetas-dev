@@ -707,6 +707,50 @@ function renderizarTablaProductos(titulo, productos, columnasActivas, esSubRubro
         });
         html += '</tr>';
         
+        // ✅ NUEVO: Si es un PACK, agregar sub-fila con precio UNITARIO alineado a columnas $/Kg/u
+        if (producto.es_pack && producto.pack_unidades > 0) {
+            const pesoUnidad = valores.kilos > 0 ? (valores.kilos / producto.pack_unidades) : 0;
+            const precioUnidadConIva = valores.precioConIva / producto.pack_unidades;
+            const precioUnidadSinIva = valores.precioSinIva / producto.pack_unidades;
+            const precioUnidadConDescuento = precioUnidadConIva * 0.95; // 5% de descuento
+            
+            html += '<tr class="pack-info-row" style="background-color: #f9f9f9;">';
+            
+            columnasActivas.forEach(col => {
+                const alineacion = col.align;
+                const clase = `text-${alineacion}`;
+                
+                if (col.id === 'descripcion') {
+                    // Mostrar etiqueta descriptiva con indentación y peso formateado
+                    let pesoTexto = '';
+                    if (pesoUnidad > 0) {
+                        if (pesoUnidad >= 1) {
+                            // 1 Kg o más: mostrar en Kg
+                            pesoTexto = ` (${parseFloat(pesoUnidad.toFixed(3))} Kg)`;
+                        } else {
+                            // Menos de 1 Kg: mostrar en gramos
+                            pesoTexto = ` (${Math.round(pesoUnidad * 1000)} g)`;
+                        }
+                    }
+                    html += `<td style="padding-left: 30px; font-size: 0.9em; color: #546e7a; font-style: italic;">↳ Precio x Unidad${pesoTexto}:</td>`;
+                } else if (col.id === 'precioKgSinIva') {
+                    // Precio unitario SIN IVA (alineado con columna $/Kg/u s/I)
+                    html += `<td class="${clase}" style="font-weight: 700; color: #666; font-size: 0.9em;">${formatearPrecio(precioUnidadSinIva)}</td>`;
+                } else if (col.id === 'precioKgConIva') {
+                    // Precio unitario CON IVA (alineado con columna $/Kg/u c/I)
+                    html += `<td class="${clase}" style="font-weight: 700; color: #17a2b8; font-size: 0.9em;">${formatearPrecio(precioUnidadConIva)}</td>`;
+                } else if (col.id === 'descuento5Kg') {
+                    // Precio unitario CON 5% de descuento (alineado con columna 5% U/K c/I)
+                    html += `<td class="${clase}" style="font-weight: 700; color: #e67e22; font-size: 0.9em;">${formatearPrecio(precioUnidadConDescuento)}</td>`;
+                } else {
+                    // Celda vacía para otras columnas
+                    html += '<td></td>';
+                }
+            });
+            
+            html += '</tr>';
+        }
+        
         totales.productos++;
         totales.preciosConIva += valores.precioConIva;
         totales.preciosSinIva += valores.precioSinIva;
@@ -767,6 +811,50 @@ function renderizarTablaConSubRubros(tituloRubro, productosPorSubRubro, columnas
                 html += generarCeldaProducto(col.id, producto, valores);
             });
             html += '</tr>';
+            
+            // ✅ NUEVO: Si es un PACK, agregar sub-fila con precio UNITARIO alineado a columnas $/Kg/u
+            if (producto.es_pack && producto.pack_unidades > 0) {
+                const pesoUnidad = valores.kilos > 0 ? (valores.kilos / producto.pack_unidades) : 0;
+                const precioUnidadConIva = valores.precioConIva / producto.pack_unidades;
+                const precioUnidadSinIva = valores.precioSinIva / producto.pack_unidades;
+                const precioUnidadConDescuento = precioUnidadConIva * 0.95; // 5% de descuento
+                
+                html += '<tr class="pack-info-row" style="background-color: #f9f9f9;">';
+                
+                columnasActivas.forEach(col => {
+                    const alineacion = col.align;
+                    const clase = `text-${alineacion}`;
+                    
+                    if (col.id === 'descripcion') {
+                        // Mostrar etiqueta descriptiva con indentación y peso formateado
+                        let pesoTexto = '';
+                        if (pesoUnidad > 0) {
+                            if (pesoUnidad >= 1) {
+                                // 1 Kg o más: mostrar en Kg
+                                pesoTexto = ` (${parseFloat(pesoUnidad.toFixed(3))} Kg)`;
+                            } else {
+                                // Menos de 1 Kg: mostrar en gramos
+                                pesoTexto = ` (${Math.round(pesoUnidad * 1000)} g)`;
+                            }
+                        }
+                        html += `<td style="padding-left: 30px; font-size: 0.9em; color: #546e7a; font-style: italic;">↳ Precio x Unidad${pesoTexto}:</td>`;
+                    } else if (col.id === 'precioKgSinIva') {
+                        // Precio unitario SIN IVA (alineado con columna $/Kg/u s/I)
+                        html += `<td class="${clase}" style="font-weight: 700; color: #666; font-size: 0.9em;">${formatearPrecio(precioUnidadSinIva)}</td>`;
+                    } else if (col.id === 'precioKgConIva') {
+                        // Precio unitario CON IVA (alineado con columna $/Kg/u c/I)
+                        html += `<td class="${clase}" style="font-weight: 700; color: #17a2b8; font-size: 0.9em;">${formatearPrecio(precioUnidadConIva)}</td>`;
+                    } else if (col.id === 'descuento5Kg') {
+                        // Precio unitario CON 5% de descuento (alineado con columna 5% U/K c/I)
+                        html += `<td class="${clase}" style="font-weight: 700; color: #e67e22; font-size: 0.9em;">${formatearPrecio(precioUnidadConDescuento)}</td>`;
+                    } else {
+                        // Celda vacía para otras columnas
+                        html += '<td></td>';
+                    }
+                });
+                
+                html += '</tr>';
+            }
             
             totales.productos++;
             totales.preciosConIva += valores.precioConIva;
