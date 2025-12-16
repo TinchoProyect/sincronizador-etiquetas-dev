@@ -1017,7 +1017,7 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
             });
         }
         
-        const secuenciasValidas = ['Imprimir', 'Imprimir_Modificado', 'Armar_Pedido', 'Pedido_Listo'];
+        const secuenciasValidas = ['Imprimir', 'Imprimir_Modificado', 'Armar_Pedido', 'Pedido_Listo', 'Retira_Deposito'];
         if (!nueva_secuencia || !secuenciasValidas.includes(nueva_secuencia)) {
             return res.status(400).json({
                 success: false,

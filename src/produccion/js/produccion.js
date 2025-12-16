@@ -198,9 +198,10 @@ async function cargarPedidosPorCliente() {
  */
 function agruparPresupuestosPorSecuencia(clientes) {
     const grupos = {
-        imprimir: [],      // Imprimir + Imprimir_Modificado
-        armar_pedido: [],  // Armar_Pedido
-        pedido_listo: []   // Pedido_Listo
+        imprimir: [],        // Imprimir + Imprimir_Modificado
+        armar_pedido: [],    // Armar_Pedido
+        pedido_listo: [],    // Pedido_Listo
+        retira_deposito: []  // NUEVO: Retira_Deposito
     };
     
     clientes.forEach(cliente => {
@@ -208,10 +209,12 @@ function agruparPresupuestosPorSecuencia(clientes) {
         const clienteImprimir = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
         const clienteArmar = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
         const clienteListo = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
+        const clienteRetira = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 }; // NUEVO
         
         const presupuestosImprimir = new Set();
         const presupuestosArmar = new Set();
         const presupuestosListo = new Set();
+        const presupuestosRetira = new Set(); // NUEVO
         
         cliente.articulos.forEach(articulo => {
             const secuencia = (articulo.secuencia || 'Imprimir').trim();
@@ -225,6 +228,9 @@ function agruparPresupuestosPorSecuencia(clientes) {
             } else if (secuencia === 'Pedido_Listo') {
                 clienteListo.articulos.push(articulo);
                 presupuestosListo.add(articulo.presupuesto_id);
+            } else if (secuencia === 'Retira_Deposito') { // NUEVO
+                clienteRetira.articulos.push(articulo);
+                presupuestosRetira.add(articulo.presupuesto_id);
             } else {
                 // Fallback: si no reconoce la secuencia, va a imprimir
                 console.log(`⚠️ Secuencia no reconocida: "${secuencia}", usando Imprimir como fallback`);
@@ -249,12 +255,18 @@ function agruparPresupuestosPorSecuencia(clientes) {
             clienteListo.total_presupuestos = presupuestosListo.size;
             grupos.pedido_listo.push(clienteListo);
         }
+        if (clienteRetira.articulos.length > 0) { // NUEVO
+            clienteRetira.total_articulos = clienteRetira.articulos.length;
+            clienteRetira.total_presupuestos = presupuestosRetira.size;
+            grupos.retira_deposito.push(clienteRetira);
+        }
     });
     
     console.log('📊 [SECUENCIA] Agrupación completada:', {
         imprimir: grupos.imprimir.length,
         armar_pedido: grupos.armar_pedido.length,
-        pedido_listo: grupos.pedido_listo.length
+        pedido_listo: grupos.pedido_listo.length,
+        retira_deposito: grupos.retira_deposito.length
     });
     
     return grupos;
@@ -267,18 +279,21 @@ function actualizarContadoresSecuencia(grupos) {
     const contadorImprimir = document.getElementById('contador-imprimir');
     const contadorArmar = document.getElementById('contador-armar');
     const contadorListo = document.getElementById('contador-listo');
+    const contadorRetira = document.getElementById('contador-retira'); // NUEVO
     
     // Contar total de presupuestos en cada grupo
     const totalImprimir = grupos.imprimir.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
     const totalArmar = grupos.armar_pedido.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
     const totalListo = grupos.pedido_listo.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
+    const totalRetira = grupos.retira_deposito ? grupos.retira_deposito.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0) : 0; // NUEVO
     
     // Mostrar solo el número sin paréntesis
     if (contadorImprimir) contadorImprimir.textContent = totalImprimir;
     if (contadorArmar) contadorArmar.textContent = totalArmar;
     if (contadorListo) contadorListo.textContent = totalListo;
+    if (contadorRetira) contadorRetira.textContent = totalRetira; // NUEVO
     
-    console.log('🔢 [CONTADORES] Actualizados:', { totalImprimir, totalArmar, totalListo });
+    console.log('🔢 [CONTADORES] Actualizados:', { totalImprimir, totalArmar, totalListo, totalRetira });
 }
 
 /**
@@ -450,6 +465,21 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 botonesPresupuesto.appendChild(btnVerificarPresup);
             }
             
+            // NUEVO: Botón "Retira Depósito" (solo en acordeón "Pedido Listo")
+            if (containerId === 'pedidos-listo') {
+                const btnRetiraDeposito = document.createElement('button');
+                btnRetiraDeposito.textContent = '🏪 Retira Depósito';
+                btnRetiraDeposito.className = 'admin-button';
+                btnRetiraDeposito.style.padding = '6px 12px';
+                btnRetiraDeposito.style.fontSize = '12px';
+                btnRetiraDeposito.style.background = '#17a2b8';
+                btnRetiraDeposito.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await marcarComoRetiraDeposito(presupuesto.presupuesto_id, cliente.cliente_id);
+                });
+                botonesPresupuesto.appendChild(btnRetiraDeposito);
+            }
+            
             const presupuestoId = `presupuesto-${containerId}-${cliente.cliente_id}-${idx}`;
             clickeableDiv.addEventListener('click', () => {
                 const contenidoPresup = document.getElementById(presupuestoId);
@@ -605,6 +635,7 @@ function renderPedidosCliente(pedidos) {
     renderizarGrupoSecuencia('pedidos-imprimir', grupos.imprimir, 'Imprimir / Imprimir Modificado');
     renderizarGrupoSecuencia('pedidos-armar', grupos.armar_pedido, 'Armar Pedido');
     renderizarGrupoSecuencia('pedidos-listo', grupos.pedido_listo, 'Pedido Listo');
+    renderizarGrupoSecuencia('pedidos-retira', grupos.retira_deposito, 'Retira por Depósito'); // NUEVO
     
     // Actualizar contadores en títulos
     actualizarContadoresSecuencia(grupos);
@@ -1983,3 +2014,73 @@ document.addEventListener('DOMContentLoaded', () => {
 window.cargarPresupuestosStandBy = cargarPresupuestosStandBy;
 
 console.log('✅ [STANDBY] Módulo de presupuestos sin confirmar cargado');
+
+// ==========================================
+// FUNCIONES PARA "RETIRA POR DEPÓSITO"
+// ==========================================
+
+/**
+ * Marca un presupuesto como "Retira por Depósito"
+ * Cambia la secuencia de "Pedido_Listo" a "Retira_Deposito"
+ * @param {string} presupuestoId - ID del presupuesto a marcar
+ * @param {number} clienteId - ID del cliente (para expandir acordeón después)
+ */
+async function marcarComoRetiraDeposito(presupuestoId, clienteId) {
+    console.log(`🏪 [RETIRA-DEPOSITO] Marcando presupuesto ${presupuestoId} como "Retira por Depósito"`);
+    
+    // Confirmar acción con el usuario
+    if (!confirm('¿Marcar este presupuesto como "Retira por Depósito"?')) {
+        console.log('🏪 [RETIRA-DEPOSITO] Acción cancelada por el usuario');
+        return;
+    }
+    
+    try {
+        // Llamar al endpoint para actualizar secuencia
+        const response = await fetch(`${base}/actualizar-secuencia`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presupuestos_ids: [presupuestoId],
+                nueva_secuencia: 'Retira_Deposito'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            console.log(`✅ [RETIRA-DEPOSITO] Presupuesto ${presupuestoId} marcado correctamente`);
+            
+            // Mostrar mensaje de éxito
+            mostrarToast('✅ Presupuesto marcado como "Retira por Depósito"', 'success');
+            
+            // Recargar datos para reflejar el cambio
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+                
+                // Expandir sección "Retira por Depósito" después de recargar
+                setTimeout(() => {
+                    console.log(`🔍 [RETIRA-DEPOSITO] Expandiendo sección "Retira por Depósito"...`);
+                    forzarExpandirSeccion('pedidos-retira-section');
+                    
+                    // Expandir el cliente DENTRO de la sección "Retira por Depósito"
+                    setTimeout(() => {
+                        abrirAcordeonEnSeccion(clienteId, 'pedidos-retira');
+                    }, 500);
+                }, 800);
+            }, 1000);
+        } else {
+            console.error('❌ [RETIRA-DEPOSITO] Error al actualizar secuencia:', data.error);
+            mostrarToast(`❌ Error: ${data.error || 'No se pudo actualizar el presupuesto'}`, 'error');
+        }
+    } catch (error) {
+        console.error('❌ [RETIRA-DEPOSITO] Error al marcar como retira depósito:', error);
+        mostrarToast('❌ Error al actualizar el presupuesto. Intente nuevamente.', 'error');
+    }
+}
+
+// Exponer función globalmente
+window.marcarComoRetiraDeposito = marcarComoRetiraDeposito;
+
+console.log('✅ [RETIRA-DEPOSITO] Módulo de "Retira por Depósito" cargado');

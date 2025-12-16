@@ -861,7 +861,7 @@ function generarHeaderInforme() {
             </div>
             
             <h1 style="font-size: 1.3em; font-weight: 600; color: #34495e; margin: 15px 0 10px 0; text-align: center;">
-                Lista para actualizar precios
+                Lista personalizada
             </h1>
             
             <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 15px; margin: 15px 0 15px 0;">
