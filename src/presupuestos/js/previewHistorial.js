@@ -295,21 +295,24 @@ async function cargarDatos(clienteId) {
 // ============================================
 
 function calcularValoresProducto(producto) {
-    const precioBase = parseFloat(producto.precio_actual) || 0;
+    // ✅ CORRECCIÓN CRÍTICA: precio_actual del backend es el PRECIO NETO (sin IVA)
+    const precioNeto = parseFloat(producto.precio_actual) || 0;  // ← NETO desde BD
     const ivaAlicuota = parseFloat(producto.iva_actual) || 0;
     const kilos = parseFloat(producto.kilos_unidad) || 0;
     const stock = parseFloat(producto.stock_consolidado) || 0;
     const esProducible = producto.es_producible === true;
     
-    const precioConIva = precioBase;
-    const precioSinIva = precioBase / (1 + ivaAlicuota / 100);
-    const valorIva = precioConIva - precioSinIva;
+    // ✅ CÁLCULO CORRECTO: Aplicar IVA sobre el neto (igual que presupuestosCreate.js)
+    const precioSinIva = precioNeto;  // ← El neto ES el precio sin IVA
+    const precioConIva = precioNeto * (1 + ivaAlicuota / 100);  // ← Aplicar IVA
+    const valorIva = precioConIva - precioSinIva;  // ← Diferencia = monto del IVA
     
-    const precioKgConIva = kilos > 0 ? precioConIva / kilos : 0;
+    // ✅ CÁLCULO CORRECTO: Precios por Kg/Unidad
     const precioKgSinIva = kilos > 0 ? precioSinIva / kilos : 0;
+    const precioKgConIva = kilos > 0 ? precioConIva / kilos : 0;
     const valorIvaKg = kilos > 0 ? valorIva / kilos : 0;
     
-    // ✅ NUEVO: Precio con 5% de descuento sobre precio x Kg/u con IVA
+    // ✅ CORRECTO: Precio con 5% de descuento sobre precio x Kg/u con IVA
     const descuento5PorKg = kilos > 0 ? precioKgConIva * 0.95 : 0;
     
     // ✅ NUEVO: Stock Inteligente - Determinar visualización según stock y producibilidad
