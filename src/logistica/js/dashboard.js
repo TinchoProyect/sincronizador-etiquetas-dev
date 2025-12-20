@@ -158,6 +158,10 @@ function renderizarPedidos() {
         const tieneDomicilio = pedido.id_domicilio_entrega && pedido.domicilio_direccion;
         const pedidoJson = JSON.stringify(pedido).replace(/'/g, "\\'");
         
+        // Fallbacks para edge cases (QA requirement)
+        const clienteId = pedido.cliente_id || 'S/N';
+        const clienteNombre = pedido.cliente_nombre || 'Cliente Desconocido';
+        
         return `
             <div class="pedido-card" 
                  draggable="true" 
@@ -172,14 +176,20 @@ function renderizarPedidos() {
                      title="${tieneDomicilio ? 'Tiene domicilio asignado' : 'Sin domicilio asignado'}">
                 </div>
                 
+                <!-- NUEVA JERARQUÍA: Cliente primero -->
                 <div class="pedido-header">
-                    <span class="pedido-numero">#${pedido.id}</span>
+                    <span class="pedido-cliente-id" style="font-size: 1.1rem; font-weight: 600; color: #1e40af;">
+                        👤 Cliente #${clienteId}
+                    </span>
                     <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
                         ${pedido.estado_logistico || 'PENDIENTE'}
                     </span>
                 </div>
-                <div class="pedido-cliente">
-                    👤 ${pedido.cliente_nombre || 'Cliente sin nombre'}
+                <div class="pedido-cliente-nombre" style="font-weight: 600; margin-top: 0.25rem; color: #1e293b;">
+                    ${clienteNombre}
+                </div>
+                <div class="pedido-numero-secundario" style="font-size: 0.875rem; color: #64748b; margin-top: 0.25rem;">
+                    Pedido #${pedido.id}
                 </div>
                 <div class="pedido-direccion">
                     📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}
@@ -374,7 +384,13 @@ function renderizarTarjetaRuta(ruta) {
                  id="pedidos-ruta-${rutaId}" 
                  data-ruta-id="${rutaId}"
                  style="margin-top: 0.75rem; font-size: 0.75rem;">
-                ${ruta.presupuestos.map((p, index) => `
+                ${ruta.presupuestos.map((p, index) => {
+                    // Fallbacks para edge cases (QA requirement)
+                    // NOTA: El backend retorna 'id_cliente' (no 'cliente_id')
+                    const clienteId = p.id_cliente || p.cliente_id || 'S/N';
+                    const clienteNombre = p.cliente_nombre || 'Cliente Desconocido';
+                    
+                    return `
                     <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''}" 
                          data-presupuesto-id="${p.id}"
                          draggable="${esArmando}"
@@ -386,11 +402,11 @@ function renderizarTarjetaRuta(ruta) {
                         ${esArmando ? '<span style="color: #94a3b8; cursor: move;">⋮⋮</span>' : ''}
                         <span style="font-weight: bold; color: #2563eb; min-width: 1.5rem;">${index + 1}.</span>
                         <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                #${p.id} - ${p.cliente_nombre || 'Sin nombre'}
+                            <div style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                👤 #${clienteId} - ${clienteNombre}
                             </div>
                             <div style="color: #64748b; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                📍 ${p.domicilio_direccion || 'Sin dirección'}
+                                Pedido #${p.id} • 📍 ${p.domicilio_direccion || 'Sin dirección'}
                             </div>
                         </div>
                         ${esArmando ? `
@@ -402,7 +418,8 @@ function renderizarTarjetaRuta(ruta) {
                             </button>
                         ` : ''}
                     </div>
-                `).join('')}
+                `;
+                }).join('')}
             </div>
         `;
     }
@@ -764,14 +781,20 @@ async function verDetallesRuta(rutaId) {
             if (infoDiv && detallesDiv) {
                 infoDiv.style.display = 'block';
                 
-                // Generar HTML con lista de pedidos
+                // Generar HTML con lista de pedidos (NUEVA JERARQUÍA: Cliente primero)
                 let pedidosHTML = '';
                 if (ruta.presupuestos && ruta.presupuestos.length > 0) {
                     pedidosHTML = '<div style="margin-top: 1rem;"><strong>Pedidos en ruta:</strong><ol style="margin: 0.5rem 0; padding-left: 1.5rem;">';
                     ruta.presupuestos.forEach((p, index) => {
+                        // Fallbacks para edge cases (QA requirement)
+                        // NOTA: El backend retorna 'id_cliente' (no 'cliente_id')
+                        const clienteId = p.id_cliente || p.cliente_id || 'S/N';
+                        const clienteNombre = p.cliente_nombre || 'Cliente Desconocido';
+                        
                         pedidosHTML += `
                             <li style="margin: 0.25rem 0;">
-                                <strong>#${p.id}</strong> - ${p.cliente_nombre || 'Sin nombre'}
+                                <strong style="color: #1e40af;">👤 Cliente #${clienteId}</strong> - ${clienteNombre}
+                                <br><small style="color: #64748b;">Pedido #${p.id}</small>
                                 <br><small style="color: #64748b;">📍 ${p.domicilio_direccion || 'Sin dirección'}</small>
                             </li>
                         `;

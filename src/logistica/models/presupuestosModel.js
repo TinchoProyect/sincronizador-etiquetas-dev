@@ -163,8 +163,8 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             p.estado_logistico,
             p.orden_entrega,
             
-            -- Datos del cliente
-            c.id as cliente_id,
+            -- Datos del cliente (cliente_id es el código visual, no el PK)
+            c.cliente_id,
             c.nombre_completo as cliente_nombre,
             c.telefono as cliente_telefono,
             
@@ -176,7 +176,10 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             cd.longitud as domicilio_longitud
             
         FROM presupuestos p
-        INNER JOIN clientes c ON p.id_cliente = c.id
+        
+        -- JOIN con clientes: conversión explícita de tipos (cliente_id es INTEGER, id_cliente es TEXT)
+        INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
+        
         LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
         
         WHERE p.id_ruta = $1
