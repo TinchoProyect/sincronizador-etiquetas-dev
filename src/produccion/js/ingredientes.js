@@ -230,250 +230,168 @@ function mostrarMensaje(mensaje, tipo = 'error') {
     }, 3000);
 }
 
-// Función para inicializar los filtros de categorías, tipo y stock
+// Función para inicializar los filtros de categorías, tipo y stock (ADAPTADA AL NUEVO LAYOUT)
 function inicializarFiltros(ingredientes) {
-    const filtrosContainer = document.getElementById('filtros-categorias');
-    if (!filtrosContainer) return;
-
-    console.log('🔧 Inicializando filtros con nuevo comportamiento: filtros desactivados por defecto');
-
-    // ✅ Evitar duplicados: limpiar el contenedor antes de agregar elementos
-    filtrosContainer.innerHTML = '';
-
-    // Crear contenedor para botones globales
-    const botonesGlobales = document.createElement('div');
-    botonesGlobales.className = 'botones-globales';
-
-    // Botón "Mostrar Todos"
-    const btnTodos = document.createElement('button');
-    btnTodos.textContent = 'Mostrar Todos';
-    btnTodos.className = 'btn-filtro';
-    botonesGlobales.appendChild(btnTodos);
-
-    // Botón "Ocultar Todos"
-    const btnOcultar = document.createElement('button');
-    btnOcultar.textContent = 'Ocultar Todos';
-    btnOcultar.className = 'btn-filtro';
-    botonesGlobales.appendChild(btnOcultar);
-
-    // Insertar botones globales
-    filtrosContainer.appendChild(botonesGlobales);
-
-    // ===== FILTROS POR CATEGORÍA =====
-    const categoriasTitulo = document.createElement('h4');
-    categoriasTitulo.textContent = 'Filtrar por Categoría:';
-    categoriasTitulo.style.cssText = 'margin: 15px 0 5px 0; font-size: 14px; color: #495057;';
-    filtrosContainer.appendChild(categoriasTitulo);
-
-    // Contenedor para botones de categoría
-    const categoriasBotones = document.createElement('div');
-    categoriasBotones.className = 'categorias-botones';
-    filtrosContainer.appendChild(categoriasBotones);
-
-    // Obtener categorías únicas y ordenadas
-    const categorias = [...new Set(ingredientes.map(ing => ing.categoria))]
-        .filter(Boolean)
-        .sort();
-
-    // Crear botones de categoría - INICIALMENTE DESACTIVADOS
-    const botonesCategorias = categorias.map(cat => {
-        const btn = document.createElement('button');
-        btn.textContent = cat;
-        btn.className = 'btn-filtro'; // Sin 'activo' - inician desactivados
-        categoriasBotones.appendChild(btn);
-        return btn;
-    });
-
-    // ===== FILTROS POR TIPO DE INGREDIENTE =====
-    const tipoTitulo = document.createElement('h4');
-    tipoTitulo.textContent = 'Filtrar por Tipo:';
-    tipoTitulo.style.cssText = 'margin: 15px 0 5px 0; font-size: 14px; color: #495057;';
-    filtrosContainer.appendChild(tipoTitulo);
-
-    const tiposBotones = document.createElement('div');
-    tiposBotones.className = 'tipos-botones';
-    tiposBotones.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;';
-    filtrosContainer.appendChild(tiposBotones);
-
-    // Crear botones de tipo
-    const btnTipoSimple = document.createElement('button');
-    btnTipoSimple.textContent = 'Ingrediente Simple';
-    btnTipoSimple.className = 'btn-filtro';
-    btnTipoSimple.dataset.tipo = 'simple';
-    tiposBotones.appendChild(btnTipoSimple);
-
-    const btnTipoMix = document.createElement('button');
-    btnTipoMix.textContent = 'Ingrediente Mix';
-    btnTipoMix.className = 'btn-filtro';
-    btnTipoMix.dataset.tipo = 'mix';
-    tiposBotones.appendChild(btnTipoMix);
-
-    const botonesTipo = [btnTipoSimple, btnTipoMix];
-
-    // ===== FILTROS POR STOCK =====
-    const stockTitulo = document.createElement('h4');
-    stockTitulo.textContent = 'Filtrar por Stock:';
-    stockTitulo.style.cssText = 'margin: 15px 0 5px 0; font-size: 14px; color: #495057;';
-    filtrosContainer.appendChild(stockTitulo);
-
-    const stockBotones = document.createElement('div');
-    stockBotones.className = 'stock-botones';
-    stockBotones.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;';
-    filtrosContainer.appendChild(stockBotones);
-
-    // Crear botones de stock
-    const btnConStock = document.createElement('button');
-    btnConStock.textContent = 'Con Stock';
-    btnConStock.className = 'btn-filtro';
-    btnConStock.dataset.stock = 'con-stock';
-    stockBotones.appendChild(btnConStock);
-
-    const btnSinStock = document.createElement('button');
-    btnSinStock.textContent = 'Sin Stock';
-    btnSinStock.className = 'btn-filtro';
-    btnSinStock.dataset.stock = 'sin-stock';
-    stockBotones.appendChild(btnSinStock);
-
-    const botonesStock = [btnConStock, btnSinStock];
-
-    // ===== FILTROS POR SECTOR =====
-    const sectorTitulo = document.createElement('h4');
-    sectorTitulo.textContent = 'Filtrar por Sector:';
-    sectorTitulo.style.cssText = 'margin: 15px 0 5px 0; font-size: 14px; color: #495057;';
-    filtrosContainer.appendChild(sectorTitulo);
-
-    const sectoresBotones = document.createElement('div');
-    sectoresBotones.className = 'sectores-botones';
-    sectoresBotones.style.cssText = 'display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;';
-    filtrosContainer.appendChild(sectoresBotones);
-
-    // Crear botones de sector basados en sectoresDisponibles
-    const botonesSectores = [];
-    
-    // Botón para "Sin sector asignado"
-    const btnSinSector = document.createElement('button');
-    btnSinSector.textContent = 'Sin Sector';
-    btnSinSector.className = 'btn-filtro';
-    btnSinSector.dataset.sectorId = 'sin-sector';
-    sectoresBotones.appendChild(btnSinSector);
-    botonesSectores.push(btnSinSector);
-    
-    // Botones para sectores disponibles
-    sectoresDisponibles.forEach(sector => {
-        const btn = document.createElement('button');
-        btn.textContent = sector.nombre;
-        btn.className = 'btn-filtro';
-        btn.dataset.sectorId = sector.id.toString();
-        sectoresBotones.appendChild(btn);
-        botonesSectores.push(btn);
-    });
+    console.log('🔧 Inicializando filtros en panel lateral con acordeones');
 
     // ✅ INICIALIZAR TODOS LOS FILTROS VACÍOS
     filtrosActivos = new Set();
     filtrosTipoActivos = new Set();
     filtrosStockActivos = new Set();
     filtrosSectorActivos = new Set();
-    console.log('✅ Todos los filtros inicializados vacíos - tabla se mostrará sin ingredientes');
 
-    // ===== EVENTOS PARA BOTONES GLOBALES =====
-    btnTodos.onclick = async () => {
-        console.log('🔄 Activando todos los filtros');
-        // Activar todas las categorías
-        filtrosActivos = new Set(categorias);
-        botonesCategorias.forEach(btn => btn.classList.add('activo'));
-        
-        // Activar todos los tipos
-        filtrosTipoActivos = new Set(['simple', 'mix']);
-        botonesTipo.forEach(btn => btn.classList.add('activo'));
-        
-        // Activar todos los stocks
-        filtrosStockActivos = new Set(['con-stock', 'sin-stock']);
-        botonesStock.forEach(btn => btn.classList.add('activo'));
-        
-        await actualizarTablaFiltrada();
-    };
+    // ===== FILTROS POR CATEGORÍA =====
+    const categoriasContainer = document.getElementById('filtros-categorias-container');
+    if (categoriasContainer) {
+        categoriasContainer.innerHTML = '';
 
-    btnOcultar.onclick = async () => {
-        console.log('🔄 Desactivando todos los filtros');
-        // Limpiar todos los filtros
-        filtrosActivos.clear();
-        filtrosTipoActivos.clear();
-        filtrosStockActivos.clear();
-        
-        // Remover clases activas
-        botonesCategorias.forEach(btn => btn.classList.remove('activo'));
-        botonesTipo.forEach(btn => btn.classList.remove('activo'));
-        botonesStock.forEach(btn => btn.classList.remove('activo'));
-        
-        await actualizarTablaFiltrada();
-    };
+        // Obtener categorías únicas y ordenadas
+        const categorias = [...new Set(ingredientes.map(ing => ing.categoria))]
+            .filter(Boolean)
+            .sort();
 
-    // ===== EVENTOS PARA FILTROS POR CATEGORÍA =====
-    botonesCategorias.forEach(btn => {
-        btn.onclick = async () => {
-            if (btn.classList.contains('activo')) {
-                console.log(`🔄 Desactivando filtro categoría: ${btn.textContent}`);
-                btn.classList.remove('activo');
-                filtrosActivos.delete(btn.textContent);
+        // Crear botones de categoría
+        const botonesCategorias = categorias.map(cat => {
+            const btn = document.createElement('button');
+            btn.textContent = cat;
+            btn.className = 'btn-filtro';
+            btn.onclick = async () => {
+                if (btn.classList.contains('activo')) {
+                    btn.classList.remove('activo');
+                    filtrosActivos.delete(cat);
+                } else {
+                    btn.classList.add('activo');
+                    filtrosActivos.add(cat);
+                }
+                await actualizarTablaFiltrada();
+            };
+            categoriasContainer.appendChild(btn);
+            return btn;
+        });
+
+        // Botones globales de categorías
+        const btnTodasCategorias = document.getElementById('btn-todas-categorias');
+        const btnNingunaCategoria = document.getElementById('btn-ninguna-categoria');
+
+        if (btnTodasCategorias) {
+            btnTodasCategorias.onclick = async () => {
+                filtrosActivos = new Set(categorias);
+                botonesCategorias.forEach(btn => btn.classList.add('activo'));
+                await actualizarTablaFiltrada();
+            };
+        }
+
+        if (btnNingunaCategoria) {
+            btnNingunaCategoria.onclick = async () => {
+                filtrosActivos.clear();
+                botonesCategorias.forEach(btn => btn.classList.remove('activo'));
+                await actualizarTablaFiltrada();
+            };
+        }
+    }
+
+    // ===== FILTROS POR TIPO =====
+    const tipoContainer = document.getElementById('filtros-tipo-container');
+    if (tipoContainer) {
+        tipoContainer.innerHTML = '';
+
+        const tipos = [
+            { id: 'simple', label: 'Ingrediente Simple' },
+            { id: 'mix', label: 'Ingrediente Mix' }
+        ];
+
+        tipos.forEach(tipo => {
+            const btn = document.createElement('button');
+            btn.textContent = tipo.label;
+            btn.className = 'btn-filtro';
+            btn.dataset.tipo = tipo.id;
+            btn.onclick = async () => {
+                if (btn.classList.contains('activo')) {
+                    btn.classList.remove('activo');
+                    filtrosTipoActivos.delete(tipo.id);
+                } else {
+                    btn.classList.add('activo');
+                    filtrosTipoActivos.add(tipo.id);
+                }
+                await actualizarTablaFiltrada();
+            };
+            tipoContainer.appendChild(btn);
+        });
+    }
+
+    // ===== FILTROS POR STOCK =====
+    const stockContainer = document.getElementById('filtros-stock-container');
+    if (stockContainer) {
+        stockContainer.innerHTML = '';
+
+        const stocks = [
+            { id: 'con-stock', label: 'Con Stock' },
+            { id: 'sin-stock', label: 'Sin Stock' }
+        ];
+
+        stocks.forEach(stock => {
+            const btn = document.createElement('button');
+            btn.textContent = stock.label;
+            btn.className = 'btn-filtro';
+            btn.dataset.stock = stock.id;
+            btn.onclick = async () => {
+                if (btn.classList.contains('activo')) {
+                    btn.classList.remove('activo');
+                    filtrosStockActivos.delete(stock.id);
+                } else {
+                    btn.classList.add('activo');
+                    filtrosStockActivos.add(stock.id);
+                }
+                await actualizarTablaFiltrada();
+            };
+            stockContainer.appendChild(btn);
+        });
+    }
+
+    // ===== FILTROS POR SECTOR DE ALMACENAMIENTO =====
+    const sectoresContainer = document.getElementById('filtros-sectores-container');
+    if (sectoresContainer) {
+        sectoresContainer.innerHTML = '';
+
+        // Botón para "Sin sector asignado"
+        const btnSinSector = document.createElement('button');
+        btnSinSector.textContent = 'Sin Sector';
+        btnSinSector.className = 'btn-filtro';
+        btnSinSector.dataset.sectorId = 'sin-sector';
+        btnSinSector.onclick = async () => {
+            if (btnSinSector.classList.contains('activo')) {
+                btnSinSector.classList.remove('activo');
+                filtrosSectorActivos.delete('sin-sector');
             } else {
-                console.log(`🔄 Activando filtro categoría: ${btn.textContent}`);
-                btn.classList.add('activo');
-                filtrosActivos.add(btn.textContent);
+                btnSinSector.classList.add('activo');
+                filtrosSectorActivos.add('sin-sector');
             }
             await actualizarTablaFiltrada();
         };
-    });
+        sectoresContainer.appendChild(btnSinSector);
 
-    // ===== EVENTOS PARA FILTROS POR TIPO =====
-    botonesTipo.forEach(btn => {
-        btn.onclick = async () => {
-            const tipo = btn.dataset.tipo;
-            if (btn.classList.contains('activo')) {
-                console.log(`🔄 Desactivando filtro tipo: ${btn.textContent}`);
-                btn.classList.remove('activo');
-                filtrosTipoActivos.delete(tipo);
-            } else {
-                console.log(`🔄 Activando filtro tipo: ${btn.textContent}`);
-                btn.classList.add('activo');
-                filtrosTipoActivos.add(tipo);
-            }
-            await actualizarTablaFiltrada();
-        };
-    });
+        // Botones para sectores disponibles
+        sectoresDisponibles.forEach(sector => {
+            const btn = document.createElement('button');
+            btn.textContent = sector.nombre;
+            btn.className = 'btn-filtro';
+            btn.dataset.sectorId = sector.id.toString();
+            btn.onclick = async () => {
+                const sectorId = sector.id.toString();
+                if (btn.classList.contains('activo')) {
+                    btn.classList.remove('activo');
+                    filtrosSectorActivos.delete(sectorId);
+                } else {
+                    btn.classList.add('activo');
+                    filtrosSectorActivos.add(sectorId);
+                }
+                await actualizarTablaFiltrada();
+            };
+            sectoresContainer.appendChild(btn);
+        });
+    }
 
-    // ===== EVENTOS PARA FILTROS POR STOCK =====
-    botonesStock.forEach(btn => {
-        btn.onclick = async () => {
-            const stock = btn.dataset.stock;
-            if (btn.classList.contains('activo')) {
-                console.log(`🔄 Desactivando filtro stock: ${btn.textContent}`);
-                btn.classList.remove('activo');
-                filtrosStockActivos.delete(stock);
-            } else {
-                console.log(`🔄 Activando filtro stock: ${btn.textContent}`);
-                btn.classList.add('activo');
-                filtrosStockActivos.add(stock);
-            }
-            await actualizarTablaFiltrada();
-        };
-    });
-
-    // ===== EVENTOS PARA FILTROS POR SECTOR =====
-    botonesSectores.forEach(btn => {
-        btn.onclick = async () => {
-            const sectorId = btn.dataset.sectorId;
-            if (btn.classList.contains('activo')) {
-                console.log(`🔄 Desactivando filtro sector: ${btn.textContent}`);
-                btn.classList.remove('activo');
-                filtrosSectorActivos.delete(sectorId);
-            } else {
-                console.log(`🔄 Activando filtro sector: ${btn.textContent}`);
-                btn.classList.add('activo');
-                filtrosSectorActivos.add(sectorId);
-            }
-            await actualizarTablaFiltrada();
-        };
-    });
+    console.log('✅ Filtros inicializados en panel lateral');
 }
 
 // Función para actualizar la tabla según los filtros activos combinados

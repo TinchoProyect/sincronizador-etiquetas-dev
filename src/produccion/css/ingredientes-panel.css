@@ -1,0 +1,491 @@
+/* ============================================
+ * INGREDIENTES - SISTEMA DE PANELES LATERALES
+ * Inspirado en el módulo de presupuestos
+ * ============================================ */
+
+/* Reset y configuración base del contenedor */
+.ingredientes-container {
+    display: flex;
+    height: calc(100vh - 140px); /* Ajustar según header y footer */
+    gap: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/* ============================================
+ * PANEL IZQUIERDO: CONFIGURACIÓN Y FILTROS
+ * ============================================ */
+
+.panel-config {
+    width: 320px;
+    min-width: 250px;
+    max-width: 600px;
+    background: white;
+    border-right: 2px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    z-index: 10;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Resizer para ajustar ancho del panel */
+.panel-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 20;
+    transition: background 0.2s ease;
+}
+
+.panel-resizer:hover {
+    background: linear-gradient(90deg, transparent, #007bff, transparent);
+}
+
+.panel-resizer.resizing {
+    background: #007bff;
+}
+
+/* Indicador visual durante resize */
+.panel-resizer::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 40px;
+    background: #bdc3c7;
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.panel-resizer:hover::after {
+    opacity: 1;
+}
+
+/* Header del panel de configuración */
+.config-header {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    padding: 20px;
+    border-bottom: 3px solid #0056b3;
+    flex-shrink: 0;
+}
+
+.config-header h2 {
+    font-size: 1.3em;
+    margin: 0 0 5px 0;
+}
+
+.config-header p {
+    font-size: 0.85em;
+    opacity: 0.9;
+    margin: 0;
+}
+
+/* Body del panel - área scrolleable */
+.config-body {
+    flex: 1;
+    padding: 15px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Scrollbar personalizado para el panel */
+.config-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.config-body::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.config-body::-webkit-scrollbar-thumb {
+    background: #007bff;
+    border-radius: 4px;
+}
+
+.config-body::-webkit-scrollbar-thumb:hover {
+    background: #0056b3;
+}
+
+/* ============================================
+ * ACORDEONES DEL PANEL DE CONFIGURACIÓN
+ * ============================================ */
+
+.config-accordion {
+    margin-bottom: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+}
+
+.accordion-header {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    padding: 12px 15px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 0.95em;
+    transition: all 0.3s ease;
+    user-select: none;
+}
+
+.accordion-header:hover {
+    background: linear-gradient(135deg, #0056b3, #004085);
+}
+
+.accordion-icon {
+    transition: transform 0.3s ease;
+    font-size: 0.8em;
+}
+
+.accordion-header.collapsed .accordion-icon {
+    transform: rotate(-90deg);
+}
+
+.accordion-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+    padding: 10px;
+}
+
+.accordion-content.collapsed {
+    max-height: 0;
+    padding: 0 10px;
+}
+
+/* ============================================
+ * OPCIONES DENTRO DE ACORDEONES
+ * ============================================ */
+
+.config-option {
+    margin-bottom: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 3px solid #007bff;
+    transition: all 0.2s ease;
+}
+
+.config-option:hover {
+    background: #e9ecef;
+    border-left-color: #0056b3;
+}
+
+.config-option:last-child {
+    margin-bottom: 0;
+}
+
+/* ============================================
+ * FILTROS - BOTONES Y CONTROLES
+ * ============================================ */
+
+/* Contenedor de botones globales */
+.filtros-botones-globales {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.filtros-botones-globales .btn-filtro {
+    flex: 1;
+    font-size: 0.85em;
+}
+
+/* Contenedor de botones de filtro */
+.filtros-botones-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* Botones de filtro */
+.btn-filtro {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.9em;
+    font-weight: 500;
+    color: #495057;
+}
+
+.btn-filtro:hover {
+    border-color: #007bff;
+    background-color: #f0f8ff;
+    transform: translateY(-1px);
+}
+
+.btn-filtro.activo {
+    background-color: #007bff;
+    color: white;
+    border-color: #0056b3;
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
+/* Títulos de secciones de filtros */
+.filtros-seccion-titulo {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: #495057;
+    margin: 12px 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ============================================
+ * SOLAPAS DE SECTORES (CONVERTIDAS A LISTA)
+ * ============================================ */
+
+.sectores-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sector-item {
+    padding: 10px 12px;
+    background: #f8f9fa;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    color: #495057;
+}
+
+.sector-item:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.sector-item.activo {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    border-color: #0056b3;
+    box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
+}
+
+/* ============================================
+ * PANEL DERECHO: CONTENIDO PRINCIPAL
+ * ============================================ */
+
+.panel-main {
+    flex: 1;
+    background: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Área de contenido con scroll */
+.panel-main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* Sección de contenido (tabla) */
+.content-section {
+    background-color: white;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Barra de acciones superior */
+.actions-bar {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.actions-bar h2 {
+    margin: 0;
+    color: #333;
+    font-size: 1.5em;
+}
+
+.actions-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Filtro por nombre en panel principal */
+.filtro-nombre-container {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+}
+
+.filtro-nombre-container label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.95em;
+}
+
+.filtro-nombre-container input {
+    width: 100%;
+    padding: 10px 15px;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 1em;
+    transition: all 0.3s ease;
+}
+
+.filtro-nombre-container input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* ============================================
+ * TABLA DE INGREDIENTES
+ * ============================================ */
+
+.tabla-ingredientes {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.tabla-ingredientes th,
+.tabla-ingredientes td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.tabla-ingredientes th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #333;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.tabla-ingredientes tr:hover {
+    background-color: #f5f5f5;
+}
+
+/* ============================================
+ * RESPONSIVE
+ * ============================================ */
+
+@media (max-width: 1024px) {
+    .ingredientes-container {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .panel-config {
+        width: 100%;
+        max-height: 50vh;
+        border-right: none;
+        border-bottom: 2px solid #e0e0e0;
+    }
+
+    .panel-resizer {
+        display: none;
+    }
+
+    .panel-main-content {
+        padding: 15px;
+    }
+
+    .content-section {
+        padding: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .config-header h2 {
+        font-size: 1.1em;
+    }
+
+    .actions-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .actions-buttons {
+        width: 100%;
+    }
+
+    .actions-buttons button {
+        flex: 1;
+    }
+
+    .filtros-botones-container {
+        gap: 4px;
+    }
+
+    .btn-filtro {
+        font-size: 0.85em;
+        padding: 5px 10px;
+    }
+}
+
+/* ============================================
+ * ANIMACIONES
+ * ============================================ */
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.config-accordion {
+    animation: slideIn 0.3s ease-out;
+}
+
+/* ============================================
+ * UTILIDADES
+ * ============================================ */
+
+.text-muted {
+    color: #6c757d;
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+.mb-2 {
+    margin-bottom: 0.5rem;
+}
+
+.mb-3 {
+    margin-bottom: 1rem;
+}

@@ -5,106 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Ingredientes - Gestiones Lamda</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/ingredientes-panel.css">
     <style>
-        /* Estilos para los filtros por categoría */
-        .filtros-categorias {
-            margin-bottom: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .botones-globales {
-            margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .categorias-botones {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-
-        .btn-filtro {
-            padding: 4px 8px;
+        /* Estilos específicos que no están en el CSS externo */
+        .btn-inventario {
+            background-color: #6f42c1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
             border-radius: 4px;
-            border: 1px solid #ccc;
-            background-color: #fff;
             cursor: pointer;
             transition: all 0.3s ease;
-        }
-
-        .btn-filtro.activo {
-            background-color: #5cb85c;
-            color: white;
-            border-color: #4cae4c;
-        }
-
-        .page-title {
-            margin-bottom: 30px;
-            color: var(--text-color);
-            text-align: center;
-        }
-
-        .content-section {
-            background-color: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin: 20px 0;
-        }
-
-        .actions-bar {
-            margin-bottom: 20px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            gap: 8px;
         }
 
-        .tabla-ingredientes {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        .tabla-ingredientes th,
-        .tabla-ingredientes td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .tabla-ingredientes th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: var(--text-color);
-        }
-
-        .tabla-ingredientes tr:hover {
-            background-color: #f5f5f5;
-        }
-
-        .mensaje-error {
-            background-color: #dc3545;
-            color: white;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .mensaje-exito {
-            background-color: #28a745;
-            color: white;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .text-center {
-            text-align: center;
+        .btn-inventario:hover {
+            background-color: #5a32a3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3);
         }
 
         .btn-agregar {
@@ -117,7 +37,7 @@
         }
 
         .btn-agregar:hover {
-            background-color: var(--secondary-color-dark, #5092a7);
+            background-color: var(--primary-dark, #0056b3);
         }
 
         .btn-editar, .btn-eliminar {
@@ -136,6 +56,16 @@
         .btn-eliminar {
             background-color: #dc3545;
             color: white;
+        }
+
+        /* Estilos para selectores de sector inline */
+        .selector-sector-inline:hover {
+            border-color: #007bff !important;
+        }
+
+        .selector-sector-inline:disabled {
+            cursor: wait !important;
+            opacity: 0.6 !important;
         }
 
         /* Estilos para el modal */
@@ -220,40 +150,29 @@
             padding: 10px 20px;
             border-radius: 4px;
             cursor: pointer;
-            display: none; /* Oculto por defecto hasta que haya código */
+            display: none;
         }
 
         .btn-imprimir:hover {
             background-color: #138496;
         }
 
-        .btn-inventario {
-            background-color: #6f42c1;
+        .mensaje-error {
+            background-color: #dc3545;
             color: white;
-            border: none;
-            padding: 10px 20px;
+            padding: 10px;
             border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            margin-bottom: 20px;
+            text-align: center;
         }
 
-        .btn-inventario:hover {
-            background-color: #5a32a3;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3);
-        }
-
-        /* Estilos para selectores de sector inline */
-        .selector-sector-inline:hover {
-            border-color: #007bff !important;
-        }
-
-        .selector-sector-inline:disabled {
-            cursor: wait !important;
-            opacity: 0.6 !important;
+        .mensaje-exito {
+            background-color: #28a745;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
         }
 
         /* Animaciones para mensajes discretos */
@@ -278,6 +197,27 @@
                 opacity: 0;
             }
         }
+
+        /* Ajuste del container principal para el nuevo layout */
+        body > .container {
+            max-width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        body > .container > header {
+            padding: 20px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 0;
+        }
+
+        body > .container > footer {
+            padding: 20px;
+            background: white;
+            box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+            margin-top: 0;
+        }
     </style>
 </head>
 <body>
@@ -287,60 +227,134 @@
             <a href="/pages/produccion.html" class="back-button">← Volver al espacio de trabajo</a>
         </header>
 
-        <main>
-            <div class="content-section">
-                <div class="actions-bar">
-                    <h2 class="page-title">Lista de Ingredientes</h2>
-                    <div style="display: flex; gap: 10px;">
-                        <button id="btn-inventario-ingredientes" class="btn-inventario" onclick="abrirVentana('inventario-ingredientes.html', 'inventarioIngredientes')">
-                            📋 Inventario
-                        </button>
-                        <button id="btn-gestionar-sectores" class="btn-inventario" onclick="abrirVentana('sectores.html', 'gestionSectores')" style="background-color: #28a745;">
-                            🏢 Gestionar Sectores
-                        </button>
-                        <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
+        <main class="ingredientes-container">
+            <!-- PANEL IZQUIERDO: CONFIGURACIÓN Y FILTROS -->
+            <div class="panel-config" id="panel-config">
+                <!-- Resizer Handle -->
+                <div class="panel-resizer" id="panel-resizer"></div>
+                
+                <div class="config-header">
+                    <h2>⚙️ Filtros y Configuración</h2>
+                    <p>Personaliza la vista de ingredientes</p>
+                </div>
+
+                <div class="config-body">
+                    <!-- ACORDEÓN 1: SECTORES / DEPÓSITOS -->
+                    <div class="config-accordion">
+                        <div class="accordion-header" onclick="toggleAccordion('sectores-depositos')">
+                            <span>🏢 Sectores y Depósitos</span>
+                            <span class="accordion-icon">▼</span>
+                        </div>
+                        <div class="accordion-content" id="accordion-sectores-depositos">
+                            <div id="sectores-lista-container" class="sectores-lista">
+                                <!-- Los sectores se cargarán dinámicamente aquí -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACORDEÓN 2: FILTRO POR CATEGORÍA -->
+                    <div class="config-accordion">
+                        <div class="accordion-header collapsed" onclick="toggleAccordion('categorias')">
+                            <span>📦 Filtrar por Categoría</span>
+                            <span class="accordion-icon">▼</span>
+                        </div>
+                        <div class="accordion-content collapsed" id="accordion-categorias">
+                            <div class="filtros-botones-globales">
+                                <button class="btn-filtro" id="btn-todas-categorias">Todas</button>
+                                <button class="btn-filtro" id="btn-ninguna-categoria">Ninguna</button>
+                            </div>
+                            <div id="filtros-categorias-container" class="filtros-botones-container">
+                                <!-- Los botones de categoría se generarán dinámicamente aquí -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACORDEÓN 3: FILTRO POR TIPO -->
+                    <div class="config-accordion">
+                        <div class="accordion-header collapsed" onclick="toggleAccordion('tipo')">
+                            <span>🔧 Filtrar por Tipo</span>
+                            <span class="accordion-icon">▼</span>
+                        </div>
+                        <div class="accordion-content collapsed" id="accordion-tipo">
+                            <div id="filtros-tipo-container" class="filtros-botones-container">
+                                <!-- Los botones de tipo se generarán dinámicamente aquí -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACORDEÓN 4: FILTRO POR STOCK -->
+                    <div class="config-accordion">
+                        <div class="accordion-header collapsed" onclick="toggleAccordion('stock')">
+                            <span>📊 Filtrar por Stock</span>
+                            <span class="accordion-icon">▼</span>
+                        </div>
+                        <div class="accordion-content collapsed" id="accordion-stock">
+                            <div id="filtros-stock-container" class="filtros-botones-container">
+                                <!-- Los botones de stock se generarán dinámicamente aquí -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACORDEÓN 5: FILTRO POR SECTOR DE ALMACENAMIENTO -->
+                    <div class="config-accordion">
+                        <div class="accordion-header collapsed" onclick="toggleAccordion('sector-almacen')">
+                            <span>🗄️ Filtrar por Sector de Almacenamiento</span>
+                            <span class="accordion-icon">▼</span>
+                        </div>
+                        <div class="accordion-content collapsed" id="accordion-sector-almacen">
+                            <div id="filtros-sectores-container" class="filtros-botones-container">
+                                <!-- Los botones de sectores se generarán dinámicamente aquí -->
+                            </div>
+                        </div>
                     </div>
                 </div>
-                
-                <!-- Contenedor de solapas -->
-                <div class="tabs-container" style="margin-bottom: 20px; border-bottom: 1px solid #dee2e6;">
-                    <ul class="tabs-list" id="tabs-ingredientes" style="display: flex; list-style: none; padding: 0; margin: 0;">
-                        <li class="tab tab-activa" data-tab="deposito" style="padding: 10px 20px; cursor: pointer; border: 1px solid #dee2e6; border-bottom: none; margin-bottom: -1px; background-color: #fff; color: #495057; font-weight: bold;">Depósito</li>
-                        <!-- Las demás solapas se agregarán dinámicamente -->
-                    </ul>
-                </div>
-                
-                <!--Filtro por nombre Mari-->
-                <div style="margin-bottom: 20px; padding: 10px;">
-                    <label for="filtro-nombre">🔍 Filtrar por nombre:</label>
-                    <input type="text" id="filtro-nombre" placeholder="Ingrediente buscado">
-                </div>
+            </div>
 
+            <!-- PANEL DERECHO: CONTENIDO PRINCIPAL -->
+            <div class="panel-main">
+                <div class="panel-main-content">
+                    <div class="content-section">
+                        <!-- Barra de acciones superior -->
+                        <div class="actions-bar">
+                            <h2>Lista de Ingredientes</h2>
+                            <div class="actions-buttons">
+                                <button id="btn-inventario-ingredientes" class="btn-inventario" onclick="abrirVentana('inventario-ingredientes.html', 'inventarioIngredientes')">
+                                    📋 Inventario
+                                </button>
+                                <button id="btn-gestionar-sectores" class="btn-inventario" onclick="abrirVentana('sectores.html', 'gestionSectores')" style="background-color: #28a745;">
+                                    🏢 Gestionar Sectores
+                                </button>
+                                <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
+                            </div>
+                        </div>
 
-                <!-- Filtros por categoría -->
-                 <div>
-                <div id="filtros-categorias" class="filtros-categorias">
-                    <!-- Los filtros se generarán dinámicamente aquí -->
+                        <!-- Filtro por nombre (único filtro en panel principal) -->
+                        <div class="filtro-nombre-container">
+                            <label for="filtro-nombre">🔍 Buscar por nombre:</label>
+                            <input type="text" id="filtro-nombre" placeholder="Escriba el nombre del ingrediente...">
+                        </div>
+
+                        <!-- Tabla de ingredientes -->
+                        <table class="tabla-ingredientes">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Unidad de Medida</th>
+                                    <th>Categoría</th>
+                                    <th id="columna-dinamica">Stock Actual</th>
+                                    <th>Sector</th>
+                                    <th>Descripción</th>
+                                    <th>Tipo</th>
+                                    <th>Composición</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-ingredientes-body">
+                                <!-- Los ingredientes se cargarán dinámicamente aquí -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                </div>
-                <table class="tabla-ingredientes">
-                    <thead>
-                        <tr>
-                            <th>Nombre</th>
-                            <th>Unidad de Medida</th>
-                            <th>Categoría</th>
-                            <th id="columna-dinamica">Stock Actual</th>
-                            <th>Sector</th>
-                            <th>Descripción</th>
-                            <th>Tipo</th>
-                            <th>Composición</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabla-ingredientes-body">
-                        <!-- Los ingredientes se cargarán dinámicamente aquí -->
-                    </tbody>
-                </table>
             </div>
         </main>
 
@@ -464,30 +478,71 @@
 
     <script type="module" src="/js/ingredientes.js"></script>
     <script type="module" src="/js/mix.js"></script>
-    <script type="module">
-        // Sistema de solapas para stock por usuario - IMPLEMENTACIÓN DESDE CERO
+    <script>
+        // ============================================
+        // FUNCIONES DE ACORDEÓN
+        // ============================================
+        function toggleAccordion(accordionId) {
+            const header = event.currentTarget;
+            const content = document.getElementById(`accordion-${accordionId}`);
+            
+            header.classList.toggle('collapsed');
+            content.classList.toggle('collapsed');
+        }
+
+        // ============================================
+        // FUNCIONALIDAD DE RESIZE DEL PANEL
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            const resizer = document.getElementById('panel-resizer');
+            const panel = document.getElementById('panel-config');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                resizer.classList.add('resizing');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+
+                const newWidth = e.clientX;
+                if (newWidth >= 250 && newWidth <= 600) {
+                    panel.style.width = newWidth + 'px';
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    resizer.classList.remove('resizing');
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+            });
+        });
+
+        // ============================================
+        // SISTEMA DE SECTORES/USUARIOS (MIGRADO AL PANEL LATERAL)
+        // ============================================
         let usuariosConStock = [];
         let tabActiva = 'deposito';
 
-        // Inicializar sistema de solapas
+        // Inicializar sistema de sectores
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('🚀 Inicializando sistema de solapas...');
+            console.log('🚀 Inicializando sistema de sectores...');
             
-            // Configurar evento para tab de depósito
-            const tabDeposito = document.querySelector('[data-tab="deposito"]');
-            if (tabDeposito) {
-                tabDeposito.addEventListener('click', () => activarTabDeposito());
-            }
+            // Cargar usuarios con stock y crear lista en panel lateral
+            await inicializarSectoresPanel();
             
-            // Cargar usuarios con stock y crear solapas
-            await inicializarSolapasUsuarios();
-            
-            // Activar tab de depósito por defecto
+            // Activar depósito por defecto
             await activarTabDeposito();
         });
 
-        // Función para cargar usuarios con stock y crear solapas
-        async function inicializarSolapasUsuarios() {
+        // Función para cargar usuarios con stock y crear lista en panel
+        async function inicializarSectoresPanel() {
             try {
                 console.log('🔍 Cargando usuarios con stock...');
                 const response = await fetch('http://localhost:3002/api/produccion/ingredientes/usuarios-con-stock');
@@ -500,75 +555,61 @@
                 usuariosConStock = await response.json();
                 console.log(`✅ Encontrados ${usuariosConStock.length} usuarios con stock`);
                 
-                if (usuariosConStock.length === 0) {
-                    console.log('ℹ️ No hay usuarios con stock');
-                    return;
-                }
-                
-                // Limpiar solapas existentes (excepto depósito)
-                const tabsList = document.getElementById('tabs-ingredientes');
-                const tabsExistentes = tabsList.querySelectorAll('.tab:not([data-tab="deposito"])');
-                tabsExistentes.forEach(tab => tab.remove());
-                
-                // Crear solapas para cada usuario
-                usuariosConStock.forEach(usuario => {
-                    crearSolapaUsuario(tabsList, usuario);
-                });
+                // Renderizar lista de sectores en el panel
+                renderizarSectoresPanel();
                 
             } catch (error) {
                 console.error('❌ Error al cargar usuarios con stock:', error);
             }
         }
 
-        // Función para crear solapa de usuario
-        function crearSolapaUsuario(tabsList, usuario) {
-            const tab = document.createElement('li');
-            tab.className = 'tab';
-            tab.dataset.tab = `usuario-${usuario.usuario_id}`;
-            tab.dataset.usuarioId = usuario.usuario_id;
-            tab.textContent = usuario.nombre_completo;
+        // Función para renderizar sectores en el panel lateral
+        function renderizarSectoresPanel() {
+            const container = document.getElementById('sectores-lista-container');
+            if (!container) return;
             
-            // Estilos iniciales
-            tab.style.cssText = `
-                padding: 10px 20px; 
-                cursor: pointer; 
-                border: 1px solid transparent; 
-                border-bottom: none; 
-                margin-bottom: -1px; 
-                background-color: #f8f9fa; 
-                color: #6c757d; 
-                transition: all 0.3s ease;
-            `;
+            container.innerHTML = '';
             
-            // Evento click
-            tab.addEventListener('click', () => activarTabUsuario(usuario.usuario_id));
+            // Crear item para Depósito
+            const depositoItem = document.createElement('div');
+            depositoItem.className = 'sector-item activo';
+            depositoItem.dataset.tab = 'deposito';
+            depositoItem.textContent = '📦 Depósito';
+            depositoItem.onclick = () => activarSector(depositoItem, 'deposito');
+            container.appendChild(depositoItem);
             
-            // Eventos hover
-            tab.addEventListener('mouseenter', () => {
-                if (!tab.classList.contains('tab-activa')) {
-                    tab.style.borderColor = '#e9ecef';
-                    tab.style.color = '#495057';
-                }
+            // Crear items para usuarios con stock
+            usuariosConStock.forEach(usuario => {
+                const item = document.createElement('div');
+                item.className = 'sector-item';
+                item.dataset.tab = `usuario-${usuario.usuario_id}`;
+                item.dataset.usuarioId = usuario.usuario_id;
+                item.textContent = `👤 ${usuario.nombre_completo}`;
+                item.onclick = () => activarSector(item, `usuario-${usuario.usuario_id}`, usuario.usuario_id);
+                container.appendChild(item);
             });
-            tab.addEventListener('mouseleave', () => {
-                if (!tab.classList.contains('tab-activa')) {
-                    tab.style.borderColor = 'transparent';
-                    tab.style.color = '#6c757d';
-                }
+        }
+
+        // Función para activar un sector
+        function activarSector(element, tabId, usuarioId = null) {
+            // Actualizar estado visual
+            document.querySelectorAll('.sector-item').forEach(item => {
+                item.classList.remove('activo');
             });
+            element.classList.add('activo');
             
-            tabsList.appendChild(tab);
-            console.log(`📋 Solapa creada: ${usuario.nombre_completo}`);
+            // Activar la vista correspondiente
+            if (usuarioId) {
+                activarTabUsuario(usuarioId);
+            } else {
+                activarTabDeposito();
+            }
         }
 
         // Función para activar tab de depósito
         async function activarTabDeposito() {
             console.log('🔄 Activando vista de depósito...');
             
-            // Actualizar estado visual
-            actualizarEstadoTabs('deposito');
-            
-            // Actualizar variables
             tabActiva = 'deposito';
             
             // Actualizar encabezado de columna
@@ -577,7 +618,7 @@
                 columnaDinamica.textContent = 'Stock Actual';
             }
             
-            // Cargar ingredientes del depósito usando función existente
+            // Cargar ingredientes del depósito
             if (window.cargarIngredientes) {
                 await window.cargarIngredientes();
             }
@@ -587,10 +628,6 @@
         async function activarTabUsuario(usuarioId) {
             console.log(`🔄 Activando vista de usuario ${usuarioId}...`);
             
-            // Actualizar estado visual
-            actualizarEstadoTabs(`usuario-${usuarioId}`);
-            
-            // Actualizar variables
             tabActiva = `usuario-${usuarioId}`;
             
             // Actualizar encabezado de columna
@@ -601,39 +638,6 @@
             
             // Cargar stock del usuario
             await cargarStockUsuario(usuarioId);
-        }
-
-        // Función para actualizar estado visual de tabs
-        function actualizarEstadoTabs(tabActivaId) {
-            document.querySelectorAll('.tab').forEach(tab => {
-                if (tab.dataset.tab === tabActivaId) {
-                    // Tab activa
-                    tab.classList.add('tab-activa');
-                    tab.style.cssText = `
-                        padding: 10px 20px; 
-                        cursor: pointer; 
-                        border: 1px solid #dee2e6; 
-                        border-bottom: none; 
-                        margin-bottom: -1px; 
-                        background-color: #fff; 
-                        color: #495057; 
-                        font-weight: bold;
-                    `;
-                } else {
-                    // Tab inactiva
-                    tab.classList.remove('tab-activa');
-                    tab.style.cssText = `
-                        padding: 10px 20px; 
-                        cursor: pointer; 
-                        border: 1px solid transparent; 
-                        border-bottom: none; 
-                        margin-bottom: -1px; 
-                        background-color: #f8f9fa; 
-                        color: #6c757d; 
-                        transition: all 0.3s ease;
-                    `;
-                }
-            });
         }
 
         // Función para cargar stock de usuario
@@ -669,14 +673,13 @@
             tbody.innerHTML = '';
             
             if (!stockUsuario || stockUsuario.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center">Este usuario no tiene stock de ingredientes</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center">Este usuario no tiene stock de ingredientes</td></tr>';
                 return;
             }
             
             stockUsuario.forEach(item => {
                 const row = document.createElement('tr');
                 
-                // Determinar tipo según origen_mix_id
                 let tipoOrigen = 'Simple';
                 if (item.origen_mix_id !== null && item.origen_mix_id !== undefined) {
                     tipoOrigen = 'Sobrante de Mix';
@@ -687,6 +690,7 @@
                     <td>${item.unidad_medida || '-'}</td>
                     <td>${item.categoria || '-'}</td>
                     <td>${parseFloat(item.stock_total).toFixed(3)}</td>
+                    <td>-</td>
                     <td>${item.descripcion || '-'}</td>
                     <td>${tipoOrigen}</td>
                     <td>-</td>
@@ -699,10 +703,19 @@
 
         // Función para limpiar filtros
         function limpiarFiltros() {
-            const filtrosContainer = document.getElementById('filtros-categorias');
-            if (filtrosContainer) {
-                filtrosContainer.innerHTML = '<p style="color: #6c757d; font-style: italic;">Los filtros no están disponibles en la vista de usuario</p>';
-            }
+            const containers = [
+                'filtros-categorias-container',
+                'filtros-tipo-container',
+                'filtros-stock-container',
+                'filtros-sectores-container'
+            ];
+            
+            containers.forEach(containerId => {
+                const container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = '<p class="text-muted">Los filtros no están disponibles en la vista de usuario</p>';
+                }
+            });
         }
 
         // Función para mostrar errores
@@ -712,7 +725,6 @@
             mensajeDiv.className = 'mensaje-error';
             mensajeDiv.textContent = mensaje;
             
-            // Remover mensaje anterior
             const mensajeAnterior = document.querySelector('.mensaje-error, .mensaje-exito');
             if (mensajeAnterior) {
                 mensajeAnterior.remove();
@@ -720,29 +732,10 @@
             
             contenedor.insertBefore(mensajeDiv, contenedor.firstChild);
             
-            // Remover después de 5 segundos
             setTimeout(() => {
                 mensajeDiv.remove();
             }, 5000);
         }
-
-        // Función para filtrar la tabla por nombre - Mari
-         document.getElementById('filtro-nombre').addEventListener('input', function () {
-             const filtro = this.value.toLowerCase().trim();
-             const filas = document.querySelectorAll('#tabla-ingredientes-body tr');
-
-            filas.forEach(fila => {
-                const nombre = fila.querySelector('td')?.textContent.toLowerCase() || '';
-                if (nombre.includes(filtro)) {
-                    fila.style.display = '';
-             } else {
-                    fila.style.display = 'none';
-             }
-            });
-        });
-
-        //Fin modificacioon mari
-
 
         // Hacer funciones disponibles globalmente
         window.tabActiva = () => tabActiva;
