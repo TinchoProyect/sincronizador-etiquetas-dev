@@ -90,6 +90,7 @@ function handleDragOver(e) {
 
 /**
  * Handler: Entrada a zona de drop
+ * ✅ MEJORADO: Indica visualmente si se insertará antes o después
  */
 function handleDragEnter(e) {
     const target = e.target.closest('[draggable="true"]');
@@ -113,6 +114,7 @@ function handleDragLeave(e) {
 
 /**
  * Handler: Drop del elemento
+ * ✅ MEJORADO: Implementa inserción con desplazamiento usando getBoundingClientRect()
  */
 function handleDrop(e, onReorder) {
     if (e.stopPropagation) {
@@ -138,23 +140,26 @@ function handleDrop(e, onReorder) {
     const rubro2 = target.dataset.rubro;
     const mesKey = dragState.mesKey;
     
-    console.log(`🔄 [DRAG-DROP] Drop: ${rubro1} → ${rubro2} (Mes: ${mesKey || 'N/A'})`);
+    // ✅ NUEVO: Determinar si se inserta antes o después usando getBoundingClientRect()
+    const rect = target.getBoundingClientRect();
+    const mouseY = e.clientY;
+    const targetMiddle = rect.top + (rect.height / 2);
+    const insertarAntes = mouseY < targetMiddle;
     
-    // Intercambiar visualmente
-    const contenedor = target.parentElement;
-    const todosItems = Array.from(contenedor.children);
-    const indexTarget = todosItems.indexOf(target);
-    const indexDragged = todosItems.indexOf(dragState.elementoArrastrado);
+    console.log(`🔄 [DRAG-DROP] Drop: ${rubro1} → ${insertarAntes ? 'ANTES' : 'DESPUÉS'} de ${rubro2} (Mes: ${mesKey || 'N/A'})`);
     
-    if (indexDragged < indexTarget) {
-        target.parentNode.insertBefore(dragState.elementoArrastrado, target.nextSibling);
-    } else {
+    // ✅ MEJORADO: Inserción visual consistente con la lógica
+    if (insertarAntes) {
+        // Insertar ANTES del target
         target.parentNode.insertBefore(dragState.elementoArrastrado, target);
+    } else {
+        // Insertar DESPUÉS del target
+        target.parentNode.insertBefore(dragState.elementoArrastrado, target.nextSibling);
     }
     
-    // Llamar callback para actualizar estado
+    // ✅ MEJORADO: Llamar callback con información de posición de inserción
     if (onReorder) {
-        onReorder(rubro1, rubro2, mesKey);
+        onReorder(rubro1, rubro2, mesKey, insertarAntes);
     }
     
     target.classList.remove('drag-over');

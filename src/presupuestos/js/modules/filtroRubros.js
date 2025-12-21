@@ -249,26 +249,97 @@ function toggleVisibilidadMes(mesKey) {
 }
 
 /**
- * Reordenar rubros (intercambiar posiciones)
+ * Reordenar rubros (inserción con desplazamiento)
+ * ✅ MEJORADO: Implementa inserción tipo splice en lugar de intercambio
+ * @param {String} rubro1 - Rubro arrastrado
+ * @param {String} rubro2 - Rubro objetivo
+ * @param {String} mesKey - Clave del mes (null en modo plano)
+ * @param {Boolean} insertarAntes - Si true, inserta antes del target; si false, después
  */
-function reordenarRubros(rubro1, rubro2, mesKey = null) {
+function reordenarRubros(rubro1, rubro2, mesKey = null, insertarAntes = true) {
     if (estadoFiltros.modo === 'plano') {
-        const orden1 = estadoFiltros.rubrosPlanos[rubro1].orden;
-        const orden2 = estadoFiltros.rubrosPlanos[rubro2].orden;
+        // ✅ MODO PLANO: Inserción con desplazamiento
+        const rubros = estadoFiltros.rubrosPlanos;
         
-        estadoFiltros.rubrosPlanos[rubro1].orden = orden2;
-        estadoFiltros.rubrosPlanos[rubro2].orden = orden1;
+        // Obtener array ordenado de rubros
+        const rubrosOrdenados = Object.entries(rubros)
+            .sort((a, b) => a[1].orden - b[1].orden)
+            .map(([nombre, _]) => nombre);
         
-        console.log(`🔄 [FILTRO-RUBROS] Intercambiado: ${rubro1} ↔ ${rubro2}`);
+        // Encontrar índices
+        const indexOrigen = rubrosOrdenados.indexOf(rubro1);
+        const indexDestino = rubrosOrdenados.indexOf(rubro2);
+        
+        if (indexOrigen === -1 || indexDestino === -1) {
+            console.warn(`⚠️ [FILTRO-RUBROS] Rubros no encontrados: ${rubro1}, ${rubro2}`);
+            return;
+        }
+        
+        // Remover el rubro arrastrado
+        rubrosOrdenados.splice(indexOrigen, 1);
+        
+        // Calcular nueva posición de inserción
+        let nuevaPosicion;
+        if (insertarAntes) {
+            // Insertar ANTES del target
+            nuevaPosicion = rubrosOrdenados.indexOf(rubro2);
+        } else {
+            // Insertar DESPUÉS del target
+            nuevaPosicion = rubrosOrdenados.indexOf(rubro2) + 1;
+        }
+        
+        // Insertar en la nueva posición
+        rubrosOrdenados.splice(nuevaPosicion, 0, rubro1);
+        
+        // Recalcular todos los valores de orden secuencialmente
+        rubrosOrdenados.forEach((rubro, index) => {
+            rubros[rubro].orden = index;
+        });
+        
+        console.log(`🔄 [FILTRO-RUBROS] Insertado: ${rubro1} ${insertarAntes ? 'ANTES' : 'DESPUÉS'} de ${rubro2}`);
+        console.log(`📊 [FILTRO-RUBROS] Nuevo orden:`, rubrosOrdenados);
+        
     } else if (mesKey) {
+        // ✅ MODO JERÁRQUICO: Inserción con desplazamiento dentro del mes
         const rubros = estadoFiltros.rubrosJerarquicos[mesKey].rubros;
-        const orden1 = rubros[rubro1].orden;
-        const orden2 = rubros[rubro2].orden;
         
-        rubros[rubro1].orden = orden2;
-        rubros[rubro2].orden = orden1;
+        // Obtener array ordenado de rubros del mes
+        const rubrosOrdenados = Object.entries(rubros)
+            .sort((a, b) => a[1].orden - b[1].orden)
+            .map(([nombre, _]) => nombre);
         
-        console.log(`🔄 [FILTRO-RUBROS] Intercambiado en ${mesKey}: ${rubro1} ↔ ${rubro2}`);
+        // Encontrar índices
+        const indexOrigen = rubrosOrdenados.indexOf(rubro1);
+        const indexDestino = rubrosOrdenados.indexOf(rubro2);
+        
+        if (indexOrigen === -1 || indexDestino === -1) {
+            console.warn(`⚠️ [FILTRO-RUBROS] Rubros no encontrados en ${mesKey}: ${rubro1}, ${rubro2}`);
+            return;
+        }
+        
+        // Remover el rubro arrastrado
+        rubrosOrdenados.splice(indexOrigen, 1);
+        
+        // Calcular nueva posición de inserción
+        let nuevaPosicion;
+        if (insertarAntes) {
+            // Insertar ANTES del target
+            nuevaPosicion = rubrosOrdenados.indexOf(rubro2);
+        } else {
+            // Insertar DESPUÉS del target
+            nuevaPosicion = rubrosOrdenados.indexOf(rubro2) + 1;
+        }
+        
+        // Insertar en la nueva posición
+        rubrosOrdenados.splice(nuevaPosicion, 0, rubro1);
+        
+        // Recalcular todos los valores de orden secuencialmente
+        rubrosOrdenados.forEach((rubro, index) => {
+            rubros[rubro].orden = index;
+        });
+        
+        console.log(`🔄 [FILTRO-RUBROS] Insertado en ${mesKey}: ${rubro1} ${insertarAntes ? 'ANTES' : 'DESPUÉS'} de ${rubro2}`);
+        console.log(`📊 [FILTRO-RUBROS] Nuevo orden en ${mesKey}:`, rubrosOrdenados);
     }
 }
 

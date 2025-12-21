@@ -248,9 +248,13 @@ function handleToggleMes(mesKey) {
     renderizarInforme();
 }
 
-function handleReordenarRubros(rubro1, rubro2, mesKey) {
-    console.log(`🔄 [FILTROS] Reordenar: ${rubro1} ↔ ${rubro2}`);
-    reordenarRubros(rubro1, rubro2, mesKey);
+/**
+ * Handler para reordenar rubros
+ * ✅ MEJORADO: Recibe parámetro insertarAntes para inserción con desplazamiento
+ */
+function handleReordenarRubros(rubro1, rubro2, mesKey, insertarAntes) {
+    console.log(`🔄 [FILTROS] Reordenar: ${rubro1} ${insertarAntes ? 'ANTES' : 'DESPUÉS'} de ${rubro2}`);
+    reordenarRubros(rubro1, rubro2, mesKey, insertarAntes);
     
     // ✅ FIX: Solo re-renderizar el panel SIN reinicializar el estado
     renderizarPanelSinReinicializar();
