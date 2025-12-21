@@ -404,6 +404,14 @@ function normalizarTexto(texto) {
         .trim();
 }
 
+// ✅ FUNCIÓN AUXILIAR: Formatear stock (máximo 3 decimales, sin ceros innecesarios)
+function formatearStock(valor) {
+    // Convertir a número y limitar a 3 decimales
+    const numero = parseFloat(Number(valor).toFixed(3));
+    // Retornar como string, eliminando ceros innecesarios a la derecha
+    return numero.toString();
+}
+
 // Función para actualizar la tabla según los filtros activos combinados
 async function actualizarTablaFiltrada() {
     // Solo aplicar filtros en la vista de depósito
@@ -779,7 +787,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 <td>${ingrediente.nombre}</td>
                 <td>${ingrediente.unidad_medida}</td>
                 <td>${ingrediente.categoria}</td>
-                <td>${ingrediente.stock_actual}</td>
+                <td>${formatearStock(ingrediente.stock_actual)}</td>
                 <td class="sector-cell"></td>
                 <td>${ingrediente.descripcion || '-'}</td>
                 <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
