@@ -30,10 +30,11 @@ function renderizarPanelFiltros(estructura, modo, onToggleVisibilidad, onReorden
 }
 
 /**
- * Renderizar panel en modo plano (solo rubros)
+ * Renderizar panel en modo plano (rubros con sub-rubros)
+ * ✅ MEJORADO: Muestra sub-rubros indentados debajo de cada rubro
  */
 function renderizarPanelPlano(estructura, onToggleVisibilidad, onReordenar) {
-    console.log('🎨 [RENDER-PANEL] Renderizando modo PLANO');
+    console.log('🎨 [RENDER-PANEL] Renderizando modo PLANO con sub-rubros');
     
     // Ordenar rubros por su orden actual
     const rubrosOrdenados = Object.entries(estructura)
@@ -55,12 +56,41 @@ function renderizarPanelPlano(estructura, onToggleVisibilidad, onReordenar) {
                  draggable="true" 
                  data-rubro="${rubroEscapado}"
                  data-modo="plano">
-                <span class="filtro-item-drag-handle">⋮⋮</span>
-                <input type="checkbox" 
-                       ${checked}
-                       onchange="window.handleToggleRubro('${rubroEscapado}', null)"
-                       onclick="event.stopPropagation()">
-                <span class="filtro-item-label">${rubro}</span>
+                <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
+                    <span class="filtro-item-drag-handle">⋮⋮</span>
+                    <input type="checkbox" 
+                           ${checked}
+                           onchange="window.handleToggleRubro('${rubroEscapado}', null)"
+                           onclick="event.stopPropagation()">
+                    <span class="filtro-item-label">${rubro}</span>
+                </div>
+                
+                <!-- ✅ NUEVO: Contenedor de sub-rubros -->
+                <div class="filtro-subitems-container">
+        `;
+        
+        // Renderizar sub-rubros si existen
+        if (data.subRubros && Object.keys(data.subRubros).length > 0) {
+            const subRubrosOrdenados = Object.entries(data.subRubros).sort((a, b) => a[0].localeCompare(b[0]));
+            
+            subRubrosOrdenados.forEach(([subRubro, subData]) => {
+                const subChecked = subData.visible ? 'checked' : '';
+                const subRubroEscapado = subRubro.replace(/'/g, "\\'");
+                
+                html += `
+                    <div class="filtro-subitem">
+                        <input type="checkbox" 
+                               ${subChecked}
+                               onchange="window.handleToggleSubRubro('${rubroEscapado}', '${subRubroEscapado}', null)"
+                               onclick="event.stopPropagation()">
+                        <span class="filtro-subitem-label">${subRubro}</span>
+                    </div>
+                `;
+            });
+        }
+        
+        html += `
+                </div>
             </div>
         `;
     });
@@ -73,10 +103,11 @@ function renderizarPanelPlano(estructura, onToggleVisibilidad, onReordenar) {
 }
 
 /**
- * Renderizar panel en modo jerárquico (meses → rubros)
+ * Renderizar panel en modo jerárquico (meses → rubros → sub-rubros)
+ * ✅ MEJORADO: Muestra sub-rubros indentados debajo de cada rubro
  */
 function renderizarPanelJerarquico(estructura, onToggleVisibilidad, onReordenar) {
-    console.log('🎨 [RENDER-PANEL] Renderizando modo JERÁRQUICO');
+    console.log('🎨 [RENDER-PANEL] Renderizando modo JERÁRQUICO con sub-rubros');
     
     // Ordenar meses por su orden
     const mesesOrdenados = Object.entries(estructura)
@@ -121,12 +152,41 @@ function renderizarPanelJerarquico(estructura, onToggleVisibilidad, onReordenar)
                      data-rubro="${rubroEscapado}"
                      data-mes-key="${mesKeyEscapado}"
                      data-modo="jerarquico">
-                    <span class="filtro-item-drag-handle">⋮⋮</span>
-                    <input type="checkbox" 
-                           ${checked}
-                           onchange="window.handleToggleRubro('${rubroEscapado}', '${mesKeyEscapado}')"
-                           onclick="event.stopPropagation()">
-                    <span class="filtro-item-label">${rubro}</span>
+                    <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
+                        <span class="filtro-item-drag-handle">⋮⋮</span>
+                        <input type="checkbox" 
+                               ${checked}
+                               onchange="window.handleToggleRubro('${rubroEscapado}', '${mesKeyEscapado}')"
+                               onclick="event.stopPropagation()">
+                        <span class="filtro-item-label">${rubro}</span>
+                    </div>
+                    
+                    <!-- ✅ NUEVO: Contenedor de sub-rubros -->
+                    <div class="filtro-subitems-container">
+            `;
+            
+            // Renderizar sub-rubros si existen
+            if (rubroData.subRubros && Object.keys(rubroData.subRubros).length > 0) {
+                const subRubrosOrdenados = Object.entries(rubroData.subRubros).sort((a, b) => a[0].localeCompare(b[0]));
+                
+                subRubrosOrdenados.forEach(([subRubro, subData]) => {
+                    const subChecked = subData.visible ? 'checked' : '';
+                    const subRubroEscapado = subRubro.replace(/'/g, "\\'");
+                    
+                    html += `
+                        <div class="filtro-subitem">
+                            <input type="checkbox" 
+                                   ${subChecked}
+                                   onchange="window.handleToggleSubRubro('${rubroEscapado}', '${subRubroEscapado}', '${mesKeyEscapado}')"
+                                   onclick="event.stopPropagation()">
+                            <span class="filtro-subitem-label">${subRubro}</span>
+                        </div>
+                    `;
+                });
+            }
+            
+            html += `
+                    </div>
                 </div>
             `;
         });

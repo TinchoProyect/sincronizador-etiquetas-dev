@@ -57,17 +57,24 @@ function extraerEstructuraRubros(productos, incluirMeses = false) {
 
 /**
  * Extraer estructura plana de rubros con orden de prioridad
+ * ✅ MEJORADO: Incluye sub-rubros dentro de cada rubro
  */
 function extraerEstructuraPlana(productos) {
-    const rubrosSet = new Set();
+    const rubrosMap = new Map();
     
+    // Extraer rubros y sus sub-rubros
     productos.forEach(p => {
         const rubro = p.rubro || 'Sin categoría';
-        rubrosSet.add(rubro);
+        const subRubro = p.sub_rubro || 'Sin subcategoría';
+        
+        if (!rubrosMap.has(rubro)) {
+            rubrosMap.set(rubro, new Set());
+        }
+        rubrosMap.get(rubro).add(subRubro);
     });
     
-    // ✅ ORDENAR SEGÚN PRIORIDAD DE NEGOCIO
-    const rubros = Array.from(rubrosSet).sort((a, b) => {
+    // ✅ ORDENAR RUBROS SEGÚN PRIORIDAD DE NEGOCIO
+    const rubrosOrdenados = Array.from(rubrosMap.keys()).sort((a, b) => {
         const ordenA = obtenerOrdenPrioridad(a);
         const ordenB = obtenerOrdenPrioridad(b);
         
@@ -84,29 +91,43 @@ function extraerEstructuraPlana(productos) {
         return a.localeCompare(b);
     });
     
-    // Crear estructura con estado inicial
+    // Crear estructura con sub-rubros
     const estructura = {};
-    rubros.forEach((rubro, index) => {
+    rubrosOrdenados.forEach((rubro, index) => {
+        const subRubrosSet = rubrosMap.get(rubro);
+        const subRubrosOrdenados = Array.from(subRubrosSet).sort();
+        
+        // Crear objeto de sub-rubros
+        const subRubros = {};
+        subRubrosOrdenados.forEach(subRubro => {
+            subRubros[subRubro] = {
+                visible: subRubro !== 'Sin subcategoría', // "Sin subcategoría" oculto por defecto
+                nombre: subRubro
+            };
+        });
+        
         estructura[rubro] = {
             visible: rubro !== 'Sin categoría', // "Sin categoría" oculto por defecto
             orden: index,
-            nombre: rubro
+            nombre: rubro,
+            subRubros: subRubros
         };
     });
     
-    console.log(`📋 [FILTRO-RUBROS] Orden aplicado:`, rubros);
+    console.log(`📋 [FILTRO-RUBROS] Orden aplicado con sub-rubros:`, rubrosOrdenados);
     return estructura;
 }
 
 /**
- * Extraer estructura jerárquica (Mes → Rubros) con orden de prioridad
+ * Extraer estructura jerárquica (Mes → Rubros → Sub-Rubros) con orden de prioridad
+ * ✅ MEJORADO: Incluye sub-rubros dentro de cada rubro
  * ✅ FIX: Agrupa meses antiguos (>6 meses) en "Más de 6 meses"
  */
 function extraerEstructuraJerarquica(productos) {
     const estructura = {};
     const ahora = new Date();
     
-    // Agrupar por mes (con lógica de 6 meses)
+    // Agrupar por mes y extraer sub-rubros
     productos.forEach(p => {
         const fecha = new Date(p.fecha_entrega);
         const mesesAtras = (ahora.getFullYear() - fecha.getFullYear()) * 12 + (ahora.getMonth() - fecha.getMonth());
@@ -124,6 +145,7 @@ function extraerEstructuraJerarquica(productos) {
         }
         
         const rubro = p.rubro || 'Sin categoría';
+        const subRubro = p.sub_rubro || 'Sin subcategoría';
         
         if (!estructura[mesKey]) {
             estructura[mesKey] = {
@@ -138,7 +160,16 @@ function extraerEstructuraJerarquica(productos) {
             estructura[mesKey].rubros[rubro] = {
                 visible: rubro !== 'Sin categoría',
                 orden: Object.keys(estructura[mesKey].rubros).length,
-                nombre: rubro
+                nombre: rubro,
+                subRubros: {}
+            };
+        }
+        
+        // Agregar sub-rubro si no existe
+        if (!estructura[mesKey].rubros[rubro].subRubros[subRubro]) {
+            estructura[mesKey].rubros[rubro].subRubros[subRubro] = {
+                visible: subRubro !== 'Sin subcategoría',
+                nombre: subRubro
             };
         }
     });
@@ -170,9 +201,17 @@ function extraerEstructuraJerarquica(productos) {
         
         const rubrosReordenados = {};
         rubrosOrdenados.forEach((rubro, idx) => {
+            // Ordenar sub-rubros alfabéticamente
+            const subRubros = rubros[rubro].subRubros;
+            const subRubrosOrdenados = {};
+            Object.keys(subRubros).sort().forEach(subRubro => {
+                subRubrosOrdenados[subRubro] = subRubros[subRubro];
+            });
+            
             rubrosReordenados[rubro] = {
                 ...rubros[rubro],
-                orden: idx
+                orden: idx,
+                subRubros: subRubrosOrdenados
             };
         });
         
@@ -220,20 +259,61 @@ function inicializarFiltros(productos, incluirMeses) {
 
 /**
  * Actualizar visibilidad de un rubro
+ * ✅ MEJORADO: Cascada a todos los sub-rubros
  */
 function toggleVisibilidadRubro(rubro, mesKey = null) {
     if (estadoFiltros.modo === 'plano') {
         if (estadoFiltros.rubrosPlanos[rubro]) {
-            estadoFiltros.rubrosPlanos[rubro].visible = !estadoFiltros.rubrosPlanos[rubro].visible;
-            console.log(`👁️ [FILTRO-RUBROS] ${rubro}: ${estadoFiltros.rubrosPlanos[rubro].visible ? 'visible' : 'oculto'}`);
+            const nuevoEstado = !estadoFiltros.rubrosPlanos[rubro].visible;
+            estadoFiltros.rubrosPlanos[rubro].visible = nuevoEstado;
+            
+            // ✅ CASCADA: Actualizar todos los sub-rubros
+            const subRubros = estadoFiltros.rubrosPlanos[rubro].subRubros;
+            if (subRubros) {
+                Object.keys(subRubros).forEach(subRubro => {
+                    subRubros[subRubro].visible = nuevoEstado;
+                });
+            }
+            
+            console.log(`👁️ [FILTRO-RUBROS] ${rubro}: ${nuevoEstado ? 'visible' : 'oculto'} (cascada a sub-rubros)`);
         }
     } else {
         if (mesKey && estadoFiltros.rubrosJerarquicos[mesKey]) {
             if (estadoFiltros.rubrosJerarquicos[mesKey].rubros[rubro]) {
                 const estado = estadoFiltros.rubrosJerarquicos[mesKey].rubros[rubro];
-                estado.visible = !estado.visible;
-                console.log(`👁️ [FILTRO-RUBROS] ${mesKey} → ${rubro}: ${estado.visible ? 'visible' : 'oculto'}`);
+                const nuevoEstado = !estado.visible;
+                estado.visible = nuevoEstado;
+                
+                // ✅ CASCADA: Actualizar todos los sub-rubros
+                const subRubros = estado.subRubros;
+                if (subRubros) {
+                    Object.keys(subRubros).forEach(subRubro => {
+                        subRubros[subRubro].visible = nuevoEstado;
+                    });
+                }
+                
+                console.log(`👁️ [FILTRO-RUBROS] ${mesKey} → ${rubro}: ${nuevoEstado ? 'visible' : 'oculto'} (cascada a sub-rubros)`);
             }
+        }
+    }
+}
+
+/**
+ * Actualizar visibilidad de un sub-rubro
+ * ✅ NUEVO: Toggle individual de sub-rubros
+ */
+function toggleVisibilidadSubRubro(rubro, subRubro, mesKey = null) {
+    if (estadoFiltros.modo === 'plano') {
+        if (estadoFiltros.rubrosPlanos[rubro]?.subRubros?.[subRubro]) {
+            const subRubroEstado = estadoFiltros.rubrosPlanos[rubro].subRubros[subRubro];
+            subRubroEstado.visible = !subRubroEstado.visible;
+            console.log(`👁️ [FILTRO-RUBROS] ${rubro} → ${subRubro}: ${subRubroEstado.visible ? 'visible' : 'oculto'}`);
+        }
+    } else {
+        if (mesKey && estadoFiltros.rubrosJerarquicos[mesKey]?.rubros?.[rubro]?.subRubros?.[subRubro]) {
+            const subRubroEstado = estadoFiltros.rubrosJerarquicos[mesKey].rubros[rubro].subRubros[subRubro];
+            subRubroEstado.visible = !subRubroEstado.visible;
+            console.log(`👁️ [FILTRO-RUBROS] ${mesKey} → ${rubro} → ${subRubro}: ${subRubroEstado.visible ? 'visible' : 'oculto'}`);
         }
     }
 }
@@ -389,6 +469,25 @@ function esRubroVisible(rubro, mesKey = null) {
 }
 
 /**
+ * Verificar si un sub-rubro debe mostrarse
+ * ✅ NUEVO: Considera tanto la visibilidad del rubro como del sub-rubro
+ */
+function esSubRubroVisible(rubro, subRubro, mesKey = null) {
+    // Primero verificar si el rubro padre es visible
+    if (!esRubroVisible(rubro, mesKey)) {
+        return false;
+    }
+    
+    // Luego verificar el sub-rubro específico
+    if (estadoFiltros.modo === 'plano') {
+        return estadoFiltros.rubrosPlanos[rubro]?.subRubros?.[subRubro]?.visible ?? true;
+    } else if (mesKey) {
+        return estadoFiltros.rubrosJerarquicos[mesKey]?.rubros[rubro]?.subRubros?.[subRubro]?.visible ?? true;
+    }
+    return true;
+}
+
+/**
  * Verificar si un mes debe mostrarse
  */
 function esMesVisible(mesKey) {
@@ -412,11 +511,13 @@ console.log('✅ [FILTRO-RUBROS] Módulo cargado correctamente');
 export {
     inicializarFiltros,
     toggleVisibilidadRubro,
+    toggleVisibilidadSubRubro,
     toggleVisibilidadMes,
     reordenarRubros,
     obtenerRubrosOrdenados,
     obtenerMesesOrdenados,
     esRubroVisible,
+    esSubRubroVisible,
     esMesVisible,
     obtenerEstado,
     estadoFiltros

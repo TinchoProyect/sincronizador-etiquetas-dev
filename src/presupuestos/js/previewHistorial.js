@@ -11,9 +11,11 @@ console.log('📄 [PREVIEW-HISTORIAL] Cargando módulo principal con ES6...');
 import {
     inicializarFiltros,
     toggleVisibilidadRubro,
+    toggleVisibilidadSubRubro,
     toggleVisibilidadMes,
     reordenarRubros,
     esRubroVisible,
+    esSubRubroVisible,
     esMesVisible,
     obtenerRubrosOrdenados,
     obtenerMesesOrdenados,
@@ -245,6 +247,16 @@ function handleToggleRubro(rubro, mesKey) {
 function handleToggleMes(mesKey) {
     console.log(`👁️ [FILTROS] Toggle mes: ${mesKey}`);
     toggleVisibilidadMes(mesKey);
+    renderizarInforme();
+}
+
+/**
+ * Handler para toggle de sub-rubros
+ * ✅ NUEVO: Permite filtrar sub-rubros individualmente
+ */
+function handleToggleSubRubro(rubro, subRubro, mesKey) {
+    console.log(`👁️ [FILTROS] Toggle sub-rubro: ${rubro} → ${subRubro} (mes: ${mesKey || 'N/A'})`);
+    toggleVisibilidadSubRubro(rubro, subRubro, mesKey);
     renderizarInforme();
 }
 
@@ -628,7 +640,7 @@ function renderizarInforme() {
                     if (config.agruparSubrubro) {
                         // ✅ NUEVA LÓGICA: Tabla unificada con sub-rubros integrados
                         const productosPorSubRubro = agruparPorSubRubro(productosPorRubro[rubro]);
-                        const resultado = renderizarTablaConSubRubros(rubro, productosPorSubRubro, columnasActivas);
+                        const resultado = renderizarTablaConSubRubros(rubro, productosPorSubRubro, columnasActivas, grupo.mesKey);
                         html += resultado.html;
                         totalProductos += resultado.totales.productos;
                         sumaPreciosConIva += resultado.totales.preciosConIva;
@@ -665,7 +677,7 @@ function renderizarInforme() {
                 if (config.agruparSubrubro) {
                     // ✅ NUEVA LÓGICA: Tabla unificada con sub-rubros integrados
                     const productosPorSubRubro = agruparPorSubRubro(productosPorRubro[rubro]);
-                    const resultado = renderizarTablaConSubRubros(rubro, productosPorSubRubro, columnasActivas);
+                    const resultado = renderizarTablaConSubRubros(rubro, productosPorSubRubro, columnasActivas, null);
                     html += resultado.html;
                     totalProductos += resultado.totales.productos;
                     sumaPreciosConIva += resultado.totales.preciosConIva;
@@ -794,8 +806,9 @@ function renderizarTablaProductos(titulo, productos, columnasActivas, esSubRubro
 /**
  * Renderizar tabla unificada con sub-rubros como separadores internos
  * ✅ OPTIMIZACIÓN: Encabezados de columna UNA SOLA VEZ por rubro
+ * ✅ MEJORADO: Filtra sub-rubros según visibilidad
  */
-function renderizarTablaConSubRubros(tituloRubro, productosPorSubRubro, columnasActivas) {
+function renderizarTablaConSubRubros(tituloRubro, productosPorSubRubro, columnasActivas, mesKey = null) {
     let html = `
         <div class="rubro-grupo">
             <div class="rubro-header">${tituloRubro}</div>
@@ -820,11 +833,16 @@ function renderizarTablaConSubRubros(tituloRubro, productosPorSubRubro, columnas
     // Ordenar sub-rubros alfabéticamente
     const subRubrosOrdenados = Object.keys(productosPorSubRubro).sort();
     
-    subRubrosOrdenados.forEach((subRubro, index) => {
+    // ✅ NUEVO: Filtrar sub-rubros según visibilidad
+    const subRubrosVisibles = subRubrosOrdenados.filter(subRubro => 
+        esSubRubroVisible(tituloRubro, subRubro, mesKey)
+    );
+    
+    subRubrosVisibles.forEach((subRubro, index) => {
         const productosSubRubro = productosPorSubRubro[subRubro];
         
         // Insertar separador de sub-rubro (excepto el primero)
-        if (index > 0 || subRubrosOrdenados.length > 1) {
+        if (index > 0 || subRubrosVisibles.length > 1) {
             html += `
                 <tr class="subrubro-separator">
                     <td colspan="${columnasActivas.length}">${subRubro}</td>
@@ -1299,6 +1317,7 @@ window.imprimirInforme = imprimirInforme;
 window.volverAtras = volverAtras;
 window.cargarPesoArticulo = cargarPesoArticulo;
 window.handleToggleRubro = handleToggleRubro;
+window.handleToggleSubRubro = handleToggleSubRubro;
 window.handleToggleMes = handleToggleMes;
 window.cambiarOrientacion = cambiarOrientacion;
 

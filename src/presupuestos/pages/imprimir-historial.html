@@ -581,8 +581,9 @@
             cursor: move;
             transition: all 0.2s ease;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 10px;
+            flex-direction: column;
         }
 
         .filtro-item:hover {
@@ -617,6 +618,50 @@
             color: #999;
             font-size: 1.2em;
             cursor: move;
+        }
+
+        /* ✅ NUEVO: Contenedor principal del rubro (checkbox + label + handle) */
+        .filtro-item > div:first-child {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        /* ✅ NUEVO: Contenedor de sub-rubros */
+        .filtro-subitems-container {
+            width: 100%;
+            margin-left: 25px;
+            padding-left: 10px;
+            border-left: 2px solid #e0e0e0;
+        }
+
+        /* ✅ NUEVO: Estilo de cada sub-rubro */
+        .filtro-subitem {
+            padding: 4px 8px;
+            margin: 2px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+            color: #555;
+            transition: all 0.2s ease;
+            border-radius: 3px;
+        }
+
+        .filtro-subitem:hover {
+            background: #f8f9fa;
+        }
+
+        .filtro-subitem input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .filtro-subitem-label {
+            cursor: pointer;
+            user-select: none;
         }
 
         /* Estructura jerárquica (meses) */
