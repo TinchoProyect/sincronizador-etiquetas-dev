@@ -394,11 +394,21 @@ function inicializarFiltros(ingredientes) {
     console.log('✅ Filtros inicializados en panel lateral');
 }
 
+// ✅ FUNCIÓN AUXILIAR: Normalizar texto (eliminar tildes y caracteres especiales)
+function normalizarTexto(texto) {
+    if (!texto) return '';
+    return texto
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Eliminar tildes
+        .trim();
+}
+
 // Función para actualizar la tabla según los filtros activos combinados
 async function actualizarTablaFiltrada() {
     // Solo aplicar filtros en la vista de depósito
     if (vistaActual === 'deposito') {
-        const nombreFiltro = document.getElementById('filtro-nombre')?.value.trim().toLowerCase() || '';
+        const nombreFiltro = document.getElementById('filtro-nombre')?.value.trim() || '';
 
         // Si no hay filtros activos ni búsqueda, mostrar TODOS los ingredientes
         if (
@@ -415,9 +425,23 @@ async function actualizarTablaFiltrada() {
 
         // Aplicar filtros combinados (AND lógico entre tipos de filtros, OR dentro de cada tipo)
         const ingredientesFiltrados = ingredientesOriginales.filter(ing => {
-            // Filtro por nombre (input) - Mari
-            const nombreFiltro = document.getElementById('filtro-nombre').value.trim().toLowerCase();
-            const pasaNombre = !nombreFiltro || ing.nombre.toLowerCase().includes(nombreFiltro);
+            // ✅ FILTRO POR NOMBRE: Búsqueda multi-término SOLO en nombre (sin descripción ni código)
+            let pasaNombre = true;
+            if (nombreFiltro) {
+                // Dividir el input en términos (separados por espacios)
+                const terminos = nombreFiltro
+                    .split(/\s+/) // Dividir por uno o más espacios
+                    .filter(t => t.length > 0) // Eliminar términos vacíos
+                    .map(t => normalizarTexto(t)); // Normalizar cada término
+                
+                if (terminos.length > 0) {
+                    // Normalizar SOLO el nombre del ingrediente
+                    const nombreNormalizado = normalizarTexto(ing.nombre);
+                    
+                    // Verificar que TODOS los términos estén presentes en el nombre
+                    pasaNombre = terminos.every(termino => nombreNormalizado.includes(termino));
+                }
+            }
            
             // Filtro por categoría (si hay filtros de categoría activos)
             const pasaCategoria = filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria);
