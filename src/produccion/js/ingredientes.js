@@ -749,6 +749,180 @@ function mostrarMensajeDiscretoSector(mensaje, tipo = 'info') {
     }, 3000);
 }
 
+// Caché de nutrientes cargados
+const cacheNutrientes = new Map();
+
+// Función para invalidar caché de nutrientes
+function invalidarCacheNutrientes(ingredienteId) {
+    cacheNutrientes.delete(ingredienteId);
+}
+
+// Función para cargar nutrientes de un ingrediente
+async function cargarNutrientes(ingredienteId) {
+    // Verificar caché
+    if (cacheNutrientes.has(ingredienteId)) {
+        console.log(`📦 [CACHE] Usando caché para ingrediente ${ingredienteId}`);
+        return cacheNutrientes.get(ingredienteId);
+    }
+    
+    // Cargar del servidor
+    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/nutrientes`);
+    
+    if (!response.ok) {
+        throw new Error('Error al cargar nutrientes');
+    }
+    
+    const nutrientes = await response.json();
+    
+    // Guardar en caché
+    cacheNutrientes.set(ingredienteId, nutrientes);
+    
+    return nutrientes;
+}
+
+// Función para toggle de expandir/colapsar detalles de nutrientes
+async function toggleDetallesNutrientes(ingredienteId, filaActual) {
+    const filaDetalles = document.querySelector(`tr[data-detalles-id="${ingredienteId}"]`);
+    const btnExpandir = filaActual.querySelector('.btn-expandir');
+    const iconoExpandir = btnExpandir.querySelector('.icono-expandir');
+    
+    if (filaDetalles) {
+        // Ya está expandido, colapsar
+        filaDetalles.remove();
+        iconoExpandir.textContent = '▶';
+        iconoExpandir.style.transform = 'rotate(0deg)';
+    } else {
+        // Expandir y cargar datos
+        iconoExpandir.textContent = '▼';
+        iconoExpandir.style.transform = 'rotate(90deg)';
+        
+        try {
+            // Cargar nutrientes del servidor
+            const nutrientes = await cargarNutrientes(ingredienteId);
+            
+            // Crear fila de detalles
+            const trDetalles = document.createElement('tr');
+            trDetalles.dataset.detallesId = ingredienteId;
+            trDetalles.className = 'fila-detalles-nutrientes';
+            
+            trDetalles.innerHTML = `
+                <td colspan="11">
+                    <div class="contenedor-detalles-nutrientes">
+                        <h4>📦 Artículos que abastecen este ingrediente:</h4>
+                        ${renderizarTablaNutrientes(nutrientes, ingredienteId)}
+                    </div>
+                </td>
+            `;
+            
+            // Insertar después de la fila actual
+            filaActual.after(trDetalles);
+        } catch (error) {
+            console.error('Error al cargar nutrientes:', error);
+            mostrarMensaje('Error al cargar los artículos nutrientes');
+            iconoExpandir.textContent = '▶';
+            iconoExpandir.style.transform = 'rotate(0deg)';
+        }
+    }
+}
+
+// Función para renderizar tabla de nutrientes
+function renderizarTablaNutrientes(nutrientes, ingredienteId) {
+    if (!nutrientes || nutrientes.length === 0) {
+        return '<p class="sin-nutrientes">No hay artículos vinculados a este ingrediente</p>';
+    }
+    
+    const totalPotencial = nutrientes
+        .filter(n => n.activo)
+        .reduce((sum, n) => sum + (parseFloat(n.kilos_potenciales) || 0), 0);
+    
+    return `
+        <table class="tabla-nutrientes">
+            <thead>
+                <tr>
+                    <th>Artículo</th>
+                    <th>Stock (Bultos)</th>
+                    <th>Kg/Bulto</th>
+                    <th>Kilos Potenciales</th>
+                    <th>Estado</th>
+                    <th>Tipo</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${nutrientes.map(n => `
+                    <tr class="${!n.activo ? 'vinculo-inactivo' : ''}">
+                        <td>${n.articulo_nombre || n.articulo_numero}</td>
+                        <td>${formatearStock(n.stock_bultos || 0)}</td>
+                        <td>${formatearStock(n.kilos_unidad || 0)}</td>
+                        <td><strong>${formatearStock(n.kilos_potenciales || 0)}</strong></td>
+                        <td>
+                            <label class="switch-vinculo">
+                                <input type="checkbox" 
+                                       ${n.activo ? 'checked' : ''}
+                                       onchange="toggleVinculo(${n.id}, this.checked, ${ingredienteId})">
+                                <span class="slider"></span>
+                            </label>
+                        </td>
+                        <td>
+                            <span class="badge-tipo ${n.manual ? 'badge-manual' : 'badge-auto'}">
+                                ${n.manual ? 'Manual' : 'Auto'}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+            <tfoot>
+                <tr class="fila-total-potencial">
+                    <td colspan="3"><strong>TOTAL POTENCIAL:</strong></td>
+                    <td><strong>${formatearStock(totalPotencial)}</strong></td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+}
+
+// Función para toggle de vínculo activo/inactivo
+async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
+    try {
+        console.log(`🔄 [VINCULO] Actualizando vínculo ${vinculoId} a estado: ${nuevoEstado}`);
+        
+        const response = await fetch(
+            `http://localhost:3002/api/produccion/ingredientes/nutrientes/${vinculoId}`,
+            {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activo: nuevoEstado })
+            }
+        );
+        
+        if (!response.ok) {
+            throw new Error('Error al actualizar vínculo');
+        }
+        
+        // Invalidar caché de nutrientes
+        invalidarCacheNutrientes(ingredienteId);
+        
+        // Recargar datos del ingrediente para actualizar stock potencial
+        await recargarDatosMantenendoFiltros();
+        
+        // Actualizar la tabla de nutrientes expandida
+        const filaActual = document.querySelector(`tr[data-id="${ingredienteId}"]`);
+        if (filaActual) {
+            // Colapsar y volver a expandir para refrescar datos
+            await toggleDetallesNutrientes(ingredienteId, filaActual);
+            await toggleDetallesNutrientes(ingredienteId, filaActual);
+        }
+        
+        mostrarMensaje(
+            `Vínculo ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`,
+            'exito'
+        );
+    } catch (error) {
+        console.error('❌ [VINCULO] Error al toggle vínculo:', error);
+        mostrarMensaje('Error al actualizar el vínculo');
+    }
+}
+
 // Función para actualizar la tabla con los ingredientes
 async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false) {
     const tbody = document.getElementById('tabla-ingredientes-body');
@@ -757,7 +931,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
     tbody.innerHTML = '';
 
     if (!ingredientes || ingredientes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No hay ingredientes disponibles</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center">No hay ingredientes disponibles</td></tr>';
         return;
     }
 
@@ -766,12 +940,14 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
         tr.dataset.id = ingrediente.id;
         
         if (esVistaUsuario) {
-            // Vista de usuario: mostrar stock personal
+            // Vista de usuario: mostrar stock personal (sin botón expandir ni stock potencial)
             tr.innerHTML = `
+                <td></td>
                 <td>${ingrediente.nombre_ingrediente}</td>
                 <td>${ingrediente.unidad_medida || '-'}</td>
                 <td>${ingrediente.categoria || '-'}</td>
                 <td>${parseFloat(ingrediente.stock_total).toFixed(3)}</td>
+                <td>-</td>
                 <td>-</td>
                 <td>${ingrediente.descripcion || '-'}</td>
                 <td>${ingrediente.tipo_origen || 'Simple'}</td>
@@ -779,15 +955,28 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 <td><span style="color: #6c757d; font-style: italic;">Solo lectura</span></td>
             `;
         } else {
-            // Vista de depósito: funcionalidad completa
+            // Vista de depósito: funcionalidad completa con stock potencial
             const nombreSector = ingrediente.sector_nombre || 'Sin asignar';
+            const stockPotencial = parseFloat(ingrediente.stock_potencial) || parseFloat(ingrediente.stock_actual) || 0;
+            const vinculosActivos = parseInt(ingrediente.vinculos_activos) || 0;
             
             // Crear fila
             tr.innerHTML = `
+                <td class="td-expandir">
+                    <button class="btn-expandir" data-ingrediente-id="${ingrediente.id}">
+                        <span class="icono-expandir">▶</span>
+                    </button>
+                </td>
                 <td>${ingrediente.nombre}</td>
                 <td>${ingrediente.unidad_medida}</td>
                 <td>${ingrediente.categoria}</td>
                 <td>${formatearStock(ingrediente.stock_actual)}</td>
+                <td class="stock-potencial">
+                    ${formatearStock(stockPotencial)}
+                    ${vinculosActivos > 0 
+                        ? `<span class="badge-vinculos">${vinculosActivos}</span>` 
+                        : ''}
+                </td>
                 <td class="sector-cell"></td>
                 <td>${ingrediente.descripcion || '-'}</td>
                 <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
@@ -815,6 +1004,10 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 nombreSector
             );
             sectorCell.appendChild(selectorSector);
+            
+            // Agregar evento de expansión al botón
+            const btnExpandir = tr.querySelector('.btn-expandir');
+            btnExpandir.addEventListener('click', () => toggleDetallesNutrientes(ingrediente.id, tr));
         }
         
         tbody.appendChild(tr);
@@ -1142,6 +1335,7 @@ window.eliminarIngrediente = eliminarIngrediente;
 window.gestionarComposicionMix = gestionarComposicionMix;
 window.eliminarComposicionMix = eliminarComposicionMix;
 window.cargarIngredientes = cargarIngredientes;
+window.toggleVinculo = toggleVinculo;
 
 // Funciones para gestionar el modal de mix
 function gestionarComposicionMix(id) {

@@ -96,7 +96,9 @@ const {
     obtenerUsuariosConStock,
     obtenerStockPorUsuario,
     obtenerSectores,
-    obtenerIngredientesPorSectores
+    obtenerIngredientesPorSectores,
+    obtenerNutrientes,
+    actualizarVinculo
 } = require('../controllers/ingredientes');
 
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
@@ -197,6 +199,64 @@ router.delete('/sectores/:id', async (req, res) => {
         } else if (error.message.includes('no encontrado')) {
             statusCode = 404;
         }
+        res.status(statusCode).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// RUTAS PARA NUTRIENTES (STOCK POTENCIAL)
+// ==========================================
+
+/**
+ * Obtener artículos nutrientes de un ingrediente
+ * GET /api/produccion/ingredientes/:id/nutrientes
+ */
+router.get('/ingredientes/:id/nutrientes', async (req, res) => {
+    try {
+        const ingredienteId = parseInt(req.params.id);
+        
+        if (isNaN(ingredienteId)) {
+            return res.status(400).json({ error: 'ID de ingrediente inválido' });
+        }
+        
+        console.log(`🔍 [NUTRIENTES] Solicitando nutrientes para ingrediente ${ingredienteId}`);
+        const nutrientes = await obtenerNutrientes(ingredienteId);
+        res.json(nutrientes);
+    } catch (error) {
+        console.error('❌ [NUTRIENTES] Error al obtener nutrientes:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Activar/Desactivar vínculo de nutriente
+ * PATCH /api/produccion/ingredientes/nutrientes/:id
+ */
+router.patch('/ingredientes/nutrientes/:id', async (req, res) => {
+    try {
+        const vinculoId = parseInt(req.params.id);
+        const { activo } = req.body;
+        
+        if (isNaN(vinculoId)) {
+            return res.status(400).json({ error: 'ID de vínculo inválido' });
+        }
+        
+        if (typeof activo !== 'boolean') {
+            return res.status(400).json({ 
+                error: 'El campo activo debe ser booleano' 
+            });
+        }
+        
+        console.log(`🔄 [NUTRIENTES] Actualizando vínculo ${vinculoId} a estado: ${activo}`);
+        const vinculo = await actualizarVinculo(vinculoId, activo);
+        
+        res.json({
+            message: `Vínculo ${activo ? 'activado' : 'desactivado'} correctamente`,
+            vinculo: vinculo
+        });
+    } catch (error) {
+        console.error('❌ [NUTRIENTES] Error al actualizar vínculo:', error);
+        const statusCode = error.message.includes('no encontrado') ? 404 : 500;
         res.status(statusCode).json({ error: error.message });
     }
 });

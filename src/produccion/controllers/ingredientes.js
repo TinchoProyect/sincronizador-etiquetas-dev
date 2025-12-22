@@ -33,12 +33,12 @@ async function obtenerNuevoCodigo() {
 }
 
 /**
- * Obtiene todos los ingredientes con información de sector
- * @returns {Promise<Array>} Lista de ingredientes con sector
+ * Obtiene todos los ingredientes con información de sector y stock potencial
+ * @returns {Promise<Array>} Lista de ingredientes con sector y stock potencial
  */
 async function obtenerIngredientes() {
     try {
-        console.log('🔍 [SECTORES] Ejecutando consulta de ingredientes con sectores...');
+        console.log('🔍 [SECTORES] Ejecutando consulta de ingredientes con sectores y stock potencial...');
         const query = `
             SELECT 
                 i.id,
@@ -49,7 +49,25 @@ async function obtenerIngredientes() {
                 i.categoria,
                 i.stock_actual,
                 i.sector_id,
-                s.nombre as sector_nombre
+                s.nombre as sector_nombre,
+                -- ✅ CÁLCULO DE STOCK POTENCIAL
+                COALESCE(
+                    i.stock_actual + (
+                        SELECT COALESCE(SUM(src.stock_consolidado * src.kilos_unidad), 0)
+                        FROM ingrediente_articulos_nutrientes ian
+                        JOIN stock_real_consolidado src ON src.articulo_numero = ian.articulo_numero
+                        WHERE ian.ingrediente_id = i.id 
+                          AND ian.activo = true
+                    ),
+                    i.stock_actual
+                ) as stock_potencial,
+                -- ✅ CONTADOR DE VÍNCULOS ACTIVOS
+                (
+                    SELECT COUNT(*)::integer
+                    FROM ingrediente_articulos_nutrientes ian
+                    WHERE ian.ingrediente_id = i.id 
+                      AND ian.activo = true
+                ) as vinculos_activos
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
             ORDER BY i.nombre ASC;
@@ -58,15 +76,83 @@ async function obtenerIngredientes() {
         const result = await pool.query(query);
         console.log(`✅ [SECTORES] Encontrados ${result.rows.length} ingredientes`);
         
-        // Log de depuración para sectores
+        // Log de depuración para sectores y stock potencial
         const conSector = result.rows.filter(ing => ing.sector_id !== null).length;
         const sinSector = result.rows.length - conSector;
+        const conVinculos = result.rows.filter(ing => ing.vinculos_activos > 0).length;
         console.log(`📊 [SECTORES] Ingredientes con sector: ${conSector}, sin sector: ${sinSector}`);
+        console.log(`📊 [POTENCIAL] Ingredientes con vínculos activos: ${conVinculos}`);
         
         return result.rows;
     } catch (error) {
         console.error('❌ [SECTORES] Error en obtenerIngredientes:', error);
         throw new Error('No se pudo obtener la lista de ingredientes');
+    }
+}
+
+/**
+ * Obtiene los artículos nutrientes de un ingrediente
+ * @param {number} ingredienteId - ID del ingrediente
+ * @returns {Promise<Array>} Lista de artículos que abastecen al ingrediente
+ */
+async function obtenerNutrientes(ingredienteId) {
+    try {
+        console.log(`🔍 [NUTRIENTES] Obteniendo nutrientes para ingrediente ${ingredienteId}...`);
+        const query = `
+            SELECT 
+                ian.id,
+                ian.articulo_numero,
+                ian.activo,
+                ian.manual,
+                ian.fecha_deteccion,
+                src.descripcion as articulo_nombre,
+                COALESCE(src.stock_consolidado, 0) as stock_bultos,
+                COALESCE(src.kilos_unidad, 0) as kilos_unidad,
+                COALESCE(src.stock_consolidado * src.kilos_unidad, 0) as kilos_potenciales
+            FROM ingrediente_articulos_nutrientes ian
+            LEFT JOIN stock_real_consolidado src 
+                ON src.articulo_numero = ian.articulo_numero
+            WHERE ian.ingrediente_id = $1
+            ORDER BY ian.activo DESC, src.stock_consolidado DESC NULLS LAST;
+        `;
+        
+        const result = await pool.query(query, [ingredienteId]);
+        console.log(`✅ [NUTRIENTES] Encontrados ${result.rows.length} nutrientes`);
+        
+        return result.rows;
+    } catch (error) {
+        console.error('❌ [NUTRIENTES] Error en obtenerNutrientes:', error);
+        throw new Error('No se pudieron obtener los nutrientes');
+    }
+}
+
+/**
+ * Actualiza el estado activo de un vínculo nutriente
+ * @param {number} vinculoId - ID del vínculo
+ * @param {boolean} activo - Nuevo estado
+ * @returns {Promise<Object>} Vínculo actualizado
+ */
+async function actualizarVinculo(vinculoId, activo) {
+    try {
+        console.log(`🔄 [NUTRIENTES] Actualizando vínculo ${vinculoId} a estado: ${activo}`);
+        const query = `
+            UPDATE ingrediente_articulos_nutrientes
+            SET activo = $1
+            WHERE id = $2
+            RETURNING *;
+        `;
+        
+        const result = await pool.query(query, [activo, vinculoId]);
+        
+        if (result.rows.length === 0) {
+            throw new Error('Vínculo no encontrado');
+        }
+        
+        console.log(`✅ [NUTRIENTES] Vínculo actualizado correctamente`);
+        return result.rows[0];
+    } catch (error) {
+        console.error('❌ [NUTRIENTES] Error en actualizarVinculo:', error);
+        throw new Error('No se pudo actualizar el vínculo');
     }
 }
 
@@ -627,5 +713,7 @@ module.exports = {
     actualizarSector,
     eliminarSector,
     buscarIngredientePorCodigo,
-    obtenerIngredientesPorSectores
+    obtenerIngredientesPorSectores,
+    obtenerNutrientes,
+    actualizarVinculo
 };
