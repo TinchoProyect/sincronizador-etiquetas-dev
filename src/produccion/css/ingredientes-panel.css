@@ -680,6 +680,53 @@
 }
 
 /* ============================================
+ * INGREDIENTES MIX - FACTOR LIMITANTE
+ * ============================================ */
+
+/* Información de producibilidad del mix */
+.info-mix-producibilidad {
+    background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+    border-left: 4px solid #ffc107;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    border-radius: 6px;
+}
+
+.info-limitante {
+    margin: 0;
+    color: #856404;
+    font-size: 0.95em;
+}
+
+.info-limitante strong {
+    color: #dc3545;
+}
+
+/* Tabla de componentes del mix */
+.tabla-mix-componentes {
+    margin-top: 10px;
+}
+
+/* Componente limitante (cuello de botella) */
+.componente-limitante {
+    background-color: #fff5f5 !important;
+    border-left: 4px solid #dc3545;
+}
+
+.componente-limitante:hover {
+    background-color: #ffe5e5 !important;
+}
+
+.componente-limitante td {
+    font-weight: 600;
+}
+
+.valor-limitante {
+    color: #dc3545;
+    font-size: 1.1em;
+}
+
+/* ============================================
  * UTILIDADES
  * ============================================ */
 

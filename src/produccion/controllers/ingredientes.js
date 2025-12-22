@@ -91,35 +91,77 @@ async function obtenerIngredientes() {
 }
 
 /**
- * Obtiene los artículos nutrientes de un ingrediente
+ * Obtiene los nutrientes de un ingrediente (artículos o componentes según el tipo)
  * @param {number} ingredienteId - ID del ingrediente
- * @returns {Promise<Array>} Lista de artículos que abastecen al ingrediente
+ * @returns {Promise<Object>} Objeto con tipo y datos de nutrientes
  */
 async function obtenerNutrientes(ingredienteId) {
     try {
         console.log(`🔍 [NUTRIENTES] Obteniendo nutrientes para ingrediente ${ingredienteId}...`);
-        const query = `
-            SELECT 
-                ian.id,
-                ian.articulo_numero,
-                ian.activo,
-                ian.manual,
-                ian.fecha_deteccion,
-                src.descripcion as articulo_nombre,
-                COALESCE(src.stock_consolidado, 0) as stock_bultos,
-                COALESCE(src.kilos_unidad, 0) as kilos_unidad,
-                COALESCE(src.stock_consolidado * src.kilos_unidad, 0) as kilos_potenciales
-            FROM ingrediente_articulos_nutrientes ian
-            LEFT JOIN stock_real_consolidado src 
-                ON src.articulo_numero = ian.articulo_numero
-            WHERE ian.ingrediente_id = $1
-            ORDER BY ian.activo DESC, src.stock_consolidado DESC NULLS LAST;
+        
+        // Primero verificar si es un MIX
+        const checkMixQuery = `
+            SELECT COUNT(*)::integer as count
+            FROM ingrediente_composicion
+            WHERE mix_id = $1
         `;
+        const checkResult = await pool.query(checkMixQuery, [ingredienteId]);
+        const esMix = checkResult.rows[0].count > 0;
         
-        const result = await pool.query(query, [ingredienteId]);
-        console.log(`✅ [NUTRIENTES] Encontrados ${result.rows.length} nutrientes`);
-        
-        return result.rows;
+        if (esMix) {
+            // Es un MIX: usar vista v_producibilidad_componentes_mix
+            console.log(`🧪 [MIX] Ingrediente ${ingredienteId} es un MIX, usando vista de producibilidad`);
+            
+            const queryMix = `
+                SELECT 
+                    componente_id,
+                    componente_nombre,
+                    cantidad_requerida,
+                    peso_total_receta,
+                    disponible_componente,
+                    kilos_mix_posibles
+                FROM v_producibilidad_componentes_mix
+                WHERE mix_id = $1
+                ORDER BY kilos_mix_posibles ASC NULLS LAST;
+            `;
+            
+            const result = await pool.query(queryMix, [ingredienteId]);
+            console.log(`✅ [MIX] Encontrados ${result.rows.length} componentes del mix`);
+            
+            return {
+                tipo: 'mix',
+                datos: result.rows
+            };
+        } else {
+            // Es SIMPLE: usar tabla ingrediente_articulos_nutrientes
+            console.log(`📦 [SIMPLE] Ingrediente ${ingredienteId} es simple, usando artículos nutrientes`);
+            
+            const querySimple = `
+                SELECT 
+                    ian.id,
+                    ian.articulo_numero,
+                    ian.activo,
+                    ian.manual,
+                    ian.fecha_deteccion,
+                    src.descripcion as articulo_nombre,
+                    COALESCE(src.stock_consolidado, 0) as stock_bultos,
+                    COALESCE(src.kilos_unidad, 0) as kilos_unidad,
+                    COALESCE(src.stock_consolidado * src.kilos_unidad, 0) as kilos_potenciales
+                FROM ingrediente_articulos_nutrientes ian
+                LEFT JOIN stock_real_consolidado src 
+                    ON src.articulo_numero = ian.articulo_numero
+                WHERE ian.ingrediente_id = $1
+                ORDER BY ian.activo DESC, src.stock_consolidado DESC NULLS LAST;
+            `;
+            
+            const result = await pool.query(querySimple, [ingredienteId]);
+            console.log(`✅ [SIMPLE] Encontrados ${result.rows.length} artículos nutrientes`);
+            
+            return {
+                tipo: 'simple',
+                datos: result.rows
+            };
+        }
     } catch (error) {
         console.error('❌ [NUTRIENTES] Error en obtenerNutrientes:', error);
         throw new Error('No se pudieron obtener los nutrientes');

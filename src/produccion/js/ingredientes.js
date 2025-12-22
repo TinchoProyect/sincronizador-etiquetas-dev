@@ -825,12 +825,25 @@ async function toggleDetallesNutrientes(ingredienteId, filaActual) {
     }
 }
 
-// Función para renderizar tabla de nutrientes
-function renderizarTablaNutrientes(nutrientes, ingredienteId) {
-    if (!nutrientes || nutrientes.length === 0) {
-        return '<p class="sin-nutrientes">No hay artículos vinculados a este ingrediente</p>';
+// Función para renderizar tabla de nutrientes (diferencia entre SIMPLE y MIX)
+function renderizarTablaNutrientes(respuesta, ingredienteId) {
+    if (!respuesta || !respuesta.datos || respuesta.datos.length === 0) {
+        return '<p class="sin-nutrientes">No hay datos disponibles para este ingrediente</p>';
     }
     
+    const { tipo, datos } = respuesta;
+    
+    if (tipo === 'mix') {
+        // Renderizar tabla para ingredientes MIX (componentes)
+        return renderizarTablaMix(datos);
+    } else {
+        // Renderizar tabla para ingredientes SIMPLE (artículos)
+        return renderizarTablaSimple(datos, ingredienteId);
+    }
+}
+
+// Función para renderizar tabla de ingredientes SIMPLE (artículos nutrientes)
+function renderizarTablaSimple(nutrientes, ingredienteId) {
     const totalPotencial = nutrientes
         .filter(n => n.activo)
         .reduce((sum, n) => sum + (parseFloat(n.kilos_potenciales) || 0), 0);
@@ -875,6 +888,63 @@ function renderizarTablaNutrientes(nutrientes, ingredienteId) {
                     <td colspan="3"><strong>TOTAL POTENCIAL:</strong></td>
                     <td><strong>${formatearStock(totalPotencial)}</strong></td>
                     <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+}
+
+// Función para renderizar tabla de ingredientes MIX (componentes)
+function renderizarTablaMix(componentes) {
+    // Encontrar el componente limitante (menor kilos_mix_posibles)
+    const limitante = componentes.reduce((min, comp) => {
+        const kilosPosibles = parseFloat(comp.kilos_mix_posibles) || 0;
+        const minKilos = parseFloat(min.kilos_mix_posibles) || 0;
+        return kilosPosibles < minKilos ? comp : min;
+    }, componentes[0]);
+    
+    const stockPotencialMix = parseFloat(limitante?.kilos_mix_posibles) || 0;
+    
+    return `
+        <div class="info-mix-producibilidad">
+            <p class="info-limitante">
+                ⚠️ <strong>Factor Limitante:</strong> ${limitante.componente_nombre} 
+                (permite producir <strong>${formatearStock(stockPotencialMix)} kg</strong> de mix)
+            </p>
+        </div>
+        <table class="tabla-nutrientes tabla-mix-componentes">
+            <thead>
+                <tr>
+                    <th>Componente</th>
+                    <th>Requerido en Receta</th>
+                    <th>Stock Disponible</th>
+                    <th>Kilos de Mix Posibles</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${componentes.map(comp => {
+                    const esLimitante = comp.componente_id === limitante.componente_id;
+                    return `
+                        <tr class="${esLimitante ? 'componente-limitante' : ''}">
+                            <td>
+                                ${esLimitante ? '🔴 ' : ''}
+                                ${comp.componente_nombre}
+                            </td>
+                            <td>${formatearStock(comp.cantidad_requerida || 0)}</td>
+                            <td>${formatearStock(comp.disponible_componente || 0)}</td>
+                            <td>
+                                <strong class="${esLimitante ? 'valor-limitante' : ''}">
+                                    ${formatearStock(comp.kilos_mix_posibles || 0)}
+                                </strong>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+            <tfoot>
+                <tr class="fila-total-potencial">
+                    <td colspan="3"><strong>PRODUCCIÓN MÁXIMA POSIBLE:</strong></td>
+                    <td><strong>${formatearStock(stockPotencialMix)}</strong></td>
                 </tr>
             </tfoot>
         </table>
