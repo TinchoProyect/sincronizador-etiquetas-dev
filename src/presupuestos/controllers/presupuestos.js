@@ -2099,34 +2099,57 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 -- ✅ NUEVO: Lista de precios del cliente (con CAST explícito para evitar error de tipos)
                 CAST(COALESCE(NULLIF(TRIM(CAST(c.lista_precios AS text)), ''), '1') AS integer) as lista_precios_cliente,
                 
-                -- ✅ NUEVO: Stock Inteligente - Verificar si es producible cuando stock <= 0
-                CASE
-                    WHEN COALESCE(src.stock_consolidado, 0) > 0 THEN false
-                    WHEN COALESCE(src.stock_consolidado, 0) <= 0 THEN
-                        -- Verificar si tiene receta y todos los ingredientes están disponibles
-                        COALESCE(
-                            (
-                                SELECT 
+                -- ✅ STOCK INTELIGENTE CON UMBRAL DE TOLERANCIA: Verificar producibilidad usando vistas de PostgreSQL
+                COALESCE(
+                    (
+                        -- Verificar si tiene receta
+                        SELECT 
+                            CASE 
+                                -- ✅ UMBRAL DE TOLERANCIA: Solo considerar stock si es > 0.001 (evitar residuos decimales)
+                                WHEN COALESCE(src.stock_consolidado, 0) > 0.001 THEN false
+                                -- Si no tiene stock significativo, verificar si es producible
+                                WHEN COUNT(ri.id) = 0 THEN false
+                                -- Verificar que TODOS los ingredientes tengan stock suficiente
+                                WHEN COUNT(ri.id) = COUNT(
                                     CASE 
-                                        WHEN COUNT(ri.id) = 0 THEN false
-                                        WHEN COUNT(ri.id) = COUNT(
+                                        -- Para ingredientes SIMPLES: usar v_potencial_ingredientes_simples
+                                        WHEN NOT EXISTS (
+                                            SELECT 1 FROM ingrediente_composicion ic 
+                                            WHERE ic.mix_id = ri.ingrediente_id
+                                        ) THEN
                                             CASE 
-                                                WHEN COALESCE(ing.stock_actual, 0) >= ri.cantidad THEN 1 
+                                                WHEN COALESCE(
+                                                    (SELECT potencial_total 
+                                                     FROM v_potencial_ingredientes_simples 
+                                                     WHERE ingrediente_id = ri.ingrediente_id),
+                                                    0
+                                                ) >= ri.cantidad THEN 1
                                             END
-                                        ) THEN true
-                                        ELSE false
+                                        -- Para ingredientes MIX: usar v_producibilidad_componentes_mix
+                                        WHEN EXISTS (
+                                            SELECT 1 FROM ingrediente_composicion ic 
+                                            WHERE ic.mix_id = ri.ingrediente_id
+                                        ) THEN
+                                            CASE 
+                                                WHEN COALESCE(
+                                                    (SELECT MIN(kilos_mix_posibles) 
+                                                     FROM v_producibilidad_componentes_mix 
+                                                     WHERE mix_id = ri.ingrediente_id),
+                                                    0
+                                                ) >= ri.cantidad THEN 1
+                                            END
                                     END
-                                FROM recetas r
-                                LEFT JOIN receta_ingredientes ri ON ri.receta_id = r.id
-                                LEFT JOIN ingredientes ing ON ing.id = ri.ingrediente_id
-                                WHERE r.articulo_numero = a.numero
-                                GROUP BY r.id
-                                LIMIT 1
-                            ),
-                            false
-                        )
-                    ELSE false
-                END as es_producible
+                                ) THEN true
+                                ELSE false
+                            END
+                        FROM recetas r
+                        LEFT JOIN receta_ingredientes ri ON ri.receta_id = r.id
+                        WHERE r.articulo_numero = a.numero
+                        GROUP BY r.id
+                        LIMIT 1
+                    ),
+                    false
+                ) as es_producible
                 
             FROM public.presupuestos p
             INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
@@ -2257,6 +2280,23 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             const kilosUnidad = parseFloat(producto.kilos_unidad || 0);
             const precioPorKilo = kilosUnidad > 0 ? parseFloat((precioActual / kilosUnidad).toFixed(2)) : 0;
             
+            // ✅ AUDITORÍA: Log para casos específicos de debugging
+            const stockConsolidado = parseFloat(producto.stock_consolidado || 0);
+            const esProducible = producto.es_producible === true || producto.es_producible === 't';
+            
+            // Log de auditoría para artículos con "mariposa" en el nombre
+            if (producto.descripcion && producto.descripcion.toLowerCase().includes('mariposa')) {
+                console.log(`🕵️ [AUDITORÍA-STOCK] ${requestId} - Artículo Mariposa detectado:`, {
+                    nombre: producto.descripcion,
+                    stock_raw: producto.stock_consolidado,
+                    stock_parseado: stockConsolidado,
+                    es_producible_raw: producto.es_producible,
+                    es_producible_parseado: esProducible,
+                    tipo_dato_stock: typeof producto.stock_consolidado,
+                    tiene_stock_significativo: stockConsolidado > 0.001
+                });
+            }
+            
             const productoFormateado = {
                 codigo_barras: producto.codigo_barras,
                 articulo_numero: producto.articulo_numero,
@@ -2276,15 +2316,15 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 kilos_unidad: kilosUnidad,
                 precio_por_kilo: precioPorKilo,
                 
-                // ✅ ETAPA 2: Stock consolidado para visualización
-                stock_consolidado: parseFloat(producto.stock_consolidado || 0),
+                // ✅ ETAPA 2: Stock consolidado para visualización (con umbral de tolerancia)
+                stock_consolidado: stockConsolidado,
                 
                 // ✅ NUEVO: Datos de PACK para visualización en frontend
                 es_pack: producto.es_pack === true || producto.es_pack === 't',
                 pack_unidades: parseInt(producto.pack_unidades || 0),
                 
                 // ✅ NUEVO: Stock Inteligente - Indicador de producibilidad
-                es_producible: producto.es_producible === true || producto.es_producible === 't'
+                es_producible: esProducible
             };
             
             if (mesesAtras === 0) {

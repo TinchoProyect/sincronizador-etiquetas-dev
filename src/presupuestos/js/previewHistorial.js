@@ -331,12 +331,14 @@ function calcularValoresProducto(producto) {
     // ✅ CORRECTO: Precio con 5% de descuento sobre precio x Kg/u con IVA
     const descuento5PorKg = kilos > 0 ? precioKgConIva * 0.95 : 0;
     
-    // ✅ NUEVO: Stock Inteligente - Determinar visualización según stock y producibilidad
+    // ✅ STOCK INTELIGENTE CON UMBRAL DE TOLERANCIA
+    // Determinar visualización según stock y producibilidad
     let stockVisual;
     let stockColor;
     let stockTooltip;
     
-    if (stock > 0) {
+    // ✅ UMBRAL DE TOLERANCIA: Solo considerar stock si es > 0.001 (evitar residuos decimales)
+    if (stock > 0.001) {
         stockVisual = '✅';
         stockColor = '#27ae60';
         stockTooltip = 'En stock';
