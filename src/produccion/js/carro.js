@@ -1808,8 +1808,18 @@ async function obtenerInfoArticulo(articuloCodigo) {
             throw new Error('Error al obtener información del artículo');
         }
         
-        const articulos = await response.json();
-        const articulo = articulos.find(art => art.numero === articuloCodigo);
+        const responseData = await response.json();
+        
+        // 🛡️ BLINDAJE: Extraer array de diferentes formatos de respuesta
+        const lista = responseData.data || responseData || [];
+        
+        // Validar que sea array
+        if (!Array.isArray(lista)) {
+            console.warn('⚠️ Respuesta no es array, asumiendo vacío');
+            return { numero: articuloCodigo, nombre: 'Artículo no encontrado' };
+        }
+        
+        const articulo = lista.find(art => art.numero === articuloCodigo);
         
         return articulo || { numero: articuloCodigo, nombre: 'Artículo no encontrado' };
     } catch (error) {
@@ -1933,7 +1943,21 @@ async function cargarArticulosParaVinculo() {
             throw new Error('Error al cargar artículos');
         }
 
-        const articulos = await response.json();
+        const responseData = await response.json();
+        
+        // 🛡️ BLINDAJE: Extraer array de diferentes formatos de respuesta
+        const lista = responseData.data || responseData || [];
+        
+        // Validar que sea array antes de usar .sort()
+        if (!Array.isArray(lista)) {
+            console.warn('⚠️ Respuesta no es array, asumiendo vacío');
+            const selector = document.getElementById('selector-articulo-vinculo');
+            if (selector) {
+                selector.innerHTML = '<option value="">No hay artículos disponibles</option>';
+            }
+            return;
+        }
+        
         const selector = document.getElementById('selector-articulo-vinculo');
         
         if (!selector) return;
@@ -1942,10 +1966,10 @@ async function cargarArticulosParaVinculo() {
         selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
 
         // Ordenar artículos alfabéticamente
-        articulos.sort((a, b) => a.nombre.localeCompare(b.nombre));
+        lista.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
         // Agregar opciones
-        articulos.forEach(articulo => {
+        lista.forEach(articulo => {
             const option = document.createElement('option');
             option.value = articulo.numero;
             option.textContent = `${articulo.numero} - ${articulo.nombre}`;
@@ -1954,7 +1978,7 @@ async function cargarArticulosParaVinculo() {
         });
 
         // Configurar búsqueda en tiempo real
-        configurarBusquedaVinculo(articulos);
+        configurarBusquedaVinculo(lista);
 
     } catch (error) {
         console.error('Error al cargar artículos:', error);
