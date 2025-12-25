@@ -145,8 +145,31 @@ export async function abrirModalArticulos() {
         const modalTitle = modal.querySelector('h2');
         if (modalTitle) {
             const tipoTexto = tipoCarro === 'externa' ? 'Producción Externa' : 'Producción Interna';
-            const icono = tipoCarro === 'externa' ? '🚚' : '🏭';
-            modalTitle.textContent = `${icono} Seleccionar Artículo - ${tipoTexto}`;
+            const icono = tipoCarro === 'externa' ? '' : '🏭 '; // Sin icono para externos
+            modalTitle.textContent = `${icono}Seleccionar Artículo - ${tipoTexto}`;
+        }
+        
+        // 🎨 LIMPIEZA UI: Ocultar elementos innecesarios para carros externos
+        const filtro1Container = document.getElementById('filtro1')?.parentElement;
+        const filtro2Container = document.getElementById('filtro2')?.parentElement;
+        const filtro3Container = document.getElementById('filtro3')?.parentElement;
+        const filtroProduccionContainer = document.getElementById('filtroProduccionSwitch')?.parentElement?.parentElement;
+        
+        if (tipoCarro === 'externa') {
+            // Ocultar filtros 1, 2 y 3
+            if (filtro1Container) filtro1Container.style.display = 'none';
+            if (filtro2Container) filtro2Container.style.display = 'none';
+            if (filtro3Container) filtro3Container.style.display = 'none';
+            // Ocultar checkbox de "Mostrar solo artículos de producción"
+            if (filtroProduccionContainer) filtroProduccionContainer.style.display = 'none';
+            
+            console.log('🎨 [UI-LIMPIA] Filtros innecesarios ocultados para carro externo');
+        } else {
+            // Mostrar todos los filtros para carros internos
+            if (filtro1Container) filtro1Container.style.display = '';
+            if (filtro2Container) filtro2Container.style.display = '';
+            if (filtro3Container) filtro3Container.style.display = '';
+            if (filtroProduccionContainer) filtroProduccionContainer.style.display = '';
         }
         
     } catch (error) {
@@ -275,6 +298,42 @@ export async function actualizarTablaArticulos(articulos) {
 
         // 🔍 [FASE 2] Actualizar encabezado de tabla según tipo de carro
         const tableHeader = document.getElementById('tabla-articulos-header');
+        
+        // 🎨 REDISEÑO UX: Para carros externos, usar vista de tarjetas en lugar de tabla
+        if (tipoCarro === 'externa') {
+            // Ocultar tabla y mostrar contenedor de tarjetas
+            const tablaArticulos = document.querySelector('.tabla-articulos');
+            if (tablaArticulos) {
+                tablaArticulos.style.display = 'none';
+            }
+            
+            // Crear o mostrar contenedor de tarjetas
+            let contenedorTarjetas = document.getElementById('contenedor-tarjetas-articulos');
+            if (!contenedorTarjetas) {
+                contenedorTarjetas = document.createElement('div');
+                contenedorTarjetas.id = 'contenedor-tarjetas-articulos';
+                contenedorTarjetas.className = 'contenedor-tarjetas-articulos';
+                tbody.parentElement.parentElement.appendChild(contenedorTarjetas);
+            }
+            contenedorTarjetas.style.display = 'grid';
+            contenedorTarjetas.innerHTML = ''; // Limpiar contenido previo
+            
+            // Renderizar tarjetas para producción externa
+            await renderizarTarjetasProduccionExterna(produccion, contenedorTarjetas, estadoRecetas, integridadRecetas);
+            
+            return; // Salir temprano para carros externos
+        } else {
+            // Para carros internos, ocultar tarjetas y mostrar tabla
+            const contenedorTarjetas = document.getElementById('contenedor-tarjetas-articulos');
+            if (contenedorTarjetas) {
+                contenedorTarjetas.style.display = 'none';
+            }
+            const tablaArticulos = document.querySelector('.tabla-articulos');
+            if (tablaArticulos) {
+                tablaArticulos.style.display = 'table';
+            }
+        }
+        
         if (tableHeader) {
             if (tipoCarro === 'interna') {
                 tableHeader.innerHTML = `
@@ -1096,6 +1155,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 state.ultimoArticuloEditado = articulo_numero;
+                
+                // 🔄 EMITIR EVENTO DE ACTUALIZACIÓN para sincronizar modales
+                console.log('🔔 [EVENTO] Emitiendo evento recetaActualizada...');
+                document.dispatchEvent(new CustomEvent('recetaActualizada', {
+                    detail: { articulo_numero }
+                }));
+                
                 await actualizarTablaArticulos(state.articulosFiltrados);
                 cerrarModalReceta();
 
@@ -1950,5 +2016,352 @@ function removerSeleccionEnTiempoReal(numeroArticulo) {
     }
 }
 
+// 🎨 REDISEÑO UX: FUNCIÓN PARA RENDERIZAR TARJETAS DE PRODUCCIÓN EXTERNA
+
+/**
+ * Renderiza tarjetas informativas para artículos de producción externa
+ * @param {Array} articulos - Lista de artículos a renderizar
+ * @param {HTMLElement} contenedor - Contenedor donde se renderizarán las tarjetas
+ * @param {Object} estadoRecetas - Estado de recetas por artículo
+ * @param {Object} integridadRecetas - Integridad de recetas por artículo
+ */
+async function renderizarTarjetasProduccionExterna(articulos, contenedor, estadoRecetas, integridadRecetas) {
+    try {
+        console.log('🎨 [TARJETAS] Renderizando tarjetas para producción externa...');
+        
+        if (!articulos || articulos.length === 0) {
+            contenedor.innerHTML = '<p class="no-articulos-mensaje">No hay artículos de producción externa disponibles</p>';
+            return;
+        }
+        
+        // Obtener recetas de todos los artículos de una vez
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
+        
+        // Obtener recetas completas para mostrar insumos base
+        let recetasPorArticulo = {};
+        for (const articulo of articulos) {
+            try {
+                const recetaResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo.numero)}`);
+                if (recetaResponse.ok) {
+                    const receta = await recetaResponse.json();
+                    recetasPorArticulo[articulo.numero] = receta;
+                }
+            } catch (error) {
+                console.warn(`⚠️ No se pudo obtener receta para ${articulo.numero}`);
+            }
+        }
+        
+        for (const articulo of articulos) {
+            const tieneReceta = estadoRecetas[articulo.numero];
+            const esIntegra = integridadRecetas[articulo.numero];
+            const receta = recetasPorArticulo[articulo.numero] || null;
+            
+            // Crear tarjeta
+            const tarjeta = document.createElement('div');
+            tarjeta.className = 'tarjeta-articulo-externo';
+            tarjeta.dataset.numero = articulo.numero;
+            
+            // Cabecera de la tarjeta
+            const cabecera = `
+                <div class="tarjeta-cabecera">
+                    <h3 class="tarjeta-titulo">${articulo.nombre}</h3>
+                    <span class="tarjeta-codigo">${articulo.numero}</span>
+                </div>
+            `;
+            
+            // Información del ARTÍCULO BASE (insumo que compone la UP)
+            // 🔧 CORRECCIÓN: Usar datos reales del backend en lugar de buscar en state
+            let infoInsumoBase = '';
+            
+            if (articulo.articulo_base_codigo) {
+                // Hay artículo base configurado - usar datos del backend
+                const stockInsumo = articulo.articulo_base_stock || 0;
+                const colorStock = stockInsumo > 0 ? '#28a745' : '#dc3545';
+                const nombreBase = articulo.articulo_base_nombre || articulo.articulo_base_codigo;
+                
+                infoInsumoBase = `
+                    <div class="tarjeta-info-item">
+                        <span class="info-icono">📦</span>
+                        <span class="info-label">Artículo Base:</span>
+                        <span class="info-valor">${articulo.articulo_base_codigo} - ${nombreBase}</span>
+                    </div>
+                    <div class="tarjeta-info-item">
+                        <span class="info-icono">📊</span>
+                        <span class="info-label">Stock:</span>
+                        <span class="info-valor" style="color: ${colorStock}; font-weight: bold;">
+                            ${formatearStock(stockInsumo)} unidades
+                        </span>
+                    </div>
+                `;
+            } else {
+                infoInsumoBase = `
+                    <div class="tarjeta-info-item">
+                        <span class="info-icono">⚠️</span>
+                        <span class="info-label">Artículo Base:</span>
+                        <span class="info-valor texto-advertencia">Sin configurar</span>
+                    </div>
+                `;
+            }
+            
+            // Información de ingredientes adicionales (miel, aceite, etc.)
+            let infoIngredientesHTML = '';
+            if (receta && receta.ingredientes && receta.ingredientes.length > 0) {
+                const nombresIngredientes = receta.ingredientes.map(ing => ing.nombre_ingrediente).join(', ');
+                infoIngredientesHTML = `
+                    <div class="tarjeta-info-item">
+                        <span class="info-icono">🥄</span>
+                        <span class="info-label">Ingredientes extra:</span>
+                        <span class="info-valor">${nombresIngredientes}</span>
+                    </div>
+                `;
+            } else {
+                infoIngredientesHTML = `
+                    <div class="tarjeta-info-item">
+                        <span class="info-icono">🥄</span>
+                        <span class="info-label">Ingredientes extra:</span>
+                        <span class="info-valor" style="color: #6c757d;">Sin ingredientes extra</span>
+                    </div>
+                `;
+            }
+            
+            // Texto de ayuda
+            const textoAyuda = articulo.articulo_base_codigo
+                ? `Esta UP consume <strong>${articulo.articulo_base_codigo} - ${articulo.articulo_base_nombre || articulo.articulo_base_codigo}</strong> como artículo base y lo transforma en <strong>${articulo.nombre}</strong>`
+                : 'Configure la receta para definir el artículo base y los ingredientes necesarios';
+            
+            // Botones de acción
+            let botonesHTML = '';
+            if (tieneReceta) {
+                botonesHTML = `
+                    <button class="btn-seleccionar-tarjeta" 
+                            data-numero="${articulo.numero}" 
+                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                            data-integra="${esIntegra}">
+                        ✅ Seleccionar / Asignar
+                    </button>
+                    <button class="btn-editar-receta-tarjeta" 
+                            data-numero="${articulo.numero}" 
+                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                            onclick="mostrarModalReceta('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', 'editar')">
+                        ⚙️ Editar Configuración UP
+                    </button>
+                `;
+            } else {
+                botonesHTML = `
+                    <button class="btn-configurar-receta" 
+                            data-numero="${articulo.numero}" 
+                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                            onclick="mostrarModalReceta('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', 'crear')">
+                        ⚙️ Configurar Receta
+                    </button>
+                `;
+            }
+            
+            // Ensamblar tarjeta completa
+            tarjeta.innerHTML = `
+                ${cabecera}
+                <div class="tarjeta-cuerpo">
+                    ${infoInsumoBase}
+                    ${infoIngredientesHTML}
+                    <div class="tarjeta-ayuda">
+                        <span class="ayuda-icono">💡</span>
+                        <p class="ayuda-texto">${textoAyuda}</p>
+                    </div>
+                </div>
+                <div class="tarjeta-pie">
+                    ${botonesHTML}
+                </div>
+            `;
+            
+            contenedor.appendChild(tarjeta);
+        }
+        
+        // Agregar event listeners para botones de selección
+        contenedor.querySelectorAll('.btn-seleccionar-tarjeta').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const numero = btn.dataset.numero;
+                const nombre = btn.dataset.nombre;
+                const esIntegra = btn.dataset.integra === 'true';
+                
+                await agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btn);
+            });
+        });
+        
+        console.log(`🎨 [TARJETAS] ${articulos.length} tarjetas renderizadas`);
+        
+    } catch (error) {
+        console.error('🎨 [TARJETAS] Error al renderizar tarjetas:', error);
+        contenedor.innerHTML = '<p class="error-mensaje">Error al cargar artículos</p>';
+    }
+}
+
+/**
+ * Agrega un artículo de producción externa al carro
+ * @param {string} numero - Número del artículo
+ * @param {string} nombre - Nombre del artículo
+ * @param {boolean} esIntegra - Si la receta es íntegra
+ * @param {HTMLElement} btnElement - Botón que disparó la acción
+ */
+async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnElement) {
+    try {
+        const carroId = localStorage.getItem('carroActivo');
+        if (!carroId) {
+            throw new Error('No hay un carro de producción activo');
+        }
+
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            throw new Error('No hay colaborador seleccionado');
+        }
+
+        const colaborador = JSON.parse(colaboradorData);
+        
+        // Para producción externa, cantidad por defecto es 1
+        const cantidad = 1;
+
+        btnElement.disabled = true;
+        btnElement.textContent = '⏳ Agregando...';
+
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                articulo_numero: numero,
+                descripcion: nombre,
+                cantidad: cantidad,
+                usuarioId: colaborador.id
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al agregar el artículo al carro');
+        }
+
+        btnElement.disabled = false;
+        btnElement.textContent = '✅ Seleccionar / Asignar';
+
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success-message';
+        successDiv.textContent = 'Artículo agregado correctamente';
+        successDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(successDiv);
+        
+        setTimeout(() => {
+            successDiv.remove();
+        }, 3000);
+
+        cerrarModalArticulos();
+
+        // Actualizar resumen
+        await mostrarArticulosDelCarro();
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+        mostrarResumenIngredientes(ingredientes);
+        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+        mostrarResumenMixes(mixes);
+        const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+        if (articulos && articulos.length > 0) {
+            mostrarResumenArticulos(articulos);
+        }
+
+    } catch (error) {
+        console.error('Error:', error);
+        mostrarError(error.message);
+        btnElement.disabled = false;
+        btnElement.textContent = '✅ Seleccionar / Asignar';
+    }
+}
+
+// 🔄 AUTO-REFRESH: Listener para actualizar tarjetas cuando se guarda una receta
+document.addEventListener('recetaActualizada', async (event) => {
+    try {
+        console.log('🔔 [AUTO-REFRESH] Evento recetaActualizada recibido:', event.detail);
+        
+        // Verificar si el modal de artículos está abierto
+        const modalArticulos = document.getElementById('modal-articulos');
+        if (!modalArticulos || modalArticulos.style.display === 'none') {
+            console.log('🔔 [AUTO-REFRESH] Modal de artículos no está abierto, omitiendo actualización');
+            return;
+        }
+        
+        // Verificar si es un carro externo
+        const carroId = localStorage.getItem('carroActivo');
+        if (!carroId) {
+            console.log('🔔 [AUTO-REFRESH] No hay carro activo, omitiendo actualización');
+            return;
+        }
+        
+        let tipoCarro = 'interna';
+        try {
+            const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+            if (carroResponse.ok) {
+                const carroData = await carroResponse.json();
+                tipoCarro = carroData.tipo_carro || 'interna';
+            }
+        } catch (error) {
+            console.warn('🔔 [AUTO-REFRESH] Error al obtener tipo de carro:', error);
+        }
+        
+        if (tipoCarro !== 'externa') {
+            console.log('🔔 [AUTO-REFRESH] No es carro externo, omitiendo actualización de tarjetas');
+            return;
+        }
+        
+        console.log('🔄 [AUTO-REFRESH] Recargando artículos para actualizar tarjetas...');
+        
+        // Limpiar caché para forzar recarga desde backend
+        const cacheKey = `articulos_${tipoCarro}`;
+        delete state[cacheKey];
+        
+        // Recargar artículos desde el backend
+        const url = 'http://localhost:3002/api/produccion/articulos?tipo_carro=externa';
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error('Error al recargar artículos');
+        }
+        
+        const responseData = await response.json();
+        const articulos = responseData.data || responseData;
+        
+        // Actualizar state
+        state[cacheKey] = articulos;
+        state.todosLosArticulos = articulos;
+        state.articulosFiltrados = [...articulos];
+        
+        // Aplicar filtros actuales para regenerar las tarjetas
+        aplicarFiltros(0);
+        
+        console.log('✅ [AUTO-REFRESH] Tarjetas actualizadas con datos frescos del backend');
+        
+        // Efecto visual de actualización
+        const contenedorTarjetas = document.getElementById('contenedor-tarjetas-articulos');
+        if (contenedorTarjetas) {
+            contenedorTarjetas.style.opacity = '0.5';
+            setTimeout(() => {
+                contenedorTarjetas.style.opacity = '1';
+                contenedorTarjetas.style.transition = 'opacity 0.3s ease';
+            }, 100);
+        }
+        
+    } catch (error) {
+        console.error('🔔 [AUTO-REFRESH] Error al actualizar tarjetas:', error);
+    }
+});
+
 // Hacer la función disponible globalmente para el HTML
 window.agregarMultiplesAlCarroInterno = agregarMultiplesAlCarroInterno;
+window.mostrarModalReceta = mostrarModalReceta;

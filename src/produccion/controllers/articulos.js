@@ -27,6 +27,7 @@ async function obtenerArticulos(tipoCarro = null, codigoBarras = null) {
         
         const whereClause = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
         
+        // 🔧 CONSULTA MEJORADA: Incluir información del artículo base de la receta
         const query = `
             SELECT DISTINCT
                 a.numero,
@@ -35,14 +36,36 @@ async function obtenerArticulos(tipoCarro = null, codigoBarras = null) {
                 COALESCE(src.stock_consolidado, 0) as stock_consolidado,
                 COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda,
                 COALESCE(src.solo_produccion_externa, false) as solo_produccion_externa,
-                src.kilos_unidad
+                src.kilos_unidad,
+                -- Información del artículo base de la receta (para UPs)
+                ra.articulo_numero as articulo_base_codigo,
+                a_base.nombre as articulo_base_nombre,
+                COALESCE(src_base.stock_consolidado, 0) as articulo_base_stock
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            -- Join con receta para obtener el artículo base (insumo)
+            LEFT JOIN public.recetas r ON r.articulo_numero = a.numero
+            LEFT JOIN public.receta_articulos ra ON ra.receta_id = r.id
+            -- Join con artículos para obtener nombre del artículo base
+            LEFT JOIN public.articulos a_base ON a_base.numero = ra.articulo_numero
+            -- Join con stock del artículo base
+            LEFT JOIN public.stock_real_consolidado src_base ON src_base.articulo_numero = ra.articulo_numero
             ${whereClause}
             ORDER BY a.nombre ASC
         `;
         
         const result = await pool.query(query, params);
+        
+        console.log(`📊 [ARTICULOS] Obtenidos ${result.rows.length} artículos${tipoCarro ? ` (tipo: ${tipoCarro})` : ''}`);
+        if (result.rows.length > 0 && tipoCarro === 'externa') {
+            console.log(`📋 [ARTICULOS] Ejemplo de datos con artículo base:`, {
+                numero: result.rows[0].numero,
+                nombre: result.rows[0].nombre,
+                articulo_base_codigo: result.rows[0].articulo_base_codigo,
+                articulo_base_nombre: result.rows[0].articulo_base_nombre,
+                articulo_base_stock: result.rows[0].articulo_base_stock
+            });
+        }
         
         return result.rows;
     } catch (error) {
