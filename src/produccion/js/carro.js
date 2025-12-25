@@ -1863,7 +1863,27 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
                 console.log('- Response status:', response.status);
                 console.log('- Response ok:', response.ok);
                 
-                if (response.ok) {
+                // 🛡️ MANEJO GRACEFUL DE 404: Tratar como nueva relación
+                if (response.status === 404) {
+                    console.log('⚠️ Relación no encontrada (404) - tratando como nueva relación');
+                    console.log('🔄 Limpiando campos para permitir crear relación desde cero');
+                    
+                    // Limpiar selector y multiplicador para modo "crear"
+                    const selector = document.getElementById('selector-articulo-vinculo');
+                    if (selector) {
+                        selector.selectedIndex = 0; // Volver a "Seleccione un artículo..."
+                    }
+                    
+                    const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
+                    if (inputMultiplicador) {
+                        inputMultiplicador.value = 1; // Valor por defecto
+                    }
+                    
+                    // Cambiar el modo del modal a "crear"
+                    delete modal.dataset.relacionId;
+                    console.log('✅ Modal configurado en modo CREAR (relación no encontrada)');
+                    
+                } else if (response.ok) {
                     const relacion = await response.json();
                     console.log(`\n📋 DATOS DE RELACIÓN RECIBIDOS DEL SERVIDOR:`);
                     console.log('- Objeto completo:', JSON.stringify(relacion, null, 2));
@@ -1895,7 +1915,8 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
                     }
                 } else {
                     const errorText = await response.text();
-                    console.warn('⚠️ No se pudieron cargar los datos de la relación existente');
+                    console.warn('⚠️ Error al cargar relación (no 404)');
+                    console.warn('- Status:', response.status);
                     console.warn('- Error response:', errorText);
                 }
             } catch (error) {

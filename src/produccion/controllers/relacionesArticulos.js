@@ -96,16 +96,16 @@ async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multi
     try {
         console.log(`🔗 Creando relación: ${articuloProduccionCodigo} -> ${articuloKiloCodigo} (multiplicador: ${multiplicadorIngredientes})`);
         
-        // Verificar si ya existe la relación
-        const existeQuery = `
-            SELECT id FROM articulos_produccion_externa_relacion
+        // 🛡️ ROBUSTEZ: Limpiar cualquier relación previa para garantizar 1 a 1
+        console.log(`🧹 Limpiando relaciones previas para ${articuloProduccionCodigo}...`);
+        const deleteQuery = `
+            DELETE FROM articulos_produccion_externa_relacion 
             WHERE articulo_produccion_codigo = $1
         `;
-        const existeResult = await pool.query(existeQuery, [articuloProduccionCodigo]);
-        if (existeResult.rows.length > 0) {
-            throw new Error('Ya existe una relación para este artículo de producción');
-        }
+        const deleteResult = await pool.query(deleteQuery, [articuloProduccionCodigo]);
+        console.log(`✅ Relaciones previas eliminadas: ${deleteResult.rowCount}`);
 
+        // Insertar nueva relación limpia
         const insertQuery = `
             INSERT INTO articulos_produccion_externa_relacion
             (articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes)

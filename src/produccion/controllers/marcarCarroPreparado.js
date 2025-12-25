@@ -259,19 +259,22 @@ async function marcarCarroPreparado(req, res) {
                             console.log(`🔧 INGREDIENTE VINCULADO DETECTADO - VALIDANDO STOCK SIN DESCONTAR`);
                             console.log(`📊 Stock general disponible: ${stockGeneral}`);
                             
+                            // 🛡️ FLEXIBILIDAD: Permitir stock negativo con advertencia clara
                             if (stockGeneral < cantidadRedondeada) {
-                                console.log(`❌ ERROR: Stock general insuficiente`);
+                                const faltante = cantidadRedondeada - stockGeneral;
+                                console.log(`⚠️ WARNING: Stock general insuficiente (permitiendo continuar)`);
                                 console.log(`   - Disponible: ${stockGeneral}`);
                                 console.log(`   - Requerido: ${cantidadRedondeada}`);
-                                console.log(`   - Diferencia: ${stockGeneral - cantidadRedondeada}`);
-                                throw new Error(`Stock general insuficiente para ingrediente vinculado "${ing.nombre}". Disponible: ${stockGeneral}, Requerido: ${cantidadRedondeada}`);
+                                console.log(`   - Faltante: ${faltante.toFixed(2)} kg`);
+                                console.log(`   - El stock quedará en negativo al finalizar producción`);
+                                console.log(`\n💡 RECOMENDACIÓN: Realizar ingreso manual de ${faltante.toFixed(2)} kg de "${ing.nombre}" antes de finalizar`);
                             }
                             
                             // ✅ CORRECCIÓN CRÍTICA: Solo validar stock, NO registrar movimiento
                             // Los ingredientes vinculados se descontarán en finalizarProduccion.js
                             console.log(`\n🔍 INGREDIENTE VINCULADO - SOLO VALIDACIÓN`);
                             console.log(`==========================================`);
-                            console.log(`✅ Stock suficiente validado para ingrediente vinculado ${ing.nombre}`);
+                            console.log(`✅ Validación completada para ingrediente vinculado ${ing.nombre}`);
                             console.log(`📝 MOVIMIENTO DIFERIDO: Se registrará en finalizarProduccion.js`);
                             console.log(`📊 Stock disponible: ${stockGeneral}, Requerido: ${cantidadRedondeada}`);
                             
