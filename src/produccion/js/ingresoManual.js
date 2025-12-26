@@ -1155,7 +1155,8 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
     // Obtener el carro activo
     const carroId = localStorage.getItem('carroActivo');
     if (!carroId) {
-      contenedor.innerHTML = '<p>No hay carro activo</p>';
+      // 🎯 MEJORA UX: Mensaje más amigable mientras se carga el carro
+      contenedor.innerHTML = '<p style="color: #6c757d; font-style: italic;">⏳ Esperando selección de carro...</p>';
       return;
     }
 

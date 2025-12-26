@@ -2320,14 +2320,20 @@ document.addEventListener('recetaActualizada', async (event) => {
             return;
         }
         
-        console.log('🔄 [AUTO-REFRESH] Recargando artículos para actualizar tarjetas...');
+        console.log('🔄 [AUTO-REFRESH] Esperando 500ms para que el backend procese los cambios...');
+        
+        // 🎯 RETRASO ESTRATÉGICO: Esperar a que el backend termine de procesar
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log('🔄 [AUTO-REFRESH] Recargando artículos con cache-busting...');
         
         // Limpiar caché para forzar recarga desde backend
         const cacheKey = `articulos_${tipoCarro}`;
         delete state[cacheKey];
         
-        // Recargar artículos desde el backend
-        const url = 'http://localhost:3002/api/produccion/articulos?tipo_carro=externa';
+        // 🎯 CACHE-BUSTING: Agregar timestamp para forzar datos frescos
+        const timestamp = Date.now();
+        const url = `http://localhost:3002/api/produccion/articulos?tipo_carro=externa&_t=${timestamp}`;
         const response = await fetch(url);
         
         if (!response.ok) {
@@ -2336,6 +2342,8 @@ document.addEventListener('recetaActualizada', async (event) => {
         
         const responseData = await response.json();
         const articulos = responseData.data || responseData;
+        
+        console.log(`🔄 [AUTO-REFRESH] Artículos recibidos del backend: ${articulos.length}`);
         
         // Actualizar state
         state[cacheKey] = articulos;

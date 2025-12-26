@@ -1848,8 +1848,11 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
         if (codigoPadre) codigoPadre.textContent = articuloCodigo;
         if (descripcionPadre) descripcionPadre.textContent = articuloInfo.nombre || 'Sin descripción';
 
-        // Cargar artículos disponibles
+        // Cargar artículos disponibles PRIMERO
         await cargarArticulosParaVinculo();
+
+        // Variable para guardar el artículo actualmente vinculado
+        let articuloActualmenteVinculado = null;
 
         // Si es edición, cargar datos existentes de la relación
         if (relacionId && relacionId !== 'null' && relacionId !== 'undefined') {
@@ -1890,11 +1893,17 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
                     console.log('- articulo_kilo_codigo:', relacion.articulo_kilo_codigo);
                     console.log('- multiplicador_ingredientes RAW:', relacion.multiplicador_ingredientes, typeof relacion.multiplicador_ingredientes);
                     
+                    // Guardar artículo actualmente vinculado para resaltarlo
+                    articuloActualmenteVinculado = relacion.articulo_kilo_codigo;
+                    
                     // Preseleccionar el artículo vinculado
                     const selector = document.getElementById('selector-articulo-vinculo');
                     if (selector && relacion.articulo_kilo_codigo) {
                         selector.value = relacion.articulo_kilo_codigo;
                         console.log('✅ Artículo preseleccionado en selector:', relacion.articulo_kilo_codigo);
+                        
+                        // 🎨 RESALTAR ARTÍCULO SELECCIONADO: Agregar indicador visual
+                        resaltarArticuloSeleccionado(relacion.articulo_kilo_codigo);
                     } else {
                         console.log('⚠️ No se pudo preseleccionar artículo - selector:', !!selector, 'codigo:', relacion.articulo_kilo_codigo);
                     }
@@ -1938,9 +1947,41 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
             }
         }
 
+        // 🎯 OCULTAR MULTIPLICADOR COMPLETO: Simplificación UX
+        const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
+        
+        if (inputMultiplicador) {
+            inputMultiplicador.value = 1; // Siempre forzar a 1
+            
+            // Buscar la sección completa del multiplicador (incluye el h3 con el título)
+            const seccionMultiplicador = inputMultiplicador.closest('.multiplicador-section');
+            
+            if (seccionMultiplicador) {
+                seccionMultiplicador.style.display = 'none'; // Ocultar sección completa con título
+                console.log('🎯 [UX-OPTIMIZADA] Sección completa del multiplicador ocultada (incluye título)');
+            } else {
+                // Fallback: intentar ocultar form-group
+                const contenedorCompleto = inputMultiplicador.closest('.form-group') || 
+                                          inputMultiplicador.closest('div') || 
+                                          inputMultiplicador.parentElement;
+                
+                if (contenedorCompleto) {
+                    contenedorCompleto.style.display = 'none';
+                    console.log('🎯 [UX-OPTIMIZADA] Contenedor del multiplicador ocultado (fallback)');
+                } else {
+                    inputMultiplicador.style.display = 'none';
+                    console.log('🎯 [UX-OPTIMIZADA] Solo input ocultado (fallback final)');
+                }
+            }
+        }
+        console.log('🎯 [UX-OPTIMIZADA] Multiplicador forzado a 1 y ocultado completamente');
+
         // Configurar datos del modal
         modal.dataset.articuloCodigo = articuloCodigo;
         modal.dataset.relacionId = relacionId;
+
+        // 🖱️ HACER MODAL DRAGGABLE: Permitir moverlo por la pantalla
+        hacerModalDraggable(modal);
 
         // Mostrar el modal
         modal.style.display = 'block';
@@ -1955,7 +1996,120 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
 }
 
 /**
+ * Hace un modal draggable (arrastrable) desde su encabezado
+ * @param {HTMLElement} modal - El elemento modal a hacer draggable
+ */
+function hacerModalDraggable(modal) {
+    if (!modal) return;
+    
+    // Buscar el encabezado del modal (h2, h3, o .modal-header)
+    const header = modal.querySelector('h2') || modal.querySelector('h3') || modal.querySelector('.modal-header');
+    
+    if (!header) {
+        console.warn('⚠️ No se encontró encabezado para hacer el modal draggable');
+        return;
+    }
+    
+    // Cambiar cursor para indicar que es arrastrable
+    header.style.cursor = 'move';
+    header.title = 'Arrastra para mover el modal';
+    
+    let isDragging = false;
+    let currentX;
+    let currentY;
+    let initialX;
+    let initialY;
+    let xOffset = 0;
+    let yOffset = 0;
+    
+    // Obtener el contenedor del modal (modal-content)
+    const modalContent = modal.querySelector('.modal-content') || modal;
+    
+    header.addEventListener('mousedown', dragStart);
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', dragEnd);
+    
+    function dragStart(e) {
+        initialX = e.clientX - xOffset;
+        initialY = e.clientY - yOffset;
+        
+        if (e.target === header || header.contains(e.target)) {
+            isDragging = true;
+            modalContent.style.transition = 'none'; // Desactivar transiciones durante el arrastre
+        }
+    }
+    
+    function drag(e) {
+        if (isDragging) {
+            e.preventDefault();
+            
+            currentX = e.clientX - initialX;
+            currentY = e.clientY - initialY;
+            
+            xOffset = currentX;
+            yOffset = currentY;
+            
+            setTranslate(currentX, currentY, modalContent);
+        }
+    }
+    
+    function dragEnd(e) {
+        if (isDragging) {
+            initialX = currentX;
+            initialY = currentY;
+            isDragging = false;
+            modalContent.style.transition = ''; // Restaurar transiciones
+        }
+    }
+    
+    function setTranslate(xPos, yPos, el) {
+        el.style.transform = `translate(${xPos}px, ${yPos}px)`;
+    }
+    
+    console.log('🖱️ [DRAGGABLE] Modal configurado como draggable desde el encabezado');
+}
+
+/**
+ * Resalta visualmente el artículo actualmente seleccionado en el selector
+ * @param {string} articuloCodigo - Código del artículo a resaltar
+ */
+function resaltarArticuloSeleccionado(articuloCodigo) {
+    if (!articuloCodigo) return;
+    
+    // Esperar un momento para que el selector esté completamente renderizado
+    setTimeout(() => {
+        const selector = document.getElementById('selector-articulo-vinculo');
+        if (!selector) return;
+        
+        // Buscar la opción correspondiente
+        const opciones = selector.querySelectorAll('option');
+        opciones.forEach(opcion => {
+            if (opcion.value === articuloCodigo) {
+                // Agregar indicador visual en el texto
+                const textoOriginal = opcion.textContent;
+                if (!textoOriginal.includes('✅ VINCULADO')) {
+                    opcion.textContent = `✅ VINCULADO ACTUALMENTE - ${textoOriginal}`;
+                    opcion.style.backgroundColor = '#e8f5e9';
+                    opcion.style.fontWeight = 'bold';
+                    opcion.style.color = '#2e7d32';
+                }
+                console.log('🎨 [RESALTADO] Artículo actualmente vinculado resaltado:', articuloCodigo);
+            }
+        });
+        
+        // Hacer scroll al artículo seleccionado
+        if (selector.value === articuloCodigo) {
+            const opcionSeleccionada = selector.querySelector(`option[value="${articuloCodigo}"]`);
+            if (opcionSeleccionada) {
+                opcionSeleccionada.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    }, 100);
+}
+
+/**
  * Carga la lista de artículos disponibles para vincular
+ * 🎯 OPTIMIZACIÓN: Filtra solo artículos fraccionables (por kilo)
  */
 async function cargarArticulosParaVinculo() {
     try {
@@ -1967,7 +2121,7 @@ async function cargarArticulosParaVinculo() {
         const responseData = await response.json();
         
         // 🛡️ BLINDAJE: Extraer array de diferentes formatos de respuesta
-        const lista = responseData.data || responseData || [];
+        let lista = responseData.data || responseData || [];
         
         // Validar que sea array antes de usar .sort()
         if (!Array.isArray(lista)) {
@@ -1979,6 +2133,20 @@ async function cargarArticulosParaVinculo() {
             return;
         }
         
+        // 🎯 FILTRADO INTELIGENTE: Solo artículos fraccionables (por kilo)
+        const articulosFraccionables = lista.filter(art => {
+            const nombreLower = (art.nombre || '').toLowerCase();
+            const unidadMedida = (art.unidad_medida || '').toLowerCase();
+            
+            return nombreLower.includes('por kilo') ||
+                   nombreLower.includes('x kilo') ||
+                   nombreLower.includes('x kg') ||
+                   nombreLower.includes('xkg') ||
+                   unidadMedida === 'kilo';
+        });
+        
+        console.log(`🎯 [FILTRO-VINCULO] Artículos totales: ${lista.length}, Fraccionables: ${articulosFraccionables.length}`);
+        
         const selector = document.getElementById('selector-articulo-vinculo');
         
         if (!selector) return;
@@ -1987,10 +2155,10 @@ async function cargarArticulosParaVinculo() {
         selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
 
         // Ordenar artículos alfabéticamente
-        lista.sort((a, b) => a.nombre.localeCompare(b.nombre));
+        articulosFraccionables.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
         // Agregar opciones
-        lista.forEach(articulo => {
+        articulosFraccionables.forEach(articulo => {
             const option = document.createElement('option');
             option.value = articulo.numero;
             option.textContent = `${articulo.numero} - ${articulo.nombre}`;
@@ -1998,8 +2166,8 @@ async function cargarArticulosParaVinculo() {
             selector.appendChild(option);
         });
 
-        // Configurar búsqueda en tiempo real
-        configurarBusquedaVinculo(lista);
+        // Configurar búsqueda en tiempo real con lista filtrada
+        configurarBusquedaVinculo(articulosFraccionables);
 
     } catch (error) {
         console.error('Error al cargar artículos:', error);
@@ -2092,15 +2260,15 @@ async function procesarGuardadoVinculo() {
         const articuloCodigo = modal.dataset.articuloCodigo;
         const relacionId = modal.dataset.relacionId;
         const articuloKiloCodigo = selector.value;
-        const multiplicadorIngredientesRaw = inputMultiplicador?.value;
-        const multiplicadorIngredientes = parseFloat(multiplicadorIngredientesRaw || 1);
+        
+        // 🎯 FORZAR MULTIPLICADOR A 1: Simplificación UX
+        const multiplicadorIngredientes = 1;
 
         console.log('\n📋 VALORES EXTRAÍDOS DEL MODAL:');
         console.log('- articuloCodigo:', articuloCodigo);
         console.log('- relacionId:', relacionId);
         console.log('- articuloKiloCodigo:', articuloKiloCodigo);
-        console.log('- multiplicadorIngredientesRaw:', multiplicadorIngredientesRaw, typeof multiplicadorIngredientesRaw);
-        console.log('- multiplicadorIngredientes (parseado):', multiplicadorIngredientes, typeof multiplicadorIngredientes);
+        console.log('- multiplicadorIngredientes: 1 (FORZADO)');
 
         if (!articuloCodigo) {
             console.log('❌ ERROR: Código de artículo de producción no válido');
@@ -2113,15 +2281,8 @@ async function procesarGuardadoVinculo() {
             return;
         }
 
-        // Validar multiplicador
-        if (isNaN(multiplicadorIngredientes) || multiplicadorIngredientes <= 0) {
-            console.log('❌ ERROR: Multiplicador inválido:', multiplicadorIngredientes);
-            mostrarError('El multiplicador debe ser un número mayor a 0');
-            return;
-        }
-
         console.log(`\n🔗 PROCESANDO VÍNCULO: ${articuloCodigo} -> ${articuloKiloCodigo}`);
-        console.log(`🔢 MULTIPLICADOR FINAL: ${multiplicadorIngredientes}`);
+        console.log(`🔢 MULTIPLICADOR FINAL: 1 (FORZADO)`);
         console.log(`📋 MODO: ${relacionId ? 'editar' : 'crear'} | RelacionId: ${relacionId}`);
 
         let response;
