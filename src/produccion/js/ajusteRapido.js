@@ -190,6 +190,34 @@ async function confirmarAjuste() {
       btnConfirmar.textContent = 'Procesando...';
     }
 
+    // 🎯 DETECCIÓN DE CONTEXTO: Determinar si es carro externo
+    let esStockUsuario = false;
+    let usuarioId = null;
+    
+    try {
+      const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdActual}/estado`);
+      if (carroResponse.ok) {
+        const carroData = await carroResponse.json();
+        const tipoCarro = carroData.tipo_carro || 'interna';
+        esStockUsuario = (tipoCarro === 'externa');
+        
+        if (esStockUsuario) {
+          // Obtener usuario_id del carro
+          const colaboradorData = localStorage.getItem('colaboradorActivo');
+          if (colaboradorData) {
+            const colaborador = JSON.parse(colaboradorData);
+            usuarioId = colaborador.id;
+          }
+        }
+        
+        console.log(`🎯 [CONTEXTO] Tipo de carro: ${tipoCarro}`);
+        console.log(`🎯 [CONTEXTO] Es stock de usuario: ${esStockUsuario}`);
+        console.log(`🎯 [CONTEXTO] Usuario ID: ${usuarioId || 'N/A'}`);
+      }
+    } catch (error) {
+      console.warn('⚠️ [CONTEXTO] No se pudo determinar tipo de carro, usando stock general');
+    }
+
     // Determinar tipo de movimiento
     const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
     const kilosMovimiento = Math.abs(diferencia);
@@ -203,7 +231,20 @@ async function confirmarAjuste() {
     console.log(`📝 [AJUSTE] Registrando movimiento:`);
     console.log(`   - Tipo: ${tipoMovimiento}`);
     console.log(`   - Kilos: ${kilosMovimiento}`);
+    console.log(`   - Es stock usuario: ${esStockUsuario}`);
     console.log(`   - Observaciones: ${observaciones}`);
+
+    // 🎯 PAYLOAD CONTEXTUAL: Incluir información de contexto
+    const payload = {
+      ingrediente_id: ingredienteIdActual,
+      stock_real: stockReal,
+      carro_id: carroIdActual,
+      observaciones: observaciones,
+      es_stock_usuario: esStockUsuario,  // 🆕 Indicador de contexto
+      usuario_id: usuarioId               // 🆕 ID del usuario (solo para externos)
+    };
+
+    console.log(`📤 [AJUSTE] Payload enviado:`, payload);
 
     // Registrar movimiento en el backend
     const response = await fetch('http://localhost:3002/api/produccion/ingredientes/ajuste-rapido', {
@@ -211,12 +252,7 @@ async function confirmarAjuste() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        ingrediente_id: ingredienteIdActual,
-        stock_real: stockReal,
-        carro_id: carroIdActual,
-        observaciones: observaciones
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -229,10 +265,11 @@ async function confirmarAjuste() {
     console.log('✅ [AJUSTE] Ajuste procesado exitosamente:', resultado);
     console.log('================================================================\n');
 
-    // Mostrar confirmación
+    // Mostrar confirmación contextual
+    const contextoMensaje = esStockUsuario ? ' (Stock Personal)' : ' (Stock General)';
     const mensaje = diferencia > 0 
-      ? `✅ Stock ajustado: +${kilosMovimiento.toFixed(2)} kg agregados\nNuevo stock: ${stockReal.toFixed(2)} kg`
-      : `✅ Stock ajustado: -${kilosMovimiento.toFixed(2)} kg descontados\nNuevo stock: ${stockReal.toFixed(2)} kg`;
+      ? `✅ Stock ajustado${contextoMensaje}: +${kilosMovimiento.toFixed(2)} kg agregados\nNuevo stock: ${stockReal.toFixed(2)} kg`
+      : `✅ Stock ajustado${contextoMensaje}: -${kilosMovimiento.toFixed(2)} kg descontados\nNuevo stock: ${stockReal.toFixed(2)} kg`;
     
     alert(mensaje);
 

@@ -524,6 +524,22 @@ async function cargarIngredientes(usuarioId = null) {
         
         if (usuarioId) {
             vistaActual = `usuario-${usuarioId}`;
+            
+            // 🛡️ LIMPIEZA DE ESTADO: Limpiar todos los filtros al cambiar a vista usuario
+            console.log('🧹 [LIMPIEZA] Limpiando filtros activos para vista de usuario...');
+            filtrosActivos.clear();
+            filtrosTipoActivos.clear();
+            filtrosStockActivos.clear();
+            filtrosSectorActivos.clear();
+            console.log('✅ [LIMPIEZA] Filtros limpiados');
+            
+            // 🛡️ LIMPIEZA DE ESTADO: Limpiar campo de búsqueda por nombre
+            const inputFiltroNombre = document.getElementById('filtro-nombre');
+            if (inputFiltroNombre) {
+                inputFiltroNombre.value = '';
+                console.log('✅ [LIMPIEZA] Campo de búsqueda limpiado');
+            }
+            
             response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
         } else {
             vistaActual = 'deposito';
@@ -536,9 +552,14 @@ async function cargarIngredientes(usuarioId = null) {
         }
 
         const datos = await response.json();
-        console.log('✅ Datos recibidos:', datos);
+        console.log(`✅ Datos recibidos del servidor: ${datos.length} registros`);
         
         if (vistaActual === 'deposito') {
+            // ==========================================
+            // RAMA 1: VISTA DEPÓSITO (Inventario General)
+            // ==========================================
+            console.log('🏢 [VISTA DEPÓSITO] Procesando datos del depósito general...');
+            
             // Guardar lista completa y actualizar mix.js
             ingredientesOriginales = datos;
             window.actualizarListaIngredientes(datos);
@@ -554,9 +575,33 @@ async function cargarIngredientes(usuarioId = null) {
             
             ingredientesOriginales = ingredientesConEstado;
             await actualizarTablaFiltrada();
+            
+            console.log(`✅ [VISTA DEPÓSITO] Tabla renderizada con ${ingredientesConEstado.length} ingredientes`);
         } else {
-            // Vista de usuario: mostrar directamente sin filtros
+            // ==========================================
+            // RAMA 2: VISTA USUARIO (Stock Personal)
+            // ==========================================
+            console.log(`👤 [VISTA USUARIO] Procesando stock personal del usuario ${usuarioId}...`);
+            console.log(`📊 [VISTA USUARIO] Ingredientes recibidos del backend: ${datos.length}`);
+            
+            // 🛡️ VALIDACIÓN: Verificar que los datos sean del usuario
+            if (datos.length > 0) {
+                console.log('📋 [VISTA USUARIO] Muestra de datos recibidos:');
+                datos.slice(0, 3).forEach((ing, index) => {
+                    console.log(`  ${index + 1}. ${ing.nombre_ingrediente}: ${ing.stock_total} kg (${ing.tipo_origen})`);
+                });
+            } else {
+                console.log('ℹ️ [VISTA USUARIO] El usuario no tiene stock de ingredientes');
+            }
+            
+            // 🛡️ NO guardar en ingredientesOriginales para evitar contaminación
+            // 🛡️ NO llamar a inicializarFiltros()
+            // 🛡️ NO llamar a actualizarTablaFiltrada()
+            
+            // Renderizar directamente la tabla con los datos del usuario
             await actualizarTablaIngredientes(datos, true);
+            
+            console.log(`✅ [VISTA USUARIO] Tabla renderizada con ${datos.length} ingredientes del usuario`);
         }
 
     } catch (error) {

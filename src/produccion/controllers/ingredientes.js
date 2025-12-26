@@ -415,13 +415,14 @@ async function obtenerUsuariosConStock() {
 
 /**
  * Obtiene el stock consolidado de ingredientes para un usuario específico
- * Separa correctamente por origen_mix_id según los requisitos
+ * Balance consolidado: Una fila por ingrediente con suma total de movimientos
+ * Incluye ingredientes con stock cero para gestión de reposición
  * @param {number} usuarioId - ID del usuario
  * @returns {Promise<Array>} Lista de ingredientes con stock del usuario
  */
 async function obtenerStockPorUsuario(usuarioId) {
     try {
-        console.log(`🔍 Obteniendo stock de ingredientes para usuario ${usuarioId}...`);
+        console.log(`🔍 Obteniendo stock consolidado de ingredientes para usuario ${usuarioId}...`);
         const query = `
             SELECT 
                 i.id as ingrediente_id,
@@ -431,11 +432,6 @@ async function obtenerStockPorUsuario(usuarioId) {
                 i.unidad_medida,
                 i.categoria,
                 SUM(isu.cantidad) as stock_total,
-                isu.origen_mix_id,
-                CASE 
-                    WHEN isu.origen_mix_id IS NULL THEN 'Simple'
-                    ELSE 'Sobrante de Mix'
-                END as tipo_origen,
                 CASE 
                     WHEN EXISTS (
                         SELECT 1 FROM ingrediente_composicion ic 
@@ -446,17 +442,19 @@ async function obtenerStockPorUsuario(usuarioId) {
             FROM public.ingredientes i
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
             WHERE isu.usuario_id = $1
-            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria, isu.origen_mix_id
-            HAVING SUM(isu.cantidad) > 0
-            ORDER BY i.nombre ASC, isu.origen_mix_id ASC NULLS FIRST;
+            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria
+            HAVING SUM(isu.cantidad) >= 0
+            ORDER BY i.nombre ASC;
         `;
         
         const result = await pool.query(query, [usuarioId]);
-        console.log(`✅ Encontrados ${result.rows.length} registros de stock para usuario ${usuarioId}`);
+        console.log(`✅ Balance consolidado: ${result.rows.length} ingredientes únicos para usuario ${usuarioId}`);
         
-        // Log detallado para debugging
+        // Log detallado para debugging (incluye ingredientes en cero)
         result.rows.forEach(row => {
-            console.log(`📦 ${row.nombre_ingrediente}: ${row.stock_total} (${row.tipo_origen})`);
+            const stockNum = parseFloat(row.stock_total);
+            const indicador = stockNum === 0 ? '⚠️ CERO' : '✅';
+            console.log(`📦 ${indicador} ${row.nombre_ingrediente}: ${row.stock_total} kg (${row.tipo})`);
         });
         
         return result.rows;

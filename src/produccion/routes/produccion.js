@@ -2975,20 +2975,20 @@ router.delete('/sustitucion/:id', async (req, res) => {
 });
 
 // ==========================================
-// ENDPOINT: Ajuste Rápido de Stock Reversible
+// ENDPOINT: Ajuste Rápido de Stock Reversible CONTEXTUAL
 // ==========================================
 /**
  * POST /api/produccion/ingredientes/ajuste-rapido
  * Registra un ajuste rápido de stock vinculado a un carro
- * Los ajustes se revierten automáticamente al eliminar el carro
+ * 🎯 CONTEXTUAL: Ajusta stock general O stock de usuario según el tipo de carro
  */
 router.post('/ingredientes/ajuste-rapido', async (req, res) => {
   try {
-    console.log('\n🔧 [AJUSTE RÁPIDO] Nueva solicitud de ajuste');
+    console.log('\n🔧 [AJUSTE RÁPIDO CONTEXTUAL] Nueva solicitud de ajuste');
     console.log('================================================================');
     console.log('Body recibido:', JSON.stringify(req.body, null, 2));
 
-    const { ingrediente_id, stock_real, carro_id, observaciones } = req.body;
+    const { ingrediente_id, stock_real, carro_id, observaciones, es_stock_usuario, usuario_id } = req.body;
 
     // Validaciones
     if (!ingrediente_id || stock_real === undefined || !carro_id) {
@@ -3006,92 +3006,173 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
       });
     }
 
-    // Obtener stock actual del sistema
-    const queryStockActual = `
-      SELECT stock_actual 
-      FROM ingredientes 
-      WHERE id = $1
-    `;
-    const resultStock = await pool.query(queryStockActual, [ingrediente_id]);
+    console.log(`🎯 [CONTEXTO] Es stock de usuario: ${es_stock_usuario}`);
+    console.log(`🎯 [CONTEXTO] Usuario ID: ${usuario_id || 'N/A'}`);
 
-    if (resultStock.rows.length === 0) {
-      console.log('❌ [AJUSTE] Ingrediente no encontrado:', ingrediente_id);
-      return res.status(404).json({ error: 'Ingrediente no encontrado' });
-    }
+    // 🎯 BIFURCACIÓN CONTEXTUAL: Stock de usuario vs Stock general
+    if (es_stock_usuario && usuario_id) {
+      // ==========================================
+      // RAMA 1: AJUSTE DE STOCK PERSONAL (Carro Externo)
+      // ==========================================
+      console.log('\n👤 [STOCK PERSONAL] Procesando ajuste de stock de usuario...');
+      
+      // Obtener stock actual del usuario para este ingrediente
+      const queryStockUsuario = `
+        SELECT COALESCE(SUM(cantidad), 0) as stock_actual
+        FROM ingredientes_stock_usuarios
+        WHERE usuario_id = $1 AND ingrediente_id = $2
+      `;
+      const resultStockUsuario = await pool.query(queryStockUsuario, [usuario_id, ingrediente_id]);
+      const stockUsuarioActual = parseFloat(resultStockUsuario.rows[0].stock_actual);
+      
+      const diferenciaUsuario = stockRealNum - stockUsuarioActual;
+      
+      console.log(`📊 [STOCK PERSONAL] Cálculo:`);
+      console.log(`   - Stock Usuario Actual: ${stockUsuarioActual} kg`);
+      console.log(`   - Stock Real Deseado: ${stockRealNum} kg`);
+      console.log(`   - Diferencia: ${diferenciaUsuario} kg`);
+      
+      // Si no hay diferencia significativa, no hacer nada
+      if (Math.abs(diferenciaUsuario) < 0.01) {
+        console.log('ℹ️ [STOCK PERSONAL] No hay diferencia significativa');
+        return res.json({
+          mensaje: 'No se requiere ajuste (diferencia menor a 0.01 kg)',
+          stock_anterior: stockUsuarioActual,
+          stock_nuevo: stockUsuarioActual,
+          diferencia: 0,
+          tipo_ajuste: 'stock_usuario'
+        });
+      }
+      
+      // Registrar movimiento de ajuste en ingredientes_stock_usuarios
+      const queryAjusteUsuario = `
+        INSERT INTO ingredientes_stock_usuarios (
+          usuario_id,
+          ingrediente_id,
+          cantidad,
+          origen_carro_id,
+          fecha_registro,
+          origen_mix_id
+        ) VALUES ($1, $2, $3, $4, NOW(), NULL)
+        RETURNING id
+      `;
+      
+      const resultAjuste = await pool.query(queryAjusteUsuario, [
+        usuario_id,
+        ingrediente_id,
+        diferenciaUsuario,  // Cantidad con signo (+ o -)
+        carro_id
+      ]);
+      
+      console.log(`✅ [STOCK PERSONAL] Ajuste registrado con ID: ${resultAjuste.rows[0].id}`);
+      console.log(`   - Stock anterior: ${stockUsuarioActual} kg`);
+      console.log(`   - Stock nuevo: ${stockRealNum} kg`);
+      console.log(`   - Diferencia aplicada: ${diferenciaUsuario} kg`);
+      
+      res.json({
+        mensaje: 'Ajuste de stock personal procesado correctamente',
+        stock_anterior: stockUsuarioActual,
+        stock_nuevo: stockRealNum,
+        diferencia: diferenciaUsuario,
+        tipo_ajuste: 'stock_usuario',
+        movimiento_id: resultAjuste.rows[0].id
+      });
+      
+    } else {
+      // ==========================================
+      // RAMA 2: AJUSTE DE STOCK GENERAL (Carro Interno o Inventario General)
+      // ==========================================
+      console.log('\n🏢 [STOCK GENERAL] Procesando ajuste de stock general...');
+      
+      // Obtener stock actual del sistema
+      const queryStockActual = `
+        SELECT stock_actual 
+        FROM ingredientes 
+        WHERE id = $1
+      `;
+      const resultStock = await pool.query(queryStockActual, [ingrediente_id]);
 
-    const stockSistema = parseFloat(resultStock.rows[0].stock_actual);
-    const diferencia = stockRealNum - stockSistema;
+      if (resultStock.rows.length === 0) {
+        console.log('❌ [AJUSTE] Ingrediente no encontrado:', ingrediente_id);
+        return res.status(404).json({ error: 'Ingrediente no encontrado' });
+      }
 
-    console.log(`📊 [AJUSTE] Cálculo:`);
-    console.log(`   - Stock Sistema: ${stockSistema} kg`);
-    console.log(`   - Stock Real: ${stockRealNum} kg`);
-    console.log(`   - Diferencia: ${diferencia} kg`);
+      const stockSistema = parseFloat(resultStock.rows[0].stock_actual);
+      const diferencia = stockRealNum - stockSistema;
 
-    // Si no hay diferencia significativa, no hacer nada
-    if (Math.abs(diferencia) < 0.01) {
-      console.log('ℹ️ [AJUSTE] No hay diferencia significativa');
-      return res.json({
-        mensaje: 'No se requiere ajuste (diferencia menor a 0.01 kg)',
+      console.log(`📊 [STOCK GENERAL] Cálculo:`);
+      console.log(`   - Stock Sistema: ${stockSistema} kg`);
+      console.log(`   - Stock Real: ${stockRealNum} kg`);
+      console.log(`   - Diferencia: ${diferencia} kg`);
+
+      // Si no hay diferencia significativa, no hacer nada
+      if (Math.abs(diferencia) < 0.01) {
+        console.log('ℹ️ [STOCK GENERAL] No hay diferencia significativa');
+        return res.json({
+          mensaje: 'No se requiere ajuste (diferencia menor a 0.01 kg)',
+          stock_anterior: stockSistema,
+          stock_nuevo: stockSistema,
+          diferencia: 0,
+          tipo_ajuste: 'stock_general'
+        });
+      }
+
+      // Determinar tipo de movimiento
+      const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
+      const kilosMovimiento = diferencia; // Mantener el signo para el registro
+
+      // Preparar observaciones
+      const observacionesFinal = observaciones || `Ajuste rápido - Stock real: ${stockRealNum} kg`;
+
+      console.log(`📝 [STOCK GENERAL] Registrando movimiento:`);
+      console.log(`   - Tipo: ${tipoMovimiento}`);
+      console.log(`   - Kilos: ${kilosMovimiento}`);
+      console.log(`   - Carro ID: ${carro_id}`);
+
+      // Registrar movimiento en ingredientes_movimientos
+      const queryMovimiento = `
+        INSERT INTO ingredientes_movimientos (
+          ingrediente_id,
+          kilos,
+          tipo,
+          carro_id,
+          observaciones,
+          fecha
+        ) VALUES ($1, $2, $3, $4, $5, NOW())
+        RETURNING id
+      `;
+
+      const resultMovimiento = await pool.query(queryMovimiento, [
+        ingrediente_id,
+        kilosMovimiento,
+        tipoMovimiento,
+        carro_id,
+        observacionesFinal
+      ]);
+
+      console.log(`✅ [STOCK GENERAL] Movimiento registrado con ID: ${resultMovimiento.rows[0].id}`);
+
+      // El trigger actualizar_stock_ingrediente se encargará de actualizar el stock automáticamente
+
+      // Obtener el nuevo stock después del ajuste
+      const resultNuevoStock = await pool.query(queryStockActual, [ingrediente_id]);
+      const nuevoStock = parseFloat(resultNuevoStock.rows[0].stock_actual);
+
+      console.log(`✅ [STOCK GENERAL] Ajuste completado exitosamente`);
+      console.log(`   - Stock anterior: ${stockSistema} kg`);
+      console.log(`   - Stock nuevo: ${nuevoStock} kg`);
+      console.log('================================================================\n');
+
+      res.json({
+        mensaje: 'Ajuste procesado correctamente',
         stock_anterior: stockSistema,
-        stock_nuevo: stockSistema,
-        diferencia: 0
+        stock_nuevo: nuevoStock,
+        diferencia: diferencia,
+        tipo_movimiento: tipoMovimiento,
+        tipo_ajuste: 'stock_general',
+        movimiento_id: resultMovimiento.rows[0].id
       });
     }
-
-    // Determinar tipo de movimiento
-    const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
-    const kilosMovimiento = diferencia; // Mantener el signo para el registro
-
-    // Preparar observaciones
-    const observacionesFinal = observaciones || `Ajuste rápido - Stock real: ${stockRealNum} kg`;
-
-    console.log(`📝 [AJUSTE] Registrando movimiento:`);
-    console.log(`   - Tipo: ${tipoMovimiento}`);
-    console.log(`   - Kilos: ${kilosMovimiento}`);
-    console.log(`   - Carro ID: ${carro_id}`);
-
-    // Registrar movimiento en ingredientes_movimientos
-    const queryMovimiento = `
-      INSERT INTO ingredientes_movimientos (
-        ingrediente_id,
-        kilos,
-        tipo,
-        carro_id,
-        observaciones,
-        fecha
-      ) VALUES ($1, $2, $3, $4, $5, NOW())
-      RETURNING id
-    `;
-
-    const resultMovimiento = await pool.query(queryMovimiento, [
-      ingrediente_id,
-      kilosMovimiento,
-      tipoMovimiento,
-      carro_id,
-      observacionesFinal
-    ]);
-
-    console.log(`✅ [AJUSTE] Movimiento registrado con ID: ${resultMovimiento.rows[0].id}`);
-
-    // El trigger actualizar_stock_ingrediente se encargará de actualizar el stock automáticamente
-
-    // Obtener el nuevo stock después del ajuste
-    const resultNuevoStock = await pool.query(queryStockActual, [ingrediente_id]);
-    const nuevoStock = parseFloat(resultNuevoStock.rows[0].stock_actual);
-
-    console.log(`✅ [AJUSTE] Ajuste completado exitosamente`);
-    console.log(`   - Stock anterior: ${stockSistema} kg`);
-    console.log(`   - Stock nuevo: ${nuevoStock} kg`);
-    console.log('================================================================\n');
-
-    res.json({
-      mensaje: 'Ajuste procesado correctamente',
-      stock_anterior: stockSistema,
-      stock_nuevo: nuevoStock,
-      diferencia: diferencia,
-      tipo_movimiento: tipoMovimiento,
-      movimiento_id: resultMovimiento.rows[0].id
-    });
 
   } catch (error) {
     console.error('❌ [AJUSTE] Error al procesar ajuste rápido:', error);
