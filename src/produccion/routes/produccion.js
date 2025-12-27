@@ -2988,13 +2988,21 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
     console.log('================================================================');
     console.log('Body recibido:', JSON.stringify(req.body, null, 2));
 
-    const { ingrediente_id, stock_real, carro_id, observaciones, es_stock_usuario, usuario_id } = req.body;
+    const { ingrediente_id, stock_real, carro_id, observaciones, es_stock_usuario, usuario_id, origen_contexto } = req.body;
 
     // Validaciones
-    if (!ingrediente_id || stock_real === undefined || !carro_id) {
+    if (!ingrediente_id || stock_real === undefined) {
       console.log('❌ [AJUSTE] Datos incompletos');
       return res.status(400).json({ 
-        error: 'Faltan datos requeridos: ingrediente_id, stock_real, carro_id' 
+        error: 'Faltan datos requeridos: ingrediente_id, stock_real' 
+      });
+    }
+    
+    // Validación adicional para stock de usuario
+    if (es_stock_usuario && !usuario_id) {
+      console.log('❌ [AJUSTE] Falta usuario_id para ajuste de stock personal');
+      return res.status(400).json({ 
+        error: 'Se requiere usuario_id para ajustes de stock personal' 
       });
     }
 
@@ -3045,6 +3053,12 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
       }
       
       // Registrar movimiento de ajuste en ingredientes_stock_usuarios
+      // 🆕 MANEJO DE CARRO_ID NULL: Para ajustes desde vista de stock personal
+      const carroIdFinal = carro_id || null;
+      const observacionesFinal = carro_id 
+        ? observaciones 
+        : `${observaciones} - Ajuste Manual desde Vista de Stock Personal`;
+      
       const queryAjusteUsuario = `
         INSERT INTO ingredientes_stock_usuarios (
           usuario_id,
@@ -3061,8 +3075,11 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
         usuario_id,
         ingrediente_id,
         diferenciaUsuario,  // Cantidad con signo (+ o -)
-        carro_id
+        carroIdFinal        // 🆕 Puede ser NULL
       ]);
+      
+      console.log(`📝 [STOCK PERSONAL] Observaciones: ${observacionesFinal}`);
+      console.log(`📝 [STOCK PERSONAL] Origen contexto: ${origen_contexto || 'no especificado'}`);
       
       console.log(`✅ [STOCK PERSONAL] Ajuste registrado con ID: ${resultAjuste.rows[0].id}`);
       console.log(`   - Stock anterior: ${stockUsuarioActual} kg`);

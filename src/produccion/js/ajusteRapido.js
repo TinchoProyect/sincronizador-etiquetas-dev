@@ -190,33 +190,53 @@ async function confirmarAjuste() {
       btnConfirmar.textContent = 'Procesando...';
     }
 
-    // 🎯 DETECCIÓN DE CONTEXTO: Determinar si es carro externo
+    // 🎯 DETECCIÓN DE CONTEXTO: Determinar si es carro externo O vista de usuario
     let esStockUsuario = false;
     let usuarioId = null;
+    let origenContexto = 'desconocido';
     
-    try {
-      const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdActual}/estado`);
-      if (carroResponse.ok) {
-        const carroData = await carroResponse.json();
-        const tipoCarro = carroData.tipo_carro || 'interna';
-        esStockUsuario = (tipoCarro === 'externa');
-        
-        if (esStockUsuario) {
-          // Obtener usuario_id del carro
-          const colaboradorData = localStorage.getItem('colaboradorActivo');
-          if (colaboradorData) {
-            const colaborador = JSON.parse(colaboradorData);
-            usuarioId = colaborador.id;
+    // OPCIÓN 1: Detectar si estamos en un carro externo
+    if (carroIdActual) {
+      try {
+        const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdActual}/estado`);
+        if (carroResponse.ok) {
+          const carroData = await carroResponse.json();
+          const tipoCarro = carroData.tipo_carro || 'interna';
+          esStockUsuario = (tipoCarro === 'externa');
+          
+          if (esStockUsuario) {
+            // Obtener usuario_id del carro
+            const colaboradorData = localStorage.getItem('colaboradorActivo');
+            if (colaboradorData) {
+              const colaborador = JSON.parse(colaboradorData);
+              usuarioId = colaborador.id;
+              origenContexto = 'carro_externo';
+            }
           }
         }
-        
-        console.log(`🎯 [CONTEXTO] Tipo de carro: ${tipoCarro}`);
-        console.log(`🎯 [CONTEXTO] Es stock de usuario: ${esStockUsuario}`);
-        console.log(`🎯 [CONTEXTO] Usuario ID: ${usuarioId || 'N/A'}`);
+      } catch (error) {
+        console.warn('⚠️ [CONTEXTO] No se pudo determinar tipo de carro');
       }
-    } catch (error) {
-      console.warn('⚠️ [CONTEXTO] No se pudo determinar tipo de carro, usando stock general');
     }
+    
+    // OPCIÓN 2: Detectar si estamos en vista de stock de usuario (sin carro)
+    if (!esStockUsuario) {
+      // Verificar si hay un usuario seleccionado en el filtro de la vista de ingredientes
+      const selectorUsuario = document.getElementById('filtro-usuario');
+      if (selectorUsuario && selectorUsuario.value && selectorUsuario.value !== 'todos') {
+        usuarioId = parseInt(selectorUsuario.value);
+        if (!isNaN(usuarioId) && usuarioId > 0) {
+          esStockUsuario = true;
+          origenContexto = 'vista_stock_personal';
+          console.log(`🎯 [CONTEXTO] Detectado ajuste desde vista de stock personal`);
+        }
+      }
+    }
+    
+    console.log(`🎯 [CONTEXTO] Origen: ${origenContexto}`);
+    console.log(`🎯 [CONTEXTO] Es stock de usuario: ${esStockUsuario}`);
+    console.log(`🎯 [CONTEXTO] Usuario ID: ${usuarioId || 'N/A'}`);
+    console.log(`🎯 [CONTEXTO] Carro ID: ${carroIdActual || 'NULL (ajuste sin carro)'}`);
 
     // Determinar tipo de movimiento
     const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
@@ -238,10 +258,11 @@ async function confirmarAjuste() {
     const payload = {
       ingrediente_id: ingredienteIdActual,
       stock_real: stockReal,
-      carro_id: carroIdActual,
+      carro_id: carroIdActual || null,    // 🆕 Puede ser null si es desde vista de usuario
       observaciones: observaciones,
-      es_stock_usuario: esStockUsuario,  // 🆕 Indicador de contexto
-      usuario_id: usuarioId               // 🆕 ID del usuario (solo para externos)
+      es_stock_usuario: esStockUsuario,   // 🆕 Indicador de contexto
+      usuario_id: usuarioId,              // 🆕 ID del usuario
+      origen_contexto: origenContexto     // 🆕 Para auditoría
     };
 
     console.log(`📤 [AJUSTE] Payload enviado:`, payload);
@@ -266,7 +287,15 @@ async function confirmarAjuste() {
     console.log('================================================================\n');
 
     // Mostrar confirmación contextual
-    const contextoMensaje = esStockUsuario ? ' (Stock Personal)' : ' (Stock General)';
+    let contextoMensaje = '';
+    if (esStockUsuario) {
+      contextoMensaje = origenContexto === 'vista_stock_personal' 
+        ? ' (Stock Personal - Ajuste Manual)' 
+        : ' (Stock Personal - Carro Externo)';
+    } else {
+      contextoMensaje = ' (Stock General)';
+    }
+    
     const mensaje = diferencia > 0 
       ? `✅ Stock ajustado${contextoMensaje}: +${kilosMovimiento.toFixed(2)} kg agregados\nNuevo stock: ${stockReal.toFixed(2)} kg`
       : `✅ Stock ajustado${contextoMensaje}: -${kilosMovimiento.toFixed(2)} kg descontados\nNuevo stock: ${stockReal.toFixed(2)} kg`;

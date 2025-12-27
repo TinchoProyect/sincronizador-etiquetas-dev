@@ -416,7 +416,7 @@ async function obtenerUsuariosConStock() {
 /**
  * Obtiene el stock consolidado de ingredientes para un usuario específico
  * Balance consolidado: Una fila por ingrediente con suma total de movimientos
- * Incluye ingredientes con stock cero para gestión de reposición
+ * Muestra tanto saldos positivos como negativos (oculta solo ceros exactos)
  * @param {number} usuarioId - ID del usuario
  * @returns {Promise<Array>} Lista de ingredientes con stock del usuario
  */
@@ -443,17 +443,24 @@ async function obtenerStockPorUsuario(usuarioId) {
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
             WHERE isu.usuario_id = $1
             GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria
-            HAVING SUM(isu.cantidad) >= 0
+            HAVING ABS(SUM(isu.cantidad)) > 0.001
             ORDER BY i.nombre ASC;
         `;
         
         const result = await pool.query(query, [usuarioId]);
         console.log(`✅ Balance consolidado: ${result.rows.length} ingredientes únicos para usuario ${usuarioId}`);
         
-        // Log detallado para debugging (incluye ingredientes en cero)
+        // Log detallado para debugging (incluye positivos, negativos y ceros)
         result.rows.forEach(row => {
             const stockNum = parseFloat(row.stock_total);
-            const indicador = stockNum === 0 ? '⚠️ CERO' : '✅';
+            let indicador;
+            if (Math.abs(stockNum) < 0.001) {
+                indicador = '⚠️ CERO';
+            } else if (stockNum < 0) {
+                indicador = '🔴 NEG';
+            } else {
+                indicador = '✅ POS';
+            }
             console.log(`📦 ${indicador} ${row.nombre_ingrediente}: ${row.stock_total} kg (${row.tipo})`);
         });
         
