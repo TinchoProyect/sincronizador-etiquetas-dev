@@ -1163,10 +1163,10 @@ export async function mostrarResumenIngredientes(ingredientes) {
                 ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
                 : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
             
-            // 🆕 Botón de ajuste rápido
-            const botonAjusteRapido = deshabilitado
-                ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
-                : `<button onclick="abrirModalAjusteRapido(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockActual}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
+              // 🆕 Botón de ajuste rápido - Usar función wrapper para configurar contexto
+              const botonAjusteRapido = deshabilitado
+                  ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
+                  : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockActual}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
             
             botonesAccion = `
                 <div style="display: flex; gap: 8px; justify-content: center;">
@@ -2723,6 +2723,86 @@ export function gestionarVisibilidadSeccionesPorTipo(tipoCarro) {
         }
     }
 }
+
+// ==========================================
+// FUNCIÓN WRAPPER PARA AJUSTE DESDE CARRO
+// ==========================================
+
+/**
+ * Función wrapper para abrir modal de ajuste desde el carro
+ * Configura correctamente el contexto y la función de actualización
+ * @param {number} ingredienteId - ID del ingrediente
+ * @param {string} nombreIngrediente - Nombre del ingrediente
+ * @param {number} stockActual - Stock actual del ingrediente
+ * @param {number} carroId - ID del carro activo
+ */
+window.abrirModalAjusteDesdeCarro = async function(ingredienteId, nombreIngrediente, stockActual, carroId) {
+    console.log('🚚 [CARRO-AJUSTE] Abriendo modal de ajuste desde carro...');
+    console.log(`   - Ingrediente: ${nombreIngrediente} (ID: ${ingredienteId})`);
+    console.log(`   - Stock actual: ${stockActual}`);
+    console.log(`   - Carro ID: ${carroId}`);
+    
+    // Obtener datos del colaborador
+    const colaboradorData = localStorage.getItem('colaboradorActivo');
+    if (!colaboradorData) {
+        alert('❌ Error: No hay colaborador seleccionado');
+        return;
+    }
+    
+    const colaborador = JSON.parse(colaboradorData);
+    const usuarioId = colaborador.id;
+    
+    // Obtener tipo de carro para determinar si es stock de usuario
+    let esStockUsuario = false;
+    try {
+        const estadoResp = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+        if (estadoResp.ok) {
+            const estadoData = await estadoResp.json();
+            esStockUsuario = (estadoData.tipo_carro === 'externa');
+            console.log(`🔍 [CARRO-AJUSTE] Tipo de carro: ${estadoData.tipo_carro}, es stock usuario: ${esStockUsuario}`);
+        }
+    } catch (error) {
+        console.warn('⚠️ [CARRO-AJUSTE] No se pudo determinar tipo de carro');
+    }
+    
+    // 🔧 Configurar contexto en el modal usando data-attributes
+    const modalAjuste = document.getElementById('modalAjusteKilos');
+    if (modalAjuste && esStockUsuario) {
+        modalAjuste.dataset.usuarioActivo = usuarioId;
+        modalAjuste.dataset.origenContexto = 'carro_externo';
+        console.log(`✅ [CARRO-AJUSTE] Contexto establecido: usuario=${usuarioId}, origen=carro_externo`);
+    }
+    
+    // 🔧 Configurar función de actualización ANTES de abrir el modal
+    window.actualizarResumenIngredientes = async () => {
+        console.log('🔄 [CARRO-AJUSTE] Actualizando resumen después del ajuste...');
+        const carroIdActual = localStorage.getItem('carroActivo');
+        const colaboradorDataActual = localStorage.getItem('colaboradorActivo');
+        
+        if (carroIdActual && colaboradorDataActual) {
+            const colaboradorActual = JSON.parse(colaboradorDataActual);
+            
+            // Actualizar resumen de ingredientes
+            const ingredientes = await obtenerResumenIngredientesCarro(carroIdActual, colaboradorActual.id);
+            await mostrarResumenIngredientes(ingredientes);
+            
+            // Actualizar resumen de mixes
+            const mixes = await obtenerResumenMixesCarro(carroIdActual, colaboradorActual.id);
+            mostrarResumenMixes(mixes);
+            
+            console.log('✅ [CARRO-AJUSTE] Resumen actualizado correctamente');
+        }
+    };
+    
+    // Abrir el modal de ajuste
+    if (typeof window.abrirModalAjusteRapido === 'function') {
+        console.log('🚀 [CARRO-AJUSTE] Llamando a abrirModalAjusteRapido...');
+        window.abrirModalAjusteRapido(ingredienteId, nombreIngrediente, stockActual, carroId);
+    } else {
+        console.error('❌ [CARRO-AJUSTE] abrirModalAjusteRapido no está disponible');
+        alert('❌ Error: El módulo de ajuste rápido no está cargado. Recarga la página con Ctrl+F5.');
+    }
+};
 
 // Exportar funciones para uso en módulos ES6
 export {
