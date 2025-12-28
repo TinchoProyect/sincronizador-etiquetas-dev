@@ -6,6 +6,7 @@
     <title>Gestión de Ingredientes - Gestiones Lamda</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="/css/ingredientes-panel.css">
+    <link rel="stylesheet" href="/css/modal-ajuste-rapido.css">
     <style>
         /* Estilos específicos que no están en el CSS externo */
         .btn-inventario {
@@ -473,6 +474,42 @@
             </div>
         </div>
 
+        <!-- Modal de Ajuste de Kilos -->
+        <div id="modalAjusteKilos" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⚖️ Ajustar Kilos</h2>
+                    <span class="close-modal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="ingrediente-info">
+                        <h3 id="nombre-ingrediente-ajuste"></h3>
+                        <p><strong>Sector:</strong> <span id="sector-ingrediente-ajuste"></span></p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="kilos-actuales">Kilos actuales:</label>
+                        <input type="number" id="kilos-actuales" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nuevos-kilos">Nuevos kilos:</label>
+                        <input type="number" id="nuevos-kilos" min="0" step="0.01" placeholder="Ingrese los nuevos kilos">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="motivo-ajuste">Motivo del ajuste:</label>
+                        <textarea id="motivo-ajuste" rows="3" placeholder="Describa el motivo del ajuste (opcional)"></textarea>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button id="btn-confirmar-ajuste" class="btn btn-success">Confirmar Ajuste</button>
+                        <button class="btn btn-secondary close-modal">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <footer>
             <p>&copy; 2024 Gestiones Lamda</p>
         </footer>
@@ -480,6 +517,7 @@
 
     <script type="module" src="/js/ingredientes.js"></script>
     <script type="module" src="/js/mix.js"></script>
+    <script type="module" src="/js/ajusteRapido.js"></script>
     <script>
         // ============================================
         // FUNCIONES DE ACORDEÓN
@@ -668,6 +706,59 @@
         }
 
         // Función para renderizar tabla de usuario
+        
+        // --- FUNCIÓN PUENTE PARA EL MODAL DE AJUSTE ---
+        window.abrirModalAjusteDesdeTabla = function(dummy, nombre, stock, idReal) {
+            console.log(' Click en ajuste:', nombre, stock, idReal);
+            
+            // Buscar el ID de usuario activo desde el DOM (clase .activo)
+            const itemActivo = document.querySelector('.sector-item.activo');
+            const usuarioId = itemActivo ? itemActivo.dataset.usuarioId : null;
+
+            if (!usuarioId) {
+                alert('Error: No se detectó el usuario activo.');
+                return;
+            }
+
+            // 🔧 CRÍTICO: Crear selector filtro-usuario ANTES de llamar a abrirModalAjusteRapido
+            let selectorFiltro = document.getElementById('filtro-usuario');
+            if (!selectorFiltro) {
+                selectorFiltro = document.createElement('select');
+                selectorFiltro.id = 'filtro-usuario';
+                selectorFiltro.style.display = 'none';
+                document.body.appendChild(selectorFiltro);
+                console.log('✅ [AJUSTE] Selector filtro-usuario creado');
+            }
+            selectorFiltro.value = usuarioId;
+            console.log(`✅ [AJUSTE] Usuario ${usuarioId} establecido en filtro-usuario`);
+
+            // Intentar usar la función del módulo externo si está disponible
+            if (typeof window.abrirModalAjusteRapido === 'function') {
+                // Parámetros: (ingredienteId, nombreIngrediente, stockActual, carroId)
+                // En vista de usuario, carroId es null
+                window.abrirModalAjusteRapido(idReal, nombre, stock, null);
+                
+                // Recarga automática al confirmar
+                setTimeout(() => {
+                    const btn = document.getElementById('btn-confirmar-ajuste');
+                    if (btn) {
+                        // Clonamos para evitar listeners duplicados
+                        const newBtn = btn.cloneNode(true);
+                        btn.parentNode.replaceChild(newBtn, btn);
+                        
+                        newBtn.addEventListener('click', () => {
+                            console.log(' Recargando vista de usuario...');
+                            setTimeout(() => cargarStockUsuario(usuarioId), 500); 
+                        });
+                    }
+                }, 500);
+            } else {
+                console.error('Falta ajusteRapido.js');
+                alert('El módulo de ajustes no está cargado. Recarga la página con Ctrl+F5.');
+            }
+        };
+        
+
         function renderizarTablaUsuario(stockUsuario) {
             const tbody = document.getElementById('tabla-ingredientes-body');
             if (!tbody) return;
@@ -687,6 +778,10 @@
                     tipoOrigen = 'Sobrante de Mix';
                 }
                 
+                // 🔍 DEBUG: Ver qué ID tiene el item
+                const ingredienteId = item.ingrediente_id || item.id;
+                console.log(`🔍 [TABLA] ${item.nombre_ingrediente}: ingrediente_id=${item.ingrediente_id}, id=${item.id}, final=${ingredienteId}`);
+                
                 row.innerHTML = `
                     <td>${item.nombre_ingrediente}</td>
                     <td>${item.unidad_medida || '-'}</td>
@@ -696,7 +791,16 @@
                     <td>${item.descripcion || '-'}</td>
                     <td>${tipoOrigen}</td>
                     <td>-</td>
-                    <td><span style="color: #6c757d; font-style: italic;">Solo lectura</span></td>
+                    
+                    <td style="text-align: center;">
+                        <button class="btn-icon" 
+                                onclick="window.abrirModalAjusteDesdeTabla(null, '${item.nombre_ingrediente.replace(/'/g, "\\'")}', ${item.stock_total}, ${ingredienteId})"
+                                title="Ajuste Rápido"
+                                style="cursor:pointer; background:none; border:none; font-size:1.2em;">
+                            
+                              ✏️
+                        </button>
+                    </td>
                 `;
                 
                 tbody.appendChild(row);
@@ -739,6 +843,41 @@
             }, 5000);
         }
 
+        // ==========================================
+        // FUNCIÓN PARA ABRIR AJUSTE DESDE TABLA HTML
+        // ==========================================
+        window.abrirModalAjusteDesdeTablaHTML = async function(ingredienteId, nombreIngrediente, stockActual, usuarioId) {
+            console.log('🔧 [AJUSTE-HTML] Abriendo modal de ajuste desde tabla HTML');
+            console.log(`   - Ingrediente: ${nombreIngrediente} (ID: ${ingredienteId})`);
+            console.log(`   - Stock actual: ${stockActual}`);
+            console.log(`   - Usuario ID: ${usuarioId}`);
+            
+            // Crear selector oculto para que ajusteRapido.js lo detecte
+            let selectorFiltro = document.getElementById('filtro-usuario');
+            if (!selectorFiltro) {
+                selectorFiltro = document.createElement('select');
+                selectorFiltro.id = 'filtro-usuario';
+                selectorFiltro.style.display = 'none';
+                document.body.appendChild(selectorFiltro);
+            }
+            selectorFiltro.value = usuarioId;
+            
+            // Llamar a la función de ajusteRapido.js
+            if (typeof window.abrirModalAjusteRapido === 'function') {
+                window.abrirModalAjusteRapido(ingredienteId, nombreIngrediente, stockActual, null);
+                
+                // Configurar recarga después del ajuste
+                const actualizarOriginal = window.actualizarResumenIngredientes;
+                window.actualizarResumenIngredientes = async function() {
+                    console.log('🔄 [AJUSTE-HTML] Recargando tabla después del ajuste...');
+                    await cargarStockUsuario(usuarioId);
+                    window.actualizarResumenIngredientes = actualizarOriginal;
+                };
+            } else {
+                alert('❌ Error: Módulo de ajuste rápido no disponible');
+            }
+        };
+        
         // Hacer funciones disponibles globalmente
         window.tabActiva = () => tabActiva;
         window.activarTabDeposito = activarTabDeposito;

@@ -388,7 +388,7 @@ async function eliminarIngrediente(id) {
 
 /**
  * Obtiene la lista de usuarios que tienen stock en ingredientes_stock_usuarios
- * @returns {Promise<Array>} Lista de usuarios con stock
+ * @returns {Promise<Array>} Lista de usuarios con stock (incluyendo stock 0)
  */
 async function obtenerUsuariosConStock() {
     try {
@@ -396,16 +396,23 @@ async function obtenerUsuariosConStock() {
         const query = `
             SELECT DISTINCT 
                 u.id as usuario_id,
-                u.nombre_completo
+                u.nombre_completo,
+                COUNT(DISTINCT isu.ingrediente_id) as total_ingredientes,
+                COALESCE(SUM(isu.cantidad), 0) as stock_total
             FROM usuarios u
             INNER JOIN ingredientes_stock_usuarios isu ON u.id = isu.usuario_id
             GROUP BY u.id, u.nombre_completo
-            HAVING SUM(isu.cantidad) != 0
             ORDER BY u.nombre_completo ASC;
         `;
         
         const result = await pool.query(query);
-        console.log(`✅ Encontrados ${result.rows.length} usuarios con stock de ingredientes`);
+        console.log(`✅ Encontrados ${result.rows.length} usuarios con movimientos de stock`);
+        
+        // Log detallado de cada usuario
+        result.rows.forEach(user => {
+            console.log(`   👤 ${user.nombre_completo} (ID: ${user.usuario_id}): ${user.total_ingredientes} ingredientes, stock total: ${user.stock_total} kg`);
+        });
+        
         return result.rows;
     } catch (error) {
         console.error('❌ Error en obtenerUsuariosConStock:', error);
@@ -431,7 +438,7 @@ async function obtenerStockPorUsuario(usuarioId) {
                 i.descripcion,
                 i.unidad_medida,
                 i.categoria,
-                SUM(isu.cantidad) as stock_total,
+                COALESCE(SUM(isu.cantidad), 0) as stock_total,
                 CASE 
                     WHEN EXISTS (
                         SELECT 1 FROM ingrediente_composicion ic 
@@ -443,19 +450,18 @@ async function obtenerStockPorUsuario(usuarioId) {
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
             WHERE isu.usuario_id = $1
             GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria
-            HAVING ABS(SUM(isu.cantidad)) > 0.001
             ORDER BY i.nombre ASC;
         `;
         
         const result = await pool.query(query, [usuarioId]);
-        console.log(`✅ Balance consolidado: ${result.rows.length} ingredientes únicos para usuario ${usuarioId}`);
+        console.log(`✅ Balance consolidado: ${result.rows.length} ingredientes únicos para usuario ${usuarioId} (incluyendo stock 0)`);
         
         // Log detallado para debugging (incluye positivos, negativos y ceros)
         result.rows.forEach(row => {
             const stockNum = parseFloat(row.stock_total);
             let indicador;
             if (Math.abs(stockNum) < 0.001) {
-                indicador = '⚠️ CERO';
+                indicador = '⚪ CERO';
             } else if (stockNum < 0) {
                 indicador = '🔴 NEG';
             } else {

@@ -1,0 +1,72 @@
+INSTRUCCIONES PARA APLICAR EL FIX MANUALMENTE:
+
+1. Abrir el archivo: src/produccion/js/ingredientes.js
+
+2. Buscar la función (está al final del archivo, línea ~1070):
+   window.abrirModalAjusteDesdeTabla = async function(ingredienteId, nombreIngrediente, stockActual) {
+
+3. REEMPLAZAR TODA LA FUNCIÓN con este código:
+
+```javascript
+window.abrirModalAjusteDesdeTabla = async function(ingredienteId, nombreIngrediente, stockActual) {
+    console.log('✏️ [AJUSTE-JS] Solicitando ajuste para:', nombreIngrediente);
+    console.log('📊 [AJUSTE-JS] Vista actual:', vistaActual);
+    
+    // Detectar usuario_id desde la vista actual
+    let usuarioId = null;
+    
+    if (vistaActual.startsWith('usuario-')) {
+        // Extraer ID del usuario desde vistaActual (formato: "usuario-5")
+        usuarioId = parseInt(vistaActual.replace('usuario-', ''));
+        console.log('👤 [AJUSTE-JS] Usuario detectado desde vistaActual:', usuarioId);
+    } else {
+        // Fallback: buscar en el DOM
+        const sectorActivo = document.querySelector('.sector-item.activo[data-usuario-id]');
+        if (sectorActivo) {
+            usuarioId = parseInt(sectorActivo.dataset.usuarioId);
+            console.log('👤 [AJUSTE-JS] Usuario detectado desde DOM:', usuarioId);
+        }
+    }
+    
+    if (!usuarioId) {
+        alert('⚠️ Error: No se pudo detectar el usuario activo.');
+        return;
+    }
+
+    // Crear selector oculto para que ajusteRapido.js lo detecte
+    let selectorFiltro = document.getElementById('filtro-usuario');
+    if (!selectorFiltro) {
+        selectorFiltro = document.createElement('select');
+        selectorFiltro.id = 'filtro-usuario';
+        selectorFiltro.style.display = 'none';
+        document.body.appendChild(selectorFiltro);
+        console.log('✅ [AJUSTE-JS] Selector filtro-usuario creado');
+    }
+    selectorFiltro.value = usuarioId;
+
+    // Verificar si ajusteRapido.js cargó la función maestra
+    if (typeof window.abrirModalAjusteRapido === 'function') {
+        console.log('🚀 [AJUSTE-JS] Llamando a abrirModalAjusteRapido...');
+        window.abrirModalAjusteRapido(ingredienteId, nombreIngrediente, stockActual, null);
+        
+        // Configurar recarga después del ajuste
+        const actualizarOriginal = window.actualizarResumenIngredientes;
+        window.actualizarResumenIngredientes = async function() {
+            console.log('🔄 [AJUSTE-JS] Recargando tabla después del ajuste...');
+            await cargarIngredientes(usuarioId);
+            window.actualizarResumenIngredientes = actualizarOriginal;
+        };
+    } else {
+        console.error('❌ window.abrirModalAjusteRapido no está definida.');
+        alert('Error: El módulo de ajustes no está cargado correctamente. Recarga la página con Ctrl+F5.');
+    }
+};
+```
+
+4. Guardar el archivo
+
+5. Reiniciar el servidor: npm start
+
+6. Recargar el navegador con Ctrl+F5
+
+7. Probar: Ir a Ingredientes → Seleccionar "Matías" → Verificar que aparece el botón ✏️

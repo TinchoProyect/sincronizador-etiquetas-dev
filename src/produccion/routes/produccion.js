@@ -3030,7 +3030,7 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
         FROM ingredientes_stock_usuarios
         WHERE usuario_id = $1 AND ingrediente_id = $2
       `;
-      const resultStockUsuario = await pool.query(queryStockUsuario, [usuario_id, ingrediente_id]);
+      const resultStockUsuario = await req.db.query(queryStockUsuario, [usuario_id, ingrediente_id]);
       const stockUsuarioActual = parseFloat(resultStockUsuario.rows[0].stock_actual);
       
       const diferenciaUsuario = stockRealNum - stockUsuarioActual;
@@ -3071,7 +3071,10 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
         RETURNING id
       `;
       
-      const resultAjuste = await pool.query(queryAjusteUsuario, [
+      console.log(`🔍 [DEBUG] Ejecutando INSERT en ingredientes_stock_usuarios...`);
+      console.log(`🔍 [DEBUG] Parámetros:`, [usuario_id, ingrediente_id, diferenciaUsuario, carroIdFinal]);
+      
+      const resultAjuste = await req.db.query(queryAjusteUsuario, [
         usuario_id,
         ingrediente_id,
         diferenciaUsuario,  // Cantidad con signo (+ o -)
@@ -3086,10 +3089,23 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
       console.log(`   - Stock nuevo: ${stockRealNum} kg`);
       console.log(`   - Diferencia aplicada: ${diferenciaUsuario} kg`);
       
+      // 🔍 VERIFICACIÓN: Consultar el stock después del INSERT
+      const verificacionQuery = `
+        SELECT COALESCE(SUM(cantidad), 0) as stock_verificado
+        FROM ingredientes_stock_usuarios
+        WHERE usuario_id = $1 AND ingrediente_id = $2
+      `;
+      const verificacionResult = await req.db.query(verificacionQuery, [usuario_id, ingrediente_id]);
+      const stockVerificado = parseFloat(verificacionResult.rows[0].stock_verificado);
+      
+      console.log(`🔍 [VERIFICACIÓN] Stock después del INSERT: ${stockVerificado} kg`);
+      console.log(`🔍 [VERIFICACIÓN] ¿Coincide con esperado?: ${Math.abs(stockVerificado - stockRealNum) < 0.01 ? 'SÍ ✅' : 'NO ❌'}`);
+      
       res.json({
         mensaje: 'Ajuste de stock personal procesado correctamente',
         stock_anterior: stockUsuarioActual,
         stock_nuevo: stockRealNum,
+        stock_verificado: stockVerificado,
         diferencia: diferenciaUsuario,
         tipo_ajuste: 'stock_usuario',
         movimiento_id: resultAjuste.rows[0].id

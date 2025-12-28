@@ -64,6 +64,13 @@ export function abrirModalAjusteRapido(ingredienteId, nombreIngrediente, stockAc
     inicializarModalAjuste();
   }
 
+  // 🔧 FIX: Resetear estado del botón de confirmación
+  const btnConfirmar = document.getElementById('btn-confirmar-ajuste');
+  if (btnConfirmar) {
+    btnConfirmar.disabled = false;
+    btnConfirmar.textContent = 'Confirmar Ajuste';
+  }
+
   // Guardar datos actuales
   ingredienteIdActual = ingredienteId;
   stockSistemaActual = parseFloat(stockActual);
@@ -117,6 +124,16 @@ function cerrarModalAjuste() {
     carroIdActual = null;
     nombreIngredienteActual = null;
     
+    // 🔧 LIMPIAR CONTEXTO: Remover data-attributes para evitar contaminación entre pantallas
+    if (modalAjuste.dataset.usuarioActivo) {
+      delete modalAjuste.dataset.usuarioActivo;
+      console.log('🧹 [LIMPIEZA] data-usuario-activo removido del modal');
+    }
+    if (modalAjuste.dataset.origenContexto) {
+      delete modalAjuste.dataset.origenContexto;
+      console.log('🧹 [LIMPIEZA] data-origen-contexto removido del modal');
+    }
+    
     // Limpiar campos
     const nuevosKilosInput = document.getElementById('nuevos-kilos');
     const motivoTextarea = document.getElementById('motivo-ajuste');
@@ -124,7 +141,7 @@ function cerrarModalAjuste() {
     if (motivoTextarea) motivoTextarea.value = '';
   }, 300);
 
-  console.log('✅ [AJUSTE] Modal cerrado');
+  console.log('✅ [AJUSTE] Modal cerrado y contexto limpiado');
 }
 
 /**
@@ -190,13 +207,40 @@ async function confirmarAjuste() {
       btnConfirmar.textContent = 'Procesando...';
     }
 
-    // 🎯 DETECCIÓN DE CONTEXTO: Determinar si es carro externo O vista de usuario
+    // 🎯 DETECCIÓN DE CONTEXTO MEJORADA: Determinar si es carro externo O vista de usuario
     let esStockUsuario = false;
     let usuarioId = null;
     let origenContexto = 'desconocido';
     
-    // OPCIÓN 1: Detectar si estamos en un carro externo
-    if (carroIdActual) {
+    // 🔧 PRIORIDAD 1: Verificar atributo data-usuario-activo en el modal (más confiable)
+    const modalAjuste = document.getElementById('modalAjusteKilos');
+    if (modalAjuste && modalAjuste.dataset.usuarioActivo) {
+      usuarioId = parseInt(modalAjuste.dataset.usuarioActivo);
+      if (!isNaN(usuarioId) && usuarioId > 0) {
+        esStockUsuario = true;
+        origenContexto = modalAjuste.dataset.origenContexto || 'vista_stock_personal';
+        console.log(`✅ [CONTEXTO] Detectado desde data-usuario-activo: ${usuarioId} (${origenContexto})`);
+      }
+    }
+    
+    // 🔧 PRIORIDAD 2: Verificar selector filtro-usuario (fallback para compatibilidad)
+    if (!esStockUsuario) {
+      const selectorUsuario = document.getElementById('filtro-usuario');
+      if (selectorUsuario && selectorUsuario.value) {
+        const valorSelector = selectorUsuario.value.trim();
+        if (valorSelector !== '' && valorSelector !== 'todos') {
+          usuarioId = parseInt(valorSelector);
+          if (!isNaN(usuarioId) && usuarioId > 0) {
+            esStockUsuario = true;
+            origenContexto = 'vista_stock_personal';
+            console.log(`✅ [CONTEXTO] Detectado selector filtro-usuario con valor: ${usuarioId}`);
+          }
+        }
+      }
+    }
+    
+    // OPCIÓN 3: Detectar si estamos en un carro externo (solo si no se detectó usuario antes)
+    if (!esStockUsuario && carroIdActual) {
       try {
         const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdActual}/estado`);
         if (carroResponse.ok) {
@@ -216,20 +260,6 @@ async function confirmarAjuste() {
         }
       } catch (error) {
         console.warn('⚠️ [CONTEXTO] No se pudo determinar tipo de carro');
-      }
-    }
-    
-    // OPCIÓN 2: Detectar si estamos en vista de stock de usuario (sin carro)
-    if (!esStockUsuario) {
-      // Verificar si hay un usuario seleccionado en el filtro de la vista de ingredientes
-      const selectorUsuario = document.getElementById('filtro-usuario');
-      if (selectorUsuario && selectorUsuario.value && selectorUsuario.value !== 'todos') {
-        usuarioId = parseInt(selectorUsuario.value);
-        if (!isNaN(usuarioId) && usuarioId > 0) {
-          esStockUsuario = true;
-          origenContexto = 'vista_stock_personal';
-          console.log(`🎯 [CONTEXTO] Detectado ajuste desde vista de stock personal`);
-        }
       }
     }
     
@@ -305,8 +335,23 @@ async function confirmarAjuste() {
     // Cerrar modal
     cerrarModalAjuste();
 
-    // Actualizar resumen de ingredientes
-    await actualizarResumenIngredientes();
+    // 🔄 ACTUALIZAR TABLA: Recargar datos después del ajuste
+    console.log('🔄 [AJUSTE] Actualizando tabla después del ajuste...');
+    
+    if (typeof window.actualizarResumenIngredientes === 'function') {
+      console.log('🔄 [AJUSTE] Llamando a actualizarResumenIngredientes...');
+      await window.actualizarResumenIngredientes();
+    }
+    
+    // Fallback: recargar vista de usuario si estamos en esa vista
+    if (typeof window.cargarIngredientes === 'function') {
+      const vistaActual = window.vistaActual || 'deposito';
+      if (vistaActual.startsWith('usuario-')) {
+        const usuarioIdVista = parseInt(vistaActual.replace('usuario-', ''));
+        console.log('🔄 [AJUSTE] Recargando vista de usuario:', usuarioIdVista);
+        await window.cargarIngredientes(usuarioIdVista);
+      }
+    }
 
   } catch (error) {
     console.error('❌ [AJUSTE] Error al procesar ajuste:', error);

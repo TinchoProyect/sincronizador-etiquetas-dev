@@ -1056,6 +1056,9 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
         
         if (esVistaUsuario) {
             // Vista de usuario: mostrar stock personal (sin botón expandir ni stock potencial)
+            // 🔧 FIX: Usar ingrediente_id en lugar de id para vista de usuario
+            const ingredienteIdReal = ingrediente.ingrediente_id || ingrediente.id;
+            
             tr.innerHTML = `
                 <td></td>
                 <td>${ingrediente.nombre_ingrediente}</td>
@@ -1067,7 +1070,16 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 <td>${ingrediente.descripcion || '-'}</td>
                 <td>${ingrediente.tipo_origen || 'Simple'}</td>
                 <td>-</td>
-                <td><span style="color: #6c757d; font-style: italic;">Solo lectura</span></td>
+                
+                <td style="text-align: center;">
+                    <button class="btn-icon" 
+                            onclick="window.abrirModalAjusteDesdeTabla(${ingredienteIdReal}, '${ingrediente.nombre_ingrediente.replace(/'/g, "\\'")}', ${ingrediente.stock_total}, ${ingredienteIdReal})"
+                            title="Ajustar Stock Manualmente"
+                            style="cursor:pointer; background:none; border:none; font-size:1.4em; transition: transform 0.2s;">
+                          ✏️
+                      
+                    </button>
+                </td>
             `;
         } else {
             // Vista de depósito: funcionalidad completa con stock potencial
@@ -1480,3 +1492,85 @@ function abrirVentana(url, nombreVentana) {
 }
 //Hago global la funcion abrirVentana 
 window.abrirVentana = abrirVentana;
+
+// ==========================================
+// FUNCIÓN GLOBAL: ABRIR MODAL DE AJUSTE (INYECTADA)
+// ==========================================
+window.abrirModalAjusteDesdeTabla = async function(dummy, nombreIngrediente, stockActual, ingredienteIdReal) {
+    console.log('✏️ [AJUSTE-JS] Solicitando ajuste para:', nombreIngrediente);
+    console.log('🔍 [AJUSTE-JS] Ingrediente ID recibido:', ingredienteIdReal);
+    console.log('📍 [AJUSTE-JS] Vista actual:', vistaActual);
+    
+    let usuarioId = null;
+    
+    if (vistaActual.startsWith('usuario-')) {
+        usuarioId = parseInt(vistaActual.replace('usuario-', ''));
+        console.log('✅ [AJUSTE-JS] Usuario detectado desde vistaActual:', usuarioId);
+    } else {
+        const sectorActivo = document.querySelector('.sector-item.activo[data-usuario-id]');
+        if (sectorActivo) {
+            usuarioId = parseInt(sectorActivo.dataset.usuarioId);
+            console.log('✅ [AJUSTE-JS] Usuario detectado desde DOM:', usuarioId);
+        }
+    }
+    
+    if (!usuarioId) {
+        alert('❌ Error: No se pudo detectar el usuario activo.');
+        return;
+    }
+
+    // 🔧 NUEVO ENFOQUE: Usar data-attributes en el modal en lugar de selector global
+    const modalAjuste = document.getElementById('modalAjusteKilos');
+    if (modalAjuste) {
+        modalAjuste.dataset.usuarioActivo = usuarioId;
+        modalAjuste.dataset.origenContexto = 'vista_stock_personal';
+        console.log(`✅ [AJUSTE-JS] Contexto establecido en modal: usuario=${usuarioId}, origen=vista_stock_personal`);
+    }
+    
+    // 🔧 MANTENER COMPATIBILIDAD: Crear selector solo si no existe (para no romper código existente)
+    let selectorFiltro = document.getElementById('filtro-usuario');
+    if (!selectorFiltro) {
+        selectorFiltro = document.createElement('select');
+        selectorFiltro.id = 'filtro-usuario';
+        selectorFiltro.style.display = 'none';
+        selectorFiltro.dataset.origen = 'ingredientes-vista'; // Marcar origen
+        document.body.appendChild(selectorFiltro);
+        console.log('✅ [AJUSTE-JS] Selector filtro-usuario creado (compatibilidad)');
+    }
+    
+    // Solo actualizar si el selector es de esta vista
+    if (selectorFiltro.dataset.origen === 'ingredientes-vista' || !selectorFiltro.dataset.origen) {
+        let optionExistente = Array.from(selectorFiltro.options).find(opt => opt.value === usuarioId.toString());
+        
+        if (!optionExistente) {
+            selectorFiltro.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = usuarioId;
+            option.textContent = usuarioId;
+            option.selected = true;
+            selectorFiltro.appendChild(option);
+            console.log('✅ [AJUSTE-JS] Opción creada en selector');
+        } else {
+            optionExistente.selected = true;
+            console.log('✅ [AJUSTE-JS] Opción existente seleccionada');
+        }
+        selectorFiltro.value = usuarioId;
+    }
+    
+    console.log(`✅ [AJUSTE-JS] Usuario ${usuarioId} establecido correctamente`);
+    
+    if (typeof window.abrirModalAjusteRapido === 'function') {
+        console.log('🚀 [AJUSTE-JS] Llamando a abrirModalAjusteRapido con ID:', ingredienteIdReal);
+        window.abrirModalAjusteRapido(ingredienteIdReal, nombreIngrediente, stockActual, null);
+        
+        const actualizarOriginal = window.actualizarResumenIngredientes;
+        window.actualizarResumenIngredientes = async function() {
+            console.log('🔄 [AJUSTE-JS] Recargando tabla después del ajuste...');
+            await cargarIngredientes(usuarioId);
+            window.actualizarResumenIngredientes = actualizarOriginal;
+        };
+    } else {
+        console.error('❌ window.abrirModalAjusteRapido no está definida.');
+        alert('❌ Error: El módulo de ajustes no está cargado correctamente. Recarga la página con Ctrl+F5.');
+    }
+};
