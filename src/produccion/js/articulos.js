@@ -774,23 +774,39 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             
             // Actualizar resumen de ingredientes
             const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-            mostrarResumenIngredientes(ingredientes);
+            await mostrarResumenIngredientes(ingredientes);
+            console.log('✅ [REACTIVIDAD] Resumen de ingredientes actualizado');
             
             // Actualizar resumen de mixes
             const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
             mostrarResumenMixes(mixes);
+            console.log('✅ [REACTIVIDAD] Resumen de mixes actualizado');
             
-            // Actualizar resumen de artículos (solo para carros externos)
+            // 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
             const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            
+            console.log(`🔍 [ARTÍCULOS-EXTERNOS] Artículos obtenidos: ${articulos?.length || 0}`);
+            
             if (articulos && articulos.length > 0) {
-                mostrarResumenArticulos(articulos);
-                const seccionArticulos = document.getElementById('resumen-articulos');
+                // FORZAR visualización de la sección
                 if (seccionArticulos) {
                     seccionArticulos.style.display = 'block';
+                    console.log('✅ [ARTÍCULOS-EXTERNOS] Sección mostrada');
+                }
+                
+                // FORZAR actualización de la tabla
+                mostrarResumenArticulos(articulos);
+                console.log('✅ [ARTÍCULOS-EXTERNOS] Tabla actualizada con datos');
+            } else {
+                // Si no hay artículos, ocultar sección
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'none';
+                    console.log('ℹ️ [ARTÍCULOS-EXTERNOS] No hay artículos, sección oculta');
                 }
             }
             
-            console.log('✅ Resumen actualizado correctamente');
+            console.log('✅ [REACTIVIDAD] Resumen completo actualizado correctamente');
         } catch (updateError) {
             console.error('⚠️ Error al actualizar resumen:', updateError);
             // No mostrar error al usuario, solo log para debug
@@ -2266,15 +2282,46 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
 
         cerrarModalArticulos();
 
-        // Actualizar resumen
-        await mostrarArticulosDelCarro();
-        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-        mostrarResumenIngredientes(ingredientes);
-        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
-        mostrarResumenMixes(mixes);
-        const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
-        if (articulos && articulos.length > 0) {
-            mostrarResumenArticulos(articulos);
+        // 🔄 ACTUALIZAR RESUMEN AUTOMÁTICAMENTE (PRODUCCIÓN EXTERNA)
+        try {
+            console.log('🔄 [EXTERNO] Actualizando resumen después de agregar artículo externo...');
+            
+            await mostrarArticulosDelCarro();
+            
+            const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+            await mostrarResumenIngredientes(ingredientes);
+            console.log('✅ [EXTERNO] Resumen de ingredientes actualizado');
+            
+            const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+            mostrarResumenMixes(mixes);
+            console.log('✅ [EXTERNO] Resumen de mixes actualizado');
+            
+            // 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
+            const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
+            const seccionArticulos = document.getElementById('resumen-articulos');
+            
+            console.log(`🔍 [EXTERNO-ARTÍCULOS] Artículos obtenidos: ${articulos?.length || 0}`);
+            
+            if (articulos && articulos.length > 0) {
+                // FORZAR visualización de la sección
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'block';
+                    console.log('✅ [EXTERNO-ARTÍCULOS] Sección mostrada');
+                }
+                
+                // FORZAR actualización de la tabla
+                mostrarResumenArticulos(articulos);
+                console.log('✅ [EXTERNO-ARTÍCULOS] Tabla actualizada con datos');
+            } else {
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'none';
+                    console.log('ℹ️ [EXTERNO-ARTÍCULOS] No hay artículos, sección oculta');
+                }
+            }
+            
+            console.log('✅ [EXTERNO] Resumen completo actualizado correctamente');
+        } catch (updateError) {
+            console.error('⚠️ [EXTERNO] Error al actualizar resumen:', updateError);
         }
 
     } catch (error) {

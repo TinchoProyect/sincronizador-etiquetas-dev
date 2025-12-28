@@ -758,8 +758,72 @@ export async function seleccionarCarro(carroId) {
     localStorage.setItem('carroActivo', String(carroId));
     window.carroIdGlobal = carroId;
 
-    // --- Limpiar datos del carro anterior (ingresos manuales, etc.) ---
+    // 🧹 LIMPIEZA AGRESIVA: Limpiar TODAS las secciones antes de cargar nuevo carro
+    console.log('🧹 [LIMPIEZA] Limpiando UI completa antes de cargar nuevo carro...');
+    
+    // Limpiar datos del carro anterior
     limpiarIngresosManualesDelCarro();
+    
+    // Limpiar y ocultar TODAS las secciones específicas de tipo de carro
+    const seccionArticulos = document.getElementById('resumen-articulos');
+    const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
+    const seccionMixes = document.getElementById('resumen-mixes');
+    const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+    const contenedorIngredientes = document.getElementById('tabla-resumen-ingredientes');
+    
+    // Ocultar y limpiar artículos externos
+    if (seccionArticulos) {
+        seccionArticulos.style.display = 'none';
+        console.log('🧹 [LIMPIEZA] Sección de artículos externos ocultada');
+    }
+    if (contenedorArticulos) {
+        contenedorArticulos.innerHTML = '<p>Cargando...</p>';
+        console.log('🧹 [LIMPIEZA] Contenedor de artículos externos limpiado');
+    }
+    
+    // Ocultar y limpiar mixes
+    if (seccionMixes) {
+        seccionMixes.style.display = 'none';
+        console.log('🧹 [LIMPIEZA] Sección de mixes ocultada');
+    }
+    if (contenedorMixes) {
+        contenedorMixes.innerHTML = '<p>Cargando...</p>';
+        console.log('🧹 [LIMPIEZA] Contenedor de mixes limpiado');
+    }
+    
+    // Limpiar ingredientes
+    if (contenedorIngredientes) {
+        contenedorIngredientes.innerHTML = '<p>Cargando...</p>';
+        console.log('🧹 [LIMPIEZA] Contenedor de ingredientes limpiado');
+    }
+    
+    // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
+    console.log('🧹 [LIMPIEZA] Limpiando paneles de carro preparado al cambiar de carro...');
+    
+    // Panel de artículos secundarios/vinculados editables
+    const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
+    if (seccionSecundarios) {
+        seccionSecundarios.remove();
+        console.log('✅ [LIMPIEZA] Panel de artículos vinculados editables eliminado');
+    }
+    
+    // Panel de ingredientes/artículos vinculados
+    const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
+    if (seccionInformesVinculados) {
+        seccionInformesVinculados.remove();
+        console.log('✅ [LIMPIEZA] Panel de ingredientes vinculados eliminado');
+    }
+    
+    // Panel de kilos producidos (solo carros externos)
+    const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
+    if (kilosProducidosContainer) {
+        kilosProducidosContainer.remove();
+        console.log('✅ [LIMPIEZA] Panel de kilos producidos eliminado');
+    }
+    
+    // Limpiar informe de ingresos manuales
+    limpiarInformeIngresosManuales();
+    console.log('✅ [LIMPIEZA] UI completamente limpiada');
 
     console.log('Actualizando interfaz después de seleccionar carro...');
 
@@ -767,39 +831,52 @@ export async function seleccionarCarro(carroId) {
     await actualizarEstadoCarro();
     await mostrarArticulosDelCarro();
 
-    // Resumen de ingredientes
-    const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
-    mostrarResumenIngredientes(ingredientes);
-
-    // Obtener tipo de carro para gestionar visibilidad de secciones
+    // Obtener tipo de carro PRIMERO para gestionar visibilidad
     let tipoCarro = 'interna';
     try {
         const estadoResp = await fetch(`/api/produccion/carro/${carroId}/estado`);
         if (estadoResp.ok) {
             const estadoData = await estadoResp.json();
             tipoCarro = estadoData.tipo_carro || 'interna';
+            console.log(`📊 [TIPO-CARRO] Tipo detectado: ${tipoCarro}`);
         }
     } catch (error) {
-        console.warn('⚠️ No se pudo obtener tipo de carro');
+        console.warn('⚠️ No se pudo obtener tipo de carro, asumiendo interna');
     }
 
-    // Gestionar visibilidad de secciones según tipo de carro ANTES de cargar datos
+    // 🎯 GESTIONAR VISIBILIDAD DE SECCIONES SEGÚN TIPO DE CARRO
     gestionarVisibilidadSeccionesPorTipo(tipoCarro);
 
-    // Resumen de mixes (solo cargar si es carro externo)
+    // 📊 CARGAR DATOS SEGÚN TIPO DE CARRO
+    
+    // Resumen de ingredientes (SIEMPRE)
+    const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
+    await mostrarResumenIngredientes(ingredientes);
+    console.log('✅ [REACTIVIDAD] Resumen de ingredientes actualizado');
+
+    // Resumen de mixes (SOLO si es carro externo)
     if (tipoCarro === 'externa') {
         const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
         mostrarResumenMixes(mixes);
+        console.log('✅ [REACTIVIDAD] Resumen de mixes actualizado');
     }
 
-    // Resumen de artículos (externos)
-    const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
-    const seccionArticulos = document.getElementById('resumen-articulos');
-    if (articulos && articulos.length > 0) {
-      mostrarResumenArticulos(articulos);
-      if (seccionArticulos) seccionArticulos.style.display = 'block';
-    } else {
-      if (seccionArticulos) seccionArticulos.style.display = 'none';
+    // Resumen de artículos externos (SOLO si es carro externo)
+    if (tipoCarro === 'externa') {
+        const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
+        if (articulos && articulos.length > 0) {
+            mostrarResumenArticulos(articulos);
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'block';
+                console.log('✅ [REACTIVIDAD] Sección de artículos externos mostrada');
+            }
+        } else {
+            if (seccionArticulos) {
+                seccionArticulos.style.display = 'none';
+                console.log('ℹ️ [REACTIVIDAD] No hay artículos externos, sección oculta');
+            }
+        }
+        console.log('✅ [REACTIVIDAD] Resumen de artículos externos actualizado');
     }
 
     // Informe de ingresos manuales (si existe)
@@ -815,6 +892,8 @@ export async function seleccionarCarro(carroId) {
     } else {
       console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
     }
+    
+    console.log('✅ [SELECCIÓN-CARRO] Carro seleccionado y UI actualizada completamente');
 
   } catch (error) {
     console.error('Error al seleccionar carro:', error);
@@ -856,6 +935,30 @@ export async function deseleccionarCarro() {
     const seccionArticulos = document.getElementById('resumen-articulos');
     if (seccionArticulos) {
         seccionArticulos.style.display = 'none';
+    }
+    
+    // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
+    console.log('🧹 Limpiando paneles de carro preparado...');
+    
+    // Panel de artículos secundarios/vinculados editables
+    const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
+    if (seccionSecundarios) {
+        seccionSecundarios.remove();
+        console.log('✅ Panel de artículos vinculados editables eliminado');
+    }
+    
+    // Panel de ingredientes/artículos vinculados
+    const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
+    if (seccionInformesVinculados) {
+        seccionInformesVinculados.remove();
+        console.log('✅ Panel de ingredientes vinculados eliminado');
+    }
+    
+    // Panel de kilos producidos (solo carros externos)
+    const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
+    if (kilosProducidosContainer) {
+        kilosProducidosContainer.remove();
+        console.log('✅ Panel de kilos producidos eliminado');
     }
     
     // Limpiar informe de ingresos manuales
@@ -903,7 +1006,10 @@ export async function eliminarCarro(carroId) {
             window.carroIdGlobal = null;
             
             // Limpiar lista de artículos
-            document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
+            const listaArticulos = document.getElementById('lista-articulos');
+            if (listaArticulos) {
+                listaArticulos.innerHTML = '<p>No hay carro activo</p>';
+            }
             
             // Limpiar resumen de ingredientes
             const contenedorIngredientes = document.getElementById('tabla-resumen-ingredientes');
@@ -927,6 +1033,36 @@ export async function eliminarCarro(carroId) {
             const seccionArticulos = document.getElementById('resumen-articulos');
             if (seccionArticulos) {
                 seccionArticulos.style.display = 'none';
+            }
+            
+            // Ocultar sección de mixes
+            const seccionMixes = document.getElementById('resumen-mixes');
+            if (seccionMixes) {
+                seccionMixes.style.display = 'none';
+            }
+            
+            // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
+            console.log('🧹 Limpiando paneles de carro preparado al eliminar...');
+            
+            // Panel de artículos secundarios/vinculados editables
+            const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
+            if (seccionSecundarios) {
+                seccionSecundarios.remove();
+                console.log('✅ Panel de artículos vinculados editables eliminado');
+            }
+            
+            // Panel de ingredientes/artículos vinculados
+            const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
+            if (seccionInformesVinculados) {
+                seccionInformesVinculados.remove();
+                console.log('✅ Panel de ingredientes vinculados eliminado');
+            }
+            
+            // Panel de kilos producidos (solo carros externos)
+            const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
+            if (kilosProducidosContainer) {
+                kilosProducidosContainer.remove();
+                console.log('✅ Panel de kilos producidos eliminado');
             }
             
             // Limpiar informe de ingresos manuales
