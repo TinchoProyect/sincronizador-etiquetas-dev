@@ -431,6 +431,53 @@
     text-align: right;
 }
 
+/* 📜 ESTILOS PARA VISTA HISTÓRICA (Carros Finalizados) */
+.tabla-historica {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.tabla-historica thead th {
+    background-color: #e9ecef;
+    color: #495057;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.tabla-historica tbody tr {
+    background-color: white;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.tabla-historica tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.tabla-historica tbody tr.fila-historica {
+    /* Sin colores de alerta - estilo neutro */
+    background-color: white;
+}
+
+.tabla-historica tbody tr.fila-historica:hover {
+    background-color: #f1f3f5;
+}
+
+.tabla-historica tbody td {
+    color: #495057;
+    padding: 12px;
+}
+
+/* Asegurar que no se apliquen colores de stock en vista histórica */
+.tabla-historica .stock-ok,
+.tabla-historica .stock-faltante {
+    background-color: white !important;
+}
+
+.tabla-historica .stock-ok:hover,
+.tabla-historica .stock-faltante:hover {
+    background-color: #f1f3f5 !important;
+}
+
 /* Estilos para mensajes cuando no hay datos */
 #tabla-resumen-ingredientes p,
 #tabla-resumen-mixes p {
@@ -738,32 +785,48 @@
 
 /* ✅ NUEVOS ESTILOS PARA TRANSICIONES VISUALES DE CARROS EXTERNOS */
 
-/* Artículos en segundo plano */
+/* Artículos en segundo plano - MANTENER LEGIBLE */
 .articulo-container.segundo-plano {
-    opacity: 0.3;
+    opacity: 0.6;
     pointer-events: none;
-    filter: grayscale(50%);
+    filter: grayscale(30%);
     transition: all 0.5s ease;
 }
 
-/* Informes minimizados */
+/* Informes minimizados - MANTENER COMPLETAMENTE VISIBLE Y LEGIBLE */
 .seccion-resumen.minimizado {
-    height: 60px;
-    overflow: hidden;
-    opacity: 0.5;
+    /* NO ocultar contenido - solo agregar borde para indicar estado */
+    border-left: 4px solid #007bff;
+    background-color: #f8f9fa;
+    opacity: 1; /* SIEMPRE visible al 100% */
     transition: all 0.3s ease;
 }
 
 .seccion-resumen.minimizado h3 {
-    margin-bottom: 5px;
-    font-size: 14px;
+    color: #007bff;
+    font-size: 1.1em;
 }
 
 .seccion-resumen.minimizado h3::after {
-    content: " (minimizado)";
-    font-size: 12px;
-    color: #6c757d;
-    font-weight: normal;
+    content: "";
+    /* Eliminar texto "(minimizado)" que confunde */
+}
+
+/* 🔧 CORRECCIÓN CRÍTICA: Asegurar que la tabla SIEMPRE sea visible */
+.seccion-resumen.minimizado .tabla-resumen {
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: table !important;
+}
+
+.seccion-resumen.minimizado .tabla-resumen tbody,
+.seccion-resumen.minimizado .tabla-resumen thead,
+.seccion-resumen.minimizado .tabla-resumen tr,
+.seccion-resumen.minimizado .tabla-resumen td,
+.seccion-resumen.minimizado .tabla-resumen th {
+    opacity: 1 !important;
+    visibility: visible !important;
+    color: inherit !important;
 }
 
 /* Sección de artículos secundarios */

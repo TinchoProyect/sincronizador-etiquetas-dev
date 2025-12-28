@@ -821,6 +821,36 @@ export async function seleccionarCarro(carroId) {
         console.log('✅ [LIMPIEZA] Panel de kilos producidos eliminado');
     }
     
+    // 🧹 LIMPIAR CLASES CSS DE ESTADOS AVANZADOS (segundo-plano, minimizado)
+    console.log('🧹 [LIMPIEZA] Removiendo clases CSS de estados avanzados...');
+    
+    // Remover clase 'segundo-plano' de artículos padres
+    const articulosPadres = document.querySelectorAll('.articulo-container.segundo-plano');
+    articulosPadres.forEach(articulo => {
+        articulo.classList.remove('segundo-plano');
+    });
+    if (articulosPadres.length > 0) {
+        console.log(`✅ [LIMPIEZA] Clase 'segundo-plano' removida de ${articulosPadres.length} artículos`);
+    }
+    
+    // Remover clase 'minimizado' de secciones de resumen
+    const seccionesMinimizadas = document.querySelectorAll('.minimizado');
+    seccionesMinimizadas.forEach(seccion => {
+        seccion.classList.remove('minimizado');
+    });
+    if (seccionesMinimizadas.length > 0) {
+        console.log(`✅ [LIMPIEZA] Clase 'minimizado' removida de ${seccionesMinimizadas.length} secciones`);
+    }
+    
+    // Remover clase 'activa' de paneles dinámicos
+    const panelesActivos = document.querySelectorAll('.seccion-articulos-secundarios.activa, .seccion-resumen.activa');
+    panelesActivos.forEach(panel => {
+        panel.classList.remove('activa');
+    });
+    if (panelesActivos.length > 0) {
+        console.log(`✅ [LIMPIEZA] Clase 'activa' removida de ${panelesActivos.length} paneles`);
+    }
+    
     // Limpiar informe de ingresos manuales
     limpiarInformeIngresosManuales();
     console.log('✅ [LIMPIEZA] UI completamente limpiada');
@@ -1191,9 +1221,10 @@ export async function mostrarResumenIngredientes(ingredientes) {
         return;
     }
 
-    // Obtener estado del carro para determinar qué columnas mostrar
+    // 🔧 OBTENER ESTADO Y TIPO DE CARRO para lógica de permisos
     const carroId = localStorage.getItem('carroActivo');
-    let estadoCarro = 'en_preparacion'; // Por defecto
+    let estadoCarro = 'en_preparacion';
+    let tipoCarro = 'interna';
     
     if (carroId) {
         try {
@@ -1201,30 +1232,52 @@ export async function mostrarResumenIngredientes(ingredientes) {
             if (response.ok) {
                 const data = await response.json();
                 estadoCarro = data.estado;
-                console.log(`📊 Estado del carro para tabla: ${estadoCarro}`);
+                tipoCarro = data.tipo_carro || 'interna';
+                console.log(`📊 [PERMISOS] Estado: ${estadoCarro}, Tipo: ${tipoCarro}`);
             }
         } catch (error) {
-            console.warn('⚠️ No se pudo obtener estado del carro, mostrando tabla completa');
+            console.warn('⚠️ No se pudo obtener estado del carro');
         }
     }
 
-    // Determinar si mostrar columnas de stock/estado/acciones
-    const mostrarColumnasSoloPreparacion = estadoCarro === 'en_preparacion';
+    // 🎯 LÓGICA DE PERMISOS: Determinar si mostrar acciones
+    const carroFinalizado = (estadoCarro === 'confirmado');
+    
+    console.log(`📊 [TABLA-INGREDIENTES] Renderizando - Finalizado: ${carroFinalizado} (Vista: ${carroFinalizado ? 'HISTÓRICA' : 'ACTIVA'})`);
 
-    let html = `
-        <table class="tabla-resumen">
-            <thead>
-                <tr>
-                    <th>Ingrediente</th>
-                    <th>Cantidad Necesaria</th>
-                    ${mostrarColumnasSoloPreparacion ? '<th>Stock Actual</th>' : ''}
-                    ${mostrarColumnasSoloPreparacion ? '<th>Estado</th>' : ''}
-                    <th>Unidad</th>
-                    ${mostrarColumnasSoloPreparacion ? '<th>Acciones</th>' : ''}
-                </tr>
-            </thead>
-            <tbody>
-    `;
+    // 📋 VISTA HISTÓRICA vs VISTA ACTIVA
+    let html = '';
+    
+    if (carroFinalizado) {
+        // 📜 VISTA HISTÓRICA: Tabla simplificada sin colores ni alertas
+        html = `
+            <table class="tabla-resumen tabla-historica">
+                <thead>
+                    <tr>
+                        <th>Ingrediente</th>
+                        <th>Cantidad Utilizada</th>
+                        <th>Unidad</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+    } else {
+        // 🔴 VISTA ACTIVA: Tabla completa con stock y acciones
+        html = `
+            <table class="tabla-resumen">
+                <thead>
+                    <tr>
+                        <th>Ingrediente</th>
+                        <th>Cantidad Necesaria</th>
+                        <th>Stock Actual</th>
+                        <th>Estado</th>
+                        <th>Unidad</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+    }
 
     ingredientes.forEach((ing, index) => {
         // 🔍 LOG DE DEPURACIÓN 3: Justo antes del procesamiento
@@ -1279,66 +1332,94 @@ export async function mostrarResumenIngredientes(ingredientes) {
         const tieneStock = diferencia >= -0.01;
         const faltante = tieneStock ? 0 : Math.abs(diferencia);
 
-        // Generar indicador visual (solo si se va a mostrar)
-        let indicadorEstado = '';
-        if (mostrarColumnasSoloPreparacion) {
+        if (carroFinalizado) {
+            // 📜 VISTA HISTÓRICA: Solo nombre, cantidad utilizada y unidad (sin colores)
+            html += `
+                <tr class="fila-historica">
+                    <td>${ing.nombre || 'Sin nombre'}</td>
+                    <td>${cantidadNecesaria.toFixed(2)}</td>
+                    <td>${ing.unidad_medida || ''}</td>
+                </tr>
+            `;
+        } else {
+            // 🔴 VISTA ACTIVA: Tabla completa con lógica de permisos
+            
+            // Generar indicador de estado
+            let indicadorEstado = '';
             if (tieneStock) {
                 indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
             } else {
                 indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
             }
-        }
 
-        // Generar botones de acción (solo si se va a mostrar)
-        let botonesAccion = '';
-        if (mostrarColumnasSoloPreparacion) {
-            const deshabilitado = (window.carroIdGlobal == null);
+            // 🎯 LÓGICA DE PERMISOS PARA BOTONES DE ACCIÓN
+            const esIngredienteVinculado = ing.es_de_articulo_vinculado === true;
+            let mostrarBotones = false;
             
-            // Botón de ingreso manual
-            const botonIngresoManual = deshabilitado
-                ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-                : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+            if (tipoCarro === 'externa') {
+                // 🚚 CARRO EXTERNO - Lógica específica
+                if (estadoCarro === 'en_preparacion') {
+                    // Etapa A: Solo ingredientes personales (NO vinculados) son editables
+                    mostrarBotones = !esIngredienteVinculado;
+                    console.log(`🔍 [PERMISOS-EXTERNO-PREP] ${ing.nombre}: vinculado=${esIngredienteVinculado}, editable=${mostrarBotones}`);
+                } else if (estadoCarro === 'preparado') {
+                    // Etapa B: Solo ingredientes vinculados (locales) son editables
+                    mostrarBotones = esIngredienteVinculado;
+                    console.log(`🔍 [PERMISOS-EXTERNO-LISTO] ${ing.nombre}: vinculado=${esIngredienteVinculado}, editable=${mostrarBotones}`);
+                }
+            } else {
+                // 🏭 CARRO INTERNO - Todos editables mientras no esté finalizado
+                mostrarBotones = true;
+            }
             
-              // 🆕 Botón de ajuste rápido - Usar función wrapper para configurar contexto
-              const botonAjusteRapido = deshabilitado
-                  ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
-                  : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockActual}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
+            let botonesAccion = '';
+            if (mostrarBotones) {
+                const deshabilitado = (window.carroIdGlobal == null);
+                
+                const botonIngresoManual = deshabilitado
+                    ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+                    : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+                
+                const botonAjusteRapido = deshabilitado
+                    ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
+                    : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockActual}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
+                
+                botonesAccion = `
+                    <div style="display: flex; gap: 8px; justify-content: center;">
+                        ${botonIngresoManual}
+                        ${botonAjusteRapido}
+                    </div>
+                `;
+            } else {
+                // Ingrediente en modo solo lectura
+                botonesAccion = `<span style="color: #6c757d; font-style: italic; font-size: 0.9em;">Solo lectura</span>`;
+            }
+
+            // Aplicar clases CSS de stock
+            let clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
+            if (ing.es_de_articulo_vinculado) {
+                clasesFila += ' ingrediente-vinculado';
+            }
+
+            // Clase para celda sustituible (solo si hay faltante)
+            const claseCeldaSustituible = !tieneStock ? 'celda-sustituible' : '';
             
-            botonesAccion = `
-                <div style="display: flex; gap: 8px; justify-content: center;">
-                    ${botonIngresoManual}
-                    ${botonAjusteRapido}
-                </div>
+            // Evento double-click para sustitución (solo si hay faltante)
+            const eventoDblClick = !tieneStock
+                ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${ing.unidad_medida || ''}')"` 
+                : '';
+
+            html += `
+                <tr class="${clasesFila.trim()}">
+                    <td>${ing.nombre || 'Sin nombre'}</td>
+                    <td>${cantidadNecesaria.toFixed(2)}</td>
+                    <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">${stockActual.toFixed(2)}</td>
+                    <td>${indicadorEstado}</td>
+                    <td>${ing.unidad_medida || ''}</td>
+                    <td>${botonesAccion}</td>
+                </tr>
             `;
         }
-
-        // Determinar clases CSS para la fila (solo aplicar colores en preparación)
-        let clasesFila = '';
-        if (mostrarColumnasSoloPreparacion) {
-            clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
-        }
-        if (ing.es_de_articulo_vinculado) {
-            clasesFila += ' ingrediente-vinculado';
-        }
-
-        // Agregar clase para celda sustituible si hay faltante
-        const claseCeldaSustituible = (!tieneStock && mostrarColumnasSoloPreparacion) ? 'celda-sustituible' : '';
-        
-        // Evento double-click para sustitución (solo si hay faltante)
-        const eventoDblClick = (!tieneStock && mostrarColumnasSoloPreparacion) 
-            ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${ing.unidad_medida || ''}')"` 
-            : '';
-
-        html += `
-            <tr class="${clasesFila.trim()}">
-                <td>${ing.nombre || 'Sin nombre'}</td>
-                <td>${cantidadNecesaria.toFixed(2)}</td>
-                ${mostrarColumnasSoloPreparacion ? `<td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">${stockActual.toFixed(2)}</td>` : ''}
-                ${mostrarColumnasSoloPreparacion ? `<td>${indicadorEstado}</td>` : ''}
-                <td>${ing.unidad_medida || ''}</td>
-                ${mostrarColumnasSoloPreparacion ? `<td>${botonesAccion}</td>` : ''}
-            </tr>
-        `;
     });
 
     html += `

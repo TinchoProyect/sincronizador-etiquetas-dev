@@ -32,16 +32,9 @@ import { abrirModalGuardadoIngredientes } from './guardadoIngredientes.js';
 window.carroIdGlobal = null;
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
-// Envolver las funciones originales para agregar la actualización de botones
-window.seleccionarCarro = async (...args) => {
-    await seleccionarCarro(...args);
-    await actualizarVisibilidadBotones();
-};
-
-window.deseleccionarCarro = async (...args) => {
-    await deseleccionarCarro(...args);
-    await actualizarVisibilidadBotones();
-};
+// NO envolver - dejar que carro.js maneje todo el flujo internamente
+window.seleccionarCarro = seleccionarCarro;
+window.deseleccionarCarro = deseleccionarCarro;
 
 window.eliminarCarro = eliminarCarro;
 window.agregarAlCarro = agregarAlCarro;

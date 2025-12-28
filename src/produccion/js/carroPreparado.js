@@ -74,13 +74,44 @@ export async function actualizarVisibilidadBotones() {
                     btnGuardadoIngredientes.style.display = 'none';
                 }
                 
-                // Mostrar campo de kilos producidos solo para carros de producción externa
-                const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
+                // 🚚 CREAR Y MOSTRAR campo de kilos producidos para carros externos
                 if (data.tipo_carro === 'externa') {
-                    if (kilosProducidosContainer) {
+                    console.log('🚚 Carro externo en estado preparado - creando campo de kilos producidos...');
+                    
+                    let kilosProducidosContainer = document.getElementById('kilos-producidos-container');
+                    
+                    // Si no existe, crearlo dinámicamente
+                    if (!kilosProducidosContainer) {
+                        kilosProducidosContainer = document.createElement('div');
+                        kilosProducidosContainer.id = 'kilos-producidos-container';
+                        kilosProducidosContainer.className = 'kilos-producidos-container';
+                        kilosProducidosContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;';
+                        
+                        kilosProducidosContainer.innerHTML = `
+                            <label for="kilos-producidos" style="font-weight: bold; margin: 0;">Kilos Producidos:</label>
+                            <input type="number" 
+                                   id="kilos-producidos" 
+                                   min="0.01" 
+                                   step="0.01" 
+                                   placeholder="0.00"
+                                   style="width: 120px; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;"
+                                   required>
+                            <span style="color: #6c757d; font-size: 0.9em;">kg</span>
+                        `;
+                        
+                        // Insertar después del botón de finalizar producción
+                        if (btnFinalizarProduccion && btnFinalizarProduccion.parentElement) {
+                            btnFinalizarProduccion.parentElement.insertBefore(kilosProducidosContainer, btnFinalizarProduccion.nextSibling);
+                            console.log('✅ Campo de kilos producidos creado e insertado en el DOM');
+                        }
+                    } else {
+                        // Si ya existe, solo mostrarlo
                         kilosProducidosContainer.style.display = 'flex';
+                        console.log('✅ Campo de kilos producidos mostrado (ya existía)');
                     }
                 } else {
+                    // Ocultar para carros internos
+                    const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
                     if (kilosProducidosContainer) {
                         kilosProducidosContainer.style.display = 'none';
                     }
@@ -94,12 +125,22 @@ export async function actualizarVisibilidadBotones() {
                 break;
 
             case 'confirmado':
-                // Producción confirmada - mostrar botón de imprimir etiquetas y guardado de ingredientes
+                // Producción confirmada - mostrar botón de imprimir etiquetas SOLO para carros internos
                 if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
                 if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
                 if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
-                if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'inline-block';
                 if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
+                
+                // 🏭 Botón "Imprimir Etiquetas" SOLO para carros internos
+                if (btnImprimirEtiquetas) {
+                    if (data.tipo_carro === 'interna') {
+                        btnImprimirEtiquetas.style.display = 'inline-block';
+                        console.log('✅ Botón "Imprimir Etiquetas" mostrado para carro interno confirmado');
+                    } else {
+                        btnImprimirEtiquetas.style.display = 'none';
+                        console.log('🚚 Botón "Imprimir Etiquetas" ocultado para carro externo');
+                    }
+                }
                 
                 // 📦 Mostrar botón de guardado de ingredientes solo para carros internos
                 if (btnGuardadoIngredientes) {
@@ -437,20 +478,49 @@ export async function marcarCarroPreparado(carroId) {
         // Mostrar notificación de éxito
         mostrarNotificacion('Carro marcado como preparado exitosamente');
         
-        // Actualizar la visibilidad de los botones
-        await actualizarVisibilidadBotones();
+        console.log('🔄 [PREPARADO] Iniciando actualización completa de la UI...');
         
-        // Actualizar el estado del carro en la interfaz si es necesario
+        // 1. Actualizar la visibilidad de los botones (esto crea el campo de kilos)
+        await actualizarVisibilidadBotones();
+        console.log('✅ [PREPARADO] Botones actualizados');
+        
+        // 2. Actualizar el estado del carro en la lista
         if (window.actualizarEstadoCarro) {
-            window.actualizarEstadoCarro();
+            await window.actualizarEstadoCarro();
+            console.log('✅ [PREPARADO] Estado del carro actualizado');
         }
 
-        // 🔄 REACTIVIDAD: Actualizar tabla de ingredientes para reflejar el nuevo estado
+        // 3. 🔄 FORZAR RECARGA COMPLETA del panel derecho
+        console.log('🔄 [PREPARADO] Forzando recarga completa del panel derecho...');
+        
+        // Obtener y mostrar ingredientes
         if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
-            console.log('🔄 Actualizando tabla de ingredientes tras marcar carro preparado...');
             const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await window.mostrarResumenIngredientes(ingredientes);
+            console.log('✅ [PREPARADO] Resumen de ingredientes actualizado');
         }
+        
+        // Obtener y mostrar mixes
+        if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
+            const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
+            window.mostrarResumenMixes(mixes);
+            console.log('✅ [PREPARADO] Resumen de mixes actualizado');
+        }
+        
+        // Obtener y mostrar artículos externos (si aplica)
+        if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
+            const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
+            if (articulos && articulos.length > 0) {
+                window.mostrarResumenArticulos(articulos);
+                const seccionArticulos = document.getElementById('resumen-articulos');
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'block';
+                }
+                console.log('✅ [PREPARADO] Resumen de artículos externos actualizado');
+            }
+        }
+        
+        console.log('✅ [PREPARADO] Actualización completa de UI finalizada');
 
     } catch (error) {
         console.error('Error al marcar carro como preparado:', error);
@@ -551,20 +621,49 @@ export async function finalizarProduccion(carroId) {
         // Mostrar notificación de éxito
         mostrarNotificacion('Producción finalizada exitosamente');
 
-        // Actualizar la visibilidad de los botones
+        console.log('🔄 [FINALIZADO] Iniciando actualización completa de la UI...');
+        
+        // 1. Actualizar la visibilidad de los botones
         await actualizarVisibilidadBotones();
+        console.log('✅ [FINALIZADO] Botones actualizados');
 
-        // Actualizar el estado del carro en la interfaz si es necesario
+        // 2. Actualizar el estado del carro en la lista
         if (window.actualizarEstadoCarro) {
-            window.actualizarEstadoCarro();
+            await window.actualizarEstadoCarro();
+            console.log('✅ [FINALIZADO] Estado del carro actualizado');
         }
 
-        // 🔄 REACTIVIDAD: Actualizar tabla de ingredientes para reflejar el nuevo estado
+        // 3. 🔄 FORZAR RECARGA COMPLETA del panel derecho
+        console.log('🔄 [FINALIZADO] Forzando recarga completa del panel derecho...');
+        
+        // Obtener y mostrar ingredientes
         if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
-            console.log('🔄 Actualizando tabla de ingredientes tras finalizar producción...');
             const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await window.mostrarResumenIngredientes(ingredientes);
+            console.log('✅ [FINALIZADO] Resumen de ingredientes actualizado');
         }
+        
+        // Obtener y mostrar mixes
+        if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
+            const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
+            window.mostrarResumenMixes(mixes);
+            console.log('✅ [FINALIZADO] Resumen de mixes actualizado');
+        }
+        
+        // Obtener y mostrar artículos externos (si aplica)
+        if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
+            const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
+            if (articulos && articulos.length > 0) {
+                window.mostrarResumenArticulos(articulos);
+                const seccionArticulos = document.getElementById('resumen-articulos');
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'block';
+                }
+                console.log('✅ [FINALIZADO] Resumen de artículos externos actualizado');
+            }
+        }
+        
+        console.log('✅ [FINALIZADO] Actualización completa de UI finalizada');
 
     } catch (error) {
         console.error('Error al finalizar producción:', error);

@@ -767,48 +767,54 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         // 🔄 ACTUALIZAR RESUMEN AUTOMÁTICAMENTE DESPUÉS DE AGREGAR ARTÍCULO
         try {
-            console.log('🔄 Actualizando resumen después de agregar artículo...');
+            console.log('🔄 [AGREGAR] Iniciando actualización completa del resumen...');
             
-            // Actualizar lista de artículos del carro
+            // 🎯 DELAY ESTRATÉGICO: Esperar a que el backend procese completamente
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // 1. Actualizar lista de artículos del carro
             await mostrarArticulosDelCarro();
+            console.log('✅ [AGREGAR] Lista de artículos actualizada');
             
-            // Actualizar resumen de ingredientes
+            // 2. FORZAR recarga de ingredientes
             const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await mostrarResumenIngredientes(ingredientes);
-            console.log('✅ [REACTIVIDAD] Resumen de ingredientes actualizado');
+            console.log('✅ [AGREGAR] Resumen de ingredientes actualizado');
             
-            // Actualizar resumen de mixes
+            // 3. FORZAR recarga de mixes
             const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
             mostrarResumenMixes(mixes);
-            console.log('✅ [REACTIVIDAD] Resumen de mixes actualizado');
+            console.log('✅ [AGREGAR] Resumen de mixes actualizado');
             
-            // 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
+            // 4. 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
             const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
             const seccionArticulos = document.getElementById('resumen-articulos');
             
-            console.log(`🔍 [ARTÍCULOS-EXTERNOS] Artículos obtenidos: ${articulos?.length || 0}`);
+            console.log(`🔍 [AGREGAR-ARTÍCULOS] Artículos obtenidos: ${articulos?.length || 0}`);
             
             if (articulos && articulos.length > 0) {
                 // FORZAR visualización de la sección
                 if (seccionArticulos) {
                     seccionArticulos.style.display = 'block';
-                    console.log('✅ [ARTÍCULOS-EXTERNOS] Sección mostrada');
+                    // Forzar reflow para asegurar que el cambio se aplique
+                    seccionArticulos.offsetHeight;
+                    console.log('✅ [AGREGAR-ARTÍCULOS] Sección mostrada y forzado reflow');
                 }
                 
                 // FORZAR actualización de la tabla
                 mostrarResumenArticulos(articulos);
-                console.log('✅ [ARTÍCULOS-EXTERNOS] Tabla actualizada con datos');
+                console.log('✅ [AGREGAR-ARTÍCULOS] Tabla actualizada con datos');
             } else {
                 // Si no hay artículos, ocultar sección
                 if (seccionArticulos) {
                     seccionArticulos.style.display = 'none';
-                    console.log('ℹ️ [ARTÍCULOS-EXTERNOS] No hay artículos, sección oculta');
+                    console.log('ℹ️ [AGREGAR-ARTÍCULOS] No hay artículos, sección oculta');
                 }
             }
             
-            console.log('✅ [REACTIVIDAD] Resumen completo actualizado correctamente');
+            console.log('✅ [AGREGAR] Resumen completo actualizado correctamente');
         } catch (updateError) {
-            console.error('⚠️ Error al actualizar resumen:', updateError);
+            console.error('⚠️ [AGREGAR] Error al actualizar resumen:', updateError);
             // No mostrar error al usuario, solo log para debug
         }
 
@@ -2284,19 +2290,26 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
 
         // 🔄 ACTUALIZAR RESUMEN AUTOMÁTICAMENTE (PRODUCCIÓN EXTERNA)
         try {
-            console.log('🔄 [EXTERNO] Actualizando resumen después de agregar artículo externo...');
+            console.log('🔄 [EXTERNO] Iniciando actualización completa del resumen...');
             
+            // 🎯 DELAY ESTRATÉGICO: Esperar a que el backend procese completamente
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // 1. Actualizar lista de artículos del carro
             await mostrarArticulosDelCarro();
+            console.log('✅ [EXTERNO] Lista de artículos actualizada');
             
+            // 2. FORZAR recarga de ingredientes
             const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await mostrarResumenIngredientes(ingredientes);
             console.log('✅ [EXTERNO] Resumen de ingredientes actualizado');
             
+            // 3. FORZAR recarga de mixes
             const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
             mostrarResumenMixes(mixes);
             console.log('✅ [EXTERNO] Resumen de mixes actualizado');
             
-            // 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
+            // 4. 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
             const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
             const seccionArticulos = document.getElementById('resumen-articulos');
             
@@ -2306,7 +2319,9 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
                 // FORZAR visualización de la sección
                 if (seccionArticulos) {
                     seccionArticulos.style.display = 'block';
-                    console.log('✅ [EXTERNO-ARTÍCULOS] Sección mostrada');
+                    // Forzar reflow para asegurar que el cambio se aplique
+                    seccionArticulos.offsetHeight;
+                    console.log('✅ [EXTERNO-ARTÍCULOS] Sección mostrada y forzado reflow');
                 }
                 
                 // FORZAR actualización de la tabla

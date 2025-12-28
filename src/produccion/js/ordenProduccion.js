@@ -16,20 +16,47 @@ export async function imprimirOrdenProduccion() {
             throw new Error('No se encontró información del colaborador activo');
         }
 
+        // 🎯 OBTENER TIPO DE CARRO para personalizar el reporte
+        let tipoCarro = 'interna';
+        let estadoCarro = 'en_preparacion';
+        try {
+            const estadoResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+            if (estadoResponse.ok) {
+                const estadoData = await estadoResponse.json();
+                tipoCarro = estadoData.tipo_carro || 'interna';
+                estadoCarro = estadoData.estado || 'en_preparacion';
+                console.log(`📊 Tipo de carro: ${tipoCarro}, Estado: ${estadoCarro}`);
+            }
+        } catch (error) {
+            console.warn('⚠️ No se pudo obtener tipo de carro, asumiendo interna');
+        }
+
         // Obtener datos del carro usando consultas directas a las tablas
-        const [articulosData, operarioData, ingresosData, mixesData, resumenIngredientesData] = await Promise.all([
+        const promesas = [
             obtenerArticulosCarro(carroId),
             obtenerOperario(colaborador.id),
             obtenerIngresosManuales(carroId),
             obtenerRecetasMixes(carroId),
             obtenerResumenIngredientes(carroId, colaborador.id)
-        ]);
+        ];
+
+        // 🎯 PARA CARROS EXTERNOS: Obtener artículos de producción externa (insumos a retirar)
+        if (tipoCarro === 'externa') {
+            promesas.push(obtenerArticulosExternos(carroId, colaborador.id));
+        }
+
+        const resultados = await Promise.all(promesas);
+        
+        const [articulosData, operarioData, ingresosData, mixesData, resumenIngredientesData, articulosExternosData] = resultados;
 
         console.log('📋 Artículos obtenidos:', articulosData);
         console.log('👤 Operario obtenido:', operarioData);
         console.log('📦 Ingresos manuales obtenidos:', ingresosData);
         console.log('🧪 Mixes obtenidos:', mixesData);
         console.log('🌿 Resumen de ingredientes obtenido:', resumenIngredientesData);
+        if (tipoCarro === 'externa') {
+            console.log('🚚 Artículos externos obtenidos:', articulosExternosData);
+        }
 
         // Generar HTML de la orden
         const htmlOrden = generarHTMLOrden({
@@ -39,6 +66,9 @@ export async function imprimirOrdenProduccion() {
             mixes: mixesData,
             ingresos: ingresosData,
             resumenIngredientes: resumenIngredientesData,
+            articulosExternos: articulosExternosData || [],
+            tipoCarro,
+            estadoCarro,
             fecha: new Date()
         });
 
@@ -120,14 +150,35 @@ async function obtenerOperario(usuarioId) {
     }
 }
 
-// Función para obtener el resumen de ingredientes
+// Función para obtener el resumen de ingredientes (incluyendo vinculados para externos)
 async function obtenerResumenIngredientes(carroId, usuarioId) {
     try {
+        // Obtener ingredientes base
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
         if (!response.ok) {
             throw new Error('No se pudo obtener el resumen de ingredientes');
         }
-        return await response.json();
+        const ingredientesBase = await response.json();
+        
+        // 🎯 PARA CARROS EXTERNOS: Obtener también ingredientes vinculados
+        let ingredientesVinculados = [];
+        try {
+            const responseVinculados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${usuarioId}`);
+            if (responseVinculados.ok) {
+                ingredientesVinculados = await responseVinculados.json();
+                // Marcar como vinculados
+                ingredientesVinculados = ingredientesVinculados.map(ing => ({
+                    ...ing,
+                    es_de_articulo_vinculado: true
+                }));
+                console.log(`🔗 Ingredientes vinculados para PDF: ${ingredientesVinculados.length}`);
+            }
+        } catch (error) {
+            console.warn('⚠️ No se pudieron obtener ingredientes vinculados:', error);
+        }
+        
+        // Combinar ambos arrays
+        return [...ingredientesBase, ...ingredientesVinculados];
     } catch (error) {
         console.error('❌ Error al obtener resumen de ingredientes:', error);
         return []; // Devolver array vacío en caso de error
@@ -304,12 +355,31 @@ async function obtenerRecetasMixes(carroId) {
     }
 }
 
+// 🎯 NUEVA FUNCIÓN: Obtener artículos de producción externa (insumos a retirar)
+async function obtenerArticulosExternos(carroId, usuarioId) {
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${usuarioId}`);
+        if (!response.ok) {
+            if (response.status === 404) {
+                return [];
+            }
+            throw new Error('Error al obtener artículos externos');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('❌ Error al obtener artículos externos:', error);
+        return [];
+    }
+}
+
 // Función para generar HTML de la orden
-function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resumenIngredientes, fecha }) {
+function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resumenIngredientes, articulosExternos, tipoCarro, estadoCarro, fecha }) {
     // 🔍 DEBUGGING STOCK REPORTE
     console.log("🔍 DEBUGGING STOCK REPORTE:");
     console.log("1. Resumen Ingredientes (Data Cruda):", resumenIngredientes);
     console.log("2. Ingresos Manuales (Data Cruda):", ingresos);
+    console.log("3. Tipo de carro:", tipoCarro);
+    console.log("4. Artículos externos:", articulosExternos);
     
     ingresos.forEach(ing => {
         const match = resumenIngredientes.find(r => r.id === ing.ingrediente_id);
@@ -327,12 +397,17 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
         minute: '2-digit'
     });
 
+    // 🎯 TÍTULO DINÁMICO según tipo de carro
+    const tituloOrden = tipoCarro === 'externa' 
+        ? 'ORDEN DE PRODUCCIÓN EXTERNA' 
+        : 'ORDEN DE PRODUCCIÓN';
+
     return `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>Orden de Producción - Carro ${carroId}</title>
+            <title>${tituloOrden} - Carro ${carroId}</title>
             <style>
                 @page { margin: 12mm; }
                 body { 
@@ -415,17 +490,51 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
         </head>
         <body>
             <div class="header">
-                <h1>ORDEN DE PRODUCCIÓN</h1>
+                <h1>${tituloOrden}</h1>
+                ${tipoCarro === 'externa' ? '<p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">Producción realizada fuera del taller</p>' : ''}
             </div>
             
             <div class="info-carro">
                 <strong>Carro ID:</strong> ${carroId}<br>
+                <strong>Tipo:</strong> ${tipoCarro === 'externa' ? '🚚 Producción Externa' : '🏭 Producción Interna'}<br>
                 <strong>Operario:</strong> ${operario?.nombre_completo || 'No disponible'}<br>
                 <strong>Fecha y Hora:</strong> ${fechaFormateada}
             </div>
 
+            ${tipoCarro === 'externa' && articulosExternos && articulosExternos.length > 0 ? `
+                <div class="seccion">
+                    <h2>📦 INSUMOS A RETIRAR DEL DEPÓSITO</h2>
+                    <p style="margin: 0 0 8px 0; font-size: 10px; color: #666;">
+                        <em>Artículos intermedios que el operario retira del depósito para llevar a producción externa</em>
+                    </p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Artículo</th>
+                                <th>Cantidad</th>
+                                <th>Stock Disponible</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${articulosExternos.map(art => `
+                                <tr>
+                                    <td>${art.articulo_numero}</td>
+                                    <td>${art.nombre || 'Sin descripción'}</td>
+                                    <td style="text-align: center; font-weight: bold;">${parseFloat(art.cantidad_total || 0).toFixed(2)}</td>
+                                    <td style="text-align: center; ${parseFloat(art.stock_actual || 0) > 0 ? 'color: #28a745;' : 'color: #dc3545;'} font-weight: bold;">
+                                        ${parseFloat(art.stock_actual || 0).toFixed(2)}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            ` : ''}
+
             <div class="seccion">
                 <h2>🧾 ARTÍCULOS A PRODUCIR</h2>
+                ${tipoCarro === 'externa' ? '<p style="margin: 0 0 8px 0; font-size: 10px; color: #666;"><em>Productos finales que se fabricarán con los insumos retirados</em></p>' : ''}
                 ${articulos.length > 0 ? `
                     <table>
                         <thead>
@@ -568,6 +677,156 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
                     `;
                 }).join('') : '<div class="no-data">No hay mixes en este carro</div>'}
             </div>
+
+            ${(() => {
+                // 🎯 SECCIÓN DE INGREDIENTES NECESARIOS (con stock personal para externos)
+                let htmlIngredientes = '';
+                
+                if (resumenIngredientes && resumenIngredientes.length > 0) {
+                    // Separar ingredientes según si son de artículos vinculados o no
+                    const ingredientesPersonales = resumenIngredientes.filter(ing => !ing.es_de_articulo_vinculado);
+                    const ingredientesLocales = resumenIngredientes.filter(ing => ing.es_de_articulo_vinculado);
+                    
+                    if (tipoCarro === 'externa') {
+                        // 🚚 CARRO EXTERNO: Mostrar stock personal del operario
+                        if (ingredientesPersonales.length > 0) {
+                            htmlIngredientes += `
+                            <div class="seccion">
+                                <h2>🏠 INGREDIENTES PERSONALES DEL OPERARIO</h2>
+                                <p style="margin: 0 0 8px 0; font-size: 10px; color: #666;">
+                                    <em>Ingredientes que el operario gestiona en su stock personal (casa)</em>
+                                </p>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Ingrediente</th>
+                                            <th>Cantidad Necesaria</th>
+                                            <th style="background: #e3f2fd;">Stock Actual (Operador)</th>
+                                            <th>Estado</th>
+                                            <th>Unidad</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${ingredientesPersonales.map(ing => {
+                                            const cantidadNecesaria = parseFloat(ing.cantidad || 0);
+                                            const stockActual = parseFloat(ing.stock_actual || 0);
+                                            const diferencia = stockActual - cantidadNecesaria;
+                                            const tieneStock = diferencia >= -0.01;
+                                            const faltante = tieneStock ? 0 : Math.abs(diferencia);
+                                            
+                                            return `
+                                            <tr>
+                                                <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
+                                                <td style="text-align: center;">${cantidadNecesaria.toFixed(2)}</td>
+                                                <td style="text-align: center; background: #e3f2fd; font-weight: bold; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                                    ${stockActual.toFixed(2)}
+                                                </td>
+                                                <td style="text-align: center; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                                    ${tieneStock ? '✅ Suficiente' : `❌ Faltan ${faltante.toFixed(2)}`}
+                                                </td>
+                                                <td style="text-align: center;">${ing.unidad_medida || ''}</td>
+                                            </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                                <p style="margin-top: 8px; font-size: 10px; color: #666; font-style: italic;">
+                                    💡 <strong>Nota:</strong> El "Stock Actual (Operador)" muestra lo que el sistema registra que tiene en su casa.
+                                </p>
+                            </div>
+                            `;
+                        }
+                        
+                        if (ingredientesLocales.length > 0) {
+                            htmlIngredientes += `
+                            <div class="seccion">
+                                <h2>🏭 INGREDIENTES LOCALES DEL TALLER</h2>
+                                <p style="margin: 0 0 8px 0; font-size: 10px; color: #666;">
+                                    <em>Ingredientes que se usarán al volver al taller (stock del depósito)</em>
+                                </p>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Ingrediente</th>
+                                            <th>Cantidad Necesaria</th>
+                                            <th>Stock Depósito</th>
+                                            <th>Estado</th>
+                                            <th>Unidad</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${ingredientesLocales.map(ing => {
+                                            const cantidadNecesaria = parseFloat(ing.cantidad || 0);
+                                            const stockActual = parseFloat(ing.stock_actual || 0);
+                                            const diferencia = stockActual - cantidadNecesaria;
+                                            const tieneStock = diferencia >= -0.01;
+                                            const faltante = tieneStock ? 0 : Math.abs(diferencia);
+                                            
+                                            return `
+                                            <tr>
+                                                <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
+                                                <td style="text-align: center;">${cantidadNecesaria.toFixed(2)}</td>
+                                                <td style="text-align: center; font-weight: bold; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                                    ${stockActual.toFixed(2)}
+                                                </td>
+                                                <td style="text-align: center; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                                    ${tieneStock ? '✅ Suficiente' : `❌ Faltan ${faltante.toFixed(2)}`}
+                                                </td>
+                                                <td style="text-align: center;">${ing.unidad_medida || ''}</td>
+                                            </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            `;
+                        }
+                    } else {
+                        // 🏭 CARRO INTERNO: Tabla simple sin distinción
+                        htmlIngredientes += `
+                        <div class="seccion">
+                            <h2>🌿 INGREDIENTES NECESARIOS</h2>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Ingrediente</th>
+                                        <th>Cantidad Necesaria</th>
+                                        <th>Stock Actual</th>
+                                        <th>Estado</th>
+                                        <th>Unidad</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${resumenIngredientes.map(ing => {
+                                        const cantidadNecesaria = parseFloat(ing.cantidad || 0);
+                                        const stockActual = parseFloat(ing.stock_actual || 0);
+                                        const diferencia = stockActual - cantidadNecesaria;
+                                        const tieneStock = diferencia >= -0.01;
+                                        const faltante = tieneStock ? 0 : Math.abs(diferencia);
+                                        
+                                        return `
+                                        <tr>
+                                            <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
+                                            <td style="text-align: center;">${cantidadNecesaria.toFixed(2)}</td>
+                                            <td style="text-align: center; font-weight: bold; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                                ${stockActual.toFixed(2)}
+                                            </td>
+                                            <td style="text-align: center; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                                ${tieneStock ? '✅ Suficiente' : `❌ Faltan ${faltante.toFixed(2)}`}
+                                            </td>
+                                            <td style="text-align: center;">${ing.unidad_medida || ''}</td>
+                                        </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        `;
+                    }
+                }
+                
+                return htmlIngredientes;
+            })()}
 
             ${(() => {
                 // Separar ingresos en dos categorías
