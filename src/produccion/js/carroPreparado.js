@@ -85,18 +85,44 @@ export async function actualizarVisibilidadBotones() {
                         kilosProducidosContainer = document.createElement('div');
                         kilosProducidosContainer.id = 'kilos-producidos-container';
                         kilosProducidosContainer.className = 'kilos-producidos-container';
-                        kilosProducidosContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;';
+                        kilosProducidosContainer.style.cssText = 'margin: 15px 0;';
                         
                         kilosProducidosContainer.innerHTML = `
-                            <label for="kilos-producidos" style="font-weight: bold; margin: 0;">Kilos Producidos:</label>
-                            <input type="number" 
-                                   id="kilos-producidos" 
-                                   min="0.01" 
-                                   step="0.01" 
-                                   placeholder="0.00"
-                                   style="width: 120px; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;"
-                                   required>
-                            <span style="color: #6c757d; font-size: 0.9em;">kg</span>
+                            <div style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                                <label for="kilos-producidos" style="font-weight: bold; margin: 0;">Kilos Producidos:</label>
+                                <input type="number" 
+                                       id="kilos-producidos" 
+                                       min="0.01" 
+                                       step="0.01" 
+                                       placeholder="0.00"
+                                       style="width: 120px; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;"
+                                       required>
+                                <span style="color: #6c757d; font-size: 0.9em;">kg</span>
+                            </div>
+                            <div id="calculo-merma" style="display: none; margin-top: 10px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                                <h4 style="margin: 0 0 8px 0; color: #856404; font-size: 14px;">📊 Análisis de Reducción por Cocción</h4>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+                                    <div>
+                                        <strong>Total Mezcla en Crudo:</strong>
+                                        <span id="total-crudo" style="font-weight: bold; color: #495057;">0.00 kg</span>
+                                    </div>
+                                    <div>
+                                        <strong>Kilos Producidos:</strong>
+                                        <span id="kilos-final" style="font-weight: bold; color: #495057;">0.00 kg</span>
+                                    </div>
+                                    <div>
+                                        <strong>Diferencia de Peso:</strong>
+                                        <span id="diferencia-peso" style="font-weight: bold;">0.00 kg</span>
+                                    </div>
+                                    <div>
+                                        <strong>% de Reducción:</strong>
+                                        <span id="porcentaje-reduccion" style="font-weight: bold;">0.00%</span>
+                                    </div>
+                                </div>
+                                <p style="margin: 8px 0 0 0; font-size: 11px; color: #856404; font-style: italic;">
+                                    💡 La reducción es normal debido a la evaporación de líquidos durante la cocción.
+                                </p>
+                            </div>
                         `;
                         
                         // Insertar después del botón de finalizar producción
@@ -104,10 +130,36 @@ export async function actualizarVisibilidadBotones() {
                             btnFinalizarProduccion.parentElement.insertBefore(kilosProducidosContainer, btnFinalizarProduccion.nextSibling);
                             console.log('✅ Campo de kilos producidos creado e insertado en el DOM');
                         }
+                        
+                        // 🎯 AGREGAR EVENT LISTENER para cálculo dinámico de merma
+                        const inputKilos = document.getElementById('kilos-producidos');
+                        if (inputKilos) {
+                            inputKilos.addEventListener('input', () => {
+                                console.log('🎯 [EVENT] Input detectado en kilos-producidos');
+                                calcularMermaProduccion(carroId);
+                            });
+                            inputKilos.addEventListener('blur', () => {
+                                console.log('🎯 [EVENT] Blur detectado en kilos-producidos');
+                                calcularMermaProduccion(carroId);
+                            });
+                            console.log('✅ Event listeners para cálculo de merma agregados');
+                        }
                     } else {
                         // Si ya existe, solo mostrarlo
-                        kilosProducidosContainer.style.display = 'flex';
+                        kilosProducidosContainer.style.display = 'block';
                         console.log('✅ Campo de kilos producidos mostrado (ya existía)');
+                        
+                        // ⚠️ NO CLONAR - Solo verificar que el panel exista
+                        const panelMerma = document.getElementById('calculo-merma');
+                        if (!panelMerma) {
+                            console.warn('⚠️ Panel de merma no existe, recreando container completo...');
+                            // Si el panel se perdió, recrear todo el container
+                            kilosProducidosContainer.remove();
+                            // Llamar recursivamente para recrear
+                            await actualizarVisibilidadBotones();
+                            return;
+                        }
+                        console.log('✅ Panel de merma verificado en DOM');
                     }
                 } else {
                     // Ocultar para carros internos
@@ -771,3 +823,223 @@ window.actualizarVisibilidadBotones = actualizarVisibilidadBotones;
 
 // Mantener compatibilidad con el nombre anterior
 export const actualizarVisibilidadBotonPreparado = actualizarVisibilidadBotones;
+
+/**
+ * 📊 FUNCIÓN PARA CALCULAR MERMA/REDUCCIÓN POR COCCIÓN
+ * Calcula dinámicamente la diferencia entre el peso en crudo y el peso final
+ * Solo para carros de producción externa
+ * 
+ * ⚠️ VERSIÓN CON DEPURACIÓN AGRESIVA Y VISUALIZACIÓN FORZADA
+ */
+async function calcularMermaProduccion(carroId) {
+    console.log('🚀 [MERMA] ========================================');
+    console.log('🚀 [MERMA] FUNCIÓN calcularMermaProduccion INICIADA');
+    console.log('🚀 [MERMA] Carro ID:', carroId);
+    console.log('🚀 [MERMA] ========================================');
+    
+    try {
+        // PASO 1: Verificar elementos del DOM
+        console.log('🔍 [MERMA-PASO-1] Buscando elementos del DOM...');
+        const inputKilos = document.getElementById('kilos-producidos');
+        const calculoMerma = document.getElementById('calculo-merma');
+        
+        console.log('🔍 [MERMA-PASO-1] Input encontrado:', !!inputKilos);
+        console.log('🔍 [MERMA-PASO-1] Panel encontrado:', !!calculoMerma);
+        
+        if (!inputKilos || !calculoMerma) {
+            console.error('❌ [MERMA-PASO-1] FALLO: Elementos del DOM no encontrados');
+            return;
+        }
+        
+        // PASO 2: Obtener valor del input
+        console.log('🔍 [MERMA-PASO-2] Obteniendo valor del input...');
+        const valorInput = inputKilos.value;
+        console.log('🔍 [MERMA-PASO-2] Valor raw del input:', valorInput);
+        
+        const kilosProducidos = parseFloat(valorInput);
+        console.log('🔍 [MERMA-PASO-2] Valor parseado:', kilosProducidos);
+        console.log('🔍 [MERMA-PASO-2] Es NaN?:', isNaN(kilosProducidos));
+        console.log('🔍 [MERMA-PASO-2] Es <= 0?:', kilosProducidos <= 0);
+        
+        // Si no hay valor válido, ocultar el cálculo
+        if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
+            console.log('⚠️ [MERMA-PASO-2] Valor inválido, ocultando panel');
+            calculoMerma.style.display = 'none';
+            return;
+        }
+        
+        console.log('✅ [MERMA-PASO-2] Valor válido, continuando...');
+        
+        // PASO 3: Obtener colaborador
+        console.log('🔍 [MERMA-PASO-3] Obteniendo colaborador...');
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        console.log('🔍 [MERMA-PASO-3] Colaborador data:', colaboradorData);
+        
+        const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
+        console.log('🔍 [MERMA-PASO-3] Colaborador parseado:', colaborador);
+        
+        if (!colaborador) {
+            console.error('❌ [MERMA-PASO-3] FALLO: No hay colaborador activo');
+            // ⚠️ MOSTRAR PANEL AUNQUE FALLE
+            calculoMerma.style.display = 'block';
+            document.getElementById('total-crudo').textContent = 'N/A';
+            document.getElementById('kilos-final').textContent = `${kilosProducidos.toFixed(2)} kg`;
+            document.getElementById('diferencia-peso').textContent = 'N/A';
+            document.getElementById('porcentaje-reduccion').textContent = 'N/A';
+            return;
+        }
+        
+        console.log('✅ [MERMA-PASO-3] Colaborador OK, ID:', colaborador.id);
+        
+        // PASO 4: Obtener peso del artículo base (INSUMOS A RETIRAR)
+        console.log('🔍 [MERMA-PASO-4] Obteniendo peso artículo base (insumos a retirar)...');
+        let pesoArticuloBase = 0;
+        
+        try {
+            // 🎯 ESTRATEGIA: Consultar stock_real_consolidado.kilos_unidad directamente
+            console.log('🔍 [MERMA-PASO-4] Consultando kilos_unidad desde stock_real_consolidado...');
+            
+            // Primero obtener los códigos de artículos del carro
+            const tablaArticulos = document.querySelector('#resumen-articulos table tbody');
+            
+            if (tablaArticulos) {
+                const filas = tablaArticulos.querySelectorAll('tr');
+                console.log('🔍 [MERMA-PASO-4] Artículos en tabla:', filas.length);
+                
+                for (const fila of filas) {
+                    const celdas = fila.querySelectorAll('td');
+                    if (celdas.length >= 1) {
+                        const codigo = celdas[0]?.textContent.trim();
+                        console.log(`🔍 [MERMA-PASO-4] Consultando kilos_unidad para: ${codigo}`);
+                        
+                        // 🔧 CODIFICAR URL para manejar caracteres especiales como /
+                        const codigoCodificado = encodeURIComponent(codigo);
+                        const stockResponse = await fetch(`http://localhost:3002/api/produccion/stock/${codigoCodificado}`);
+                        
+                        console.log(`🔍 [MERMA-PASO-4] URL: http://localhost:3002/api/produccion/stock/${codigoCodificado}`);
+                        console.log(`🔍 [MERMA-PASO-4] Response status: ${stockResponse.status}`);
+                        
+                        if (stockResponse.ok) {
+                            const stockData = await stockResponse.json();
+                            const kilosUnidad = parseFloat(stockData.kilos_unidad || 0);
+                            
+                            console.log(`✅ [MERMA-PASO-4] ${codigo}:`);
+                            console.log(`   - kilos_unidad: ${kilosUnidad} kg`);
+                            console.log(`   - stock_consolidado: ${stockData.stock_consolidado} kg`);
+                            
+                            pesoArticuloBase += kilosUnidad;
+                        } else {
+                            console.warn(`⚠️ [MERMA-PASO-4] Error ${stockResponse.status} para ${codigo}`);
+                            // Intentar leer el error
+                            try {
+                                const errorData = await stockResponse.json();
+                                console.warn(`⚠️ [MERMA-PASO-4] Detalle error:`, errorData);
+                            } catch (e) {
+                                console.warn(`⚠️ [MERMA-PASO-4] No se pudo leer el error`);
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`✅ [MERMA-PASO-4] Peso total desde stock_real_consolidado: ${pesoArticuloBase} kg`);
+            } else {
+                console.warn('⚠️ [MERMA-PASO-4] No se encontró tabla de artículos externos');
+            }
+            
+            console.log(`✅ [MERMA-PASO-4] Peso total artículos base: ${pesoArticuloBase} kg`);
+            
+        } catch (error) {
+            console.error('❌ [MERMA-PASO-4] ERROR:', error);
+            console.error('❌ [MERMA-PASO-4] Stack:', error.stack);
+            // Continuar con peso 0
+        }
+        
+        // PASO 5: Obtener peso de ingredientes
+        console.log('🔍 [MERMA-PASO-5] Obteniendo ingredientes personales...');
+        let pesoIngredientes = 0;
+        
+        try {
+            const urlIngredientes = `http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}`;
+            console.log('🔍 [MERMA-PASO-5] URL ingredientes:', urlIngredientes);
+            
+            const ingredientesResponse = await fetch(urlIngredientes);
+            console.log('🔍 [MERMA-PASO-5] Response status:', ingredientesResponse.status);
+            
+            if (ingredientesResponse.ok) {
+                const ingredientes = await ingredientesResponse.json();
+                console.log('🔍 [MERMA-PASO-5] Total ingredientes:', ingredientes.length);
+                
+                const ingredientesPersonales = ingredientes.filter(ing => !ing.es_de_articulo_vinculado);
+                console.log('🔍 [MERMA-PASO-5] Ingredientes personales:', ingredientesPersonales.length);
+                
+                pesoIngredientes = ingredientesPersonales.reduce((sum, ing) => {
+                    const peso = parseFloat(ing.cantidad || 0);
+                    console.log(`   - ${ing.nombre}: ${peso} kg`);
+                    return sum + peso;
+                }, 0);
+                
+                console.log(`✅ [MERMA-PASO-5] Peso total ingredientes: ${pesoIngredientes} kg`);
+            }
+        } catch (error) {
+            console.error('❌ [MERMA-PASO-5] ERROR:', error);
+            // Continuar con peso 0
+        }
+        
+        // PASO 6: Calcular totales
+        console.log('🔍 [MERMA-PASO-6] Calculando totales...');
+        const totalCrudo = pesoArticuloBase + pesoIngredientes;
+        const diferenciaPeso = kilosProducidos - totalCrudo;
+        const porcentajeReduccion = totalCrudo > 0 ? (Math.abs(diferenciaPeso) / totalCrudo) * 100 : 0;
+        
+        console.log('📊 [MERMA-PASO-6] RESULTADOS:');
+        console.log(`   - Peso artículos base: ${pesoArticuloBase} kg`);
+        console.log(`   - Peso ingredientes: ${pesoIngredientes} kg`);
+        console.log(`   - Total en crudo: ${totalCrudo} kg`);
+        console.log(`   - Kilos producidos: ${kilosProducidos} kg`);
+        console.log(`   - Diferencia: ${diferenciaPeso} kg`);
+        console.log(`   - % Reducción: ${porcentajeReduccion}%`);
+        
+        // PASO 7: Actualizar UI (SIEMPRE)
+        console.log('🔍 [MERMA-PASO-7] Actualizando UI...');
+        
+        document.getElementById('total-crudo').textContent = `${totalCrudo.toFixed(2)} kg`;
+        document.getElementById('kilos-final').textContent = `${kilosProducidos.toFixed(2)} kg`;
+        
+        const spanDiferencia = document.getElementById('diferencia-peso');
+        spanDiferencia.textContent = `${diferenciaPeso.toFixed(2)} kg`;
+        spanDiferencia.style.color = diferenciaPeso < 0 ? '#dc3545' : '#28a745';
+        
+        const spanPorcentaje = document.getElementById('porcentaje-reduccion');
+        spanPorcentaje.textContent = `${porcentajeReduccion.toFixed(2)}%`;
+        spanPorcentaje.style.color = porcentajeReduccion > 15 ? '#dc3545' : porcentajeReduccion > 10 ? '#ffc107' : '#28a745';
+        
+        // ⚠️ FORZAR VISUALIZACIÓN DEL PANEL
+        calculoMerma.style.display = 'block';
+        console.log('✅ [MERMA-PASO-7] Panel mostrado con display: block');
+        
+        console.log('🎉 [MERMA] ========================================');
+        console.log('🎉 [MERMA] CÁLCULO COMPLETADO EXITOSAMENTE');
+        console.log('🎉 [MERMA] ========================================');
+        
+    } catch (error) {
+        console.error('💥 [MERMA] ERROR CRÍTICO EN FUNCIÓN:', error);
+        console.error('💥 [MERMA] Stack trace:', error.stack);
+        
+        // ⚠️ INCLUSO EN ERROR, MOSTRAR ALGO
+        try {
+            const calculoMerma = document.getElementById('calculo-merma');
+            if (calculoMerma) {
+                calculoMerma.style.display = 'block';
+                document.getElementById('total-crudo').textContent = 'ERROR';
+                document.getElementById('kilos-final').textContent = 'ERROR';
+                document.getElementById('diferencia-peso').textContent = 'ERROR';
+                document.getElementById('porcentaje-reduccion').textContent = 'ERROR';
+            }
+        } catch (e) {
+            console.error('💥 [MERMA] No se pudo mostrar panel de error:', e);
+        }
+    }
+}
+
+// Hacer la función disponible globalmente
+window.calcularMermaProduccion = calcularMermaProduccion;

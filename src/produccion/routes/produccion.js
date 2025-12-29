@@ -1059,6 +1059,56 @@ router.get('/articulos/buscar', async (req, res) => {
     }
 });
 
+// Ruta para obtener kilos_unidad de un artículo desde stock_real_consolidado
+router.get('/stock/:codigo', async (req, res) => {
+    try {
+        const { codigo } = req.params;
+        
+        if (!codigo) {
+            return res.status(400).json({ error: 'Se requiere el código del artículo' });
+        }
+        
+        console.log(`🔍 [STOCK] Consultando kilos_unidad para artículo: ${codigo}`);
+        
+        const query = `
+            SELECT 
+                articulo_numero,
+                descripcion,
+                kilos_unidad,
+                stock_consolidado
+            FROM stock_real_consolidado
+            WHERE articulo_numero = $1
+        `;
+        
+        const result = await req.db.query(query, [codigo]);
+        
+        if (result.rows.length === 0) {
+            console.warn(`⚠️ [STOCK] Artículo no encontrado en stock_real_consolidado: ${codigo}`);
+            return res.status(404).json({ 
+                error: 'Artículo no encontrado en stock',
+                kilos_unidad: 0
+            });
+        }
+        
+        const articulo = result.rows[0];
+        console.log(`✅ [STOCK] Artículo encontrado:`, articulo);
+        
+        res.json({
+            articulo_numero: articulo.articulo_numero,
+            descripcion: articulo.descripcion,
+            kilos_unidad: parseFloat(articulo.kilos_unidad || 0),
+            stock_consolidado: parseFloat(articulo.stock_consolidado || 0)
+        });
+        
+    } catch (error) {
+        console.error('❌ [STOCK] Error al obtener kilos_unidad:', error);
+        res.status(500).json({ 
+            error: 'Error al consultar stock del artículo',
+            detalle: error.message 
+        });
+    }
+});
+
 // Ruta para actualizar campo no_producido_por_lambda
 router.patch('/articulos/:articulo_numero/produccion', async (req, res) => {
     try {
