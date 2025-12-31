@@ -541,7 +541,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                     AND adc.id_presupuesto_local = pc.id
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
-                  AND pc.secuencia != 'Pedido_Listo'
+                  AND pc.secuencia NOT IN ('Pedido_Listo', 'Retira_Deposito')
                   AND adc.codigo_barras_derivado IS NULL
                 GROUP BY pc.id, pd.articulo
             ),
@@ -1060,6 +1060,28 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
                 'PENDIENTE',               // $3: estado_logistico = 'PENDIENTE'
                 presupuestos_ids           // $4: array de IDs
             ];
+        } else if (nueva_secuencia === 'Pedido_Listo') {
+            // Para "Pedido Listo": actualizar secuencia, estado y estado_logistico
+            // IMPORTANTE: Esto permite que el pedido aparezca en Logística cuando se revierte desde "Retira por Depósito"
+            console.log('📦 [PEDIDO-LISTO] Actualizando secuencia + estado + estado_logistico para Logística');
+            
+            updateQuery = `
+                UPDATE public.presupuestos
+                SET secuencia = $1,
+                    estado = $2,
+                    estado_logistico = $3,
+                    fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
+                WHERE id_presupuesto_ext = ANY($4::text[])
+                  AND activo = true
+                RETURNING id_presupuesto_ext, secuencia, estado, estado_logistico
+            `;
+            
+            queryParams = [
+                nueva_secuencia,           // $1: secuencia = 'Pedido_Listo'
+                'Presupuesto/Orden',       // $2: estado = 'Presupuesto/Orden'
+                'PENDIENTE_ASIGNAR',       // $3: estado_logistico = 'PENDIENTE_ASIGNAR' (para Logística)
+                presupuestos_ids           // $4: array de IDs
+            ];
         } else {
             // Para otras secuencias: solo actualizar secuencia (comportamiento original)
             updateQuery = `
@@ -1078,8 +1100,9 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
         
         console.log(`✅ [SECUENCIA] Actualizados: ${result.rowCount} presupuestos`);
         
-        if (nueva_secuencia === 'Retira_Deposito' && result.rowCount > 0) {
-            console.log('✅ [RETIRA-DEPOSITO] Campos actualizados correctamente:');
+        if ((nueva_secuencia === 'Retira_Deposito' || nueva_secuencia === 'Pedido_Listo') && result.rowCount > 0) {
+            const tipoOperacion = nueva_secuencia === 'Retira_Deposito' ? 'RETIRA-DEPOSITO' : 'PEDIDO-LISTO';
+            console.log(`✅ [${tipoOperacion}] Campos actualizados correctamente:`);
             result.rows.forEach(row => {
                 console.log(`   - Presupuesto ${row.id_presupuesto_ext}:`);
                 console.log(`     * secuencia: ${row.secuencia}`);

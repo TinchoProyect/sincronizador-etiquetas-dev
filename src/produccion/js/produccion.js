@@ -480,6 +480,22 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 botonesPresupuesto.appendChild(btnRetiraDeposito);
             }
             
+            // NUEVO: Botón "Volver a Reparto" (solo en acordeón "Retira por Depósito")
+            if (containerId === 'pedidos-retira') {
+                const btnVolverReparto = document.createElement('button');
+                btnVolverReparto.textContent = '🔙 Volver a Reparto';
+                btnVolverReparto.className = 'admin-button';
+                btnVolverReparto.style.padding = '6px 12px';
+                btnVolverReparto.style.fontSize = '12px';
+                btnVolverReparto.style.background = '#ffc107';
+                btnVolverReparto.style.color = '#000';
+                btnVolverReparto.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await revertirRetiraDeposito(presupuesto.presupuesto_id, cliente.cliente_id);
+                });
+                botonesPresupuesto.appendChild(btnVolverReparto);
+            }
+            
             const presupuestoId = `presupuesto-${containerId}-${cliente.cliente_id}-${idx}`;
             clickeableDiv.addEventListener('click', () => {
                 const contenidoPresup = document.getElementById(presupuestoId);
@@ -507,12 +523,10 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             tabla.className = 'articulos-tabla';
 
             const thead = document.createElement('thead');
-            // Para el acordeón de Stand By, solo mostrar Artículo, Descripción y Cantidad
-            // No mostrar Stock ni Faltante ya que no tenemos forma confiable de obtenerlos
-            if (containerId === 'pedidos-standby-container') {
+            // Para el acordeón de Stand By y Retira por Depósito, solo mostrar Descripción y Cantidad
+            if (containerId === 'pedidos-standby-container' || containerId === 'pedidos-retira') {
                 thead.innerHTML = `
                     <tr>
-                        <th>Artículo</th>
                         <th>Descripción</th>
                         <th>Cantidad</th>
                     </tr>
@@ -535,20 +549,29 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             presupuesto.articulos.forEach(articulo => {
                 const tr = document.createElement('tr');
 
-                const tdArticulo = document.createElement('td');
-                tdArticulo.textContent = articulo.articulo_numero;
-                tr.appendChild(tdArticulo);
+                // Para Stand By y Retira por Depósito: solo Descripción y Cantidad
+                if (containerId === 'pedidos-standby-container' || containerId === 'pedidos-retira') {
+                    const tdDescripcion = document.createElement('td');
+                    tdDescripcion.textContent = articulo.descripcion || articulo.articulo_numero || '-';
+                    tr.appendChild(tdDescripcion);
 
-                const tdDescripcion = document.createElement('td');
-                tdDescripcion.textContent = articulo.descripcion || '-';
-                tr.appendChild(tdDescripcion);
+                    const tdPedidoTotal = document.createElement('td');
+                    tdPedidoTotal.textContent = articulo.pedido_total;
+                    tr.appendChild(tdPedidoTotal);
+                } else {
+                    // Para otros acordeones: mostrar todas las columnas
+                    const tdArticulo = document.createElement('td');
+                    tdArticulo.textContent = articulo.articulo_numero;
+                    tr.appendChild(tdArticulo);
 
-                const tdPedidoTotal = document.createElement('td');
-                tdPedidoTotal.textContent = articulo.pedido_total;
-                tr.appendChild(tdPedidoTotal);
+                    const tdDescripcion = document.createElement('td');
+                    tdDescripcion.textContent = articulo.descripcion || '-';
+                    tr.appendChild(tdDescripcion);
 
-                // Solo agregar columnas de stock para acordeones que NO sean Stand By
-                if (containerId !== 'pedidos-standby-container') {
+                    const tdPedidoTotal = document.createElement('td');
+                    tdPedidoTotal.textContent = articulo.pedido_total;
+                    tr.appendChild(tdPedidoTotal);
+
                     const tdStockDisponible = document.createElement('td');
                     tdStockDisponible.textContent = articulo.stock_disponible;
                     tr.appendChild(tdStockDisponible);
@@ -2080,7 +2103,69 @@ async function marcarComoRetiraDeposito(presupuestoId, clienteId) {
     }
 }
 
-// Exponer función globalmente
+/**
+ * Revierte un presupuesto de "Retira por Depósito" a "Pedido Listo"
+ * Cambia la secuencia de "Retira_Deposito" a "Pedido_Listo"
+ * @param {string} presupuestoId - ID del presupuesto a revertir
+ * @param {number} clienteId - ID del cliente (para expandir acordeón después)
+ */
+async function revertirRetiraDeposito(presupuestoId, clienteId) {
+    console.log(`🔙 [REVERTIR-DEPOSITO] Revirtiendo presupuesto ${presupuestoId} a "Pedido Listo"`);
+    
+    // Confirmar acción con el usuario
+    if (!confirm('¿Volver este presupuesto a "Pedido Listo" para reparto?')) {
+        console.log('🔙 [REVERTIR-DEPOSITO] Acción cancelada por el usuario');
+        return;
+    }
+    
+    try {
+        // Llamar al endpoint para actualizar secuencia
+        const response = await fetch(`${base}/actualizar-secuencia`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presupuestos_ids: [presupuestoId],
+                nueva_secuencia: 'Pedido_Listo'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            console.log(`✅ [REVERTIR-DEPOSITO] Presupuesto ${presupuestoId} revertido correctamente`);
+            
+            // Mostrar mensaje de éxito
+            mostrarToast('✅ Presupuesto devuelto a "Pedido Listo"', 'success');
+            
+            // Recargar datos para reflejar el cambio
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+                
+                // Expandir sección "Pedido Listo" después de recargar
+                setTimeout(() => {
+                    console.log(`🔍 [REVERTIR-DEPOSITO] Expandiendo sección "Pedido Listo"...`);
+                    forzarExpandirSeccion('pedidos-listo-section');
+                    
+                    // Expandir el cliente DENTRO de la sección "Pedido Listo"
+                    setTimeout(() => {
+                        abrirAcordeonEnSeccion(clienteId, 'pedidos-listo');
+                    }, 500);
+                }, 800);
+            }, 1000);
+        } else {
+            console.error('❌ [REVERTIR-DEPOSITO] Error al actualizar secuencia:', data.error);
+            mostrarToast(`❌ Error: ${data.error || 'No se pudo revertir el presupuesto'}`, 'error');
+        }
+    } catch (error) {
+        console.error('❌ [REVERTIR-DEPOSITO] Error al revertir:', error);
+        mostrarToast('❌ Error al revertir el presupuesto. Intente nuevamente.', 'error');
+    }
+}
+
+// Exponer funciones globalmente
 window.marcarComoRetiraDeposito = marcarComoRetiraDeposito;
+window.revertirRetiraDeposito = revertirRetiraDeposito;
 
 console.log('✅ [RETIRA-DEPOSITO] Módulo de "Retira por Depósito" cargado');
