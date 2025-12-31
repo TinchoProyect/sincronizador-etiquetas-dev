@@ -249,8 +249,10 @@ async function renderizarRutas() {
         });
     }
     
-    // Renderizar rutas finalizadas en acordeón (colapsado por defecto)
+    // Renderizar rutas finalizadas con agrupación jerárquica (Año > Mes > Rutas)
     if (rutasFinalizadas.length > 0) {
+        const gruposAñoMes = agruparRutasPorAñoYMes(rutasFinalizadas);
+        
         html += `
             <div class="rutas-grupo">
                 <div class="rutas-grupo-header finalizadas collapsed" onclick="toggleGrupoRutas('finalizadas')">
@@ -261,7 +263,49 @@ async function renderizarRutas() {
                     <span class="rutas-grupo-icono">▼</span>
                 </div>
                 <div class="rutas-grupo-contenido collapsed" id="grupo-finalizadas">
-                    ${rutasFinalizadas.map(ruta => renderizarTarjetaRuta(ruta)).join('')}
+        `;
+        
+        // Renderizar cada año
+        gruposAñoMes.forEach(grupoAño => {
+            const totalRutasAño = grupoAño.meses.reduce((sum, mes) => sum + mes.rutas.length, 0);
+            
+            html += `
+                <div class="año-grupo">
+                    <div class="año-header collapsed" data-año="${grupoAño.año}" onclick="toggleGrupoAño(${grupoAño.año})">
+                        <div class="año-titulo">
+                            <span>📅 ${grupoAño.año}</span>
+                            <span class="año-contador">${totalRutasAño} ruta${totalRutasAño !== 1 ? 's' : ''}</span>
+                        </div>
+                        <span class="año-icono">▼</span>
+                    </div>
+                    <div class="año-contenido collapsed" id="año-${grupoAño.año}">
+            `;
+            
+            // Renderizar cada mes dentro del año
+            grupoAño.meses.forEach(grupoMes => {
+                html += `
+                    <div class="mes-grupo">
+                        <div class="mes-header collapsed" data-año="${grupoAño.año}" data-mes="${grupoMes.mes}" onclick="toggleGrupoMes(${grupoAño.año}, ${grupoMes.mes})">
+                            <div class="mes-titulo">
+                                <span>${grupoMes.nombreMes}</span>
+                                <span class="mes-contador">${grupoMes.rutas.length}</span>
+                            </div>
+                            <span class="mes-icono">▼</span>
+                        </div>
+                        <div class="mes-contenido collapsed" id="mes-${grupoAño.año}-${grupoMes.mes}">
+                            ${grupoMes.rutas.map(ruta => renderizarTarjetaRuta(ruta)).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `
                 </div>
             </div>
         `;
@@ -302,6 +346,77 @@ function agruparRutasPorFecha(rutas) {
     
     // Convertir objeto a array y ordenar
     return Object.values(grupos).sort((a, b) => a.fecha - b.fecha);
+}
+
+/**
+ * Agrupar rutas finalizadas por Año > Mes
+ */
+function agruparRutasPorAñoYMes(rutas) {
+    // Ordenar por fecha descendente (más recientes primero)
+    const rutasOrdenadas = rutas.sort((a, b) => {
+        const fechaA = new Date(a.fecha_salida);
+        const fechaB = new Date(b.fecha_salida);
+        return fechaB - fechaA; // Descendente
+    });
+    
+    // Agrupar por año y mes
+    const gruposPorAño = {};
+    
+    rutasOrdenadas.forEach(ruta => {
+        const fecha = new Date(ruta.fecha_salida);
+        const año = fecha.getFullYear();
+        const mes = fecha.getMonth(); // 0-11
+        
+        // Crear grupo de año si no existe
+        if (!gruposPorAño[año]) {
+            gruposPorAño[año] = {
+                año: año,
+                meses: {}
+            };
+        }
+        
+        // Crear grupo de mes si no existe
+        if (!gruposPorAño[año].meses[mes]) {
+            gruposPorAño[año].meses[mes] = {
+                mes: mes,
+                nombreMes: obtenerNombreMes(mes),
+                rutas: []
+            };
+        }
+        
+        // Agregar ruta al mes correspondiente
+        gruposPorAño[año].meses[mes].rutas.push(ruta);
+    });
+    
+    // Convertir a array y ordenar años descendente (más reciente primero)
+    const añosArray = Object.keys(gruposPorAño)
+        .map(año => parseInt(año))
+        .sort((a, b) => b - a);
+    
+    const resultado = añosArray.map(año => {
+        // Convertir meses a array y ordenar descendente (más reciente primero)
+        const mesesArray = Object.keys(gruposPorAño[año].meses)
+            .map(mes => parseInt(mes))
+            .sort((a, b) => b - a);
+        
+        return {
+            año: año,
+            meses: mesesArray.map(mes => gruposPorAño[año].meses[mes])
+        };
+    });
+    
+    return resultado;
+}
+
+/**
+ * Obtener nombre del mes
+ */
+function obtenerNombreMes(numeroMes) {
+    const meses = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    return meses[numeroMes];
 }
 
 /**
@@ -366,6 +481,54 @@ function toggleGrupoRutas(grupoId) {
         header.classList.add('collapsed');
         contenido.classList.add('collapsed');
         console.log(`[DASHBOARD] Grupo ${grupoId} colapsado`);
+    }
+}
+
+/**
+ * Toggle acordeón de año
+ */
+function toggleGrupoAño(año) {
+    const header = document.querySelector(`.año-header[data-año="${año}"]`);
+    const contenido = document.getElementById(`año-${año}`);
+    
+    if (!header || !contenido) return;
+    
+    const estaColapsado = header.classList.contains('collapsed');
+    
+    if (estaColapsado) {
+        // Expandir
+        header.classList.remove('collapsed');
+        contenido.classList.remove('collapsed');
+        console.log(`[DASHBOARD] Año ${año} expandido`);
+    } else {
+        // Colapsar
+        header.classList.add('collapsed');
+        contenido.classList.add('collapsed');
+        console.log(`[DASHBOARD] Año ${año} colapsado`);
+    }
+}
+
+/**
+ * Toggle acordeón de mes
+ */
+function toggleGrupoMes(año, mes) {
+    const header = document.querySelector(`.mes-header[data-año="${año}"][data-mes="${mes}"]`);
+    const contenido = document.getElementById(`mes-${año}-${mes}`);
+    
+    if (!header || !contenido) return;
+    
+    const estaColapsado = header.classList.contains('collapsed');
+    
+    if (estaColapsado) {
+        // Expandir
+        header.classList.remove('collapsed');
+        contenido.classList.remove('collapsed');
+        console.log(`[DASHBOARD] Mes ${mes} del año ${año} expandido`);
+    } else {
+        // Colapsar
+        header.classList.add('collapsed');
+        contenido.classList.add('collapsed');
+        console.log(`[DASHBOARD] Mes ${mes} del año ${año} colapsado`);
     }
 }
 
