@@ -109,7 +109,10 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 FROM public.presupuestos p
                 LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
                 WHERE p.activo = true 
-                  AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
+                  AND (
+                      REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
+                      OR p.estado = 'Retira por Deposito'
+                  )
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
                   AND ($4::text IS NULL OR p.id IN (SELECT unnest(string_to_array($4, ','))::integer))
@@ -1001,6 +1004,7 @@ const actualizarPackMapping = async (req, res) => {
 
 /**
  * Actualiza la secuencia de uno o varios presupuestos
+ * 🔧 CORRECCIÓN: Cuando se marca como "Retira_Deposito", también actualiza estado y estado_logistico
  */
 const actualizarSecuenciaPresupuestos = async (req, res) => {
     try {
@@ -1031,19 +1035,58 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
             nueva_secuencia 
         });
         
-        // Actualizar secuencia en la base de datos
-        const updateQuery = `
-            UPDATE public.presupuestos
-            SET secuencia = $1,
-                fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
-            WHERE id_presupuesto_ext = ANY($2::text[])
-              AND activo = true
-            RETURNING id_presupuesto_ext, secuencia
-        `;
+        // 🔧 CORRECCIÓN: Determinar si necesitamos actualizar estado y estado_logistico
+        let updateQuery;
+        let queryParams;
         
-        const result = await pool.query(updateQuery, [nueva_secuencia, presupuestos_ids]);
+        if (nueva_secuencia === 'Retira_Deposito') {
+            // Para "Retira por Depósito": actualizar secuencia, estado y estado_logistico
+            console.log('🏪 [RETIRA-DEPOSITO] Actualizando secuencia + estado + estado_logistico');
+            
+            updateQuery = `
+                UPDATE public.presupuestos
+                SET secuencia = $1,
+                    estado = $2,
+                    estado_logistico = $3,
+                    fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
+                WHERE id_presupuesto_ext = ANY($4::text[])
+                  AND activo = true
+                RETURNING id_presupuesto_ext, secuencia, estado, estado_logistico
+            `;
+            
+            queryParams = [
+                nueva_secuencia,           // $1: secuencia = 'Retira_Deposito'
+                'Retira por Deposito',     // $2: estado = 'Retira por Deposito' (sin tilde)
+                'PENDIENTE',               // $3: estado_logistico = 'PENDIENTE'
+                presupuestos_ids           // $4: array de IDs
+            ];
+        } else {
+            // Para otras secuencias: solo actualizar secuencia (comportamiento original)
+            updateQuery = `
+                UPDATE public.presupuestos
+                SET secuencia = $1,
+                    fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
+                WHERE id_presupuesto_ext = ANY($2::text[])
+                  AND activo = true
+                RETURNING id_presupuesto_ext, secuencia
+            `;
+            
+            queryParams = [nueva_secuencia, presupuestos_ids];
+        }
+        
+        const result = await pool.query(updateQuery, queryParams);
         
         console.log(`✅ [SECUENCIA] Actualizados: ${result.rowCount} presupuestos`);
+        
+        if (nueva_secuencia === 'Retira_Deposito' && result.rowCount > 0) {
+            console.log('✅ [RETIRA-DEPOSITO] Campos actualizados correctamente:');
+            result.rows.forEach(row => {
+                console.log(`   - Presupuesto ${row.id_presupuesto_ext}:`);
+                console.log(`     * secuencia: ${row.secuencia}`);
+                console.log(`     * estado: ${row.estado}`);
+                console.log(`     * estado_logistico: ${row.estado_logistico}`);
+            });
+        }
         
         if (result.rowCount === 0) {
             return res.status(404).json({
