@@ -341,7 +341,7 @@ const ModalAbrirCaja = (function() {
         try {
             mostrarMensaje('Imprimiendo etiquetas...', 'info');
             
-            const response = await fetch('/api/imprimir', {
+            const response = await fetch('http://localhost:3000/api/imprimir', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
