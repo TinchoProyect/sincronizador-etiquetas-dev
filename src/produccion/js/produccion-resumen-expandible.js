@@ -374,10 +374,20 @@ async function crearFilaHija(parentTr, datosPadre, mapping) {
 
 /**
  * Función para manejar el clic en la fila expandible (delegación)
+ * Ahora incluye soporte para menú contextual (click derecho)
  */
 async function handleFilaClick(codigoPadre, event) {
     if (event) {
         event.stopPropagation();
+    }
+    
+    // Detectar click derecho (contextmenu)
+    // event.button === 2 para mousedown/mouseup
+    // event.type === 'contextmenu' para oncontextmenu
+    if (event && (event.button === 2 || event.type === 'contextmenu')) {
+        event.preventDefault();
+        mostrarMenuContextual(codigoPadre, event);
+        return;
     }
     
     if (event && (event.target.tagName === 'BUTTON' || event.target.closest('button'))) {
@@ -390,6 +400,76 @@ async function handleFilaClick(codigoPadre, event) {
     }
     
     await toggleExpandirArticulo(fila);
+}
+
+/**
+ * Mostrar menú contextual al hacer click derecho en una fila
+ */
+function mostrarMenuContextual(codigoPadre, event) {
+    console.log(`🖱️ [CONTEXT-MENU] Click derecho en artículo: ${codigoPadre}`);
+    
+    // Remover menú anterior si existe
+    const menuAnterior = document.getElementById('context-menu-articulo');
+    if (menuAnterior) {
+        menuAnterior.remove();
+    }
+    
+    // Obtener datos del artículo
+    let datosArticulo = null;
+    
+    // Buscar en datos compartidos
+    if (window.__resumenFaltantesDatos && Array.isArray(window.__resumenFaltantesDatos)) {
+        datosArticulo = window.__resumenFaltantesDatos.find(art => 
+            art.articulo_numero === codigoPadre || art.codigo === codigoPadre
+        );
+    }
+    
+    // Fallback: buscar en datosArticulosCompartidos
+    if (!datosArticulo && window.datosArticulosCompartidos && Array.isArray(window.datosArticulosCompartidos)) {
+        datosArticulo = window.datosArticulosCompartidos.find(art => 
+            art.articulo_numero === codigoPadre || art.codigo === codigoPadre
+        );
+    }
+    
+    // Crear menú contextual
+    const menu = document.createElement('div');
+    menu.id = 'context-menu-articulo';
+    menu.style.cssText = `
+        position: fixed;
+        left: ${event.clientX}px;
+        top: ${event.clientY}px;
+        background: white;
+        border: 2px solid #007bff;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 10000;
+        min-width: 200px;
+        overflow: hidden;
+    `;
+    
+    // Agregar opción "Abrir Caja" usando la función del módulo
+    if (typeof window.agregarOpcionAbrirCajaAlMenu === 'function') {
+        window.agregarOpcionAbrirCajaAlMenu(menu, codigoPadre, datosArticulo);
+    }
+    
+    // Agregar otras opciones del menú (si las hay en el futuro)
+    // ...
+    
+    document.body.appendChild(menu);
+    
+    // Cerrar menú al hacer click fuera
+    const cerrarMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', cerrarMenu);
+        }
+    };
+    
+    setTimeout(() => {
+        document.addEventListener('click', cerrarMenu);
+    }, 100);
+    
+    console.log('✅ [CONTEXT-MENU] Menú contextual mostrado');
 }
 
 /**

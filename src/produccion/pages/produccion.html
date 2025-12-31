@@ -668,6 +668,86 @@
             background-color: #5a2d91;
         }
 
+        /* Estilos para el menú contextual */
+        .context-menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .context-menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .context-menu-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Estilos adicionales para modal Abrir Caja */
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover:not(:disabled) {
+            background-color: #138496;
+        }
+
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background-color: #218838;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #5a6268;
+        }
+
         .modal-pack-overlay {
             position: fixed;
             top: 0;
@@ -1894,11 +1974,80 @@
         </footer>
     </div>
 
+    <!-- Modal Abrir Caja (HTML estático para evitar problemas de timing) -->
+    <script>console.log('🔍 [DEBUG] Cargando modal-abrir-caja en HTML...');</script>
+    <div id="modal-abrir-caja" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 650px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header" style="cursor: move;" id="modal-abrir-caja-header">
+                <h3>🔓 Abrir Caja</h3>
+                <button class="modal-close" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()" aria-label="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
+                    <div style="font-size: 18px; font-weight: 700; color: #1565c0;" id="unidad-descripcion-caja">-</div>
+                    <div style="font-size: 13px; color: #424242; margin-top: 5px;">
+                        Código: <span id="unidad-codigo-caja" style="font-family: monospace; font-weight: 600;">-</span>
+                    </div>
+                    <div style="font-size: 13px; color: #424242;">
+                        Stock actual: <span id="unidad-stock-caja" style="font-weight: 700; color: #2196f3;">-</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Usuario: <span style="color: #d32f2f;">*</span></label>
+                    <select id="abrir-caja-usuario" class="form-control" required>
+                        <option value="">-- Seleccionar usuario --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Cantidad de unidades por caja: <span style="color: #d32f2f;">*</span></label>
+                    <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1" placeholder="Ej: 12" required>
+                    <small style="color: #757575;">¿Cuántas unidades trae la caja?</small>
+                </div>
+                <div id="sugerencias-container-caja" style="margin: 20px 0; display: none;">
+                    <label style="font-weight: 600; color: #388e3c;">💡 Sugerencias (basadas en historial):</label>
+                    <div id="sugerencias-lista-caja" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;"></div>
+                </div>
+                <div class="buscador-manual">
+                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔍 Buscar Caja:</label>
+                    <div class="search-mode-tabs">
+                        <button type="button" id="btn-codigo-caja" class="search-tab active">Código de Barras</button>
+                        <button type="button" id="btn-descripcion-caja" class="search-tab">Descripción</button>
+                    </div>
+                    <div id="container-codigo-caja" style="position: relative;">
+                        <input type="text" id="input-codigo-caja" class="form-control" placeholder="Escanear código..." autocomplete="off">
+                    </div>
+                    <div id="container-descripcion-caja" style="position: relative; display: none;">
+                        <input type="text" id="input-descripcion-caja" class="form-control" placeholder="Buscar por descripción..." autocomplete="off">
+                        <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe múltiples palabras separadas por espacio</small>
+                    </div>
+                    <div id="resultados-caja" style="display: none; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"></div>
+                </div>
+                <div id="caja-seleccionada-display" style="display: none; margin: 20px 0; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
+                    <div style="font-weight: 600; color: #2e7d32; font-size: 16px;" id="caja-nombre">-</div>
+                    <div style="font-size: 13px; color: #424242; margin-top: 5px;">
+                        Código: <span id="caja-codigo" style="font-family: monospace; font-weight: 600;">-</span>
+                    </div>
+                    <div style="font-size: 13px; color: #424242;">
+                        Stock: <span id="caja-stock" style="font-weight: 700; color: #4caf50;">-</span>
+                    </div>
+                </div>
+                <div id="mensaje-abrir-caja" style="display: none; margin-top: 15px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-imprimir-caja" class="btn btn-info" disabled>🏷️ Imprimir Etiquetas</button>
+                <button id="btn-confirmar-caja" class="btn btn-success" disabled>🔓 Abrir Caja</button>
+                <button class="btn btn-secondary" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/js/produccion.js?v=8.0"></script>
-    <script src="/js/produccion-resumen-expandible.js?v=18.0"></script>
+    <script src="/js/produccion-resumen-expandible.js?v=18.2"></script>
     <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     <script src="/js/configurar-carros-ui.js?v=2.3"></script>
     <script src="/js/derivar-compras.js?v=1.0"></script>
+    <script>console.log('🔍 [DEBUG] Modal HTML cargado, ID:', document.getElementById('modal-abrir-caja') ? 'ENCONTRADO' : 'NO ENCONTRADO');</script>
+    <script src="/js/modal-abrir-caja.js?v=2.6"></script>
     
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -2198,10 +2347,13 @@
             const idPresupuestoExtEscapado = String(idPresupuestoExt).replace(/'/g, "\\'");
             const codigoBarrasEscapado = codigoBarras.replace(/'/g, "\\'");
             
-            // IMPORTANTE: Agregar onclick a la fila completa (igual que en produccion.js)
-            // Esto permite que handleFilaClick se ejecute al hacer click en cualquier parte de la fila
+            // IMPORTANTE: Agregar onclick y oncontextmenu a la fila completa
+            // onclick: maneja click izquierdo para expandir
+            // oncontextmenu: maneja click derecho para menú contextual
             const html = `
-                <tr class="${rowClass}" data-articulo="${codigoArticulo}" data-articulo-numero="${codigoArticulo}" onclick="if(typeof window.handleFilaClick === 'function') window.handleFilaClick('${codigoArticulo}', event)">
+                <tr class="${rowClass}" data-articulo="${codigoArticulo}" data-articulo-numero="${codigoArticulo}" 
+                    onclick="if(typeof window.handleFilaClick === 'function') window.handleFilaClick('${codigoArticulo}', event)"
+                    oncontextmenu="if(typeof window.handleFilaClick === 'function') { window.handleFilaClick('${codigoArticulo}', event); return false; }">
                     <td class="col-articulo">${codigoArticulo}</td>
                     <td class="descripcion-col">${descripcion}</td>
                     <td>${pedidoTotal}</td>

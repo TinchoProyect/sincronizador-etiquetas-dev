@@ -28,6 +28,16 @@ const tiemposRouter = require('./routes/tiemposCarro');
 app.use('/api/tiempos', tiemposRouter);
 app.use('/api/produccion', produccionRoutes);
 
+// Middleware para deshabilitar caché en archivos HTML
+app.use('/pages', (req, res, next) => {
+    if (req.url.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    }
+    next();
+});
+
 // Configuración de archivos estáticos y rutas base
 app.use(express.static(__dirname));
 app.use('/pages', express.static(path.join(__dirname, 'pages')));

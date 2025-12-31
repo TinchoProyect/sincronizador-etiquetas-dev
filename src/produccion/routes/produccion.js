@@ -1039,6 +1039,69 @@ router.put('/carro/:carroId/articulo/:articuloId', async (req, res) => {
 const { registrarMovimientoStockVentas } = require('../controllers/stockVentasMovimientos');
 router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
 
+// ==========================================
+// RUTAS PARA ABRIR CAJA
+// ==========================================
+
+const {
+    obtenerSugerenciasCajas,
+    buscarCajas,
+    registrarAperturaCaja
+} = require('../controllers/abrirCaja');
+
+/**
+ * Obtener sugerencias inteligentes de cajas basadas en historial
+ * GET /api/produccion/abrir-caja/sugerencias?articulo_unidad=CODIGO
+ */
+router.get('/abrir-caja/sugerencias', async (req, res) => {
+    try {
+        console.log('🔍 [ABRIR-CAJA] Ruta GET /abrir-caja/sugerencias');
+        await obtenerSugerenciasCajas(req, res);
+    } catch (error) {
+        console.error('❌ [ABRIR-CAJA] Error en ruta /abrir-caja/sugerencias:', error);
+        res.status(500).json({
+            error: 'Error al obtener sugerencias',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Buscar cajas por código de barras o descripción
+ * GET /api/produccion/abrir-caja/buscar?codigo_barras=XXX
+ * GET /api/produccion/abrir-caja/buscar?descripcion=texto
+ */
+router.get('/abrir-caja/buscar', async (req, res) => {
+    try {
+        console.log('🔍 [ABRIR-CAJA] Ruta GET /abrir-caja/buscar');
+        await buscarCajas(req, res);
+    } catch (error) {
+        console.error('❌ [ABRIR-CAJA] Error en ruta /abrir-caja/buscar:', error);
+        res.status(500).json({
+            error: 'Error al buscar cajas',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Registrar apertura de caja (transacción completa)
+ * POST /api/produccion/abrir-caja
+ * Body: { codigo_caja, codigo_unidad, cantidad_unidades, usuario_id, kilos_caja, kilos_unidad }
+ */
+router.post('/abrir-caja', async (req, res) => {
+    try {
+        console.log('🔓 [ABRIR-CAJA] Ruta POST /abrir-caja');
+        await registrarAperturaCaja(req, res);
+    } catch (error) {
+        console.error('❌ [ABRIR-CAJA] Error en ruta /abrir-caja:', error);
+        res.status(500).json({
+            error: 'Error al registrar apertura de caja',
+            detalle: error.message
+        });
+    }
+});
+
 // Ruta para buscar artículo por código de barras
 router.get('/articulos/buscar', async (req, res) => {
     try {
