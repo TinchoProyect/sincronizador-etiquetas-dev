@@ -652,9 +652,13 @@ function inicializarWebSocketIngredientes() {
             }
             
             // Iniciar sesion de inventario de ingredientes
+            // CORRECCION: Enviar objeto usuario completo con id y nombre
             const datosInicioSesion = {
                 sessionId: sessionId,
-                usuario_id: usuarioSeleccionado,
+                usuario: {
+                    id: usuarioSeleccionado,
+                    nombre: usuarioInfo.nombre || "Usuario Desconocido"
+                },
                 sectores: sectores,
                 tipo: "ingredientes"
             };
@@ -1063,29 +1067,41 @@ document.addEventListener("DOMContentLoaded", function() {
         btnFinalizarInventario.addEventListener("click", finalizarInventario);
     }
     
-    const btnCancelarInventario = document.getElementById("btn-cancelar-inventario");
-    if (btnCancelarInventario) {
-        btnCancelarInventario.addEventListener("click", cerrarModal);
-    }
+    // CORRECCIÓN: Usar delegación de eventos para los botones de cancelar
+    // ya que hay múltiples botones con diferentes IDs en diferentes pasos
+    document.addEventListener("click", function(e) {
+        // Botón cancelar inventario (hay uno en cada paso del modal)
+        if (e.target && e.target.id === "btn-cancelar-inventario") {
+            console.log("🔘 [EVENTO] Botón cancelar inventario clickeado");
+            cerrarModal();
+        }
+        
+        // Botón X de cerrar modal de inventario
+        if (e.target && e.target.id === "close-modal") {
+            console.log("🔘 [EVENTO] Botón X de cerrar modal clickeado");
+            cerrarModal();
+        }
+    });
     
     const btnMostrarDiferencias = document.getElementById("btn-mostrar-diferencias");
     if (btnMostrarDiferencias) {
         btnMostrarDiferencias.addEventListener("click", mostrarDiferencias);
     }
     
-    const btnCerrarDiferencias = document.getElementById("btn-cerrar-diferencias");
-    if (btnCerrarDiferencias) {
-        btnCerrarDiferencias.addEventListener("click", () => {
+    // CORRECCIÓN: Usar delegación de eventos para modal de diferencias
+    document.addEventListener("click", function(e) {
+        // Botón cerrar diferencias
+        if (e.target && e.target.id === "btn-cerrar-diferencias") {
+            console.log("🔘 [EVENTO] Botón cerrar diferencias clickeado");
             document.getElementById("modal-diferencias").style.display = "none";
-        });
-    }
-    
-    const closeModalDiferencias = document.getElementById("close-modal-diferencias");
-    if (closeModalDiferencias) {
-        closeModalDiferencias.addEventListener("click", () => {
+        }
+        
+        // Botón X de cerrar modal de diferencias
+        if (e.target && e.target.id === "close-modal-diferencias") {
+            console.log("🔘 [EVENTO] Botón X de cerrar diferencias clickeado");
             document.getElementById("modal-diferencias").style.display = "none";
-        });
-    }
+        }
+    });
     
     const btnGuardarCorrecciones = document.getElementById("btn-guardar-correcciones");
     if (btnGuardarCorrecciones) {
@@ -1112,20 +1128,26 @@ document.addEventListener("DOMContentLoaded", function() {
         btnContinuarAjustes.addEventListener("click", mostrarPasoAjuste);
     }
     
-    const btnCancelarAjustes = document.getElementById("btn-cancelar-ajustes");
-    if (btnCancelarAjustes) {
-        btnCancelarAjustes.addEventListener("click", () => cerrarModalAjustes(true));
-    }
-    
-    const btnFinalizarAjustes = document.getElementById("btn-finalizar-ajustes");
-    if (btnFinalizarAjustes) {
-        btnFinalizarAjustes.addEventListener("click", finalizarAjustesPuntuales);
-    }
-    
-    const closeModalAjustes = document.getElementById("close-modal-ajustes");
-    if (closeModalAjustes) {
-        closeModalAjustes.addEventListener("click", () => cerrarModalAjustes(true));
-    }
+    // CORRECCIÓN: Usar delegación de eventos para modal de ajustes
+    document.addEventListener("click", function(e) {
+        // Botón cancelar ajustes (hay uno en cada paso)
+        if (e.target && e.target.id === "btn-cancelar-ajustes") {
+            console.log("🔘 [EVENTO] Botón cancelar ajustes clickeado");
+            cerrarModalAjustes(true);
+        }
+        
+        // Botón finalizar ajustes
+        if (e.target && e.target.id === "btn-finalizar-ajustes") {
+            console.log("🔘 [EVENTO] Botón finalizar ajustes clickeado");
+            finalizarAjustesPuntuales();
+        }
+        
+        // Botón X de cerrar modal de ajustes
+        if (e.target && e.target.id === "close-modal-ajustes") {
+            console.log("🔘 [EVENTO] Botón X de cerrar ajustes clickeado");
+            cerrarModalAjustes(true);
+        }
+    });
     
     // Event listener para select de usuario de ajustes
     const selectUsuarioAjustes = document.getElementById("select-usuario-ajustes");

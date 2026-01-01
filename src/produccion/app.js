@@ -93,13 +93,13 @@ io.on('connection', (socket) => {
     // PC inicia una sesión de inventario (UNIFICADO para artículos e ingredientes)
     socket.on('iniciar_inventario', (data) => {
         const sessionId = data.sessionId;
-        const usuario = data.usuario || null;
+        const usuario = data.usuario || null; // Ahora es un objeto {id, nombre}
         const sectores = data.sectores || null; // Para ingredientes
         const tipoInventario = detectarTipoInventario(sessionId);
         
         console.log(`🚀 [WS] ===== NUEVA SESIÓN DE INVENTARIO (${tipoInventario.toUpperCase()}) =====`);
         console.log('🆔 [WS] Session ID:', sessionId);
-        console.log('👤 [WS] Usuario:', usuario);
+        console.log('👤 [WS] Usuario recibido:', JSON.stringify(usuario));
         console.log('🏷️ [WS] Sectores:', sectores);
         console.log('🔌 [WS] Socket PC:', socket.id);
         
@@ -108,7 +108,7 @@ io.on('connection', (socket) => {
             console.log('⚠️ [WS] Sesión existente, actualizando datos...');
             const sesionExistente = inventarioSesiones.get(sessionId);
             sesionExistente.pcSocketId = socket.id;
-            sesionExistente.usuario = usuario;
+            sesionExistente.usuario = usuario; // Guardar objeto completo
             if (tipoInventario === 'ingredientes') {
                 sesionExistente.sectores = sectores;
                 sesionExistente.tipo = 'ingredientes';
@@ -117,7 +117,7 @@ io.on('connection', (socket) => {
             console.log('✨ [WS] Creando nueva sesión...');
             const sesionData = {
                 pcSocketId: socket.id,
-                usuario: usuario,
+                usuario: usuario, // Guardar objeto completo {id, nombre}
                 items: new Map(),
                 fechaInicio: new Date(),
                 estado: 'activa'
@@ -133,7 +133,7 @@ io.on('connection', (socket) => {
         }
         
         // Emitir respuesta unificada con datos específicos según el tipo
-        const respuesta = { sessionId, usuario };
+        const respuesta = { sessionId, usuario }; // Enviar objeto usuario completo
         if (tipoInventario === 'ingredientes') {
             respuesta.sectores = sectores;
         }
@@ -184,22 +184,24 @@ io.on('connection', (socket) => {
         }
         
         console.log('✅ [WS] Sesión encontrada y válida');
-        console.log('👤 [WS] Usuario de la sesión:', session.usuario);
+        console.log('👤 [WS] Usuario de la sesión:', JSON.stringify(session.usuario));
         
         // Registrar el móvil en la sesión
         session.mobileSocketId = socket.id;
         
-        // Confirmar conexión al móvil con datos específicos según el tipo
+        // CORRECCIÓN: Confirmar conexión al móvil con objeto usuario completo
         const respuestaConexion = { 
             sessionId, 
-            usuario: session.usuario 
+            usuario: session.usuario // Enviar objeto completo {id, nombre}
         };
         
         // Para ingredientes, incluir información de sectores
         if (session.tipo === 'ingredientes' && session.sectores) {
             respuestaConexion.sectores = session.sectores;
+            console.log('🏢 [WS] Incluyendo sectores en respuesta:', session.sectores);
         }
         
+        console.log('📤 [WS] Enviando conexion_exitosa con datos:', JSON.stringify(respuestaConexion));
         socket.emit('conexion_exitosa', respuestaConexion);
         
         // Notificar a la PC
