@@ -15,6 +15,9 @@ let sessionId = null;
 let articuloActual = null;
 let conectado = false;
 let codeReader = null;
+let intentosConexion = 0;
+const MAX_INTENTOS_CONEXION = 3;
+const DELAY_RETRY_MS = 1000;
 
 /**
  * Inicializa la aplicación móvil
@@ -140,18 +143,36 @@ function inicializarWebSocket() {
             console.log('✅ [MÓVIL] Socket ID asignado:', socket.id);
             console.log('✅ [MÓVIL] Estado de conexión:', socket.connected);
             
+            // Resetear contador de intentos al conectar
+            intentosConexion = 0;
+            
+            // Intentar unirse a la sesión
+            intentarUnirseAInventario();
+        });
+        
+        /**
+         * Intenta unirse a la sesión de inventario con retry automático
+         */
+        function intentarUnirseAInventario() {
+            intentosConexion++;
+            
+            console.log(`📤 [MÓVIL] ===== INTENTO DE UNIÓN #${intentosConexion}/${MAX_INTENTOS_CONEXION} =====`);
+            console.log('📤 [MÓVIL] Session ID:', sessionId);
+            console.log('📤 [MÓVIL] Timestamp:', new Date().toISOString());
+            
             // Unirse a la sesión de inventario
             const datosUnion = { 
                 sessionId,
                 timestamp: Date.now(),
-                userAgent: navigator.userAgent
+                userAgent: navigator.userAgent,
+                intento: intentosConexion
             };
             
             console.log('📤 [MÓVIL] Enviando unirse_inventario:');
             console.log(JSON.stringify(datosUnion, null, 2));
             
             socket.emit('unirse_inventario', datosUnion);
-        });
+        }
 
         socket.on('connect_error', (error) => {
             console.error('❌ [MÓVIL] Error de conexión WebSocket:', error);
@@ -162,6 +183,10 @@ function inicializarWebSocket() {
             console.log('🎉 [MÓVIL] ===== CONEXIÓN EXITOSA =====');
             console.log('🎉 [MÓVIL] Timestamp:', new Date().toISOString());
             console.log('🎉 [MÓVIL] Datos completos:', JSON.stringify(data, null, 2));
+            console.log('🎉 [MÓVIL] Conectado en intento:', intentosConexion);
+            
+            // Resetear contador de intentos al conectar exitosamente
+            intentosConexion = 0;
             
             if (!data || !data.sessionId || !data.usuario) {
                 console.error('❌ [MÓVIL] Datos de conexión incompletos');
@@ -203,14 +228,48 @@ function inicializarWebSocket() {
             console.error('❌ [MÓVIL] ERROR DE CONEXIÓN');
             console.error('❌ [MÓVIL] Mensaje:', data.mensaje);
             console.error('❌ [MÓVIL] Datos completos:', data);
-            mostrarSinInventario(data.mensaje || 'Error al conectar con la sesión');
+            console.error('❌ [MÓVIL] Intento actual:', intentosConexion);
+            
+            // CORRECCIÓN: Si es error de sesión no encontrada y quedan intentos, reintentar
+            const esSesionNoEncontrada = data.mensaje && 
+                (data.mensaje.includes('no encontrada') || data.mensaje.includes('expirada'));
+            
+            if (esSesionNoEncontrada && intentosConexion < MAX_INTENTOS_CONEXION) {
+                console.log(`⏳ [MÓVIL] Reintentando conexión en ${DELAY_RETRY_MS}ms...`);
+                console.log(`⏳ [MÓVIL] Intentos restantes: ${MAX_INTENTOS_CONEXION - intentosConexion}`);
+                
+                // Mostrar mensaje temporal al usuario
+                mostrarSinInventario(`Conectando al inventario... (Intento ${intentosConexion}/${MAX_INTENTOS_CONEXION})`);
+                
+                setTimeout(() => {
+                    if (!conectado) {
+                        console.log('🔄 [MÓVIL] Ejecutando reintento...');
+                        intentarUnirseAInventario();
+                    } else {
+                        console.log('✅ [MÓVIL] Ya conectado, cancelando reintento');
+                    }
+                }, DELAY_RETRY_MS);
+            } else {
+                // Mostrar error definitivo después de agotar intentos
+                console.error('❌ [MÓVIL] Intentos agotados o error no recuperable');
+                mostrarSinInventario(data.mensaje || 'Error al conectar con la sesión');
+            }
         });
         
-        socket.on('pc_desconectada', () => {
-            console.log('⚠️ [MÓVIL] PC DESCONECTADA');
+        socket.on('pc_desconectada_temporal', (data) => {
+            console.log('⚠️ [MÓVIL] PC DESCONECTADA TEMPORALMENTE');
+            console.log('⚠️ [MÓVIL] Mensaje:', data.mensaje);
             console.log('⚠️ [MÓVIL] Estado anterior conectado:', conectado);
+            
+            // NO cerrar la conexión, solo mostrar advertencia
+            mostrarMensaje('⚠️ PC desconectada. Esperando reconexión...', 'info');
+        });
+        
+        socket.on('sesion_expirada', (data) => {
+            console.log('❌ [MÓVIL] SESIÓN EXPIRADA DEFINITIVAMENTE');
+            console.log('❌ [MÓVIL] Mensaje:', data.mensaje);
             conectado = false;
-            mostrarSinInventario('La PC se ha desconectado. El inventario ha finalizado.');
+            mostrarSinInventario(data.mensaje || 'La sesión ha expirado. La PC no se reconectó.');
         });
 
         socket.on('inventario_finalizado', (data) => {

@@ -732,7 +732,21 @@ function generarCodigoQR() {
         console.log("📱 [QR] Generando codigo QR para inventario de ingredientes");
         console.log("📱 [QR] Session ID:", sessionId);
         
-        const baseUrl = "https://inventario.lamdaser.com";
+        // CORRECCIÓN: Usar window.location.origin para detectar automáticamente la URL
+        const origenActual = window.location.origin;
+        console.log("🌐 [QR] Origen detectado:", origenActual);
+        
+        // Determinar si estamos en desarrollo local o producción
+        const esDesarrollo = origenActual.includes('localhost') || 
+                            origenActual.includes('127.0.0.1') || 
+                            origenActual.includes('192.168.');
+        
+        // Usar origen actual si es desarrollo, sino usar URL de producción
+        const baseUrl = esDesarrollo ? origenActual : "https://inventario.lamdaser.com";
+        
+        console.log("🌐 [QR] Modo detectado:", esDesarrollo ? 'DESARROLLO' : 'PRODUCCIÓN');
+        console.log("🌐 [QR] Base URL a usar:", baseUrl);
+        
         const urlMovil = baseUrl + "/pages/inventario-movil.html?session=" + encodeURIComponent(sessionId);
         
         console.log("📱 [QR] URL generada:", urlMovil);

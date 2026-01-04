@@ -92,6 +92,7 @@ io.on('connection', (socket) => {
 
     // PC inicia una sesión de inventario (UNIFICADO para artículos e ingredientes)
     socket.on('iniciar_inventario', (data) => {
+        const tiempoInicio = Date.now();
         const sessionId = data.sessionId;
         const usuario = data.usuario || null; // Ahora es un objeto {id, nombre}
         const sectores = data.sectores || null; // Para ingredientes
@@ -102,6 +103,7 @@ io.on('connection', (socket) => {
         console.log('👤 [WS] Usuario recibido:', JSON.stringify(usuario));
         console.log('🏷️ [WS] Sectores:', sectores);
         console.log('🔌 [WS] Socket PC:', socket.id);
+        console.log('⏱️ [WS] Timestamp inicio:', new Date(tiempoInicio).toISOString());
         
         // Verificar si ya existe la sesión
         if (inventarioSesiones.has(sessionId)) {
@@ -109,6 +111,7 @@ io.on('connection', (socket) => {
             const sesionExistente = inventarioSesiones.get(sessionId);
             sesionExistente.pcSocketId = socket.id;
             sesionExistente.usuario = usuario; // Guardar objeto completo
+            sesionExistente.timestampActualizacion = tiempoInicio;
             if (tipoInventario === 'ingredientes') {
                 sesionExistente.sectores = sectores;
                 sesionExistente.tipo = 'ingredientes';
@@ -120,6 +123,7 @@ io.on('connection', (socket) => {
                 usuario: usuario, // Guardar objeto completo {id, nombre}
                 items: new Map(),
                 fechaInicio: new Date(),
+                timestampCreacion: tiempoInicio,
                 estado: 'activa'
             };
             
@@ -132,29 +136,44 @@ io.on('connection', (socket) => {
             inventarioSesiones.set(sessionId, sesionData);
         }
         
-        // Emitir respuesta unificada con datos específicos según el tipo
-        const respuesta = { sessionId, usuario }; // Enviar objeto usuario completo
-        if (tipoInventario === 'ingredientes') {
-            respuesta.sectores = sectores;
-        }
+        const tiempoGuardado = Date.now() - tiempoInicio;
+        console.log(`⏱️ [WS] Sesión guardada en ${tiempoGuardado}ms`);
         
-        socket.emit('inventario_iniciado', respuesta);
-        console.log(`✅ [WS] Sesión de ${tipoInventario} iniciada exitosamente`);
-        console.log('📊 [WS] Total sesiones activas:', inventarioSesiones.size);
+        // CORRECCIÓN CRÍTICA: Usar setImmediate para asegurar que la sesión 
+        // esté completamente persistida antes de notificar a la PC
+        setImmediate(() => {
+            // Emitir respuesta unificada con datos específicos según el tipo
+            const respuesta = { sessionId, usuario }; // Enviar objeto usuario completo
+            if (tipoInventario === 'ingredientes') {
+                respuesta.sectores = sectores;
+            }
+            
+            socket.emit('inventario_iniciado', respuesta);
+            
+            const tiempoTotal = Date.now() - tiempoInicio;
+            console.log(`✅ [WS] Sesión de ${tipoInventario} iniciada exitosamente en ${tiempoTotal}ms`);
+            console.log('📊 [WS] Total sesiones activas:', inventarioSesiones.size);
+        });
     });
 
     // Móvil se une a una sesión (UNIFICADO)
     socket.on('unirse_inventario', (data) => {
+        const tiempoUnion = Date.now();
         const sessionId = data.sessionId;
+        const intentoNumero = data.intento || 1;
+        
         console.log('📱 [WS] ===== MÓVIL INTENTANDO UNIRSE =====');
         console.log('🆔 [WS] Session ID solicitado:', sessionId);
         console.log('🔌 [WS] Socket Móvil:', socket.id);
+        console.log('🔢 [WS] Intento número:', intentoNumero);
+        console.log('⏱️ [WS] Timestamp unión:', new Date(tiempoUnion).toISOString());
         console.log('📊 [WS] Sesiones activas:', Array.from(inventarioSesiones.keys()));
         console.log('🔍 [WS] Datos completos recibidos del móvil:', JSON.stringify(data, null, 2));
         
         const session = inventarioSesiones.get(sessionId);
         
         if (session) {
+            const tiempoDesdeCreacion = tiempoUnion - (session.timestampCreacion || tiempoUnion);
             console.log('✅ [WS] Datos de la sesión encontrada:');
             console.log('- Usuario:', session.usuario);
             console.log('- Estado:', session.estado);
@@ -162,6 +181,12 @@ io.on('connection', (socket) => {
             console.log('- PC Socket:', session.pcSocketId);
             console.log('- Tipo:', session.tipo || 'articulos');
             console.log('- Sectores:', session.sectores);
+            console.log(`⏱️ [WS] Tiempo desde creación de sesión: ${tiempoDesdeCreacion}ms`);
+            
+            // ADVERTENCIA: Detectar posibles race conditions
+            if (tiempoDesdeCreacion < 100) {
+                console.warn(`⚠️ [WS] ADVERTENCIA: Unión muy rápida (${tiempoDesdeCreacion}ms) - Posible race condition evitada`);
+            }
         }
         
         if (!session) {
@@ -308,25 +333,47 @@ io.on('connection', (socket) => {
 
     // Limpiar cuando se desconectan
     socket.on('disconnect', () => {
+        const tiempoDesconexion = Date.now();
         console.log('👋 [WS] ===== CLIENTE DESCONECTADO =====');
         console.log('🔌 [WS] Socket ID:', socket.id);
+        console.log('⏱️ [WS] Timestamp desconexión:', new Date(tiempoDesconexion).toISOString());
         
         // Limpiar sesiones donde este socket era parte
         for (const [sessionId, session] of inventarioSesiones.entries()) {
             if (session.pcSocketId === socket.id) {
                 console.log('💻 [WS] PC desconectada de sesión:', sessionId);
-                // Si se desconecta la PC, notificar al móvil
+                
+                // CORRECCIÓN: No eliminar inmediatamente, dar tiempo para reconexión
+                session.estado = 'esperando_reconexion';
+                session.timestampDesconexion = tiempoDesconexion;
+                
+                // Si se desconecta la PC, notificar al móvil pero NO cerrar sesión aún
                 if (session.mobileSocketId) {
-                    console.log('📱 [WS] Notificando al móvil sobre desconexión de PC');
-                    io.to(session.mobileSocketId).emit('pc_desconectada');
+                    console.log('📱 [WS] Notificando al móvil sobre desconexión temporal de PC');
+                    io.to(session.mobileSocketId).emit('pc_desconectada_temporal', {
+                        mensaje: 'PC desconectada temporalmente. Esperando reconexión...'
+                    });
                 }
-                // Marcar sesión como finalizada
-                session.estado = 'finalizada';
-                // Eliminar después de un breve delay
+                
+                // CORRECCIÓN: Aumentar timeout de 5s a 60s para permitir reconexiones
                 setTimeout(() => {
-                    inventarioSesiones.delete(sessionId);
-                    console.log('🗑️ [WS] Sesión eliminada:', sessionId);
-                }, 5000);
+                    const sesionActual = inventarioSesiones.get(sessionId);
+                    // Solo eliminar si sigue en estado de espera (no se reconectó)
+                    if (sesionActual && sesionActual.estado === 'esperando_reconexion') {
+                        console.log('🗑️ [WS] Sesión eliminada por timeout (60s sin reconexión):', sessionId);
+                        inventarioSesiones.delete(sessionId);
+                        
+                        // Notificar al móvil que la sesión expiró definitivamente
+                        if (sesionActual.mobileSocketId) {
+                            io.to(sesionActual.mobileSocketId).emit('sesion_expirada', {
+                                mensaje: 'La sesión ha expirado. La PC no se reconectó.'
+                            });
+                        }
+                    } else if (sesionActual) {
+                        console.log('✅ [WS] Sesión se reconectó exitosamente, no se eliminó:', sessionId);
+                    }
+                }, 60000); // 60 segundos en lugar de 5
+                
             } else if (session.mobileSocketId === socket.id) {
                 console.log('📱 [WS] Móvil desconectado de sesión:', sessionId);
                 // Si se desconecta el móvil, notificar a la PC
