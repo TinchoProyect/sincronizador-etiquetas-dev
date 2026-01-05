@@ -127,6 +127,48 @@ function inicializarEstadoCheckboxes() {
             console.log('ℹ️ [INIT] Sub-rubro deshabilitado');
         }
     }
+    
+    // ✅ NUEVO: Sincronizar controles según tipo de informe inicial
+    sincronizarControlesPorTipoInforme();
+}
+
+/**
+ * Sincronizar controles de configuración según el tipo de informe
+ * ✅ NUEVO: Deshabilita "Agrupar por Mes" en modo Catálogo
+ */
+function sincronizarControlesPorTipoInforme() {
+    const config = leerConfiguracion();
+    const checkMes = document.getElementById('agrupar-mes');
+    const labelMes = document.querySelector('label[for="agrupar-mes"]');
+    
+    if (!checkMes) return;
+    
+    if (config.tipoInforme === 'catalogo') {
+        // ✅ MODO CATÁLOGO: Deshabilitar agrupación por mes
+        checkMes.disabled = true;
+        checkMes.checked = false;
+        
+        // Aplicar estilo visual de deshabilitado
+        if (labelMes) {
+            labelMes.style.opacity = '0.5';
+            labelMes.style.cursor = 'not-allowed';
+            labelMes.title = 'No disponible en modo Catálogo (los productos no tienen fechas de compra)';
+        }
+        
+        console.log('🔒 [SYNC-CONTROLES] Agrupación por mes DESHABILITADA (modo Catálogo)');
+    } else {
+        // ✅ MODO HISTÓRICO: Habilitar agrupación por mes
+        checkMes.disabled = false;
+        
+        // Restaurar estilo visual
+        if (labelMes) {
+            labelMes.style.opacity = '1';
+            labelMes.style.cursor = 'pointer';
+            labelMes.title = '';
+        }
+        
+        console.log('🔓 [SYNC-CONTROLES] Agrupación por mes HABILITADA (modo Histórico)');
+    }
 }
 
 function manejarCambioRubro() {
@@ -187,19 +229,30 @@ function actualizarPanelFiltrosCompleto() {
     // Determinar modo
     const incluirMeses = config.agruparMes && config.agruparRubro;
     
-    // ✅ FIX: Solo inicializar si el estado está vacío o cambió el modo
+    // ✅ MEJORADO: Reinicializar filtros cuando cambia el tipo de informe o el modo
     const modoActual = estadoFiltros.modo;
     const nuevoModo = incluirMeses ? 'jerarquico' : 'plano';
+    const esCatalogo = datosHistorial.es_catalogo === true;
     
-    if (modoActual !== nuevoModo || Object.keys(estadoFiltros[nuevoModo === 'plano' ? 'rubrosPlanos' : 'rubrosJerarquicos']).length === 0) {
-        // Inicializar filtros solo si es necesario
+    // Condiciones para reinicializar:
+    // 1. Cambió el modo (plano ↔ jerárquico)
+    // 2. Estado vacío
+    // 3. Cambió el tipo de informe (histórico ↔ catálogo)
+    const debeReinicializar = (
+        modoActual !== nuevoModo ||
+        Object.keys(estadoFiltros[nuevoModo === 'plano' ? 'rubrosPlanos' : 'rubrosJerarquicos']).length === 0 ||
+        (esCatalogo && modoActual === 'plano') // Siempre reinicializar en catálogo para actualizar rubros
+    );
+    
+    if (debeReinicializar) {
+        console.log(`🔄 [FILTROS] Reinicializando filtros (modo: ${nuevoModo}, catálogo: ${esCatalogo})`);
         inicializarFiltros(todosProductos, incluirMeses);
     }
     
     // Renderizar panel con el estado actual (preservado)
     renderizarPanelSinReinicializar();
     
-    console.log(`✅ [FILTROS] Panel actualizado (modo: ${estadoFiltros.modo})`);
+    console.log(`✅ [FILTROS] Panel actualizado (modo: ${estadoFiltros.modo}, productos: ${todosProductos.length})`);
 }
 
 /**
@@ -281,29 +334,121 @@ function handleReordenarRubros(rubro1, rubro2, mesKey, insertarAntes) {
 
 async function cargarDatos(clienteId) {
     try {
-        // Cargar historial de entregas (ya incluye datos del cliente desde el backend)
-        const responseHistorial = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
+        const config = leerConfiguracion();
         
-        if (!responseHistorial.ok) {
-            throw new Error(`Error HTTP ${responseHistorial.status}`);
+        if (config.tipoInforme === 'catalogo') {
+            // Cargar catálogo general (Vista Plana)
+            await cargarCatalogoGeneral(clienteId);
+        } else {
+            // Cargar historial de entregas (modo histórico)
+            await cargarHistorialCliente(clienteId);
         }
-        
-        const resultHistorial = await responseHistorial.json();
-        
-        if (!resultHistorial.success || !resultHistorial.data) {
-            throw new Error('No se pudieron cargar los datos');
-        }
-        
-        datosHistorial = resultHistorial.data;
-        
-        console.log(`✅ Datos cargados: ${datosHistorial.total_productos_unicos} productos`);
-        console.log(`👤 Cliente: ${datosHistorial.cliente_apellido || ''} ${datosHistorial.cliente_nombre || ''} (ID: ${datosHistorial.cliente_id})`);
         
     } catch (error) {
         console.error('❌ Error al cargar datos:', error);
         mostrarError(`Error: ${error.message}`);
         throw error;
     }
+}
+
+/**
+ * Cargar historial de entregas del cliente
+ */
+async function cargarHistorialCliente(clienteId) {
+    console.log(`📦 [HISTORIAL] Cargando historial para cliente: ${clienteId}`);
+    
+    const responseHistorial = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
+    
+    if (!responseHistorial.ok) {
+        throw new Error(`Error HTTP ${responseHistorial.status}`);
+    }
+    
+    const resultHistorial = await responseHistorial.json();
+    
+    if (!resultHistorial.success || !resultHistorial.data) {
+        throw new Error('No se pudieron cargar los datos del historial');
+    }
+    
+    datosHistorial = resultHistorial.data;
+    
+    console.log(`✅ Historial cargado: ${datosHistorial.total_productos_unicos} productos`);
+    console.log(`👤 Cliente: ${datosHistorial.cliente_apellido || ''} ${datosHistorial.cliente_nombre || ''} (ID: ${datosHistorial.cliente_id})`);
+}
+
+/**
+ * Cargar catálogo general de productos (Vista Plana)
+ */
+async function cargarCatalogoGeneral(clienteId) {
+    console.log(`📋 [CATALOGO] Cargando catálogo general para cliente: ${clienteId}`);
+    
+    // Cargar datos del cliente primero
+    const responseCliente = await fetch(`/api/presupuestos/clientes/${clienteId}`);
+    
+    if (!responseCliente.ok) {
+        throw new Error(`Error al cargar datos del cliente: HTTP ${responseCliente.status}`);
+    }
+    
+    const resultCliente = await responseCliente.json();
+    
+    if (!resultCliente.success || !resultCliente.data) {
+        throw new Error('No se pudieron cargar los datos del cliente');
+    }
+    
+    const cliente = resultCliente.data;
+    
+    // Cargar catálogo general con paginación (cargar todos los productos)
+    const responseCatalogo = await fetch(`/api/presupuestos/catalogo-general?cliente_id=${clienteId}&pageSize=10000`);
+    
+    if (!responseCatalogo.ok) {
+        throw new Error(`Error HTTP ${responseCatalogo.status}`);
+    }
+    
+    const resultCatalogo = await responseCatalogo.json();
+    
+    if (!resultCatalogo.success || !resultCatalogo.data) {
+        throw new Error('No se pudieron cargar los datos del catálogo');
+    }
+    
+    // Transformar datos del catálogo al formato esperado por el renderizador
+    // Simular estructura de "grupos" como si fuera historial
+    const productosTransformados = resultCatalogo.data.map(producto => ({
+        codigo_barras: producto.descripcion, // No tenemos código de barras en catálogo
+        articulo_numero: producto.descripcion,
+        descripcion: producto.descripcion,
+        cantidad: 0, // No hay cantidad en catálogo
+        fecha_entrega: new Date().toISOString(), // Fecha actual
+        presupuesto_id: null,
+        precio_actual: producto.precio_actual,
+        iva_actual: producto.iva,
+        lista_precios: producto.lista_precios,
+        rubro: producto.rubro,
+        sub_rubro: producto.sub_rubro,
+        kilos_unidad: producto.kilos_unidad,
+        precio_por_kilo: producto.precio_por_kilo,
+        stock_consolidado: producto.stock_consolidado,
+        es_pack: producto.es_pack,
+        pack_unidades: producto.pack_unidades,
+        es_producible: false // Catálogo no incluye producibilidad
+    }));
+    
+    // Crear estructura compatible con el renderizador
+    datosHistorial = {
+        cliente_id: cliente.id_cliente,
+        cliente_nombre: cliente.nombre,
+        cliente_apellido: cliente.apellido,
+        total_productos_unicos: productosTransformados.length,
+        total_registros_originales: productosTransformados.length,
+        grupos: [{
+            key: 'catalogo',
+            label: 'Catálogo General',
+            productos: productosTransformados
+        }],
+        sin_historial: false,
+        es_catalogo: true // Flag para identificar que es catálogo
+    };
+    
+    console.log(`✅ Catálogo cargado: ${productosTransformados.length} productos`);
+    console.log(`👤 Cliente: ${cliente.apellido || ''} ${cliente.nombre || ''} (ID: ${cliente.id_cliente})`);
 }
 
 // ============================================
@@ -1238,6 +1383,39 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     inicializarEstadoCheckboxes();
     inicializarPanelResizable();
+    
+    // Agregar listener para cambio de tipo de informe
+    document.querySelectorAll('input[name="tipo-informe"]').forEach(radio => {
+        radio.addEventListener('change', async () => {
+            console.log(`🔄 [TIPO-INFORME] Cambiando a: ${radio.value}`);
+            
+            // ✅ PASO 1: Sincronizar controles ANTES de cargar datos
+            sincronizarControlesPorTipoInforme();
+            
+            // Mostrar loading
+            const hoja = document.getElementById('hoja-informe');
+            if (hoja) {
+                hoja.innerHTML = `
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                        <p>Cargando ${radio.value === 'catalogo' ? 'catálogo general' : 'historial del cliente'}...</p>
+                    </div>
+                `;
+            }
+            
+            // ✅ PASO 2: Recargar datos según el tipo seleccionado
+            await cargarDatos(clienteId);
+            
+            // ✅ PASO 3: Actualizar panel de filtros con los nuevos datos
+            // Esto reinicializará los filtros con los rubros del catálogo o historial
+            actualizarPanelFiltrosCompleto();
+            
+            // ✅ PASO 4: Renderizar informe
+            renderizarInforme();
+            
+            console.log(`✅ [TIPO-INFORME] Cambio completado a: ${radio.value}`);
+        });
+    });
     
     await cargarDatos(clienteId);
     

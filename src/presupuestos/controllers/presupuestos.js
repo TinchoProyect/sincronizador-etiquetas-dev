@@ -2416,6 +2416,219 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
     }
 };
 
+/**
+ * Obtener catálogo general de productos con precios
+ * Vista plana sin filtro de cliente específico
+ * ✅ CORREGIDO: Consulta SQL simplificada y manejo robusto de errores
+ */
+const obtenerCatalogoGeneral = async (req, res) => {
+    const requestId = `catalogo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🔍 [PRESUPUESTOS] ${requestId} - Obteniendo catálogo general`);
+
+    try {
+        const { cliente_id, page = 1, pageSize = 50, search = '' } = req.query;
+
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Parámetros:`, {
+            cliente_id,
+            page,
+            pageSize,
+            search: search ? `"${search}"` : '(vacío)'
+        });
+
+        // Determinar lista de precios del cliente (default 1)
+        let listaPrecios = 1;
+        if (cliente_id) {
+            try {
+                console.log(`🔍 [PRESUPUESTOS] ${requestId} - Consultando lista de precios del cliente ${cliente_id}`);
+                const clienteQuery = await req.db.query(
+                    'SELECT lista_precios FROM public.clientes WHERE cliente_id = $1 LIMIT 1',
+                    [parseInt(cliente_id)]
+                );
+                if (clienteQuery.rows.length > 0) {
+                    const lista = parseInt(clienteQuery.rows[0].lista_precios);
+                    if (!isNaN(lista) && lista >= 1 && lista <= 5) {
+                        listaPrecios = lista;
+                        console.log(`✅ [PRESUPUESTOS] ${requestId} - Lista de precios del cliente: ${listaPrecios}`);
+                    }
+                }
+            } catch (error) {
+                console.warn(`⚠️ [PRESUPUESTOS] ${requestId} - Error obteniendo lista de precios del cliente:`, error.message);
+            }
+        }
+
+        const currentPage = parseInt(page);
+        const itemsPerPage = parseInt(pageSize);
+        const offset = (currentPage - 1) * itemsPerPage;
+
+        console.log(`📄 [PRESUPUESTOS] ${requestId} - Paginación: página ${currentPage}, ${itemsPerPage} items por página`);
+
+        // ✅ CONSULTA SIMPLIFICADA: Sin subconsultas complejas en el SELECT
+        // ✅ CORREGIDO: Eliminada condición WHERE pa.activo (la columna no existe)
+        let query = `
+            SELECT
+                pa.descripcion,
+                pa.precio_neg as precio_lista1,
+                pa.mayorista as precio_lista2,
+                pa.especial_brus as precio_lista3,
+                pa.consumidor_final as precio_lista4,
+                pa.lista_5 as precio_lista5,
+                pa.iva,
+                pa.rubro,
+                pa.sub_rubro,
+                COALESCE(src.stock_consolidado, 0) as stock_consolidado,
+                COALESCE(src.kilos_unidad, 0) as kilos_unidad,
+                COALESCE(src.es_pack, false) as es_pack,
+                COALESCE(src.pack_unidades, 0) as pack_unidades
+            FROM public.precios_articulos pa
+            LEFT JOIN public.stock_real_consolidado src ON LOWER(pa.descripcion) = LOWER(src.descripcion)
+            WHERE 1=1
+        `;
+
+        const params = [];
+        let paramCount = 0;
+
+        // Filtro de búsqueda
+        if (search && search.trim()) {
+            paramCount++;
+            query += ` AND LOWER(pa.descripcion) ILIKE $${paramCount}`;
+            params.push(`%${search.trim().toLowerCase()}%`);
+            console.log(`🔍 [PRESUPUESTOS] ${requestId} - Aplicando filtro de búsqueda: "${search}"`);
+        }
+
+        // Consulta para totales
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Ejecutando consulta de conteo...`);
+        const countQuery = query.replace(/SELECT[\s\S]+FROM/, 'SELECT COUNT(*) as total FROM');
+        
+        let totalRecords = 0;
+        try {
+            const countResult = await req.db.query(countQuery, params);
+            totalRecords = parseInt(countResult.rows[0].total);
+            console.log(`✅ [PRESUPUESTOS] ${requestId} - Total de registros encontrados: ${totalRecords}`);
+        } catch (countError) {
+            console.error(`❌ [PRESUPUESTOS] ${requestId} - Error en consulta de conteo:`, countError.message);
+            throw new Error(`Error al contar registros: ${countError.message}`);
+        }
+
+        // Agregar ordenamiento y paginación
+        query += ` ORDER BY pa.descripcion ASC`;
+
+        if (itemsPerPage > 0) {
+            paramCount++;
+            query += ` LIMIT $${paramCount}`;
+            params.push(itemsPerPage);
+
+            paramCount++;
+            query += ` OFFSET $${paramCount}`;
+            params.push(offset);
+        }
+
+        console.log(`📋 [PRESUPUESTOS] ${requestId} - Ejecutando consulta principal...`);
+        console.log(`📋 [PRESUPUESTOS] ${requestId} - SQL:`, query.substring(0, 200) + '...');
+        console.log(`📋 [PRESUPUESTOS] ${requestId} - Parámetros:`, params);
+
+        let result;
+        try {
+            result = await req.db.query(query, params);
+            console.log(`✅ [PRESUPUESTOS] ${requestId} - Consulta ejecutada: ${result.rows.length} filas obtenidas`);
+        } catch (queryError) {
+            console.error(`❌ [PRESUPUESTOS] ${requestId} - Error en consulta principal:`, queryError.message);
+            console.error(`❌ [PRESUPUESTOS] ${requestId} - Stack:`, queryError.stack);
+            throw new Error(`Error al ejecutar consulta: ${queryError.message}`);
+        }
+
+        // ✅ PROCESAMIENTO EN JAVASCRIPT: Calcular stock virtual aquí en lugar de SQL
+        console.log(`🔄 [PRESUPUESTOS] ${requestId} - Procesando resultados...`);
+        const productos = result.rows.map((producto, index) => {
+            try {
+                // Determinar precio según lista
+                let precioActual = 0;
+                switch (listaPrecios) {
+                    case 1: precioActual = parseFloat(producto.precio_lista1 || 0); break;
+                    case 2: precioActual = parseFloat(producto.precio_lista2 || 0); break;
+                    case 3: precioActual = parseFloat(producto.precio_lista3 || 0); break;
+                    case 4: precioActual = parseFloat(producto.precio_lista4 || 0); break;
+                    case 5: precioActual = parseFloat(producto.precio_lista5 || 0); break;
+                    default: precioActual = parseFloat(producto.precio_lista1 || 0);
+                }
+
+                // Calcular precio por kilo si aplica
+                const kilosUnidad = parseFloat(producto.kilos_unidad || 0);
+                const precioPorKilo = kilosUnidad > 0 ? parseFloat((precioActual / kilosUnidad).toFixed(2)) : 0;
+
+                // ✅ CÁLCULO DE STOCK VIRTUAL EN JAVASCRIPT
+                const stockConsolidado = parseFloat(producto.stock_consolidado || 0);
+                const esPack = producto.es_pack === true || producto.es_pack === 't';
+                const packUnidades = parseInt(producto.pack_unidades || 0);
+                
+                let stockVirtual = stockConsolidado;
+                if (esPack && packUnidades > 0) {
+                    stockVirtual = Math.floor(stockConsolidado / packUnidades);
+                }
+
+                return {
+                    descripcion: producto.descripcion,
+                    precio_actual: precioActual,
+                    iva: parseFloat(producto.iva || 0),
+                    lista_precios: listaPrecios,
+                    rubro: producto.rubro || 'Sin categoría',
+                    sub_rubro: producto.sub_rubro || 'Sin subcategoría',
+                    stock_consolidado: stockVirtual,
+                    kilos_unidad: kilosUnidad,
+                    precio_por_kilo: precioPorKilo,
+                    es_pack: esPack,
+                    pack_unidades: packUnidades
+                };
+            } catch (processingError) {
+                console.error(`❌ [PRESUPUESTOS] ${requestId} - Error procesando producto ${index}:`, processingError.message);
+                console.error(`❌ [PRESUPUESTOS] ${requestId} - Producto problemático:`, producto);
+                // Retornar producto con valores por defecto en caso de error
+                return {
+                    descripcion: producto.descripcion || 'Sin descripción',
+                    precio_actual: 0,
+                    iva: 0,
+                    lista_precios: listaPrecios,
+                    rubro: 'Sin categoría',
+                    sub_rubro: 'Sin subcategoría',
+                    stock_consolidado: 0,
+                    kilos_unidad: 0,
+                    precio_por_kilo: 0,
+                    es_pack: false,
+                    pack_unidades: 0
+                };
+            }
+        });
+
+        console.log(`✅ [PRESUPUESTOS] ${requestId} - Catálogo general obtenido: ${productos.length} productos de ${totalRecords} totales`);
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Muestra de productos:`, productos.slice(0, 3).map(p => p.descripcion));
+
+        res.json({
+            success: true,
+            data: productos,
+            total: totalRecords,
+            page: currentPage,
+            pageSize: itemsPerPage,
+            pages: Math.ceil(totalRecords / itemsPerPage),
+            lista_precios_cliente: listaPrecios,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] ${requestId} - Error obteniendo catálogo general:`, error.message);
+        console.error(`❌ [PRESUPUESTOS] ${requestId} - Stack completo:`, error.stack);
+        
+        // ✅ RESPUESTA DE ERROR MÁS DESCRIPTIVA
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener catálogo general',
+            message: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD completo');
 
 module.exports = {
@@ -2435,5 +2648,6 @@ module.exports = {
     obtenerResumen,
     obtenerPrecioArticuloCliente,
     obtenerDatosCliente,
-    obtenerHistorialEntregasCliente
+    obtenerHistorialEntregasCliente,
+    obtenerCatalogoGeneral
 };

@@ -1981,27 +1981,26 @@ async function cargarHistorialEntregas(clienteId) {
  */
 function renderizarHistorialEntregas(data) {
     const content = document.getElementById('historial-entregas-content');
+    const btnPDF = document.getElementById('btn-imprimir-lista-precios');
     
     if (!content) return;
+    
+    // ✅ CAMBIO: Botón SIEMPRE visible cuando hay cliente seleccionado
+    if (btnPDF) btnPDF.style.display = 'inline-flex';
     
     // Si no hay historial
     if (data.sin_historial || !data.grupos || data.grupos.length === 0) {
         content.innerHTML = `
             <div class="historial-sin-datos">
                 <p>📭 Este cliente no tiene entregas previas registradas</p>
+                <p style="font-size: 0.9em; color: #666; margin-top: 10px;">
+                    💡 Puede generar una lista de precios desde el catálogo general
+                </p>
             </div>
         `;
         
-        // Ocultar botón de PDF
-        const btnPDF = document.getElementById('btn-imprimir-lista-precios');
-        if (btnPDF) btnPDF.style.display = 'none';
-        
         return;
     }
-    
-    // ✅ MOSTRAR botón de PDF cuando hay historial
-    const btnPDF = document.getElementById('btn-imprimir-lista-precios');
-    if (btnPDF) btnPDF.style.display = 'inline-flex';
     
     // Construir HTML para cada grupo de mes
     let html = '';

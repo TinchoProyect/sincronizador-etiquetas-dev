@@ -17,7 +17,8 @@ const {
     obtenerResumen,
     obtenerPrecioArticuloCliente,
     obtenerDatosCliente,
-    obtenerHistorialEntregasCliente
+    obtenerHistorialEntregasCliente,
+    obtenerCatalogoGeneral
 } = require('../controllers/presupuestos');
 
 
@@ -254,6 +255,27 @@ router.get('/clientes/:id_cliente/lista-precios-pdf', validatePermissions('presu
                 message: error.message
             });
         }
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/catalogo-general
+ * @desc Obtener catálogo general de productos (Vista Plana)
+ * @query cliente_id (opcional), page, pageSize, search
+ * @access Privado
+ */
+router.get('/catalogo-general', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /catalogo-general - Obteniendo catálogo general');
+    
+    try {
+        await obtenerCatalogoGeneral(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /catalogo-general:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener catálogo general',
+            message: error.message
+        });
     }
 });
 
