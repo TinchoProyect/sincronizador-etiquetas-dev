@@ -37,6 +37,8 @@ import {
 // ============================================
 let datosCliente = null;
 let datosHistorial = null;
+let articulosExcluidos = [];
+let clienteIdActual = null;
 
 // ============================================
 // UTILIDADES BÁSICAS
@@ -332,10 +334,15 @@ function handleReordenarRubros(rubro1, rubro2, mesKey, insertarAntes) {
 // CARGA DE DATOS
 // ============================================
 
-async function cargarDatos(clienteId) {
+async function cargarDatos(clienteId, preservarFiltros = false) {
     try {
+        clienteIdActual = clienteId;
         const config = leerConfiguracion();
         
+        // ✅ PASO 1: Cargar artículos excluidos PRIMERO (crítico)
+        await cargarArticulosExcluidos(clienteId);
+        
+        // ✅ PASO 2: Cargar datos según tipo de informe
         if (config.tipoInforme === 'catalogo') {
             // Cargar catálogo general (Vista Plana)
             await cargarCatalogoGeneral(clienteId);
@@ -344,11 +351,108 @@ async function cargarDatos(clienteId) {
             await cargarHistorialCliente(clienteId);
         }
         
+        // ✅ PASO 3: FILTRAR ARTÍCULOS EXCLUIDOS (CRÍTICO)
+        // Esto debe ejecutarse SIEMPRE antes de cualquier renderizado
+        filtrarArticulosExcluidos();
+        
+        console.log(`✅ [CARGA-DATOS] Datos cargados y filtrados. Productos finales: ${datosHistorial.total_productos_unicos}`);
+        
     } catch (error) {
         console.error('❌ Error al cargar datos:', error);
         mostrarError(`Error: ${error.message}`);
         throw error;
     }
+}
+
+/**
+ * Cargar artículos excluidos del cliente
+ * ✅ NUEVO: Carga lista de exclusiones desde el backend
+ */
+async function cargarArticulosExcluidos(clienteId) {
+    console.log(`🚫 [EXCLUIDOS] Cargando artículos excluidos para cliente: ${clienteId}`);
+    
+    try {
+        const response = await fetch(`/api/presupuestos/clientes/${clienteId}/articulos-excluidos`);
+        
+        if (!response.ok) {
+            console.warn(`⚠️ [EXCLUIDOS] Error al cargar excluidos: HTTP ${response.status}`);
+            articulosExcluidos = [];
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success || !result.data) {
+            console.warn('⚠️ [EXCLUIDOS] No se pudieron cargar artículos excluidos');
+            articulosExcluidos = [];
+            return;
+        }
+        
+        articulosExcluidos = result.data.articulos_planos || [];
+        console.log(`✅ [EXCLUIDOS] Artículos excluidos cargados: ${articulosExcluidos.length}`);
+        
+        // Actualizar panel de excluidos
+        renderizarPanelExcluidos(result.data.articulos_agrupados);
+        
+    } catch (error) {
+        console.error('❌ [EXCLUIDOS] Error al cargar artículos excluidos:', error);
+        articulosExcluidos = [];
+    }
+}
+
+/**
+ * Filtrar artículos excluidos de los datos cargados
+ * ✅ CRÍTICO: Elimina artículos excluidos de la vista SIEMPRE
+ * ✅ ROBUSTO: Normaliza IDs para evitar fallas por espacios o tipos
+ */
+function filtrarArticulosExcluidos() {
+    if (!datosHistorial) {
+        console.warn('⚠️ [EXCLUIDOS] No hay datos para filtrar');
+        return;
+    }
+    
+    if (articulosExcluidos.length === 0) {
+        console.log('ℹ️ [EXCLUIDOS] No hay artículos excluidos para este cliente');
+        return;
+    }
+    
+    console.log(`🔍 [EXCLUIDOS] Filtrando ${articulosExcluidos.length} artículos excluidos`);
+    
+    // ✅ NORMALIZACIÓN: Crear Set con códigos normalizados (trim + lowercase)
+    const articulosExcluidosSet = new Set(
+        articulosExcluidos.map(a => String(a.articulo_numero).trim().toLowerCase())
+    );
+    
+    // Log de artículos excluidos para debugging
+    console.log(`🚫 [EXCLUIDOS] Artículos a filtrar (normalizados):`, Array.from(articulosExcluidosSet));
+    
+    // Contar productos antes de filtrar
+    const productosAntes = datosHistorial.grupos.reduce((sum, g) => sum + g.productos.length, 0);
+    
+    // ✅ FILTRO GLOBAL ROBUSTO: Eliminar artículos excluidos de TODOS los grupos
+    datosHistorial.grupos = datosHistorial.grupos.map(grupo => ({
+        ...grupo,
+        productos: grupo.productos.filter(p => {
+            // ✅ NORMALIZACIÓN: Comparar IDs normalizados
+            const articuloNormalizado = String(p.articulo_numero).trim().toLowerCase();
+            const estaExcluido = articulosExcluidosSet.has(articuloNormalizado);
+            
+            if (estaExcluido) {
+                console.log(`🚫 [EXCLUIDOS] Filtrando: "${p.descripcion}" (ID: "${p.articulo_numero}" → normalizado: "${articuloNormalizado}")`);
+            }
+            
+            return !estaExcluido;
+        })
+    })).filter(grupo => grupo.productos.length > 0); // Eliminar grupos vacíos
+    
+    // Actualizar contadores
+    const totalProductos = datosHistorial.grupos.reduce((sum, g) => sum + g.productos.length, 0);
+    datosHistorial.total_productos_unicos = totalProductos;
+    
+    console.log(`✅ [EXCLUIDOS] Filtrado completado:`);
+    console.log(`   - Productos antes: ${productosAntes}`);
+    console.log(`   - Productos después: ${totalProductos}`);
+    console.log(`   - Artículos filtrados: ${productosAntes - totalProductos}`);
 }
 
 /**
@@ -377,6 +481,7 @@ async function cargarHistorialCliente(clienteId) {
 
 /**
  * Cargar catálogo general de productos (Vista Plana)
+ * ✅ OPTIMIZADO: Backend ya devuelve articulo_numero
  */
 async function cargarCatalogoGeneral(clienteId) {
     console.log(`📋 [CATALOGO] Cargando catálogo general para cliente: ${clienteId}`);
@@ -409,14 +514,13 @@ async function cargarCatalogoGeneral(clienteId) {
         throw new Error('No se pudieron cargar los datos del catálogo');
     }
     
-    // Transformar datos del catálogo al formato esperado por el renderizador
-    // Simular estructura de "grupos" como si fuera historial
+    // ✅ OPTIMIZADO: Backend ya devuelve articulo_numero, solo transformar formato
     const productosTransformados = resultCatalogo.data.map(producto => ({
-        codigo_barras: producto.descripcion, // No tenemos código de barras en catálogo
-        articulo_numero: producto.descripcion,
+        codigo_barras: producto.descripcion,
+        articulo_numero: producto.articulo_numero || producto.descripcion, // ✅ Ya viene del backend
         descripcion: producto.descripcion,
-        cantidad: 0, // No hay cantidad en catálogo
-        fecha_entrega: new Date().toISOString(), // Fecha actual
+        cantidad: 0,
+        fecha_entrega: new Date().toISOString(),
         presupuesto_id: null,
         precio_actual: producto.precio_actual,
         iva_actual: producto.iva,
@@ -428,7 +532,7 @@ async function cargarCatalogoGeneral(clienteId) {
         stock_consolidado: producto.stock_consolidado,
         es_pack: producto.es_pack,
         pack_unidades: producto.pack_unidades,
-        es_producible: false // Catálogo no incluye producibilidad
+        es_producible: false
     }));
     
     // Crear estructura compatible con el renderizador
@@ -444,7 +548,7 @@ async function cargarCatalogoGeneral(clienteId) {
             productos: productosTransformados
         }],
         sin_historial: false,
-        es_catalogo: true // Flag para identificar que es catálogo
+        es_catalogo: true
     };
     
     console.log(`✅ Catálogo cargado: ${productosTransformados.length} productos`);
@@ -520,7 +624,17 @@ function generarCeldaProducto(columnaId, producto, valores) {
     
     switch (columnaId) {
         case 'descripcion':
-            return `<td>${producto.descripcion}</td>`;
+            // ✅ NUEVO: Agregar botón de exclusión en la celda de descripción
+            return `<td style="display: flex; align-items: center; gap: 8px; justify-content: space-between;">
+                <span>${producto.descripcion}</span>
+                <button 
+                    class="btn-excluir no-print" 
+                    onclick="event.stopPropagation(); excluirArticulo('${producto.articulo_numero}', '${producto.descripcion.replace(/'/g, "\\'")}')"
+                    title="Excluir este artículo de la lista"
+                    style="background: #e74c3c; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em; white-space: nowrap; flex-shrink: 0;">
+                    ✖ Excluir
+                </button>
+            </td>`;
         case 'cantidad':
             return `<td class="${clase}">${parseFloat(producto.cantidad || 0).toFixed(1)}</td>`;
         case 'stockVisual':
@@ -541,6 +655,7 @@ function generarCeldaProducto(columnaId, producto, valores) {
             } else {
                 return `<td class="${clase}">
                     <button onclick="cargarPesoArticulo(event, '${producto.articulo_numero}', '${producto.descripcion.replace(/'/g, "\\'")}')" 
+                            class="no-print"
                             style="background: #f39c12; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em;"
                             title="Cargar peso del artículo">⚖️ Cargar</button>
                 </td>`;
@@ -733,6 +848,235 @@ function obtenerRubrosOrdenadosParaRenderizado(rubros, mesKey = null) {
 }
 
 // ============================================
+// GESTIÓN DE EXCLUSIONES
+// ============================================
+
+/**
+ * Excluir un artículo (guardar en BD y refrescar vista)
+ * ✅ MEJORADO: Sin confirmación, flujo rápido y quirúrgico
+ */
+async function excluirArticulo(articuloNumero, descripcion) {
+    console.log(`🚫 [EXCLUIR] Excluyendo artículo: ${articuloNumero}`);
+    
+    if (!clienteIdActual) {
+        mostrarNotificacion('❌ Error: No se pudo identificar el cliente', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/presupuestos/clientes/${clienteIdActual}/articulos-excluidos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ articulo_numero: articuloNumero })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Error al excluir artículo');
+        }
+        
+        console.log(`✅ [EXCLUIR] Artículo excluido exitosamente`);
+        
+        // ✅ QUIRÚRGICO: Recargar solo datos y excluidos, SIN tocar panel de filtros
+        await cargarDatos(clienteIdActual);
+        
+        // Solo renderizar informe (no actualizar panel de filtros)
+        renderizarInforme();
+        
+        // Mostrar notificación de éxito
+        mostrarNotificacion(`✅ "${descripcion}" excluido`, 'success');
+        
+    } catch (error) {
+        console.error('❌ [EXCLUIR] Error:', error);
+        mostrarNotificacion(`❌ Error al excluir: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Re-incluir un artículo excluido (eliminar de BD y refrescar vista)
+ * ✅ MEJORADO: Flujo rápido y quirúrgico
+ */
+async function reincluirArticulo(articuloNumero, descripcion) {
+    console.log(`✅ [REINCLUIR] Re-incluyendo artículo: ${articuloNumero}`);
+    
+    if (!clienteIdActual) {
+        mostrarNotificacion('❌ Error: No se pudo identificar el cliente', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(
+            `/api/presupuestos/clientes/${clienteIdActual}/articulos-excluidos/${encodeURIComponent(articuloNumero)}`,
+            { method: 'DELETE' }
+        );
+        
+        const result = await response.json();
+        
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Error al re-incluir artículo');
+        }
+        
+        console.log(`✅ [REINCLUIR] Artículo re-incluido exitosamente`);
+        
+        // ✅ QUIRÚRGICO: Recargar solo datos y excluidos, SIN tocar panel de filtros
+        await cargarDatos(clienteIdActual);
+        
+        // Solo renderizar informe (no actualizar panel de filtros)
+        renderizarInforme();
+        
+        // Mostrar notificación de éxito
+        mostrarNotificacion(`✅ "${descripcion}" re-incluido`, 'success');
+        
+    } catch (error) {
+        console.error('❌ [REINCLUIR] Error:', error);
+        mostrarNotificacion(`❌ Error al re-incluir: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Mostrar notificación toast (no intrusiva)
+ * ✅ NUEVO: Notificaciones tipo toast para mejor UX
+ */
+function mostrarNotificacion(mensaje, tipo = 'info') {
+    // Crear elemento de notificación
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${tipo}`;
+    toast.textContent = mensaje;
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: ${tipo === 'success' ? '#27ae60' : tipo === 'error' ? '#e74c3c' : '#3498db'};
+        color: white;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 10000;
+        font-weight: 500;
+        font-size: 0.9em;
+        animation: slideIn 0.3s ease, slideOut 0.3s ease 2.7s;
+        max-width: 300px;
+    `;
+    
+    // Agregar animaciones
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(400px); opacity: 0; }
+        }
+    `;
+    if (!document.getElementById('toast-animations')) {
+        style.id = 'toast-animations';
+        document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(toast);
+    
+    // Eliminar después de 3 segundos
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+/**
+ * Renderizar panel de artículos excluidos con estructura jerárquica
+ * ✅ MEJORADO: Contador en título + scroll interno
+ */
+function renderizarPanelExcluidos(articulosAgrupados) {
+    const contenedor = document.getElementById('panel-articulos-excluidos');
+    
+    if (!contenedor) return;
+    
+    // Contar total de artículos excluidos
+    let totalExcluidos = 0;
+    if (articulosAgrupados && Object.keys(articulosAgrupados).length > 0) {
+        Object.values(articulosAgrupados).forEach(subRubros => {
+            Object.values(subRubros).forEach(articulos => {
+                totalExcluidos += articulos.length;
+            });
+        });
+    }
+    
+    // Actualizar título del acordeón con contador
+    const accordionHeader = document.querySelector('#accordion-excluidos').previousElementSibling;
+    if (accordionHeader) {
+        const spanTexto = accordionHeader.querySelector('span:first-child');
+        if (spanTexto) {
+            spanTexto.textContent = `🚫 ARTÍCULOS EXCLUIDOS${totalExcluidos > 0 ? ` (${totalExcluidos})` : ''}`;
+        }
+    }
+    
+    if (!articulosAgrupados || Object.keys(articulosAgrupados).length === 0) {
+        contenedor.innerHTML = `
+            <div class="filtro-empty">
+                No hay artículos excluidos
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    
+    // Ordenar rubros alfabéticamente
+    const rubros = Object.keys(articulosAgrupados).sort();
+    
+    rubros.forEach(rubro => {
+        const subRubros = articulosAgrupados[rubro];
+        
+        html += `
+            <div style="margin-bottom: 12px;">
+                <div style="font-weight: 600; color: #2c3e50; padding: 6px 0; border-bottom: 2px solid #34495e; margin-bottom: 6px; font-size: 0.9em;">
+                    📦 ${rubro}
+                </div>
+        `;
+        
+        // Ordenar sub-rubros alfabéticamente
+        const subRubrosOrdenados = Object.keys(subRubros).sort();
+        
+        subRubrosOrdenados.forEach(subRubro => {
+            const articulos = subRubros[subRubro];
+            
+            html += `
+                <div style="margin-left: 15px; margin-bottom: 8px;">
+                    <div style="font-weight: 500; color: #546e7a; font-size: 0.85em; margin-bottom: 4px;">
+                        ↳ ${subRubro}
+                    </div>
+            `;
+            
+            articulos.forEach(articulo => {
+                html += `
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 2px 0 2px 20px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 3px; font-size: 0.8em;">
+                        <div style="flex: 1; color: #333;">
+                            <div style="font-weight: 500;">${articulo.descripcion}</div>
+                            <div style="font-size: 0.85em; color: #666;">Código: ${articulo.articulo_numero}</div>
+                        </div>
+                        <button 
+                            onclick="reincluirArticulo('${articulo.articulo_numero}', '${articulo.descripcion.replace(/'/g, "\\'")}')"
+                            style="background: #27ae60; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em; white-space: nowrap;"
+                            title="Re-incluir artículo en la lista">
+                            ✅ Re-incluir
+                        </button>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+        });
+        
+        html += `</div>`;
+    });
+    
+    contenedor.innerHTML = html;
+    console.log(`✅ [EXCLUIDOS] Panel de excluidos renderizado (${totalExcluidos} artículos)`);
+}
+
+// ============================================
 // RENDERIZADO DEL INFORME
 // ============================================
 
@@ -861,6 +1205,7 @@ function renderizarInforme() {
 /**
  * Renderizar tabla de productos con sub-rubros integrados
  * ✅ NUEVA LÓGICA: Una sola tabla por rubro, sub-rubros como separadores internos
+ * ✅ MEJORADO: Filas clicables para excluir artículos
  */
 function renderizarTablaProductos(titulo, productos, columnasActivas, esSubRubro = false) {
     // ✅ DISEÑO MINIMALISTA: Sin fondos de color, solo tipografía y líneas
@@ -889,7 +1234,10 @@ function renderizarTablaProductos(titulo, productos, columnasActivas, esSubRubro
     
     productos.forEach(producto => {
         const valores = calcularValoresProducto(producto);
-        html += '<tr>';
+        
+        // ✅ MEJORADO: Fila normal sin onclick (el botón está en la celda de descripción)
+        html += `<tr>`;
+        
         columnasActivas.forEach(col => {
             html += generarCeldaProducto(col.id, producto, valores);
         });
@@ -1500,5 +1848,7 @@ window.handleToggleRubro = handleToggleRubro;
 window.handleToggleSubRubro = handleToggleSubRubro;
 window.handleToggleMes = handleToggleMes;
 window.cambiarOrientacion = cambiarOrientacion;
+window.excluirArticulo = excluirArticulo;
+window.reincluirArticulo = reincluirArticulo;
 
 console.log('✅ [PREVIEW-HISTORIAL] Módulo principal cargado correctamente');

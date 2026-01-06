@@ -419,8 +419,18 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* ✅ NUEVO: Clase para ocultar elementos en impresión */
+        .no-print {
+            /* Visible en pantalla */
+        }
+
         /* Estilos de impresión - VERSIÓN MEJORADA PARA MULTIPÁGINA */
         @media print {
+            /* ✅ CRÍTICO: Ocultar botones de exclusión y otros controles */
+            .no-print {
+                display: none !important;
+            }
+
             /* Configuración de página A4 */
             @page {
                 size: A4;
@@ -703,22 +713,34 @@
             overflow-x: hidden;
         }
 
+        /* ✅ NUEVO: Scroll en panel de artículos excluidos */
+        #panel-articulos-excluidos {
+            max-height: 500px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-bottom: 10px;
+        }
+
         /* Estilos de scrollbar para el panel de filtros */
-        #panel-filtros-rubros::-webkit-scrollbar {
+        #panel-filtros-rubros::-webkit-scrollbar,
+        #panel-articulos-excluidos::-webkit-scrollbar {
             width: 8px;
         }
 
-        #panel-filtros-rubros::-webkit-scrollbar-track {
+        #panel-filtros-rubros::-webkit-scrollbar-track,
+        #panel-articulos-excluidos::-webkit-scrollbar-track {
             background: #f1f1f1;
             border-radius: 4px;
         }
 
-        #panel-filtros-rubros::-webkit-scrollbar-thumb {
+        #panel-filtros-rubros::-webkit-scrollbar-thumb,
+        #panel-articulos-excluidos::-webkit-scrollbar-thumb {
             background: #3498db;
             border-radius: 4px;
         }
 
-        #panel-filtros-rubros::-webkit-scrollbar-thumb:hover {
+        #panel-filtros-rubros::-webkit-scrollbar-thumb:hover,
+        #panel-articulos-excluidos::-webkit-scrollbar-thumb:hover {
             background: #2980b9;
         }
 
@@ -820,6 +842,21 @@
                         <div id="panel-filtros-rubros">
                             <div class="filtro-empty">
                                 Selecciona "Agrupar por Rubro" para activar filtros
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GRUPO 3.5: ARTÍCULOS EXCLUIDOS -->
+                <div class="config-accordion">
+                    <div class="accordion-header collapsed" onclick="toggleAccordion('excluidos')">
+                        <span>🚫 ARTÍCULOS EXCLUIDOS</span>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-content collapsed" id="accordion-excluidos">
+                        <div id="panel-articulos-excluidos">
+                            <div class="filtro-empty">
+                                No hay artículos excluidos
                             </div>
                         </div>
                     </div>

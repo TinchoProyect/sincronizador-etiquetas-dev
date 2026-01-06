@@ -2462,11 +2462,12 @@ const obtenerCatalogoGeneral = async (req, res) => {
 
         console.log(`📄 [PRESUPUESTOS] ${requestId} - Paginación: página ${currentPage}, ${itemsPerPage} items por página`);
 
-        // ✅ CONSULTA SIMPLIFICADA: Sin subconsultas complejas en el SELECT
-        // ✅ CORREGIDO: Eliminada condición WHERE pa.activo (la columna no existe)
+        // ✅ CONSULTA OPTIMIZADA: Incluye articulo_numero desde stock_real_consolidado
+        // ✅ CRÍTICO: Necesitamos el código alfanumérico para exclusiones
         let query = `
             SELECT
                 pa.descripcion,
+                COALESCE(src.articulo_numero, pa.descripcion) as articulo_numero,
                 pa.precio_neg as precio_lista1,
                 pa.mayorista as precio_lista2,
                 pa.especial_brus as precio_lista3,
@@ -2567,6 +2568,7 @@ const obtenerCatalogoGeneral = async (req, res) => {
 
                 return {
                     descripcion: producto.descripcion,
+                    articulo_numero: producto.articulo_numero || producto.descripcion, // ✅ CÓDIGO REAL
                     precio_actual: precioActual,
                     iva: parseFloat(producto.iva || 0),
                     lista_precios: listaPrecios,
@@ -2629,6 +2631,241 @@ const obtenerCatalogoGeneral = async (req, res) => {
     }
 };
 
+/**
+ * Obtener artículos excluidos de un cliente
+ * Devuelve lista agrupada por rubro y sub-rubro
+ */
+const obtenerArticulosExcluidos = async (req, res) => {
+    const requestId = `excluidos-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🔍 [PRESUPUESTOS] ${requestId} - Obteniendo artículos excluidos`);
+    
+    try {
+        const { id_cliente } = req.params;
+        
+        if (!id_cliente) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de cliente requerido',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Buscando artículos excluidos para cliente ID: ${id_cliente}`);
+        
+        // Consulta para obtener artículos excluidos con información completa
+        // ✅ OPTIMIZADO: JOIN robusto para obtener rubro y sub-rubro correctamente
+        const query = `
+            SELECT 
+                ae.id,
+                ae.cliente_id,
+                ae.articulo_numero,
+                ae.fecha_creacion,
+                COALESCE(a.nombre, ae.articulo_numero) as descripcion,
+                COALESCE(pa.rubro, 'Sin categoría') as rubro,
+                COALESCE(pa.sub_rubro, 'Sin subcategoría') as sub_rubro,
+                COALESCE(pa.precio_neg, 0) as precio_lista1,
+                COALESCE(pa.mayorista, 0) as precio_lista2,
+                COALESCE(pa.especial_brus, 0) as precio_lista3,
+                COALESCE(pa.consumidor_final, 0) as precio_lista4,
+                COALESCE(pa.lista_5, 0) as precio_lista5,
+                COALESCE(pa.iva, 0) as iva
+            FROM public.articulos_excluidos_config ae
+            LEFT JOIN public.articulos a ON a.numero = ae.articulo_numero
+            LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(a.nombre)
+            WHERE ae.cliente_id = $1
+            ORDER BY 
+                CASE 
+                    WHEN pa.rubro IS NULL THEN 1 
+                    ELSE 0 
+                END,
+                pa.rubro ASC,
+                pa.sub_rubro ASC,
+                ae.fecha_creacion DESC
+        `;
+        
+        const result = await req.db.query(query, [parseInt(id_cliente)]);
+        
+        console.log(`📦 [PRESUPUESTOS] ${requestId} - Artículos excluidos encontrados: ${result.rows.length}`);
+        
+        // Agrupar por rubro y sub-rubro
+        const articulosAgrupados = {};
+        
+        result.rows.forEach(articulo => {
+            const rubro = articulo.rubro || 'Sin categoría';
+            const subRubro = articulo.sub_rubro || 'Sin subcategoría';
+            
+            if (!articulosAgrupados[rubro]) {
+                articulosAgrupados[rubro] = {};
+            }
+            
+            if (!articulosAgrupados[rubro][subRubro]) {
+                articulosAgrupados[rubro][subRubro] = [];
+            }
+            
+            articulosAgrupados[rubro][subRubro].push({
+                id: articulo.id,
+                articulo_numero: articulo.articulo_numero,
+                descripcion: articulo.descripcion,
+                rubro: articulo.rubro,
+                sub_rubro: articulo.sub_rubro,
+                fecha_creacion: articulo.fecha_creacion
+            });
+        });
+        
+        res.json({
+            success: true,
+            data: {
+                cliente_id: parseInt(id_cliente),
+                total_excluidos: result.rows.length,
+                articulos_agrupados: articulosAgrupados,
+                articulos_planos: result.rows
+            },
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al obtener artículos excluidos:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener artículos excluidos',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
+/**
+ * Excluir un artículo para un cliente
+ */
+const excluirArticulo = async (req, res) => {
+    const requestId = `excluir-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🔍 [PRESUPUESTOS] ${requestId} - Excluyendo artículo`);
+    
+    try {
+        const { id_cliente } = req.params;
+        const { articulo_numero } = req.body;
+        
+        if (!id_cliente || !articulo_numero) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de cliente y código de artículo requeridos',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Excluyendo artículo ${articulo_numero} para cliente ${id_cliente}`);
+        
+        // Insertar en tabla de exclusiones (ON CONFLICT para evitar duplicados)
+        const query = `
+            INSERT INTO public.articulos_excluidos_config (cliente_id, articulo_numero)
+            VALUES ($1, $2)
+            ON CONFLICT (cliente_id, articulo_numero) DO NOTHING
+            RETURNING id, cliente_id, articulo_numero, fecha_creacion
+        `;
+        
+        const result = await req.db.query(query, [parseInt(id_cliente), articulo_numero.trim()]);
+        
+        if (result.rows.length === 0) {
+            console.log(`ℹ️ [PRESUPUESTOS] ${requestId} - Artículo ya estaba excluido`);
+            return res.json({
+                success: true,
+                message: 'El artículo ya estaba excluido',
+                data: null,
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const articuloExcluido = result.rows[0];
+        console.log(`✅ [PRESUPUESTOS] ${requestId} - Artículo excluido exitosamente:`, articuloExcluido);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Artículo excluido exitosamente',
+            data: articuloExcluido,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al excluir artículo:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al excluir artículo',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
+/**
+ * Re-incluir un artículo excluido (eliminar de exclusiones)
+ */
+const reincluirArticulo = async (req, res) => {
+    const requestId = `reincluir-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🔍 [PRESUPUESTOS] ${requestId} - Re-incluyendo artículo`);
+    
+    try {
+        const { id_cliente, articulo_numero } = req.params;
+        
+        if (!id_cliente || !articulo_numero) {
+            return res.status(400).json({
+                success: false,
+                error: 'ID de cliente y código de artículo requeridos',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Re-incluyendo artículo ${articulo_numero} para cliente ${id_cliente}`);
+        
+        // Eliminar de tabla de exclusiones
+        const query = `
+            DELETE FROM public.articulos_excluidos_config
+            WHERE cliente_id = $1 AND articulo_numero = $2
+            RETURNING id, cliente_id, articulo_numero
+        `;
+        
+        const result = await req.db.query(query, [parseInt(id_cliente), articulo_numero.trim()]);
+        
+        if (result.rows.length === 0) {
+            console.log(`⚠️ [PRESUPUESTOS] ${requestId} - Artículo no estaba excluido`);
+            return res.status(404).json({
+                success: false,
+                error: 'El artículo no estaba excluido',
+                requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        const articuloReincluido = result.rows[0];
+        console.log(`✅ [PRESUPUESTOS] ${requestId} - Artículo re-incluido exitosamente:`, articuloReincluido);
+        
+        res.json({
+            success: true,
+            message: 'Artículo re-incluido exitosamente',
+            data: articuloReincluido,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al re-incluir artículo:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al re-incluir artículo',
+            message: error.message,
+            requestId,
+            timestamp: new Date().toISOString()
+        });
+    }
+};
+
 console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD completo');
 
 module.exports = {
@@ -2649,5 +2886,8 @@ module.exports = {
     obtenerPrecioArticuloCliente,
     obtenerDatosCliente,
     obtenerHistorialEntregasCliente,
-    obtenerCatalogoGeneral
+    obtenerCatalogoGeneral,
+    obtenerArticulosExcluidos,
+    excluirArticulo,
+    reincluirArticulo
 };

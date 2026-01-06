@@ -18,7 +18,10 @@ const {
     obtenerPrecioArticuloCliente,
     obtenerDatosCliente,
     obtenerHistorialEntregasCliente,
-    obtenerCatalogoGeneral
+    obtenerCatalogoGeneral,
+    obtenerArticulosExcluidos,
+    excluirArticulo,
+    reincluirArticulo
 } = require('../controllers/presupuestos');
 
 
@@ -255,6 +258,66 @@ router.get('/clientes/:id_cliente/lista-precios-pdf', validatePermissions('presu
                 message: error.message
             });
         }
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/clientes/:id_cliente/articulos-excluidos
+ * @desc Obtener artículos excluidos de un cliente (agrupados por rubro y sub-rubro)
+ * @access Privado
+ */
+router.get('/clientes/:id_cliente/articulos-excluidos', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente/articulos-excluidos - Obteniendo artículos excluidos');
+    
+    try {
+        await obtenerArticulosExcluidos(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /clientes/:id_cliente/articulos-excluidos:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener artículos excluidos',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/clientes/:id_cliente/articulos-excluidos
+ * @desc Excluir un artículo para un cliente
+ * @access Privado
+ */
+router.post('/clientes/:id_cliente/articulos-excluidos', validatePermissions('presupuestos.update'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /clientes/:id_cliente/articulos-excluidos - Excluyendo artículo');
+    
+    try {
+        await excluirArticulo(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /clientes/:id_cliente/articulos-excluidos:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al excluir artículo',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route DELETE /api/presupuestos/clientes/:id_cliente/articulos-excluidos/:articulo_numero
+ * @desc Re-incluir un artículo excluido (eliminar de exclusiones)
+ * @access Privado
+ */
+router.delete('/clientes/:id_cliente/articulos-excluidos/:articulo_numero', validatePermissions('presupuestos.update'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta DELETE /clientes/:id_cliente/articulos-excluidos/:articulo_numero - Re-incluyendo artículo');
+    
+    try {
+        await reincluirArticulo(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta DELETE /clientes/:id_cliente/articulos-excluidos/:articulo_numero:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al re-incluir artículo',
+            message: error.message
+        });
     }
 });
 
