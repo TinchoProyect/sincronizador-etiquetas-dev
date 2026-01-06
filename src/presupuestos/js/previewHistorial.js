@@ -339,8 +339,14 @@ async function cargarDatos(clienteId, preservarFiltros = false) {
         clienteIdActual = clienteId;
         const config = leerConfiguracion();
         
-        // ✅ PASO 1: Cargar artículos excluidos PRIMERO (crítico)
-        await cargarArticulosExcluidos(clienteId);
+        // ✅ PASO 1: Cargar artículos excluidos SOLO si es modo catálogo
+        if (config.tipoInforme === 'catalogo') {
+            await cargarArticulosExcluidos(clienteId);
+        } else {
+            // En modo histórico, limpiar lista de excluidos
+            articulosExcluidos = [];
+            renderizarPanelExcluidos({});
+        }
         
         // ✅ PASO 2: Cargar datos según tipo de informe
         if (config.tipoInforme === 'catalogo') {
@@ -351,11 +357,12 @@ async function cargarDatos(clienteId, preservarFiltros = false) {
             await cargarHistorialCliente(clienteId);
         }
         
-        // ✅ PASO 3: FILTRAR ARTÍCULOS EXCLUIDOS (CRÍTICO)
-        // Esto debe ejecutarse SIEMPRE antes de cualquier renderizado
-        filtrarArticulosExcluidos();
+        // ✅ PASO 3: FILTRAR ARTÍCULOS EXCLUIDOS SOLO EN MODO CATÁLOGO
+        if (config.tipoInforme === 'catalogo') {
+            filtrarArticulosExcluidos();
+        }
         
-        console.log(`✅ [CARGA-DATOS] Datos cargados y filtrados. Productos finales: ${datosHistorial.total_productos_unicos}`);
+        console.log(`✅ [CARGA-DATOS] Datos cargados${config.tipoInforme === 'catalogo' ? ' y filtrados' : ''}. Productos finales: ${datosHistorial.total_productos_unicos}`);
         
     } catch (error) {
         console.error('❌ Error al cargar datos:', error);
@@ -621,20 +628,27 @@ function calcularValoresProducto(producto) {
 function generarCeldaProducto(columnaId, producto, valores) {
     const alineacion = COLUMNAS_DISPONIBLES.find(c => c.id === columnaId)?.align || 'left';
     const clase = `text-${alineacion}`;
+    const config = leerConfiguracion();
+    const esCatalogo = config.tipoInforme === 'catalogo';
     
     switch (columnaId) {
         case 'descripcion':
-            // ✅ NUEVO: Agregar botón de exclusión en la celda de descripción
-            return `<td style="display: flex; align-items: center; gap: 8px; justify-content: space-between;">
-                <span>${producto.descripcion}</span>
-                <button 
-                    class="btn-excluir no-print" 
-                    onclick="event.stopPropagation(); excluirArticulo('${producto.articulo_numero}', '${producto.descripcion.replace(/'/g, "\\'")}')"
-                    title="Excluir este artículo de la lista"
-                    style="background: #e74c3c; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em; white-space: nowrap; flex-shrink: 0;">
-                    ✖ Excluir
-                </button>
-            </td>`;
+            // ✅ CONDICIONAL: Botón de exclusión SOLO en modo Catálogo
+            if (esCatalogo) {
+                return `<td style="display: flex; align-items: center; gap: 8px; justify-content: space-between;">
+                    <span>${producto.descripcion}</span>
+                    <button 
+                        class="btn-excluir no-print" 
+                        onclick="event.stopPropagation(); excluirArticulo('${producto.articulo_numero}', '${producto.descripcion.replace(/'/g, "\\'")}')"
+                        title="Excluir este artículo de la lista"
+                        style="background: #e74c3c; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em; white-space: nowrap; flex-shrink: 0;">
+                        ✖ Excluir
+                    </button>
+                </td>`;
+            } else {
+                // Modo histórico: solo descripción, sin botón
+                return `<td>${producto.descripcion}</td>`;
+            }
         case 'cantidad':
             return `<td class="${clase}">${parseFloat(producto.cantidad || 0).toFixed(1)}</td>`;
         case 'stockVisual':
@@ -986,12 +1000,17 @@ function mostrarNotificacion(mensaje, tipo = 'info') {
 
 /**
  * Renderizar panel de artículos excluidos con estructura jerárquica
- * ✅ MEJORADO: Contador en título + scroll interno
+ * ✅ MEJORADO: Contador en título + scroll interno + visibilidad condicional
  */
 function renderizarPanelExcluidos(articulosAgrupados) {
     const contenedor = document.getElementById('panel-articulos-excluidos');
+    const accordionExcluidos = document.querySelector('#accordion-excluidos')?.parentElement;
     
     if (!contenedor) return;
+    
+    // Verificar si estamos en modo catálogo
+    const config = leerConfiguracion();
+    const esCatalogo = config.tipoInforme === 'catalogo';
     
     // Contar total de artículos excluidos
     let totalExcluidos = 0;
@@ -1001,6 +1020,16 @@ function renderizarPanelExcluidos(articulosAgrupados) {
                 totalExcluidos += articulos.length;
             });
         });
+    }
+    
+    // ✅ VISIBILIDAD CONDICIONAL: Mostrar/ocultar acordeón según modo
+    if (accordionExcluidos) {
+        if (esCatalogo) {
+            accordionExcluidos.style.display = 'block';
+        } else {
+            accordionExcluidos.style.display = 'none';
+            return; // No renderizar contenido en modo histórico
+        }
     }
     
     // Actualizar título del acordeón con contador
