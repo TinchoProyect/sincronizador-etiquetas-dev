@@ -2264,6 +2264,82 @@
             }
         }
 
+        /**
+         * Función para consolidar artículos duplicados por código
+         * Agrupa artículos por articulo_numero y suma las cantidades
+         * @param {Array} articulos - Array de artículos a consolidar
+         * @returns {Array} Array de artículos consolidados
+         */
+        function consolidarArticulosPorCodigo(articulos) {
+            console.log('[CONSOLIDAR] Iniciando consolidación de', articulos.length, 'artículos');
+            
+            if (!Array.isArray(articulos) || articulos.length === 0) {
+                console.log('[CONSOLIDAR] ⚠️ Array vacío o inválido');
+                return [];
+            }
+            
+            // Usar Map para agrupar por articulo_numero
+            const articulosMap = new Map();
+            
+            articulos.forEach((art, index) => {
+                const codigo = art.articulo_numero || art.codigo || art.articulo;
+                
+                if (!codigo) {
+                    console.warn('[CONSOLIDAR] Artículo sin código en índice', index, art);
+                    return;
+                }
+                
+                if (articulosMap.has(codigo)) {
+                    // Artículo ya existe: sumar cantidades
+                    const existente = articulosMap.get(codigo);
+                    
+                    existente.pedido_total = parseNumeroSeguro(existente.pedido_total) + parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0);
+                    existente.stock_disponible = parseNumeroSeguro(existente.stock_disponible) + parseNumeroSeguro(art.stock_disponible || art.stock || 0);
+                    existente.faltante = parseNumeroSeguro(existente.faltante) + parseNumeroSeguro(art.faltante || art.cantidad_faltante || 0);
+                    
+                    console.log(`[CONSOLIDAR] Sumando artículo duplicado: ${codigo}`, {
+                        pedido_total: existente.pedido_total,
+                        stock_disponible: existente.stock_disponible,
+                        faltante: existente.faltante
+                    });
+                } else {
+                    // Primera vez que vemos este artículo: agregarlo al Map
+                    articulosMap.set(codigo, {
+                        articulo_numero: codigo,
+                        codigo: codigo,
+                        articulo: codigo,
+                        descripcion: art.descripcion || art.nombre || '-',
+                        codigo_barras: art.codigo_barras || '',
+                        pedido_total: parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0),
+                        stock_disponible: parseNumeroSeguro(art.stock_disponible || art.stock || 0),
+                        faltante: parseNumeroSeguro(art.faltante || art.cantidad_faltante || 0),
+                        estado: art.estado || '',
+                        // Preservar IDs de presupuesto del primer registro
+                        presupuesto_id: art.presupuesto_id || art.id_presupuesto_local || art.id_presupuesto || 0,
+                        presupuesto_ext: art.presupuesto_ext || art.id_presupuesto_ext || '',
+                        id_presupuesto_local: art.presupuesto_id || art.id_presupuesto_local || art.id_presupuesto || 0,
+                        id_presupuesto_ext: art.presupuesto_ext || art.id_presupuesto_ext || ''
+                    });
+                }
+            });
+            
+            // Convertir Map a Array
+            const articulosConsolidados = Array.from(articulosMap.values());
+            
+            console.log('[CONSOLIDAR] Consolidación completada:', {
+                articulosOriginales: articulos.length,
+                articulosConsolidados: articulosConsolidados.length,
+                articulosEliminados: articulos.length - articulosConsolidados.length
+            });
+            
+            // Log de ejemplo de consolidación
+            if (articulosConsolidados.length > 0) {
+                console.log('[CONSOLIDAR] Ejemplo de artículo consolidado:', articulosConsolidados[0]);
+            }
+            
+            return articulosConsolidados;
+        }
+
         // Función para filtrar faltantes y parciales - USA EL CAMPO estado DEL BACKEND
         function filtrarFaltantesYParciales(articulos) {
             console.log('[RESUMEN] filtrarFaltantesYParciales() - Filtrando', articulos.length, 'artículos');
@@ -2412,7 +2488,13 @@
                     } : null
                 });
                 
-                const { faltantes, parciales } = filtrarFaltantesYParciales(articulos);
+                // 🔄 CONSOLIDAR ARTÍCULOS DUPLICADOS ANTES DE FILTRAR
+                console.log('[RESUMEN] 🔄 Consolidando artículos duplicados...');
+                const articulosConsolidados = consolidarArticulosPorCodigo(articulos);
+                console.log('[RESUMEN] ✅ Artículos consolidados:', articulosConsolidados.length);
+                
+                // Filtrar faltantes y parciales DESPUÉS de consolidar
+                const { faltantes, parciales } = filtrarFaltantesYParciales(articulosConsolidados);
 
                 // Ocultar loading
                 loadingEl.style.display = 'none';
