@@ -286,35 +286,43 @@
     <div id="modal-articulos" class="modal modal-articulos">
         <div class="modal-content">
             <span class="close-modal">&times;</span>
-            <h2>Seleccionar Artículo</h2>
+            <h2>Seleccionar artículos producción interna</h2>
             
-            <!-- Filtros -->
-            <div class="filtros-container">
-                <div class="filtro-grupo">
-                    <label for="codigo-barras">Código de Barras:</label>
-                    <input type="text" id="codigo-barras" placeholder="Escanear código...">
+            <!-- Toolbar Compacto -->
+            <div class="modal-toolbar">
+                <!-- Fila principal de controles -->
+                <div class="toolbar-row">
+                    <!-- Búsqueda Inteligente (elemento principal) -->
+                    <div class="toolbar-search-main">
+                        <input type="text" id="busqueda-inteligente" 
+                               placeholder="🔍 Buscar artículo (ej: mix fruto seco)..." 
+                               autocomplete="off">
+                    </div>
+                    
+                    <!-- Código de Barras -->
+                    <div class="toolbar-barcode">
+                        <input type="text" id="codigo-barras" 
+                               placeholder="📷 Código de barras">
+                    </div>
+                    
+                    <!-- Checkbox de filtro -->
+                    <div class="toolbar-checkbox">
+                        <label for="filtroProduccionSwitch">
+                            <input type="checkbox" id="filtroProduccionSwitch">
+                            <span>Solo producción</span>
+                        </label>
+                    </div>
+                    
+                    <!-- Botón de acción -->
+                    <div class="toolbar-action">
+                        <button id="btn-agregar-multiples" 
+                                class="btn-agregar-toolbar modal-articulos-interna-multiple" 
+                                style="display: none;" 
+                                onclick="agregarMultiplesAlCarroInterno()">
+                            ➕ Agregar al carro
+                        </button>
+                    </div>
                 </div>
-                <div class="filtro-grupo" style="flex: 2;">
-                    <label for="busqueda-inteligente">🔍 Búsqueda Inteligente:</label>
-                    <input type="text" id="busqueda-inteligente" placeholder="Ej: mix fruto seco (separe términos con espacios)..." autocomplete="off">
-                    <small style="color: #6c757d; font-size: 11px; display: block; margin-top: 4px;">
-                        💡 Escriba múltiples palabras separadas por espacios. Se mostrarán artículos que contengan TODOS los términos.
-                    </small>
-                </div>
-                <div class="filtro-grupo">
-                    <label for="filtroProduccionSwitch" style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="filtroProduccionSwitch" style="margin-right: 8px;">
-                        Mostrar solo artículos de producción
-                    </label>
-                </div>
-            </div>
-
-            <!-- 🔍 [FASE 2] Botón centralizado para selección múltiple (solo producción interna) -->
-            <div class="modal-actions-header" style="margin-bottom: 15px;">
-                <button id="btn-agregar-multiples" class="btn btn-success modal-articulos-interna-multiple" 
-                        style="display: none;" onclick="agregarMultiplesAlCarroInterno()">
-                    ➕ Agregar seleccionados al carro
-                </button>
             </div>
 
             <!-- Tabla de artículos -->

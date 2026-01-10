@@ -10,10 +10,8 @@ class PrintManager {
   }
 
   initializeElements() {
-    // Elementos de filtros de texto
-    this.filtro1 = document.getElementById('filtro1');
-    this.filtro2 = document.getElementById('filtro2');
-    this.filtro3 = document.getElementById('filtro3');
+    // Elementos de búsqueda
+    this.busquedaInteligente = document.getElementById('busqueda-inteligente');
     this.barcodeInput = document.getElementById('barcodeInput');
     
     // Elementos de la tabla
@@ -43,10 +41,8 @@ class PrintManager {
   }
 
   setupEventListeners() {
-    // Eventos de filtros de texto
-    this.filtro1.addEventListener('input', () => this.manejarFiltro1());
-    this.filtro2.addEventListener('input', () => this.manejarFiltro2());
-    this.filtro3.addEventListener('input', () => this.manejarFiltro3());
+    // Evento de búsqueda inteligente
+    this.busquedaInteligente.addEventListener('input', () => this.aplicarBusquedaInteligente());
     
     // Evento de código de barras
     this.barcodeInput.addEventListener('input', () => this.manejarEscaneo());
@@ -96,70 +92,86 @@ class PrintManager {
     });
   }
 
-  // Funciones de filtrado
-  filtrarArticulos(texto, listaArticulos) {
-    return listaArticulos.filter(art =>
-      art.numero.toLowerCase().includes(texto.toLowerCase()) ||
-      art.nombre.toLowerCase().includes(texto.toLowerCase())
-    );
+  /**
+   * Normaliza un texto para búsqueda: minúsculas y sin acentos
+   * @param {string} texto - Texto a normalizar
+   * @returns {string} Texto normalizado
+   */
+  normalizarTexto(texto) {
+    if (!texto) return '';
+    return texto
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
   }
 
-  manejarFiltro1() {
-    // Resetear filtros 2 y 3
-    this.filtro2.value = '';
-    this.filtro3.value = '';
-    this.filtro2.disabled = true;
-    this.filtro3.disabled = true;
-    
+  /**
+   * Aplica búsqueda inteligente multi-término con lógica AND estricta
+   * Los artículos deben contener TODOS los términos ingresados (sin importar el orden)
+   * CORREGIDO: Solo busca en campos VISIBLES (nombre y número)
+   */
+  aplicarBusquedaInteligente() {
     // Resetear código de barras
     this.barcodeInput.value = '';
     
-    const texto = this.filtro1.value;
-    if (texto) {
-      const filtrados = this.filtrarArticulos(texto, this.articulos);
-      this.mostrarArticulos(filtrados);
-      // Habilitar filtro2 solo si hay resultados
-      this.filtro2.disabled = filtrados.length === 0;
-    } else {
+    const textoBusqueda = this.busquedaInteligente.value.trim();
+    
+    if (!textoBusqueda) {
+      // Si no hay texto, mostrar todos los artículos
       this.mostrarArticulos(this.articulos);
+      return;
     }
-  }
-
-  manejarFiltro2() {
-    // Resetear filtro 3
-    this.filtro3.value = '';
-    this.filtro3.disabled = true;
     
-    const texto1 = this.filtro1.value;
-    const texto2 = this.filtro2.value;
+    // Normalizar el texto de búsqueda y dividir por espacios
+    const textoNormalizado = this.normalizarTexto(textoBusqueda);
     
-    if (texto2) {
-      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
-      const segundoFiltro = this.filtrarArticulos(texto2, primerFiltro);
-      this.mostrarArticulos(segundoFiltro);
-      // Habilitar filtro3 solo si hay resultados
-      this.filtro3.disabled = segundoFiltro.length === 0;
+    // Sanitización: filtrar términos vacíos
+    const terminos = textoNormalizado.split(/\s+/).filter(t => t.trim().length > 0);
+    
+    console.log(`🔍 [BÚSQUEDA INTELIGENTE] Términos de búsqueda:`, terminos);
+    
+    if (terminos.length === 0) {
+      this.mostrarArticulos(this.articulos);
+      return;
+    }
+    
+    // Filtrar artículos con lógica AND estricta
+    const resultados = this.articulos.filter(art => {
+      // SOLO buscar en campos VISIBLES: nombre (descripción)
+      // NO incluir código_barras, numero, ni otros campos internos
+      const descripcionNormalizada = this.normalizarTexto(art.nombre || '');
+      
+      // LÓGICA AND ESTRICTA: TODOS los términos deben estar en la descripción
+      const cumpleConTodos = terminos.every(termino => 
+        descripcionNormalizada.includes(termino)
+      );
+      
+      // Debug: Log de artículos que cumplen
+      if (cumpleConTodos) {
+        console.log(`✅ [MATCH] "${art.nombre}" cumple con términos:`, terminos);
+      }
+      
+      return cumpleConTodos;
+    });
+    
+    console.log(`🔍 [BÚSQUEDA INTELIGENTE] Resultados encontrados: ${resultados.length} de ${this.articulos.length}`);
+    
+    // Debug detallado del primer resultado
+    if (resultados.length > 0) {
+      console.log(`🔍 [PRIMER RESULTADO]:`, {
+        nombre: resultados[0].nombre,
+        nombre_normalizado: this.normalizarTexto(resultados[0].nombre),
+        terminos_buscados: terminos,
+        todos_presentes: terminos.map(t => ({
+          termino: t,
+          presente: this.normalizarTexto(resultados[0].nombre).includes(t)
+        }))
+      });
     } else {
-      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
-      this.mostrarArticulos(primerFiltro);
+      console.log(`ℹ️ [SIN RESULTADOS] Ningún artículo contiene TODOS los términos:`, terminos);
     }
-  }
-
-  manejarFiltro3() {
-    const texto1 = this.filtro1.value;
-    const texto2 = this.filtro2.value;
-    const texto3 = this.filtro3.value;
     
-    if (texto3) {
-      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
-      const segundoFiltro = this.filtrarArticulos(texto2, primerFiltro);
-      const tercerFiltro = this.filtrarArticulos(texto3, segundoFiltro);
-      this.mostrarArticulos(tercerFiltro);
-    } else {
-      const primerFiltro = this.filtrarArticulos(texto1, this.articulos);
-      const segundoFiltro = this.filtrarArticulos(texto2, primerFiltro);
-      this.mostrarArticulos(segundoFiltro);
-    }
+    this.mostrarArticulos(resultados);
   }
 
   seleccionarArticulo(art) {
@@ -169,12 +181,8 @@ class PrintManager {
   }
 
   manejarEscaneo() {
-    // Resetear filtros de texto
-    this.filtro1.value = '';
-    this.filtro2.value = '';
-    this.filtro3.value = '';
-    this.filtro2.disabled = true;
-    this.filtro3.disabled = true;
+    // Resetear búsqueda inteligente
+    this.busquedaInteligente.value = '';
 
     const codigo = this.barcodeInput.value.trim();
     if (!codigo) {

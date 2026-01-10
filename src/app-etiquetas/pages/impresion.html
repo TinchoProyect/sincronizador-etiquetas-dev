@@ -25,19 +25,14 @@
       <div id="etiquetas-normales" class="tab-content active">
         <div class="search-container">
           <div class="filters-row">
-            <!-- Filtros de texto encadenados -->
-            <div class="text-filters">
+            <!-- Búsqueda Inteligente -->
+            <div class="text-filters" style="flex: 2;">
               <div class="search-field">
-                <label for="filtro1">Filtro 1</label>
-                <input type="text" id="filtro1" placeholder="Buscar..." />
-              </div>
-              <div class="search-field">
-                <label for="filtro2">Filtro 2</label>
-                <input type="text" id="filtro2" placeholder="Refinar" disabled />
-              </div>
-              <div class="search-field">
-                <label for="filtro3">Filtro 3</label>
-                <input type="text" id="filtro3" placeholder="Más" disabled />
+                <label for="busqueda-inteligente">🔍 Búsqueda Inteligente</label>
+                <input type="text" id="busqueda-inteligente" placeholder="Ej: mix fruto seco (separe términos con espacios)..." autocomplete="off" />
+                <small style="color: #6c757d; font-size: 11px; display: block; margin-top: 4px;">
+                  💡 Escriba múltiples palabras separadas por espacios. Se mostrarán artículos que contengan TODOS los términos.
+                </small>
               </div>
             </div>
             

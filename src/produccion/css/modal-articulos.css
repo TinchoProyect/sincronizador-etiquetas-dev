@@ -1,20 +1,133 @@
 /* Estilos específicos para el modal de artículos */
 .modal-articulos .modal-content {
-    max-width: 1000px; /* Aumentamos el ancho máximo */
-    width: 90%;
-    margin: 5% auto;
+    max-width: 1200px;
+    width: 95%;
+    margin: 2% auto;
+    max-height: 95vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Toolbar Compacto */
+.modal-toolbar {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+}
+
+/* Búsqueda principal (elemento más ancho) */
+.toolbar-search-main {
+    flex: 2;
+    min-width: 250px;
+}
+
+.toolbar-search-main input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.toolbar-search-main input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+/* Código de barras */
+.toolbar-barcode {
+    flex: 1;
+    min-width: 150px;
+}
+
+.toolbar-barcode input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.toolbar-barcode input:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+/* Checkbox compacto */
+.toolbar-checkbox {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.toolbar-checkbox label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #495057;
+    cursor: pointer;
+    user-select: none;
+    margin: 0;
+}
+
+.toolbar-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.toolbar-checkbox span {
+    font-weight: 500;
+}
+
+/* Botón de acción */
+.toolbar-action {
+    flex-shrink: 0;
+}
+
+.btn-agregar-toolbar {
+    padding: 8px 16px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.btn-agregar-toolbar:hover {
+    background: #218838;
+}
+
+.btn-agregar-toolbar:active {
+    transform: scale(0.98);
 }
 
 /* Estilos para la tabla de artículos */
 .tabla-articulos {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
+    margin-top: 0;
 }
 
 .tabla-articulos th,
 .tabla-articulos td {
-    padding: 12px;
+    padding: 10px 12px;
     text-align: left;
     border-bottom: 1px solid #dee2e6;
 }
@@ -23,69 +136,123 @@
     background-color: #f8f9fa;
     font-weight: 600;
     color: #495057;
+    font-size: 13px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.tabla-articulos tbody {
+    font-size: 14px;
 }
 
 /* Ajustar anchos de columnas */
-.tabla-articulos th:nth-child(1), /* Código */
+.tabla-articulos th:nth-child(1),
 .tabla-articulos td:nth-child(1) {
-    width: 15%;
+    width: 12%;
 }
 
-.tabla-articulos th:nth-child(2), /* Descripción */
+.tabla-articulos th:nth-child(2),
 .tabla-articulos td:nth-child(2) {
-    width: 30%;
+    width: 40%;
 }
 
-.tabla-articulos th:nth-child(3), /* Código de Barras */
+.tabla-articulos th:nth-child(3),
 .tabla-articulos td:nth-child(3) {
-    width: 15%;
-}
-
-.tabla-articulos th:nth-child(4), /* Stock */
-.tabla-articulos td:nth-child(4) {
     width: 10%;
     text-align: center;
 }
 
-.tabla-articulos th:nth-child(5), /* Acciones */
-.tabla-articulos td:nth-child(5) {
-    width: 30%;
+.tabla-articulos th:nth-child(4),
+.tabla-articulos td:nth-child(4) {
+    width: 38%;
 }
 
-/* Estilos para los filtros */
-.filtros-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
-    margin-bottom: 20px;
+/* Responsive - Tablet */
+@media (max-width: 1024px) {
+    .toolbar-row {
+        flex-wrap: wrap;
+    }
+    
+    .toolbar-search-main {
+        flex: 1 1 100%;
+        min-width: 100%;
+        margin-bottom: 8px;
+    }
+    
+    .toolbar-barcode {
+        flex: 1 1 calc(50% - 5px);
+    }
+    
+    .toolbar-checkbox {
+        flex: 1 1 calc(50% - 5px);
+    }
+    
+    .toolbar-action {
+        flex: 1 1 100%;
+        margin-top: 8px;
+    }
+    
+    .btn-agregar-toolbar {
+        width: 100%;
+    }
 }
 
-.filtro-grupo {
-    display: flex;
-    flex-direction: column;
-}
-
-.filtro-grupo label {
-    margin-bottom: 5px;
-    color: #495057;
-}
-
-.filtro-grupo input {
-    padding: 8px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-}
-
-/* Responsive */
+/* Responsive - Mobile */
 @media (max-width: 768px) {
     .modal-articulos .modal-content {
-        width: 95%;
-        margin: 20px auto;
+        width: 98%;
+        margin: 1% auto;
+        max-height: 98vh;
     }
-
+    
+    .modal-toolbar {
+        padding: 8px;
+    }
+    
+    .toolbar-row {
+        gap: 8px;
+    }
+    
+    .toolbar-barcode,
+    .toolbar-checkbox {
+        flex: 1 1 100%;
+    }
+    
+    .toolbar-checkbox label {
+        justify-content: center;
+        padding: 8px;
+        background: white;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+    }
+    
     .tabla-articulos {
         display: block;
         overflow-x: auto;
         white-space: nowrap;
     }
+    
+    .tabla-articulos th,
+    .tabla-articulos td {
+        padding: 8px;
+        font-size: 12px;
+    }
+}
+
+/* Mejoras visuales adicionales */
+.modal-articulos h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 20px;
+    color: #212529;
+}
+
+/* Scroll suave para la tabla */
+.tabla-articulos tbody tr {
+    transition: background-color 0.15s;
+}
+
+.tabla-articulos tbody tr:hover {
+    background-color: #f8f9fa;
 }
