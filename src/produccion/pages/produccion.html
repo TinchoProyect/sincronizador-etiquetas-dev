@@ -2267,6 +2267,7 @@
         /**
          * Función para consolidar artículos duplicados por código
          * Agrupa artículos por articulo_numero y suma las cantidades
+         * CORREGIDO: El stock NO se suma (es el mismo para todos), solo se suma el pedido
          * @param {Array} articulos - Array de artículos a consolidar
          * @returns {Array} Array de artículos consolidados
          */
@@ -2290,29 +2291,38 @@
                 }
                 
                 if (articulosMap.has(codigo)) {
-                    // Artículo ya existe: sumar cantidades
+                    // Artículo ya existe: SOLO sumar pedido_total
                     const existente = articulosMap.get(codigo);
                     
+                    // SUMAR: pedido_total (demanda total)
                     existente.pedido_total = parseNumeroSeguro(existente.pedido_total) + parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0);
-                    existente.stock_disponible = parseNumeroSeguro(existente.stock_disponible) + parseNumeroSeguro(art.stock_disponible || art.stock || 0);
-                    existente.faltante = parseNumeroSeguro(existente.faltante) + parseNumeroSeguro(art.faltante || art.cantidad_faltante || 0);
+                    
+                    // NO SUMAR: stock_disponible (es el mismo para todos los pedidos)
+                    // Mantener el stock del primer registro
+                    
+                    // RECALCULAR: faltante = pedido_total - stock_disponible
+                    existente.faltante = Math.max(0, existente.pedido_total - existente.stock_disponible);
                     
                     console.log(`[CONSOLIDAR] Sumando artículo duplicado: ${codigo}`, {
                         pedido_total: existente.pedido_total,
                         stock_disponible: existente.stock_disponible,
-                        faltante: existente.faltante
+                        faltante: existente.faltante,
+                        nota: 'Stock NO sumado (es el mismo)'
                     });
                 } else {
                     // Primera vez que vemos este artículo: agregarlo al Map
+                    const stockDisponible = parseNumeroSeguro(art.stock_disponible || art.stock || 0);
+                    const pedidoTotal = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0);
+                    
                     articulosMap.set(codigo, {
                         articulo_numero: codigo,
                         codigo: codigo,
                         articulo: codigo,
                         descripcion: art.descripcion || art.nombre || '-',
                         codigo_barras: art.codigo_barras || '',
-                        pedido_total: parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0),
-                        stock_disponible: parseNumeroSeguro(art.stock_disponible || art.stock || 0),
-                        faltante: parseNumeroSeguro(art.faltante || art.cantidad_faltante || 0),
+                        pedido_total: pedidoTotal,
+                        stock_disponible: stockDisponible,
+                        faltante: Math.max(0, pedidoTotal - stockDisponible),
                         estado: art.estado || '',
                         // Preservar IDs de presupuesto del primer registro
                         presupuesto_id: art.presupuesto_id || art.id_presupuesto_local || art.id_presupuesto || 0,

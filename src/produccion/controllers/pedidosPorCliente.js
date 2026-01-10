@@ -687,7 +687,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                             CASE 
                                 WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
                                 THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
-                                ELSE ROUND(src.stock_consolidado, 0, 4)
+                                ELSE ROUND(src.stock_consolidado, 4)
                             END, 0
                         ))::numeric, 2) as stock_disponible,
                         0 as faltante,
