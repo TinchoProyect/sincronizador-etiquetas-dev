@@ -294,17 +294,12 @@
                     <label for="codigo-barras">Código de Barras:</label>
                     <input type="text" id="codigo-barras" placeholder="Escanear código...">
                 </div>
-                <div class="filtro-grupo">
-                    <label for="filtro1">Filtro 1:</label>
-                    <input type="text" id="filtro1" placeholder="Buscar...">
-                </div>
-                <div class="filtro-grupo">
-                    <label for="filtro2">Filtro 2:</label>
-                    <input type="text" id="filtro2" placeholder="Refinar búsqueda...">
-                </div>
-                <div class="filtro-grupo">
-                    <label for="filtro3">Filtro 3:</label>
-                    <input type="text" id="filtro3" placeholder="Refinar más...">
+                <div class="filtro-grupo" style="flex: 2;">
+                    <label for="busqueda-inteligente">🔍 Búsqueda Inteligente:</label>
+                    <input type="text" id="busqueda-inteligente" placeholder="Ej: mix fruto seco (separe términos con espacios)..." autocomplete="off">
+                    <small style="color: #6c757d; font-size: 11px; display: block; margin-top: 4px;">
+                        💡 Escriba múltiples palabras separadas por espacios. Se mostrarán artículos que contengan TODOS los términos.
+                    </small>
                 </div>
                 <div class="filtro-grupo">
                     <label for="filtroProduccionSwitch" style="display: flex; align-items: center; cursor: pointer;">

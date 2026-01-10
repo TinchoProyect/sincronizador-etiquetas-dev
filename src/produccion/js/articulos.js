@@ -228,10 +228,18 @@ export function cerrarModalArticulos() {
     setTimeout(() => {
         modal.style.display = 'none';
     }, 300);
-    document.getElementById('filtro1').value = '';
-    document.getElementById('filtro2').value = '';
-    document.getElementById('filtro3').value = '';
-    document.getElementById('codigo-barras').value = '';
+    
+    // Limpiar campo de búsqueda inteligente
+    const busquedaInteligente = document.getElementById('busqueda-inteligente');
+    if (busquedaInteligente) {
+        busquedaInteligente.value = '';
+    }
+    
+    // Limpiar código de barras
+    const codigoBarras = document.getElementById('codigo-barras');
+    if (codigoBarras) {
+        codigoBarras.value = '';
+    }
     
     // Mejora solicitada por Martín - limpiar selecciones persistentes al cerrar modal
     state.selectedArticles.clear();
@@ -514,45 +522,65 @@ export async function actualizarTablaArticulos(articulos) {
     }
 }
 
-// Función para aplicar filtros
+/**
+ * Normaliza un texto para búsqueda: minúsculas y sin acentos
+ * @param {string} texto - Texto a normalizar
+ * @returns {string} Texto normalizado
+ */
+function normalizarTexto(texto) {
+    if (!texto) return '';
+    return texto
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Función para aplicar filtros con búsqueda inteligente multi-término
+ * Permite buscar por múltiples palabras separadas por espacios
+ * Los artículos deben contener TODOS los términos (sin importar el orden)
+ */
 export function aplicarFiltros(filtroIndex) {
     // Mejora solicitada por Martín - preservar selecciones antes de filtrar
     preservarSeleccionesActuales();
     
-    const filtro1 = document.getElementById('filtro1').value.toLowerCase();
-    const filtro2 = document.getElementById('filtro2').value.toLowerCase();
-    const filtro3 = document.getElementById('filtro3').value.toLowerCase();
+    // Obtener valor del campo de búsqueda inteligente
+    const busquedaInteligente = document.getElementById('busqueda-inteligente');
+    const textoBusqueda = busquedaInteligente ? busquedaInteligente.value.trim() : '';
 
     const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
     const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
 
-    if (filtroIndex === 1) {
-        document.getElementById('filtro2').value = '';
-        document.getElementById('filtro3').value = '';
-    } else if (filtroIndex === 2) {
-        document.getElementById('filtro3').value = '';
-    }
-
     let resultados = state.todosLosArticulos;
 
-    if (filtro1) {
-        resultados = resultados.filter(art => 
-            art.nombre.toLowerCase().includes(filtro1)
-        );
+    // Aplicar búsqueda inteligente multi-término
+    if (textoBusqueda) {
+        // Normalizar el texto de búsqueda
+        const textoNormalizado = normalizarTexto(textoBusqueda);
+        
+        // Dividir por espacios para obtener términos individuales
+        const terminos = textoNormalizado.split(/\s+/).filter(t => t.length > 0);
+        
+        console.log(`🔍 [BÚSQUEDA INTELIGENTE] Buscando con ${terminos.length} término(s):`, terminos);
+        
+        if (terminos.length > 0) {
+            // Filtrar artículos que contengan TODOS los términos
+            resultados = resultados.filter(art => {
+                const nombreNormalizado = normalizarTexto(art.nombre);
+                
+                // Verificar que el nombre contenga TODOS los términos
+                const contieneTodasLasPalabras = terminos.every(termino => 
+                    nombreNormalizado.includes(termino)
+                );
+                
+                return contieneTodasLasPalabras;
+            });
+            
+            console.log(`🔍 [BÚSQUEDA INTELIGENTE] Resultados encontrados: ${resultados.length}`);
+        }
     }
 
-    if (filtro2) {
-        resultados = resultados.filter(art => 
-            art.nombre.toLowerCase().includes(filtro2)
-        );
-    }
-
-    if (filtro3) {
-        resultados = resultados.filter(art => 
-            art.nombre.toLowerCase().includes(filtro3)
-        );
-    }
-
+    // Aplicar filtro de producción
     if (mostrarSoloProduccion) {
         resultados = resultados.filter(art => art.no_producido_por_lambda === false);
     }
@@ -568,6 +596,7 @@ export function aplicarFiltros(filtroIndex) {
         resultados = [...articulosSeleccionadosData, ...resultados];
     }
 
+    // Ordenar resultados
     resultados.sort((a, b) => {
         if (a.no_producido_por_lambda === b.no_producido_por_lambda) {
             return a.nombre.localeCompare(b.nombre);

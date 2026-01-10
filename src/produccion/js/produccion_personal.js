@@ -161,10 +161,12 @@ document.addEventListener('DOMContentLoaded', () => {
         closeModal.addEventListener('click', cerrarModalArticulos);
     }
 
-    // Agregar eventos a los filtros
-    document.getElementById('filtro1').addEventListener('input', () => aplicarFiltros(1));
-    document.getElementById('filtro2').addEventListener('input', () => aplicarFiltros(2));
-    document.getElementById('filtro3').addEventListener('input', () => aplicarFiltros(3));
+    // Agregar evento al campo de búsqueda inteligente
+    const busquedaInteligente = document.getElementById('busqueda-inteligente');
+    if (busquedaInteligente) {
+        busquedaInteligente.addEventListener('input', () => aplicarFiltros(0));
+        console.log('🔍 [BÚSQUEDA INTELIGENTE] Event listener configurado');
+    }
 
     // Agregar evento al switch de filtro de producción
     const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
