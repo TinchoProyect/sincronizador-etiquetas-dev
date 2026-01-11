@@ -51,18 +51,21 @@ async function obtenerHistorialProduccion(req, res) {
                 COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
                 COUNT(DISTINCT svm.id) as total_registros,
                 SUM(ABS(svm.cantidad)) as cantidad_total_producida,
-                SUM(ABS(svm.kilos)) as kilos_totales_producidos,
-                COUNT(DISTINCT DATE_TRUNC('month', svm.fecha)) as meses_activos
+                SUM(ABS(svm.cantidad) * COALESCE(src.kilos_unidad, 0)) as kilos_totales_producidos,
+                COUNT(DISTINCT DATE_TRUNC('month', svm.fecha)) as meses_activos,
+                src.es_pack
             FROM stock_ventas_movimientos svm
             JOIN articulos a ON a.numero = svm.articulo_numero
             LEFT JOIN precios_articulos pa ON pa.articulo = a.numero
+            LEFT JOIN stock_real_consolidado src ON src.articulo_numero = a.numero
             WHERE svm.tipo = ANY($1::text[])
             GROUP BY 
                 a.numero, 
                 a.nombre, 
                 a.codigo_barras,
                 pa.rubro, 
-                pa.sub_rubro
+                pa.sub_rubro,
+                src.es_pack
             ORDER BY 
                 COALESCE(pa.rubro, 'Sin Rubro') ASC,
                 COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC,
@@ -142,11 +145,13 @@ async function obtenerProduccionPorPeriodo(req, res) {
                 COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
                 COUNT(DISTINCT svm.id) as total_registros,
                 SUM(ABS(svm.cantidad)) as cantidad_producida,
-                SUM(ABS(svm.kilos)) as kilos_producidos,
-                ARRAY_AGG(DISTINCT DATE_TRUNC('day', svm.fecha)::date ORDER BY DATE_TRUNC('day', svm.fecha)::date) as fechas_produccion
+                SUM(ABS(svm.cantidad) * COALESCE(src.kilos_unidad, 0)) as kilos_producidos,
+                ARRAY_AGG(DISTINCT DATE_TRUNC('day', svm.fecha)::date ORDER BY DATE_TRUNC('day', svm.fecha)::date) as fechas_produccion,
+                src.es_pack
             FROM stock_ventas_movimientos svm
             JOIN articulos a ON a.numero = svm.articulo_numero
             LEFT JOIN precios_articulos pa ON pa.articulo = a.numero
+            LEFT JOIN stock_real_consolidado src ON src.articulo_numero = a.numero
             WHERE svm.tipo = ANY($1::text[])
                 AND svm.fecha >= $2::date
                 AND svm.fecha <= $3::date + INTERVAL '1 day' - INTERVAL '1 second'
@@ -155,7 +160,8 @@ async function obtenerProduccionPorPeriodo(req, res) {
                 a.nombre, 
                 a.codigo_barras,
                 pa.rubro, 
-                pa.sub_rubro
+                pa.sub_rubro,
+                src.es_pack
             ORDER BY 
                 COALESCE(pa.rubro, 'Sin Rubro') ASC,
                 COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC,

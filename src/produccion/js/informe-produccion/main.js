@@ -145,6 +145,9 @@ class InformeProduccionInterna {
         
         this.periodosActivos = periodos;
         
+        // Actualizar headers de la tabla
+        this.actualizarEncabezadosTabla();
+        
         // Re-renderizar tabla con columnas comparativas
         this.renderizarTabla(this.datosBase);
     }
@@ -224,7 +227,7 @@ class InformeProduccionInterna {
         const tr = document.createElement('tr');
         tr.className = 'rubro-header';
         
-        const colspan = 5 + this.periodosActivos.length; // Columnas base + periodos
+        const colspan = 4 + this.periodosActivos.length; // 4 columnas base (sin fecha) + periodos
         
         tr.innerHTML = `
             <td colspan="${colspan}" style="font-weight: 700; font-size: 1rem;">
@@ -244,7 +247,7 @@ class InformeProduccionInterna {
         const tr = document.createElement('tr');
         tr.className = 'subrubro-header';
         
-        const colspan = 5 + this.periodosActivos.length;
+        const colspan = 4 + this.periodosActivos.length; // 4 columnas base + periodos
         
         tr.innerHTML = `
             <td colspan="${colspan}" style="padding-left: 30px; font-weight: 600;">
