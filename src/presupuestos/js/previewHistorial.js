@@ -635,15 +635,15 @@ function generarCeldaProducto(columnaId, producto, valores) {
         case 'descripcion':
             // ✅ CONDICIONAL: Botón de exclusión SOLO en modo Catálogo
             if (esCatalogo) {
-                return `<td style="display: flex; align-items: center; gap: 8px; justify-content: space-between;">
-                    <span>${producto.descripcion}</span>
+                return `<td style="position: relative; padding-left: 30px;">
                     <button 
                         class="btn-excluir no-print" 
                         onclick="event.stopPropagation(); excluirArticulo('${producto.articulo_numero}', '${producto.descripcion.replace(/'/g, "\\'")}')"
                         title="Excluir este artículo de la lista"
-                        style="background: #e74c3c; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em; white-space: nowrap; flex-shrink: 0;">
-                        ✖ Excluir
+                        style="position: absolute; left: -8px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; background: #e74c3c; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold; padding: 0; display: flex; align-items: center; justify-content: center; line-height: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                        ✖
                     </button>
+                    <span>${producto.descripcion}</span>
                 </td>`;
             } else {
                 // Modo histórico: solo descripción, sin botón
@@ -1628,7 +1628,8 @@ async function cargarPesoArticulo(event, articuloNumero, descripcion) {
         `⚖️ Cargar Peso del Artículo\n\n` +
         `Producto: ${descripcion}\n` +
         `Código: ${articuloNumero}\n\n` +
-        `Ingrese la cantidad de Kilos/Unidades por bulto:`,
+        `Ingrese la cantidad de Kilos/Unidades por bulto:\n` +
+        `(Puede usar coma o punto para decimales, ej: 1,5 o 0.2)`,
         ''
     );
     
@@ -1637,12 +1638,16 @@ async function cargarPesoArticulo(event, articuloNumero, descripcion) {
         return;
     }
     
-    const peso = parseFloat(pesoStr);
+    // ✅ SANITIZACIÓN: Reemplazar coma por punto para soportar formato español
+    const valorLimpio = pesoStr.trim().replace(',', '.');
+    const peso = parseFloat(valorLimpio);
     
     if (isNaN(peso) || peso <= 0) {
-        alert('❌ Error: Debe ingresar un número positivo válido');
+        alert('❌ Error: Debe ingresar un número positivo válido\n\nEjemplos válidos: 1.5, 0.2, 2,5');
         return;
     }
+    
+    console.log(`📊 [CARGAR-PESO] Valor sanitizado: "${pesoStr}" → ${peso} kg`);
     
     let originalText = '';
     if (event && event.target) {
@@ -1652,7 +1657,9 @@ async function cargarPesoArticulo(event, articuloNumero, descripcion) {
     }
     
     try {
-        const response = await fetch(`http://localhost:3005/api/logistica/articulos/${articuloNumero}/peso`, {
+        // ✅ CODIFICACIÓN: Usar encodeURIComponent para manejar caracteres especiales (/, espacios, etc.)
+        const articuloNumeroEncoded = encodeURIComponent(articuloNumero);
+        const response = await fetch(`http://localhost:3005/api/logistica/articulos/${articuloNumeroEncoded}/peso`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ kilos_unidad: peso })

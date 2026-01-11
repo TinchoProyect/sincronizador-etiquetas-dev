@@ -2463,11 +2463,11 @@ const obtenerCatalogoGeneral = async (req, res) => {
         console.log(`📄 [PRESUPUESTOS] ${requestId} - Paginación: página ${currentPage}, ${itemsPerPage} items por página`);
 
         // ✅ CONSULTA OPTIMIZADA: Incluye articulo_numero desde stock_real_consolidado
-        // ✅ CRÍTICO: Necesitamos el código alfanumérico para exclusiones
+        // ✅ CRÍTICO: JOIN mejorado para obtener siempre el código alfanumérico correcto
         let query = `
             SELECT
                 pa.descripcion,
-                COALESCE(src.articulo_numero, pa.descripcion) as articulo_numero,
+                src.articulo_numero,
                 pa.precio_neg as precio_lista1,
                 pa.mayorista as precio_lista2,
                 pa.especial_brus as precio_lista3,
@@ -2481,8 +2481,8 @@ const obtenerCatalogoGeneral = async (req, res) => {
                 COALESCE(src.es_pack, false) as es_pack,
                 COALESCE(src.pack_unidades, 0) as pack_unidades
             FROM public.precios_articulos pa
-            LEFT JOIN public.stock_real_consolidado src ON LOWER(pa.descripcion) = LOWER(src.descripcion)
-            WHERE 1=1
+            INNER JOIN public.stock_real_consolidado src ON LOWER(pa.descripcion) = LOWER(src.descripcion)
+            WHERE src.articulo_numero IS NOT NULL
         `;
 
         const params = [];
@@ -2568,7 +2568,7 @@ const obtenerCatalogoGeneral = async (req, res) => {
 
                 return {
                     descripcion: producto.descripcion,
-                    articulo_numero: producto.articulo_numero || producto.descripcion, // ✅ CÓDIGO REAL
+                    articulo_numero: producto.articulo_numero, // ✅ SIEMPRE viene del INNER JOIN
                     precio_actual: precioActual,
                     iva: parseFloat(producto.iva || 0),
                     lista_precios: listaPrecios,

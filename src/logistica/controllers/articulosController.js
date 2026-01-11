@@ -46,11 +46,11 @@ async function actualizarPesoArticulo(req, res) {
         
         console.log(`📊 [ARTICULOS] ${requestId} - Valor a actualizar: ${kilosNumerico} kg`);
         
-        // ✅ CORRECCIÓN: Buscar por codigo_barras (numérico) en lugar de articulo_numero (alfanumérico)
+        // ✅ CORRECCIÓN: Buscar por articulo_numero (alfanumérico) que es la PK
         const checkQuery = `
             SELECT articulo_numero, codigo_barras, descripcion, kilos_unidad
             FROM public.stock_real_consolidado
-            WHERE codigo_barras = $1
+            WHERE articulo_numero = $1
             LIMIT 1
         `;
         
@@ -58,7 +58,7 @@ async function actualizarPesoArticulo(req, res) {
         
         if (checkResult.rows.length === 0) {
             console.log(`❌ [ARTICULOS] ${requestId} - Artículo no encontrado en stock_real_consolidado`);
-            console.log(`📊 [ARTICULOS] ${requestId} - Buscado por codigo_barras: ${articulo_numero}`);
+            console.log(`📊 [ARTICULOS] ${requestId} - Buscado por articulo_numero: ${articulo_numero}`);
             return res.status(404).json({
                 success: false,
                 error: 'Artículo no encontrado en el sistema de stock'
