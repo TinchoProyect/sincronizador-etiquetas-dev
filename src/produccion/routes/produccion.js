@@ -3329,4 +3329,87 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
   }
 });
 
+// ==========================================
+// RUTAS PARA INFORME DE PRODUCCIÓN INTERNA
+// ==========================================
+
+const {
+    obtenerHistorialProduccion,
+    obtenerProduccionPorPeriodo,
+    obtenerRubrosSubrubros,
+    obtenerProduccionMensual
+} = require('../controllers/informeProduccionInterna');
+
+/**
+ * Obtener historial completo de producción interna
+ * GET /api/produccion/informe/historial
+ */
+router.get('/informe/historial', async (req, res) => {
+    try {
+        console.log('📊 [RUTA] GET /informe/historial');
+        await obtenerHistorialProduccion(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /informe/historial:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de historial',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Obtener producción filtrada por periodo
+ * GET /api/produccion/informe/periodo?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+ */
+router.get('/informe/periodo', async (req, res) => {
+    try {
+        console.log('📊 [RUTA] GET /informe/periodo');
+        await obtenerProduccionPorPeriodo(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /informe/periodo:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de periodo',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Obtener jerarquía de Rubros y Subrubros
+ * GET /api/produccion/informe/rubros
+ */
+router.get('/informe/rubros', async (req, res) => {
+    try {
+        console.log('📊 [RUTA] GET /informe/rubros');
+        await obtenerRubrosSubrubros(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /informe/rubros:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de rubros',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Obtener producción agrupada por mes
+ * GET /api/produccion/informe/mensual
+ */
+router.get('/informe/mensual', async (req, res) => {
+    try {
+        console.log('📊 [RUTA] GET /informe/mensual');
+        await obtenerProduccionMensual(req, res);
+    } catch (error) {
+        console.error('❌ [RUTA] Error en /informe/mensual:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de producción mensual',
+            message: error.message
+        });
+    }
+});
+
 module.exports = router;
