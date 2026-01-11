@@ -137,13 +137,17 @@ class InformeProduccionInterna {
 
     /**
      * Callback cuando se actualizan los periodos
+     * ✅ ACTUALIZADO: Solo muestra periodos seleccionados
      * 
-     * @param {Array} periodos - Lista de periodos activos
+     * @param {Array} periodos - Lista de periodos seleccionados
      */
     onPeriodosActualizados(periodos) {
-        console.log(`📅 [INFORME-PROD] Periodos actualizados: ${periodos.length} activos`);
+        console.log(`📅 [INFORME-PROD] Periodos seleccionados actualizados: ${periodos.length}`);
         
-        this.periodosActivos = periodos;
+        // Solo guardar periodos seleccionados
+        this.periodosActivos = periodos.filter(p => p.seleccionado !== false);
+        
+        console.log(`📊 [INFORME-PROD] Mostrando ${this.periodosActivos.length} columnas de periodos`);
         
         // Actualizar headers de la tabla
         this.actualizarEncabezadosTabla();

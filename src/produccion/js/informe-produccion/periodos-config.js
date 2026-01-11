@@ -147,14 +147,15 @@ class PeriodosConfig {
             // Obtener datos del periodo desde la API
             const datos = await this.dataFetcher.obtenerProduccionPorPeriodo(fechaInicio, fechaFin, tiposMovimiento);
             
-            // Crear objeto de periodo
+            // Crear objeto de periodo (seleccionado por defecto)
             const periodo = {
                 id: this.nextId++,
                 nombre: nombre,
                 fechaInicio: fechaInicio,
                 fechaFin: fechaFin,
                 datos: datos.data,
-                estadisticas: datos.estadisticas
+                estadisticas: datos.estadisticas,
+                seleccionado: true
             };
             
             // Agregar a la lista
@@ -188,6 +189,7 @@ class PeriodosConfig {
 
     /**
      * Renderizar un periodo en la lista
+     * ✅ ACTUALIZADO: Con checkbox de selección y botón compacto
      * 
      * @param {Object} periodo - Objeto de periodo
      */
@@ -197,15 +199,25 @@ class PeriodosConfig {
         periodoElement.dataset.periodoId = periodo.id;
         
         periodoElement.innerHTML = `
-            <div class="periodo-info">
+            <div class="periodo-checkbox-container">
+                <input 
+                    type="checkbox" 
+                    id="periodo-check-${periodo.id}"
+                    checked
+                    onchange="window.periodosConfig.onPeriodoCheckChange(${periodo.id}, this.checked)"
+                >
+            </div>
+            <div class="periodo-info" onclick="window.periodosConfig.togglePeriodoCheck(${periodo.id})">
                 <div class="periodo-nombre">${periodo.nombre}</div>
                 <div class="periodo-fechas">
                     ${this.formatearFecha(periodo.fechaInicio)} - ${this.formatearFecha(periodo.fechaFin)}
                 </div>
             </div>
-            <button class="btn-eliminar-periodo" onclick="window.periodosConfig.eliminarPeriodo(${periodo.id})">
-                ✕ Eliminar
-            </button>
+            <button 
+                class="btn-eliminar-periodo" 
+                onclick="window.periodosConfig.eliminarPeriodo(${periodo.id})"
+                title="Eliminar periodo"
+            ></button>
         `;
         
         this.periodosLista.appendChild(periodoElement);
@@ -273,6 +285,50 @@ class PeriodosConfig {
      */
     getPeriodos() {
         return this.periodos;
+    }
+
+    /**
+     * Manejar cambio en checkbox de periodo
+     * 
+     * @param {number} periodoId - ID del periodo
+     * @param {boolean} checked - Estado del checkbox
+     */
+    onPeriodoCheckChange(periodoId, checked) {
+        console.log(`📅 [PERIODOS-CONFIG] Periodo ${periodoId} ${checked ? 'seleccionado' : 'deseleccionado'}`);
+        
+        // Actualizar estado en el objeto
+        const periodo = this.periodos.find(p => p.id === periodoId);
+        if (periodo) {
+            periodo.seleccionado = checked;
+        }
+        
+        // Notificar cambio (solo periodos seleccionados)
+        if (this.onPeriodosChange) {
+            const periodosSeleccionados = this.periodos.filter(p => p.seleccionado);
+            this.onPeriodosChange(periodosSeleccionados);
+        }
+    }
+
+    /**
+     * Alternar checkbox al hacer clic en el periodo
+     * 
+     * @param {number} periodoId - ID del periodo
+     */
+    togglePeriodoCheck(periodoId) {
+        const checkbox = document.getElementById(`periodo-check-${periodoId}`);
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+            this.onPeriodoCheckChange(periodoId, checkbox.checked);
+        }
+    }
+
+    /**
+     * Obtener periodos seleccionados
+     * 
+     * @returns {Array} Lista de periodos seleccionados
+     */
+    getPeriodosSeleccionados() {
+        return this.periodos.filter(p => p.seleccionado);
     }
 
     /**
