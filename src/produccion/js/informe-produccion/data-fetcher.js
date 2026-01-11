@@ -27,13 +27,16 @@ class DataFetcher {
     /**
      * Obtener historial completo de producción
      * 
+     * @param {Array} tiposMovimiento - Tipos de movimiento a filtrar (opcional)
      * @param {boolean} forceRefresh - Forzar actualización ignorando caché
      * @returns {Promise<Object>} Datos del historial
      */
-    async obtenerHistorial(forceRefresh = false) {
-        const cacheKey = 'historial-completo';
+    async obtenerHistorial(tiposMovimiento = null, forceRefresh = false) {
+        const tiposParam = tiposMovimiento ? tiposMovimiento.join(',') : 'salida a ventas,ingreso a producción';
+        const cacheKey = `historial-${tiposParam}`;
         
         console.log('📊 [DATA-FETCHER] Obteniendo historial completo...');
+        console.log('🔍 [DATA-FETCHER] Tipos de movimiento:', tiposParam);
         
         // Verificar caché
         if (!forceRefresh && this.isCacheValid(cacheKey)) {
@@ -42,7 +45,8 @@ class DataFetcher {
         }
         
         try {
-            const response = await fetch(`${this.baseUrl}/historial`);
+            const url = `${this.baseUrl}/historial?tipos=${encodeURIComponent(tiposParam)}`;
+            const response = await fetch(url);
             
             if (!response.ok) {
                 throw new Error(`Error HTTP: ${response.status}`);
@@ -72,13 +76,16 @@ class DataFetcher {
      * 
      * @param {string} fechaInicio - Fecha de inicio (YYYY-MM-DD)
      * @param {string} fechaFin - Fecha de fin (YYYY-MM-DD)
+     * @param {Array} tiposMovimiento - Tipos de movimiento a filtrar (opcional)
      * @param {boolean} forceRefresh - Forzar actualización ignorando caché
      * @returns {Promise<Object>} Datos del periodo
      */
-    async obtenerProduccionPorPeriodo(fechaInicio, fechaFin, forceRefresh = false) {
-        const cacheKey = `periodo-${fechaInicio}-${fechaFin}`;
+    async obtenerProduccionPorPeriodo(fechaInicio, fechaFin, tiposMovimiento = null, forceRefresh = false) {
+        const tiposParam = tiposMovimiento ? tiposMovimiento.join(',') : 'salida a ventas,ingreso a producción';
+        const cacheKey = `periodo-${fechaInicio}-${fechaFin}-${tiposParam}`;
         
         console.log(`📊 [DATA-FETCHER] Obteniendo producción del periodo: ${fechaInicio} a ${fechaFin}`);
+        console.log('🔍 [DATA-FETCHER] Tipos de movimiento:', tiposParam);
         
         // Validar fechas
         if (!fechaInicio || !fechaFin) {
@@ -92,7 +99,7 @@ class DataFetcher {
         }
         
         try {
-            const url = `${this.baseUrl}/periodo?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`;
+            const url = `${this.baseUrl}/periodo?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}&tipos=${encodeURIComponent(tiposParam)}`;
             const response = await fetch(url);
             
             if (!response.ok) {

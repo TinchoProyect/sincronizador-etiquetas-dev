@@ -19,8 +19,9 @@
  */
 
 class PeriodosConfig {
-    constructor(dataFetcher, onPeriodosChange) {
+    constructor(dataFetcher, getTiposMovimiento, onPeriodosChange) {
         this.dataFetcher = dataFetcher;
+        this.getTiposMovimiento = getTiposMovimiento; // Función para obtener tipos seleccionados
         this.onPeriodosChange = onPeriodosChange; // Callback para notificar cambios
         this.periodos = [];
         this.nextId = 1;
@@ -140,8 +141,11 @@ class PeriodosConfig {
             this.btnAgregar.textContent = 'Cargando...';
             this.btnAgregar.disabled = true;
             
+            // Obtener tipos de movimiento actuales
+            const tiposMovimiento = this.getTiposMovimiento ? this.getTiposMovimiento() : null;
+            
             // Obtener datos del periodo desde la API
-            const datos = await this.dataFetcher.obtenerProduccionPorPeriodo(fechaInicio, fechaFin);
+            const datos = await this.dataFetcher.obtenerProduccionPorPeriodo(fechaInicio, fechaFin, tiposMovimiento);
             
             // Crear objeto de periodo
             const periodo = {

@@ -22,11 +22,13 @@ class InformeProduccionInterna {
     constructor() {
         this.dataFetcher = null;
         this.sidebarResizer = null;
+        this.tiposMovimientoConfig = null;
         this.periodosConfig = null;
         
         // Estado de la aplicación
         this.datosBase = null; // Historial completo
         this.periodosActivos = []; // Periodos para comparación
+        this.tiposMovimientoActivos = null; // Tipos de movimiento seleccionados
         this.tablaElement = null;
     }
 
@@ -71,9 +73,16 @@ class InformeProduccionInterna {
         this.sidebarResizer = new SidebarResizer();
         this.sidebarResizer.init();
         
+        // Inicializar TiposMovimientoConfig
+        this.tiposMovimientoConfig = new TiposMovimientoConfig(
+            (tipos) => this.onTiposMovimientoActualizados(tipos)
+        );
+        this.tiposMovimientoConfig.init();
+        
         // Inicializar PeriodosConfig
         this.periodosConfig = new PeriodosConfig(
             this.dataFetcher,
+            () => this.tiposMovimientoConfig.getTiposSeleccionados(),
             (periodos) => this.onPeriodosActualizados(periodos)
         );
         this.periodosConfig.init();
@@ -90,8 +99,11 @@ class InformeProduccionInterna {
         this.mostrarLoading();
         
         try {
-            // Obtener historial completo
-            const resultado = await this.dataFetcher.obtenerHistorial();
+            // Obtener tipos de movimiento seleccionados
+            this.tiposMovimientoActivos = this.tiposMovimientoConfig.getTiposSeleccionados();
+            
+            // Obtener historial completo con tipos de movimiento
+            const resultado = await this.dataFetcher.obtenerHistorial(this.tiposMovimientoActivos);
             
             this.datosBase = resultado.data;
             
@@ -107,6 +119,20 @@ class InformeProduccionInterna {
             console.error('❌ [INFORME-PROD] Error al cargar datos iniciales:', error);
             this.mostrarError('Error al cargar datos: ' + error.message);
         }
+    }
+
+    /**
+     * Callback cuando se actualizan los tipos de movimiento
+     * 
+     * @param {Array} tipos - Lista de tipos seleccionados
+     */
+    async onTiposMovimientoActualizados(tipos) {
+        console.log(`🔍 [INFORME-PROD] Tipos de movimiento actualizados:`, tipos);
+        
+        this.tiposMovimientoActivos = tipos;
+        
+        // Recargar datos con nuevos tipos
+        await this.cargarDatosIniciales();
     }
 
     /**
@@ -231,19 +257,19 @@ class InformeProduccionInterna {
 
     /**
      * Renderizar fila de artículo
+     * ✅ ACTUALIZADO: Sin columna de fecha
      * 
      * @param {Object} articulo - Datos del artículo
      */
     renderizarFilaArticulo(articulo) {
         const tr = document.createElement('tr');
         
-        // Columnas base
+        // Columnas base (sin fecha)
         let html = `
             <td>${articulo.articulo_codigo}</td>
             <td>${articulo.articulo_nombre}</td>
             <td class="col-numero">${this.formatearNumero(articulo.cantidad_total_producida)}</td>
-            <td class="col-numero">${this.formatearNumero(articulo.kilos_totales_producidos)} kg</td>
-            <td>${this.formatearFecha(articulo.ultima_produccion)}</td>
+            <td class="col-numero">${this.formatearNumero(articulo.kilos_totales_producidos)}</td>
         `;
         
         // Columnas de periodos (si hay periodos activos)
@@ -437,8 +463,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Inicializar
         await window.informeProduccion.init();
         
-        // Exponer periodosConfig globalmente para los botones de eliminar
+        // Exponer módulos globalmente para los botones de eliminar
         window.periodosConfig = window.informeProduccion.periodosConfig;
+        window.tiposMovimientoConfig = window.informeProduccion.tiposMovimientoConfig;
         
     } catch (error) {
         console.error('❌ [INFORME-PROD] Error fatal al inicializar:', error);

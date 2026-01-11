@@ -34,6 +34,26 @@
                     <!-- Contenido del sidebar -->
                     <div class="sidebar-content">
                         
+                        <!-- Acordeón: Tipos de Movimiento -->
+                        <div class="accordion">
+                            <div class="accordion-item">
+                                <div class="accordion-header" id="accordion-tipos-header">
+                                    <span>🔍 Tipos de Movimiento</span>
+                                    <span class="accordion-icon">▶</span>
+                                </div>
+                                <div class="accordion-content" id="accordion-tipos-content">
+                                    <div class="accordion-body">
+                                        <p style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">
+                                            Seleccione los tipos de movimiento a incluir en el informe:
+                                        </p>
+                                        <div id="tipos-checkboxes">
+                                            <!-- Los checkboxes se generarán dinámicamente -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- Acordeón: Configuración de Periodos -->
                         <div class="accordion">
                             <div class="accordion-item">
@@ -147,9 +167,8 @@
                                 <tr>
                                     <th>Código</th>
                                     <th>Artículo</th>
-                                    <th class="col-numero">Cantidad Total</th>
-                                    <th class="col-numero">Kilos Totales</th>
-                                    <th>Última Producción</th>
+                                    <th class="col-numero">Unidades Producidas</th>
+                                    <th class="col-numero">Peso Total (kg)</th>
                                     <!-- Las columnas de periodos se agregarán dinámicamente -->
                                 </tr>
                             </thead>
@@ -177,6 +196,7 @@
     <!-- Scripts del módulo (orden importante) -->
     <script src="/js/informe-produccion/sidebar-resizer.js"></script>
     <script src="/js/informe-produccion/data-fetcher.js"></script>
+    <script src="/js/informe-produccion/tipos-movimiento-config.js"></script>
     <script src="/js/informe-produccion/periodos-config.js"></script>
     <script src="/js/informe-produccion/main.js"></script>
 </body>

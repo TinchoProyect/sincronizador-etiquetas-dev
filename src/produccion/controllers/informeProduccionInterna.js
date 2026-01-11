@@ -35,7 +35,12 @@ const pool = require('../config/database');
  */
 async function obtenerHistorialProduccion(req, res) {
     try {
+        // Obtener tipos de movimiento desde query params (por defecto: salida a ventas e ingreso a producción)
+        const tiposParam = req.query.tipos || 'salida a ventas,ingreso a producción';
+        const tiposMovimiento = tiposParam.split(',').map(t => t.trim());
+        
         console.log('📊 [INFORME-PROD] Obteniendo historial completo de producción...');
+        console.log('🔍 [INFORME-PROD] Tipos de movimiento:', tiposMovimiento);
 
         const query = `
             SELECT 
@@ -45,15 +50,13 @@ async function obtenerHistorialProduccion(req, res) {
                 COALESCE(pa.rubro, 'Sin Rubro') as rubro,
                 COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
                 COUNT(DISTINCT svm.id) as total_registros,
-                SUM(svm.cantidad) as cantidad_total_producida,
-                SUM(svm.kilos) as kilos_totales_producidos,
-                MIN(svm.fecha) as primera_produccion,
-                MAX(svm.fecha) as ultima_produccion,
+                SUM(ABS(svm.cantidad)) as cantidad_total_producida,
+                SUM(ABS(svm.kilos)) as kilos_totales_producidos,
                 COUNT(DISTINCT DATE_TRUNC('month', svm.fecha)) as meses_activos
             FROM stock_ventas_movimientos svm
             JOIN articulos a ON a.numero = svm.articulo_numero
             LEFT JOIN precios_articulos pa ON pa.articulo = a.numero
-            WHERE svm.tipo = 'ingreso a producción'
+            WHERE svm.tipo = ANY($1::text[])
             GROUP BY 
                 a.numero, 
                 a.nombre, 
@@ -66,7 +69,7 @@ async function obtenerHistorialProduccion(req, res) {
                 a.nombre ASC
         `;
 
-        const result = await pool.query(query);
+        const result = await pool.query(query, [tiposMovimiento]);
 
         console.log(`✅ [INFORME-PROD] Historial obtenido: ${result.rows.length} artículos`);
 
@@ -82,6 +85,7 @@ async function obtenerHistorialProduccion(req, res) {
             success: true,
             data: result.rows,
             estadisticas: estadisticas,
+            tipos_aplicados: tiposMovimiento,
             timestamp: new Date().toISOString()
         });
 
@@ -111,7 +115,7 @@ async function obtenerHistorialProduccion(req, res) {
  */
 async function obtenerProduccionPorPeriodo(req, res) {
     try {
-        const { fecha_inicio, fecha_fin } = req.query;
+        const { fecha_inicio, fecha_fin, tipos } = req.query;
 
         console.log(`📊 [INFORME-PROD] Obteniendo producción por periodo: ${fecha_inicio} a ${fecha_fin}`);
 
@@ -123,6 +127,12 @@ async function obtenerProduccionPorPeriodo(req, res) {
             });
         }
 
+        // Tipos de movimiento (por defecto: salida a ventas e ingreso a producción)
+        const tiposParam = tipos || 'salida a ventas,ingreso a producción';
+        const tiposMovimiento = tiposParam.split(',').map(t => t.trim());
+        
+        console.log('🔍 [INFORME-PROD] Tipos de movimiento:', tiposMovimiento);
+
         const query = `
             SELECT 
                 a.numero as articulo_codigo,
@@ -131,17 +141,15 @@ async function obtenerProduccionPorPeriodo(req, res) {
                 COALESCE(pa.rubro, 'Sin Rubro') as rubro,
                 COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
                 COUNT(DISTINCT svm.id) as total_registros,
-                SUM(svm.cantidad) as cantidad_producida,
-                SUM(svm.kilos) as kilos_producidos,
-                MIN(svm.fecha) as primera_produccion_periodo,
-                MAX(svm.fecha) as ultima_produccion_periodo,
+                SUM(ABS(svm.cantidad)) as cantidad_producida,
+                SUM(ABS(svm.kilos)) as kilos_producidos,
                 ARRAY_AGG(DISTINCT DATE_TRUNC('day', svm.fecha)::date ORDER BY DATE_TRUNC('day', svm.fecha)::date) as fechas_produccion
             FROM stock_ventas_movimientos svm
             JOIN articulos a ON a.numero = svm.articulo_numero
             LEFT JOIN precios_articulos pa ON pa.articulo = a.numero
-            WHERE svm.tipo = 'ingreso a producción'
-                AND svm.fecha >= $1::date
-                AND svm.fecha <= $2::date + INTERVAL '1 day' - INTERVAL '1 second'
+            WHERE svm.tipo = ANY($1::text[])
+                AND svm.fecha >= $2::date
+                AND svm.fecha <= $3::date + INTERVAL '1 day' - INTERVAL '1 second'
             GROUP BY 
                 a.numero, 
                 a.nombre, 
@@ -154,7 +162,7 @@ async function obtenerProduccionPorPeriodo(req, res) {
                 a.nombre ASC
         `;
 
-        const result = await pool.query(query, [fecha_inicio, fecha_fin]);
+        const result = await pool.query(query, [tiposMovimiento, fecha_inicio, fecha_fin]);
 
         console.log(`✅ [INFORME-PROD] Producción del periodo obtenida: ${result.rows.length} artículos`);
 
@@ -174,6 +182,7 @@ async function obtenerProduccionPorPeriodo(req, res) {
             success: true,
             data: result.rows,
             estadisticas: estadisticas,
+            tipos_aplicados: tiposMovimiento,
             timestamp: new Date().toISOString()
         });
 
