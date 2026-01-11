@@ -24,6 +24,7 @@ class InformeProduccionInterna {
         this.sidebarResizer = null;
         this.tiposMovimientoConfig = null;
         this.periodosConfig = null;
+        this.tableManager = null; // NUEVO: Gestor de tabla
         
         // Estado de la aplicación
         this.datosBase = null; // Historial completo
@@ -72,6 +73,10 @@ class InformeProduccionInterna {
         // Inicializar SidebarResizer
         this.sidebarResizer = new SidebarResizer();
         this.sidebarResizer.init();
+        
+        // Inicializar TableManager
+        this.tableManager = new TableManager();
+        this.tableManager.init();
         
         // Inicializar TiposMovimientoConfig
         this.tiposMovimientoConfig = new TiposMovimientoConfig(
@@ -137,7 +142,7 @@ class InformeProduccionInterna {
 
     /**
      * Callback cuando se actualizan los periodos
-     * ✅ ACTUALIZADO: Solo muestra periodos seleccionados
+     * ✅ ACTUALIZADO: Notifica al TableManager
      * 
      * @param {Array} periodos - Lista de periodos seleccionados
      */
@@ -149,6 +154,11 @@ class InformeProduccionInterna {
         
         console.log(`📊 [INFORME-PROD] Mostrando ${this.periodosActivos.length} columnas de periodos`);
         
+        // Notificar al TableManager sobre los periodos actualizados
+        if (this.tableManager) {
+            this.tableManager.actualizarPeriodos(this.periodosActivos);
+        }
+        
         // Actualizar headers de la tabla
         this.actualizarEncabezadosTabla();
         
@@ -158,6 +168,7 @@ class InformeProduccionInterna {
 
     /**
      * Renderizar tabla principal
+     * ✅ ACTUALIZADO: Con procesamiento de TableManager
      * 
      * @param {Array} datos - Datos a renderizar
      */
@@ -169,11 +180,17 @@ class InformeProduccionInterna {
             return;
         }
         
+        // Procesar datos (filtrar y ordenar) con TableManager
+        const datosProcesados = this.tableManager ? 
+            this.tableManager.procesarDatos(datos, this.periodosActivos) : datos;
+        
+        console.log(`📊 [INFORME-PROD] Datos procesados: ${datosProcesados.length} artículos`);
+        
         // Limpiar tabla
         this.tablaElement.innerHTML = '';
         
         // Agrupar por Rubro y Subrubro
-        const agrupado = this.agruparPorJerarquia(datos);
+        const agrupado = this.agruparPorJerarquia(datosProcesados);
         
         // Renderizar grupos
         for (const [rubro, subrubros] of Object.entries(agrupado)) {
@@ -185,11 +202,21 @@ class InformeProduccionInterna {
                 // Header de Subrubro
                 this.renderizarHeaderSubrubro(subrubro);
                 
+                // Ordenar artículos dentro del subrubro si hay ordenamiento activo
+                const articulosOrdenados = this.tableManager ?
+                    this.tableManager.ordenarDatos(articulos) : articulos;
+                
                 // Artículos
-                articulos.forEach(articulo => {
+                articulosOrdenados.forEach(articulo => {
                     this.renderizarFilaArticulo(articulo);
                 });
             }
+        }
+        
+        // Configurar ordenamiento en headers
+        if (this.tableManager) {
+            const thead = document.querySelector('.tabla-produccion thead tr');
+            this.tableManager.setupSorting(thead);
         }
         
         console.log('✅ [INFORME-PROD] Tabla renderizada correctamente');
@@ -224,6 +251,7 @@ class InformeProduccionInterna {
 
     /**
      * Renderizar header de Rubro
+     * ✅ ACTUALIZADO: Colspan dinámico según columnas visibles
      * 
      * @param {string} rubro - Nombre del rubro
      */
@@ -231,7 +259,20 @@ class InformeProduccionInterna {
         const tr = document.createElement('tr');
         tr.className = 'rubro-header';
         
-        const colspan = 4 + this.periodosActivos.length; // 4 columnas base (sin fecha) + periodos
+        // Calcular colspan según columnas visibles
+        const columnasVisibles = this.tableManager ? 
+            this.tableManager.getColumnasVisibles() : 
+            { codigo: true, articulo: true, unidades: true, kilos: true };
+        
+        // Contar columnas base visibles
+        const columnasBaseVisibles = ['codigo', 'articulo', 'unidades', 'kilos']
+            .filter(col => columnasVisibles[col] !== false).length;
+        
+        // Contar periodos visibles
+        const periodosVisibles = this.periodosActivos
+            .filter(p => columnasVisibles[`periodo-${p.id}`] !== false).length;
+        
+        const colspan = columnasBaseVisibles + periodosVisibles;
         
         tr.innerHTML = `
             <td colspan="${colspan}" style="font-weight: 700; font-size: 1rem;">
@@ -244,6 +285,7 @@ class InformeProduccionInterna {
 
     /**
      * Renderizar header de Subrubro
+     * ✅ ACTUALIZADO: Colspan dinámico según columnas visibles
      * 
      * @param {string} subrubro - Nombre del subrubro
      */
@@ -251,7 +293,13 @@ class InformeProduccionInterna {
         const tr = document.createElement('tr');
         tr.className = 'subrubro-header';
         
-        const colspan = 4 + this.periodosActivos.length; // 4 columnas base + periodos
+        // Calcular colspan según columnas visibles
+        const columnasVisibles = this.tableManager ? 
+            this.tableManager.getColumnasVisibles() : 
+            { codigo: true, articulo: true, unidades: true, kilos: true };
+        
+        const numColumnasBase = Object.values(columnasVisibles).filter(v => v).length;
+        const colspan = numColumnasBase + this.periodosActivos.length;
         
         tr.innerHTML = `
             <td colspan="${colspan}" style="padding-left: 30px; font-weight: 600;">
@@ -264,25 +312,46 @@ class InformeProduccionInterna {
 
     /**
      * Renderizar fila de artículo
-     * ✅ ACTUALIZADO: Sin columna de fecha
+     * ✅ ACTUALIZADO: Con visibilidad de columnas
      * 
      * @param {Object} articulo - Datos del artículo
      */
     renderizarFilaArticulo(articulo) {
         const tr = document.createElement('tr');
         
-        // Columnas base (sin fecha)
-        let html = `
-            <td>${articulo.articulo_codigo}</td>
-            <td>${articulo.articulo_nombre}</td>
-            <td class="col-numero">${this.formatearNumero(articulo.cantidad_total_producida)}</td>
-            <td class="col-numero">${this.formatearNumero(articulo.kilos_totales_producidos)}</td>
-        `;
+        // Obtener columnas visibles
+        const columnasVisibles = this.tableManager ? 
+            this.tableManager.getColumnasVisibles() : 
+            { codigo: true, articulo: true, unidades: true, kilos: true };
         
-        // Columnas de periodos (si hay periodos activos)
+        // Columnas base (respetando visibilidad)
+        let html = '';
+        
+        if (columnasVisibles.codigo) {
+            html += `<td>${articulo.articulo_codigo}</td>`;
+        }
+        
+        if (columnasVisibles.articulo) {
+            html += `<td>${articulo.articulo_nombre}</td>`;
+        }
+        
+        if (columnasVisibles.unidades) {
+            html += `<td class="col-numero">${this.formatearNumero(articulo.cantidad_total_producida)}</td>`;
+        }
+        
+        if (columnasVisibles.kilos) {
+            html += `<td class="col-numero">${this.formatearNumero(articulo.kilos_totales_producidos)}</td>`;
+        }
+        
+        // Columnas de periodos (si hay periodos activos y visibles)
         this.periodosActivos.forEach(periodo => {
-            const datoPeriodo = this.buscarDatoEnPeriodo(articulo.articulo_codigo, periodo);
-            html += `<td class="col-numero">${datoPeriodo ? this.formatearNumero(datoPeriodo.cantidad_producida) : '-'}</td>`;
+            const colId = `periodo-${periodo.id}`;
+            const esVisible = columnasVisibles[colId] !== false;
+            
+            if (esVisible) {
+                const datoPeriodo = this.buscarDatoEnPeriodo(articulo.articulo_codigo, periodo);
+                html += `<td class="col-numero">${datoPeriodo ? this.formatearNumero(datoPeriodo.cantidad_producida) : '-'}</td>`;
+            }
         });
         
         tr.innerHTML = html;
@@ -400,24 +469,66 @@ class InformeProduccionInterna {
 
     /**
      * Actualizar encabezados de tabla según periodos activos
+     * ✅ ACTUALIZADO: Con visibilidad de columnas
      */
     actualizarEncabezadosTabla() {
         const thead = document.querySelector('.tabla-produccion thead tr');
         
         if (!thead) return;
         
-        // Limpiar headers dinámicos previos
-        const headersDinamicos = thead.querySelectorAll('.header-periodo');
-        headersDinamicos.forEach(h => h.remove());
+        // Obtener columnas visibles
+        const columnasVisibles = this.tableManager ? 
+            this.tableManager.getColumnasVisibles() : 
+            { codigo: true, articulo: true, unidades: true, kilos: true };
         
-        // Agregar headers de periodos
-        this.periodosActivos.forEach(periodo => {
+        // Limpiar todos los headers
+        thead.innerHTML = '';
+        
+        // Agregar headers base (respetando visibilidad)
+        if (columnasVisibles.codigo) {
             const th = document.createElement('th');
-            th.className = 'header-periodo col-numero';
-            th.textContent = periodo.nombre;
-            th.title = `${periodo.fechaInicio} - ${periodo.fechaFin}`;
+            th.textContent = 'Código';
             thead.appendChild(th);
+        }
+        
+        if (columnasVisibles.articulo) {
+            const th = document.createElement('th');
+            th.textContent = 'Artículo';
+            thead.appendChild(th);
+        }
+        
+        if (columnasVisibles.unidades) {
+            const th = document.createElement('th');
+            th.className = 'col-numero';
+            th.textContent = 'Unidades Producidas';
+            thead.appendChild(th);
+        }
+        
+        if (columnasVisibles.kilos) {
+            const th = document.createElement('th');
+            th.className = 'col-numero';
+            th.textContent = 'Peso Total (kg)';
+            thead.appendChild(th);
+        }
+        
+        // Agregar headers de periodos (solo visibles)
+        this.periodosActivos.forEach(periodo => {
+            const colId = `periodo-${periodo.id}`;
+            const esVisible = columnasVisibles[colId] !== false;
+            
+            if (esVisible) {
+                const th = document.createElement('th');
+                th.className = 'header-periodo col-numero';
+                th.textContent = periodo.nombre;
+                th.title = `${periodo.fechaInicio} - ${periodo.fechaFin}`;
+                thead.appendChild(th);
+            }
         });
+        
+        // Configurar ordenamiento
+        if (this.tableManager) {
+            this.tableManager.setupSorting(thead);
+        }
     }
 
     /**

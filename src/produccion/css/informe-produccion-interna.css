@@ -380,6 +380,140 @@
     color: var(--primary-color);
 }
 
+/* Controles de tabla */
+.table-controls {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.control-group {
+    position: relative;
+}
+
+.btn-control {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 15px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.btn-control:hover {
+    background-color: #0056b3;
+}
+
+/* Menú de columnas */
+.menu-columnas {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 5px;
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 220px;
+    z-index: 1000;
+}
+
+.menu-header {
+    padding: 10px 15px;
+    background-color: var(--bg-light);
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 0.9rem;
+}
+
+.menu-item:hover {
+    background-color: var(--bg-light);
+}
+
+.menu-item input[type="checkbox"] {
+    margin-right: 10px;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.menu-item span {
+    user-select: none;
+}
+
+.menu-separator {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 8px 0;
+}
+
+.menu-subheader {
+    padding: 8px 15px;
+    background-color: var(--bg-light);
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--secondary-color);
+    border-top: 1px solid var(--border-color);
+}
+
+.filtro-icon {
+    cursor: pointer;
+    margin-left: 5px;
+    font-size: 0.8rem;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.filtro-icon:hover {
+    opacity: 1;
+}
+
+/* Checkbox control */
+.checkbox-control {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    padding: 8px 12px;
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.checkbox-control:hover {
+    background-color: var(--bg-light);
+}
+
+.checkbox-control input[type="checkbox"] {
+    margin-right: 8px;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.checkbox-control span {
+    user-select: none;
+}
+
 .estadisticas-resumen {
     display: flex;
     gap: 20px;
@@ -438,6 +572,32 @@
     font-weight: 600;
     font-size: 0.9rem;
     border-bottom: 2px solid #0056b3;
+    position: relative;
+}
+
+.tabla-produccion th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.tabla-produccion th.sortable:hover {
+    background-color: #0056b3;
+}
+
+.sort-indicator {
+    font-size: 0.8rem;
+    opacity: 0.7;
+    margin-left: 5px;
+}
+
+.tabla-produccion th.sorted {
+    background-color: #0056b3;
+}
+
+/* Columnas ocultas */
+.tabla-produccion th.hidden,
+.tabla-produccion td.hidden {
+    display: none;
 }
 
 .tabla-produccion tbody tr {
