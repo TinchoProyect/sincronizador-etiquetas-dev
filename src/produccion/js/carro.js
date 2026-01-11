@@ -2785,14 +2785,8 @@ function cerrarModalVinculacion() {
     }
     
     // Limpiar campos de filtro
-    const filtro1 = document.getElementById('filtro1');
-    const filtro2 = document.getElementById('filtro2');
-    const filtro3 = document.getElementById('filtro3');
+    // Limpiar campo de código de barras
     const codigoBarras = document.getElementById('codigo-barras');
-    
-    if (filtro1) filtro1.value = '';
-    if (filtro2) filtro2.value = '';
-    if (filtro3) filtro3.value = '';
     if (codigoBarras) codigoBarras.value = '';
     
     // Mostrar nuevamente el switch de filtro de producción

@@ -179,15 +179,17 @@ document.addEventListener('DOMContentLoaded', () => {
         buscarPorCodigoBarras(e.target.value);
     });
 
-    // Cerrar modales al hacer clic fuera
+    // ELIMINADO: Cerrar modales al hacer clic fuera
+    // El modal de artículos ahora es PERSISTENTE (backdrop estático)
+    // Solo se cierra con el botón X o botón Cerrar
+    // La funcionalidad de arrastre está manejada por modal-draggable.js
+    
+    // Mantener cierre para modal de receta (comportamiento original)
     window.addEventListener('click', (e) => {
-        const modalArticulos = document.getElementById('modal-articulos');
         const modalReceta = document.getElementById('modal-receta');
         const modalEditarVinculo = document.getElementById('modal-editar-vinculo');
         
-        if (e.target === modalArticulos) {
-            cerrarModalArticulos();
-        } else if (e.target === modalReceta) {
+        if (e.target === modalReceta) {
             cerrarModalReceta();
         } else if (e.target === modalEditarVinculo) {
             window.cerrarModalEditarVinculo();

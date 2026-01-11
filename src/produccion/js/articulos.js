@@ -149,27 +149,17 @@ export async function abrirModalArticulos() {
             modalTitle.textContent = `${icono}Seleccionar Artículo - ${tipoTexto}`;
         }
         
-        // 🎨 LIMPIEZA UI: Ocultar elementos innecesarios para carros externos
-        const filtro1Container = document.getElementById('filtro1')?.parentElement;
-        const filtro2Container = document.getElementById('filtro2')?.parentElement;
-        const filtro3Container = document.getElementById('filtro3')?.parentElement;
-        const filtroProduccionContainer = document.getElementById('filtroProduccionSwitch')?.parentElement?.parentElement;
-        
-        if (tipoCarro === 'externa') {
-            // Ocultar filtros 1, 2 y 3
-            if (filtro1Container) filtro1Container.style.display = 'none';
-            if (filtro2Container) filtro2Container.style.display = 'none';
-            if (filtro3Container) filtro3Container.style.display = 'none';
-            // Ocultar checkbox de "Mostrar solo artículos de producción"
-            if (filtroProduccionContainer) filtroProduccionContainer.style.display = 'none';
-            
-            console.log('🎨 [UI-LIMPIA] Filtros innecesarios ocultados para carro externo');
-        } else {
-            // Mostrar todos los filtros para carros internos
-            if (filtro1Container) filtro1Container.style.display = '';
-            if (filtro2Container) filtro2Container.style.display = '';
-            if (filtro3Container) filtro3Container.style.display = '';
-            if (filtroProduccionContainer) filtroProduccionContainer.style.display = '';
+        // 🎯 AJUSTE UI: Ocultar botón "Agregar al carro" para Producción Externa
+        // En carros externos, los artículos se seleccionan desde las tarjetas individuales
+        const btnAgregarMultiples = document.getElementById('btn-agregar-multiples');
+        if (btnAgregarMultiples) {
+            if (tipoCarro === 'externa') {
+                btnAgregarMultiples.style.display = 'none';
+                console.log('🎨 [UI-LIMPIA] Botón "Agregar al carro" ocultado para Producción Externa');
+            } else {
+                // Para producción interna, la visibilidad se maneja en actualizarVisibilidadBotonMultiple()
+                console.log('🎨 [UI-LIMPIA] Botón "Agregar al carro" disponible para Producción Interna');
+            }
         }
         
     } catch (error) {
@@ -1364,11 +1354,8 @@ document.addEventListener('DOMContentLoaded', () => {
             btnCerrar.addEventListener('click', cerrarModalArticulos);
         }
 
-        modalArticulos.addEventListener('click', (e) => {
-            if (e.target === modalArticulos) {
-                cerrarModalArticulos();
-            }
-        });
+        // ELIMINADO: Click fuera del modal ya NO cierra (backdrop estático)
+        // El modal solo se cierra con el botón X o botón Cerrar
     }
 
     // Mejora solicitada por Martín - Event listeners para checkboxes de selección múltiple
