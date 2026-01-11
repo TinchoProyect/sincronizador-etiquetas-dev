@@ -52,8 +52,9 @@
 }
 
 .sidebar.collapsed {
-    width: 50px;
-    min-width: 50px;
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
 }
 
 /* Botón de colapsar/expandir */
@@ -85,6 +86,12 @@
     padding: 20px;
     border-bottom: 1px solid var(--border-color);
     background-color: white;
+    transition: opacity 0.2s ease;
+}
+
+.sidebar.collapsed .sidebar-header {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .sidebar-header h2 {
@@ -98,10 +105,12 @@
     flex: 1;
     overflow-y: auto;
     padding: 15px;
+    transition: opacity 0.2s ease;
 }
 
 .sidebar.collapsed .sidebar-content {
     display: none;
+    opacity: 0;
 }
 
 /* Resizer (borde derecho arrastrable) */
@@ -113,12 +122,17 @@
     right: 0;
     top: 0;
     bottom: 0;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, opacity 0.2s;
 }
 
 .sidebar-resizer:hover,
 .sidebar-resizer.resizing {
     background-color: var(--primary-color);
+}
+
+.sidebar.collapsed .sidebar-resizer {
+    opacity: 0;
+    pointer-events: none;
 }
 
 /* ==========================================

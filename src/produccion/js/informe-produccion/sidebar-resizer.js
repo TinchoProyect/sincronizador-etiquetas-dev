@@ -121,18 +121,32 @@ class SidebarResizer {
 
     /**
      * Alternar estado colapsado/expandido
+     * ✅ OPTIMIZADO: Reduce el ancho a 50px para maximizar espacio de la tabla
      */
     toggleCollapse() {
         this.isCollapsed = !this.isCollapsed;
         
         if (this.isCollapsed) {
+            // Guardar ancho actual antes de colapsar
+            this.widthBeforeCollapse = this.currentWidth;
+            
+            // Colapsar: reducir a 50px
             this.sidebar.classList.add('collapsed');
+            this.sidebar.style.width = '50px';
             this.toggleBtn.innerHTML = '▶';
-            console.log('📐 [SIDEBAR-RESIZER] Sidebar colapsado');
+            this.toggleBtn.title = 'Expandir panel de configuración';
+            
+            console.log('📐 [SIDEBAR-RESIZER] Sidebar colapsado a 50px');
         } else {
+            // Expandir: restaurar ancho anterior
             this.sidebar.classList.remove('collapsed');
+            const anchoRestaurar = this.widthBeforeCollapse || this.currentWidth;
+            this.sidebar.style.width = `${anchoRestaurar}px`;
+            this.currentWidth = anchoRestaurar;
             this.toggleBtn.innerHTML = '◀';
-            console.log('📐 [SIDEBAR-RESIZER] Sidebar expandido');
+            this.toggleBtn.title = 'Colapsar panel de configuración';
+            
+            console.log(`📐 [SIDEBAR-RESIZER] Sidebar expandido a ${anchoRestaurar}px`);
         }
         
         // Guardar preferencia
@@ -154,6 +168,7 @@ class SidebarResizer {
 
     /**
      * Cargar preferencias desde localStorage
+     * ✅ OPTIMIZADO: Aplica correctamente el estado colapsado con ancho de 50px
      */
     loadPreferences() {
         try {
@@ -161,7 +176,7 @@ class SidebarResizer {
             const savedWidth = localStorage.getItem(this.storageKey);
             if (savedWidth) {
                 this.currentWidth = parseInt(savedWidth);
-                this.sidebar.style.width = `${this.currentWidth}px`;
+                this.widthBeforeCollapse = this.currentWidth;
             }
             
             // Cargar estado colapsado
@@ -169,9 +184,13 @@ class SidebarResizer {
             if (savedCollapsed === 'true') {
                 this.isCollapsed = true;
                 this.sidebar.classList.add('collapsed');
+                this.sidebar.style.width = '50px';
                 this.toggleBtn.innerHTML = '▶';
+                this.toggleBtn.title = 'Expandir panel de configuración';
             } else {
+                this.sidebar.style.width = `${this.currentWidth}px`;
                 this.toggleBtn.innerHTML = '◀';
+                this.toggleBtn.title = 'Colapsar panel de configuración';
             }
             
             console.log('💾 [SIDEBAR-RESIZER] Preferencias cargadas:', {
