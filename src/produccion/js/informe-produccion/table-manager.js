@@ -5,623 +5,658 @@
  * 
  * Gestiona funcionalidades avanzadas de la tabla de producción:
  * - Ordenamiento por columnas (sorting)
- * - Visibilidad de columnas
+ * - Visibilidad de columnas (Lógica Centralizada)
  * - Filtrado de valores nulos/ceros
  * - Estado persistente de configuración
+ * - Redimensionamiento de columnas (V4)
+ * - Balance Neto Personalizado (V4)
  * 
  * Funcionalidades estilo Excel para análisis profesional de datos.
  * 
  * @author Sistema LAMDA
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 class TableManager {
-    constructor() {
+    constructor(onVisibilityChange) {
+        this.onVisibilityChange = onVisibilityChange; // Callback para sync
         // Estado de la tabla
         this.estado = {
             columnasVisibles: {
                 codigo: true,
                 articulo: true,
-                unidades: true,
-                kilos: true
-                // Las columnas de periodos se agregarán dinámicamente
             },
             ordenamiento: {
                 columna: null,
-                direccion: 'asc' // 'asc' o 'desc'
+                direccion: 'asc'
             },
-            filtrarCerosPorColumna: {} // { 'periodo-1': true, 'unidades': false, ... }
+            filtrarCerosPorColumna: {},
+            anchosColumnas: {} // Nuevo: Para resizing
         };
-        
+
         // Elementos del DOM
         this.menuColumnas = null;
         this.btnConfigColumnas = null;
-        
-        // Periodos activos (se actualizará desde main.js)
+
+        // Estado dinámico (Tipos y Periodos)
         this.periodosActivos = [];
-        
+        this.tiposMovimientoUI = {}; // Estado de los checkboxes del sidebar
+
+        // Configuración Balance V4
+        this.balanceConfig = {
+            mostrar: false,
+            componentes: {}
+        };
+
+        // Estado Resizing
+        this.isResizing = false;
+        this.currentResizingCol = null;
+        this.startPageX = 0;
+        this.startWidth = 0;
+
         // Clave para localStorage
-        this.storageKey = 'informe-produccion-table-state';
+        // Clave para localStorage
+        this.storageKey = 'informe-produccion-table-state-v8'; // Bump version v8 for box-sizing fix
     }
 
     /**
      * Inicializar el módulo
      */
     init() {
-        console.log('📊 [TABLE-MANAGER] Inicializando módulo...');
-        
+        console.log('📊 [TABLE-MANAGER] Inicializando módulo V4...');
+
         // Cargar estado guardado
         this.cargarEstado();
-        
+
         // Crear controles de UI
         this.crearControlesUI();
-        
+
         // Configurar event listeners
         this.setupEventListeners();
-        
+
         console.log('✅ [TABLE-MANAGER] Módulo inicializado correctamente');
     }
 
     /**
-     * Crear controles de UI
+     * Setters para estado dinámico
      */
+    setTiposMovimientoUI(uiState) {
+        this.isUpdating = true; // Prevent notification loop
+
+        this.tiposMovimientoUI = uiState || {};
+
+        // Sincronización Bidireccional:
+        Object.keys(this.tiposMovimientoUI).forEach(key => {
+            const shouldBeVisible = !!this.tiposMovimientoUI[key];
+            // Solo logica, no triggers externos
+            this.estado.columnasVisibles[key] = shouldBeVisible;
+        });
+
+        this.guardarEstado();
+        this.actualizarMenuColumnas();
+
+        // Re-render sin notificar
+        if (window.informeProduccion) {
+            window.informeProduccion.actualizarEncabezadosTabla();
+            window.informeProduccion.renderizarTabla(window.informeProduccion.datosBase);
+        }
+
+        this.isUpdating = false;
+    }
+
+    // Legacy support
+    setTiposMovimiento(tipos) {
+        // Convierte array de valores a estado UI simple
+        // Esto es un fallback, idealmente se debe usar setTiposMovimientoUI
+        console.warn('⚠️ [TABLE-MANAGER] setTiposMovimiento (Legacy) utilizado');
+    }
+
+    setBalanceConfig(config) {
+        this.balanceConfig = config || { mostrar: false, componentes: {} };
+        this.actualizarMenuColumnas();
+    }
+
+    // Legacy support
+    setMostrarBalance(mostrar) {
+        this.balanceConfig.mostrar = mostrar;
+        this.actualizarMenuColumnas();
+    }
+
+    /**
+     * Genera la definición completa de columnas V4
+     */
+    getColumnDefinitions() {
+        // 1. Columnas Fijas
+        const definitions = [
+            {
+                id: 'codigo',
+                label: 'Código',
+                type: 'base',
+                key: 'articulo_codigo',
+                isNumeric: false,
+                sortable: true,
+                width: 100 // V7 Default
+            },
+            {
+                id: 'articulo',
+                label: 'Artículo',
+                type: 'base',
+                key: 'articulo_nombre',
+                isNumeric: false,
+                sortable: true,
+            }
+        ];
+
+        // 2. Columnas Dinámicas por Tipos (Usando estado UI)
+        if (this.tiposMovimientoUI['ingresos']) {
+            definitions.push({
+                id: 'ingresos',
+                label: 'Ingresos',
+                type: 'base',
+                key: 'cantidad_ingresos',
+                isNumeric: true,
+                sortable: true
+            });
+        }
+
+        if (this.tiposMovimientoUI['salidas']) {
+            definitions.push({
+                id: 'salidas',
+                label: 'Salidas',
+                type: 'base',
+                key: 'cantidad_salidas',
+                isNumeric: true,
+                sortable: true
+            });
+        }
+
+        if (this.tiposMovimientoUI['ajustes_pos']) {
+            definitions.push({
+                id: 'ajustes_pos',
+                label: 'Ajustes (+)',
+                type: 'base',
+                key: 'cantidad_ajustes_pos',
+                isNumeric: true,
+                sortable: true
+            });
+        }
+
+        if (this.tiposMovimientoUI['ajustes_neg']) {
+            definitions.push({
+                id: 'ajustes_neg',
+                label: 'Ajustes (-)',
+                type: 'base',
+                key: 'cantidad_ajustes_neg',
+                isNumeric: true,
+                sortable: true
+            });
+        }
+
+        // 3. Balance Neto Personalizado
+        if (this.balanceConfig.mostrar) {
+            definitions.push({
+                id: 'balance',
+                label: 'Balance',
+                type: 'calculated', // Nuevo tipo V4
+                key: 'balance_custom', // Clave virtual
+                isNumeric: true,
+                sortable: true
+            });
+        }
+
+        // 4. Periodos
+        this.periodosActivos.forEach(periodo => {
+            definitions.push({
+                id: `periodo-${periodo.id}`,
+                label: periodo.nombre,
+                subLabel: `${this.formatearFechaCorta(periodo.fechaInicio)} - ${this.formatearFechaCorta(periodo.fechaFin)}`,
+                type: 'periodo',
+                periodoId: periodo.id,
+                key: 'cantidad_producida',
+                isNumeric: true,
+                sortable: true
+            });
+        });
+
+        // 5. Kilos al final
+        definitions.push({
+            id: 'kilos',
+            label: 'Peso Total (kg)',
+            type: 'base',
+            key: 'kilos_totales_producidos',
+            isNumeric: true,
+            sortable: true
+        });
+
+        // Merge con estado
+        return definitions.map(def => ({
+            ...def,
+            visible: this.estado.columnasVisibles[def.id] !== false,
+            filtroCerosActivo: !!this.estado.filtrarCerosPorColumna[def.id],
+            isSorted: this.estado.ordenamiento.columna === def.id,
+            sortDir: this.estado.ordenamiento.columna === def.id ? this.estado.ordenamiento.direccion : null,
+            width: this.estado.anchosColumnas[def.id] || 'auto' // Resizing
+        }));
+    }
+
+    formatearFechaCorta(fechaStr) {
+        if (!fechaStr) return '';
+        const [año, mes, dia] = fechaStr.split('-');
+        return `${dia}/${mes}`;
+    }
+
     crearControlesUI() {
-        // Crear botón de configurar columnas
         const headerPanel = document.querySelector('.main-panel-header');
         if (!headerPanel) return;
-        
+
+        // Limpiar contenedor existente
+        const existing = document.getElementById('table-controls-container');
+        if (existing) existing.remove();
+
         const controlesContainer = document.createElement('div');
         controlesContainer.className = 'table-controls';
         controlesContainer.id = 'table-controls-container';
         controlesContainer.innerHTML = `
             <div class="control-group">
                 <button id="btn-config-columnas" class="btn-control" title="Configurar columnas visibles">
-                    ⚙️ Columnas
+                    <i class="fas fa-columns"></i> Columnas
                 </button>
-                <div id="menu-columnas" class="menu-columnas" style="display: none;">
-                    <!-- El contenido se generará dinámicamente -->
-                </div>
+                <div id="menu-columnas" class="menu-columnas" style="display: none;"></div>
             </div>
         `;
-        
+
         headerPanel.appendChild(controlesContainer);
-        
-        // Obtener referencias
         this.btnConfigColumnas = document.getElementById('btn-config-columnas');
         this.menuColumnas = document.getElementById('menu-columnas');
-        
-        // Generar menú inicial
         this.actualizarMenuColumnas();
     }
 
-    /**
-     * Configurar event listeners
-     */
     setupEventListeners() {
-        // Botón de configurar columnas
         if (this.btnConfigColumnas) {
+            const newBtn = this.btnConfigColumnas.cloneNode(true);
+            this.btnConfigColumnas.parentNode.replaceChild(newBtn, this.btnConfigColumnas);
+            this.btnConfigColumnas = newBtn;
             this.btnConfigColumnas.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.toggleMenuColumnas();
             });
         }
-        
-        // Cerrar menú al hacer click fuera
+
         document.addEventListener('click', (e) => {
-            if (this.menuColumnas && 
-                !this.menuColumnas.contains(e.target) && 
-                !this.btnConfigColumnas.contains(e.target)) {
+            if (this.menuColumnas && !this.menuColumnas.contains(e.target) && !this.btnConfigColumnas.contains(e.target)) {
                 this.menuColumnas.style.display = 'none';
             }
         });
-        
-        console.log('✅ [TABLE-MANAGER] Event listeners configurados');
+
+        // Listeners Globales para Resizing
+        // Se agregan dinámicamente en handleResizeStart para mejor higiene
+
+        // Anti-conflict click (prevent sort after resize)
+        document.addEventListener('click', (e) => {
+            if (this.justResized) {
+                e.stopPropagation();
+                this.justResized = false;
+            }
+        }, true); // Capture phase!
     }
 
-    /**
-     * Alternar menú de columnas
-     */
     toggleMenuColumnas() {
         if (!this.menuColumnas) return;
-        
         const isVisible = this.menuColumnas.style.display !== 'none';
         this.menuColumnas.style.display = isVisible ? 'none' : 'block';
     }
 
-    /**
-     * Manejar cambio de visibilidad de columna
-     * 
-     * @param {string} columna - Nombre de la columna
-     * @param {boolean} visible - Estado de visibilidad
-     */
-    onColumnaVisibilidadChange(columna, visible) {
-        console.log(`📊 [TABLE-MANAGER] Columna '${columna}' ${visible ? 'visible' : 'oculta'}`);
-        
-        this.estado.columnasVisibles[columna] = visible;
+    onColumnaVisibilidadChange(colId, visible) {
+        this.estado.columnasVisibles[colId] = visible;
         this.guardarEstado();
-        
-        // Notificar cambio para re-renderizar tabla
+
+        // Re-render
         if (window.informeProduccion) {
+            window.informeProduccion.actualizarEncabezadosTabla();
             window.informeProduccion.renderizarTabla(window.informeProduccion.datosBase);
         }
+
+        // Notificar sync a main -> sidebar (Solo si es interacción usuario)
+        if (this.onVisibilityChange && !this.isUpdating) {
+            this.onVisibilityChange(colId, visible);
+        }
     }
 
-    /**
-     * Actualizar menú de columnas con periodos dinámicos
-     */
     actualizarMenuColumnas() {
         if (!this.menuColumnas) return;
-        
-        console.log('📊 [TABLE-MANAGER] Actualizando menú de columnas...');
-        
+        const cols = this.getColumnDefinitions();
         let html = '<div class="menu-header">Columnas Visibles</div>';
-        
-        // Columnas base
-        const columnasBase = [
-            { id: 'codigo', label: 'Código' },
-            { id: 'articulo', label: 'Artículo' },
-            { id: 'unidades', label: 'Unidades Producidas' },
-            { id: 'kilos', label: 'Peso Total (kg)' }
-        ];
-        
-        columnasBase.forEach(col => {
-            const checked = this.estado.columnasVisibles[col.id] !== false;
-            html += `
-                <label class="menu-item">
-                    <input type="checkbox" 
-                           class="col-checkbox" 
-                           data-col-id="${col.id}" 
-                           ${checked ? 'checked' : ''}>
-                    <span>${col.label}</span>
-                </label>
-            `;
-        });
-        
-        // Separador si hay periodos
-        if (this.periodosActivos.length > 0) {
-            html += '<div class="menu-separator"></div>';
-            html += '<div class="menu-subheader">Periodos</div>';
+        const baseCols = cols.filter(c => c.type !== 'periodo');
+        const periodCols = cols.filter(c => c.type === 'periodo');
+
+        baseCols.forEach(col => html += this.renderMenuOption(col));
+        if (periodCols.length > 0) {
+            html += '<div class="menu-separator"></div><div class="menu-subheader">Periodos</div>';
+            periodCols.forEach(col => html += this.renderMenuOption(col));
         }
-        
-        // Columnas de periodos
-        this.periodosActivos.forEach(periodo => {
-            const colId = `periodo-${periodo.id}`;
-            const checked = this.estado.columnasVisibles[colId] !== false;
-            html += `
-                <label class="menu-item">
-                    <input type="checkbox" 
-                           class="col-checkbox" 
-                           data-col-id="${colId}" 
-                           ${checked ? 'checked' : ''}>
-                    <span>${periodo.nombre}</span>
-                </label>
-            `;
-        });
-        
+
         this.menuColumnas.innerHTML = html;
-        
-        // Configurar event listeners para los checkboxes
-        const checkboxes = this.menuColumnas.querySelectorAll('.col-checkbox');
-        checkboxes.forEach(checkbox => {
+        this.menuColumnas.querySelectorAll('.col-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
-                const colId = e.target.dataset.colId;
-                this.onColumnaVisibilidadChange(colId, e.target.checked);
+                this.onColumnaVisibilidadChange(e.target.dataset.colId, e.target.checked);
             });
         });
-        
-        console.log(`✅ [TABLE-MANAGER] Menú actualizado con ${this.periodosActivos.length} periodos`);
     }
 
-    /**
-     * Configurar ordenamiento en headers de tabla
-     * ✅ ACTUALIZADO: Incluye periodos y filtros
-     * 
-     * @param {HTMLElement} thead - Elemento thead de la tabla
-     */
+    renderMenuOption(col) {
+        return `
+            <label class="menu-item">
+                <input type="checkbox" class="col-checkbox" data-col-id="${col.id}" ${col.visible ? 'checked' : ''}>
+                <span>${col.label}</span>
+            </label>
+        `;
+    }
+
+    // --- SORTING & RESIZING ---
+
     setupSorting(thead) {
         if (!thead) return;
-        
+
+        const currentCols = this.getColumnDefinitions().filter(c => c.visible);
         const headers = thead.querySelectorAll('th');
-        const columnasBase = ['codigo', 'articulo', 'unidades', 'kilos'];
-        
+
         headers.forEach((th, index) => {
-            th.style.cursor = 'pointer';
-            th.style.userSelect = 'none';
-            
-            // Determinar ID de columna
-            let colId;
-            if (index < columnasBase.length) {
-                colId = columnasBase[index];
-            } else {
-                // Es una columna de periodo
-                const periodoIndex = index - columnasBase.length;
-                if (periodoIndex < this.periodosActivos.length) {
-                    colId = `periodo-${this.periodosActivos[periodoIndex].id}`;
-                }
+            const colDef = currentCols[index];
+            if (!colDef) return;
+
+            // Saneamiento y Reseteo
+            const newTh = th.cloneNode(true);
+            th.parentNode.replaceChild(newTh, th);
+            const cleanTh = newTh;
+
+            // Aplicar ancho guardado o default
+            if (this.estado.anchosColumnas[colDef.id]) {
+                cleanTh.style.width = this.estado.anchosColumnas[colDef.id] + 'px';
+            } else if (colDef.width) {
+                cleanTh.style.width = colDef.width + 'px';
             }
-            
-            if (!colId) return;
-            
-            // Agregar indicador de ordenamiento
-            const sortIndicator = document.createElement('span');
-            sortIndicator.className = 'sort-indicator';
-            sortIndicator.innerHTML = ' ⇅';
-            th.appendChild(sortIndicator);
-            
-            // Agregar icono de filtro para columnas numéricas
-            if (colId === 'unidades' || colId === 'kilos' || colId.startsWith('periodo-')) {
-                this.agregarIconoFiltro(th, colId);
+
+            cleanTh.dataset.colId = colDef.id;
+            cleanTh.style.position = 'relative'; // Necesario para resizer
+
+            // Contenido Interno
+            const contentWrapper = document.createElement('div');
+            contentWrapper.className = 'th-content';
+            contentWrapper.style.display = 'flex';
+            contentWrapper.style.alignItems = 'center';
+            contentWrapper.style.justifyContent = 'space-between';
+            contentWrapper.style.pointerEvents = 'none';
+            contentWrapper.style.height = '100%';
+            contentWrapper.style.overflow = 'hidden';
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = cleanTh.textContent; // Texto original
+            cleanTh.textContent = '';
+            contentWrapper.appendChild(textSpan);
+
+            // Iconos
+            const iconsSpan = document.createElement('span');
+            iconsSpan.className = 'th-icons';
+            iconsSpan.style.display = 'flex';
+            iconsSpan.style.gap = '5px';
+            iconsSpan.style.pointerEvents = 'auto';
+
+            if (colDef.sortable) {
+                const sortIndicator = document.createElement('span');
+                sortIndicator.className = 'sort-indicator';
+                sortIndicator.innerHTML = colDef.isSorted ? (colDef.sortDir === 'asc' ? '▲' : '▼') : '<span style="opacity:0.3">⇅</span>';
+                iconsSpan.appendChild(sortIndicator);
+
+                cleanTh.style.cursor = 'pointer';
+                cleanTh.onclick = (e) => {
+                    // Ignorar si clic en resizer
+                    if (e.target.classList.contains('col-resizer')) return;
+                    this.onHeaderClick(colDef.id);
+                };
             }
-            
-            // Event listener para ordenar
-            th.addEventListener('click', (e) => {
-                // No ordenar si se hizo click en el icono de filtro
-                if (e.target.classList.contains('filtro-icon')) {
-                    return;
-                }
-                this.onHeaderClick(colId, th);
+
+            if (colDef.isNumeric) {
+                const filterIcon = document.createElement('span');
+                filterIcon.className = `filtro-icon ${colDef.filtroCerosActivo ? 'activo' : ''}`;
+                filterIcon.innerHTML = colDef.filtroCerosActivo ? '<i class="fas fa-filter"></i>' : '<i class="far fa-circle" style="opacity:0.3"></i>';
+                filterIcon.onclick = (e) => { e.stopPropagation(); this.toggleFiltroColumna(colDef.id); };
+                iconsSpan.appendChild(filterIcon);
+            }
+
+            contentWrapper.appendChild(iconsSpan);
+            cleanTh.appendChild(contentWrapper);
+
+            // --- AGREGAR RESIZER ---
+            const resizer = document.createElement('div');
+            resizer.className = 'col-resizer';
+            resizer.style.position = 'absolute';
+            resizer.style.right = '0';
+            resizer.style.top = '0';
+            resizer.style.bottom = '0';
+            resizer.style.width = '8px'; // Área sensible amplia
+            resizer.style.cursor = 'col-resize';
+            resizer.style.zIndex = '10';
+            resizer.style.userSelect = 'none';
+
+            resizer.addEventListener('mousedown', (e) => {
+                // Stop propagation para evitar sort
+                e.stopPropagation();
+                // Prevent default para evitar selección de texto
+                e.preventDefault();
+                this.handleResizeStart(e, cleanTh, colDef.id);
             });
+
+            cleanTh.appendChild(resizer);
         });
     }
 
-    /**
-     * Manejar click en header para ordenar
-     * ✅ ACTUALIZADO: Soporta periodos
-     * 
-     * @param {string} colId - ID de la columna
-     * @param {HTMLElement} headerElement - Elemento del header
-     */
-    onHeaderClick(colId, headerElement) {
-        // Alternar dirección si es la misma columna
+    handleResizeStart(e, th, colId) {
+        this.isResizing = true;
+        this.currentResizingCol = colId;
+
+        // V6: Absolute Calculation Strategy
+        this.currentHeaderLeft = th.getBoundingClientRect().left;
+        this.currentHeaderStartWidth = th.getBoundingClientRect().width;
+
+        // V7: Table Growth Strategy
+        // Capture table element and its current width
+        this.tableElement = th.closest('table');
+        this.startTableWidth = this.tableElement.getBoundingClientRect().width;
+
+        // V8: GRID LOCKING STRATEGY
+        // Congelar TODOS los anchos actuales explícitamente en píxeles.
+        // V9: STRICT LOCKING - Usar min-width y max-width para evitar cualquier reflujo
+        const allThs = this.tableElement.querySelectorAll('th');
+        allThs.forEach(header => {
+            const currentW = header.getBoundingClientRect().width;
+            header.style.width = currentW + 'px';
+            header.style.minWidth = currentW + 'px'; // V9 Strict
+            header.style.maxWidth = currentW + 'px'; // V9 Strict
+        });
+
+        // Desbloquear la columna actual para permitir resize
+        th.style.minWidth = '2px';
+        th.style.maxWidth = 'none';
+
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none'; // Evitar selección durante arrastre
+
+        // V5.2: Higiene de Eventos - Agregar listeners solo durante el drag
+        this.boundHandleResizeMove = this.handleResizeMove.bind(this);
+        this.boundHandleResizeEnd = this.handleResizeEnd.bind(this);
+
+        document.addEventListener('mousemove', this.boundHandleResizeMove);
+        document.addEventListener('mouseup', this.boundHandleResizeEnd);
+    }
+
+    handleResizeMove(e) {
+        if (!this.isResizing) return;
+
+        // V6: Cálculo Lineal Absoluto
+        // Ancho = Posición Mouse - Borde Izquierdo Header
+        // Esto elimina cualquier "delta" acumulado o error de margen.
+        // + SCROLL: Si la tabla tiene scroll horizontal, getBoundingClientRect es relativo al viewport,
+        // al igual que e.clientX. Usamos clientX para consistencia con getBoundingClientRect.
+
+        const rawWidth = e.clientX - this.currentHeaderLeft;
+
+        // V6: Sin límites reales (2px para que no desaparezca el resizer)
+        const newWidth = Math.max(2, rawWidth);
+
+        const th = document.querySelector(`th[data-col-id="${this.currentResizingCol}"]`);
+        if (th) {
+            th.style.width = newWidth + 'px';
+
+            // V7: TRUE INDEPENDENCE - Actualizar ancho de tabla
+            // Delta = Nuevo Ancho - Ancho Inicial de Columna
+            const delta = newWidth - this.currentHeaderStartWidth;
+
+            // Nuevo Ancho Tabla = Ancho Inicial Tabla + Delta
+            if (this.tableElement) {
+                this.tableElement.style.width = (this.startTableWidth + delta) + 'px';
+            }
+        }
+    }
+
+    handleResizeEnd(e) {
+        if (!this.isResizing) return;
+
+        // Limpiar listeners globales inmediatamente
+        document.removeEventListener('mousemove', this.boundHandleResizeMove);
+        document.removeEventListener('mouseup', this.boundHandleResizeEnd);
+
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+
+        // V9: Cleanup Locking
+        // Debemos limpiar min-width y max-width para no interferir con futuros resizes,
+        // PERO mantener el width explícito (la persistencia).
+        if (this.tableElement) {
+            const allThs = this.tableElement.querySelectorAll('th');
+            allThs.forEach(header => {
+                header.style.minWidth = ''; // Remove strict lock
+                header.style.maxWidth = ''; // Remove strict lock
+                // width se mantiene
+            });
+        }
+
+        // Guardar estado final
+
+        // Guardar estado final
+        const th = document.querySelector(`th[data-col-id="${this.currentResizingCol}"]`);
+        if (th) {
+            // Guardar el ancho computado real final
+            const finalWidth = th.getBoundingClientRect().width;
+            this.estado.anchosColumnas[this.currentResizingCol] = finalWidth;
+            this.guardarEstado();
+        }
+
+        this.isResizing = false;
+        this.currentResizingCol = null;
+
+        // Flag para prevenir sort inmediato
+        this.justResized = true;
+        setTimeout(() => this.justResized = false, 100);
+    }
+
+    onHeaderClick(colId) {
+        if (this.justResized) return; // Abort if resized
+
         if (this.estado.ordenamiento.columna === colId) {
-            this.estado.ordenamiento.direccion = 
-                this.estado.ordenamiento.direccion === 'asc' ? 'desc' : 'asc';
+            this.estado.ordenamiento.direccion = this.estado.ordenamiento.direccion === 'asc' ? 'desc' : 'asc';
         } else {
             this.estado.ordenamiento.columna = colId;
             this.estado.ordenamiento.direccion = 'asc';
         }
-        
-        console.log(`📊 [TABLE-MANAGER] Ordenando por '${colId}' ${this.estado.ordenamiento.direccion}`);
-        
-        // Actualizar indicadores visuales
-        this.actualizarIndicadoresOrdenamiento();
-        
-        // Guardar estado
         this.guardarEstado();
-        
-        // Notificar cambio para re-renderizar tabla
         if (window.informeProduccion) {
+            window.informeProduccion.actualizarEncabezadosTabla();
             window.informeProduccion.renderizarTabla(window.informeProduccion.datosBase);
         }
     }
 
-    /**
-     * Actualizar indicadores visuales de ordenamiento
-     * ✅ ACTUALIZADO: Soporta periodos
-     */
-    actualizarIndicadoresOrdenamiento() {
-        const thead = document.querySelector('.tabla-produccion thead tr');
-        if (!thead) return;
-        
-        const headers = thead.querySelectorAll('th');
-        const columnasBase = ['codigo', 'articulo', 'unidades', 'kilos'];
-        
-        headers.forEach((th, index) => {
-            const indicator = th.querySelector('.sort-indicator');
-            if (!indicator) return;
-            
-            // Determinar ID de columna
-            let colId;
-            if (index < columnasBase.length) {
-                colId = columnasBase[index];
-            } else {
-                const periodoIndex = index - columnasBase.length;
-                if (periodoIndex < this.periodosActivos.length) {
-                    colId = `periodo-${this.periodosActivos[periodoIndex].id}`;
-                }
-            }
-            
-            if (!colId) return;
-            
-            if (this.estado.ordenamiento.columna === colId) {
-                indicator.innerHTML = this.estado.ordenamiento.direccion === 'asc' ? ' ▲' : ' ▼';
-                th.style.backgroundColor = '#0056b3';
-            } else {
-                indicator.innerHTML = ' ⇅';
-                th.style.backgroundColor = '';
-            }
-            
-            // Actualizar icono de filtro
-            const filtroIcon = th.querySelector('.filtro-icon');
-            if (filtroIcon) {
-                filtroIcon.innerHTML = this.estado.filtrarCerosPorColumna[colId] ? ' 🔍' : ' ⊙';
-            }
-        });
-    }
-
-    /**
-     * Ordenar datos según configuración actual
-     * ✅ ACTUALIZADO: Soporta periodos
-     * 
-     * @param {Array} datos - Datos a ordenar
-     * @returns {Array} Datos ordenados
-     */
-    ordenarDatos(datos) {
-        if (!this.estado.ordenamiento.columna || !datos) {
-            return datos;
-        }
-        
-        const colId = this.estado.ordenamiento.columna;
-        const direccion = this.estado.ordenamiento.direccion;
-        
-        // Mapeo de columnas base a propiedades
-        const propMap = {
-            'codigo': 'articulo_codigo',
-            'articulo': 'articulo_nombre',
-            'unidades': 'cantidad_total_producida',
-            'kilos': 'kilos_totales_producidos'
-        };
-        
-        return [...datos].sort((a, b) => {
-            let valA, valB;
-            
-            // Determinar valores según tipo de columna
-            if (propMap[colId]) {
-                // Columna base
-                valA = a[propMap[colId]];
-                valB = b[propMap[colId]];
-                
-                // Convertir a números si es columna numérica
-                if (colId === 'unidades' || colId === 'kilos') {
-                    valA = parseFloat(valA) || 0;
-                    valB = parseFloat(valB) || 0;
-                } else {
-                    // Convertir a string para comparación alfabética
-                    valA = String(valA || '').toLowerCase();
-                    valB = String(valB || '').toLowerCase();
-                }
-            } else if (colId.startsWith('periodo-')) {
-                // Columna de periodo
-                const periodoId = parseInt(colId.replace('periodo-', ''));
-                const periodo = this.periodosActivos.find(p => p.id === periodoId);
-                
-                if (periodo && periodo.datos) {
-                    const datoA = periodo.datos.find(d => d.articulo_codigo === a.articulo_codigo);
-                    const datoB = periodo.datos.find(d => d.articulo_codigo === b.articulo_codigo);
-                    
-                    valA = datoA ? (parseFloat(datoA.cantidad_producida) || 0) : 0;
-                    valB = datoB ? (parseFloat(datoB.cantidad_producida) || 0) : 0;
-                } else {
-                    valA = 0;
-                    valB = 0;
-                }
-            }
-            
-            let comparacion = 0;
-            if (valA > valB) comparacion = 1;
-            if (valA < valB) comparacion = -1;
-            
-            return direccion === 'asc' ? comparacion : -comparacion;
-        });
-    }
-
-    /**
-     * Actualizar periodos activos
-     * 
-     * @param {Array} periodos - Lista de periodos activos
-     */
-    actualizarPeriodos(periodos) {
-        console.log(`📊 [TABLE-MANAGER] Actualizando periodos: ${periodos.length}`);
-        
-        this.periodosActivos = periodos;
-        
-        // Asegurar que los periodos nuevos estén visibles por defecto
-        periodos.forEach(periodo => {
-            const colId = `periodo-${periodo.id}`;
-            if (this.estado.columnasVisibles[colId] === undefined) {
-                this.estado.columnasVisibles[colId] = true;
-            }
-        });
-        
-        // Actualizar menú de columnas
-        this.actualizarMenuColumnas();
-        
-        // Guardar estado
-        this.guardarEstado();
-    }
-    
-    /**
-     * Agregar icono de filtro en header de columna
-     * 
-     * @param {HTMLElement} th - Elemento th del header
-     * @param {string} colId - ID de la columna
-     */
-    agregarIconoFiltro(th, colId) {
-        const filtroIcon = document.createElement('span');
-        filtroIcon.className = 'filtro-icon';
-        filtroIcon.innerHTML = this.estado.filtrarCerosPorColumna[colId] ? ' 🔍' : ' ⊙';
-        filtroIcon.title = 'Filtrar ceros en esta columna';
-        filtroIcon.style.cursor = 'pointer';
-        filtroIcon.style.marginLeft = '5px';
-        filtroIcon.style.fontSize = '0.8rem';
-        
-        filtroIcon.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleFiltroColumna(colId);
-        });
-        
-        th.appendChild(filtroIcon);
-    }
-    
-    /**
-     * Alternar filtro de ceros en una columna específica
-     * 
-     * @param {string} colId - ID de la columna
-     */
     toggleFiltroColumna(colId) {
         this.estado.filtrarCerosPorColumna[colId] = !this.estado.filtrarCerosPorColumna[colId];
-        
-        console.log(`📊 [TABLE-MANAGER] Filtro de ceros en '${colId}': ${this.estado.filtrarCerosPorColumna[colId] ? 'ON' : 'OFF'}`);
-        
         this.guardarEstado();
-        
-        // Notificar cambio para re-renderizar tabla
         if (window.informeProduccion) {
+            window.informeProduccion.actualizarEncabezadosTabla();
             window.informeProduccion.renderizarTabla(window.informeProduccion.datosBase);
         }
     }
-    
-    /**
-     * Filtrar datos según configuración actual
-     * 
-     * @param {Array} datos - Datos a filtrar
-     * @param {Array} periodosActivos - Periodos activos para filtrar
-     * @returns {Array} Datos filtrados
-     */
-    filtrarDatos(datos, periodosActivos = []) {
-        if (!datos) return datos;
-        
-        // Asegurar que filtrarCerosPorColumna existe
-        if (!this.estado.filtrarCerosPorColumna) {
-            this.estado.filtrarCerosPorColumna = {};
-        }
-        
-        // Verificar si hay algún filtro activo
-        const hayFiltrosActivos = Object.values(this.estado.filtrarCerosPorColumna).some(v => v);
-        
-        if (!hayFiltrosActivos) {
-            return datos;
-        }
-        
-        return datos.filter(item => {
-            // Verificar cada columna con filtro activo
-            for (const [colId, filtroActivo] of Object.entries(this.estado.filtrarCerosPorColumna)) {
-                if (!filtroActivo) continue;
-                
-                let valor = 0;
-                
-                // Determinar el valor según la columna
-                if (colId === 'unidades') {
-                    valor = parseFloat(item.cantidad_total_producida) || 0;
-                } else if (colId === 'kilos') {
-                    valor = parseFloat(item.kilos_totales_producidos) || 0;
-                } else if (colId.startsWith('periodo-')) {
-                    // Buscar valor en el periodo correspondiente
-                    const periodoId = parseInt(colId.replace('periodo-', ''));
-                    const periodo = periodosActivos.find(p => p.id === periodoId);
-                    if (periodo && periodo.datos) {
-                        const datoPeriodo = periodo.datos.find(d => d.articulo_codigo === item.articulo_codigo);
-                        valor = datoPeriodo ? (parseFloat(datoPeriodo.cantidad_producida) || 0) : 0;
-                    }
-                }
-                
-                // Si el valor es 0 y el filtro está activo, excluir este item
-                if (valor === 0) {
-                    return false;
+
+    procesarDatos(datos) {
+        if (!datos) return [];
+        const cols = this.getColumnDefinitions();
+
+        let resultado = datos.filter(item => {
+            for (const col of cols) {
+                if (col.filtroCerosActivo) {
+                    const valor = this.extraerValor(item, col);
+                    if (valor === 0) return false;
                 }
             }
-            
-            // Si pasó todos los filtros, incluir el item
             return true;
         });
+
+        const sortDef = cols.find(c => c.isSorted);
+        if (sortDef) {
+            const dir = sortDef.sortDir === 'asc' ? 1 : -1;
+            resultado.sort((a, b) => {
+                const valA = this.extraerValor(a, sortDef);
+                const valB = this.extraerValor(b, sortDef);
+                if (sortDef.isNumeric) return (valA - valB) * dir;
+                return String(valA).localeCompare(String(valB)) * dir;
+            });
+        }
+        return resultado;
     }
 
-    /**
-     * Procesar datos (filtrar y ordenar)
-     * 
-     * @param {Array} datos - Datos originales
-     * @param {Array} periodosActivos - Periodos activos
-     * @returns {Array} Datos procesados
-     */
-    procesarDatos(datos, periodosActivos = []) {
-        if (!datos) return datos;
-        
-        // Primero filtrar
-        let datosProcesados = this.filtrarDatos(datos, periodosActivos);
-        
-        // Luego ordenar
-        datosProcesados = this.ordenarDatos(datosProcesados);
-        
-        return datosProcesados;
+    extraerValor(item, colDef) {
+        if (colDef.type === 'base') {
+            const val = item[colDef.key];
+            if (colDef.isNumeric) return parseFloat(val) || 0;
+            return val;
+        }
+        else if (colDef.type === 'calculated' && colDef.id === 'balance') {
+            // ✅ CÁLCULO DINÁMICO DE BALANCE
+            let balance = 0;
+            const comps = this.balanceConfig.componentes;
+
+            // Nota: Se asume que los valores en 'item' son magnitudes POSITIVAS
+            // El backend ya los envía separados y (idealmente) positivos.
+
+            if (comps.ingresos) balance += (parseFloat(item.cantidad_ingresos) || 0);
+            if (comps.salidas) balance -= (parseFloat(item.cantidad_salidas) || 0); // Resta
+            if (comps.ajustes_pos) balance += (parseFloat(item.cantidad_ajustes_pos) || 0);
+            if (comps.ajustes_neg) balance -= (parseFloat(item.cantidad_ajustes_neg) || 0); // Resta
+
+            return balance;
+        }
+        else if (colDef.type === 'periodo') {
+            const periodo = this.periodosActivos.find(p => p.id === colDef.periodoId);
+            if (!periodo || !periodo.datos) return 0;
+            const datoArticulo = periodo.datos.find(d => d.articulo_codigo === item.articulo_codigo);
+            return datoArticulo ? (parseFloat(datoArticulo[colDef.key]) || 0) : 0;
+        }
+        return 0;
     }
 
-    /**
-     * Obtener columnas visibles
-     * 
-     * @returns {Object} Estado de columnas visibles
-     */
-    getColumnasVisibles() {
-        return this.estado.columnasVisibles;
-    }
-
-    /**
-     * Guardar estado en localStorage
-     */
     guardarEstado() {
         try {
             localStorage.setItem(this.storageKey, JSON.stringify(this.estado));
-            console.log('💾 [TABLE-MANAGER] Estado guardado');
-        } catch (error) {
-            console.error('❌ [TABLE-MANAGER] Error al guardar estado:', error);
-        }
+        } catch (e) { console.error('Error saving state', e); }
     }
 
-    /**
-     * Cargar estado desde localStorage
-     */
     cargarEstado() {
         try {
-            const estadoGuardado = localStorage.getItem(this.storageKey);
-            if (estadoGuardado) {
-                const estadoParsed = JSON.parse(estadoGuardado);
-                
-                // Asegurar que todas las propiedades existan
-                this.estado = {
-                    columnasVisibles: estadoParsed.columnasVisibles || {
-                        codigo: true,
-                        articulo: true,
-                        unidades: true,
-                        kilos: true
-                    },
-                    ordenamiento: estadoParsed.ordenamiento || {
-                        columna: null,
-                        direccion: 'asc'
-                    },
-                    filtrarCerosPorColumna: estadoParsed.filtrarCerosPorColumna || {}
-                };
-                
-                console.log('💾 [TABLE-MANAGER] Estado cargado:', this.estado);
+            const saved = localStorage.getItem(this.storageKey);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                this.estado = { ...this.estado, ...parsed };
             }
-        } catch (error) {
-            console.error('❌ [TABLE-MANAGER] Error al cargar estado:', error);
-            // Resetear a valores por defecto en caso de error
-            this.estado.filtrarCerosPorColumna = {};
-        }
-    }
-
-    /**
-     * Resetear estado a valores por defecto
-     */
-    resetearEstado() {
-        this.estado = {
-            columnasVisibles: {
-                codigo: true,
-                articulo: true,
-                unidades: true,
-                kilos: true
-            },
-            ordenamiento: {
-                columna: null,
-                direccion: 'asc'
-            },
-            filtrarCeros: false
-        };
-        
-        this.guardarEstado();
-        
-        console.log('🔄 [TABLE-MANAGER] Estado reseteado');
+        } catch (e) { console.error('Error loading state', e); }
     }
 }
 
-// Exportar para uso global
+// Exportar
 window.TableManager = TableManager;

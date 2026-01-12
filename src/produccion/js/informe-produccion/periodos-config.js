@@ -25,7 +25,7 @@ class PeriodosConfig {
         this.onPeriodosChange = onPeriodosChange; // Callback para notificar cambios
         this.periodos = [];
         this.nextId = 1;
-        
+
         // Elementos del DOM
         this.accordionHeader = null;
         this.accordionContent = null;
@@ -41,7 +41,7 @@ class PeriodosConfig {
      */
     init() {
         console.log('📅 [PERIODOS-CONFIG] Inicializando módulo...');
-        
+
         // Obtener elementos del DOM
         this.accordionHeader = document.getElementById('accordion-periodos-header');
         this.accordionContent = document.getElementById('accordion-periodos-content');
@@ -50,18 +50,18 @@ class PeriodosConfig {
         this.inputFechaFin = document.getElementById('periodo-fecha-fin');
         this.btnAgregar = document.getElementById('btn-agregar-periodo');
         this.periodosLista = document.getElementById('periodos-lista');
-        
+
         if (!this.accordionHeader || !this.accordionContent) {
             console.error('❌ [PERIODOS-CONFIG] No se encontraron elementos del acordeón');
             return;
         }
-        
+
         // Configurar event listeners
         this.setupEventListeners();
-        
-        // Expandir acordeón por defecto
-        this.toggleAccordion();
-        
+
+        // Expandir acordeón por defecto -> ELIMINADO V5.1
+        // this.toggleAccordion();
+
         console.log('✅ [PERIODOS-CONFIG] Módulo inicializado correctamente');
     }
 
@@ -71,15 +71,15 @@ class PeriodosConfig {
     setupEventListeners() {
         // Acordeón
         this.accordionHeader.addEventListener('click', () => this.toggleAccordion());
-        
+
         // Validación de campos
         this.inputNombre.addEventListener('input', () => this.validateForm());
         this.inputFechaInicio.addEventListener('change', () => this.validateForm());
         this.inputFechaFin.addEventListener('change', () => this.validateForm());
-        
+
         // Botón agregar periodo
         this.btnAgregar.addEventListener('click', () => this.agregarPeriodo());
-        
+
         console.log('✅ [PERIODOS-CONFIG] Event listeners configurados');
     }
 
@@ -88,7 +88,7 @@ class PeriodosConfig {
      */
     toggleAccordion() {
         const isActive = this.accordionHeader.classList.contains('active');
-        
+
         if (isActive) {
             this.accordionHeader.classList.remove('active');
             this.accordionContent.classList.remove('active');
@@ -105,18 +105,18 @@ class PeriodosConfig {
         const nombre = this.inputNombre.value.trim();
         const fechaInicio = this.inputFechaInicio.value;
         const fechaFin = this.inputFechaFin.value;
-        
+
         // Validar que todos los campos estén completos
         const isValid = nombre && fechaInicio && fechaFin;
-        
+
         // Validar que fecha fin sea mayor o igual a fecha inicio
         let fechasValidas = true;
         if (fechaInicio && fechaFin) {
             fechasValidas = new Date(fechaFin) >= new Date(fechaInicio);
         }
-        
+
         this.btnAgregar.disabled = !isValid || !fechasValidas;
-        
+
         return isValid && fechasValidas;
     }
 
@@ -128,25 +128,25 @@ class PeriodosConfig {
             console.warn('⚠️ [PERIODOS-CONFIG] Formulario inválido');
             return;
         }
-        
+
         const nombre = this.inputNombre.value.trim();
         const fechaInicio = this.inputFechaInicio.value;
         const fechaFin = this.inputFechaFin.value;
-        
+
         console.log(`📅 [PERIODOS-CONFIG] Agregando periodo: ${nombre} (${fechaInicio} - ${fechaFin})`);
-        
+
         try {
             // Mostrar loading en el botón
             const btnTextoOriginal = this.btnAgregar.textContent;
             this.btnAgregar.textContent = 'Cargando...';
             this.btnAgregar.disabled = true;
-            
+
             // Obtener tipos de movimiento actuales
             const tiposMovimiento = this.getTiposMovimiento ? this.getTiposMovimiento() : null;
-            
+
             // Obtener datos del periodo desde la API
             const datos = await this.dataFetcher.obtenerProduccionPorPeriodo(fechaInicio, fechaFin, tiposMovimiento);
-            
+
             // Crear objeto de periodo (seleccionado por defecto)
             const periodo = {
                 id: this.nextId++,
@@ -157,30 +157,30 @@ class PeriodosConfig {
                 estadisticas: datos.estadisticas,
                 seleccionado: true
             };
-            
+
             // Agregar a la lista
             this.periodos.push(periodo);
-            
+
             // Renderizar en la UI
             this.renderPeriodo(periodo);
-            
+
             // Limpiar formulario
             this.limpiarFormulario();
-            
+
             // Notificar cambio
             if (this.onPeriodosChange) {
                 this.onPeriodosChange(this.periodos);
             }
-            
+
             console.log(`✅ [PERIODOS-CONFIG] Periodo agregado exitosamente: ${nombre}`);
-            
+
             // Restaurar botón
             this.btnAgregar.textContent = btnTextoOriginal;
-            
+
         } catch (error) {
             console.error('❌ [PERIODOS-CONFIG] Error al agregar periodo:', error);
             alert(`Error al agregar periodo: ${error.message}`);
-            
+
             // Restaurar botón
             this.btnAgregar.textContent = 'Agregar Periodo';
             this.btnAgregar.disabled = false;
@@ -197,7 +197,7 @@ class PeriodosConfig {
         const periodoElement = document.createElement('div');
         periodoElement.className = 'periodo-item';
         periodoElement.dataset.periodoId = periodo.id;
-        
+
         periodoElement.innerHTML = `
             <div class="periodo-checkbox-container">
                 <input 
@@ -219,7 +219,7 @@ class PeriodosConfig {
                 title="Eliminar periodo"
             ></button>
         `;
-        
+
         this.periodosLista.appendChild(periodoElement);
     }
 
@@ -230,26 +230,26 @@ class PeriodosConfig {
      */
     eliminarPeriodo(periodoId) {
         console.log(`🗑️ [PERIODOS-CONFIG] Eliminando periodo ID: ${periodoId}`);
-        
+
         // Confirmar eliminación
         if (!confirm('¿Está seguro de eliminar este periodo?')) {
             return;
         }
-        
+
         // Eliminar del array
         this.periodos = this.periodos.filter(p => p.id !== periodoId);
-        
+
         // Eliminar del DOM
         const elemento = this.periodosLista.querySelector(`[data-periodo-id="${periodoId}"]`);
         if (elemento) {
             elemento.remove();
         }
-        
+
         // Notificar cambio
         if (this.onPeriodosChange) {
             this.onPeriodosChange(this.periodos);
         }
-        
+
         console.log(`✅ [PERIODOS-CONFIG] Periodo eliminado: ${periodoId}`);
     }
 
@@ -295,13 +295,13 @@ class PeriodosConfig {
      */
     onPeriodoCheckChange(periodoId, checked) {
         console.log(`📅 [PERIODOS-CONFIG] Periodo ${periodoId} ${checked ? 'seleccionado' : 'deseleccionado'}`);
-        
+
         // Actualizar estado en el objeto
         const periodo = this.periodos.find(p => p.id === periodoId);
         if (periodo) {
             periodo.seleccionado = checked;
         }
-        
+
         // Notificar cambio (solo periodos seleccionados)
         if (this.onPeriodosChange) {
             const periodosSeleccionados = this.periodos.filter(p => p.seleccionado);
@@ -338,19 +338,19 @@ class PeriodosConfig {
         if (this.periodos.length === 0) {
             return;
         }
-        
+
         if (!confirm('¿Está seguro de eliminar todos los periodos?')) {
             return;
         }
-        
+
         this.periodos = [];
         this.periodosLista.innerHTML = '';
-        
+
         // Notificar cambio
         if (this.onPeriodosChange) {
             this.onPeriodosChange(this.periodos);
         }
-        
+
         console.log('🗑️ [PERIODOS-CONFIG] Todos los periodos eliminados');
     }
 }

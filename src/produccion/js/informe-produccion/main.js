@@ -15,7 +15,7 @@
  * - Gestionar estado de la aplicación
  * 
  * @author Sistema LAMDA
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 class InformeProduccionInterna {
@@ -24,8 +24,8 @@ class InformeProduccionInterna {
         this.sidebarResizer = null;
         this.tiposMovimientoConfig = null;
         this.periodosConfig = null;
-        this.tableManager = null; // NUEVO: Gestor de tabla
-        
+        this.tableManager = null; // Gestor de tabla
+
         // Estado de la aplicación
         this.datosBase = null; // Historial completo
         this.periodosActivos = []; // Periodos para comparación
@@ -38,23 +38,23 @@ class InformeProduccionInterna {
      */
     async init() {
         console.log('🚀 [INFORME-PROD] ===== INICIANDO MÓDULO DE INFORMES =====');
-        
+
         try {
             // Inicializar módulos
             this.initModules();
-            
+
             // Obtener elementos del DOM
             this.tablaElement = document.getElementById('tabla-produccion-body');
-            
+
             if (!this.tablaElement) {
                 throw new Error('No se encontró el elemento de la tabla');
             }
-            
+
             // Cargar datos iniciales
             await this.cargarDatosIniciales();
-            
+
             console.log('✅ [INFORME-PROD] Aplicación inicializada correctamente');
-            
+
         } catch (error) {
             console.error('❌ [INFORME-PROD] Error al inicializar:', error);
             this.mostrarError('Error al inicializar el módulo: ' + error.message);
@@ -66,24 +66,31 @@ class InformeProduccionInterna {
      */
     initModules() {
         console.log('🔧 [INFORME-PROD] Inicializando módulos...');
-        
+
         // Inicializar DataFetcher
         this.dataFetcher = new DataFetcher();
-        
+
         // Inicializar SidebarResizer
         this.sidebarResizer = new SidebarResizer();
         this.sidebarResizer.init();
-        
-        // Inicializar TableManager
-        this.tableManager = new TableManager();
+
+        // Inicializar TableManager con callback de sync
+        this.tableManager = new TableManager(
+            (colId, visible) => {
+                if (this.tiposMovimientoConfig) {
+                    this.tiposMovimientoConfig.setExternalState(colId, visible);
+                }
+            }
+        );
         this.tableManager.init();
-        
+
         // Inicializar TiposMovimientoConfig
         this.tiposMovimientoConfig = new TiposMovimientoConfig(
-            (tipos) => this.onTiposMovimientoActualizados(tipos)
+            (data) => this.onTiposMovimientoActualizados(data),
+            (config) => this.onBalanceConfigUpdate(config)
         );
         this.tiposMovimientoConfig.init();
-        
+
         // Inicializar PeriodosConfig
         this.periodosConfig = new PeriodosConfig(
             this.dataFetcher,
@@ -91,7 +98,7 @@ class InformeProduccionInterna {
             (periodos) => this.onPeriodosActualizados(periodos)
         );
         this.periodosConfig.init();
-        
+
         console.log('✅ [INFORME-PROD] Módulos inicializados');
     }
 
@@ -100,26 +107,27 @@ class InformeProduccionInterna {
      */
     async cargarDatosIniciales() {
         console.log('📊 [INFORME-PROD] Cargando datos iniciales...');
-        
+
         this.mostrarLoading();
-        
+
         try {
             // Obtener tipos de movimiento seleccionados
             this.tiposMovimientoActivos = this.tiposMovimientoConfig.getTiposSeleccionados();
-            
+
             // Obtener historial completo con tipos de movimiento
             const resultado = await this.dataFetcher.obtenerHistorial(this.tiposMovimientoActivos);
-            
+
             this.datosBase = resultado.data;
-            
+
             // Actualizar estadísticas en el header
             this.actualizarEstadisticas(resultado.estadisticas);
-            
-            // Renderizar tabla con datos base
+
+            // Sincronizar tabla por primera vez
+            this.actualizarEncabezadosTabla();
             this.renderizarTabla(this.datosBase);
-            
+
             console.log(`✅ [INFORME-PROD] Datos iniciales cargados: ${this.datosBase.length} artículos`);
-            
+
         } catch (error) {
             console.error('❌ [INFORME-PROD] Error al cargar datos iniciales:', error);
             this.mostrarError('Error al cargar datos: ' + error.message);
@@ -128,273 +136,242 @@ class InformeProduccionInterna {
 
     /**
      * Callback cuando se actualizan los tipos de movimiento
-     * 
-     * @param {Array} tipos - Lista de tipos seleccionados
+     * ✅ MEJORA: Refresca también los periodos existentes para mantener coherencia
      */
-    async onTiposMovimientoActualizados(tipos) {
-        console.log(`🔍 [INFORME-PROD] Tipos de movimiento actualizados:`, tipos);
-        
-        this.tiposMovimientoActivos = tipos;
-        
-        // Recargar datos con nuevos tipos
-        await this.cargarDatosIniciales();
+    /**
+     * Callback cuando se actualizan los tipos de movimiento
+     * ✅ UPDATE V4: Recibe objeto { backendValues, uiState }
+     */
+    async onTiposMovimientoActualizados(data) {
+        console.log(`🔍 [INFORME-PROD] Movimientos actualizados:`, data);
+
+        // 1. Backend Values (para fetcher)
+        // Soporte legacy por si llega array directo
+        const backendValues = Array.isArray(data) ? data : (data.backendValues || []);
+        const uiState = Array.isArray(data) ? null : data.uiState;
+
+        this.tiposMovimientoActivos = backendValues;
+
+        // 2. UI State (para columnas de TableManager)
+        if (this.tableManager && uiState) {
+            this.tableManager.setTiposMovimientoUI(uiState);
+        } else if (this.tableManager && Array.isArray(data)) {
+            // Fallback legacy
+            this.tableManager.setTiposMovimiento(data);
+        }
+
+        // Usar la función de refresco total
+        await this.refrescarDatos();
+    }
+
+    /**
+     * Callback cuando cambia la opción de Balance Neto
+     */
+    /**
+     * Callback cuando cambia la configuración de Balance
+     * ✅ UPDATE V4: Recibe objeto de configuración completo
+     */
+    onBalanceConfigUpdate(config) {
+        console.log(`⚖️ [INFORME-PROD] Config Balance:`, config);
+
+        if (this.tableManager) {
+            this.tableManager.setBalanceConfig(config);
+
+            // Re-renderizar
+            this.actualizarEncabezadosTabla();
+            this.renderizarTabla(this.datosBase);
+        }
     }
 
     /**
      * Callback cuando se actualizan los periodos
      * ✅ ACTUALIZADO: Notifica al TableManager
-     * 
-     * @param {Array} periodos - Lista de periodos seleccionados
      */
     onPeriodosActualizados(periodos) {
         console.log(`📅 [INFORME-PROD] Periodos seleccionados actualizados: ${periodos.length}`);
-        
-        // Solo guardar periodos seleccionados
+
+        // Filtrar solo seleccionados para la tabla
         this.periodosActivos = periodos.filter(p => p.seleccionado !== false);
-        
+
         console.log(`📊 [INFORME-PROD] Mostrando ${this.periodosActivos.length} columnas de periodos`);
-        
-        // Notificar al TableManager sobre los periodos actualizados
+
+        // Notificar al TableManager (Fuente de verdad)
         if (this.tableManager) {
             this.tableManager.actualizarPeriodos(this.periodosActivos);
         }
-        
-        // Actualizar headers de la tabla
+
+        // Headers y Tabla se actualizan dentro de tableManager.actualizarPeriodos -> actualizarMenuColumnas -> (pero aquí forzamos para asegurar)
         this.actualizarEncabezadosTabla();
-        
-        // Re-renderizar tabla con columnas comparativas
         this.renderizarTabla(this.datosBase);
     }
 
     /**
      * Renderizar tabla principal
-     * ✅ ACTUALIZADO: Con procesamiento de TableManager
-     * 
-     * @param {Array} datos - Datos a renderizar
+     * ✅ ACTUALIZADO: Usa definiciones centralizadas
      */
     renderizarTabla(datos) {
-        console.log(`📊 [INFORME-PROD] Renderizando tabla con ${datos?.length || 0} artículos...`);
-        
+        // Saneamiento del DOM
+        if (!this.tablaElement) return;
+        this.tablaElement.innerHTML = ''; // Limpiar contenido previo
+
         if (!datos || datos.length === 0) {
             this.mostrarMensajeVacio();
             return;
         }
-        
-        // Procesar datos (filtrar y ordenar) con TableManager
-        const datosProcesados = this.tableManager ? 
-            this.tableManager.procesarDatos(datos, this.periodosActivos) : datos;
-        
-        console.log(`📊 [INFORME-PROD] Datos procesados: ${datosProcesados.length} artículos`);
-        
-        // Limpiar tabla
-        this.tablaElement.innerHTML = '';
-        
-        // Agrupar por Rubro y Subrubro
+
+        // 1. Procesar datos (Filtrar y Ordenar) usando TableManager
+        const datosProcesados = this.tableManager ?
+            this.tableManager.procesarDatos(datos) : datos;
+
+        // 2. Agrupar
         const agrupado = this.agruparPorJerarquia(datosProcesados);
-        
-        // Renderizar grupos
+
+        // 3. Renderizar filas
         for (const [rubro, subrubros] of Object.entries(agrupado)) {
-            // Header de Rubro
+            // Header: Rubro
             this.renderizarHeaderRubro(rubro);
-            
-            // Subrubros y artículos
+
             for (const [subrubro, articulos] of Object.entries(subrubros)) {
-                // Header de Subrubro
+                // Header: Subrubro
                 this.renderizarHeaderSubrubro(subrubro);
-                
-                // Ordenar artículos dentro del subrubro si hay ordenamiento activo
-                const articulosOrdenados = this.tableManager ?
-                    this.tableManager.ordenarDatos(articulos) : articulos;
-                
-                // Artículos
-                articulosOrdenados.forEach(articulo => {
+
+                // Artículos ya vienen ordenados del procesarDatos, 
+                // pero al agrupar perdimos el orden global si es que era por rubro/subrubro implícitamente.
+                // Si el ordenamiento es por columna numérica, TableManager ya lo hizo.
+                // Aquí solo iteramos.
+
+                articulos.forEach(articulo => {
                     this.renderizarFilaArticulo(articulo);
                 });
             }
         }
-        
-        // Configurar ordenamiento en headers
+
+        // Restaurar estado de ordenamiento visual en headers
         if (this.tableManager) {
             const thead = document.querySelector('.tabla-produccion thead tr');
-            this.tableManager.setupSorting(thead);
+            if (thead) this.tableManager.setupSorting(thead);
         }
-        
-        console.log('✅ [INFORME-PROD] Tabla renderizada correctamente');
     }
 
     /**
-     * Agrupar datos por jerarquía Rubro > Subrubro
-     * 
-     * @param {Array} datos - Datos a agrupar
-     * @returns {Object} Datos agrupados
+     * Agrupar datos por jerarquía
      */
     agruparPorJerarquia(datos) {
         const agrupado = {};
-        
         datos.forEach(articulo => {
             const rubro = articulo.rubro || 'Sin Rubro';
             const subrubro = articulo.subrubro || 'Sin Subrubro';
-            
-            if (!agrupado[rubro]) {
-                agrupado[rubro] = {};
-            }
-            
-            if (!agrupado[rubro][subrubro]) {
-                agrupado[rubro][subrubro] = [];
-            }
-            
+
+            if (!agrupado[rubro]) agrupado[rubro] = {};
+            if (!agrupado[rubro][subrubro]) agrupado[rubro][subrubro] = [];
+
             agrupado[rubro][subrubro].push(articulo);
         });
-        
         return agrupado;
     }
 
     /**
      * Renderizar header de Rubro
-     * ✅ ACTUALIZADO: Colspan dinámico según columnas visibles
-     * 
-     * @param {string} rubro - Nombre del rubro
+     * ✅ ACTUALIZADO: Colspan calculado desde Definitions
      */
     renderizarHeaderRubro(rubro) {
         const tr = document.createElement('tr');
         tr.className = 'rubro-header';
-        
-        // Calcular colspan según columnas visibles
-        const columnasVisibles = this.tableManager ? 
-            this.tableManager.getColumnasVisibles() : 
-            { codigo: true, articulo: true, unidades: true, kilos: true };
-        
-        // Contar columnas base visibles
-        const columnasBaseVisibles = ['codigo', 'articulo', 'unidades', 'kilos']
-            .filter(col => columnasVisibles[col] !== false).length;
-        
-        // Contar periodos visibles
-        const periodosVisibles = this.periodosActivos
-            .filter(p => columnasVisibles[`periodo-${p.id}`] !== false).length;
-        
-        const colspan = columnasBaseVisibles + periodosVisibles;
-        
+
+        const colspan = this.calcularColspanTotal();
+
         tr.innerHTML = `
             <td colspan="${colspan}" style="font-weight: 700; font-size: 1rem;">
                 📁 ${rubro}
             </td>
         `;
-        
         this.tablaElement.appendChild(tr);
     }
 
     /**
      * Renderizar header de Subrubro
-     * ✅ ACTUALIZADO: Colspan dinámico según columnas visibles
-     * 
-     * @param {string} subrubro - Nombre del subrubro
+     * ✅ ACTUALIZADO: Colspan calculado desde Definitions
      */
     renderizarHeaderSubrubro(subrubro) {
         const tr = document.createElement('tr');
         tr.className = 'subrubro-header';
-        
-        // Calcular colspan según columnas visibles
-        const columnasVisibles = this.tableManager ? 
-            this.tableManager.getColumnasVisibles() : 
-            { codigo: true, articulo: true, unidades: true, kilos: true };
-        
-        const numColumnasBase = Object.values(columnasVisibles).filter(v => v).length;
-        const colspan = numColumnasBase + this.periodosActivos.length;
-        
+
+        const colspan = this.calcularColspanTotal();
+
         tr.innerHTML = `
             <td colspan="${colspan}" style="padding-left: 30px; font-weight: 600;">
                 📂 ${subrubro}
             </td>
         `;
-        
         this.tablaElement.appendChild(tr);
+    }
+
+    /**
+     * Helper para calcular colspan basado en columnas visibles
+     */
+    calcularColspanTotal() {
+        if (!this.tableManager) return 4;
+        const cols = this.tableManager.getColumnDefinitions();
+        return cols.filter(c => c.visible).length;
     }
 
     /**
      * Renderizar fila de artículo
-     * ✅ ACTUALIZADO: Con visibilidad de columnas
-     * 
-     * @param {Object} articulo - Datos del artículo
+     * ✅ ACTUALIZADO: Itera sobre Definitions para garantizar orden
      */
     renderizarFilaArticulo(articulo) {
         const tr = document.createElement('tr');
-        
-        // Obtener columnas visibles
-        const columnasVisibles = this.tableManager ? 
-            this.tableManager.getColumnasVisibles() : 
-            { codigo: true, articulo: true, unidades: true, kilos: true };
-        
-        // Columnas base (respetando visibilidad)
-        let html = '';
-        
-        if (columnasVisibles.codigo) {
-            html += `<td>${articulo.articulo_codigo}</td>`;
-        }
-        
-        if (columnasVisibles.articulo) {
-            html += `<td>${articulo.articulo_nombre}</td>`;
-        }
-        
-        if (columnasVisibles.unidades) {
-            html += `<td class="col-numero">${this.formatearNumero(articulo.cantidad_total_producida)}</td>`;
-        }
-        
-        if (columnasVisibles.kilos) {
-            html += `<td class="col-numero">${this.formatearNumero(articulo.kilos_totales_producidos)}</td>`;
-        }
-        
-        // Columnas de periodos (si hay periodos activos y visibles)
-        this.periodosActivos.forEach(periodo => {
-            const colId = `periodo-${periodo.id}`;
-            const esVisible = columnasVisibles[colId] !== false;
-            
-            if (esVisible) {
-                const datoPeriodo = this.buscarDatoEnPeriodo(articulo.articulo_codigo, periodo);
-                html += `<td class="col-numero">${datoPeriodo ? this.formatearNumero(datoPeriodo.cantidad_producida) : '-'}</td>`;
+
+        if (!this.tableManager) return; // Seguridad
+        const cols = this.tableManager.getColumnDefinitions();
+
+        // Iterar SOLO sobre columnas visibles
+        cols.filter(c => c.visible).forEach(col => {
+            const td = document.createElement('td');
+
+            // Obtener valor (TableManager centraliza la lógica de extracción)
+            const valor = this.tableManager.extraerValor(articulo, col);
+
+            // Formatear
+            if (col.isNumeric) {
+                td.className = 'col-numero';
+                td.textContent = this.formatearNumero(valor);
+            } else {
+                td.textContent = valor;
             }
+
+            tr.appendChild(td);
         });
-        
-        tr.innerHTML = html;
+
         this.tablaElement.appendChild(tr);
     }
 
     /**
-     * Buscar dato de un artículo en un periodo específico
-     * 
-     * @param {string} articuloCodigo - Código del artículo
-     * @param {Object} periodo - Objeto de periodo
-     * @returns {Object|null} Dato encontrado o null
-     */
-    buscarDatoEnPeriodo(articuloCodigo, periodo) {
-        if (!periodo.datos) return null;
-        
-        return periodo.datos.find(item => item.articulo_codigo === articuloCodigo);
-    }
-
-    /**
-     * Actualizar estadísticas en el header
-     * 
-     * @param {Object} estadisticas - Objeto con estadísticas
+     * Actualizar estadísticas
      */
     actualizarEstadisticas(estadisticas) {
-        const totalArticulos = document.getElementById('stat-total-articulos');
-        const totalRegistros = document.getElementById('stat-total-registros');
-        const cantidadTotal = document.getElementById('stat-cantidad-total');
-        const kilosTotales = document.getElementById('stat-kilos-totales');
-        
-        if (totalArticulos) totalArticulos.textContent = estadisticas.total_articulos || 0;
-        if (totalRegistros) totalRegistros.textContent = estadisticas.total_registros || 0;
-        if (cantidadTotal) cantidadTotal.textContent = this.formatearNumero(estadisticas.cantidad_total || 0);
-        if (kilosTotales) kilosTotales.textContent = this.formatearNumero(estadisticas.kilos_totales || 0);
+        const update = (id, val, fmt = false) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = fmt ? this.formatearNumero(val || 0) : (val || 0);
+        };
+
+        update('stat-total-articulos', estadisticas.total_articulos);
+        update('stat-total-registros', estadisticas.total_registros);
+        update('stat-cantidad-total', estadisticas.cantidad_total, true);
+
+        // Kilos con sufijo
+        const kilosEl = document.getElementById('stat-kilos-totales');
+        if (kilosEl) kilosEl.textContent = this.formatearNumero(estadisticas.kilos_totales || 0) + ' kg';
     }
 
     /**
-     * Mostrar mensaje de loading
+     * Mostrar Loading
      */
     mostrarLoading() {
+        const colspan = this.calcularColspanTotal();
         this.tablaElement.innerHTML = `
             <tr>
-                <td colspan="10" class="loading-message">
+                <td colspan="${colspan}" class="loading-message">
                     <div class="loading-spinner"></div>
                     <p>Cargando datos de producción...</p>
                 </td>
@@ -403,14 +380,13 @@ class InformeProduccionInterna {
     }
 
     /**
-     * Mostrar mensaje de error
-     * 
-     * @param {string} mensaje - Mensaje de error
+     * Mostrar Error
      */
     mostrarError(mensaje) {
+        const colspan = this.calcularColspanTotal();
         this.tablaElement.innerHTML = `
             <tr>
-                <td colspan="10">
+                <td colspan="${colspan}">
                     <div class="error-message">
                         ❌ ${mensaje}
                     </div>
@@ -420,12 +396,13 @@ class InformeProduccionInterna {
     }
 
     /**
-     * Mostrar mensaje cuando no hay datos
+     * Mostrar Mensaje Vacío
      */
     mostrarMensajeVacio() {
+        const colspan = this.calcularColspanTotal();
         this.tablaElement.innerHTML = `
             <tr>
-                <td colspan="10" class="empty-message">
+                <td colspan="${colspan}" class="empty-message">
                     📭 No hay datos de producción disponibles
                 </td>
             </tr>
@@ -433,136 +410,112 @@ class InformeProduccionInterna {
     }
 
     /**
-     * Formatear número con separadores de miles
-     * 
-     * @param {number} numero - Número a formatear
-     * @returns {string} Número formateado
+     * Formatear número
      */
     formatearNumero(numero) {
         if (numero === null || numero === undefined) return '0';
-        
         const num = parseFloat(numero);
         if (isNaN(num)) return '0';
-        
         return num.toLocaleString('es-AR', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 2, maximumFractionDigits: 2
         });
     }
 
     /**
      * Formatear fecha
-     * 
-     * @param {string} fecha - Fecha a formatear
-     * @returns {string} Fecha formateada
      */
     formatearFecha(fecha) {
         if (!fecha) return '-';
-        
         const date = new Date(fecha);
         return date.toLocaleDateString('es-AR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
+            day: '2-digit', month: '2-digit', year: 'numeric'
         });
     }
 
     /**
-     * Actualizar encabezados de tabla según periodos activos
-     * ✅ ACTUALIZADO: Con visibilidad de columnas
+     * Actualizar encabezados de tabla
+     * ✅ ACTUALIZADO: Usa Definitions
      */
     actualizarEncabezadosTabla() {
         const thead = document.querySelector('.tabla-produccion thead tr');
-        
-        if (!thead) return;
-        
-        // Obtener columnas visibles
-        const columnasVisibles = this.tableManager ? 
-            this.tableManager.getColumnasVisibles() : 
-            { codigo: true, articulo: true, unidades: true, kilos: true };
-        
-        // Limpiar todos los headers
+        if (!thead || !this.tableManager) return;
+
+        console.log('🔧 [INFORME-PROD] Reconstruyendo thead...');
+
+        // Limpiar completamente
         thead.innerHTML = '';
-        
-        // Agregar headers base (respetando visibilidad)
-        if (columnasVisibles.codigo) {
+
+        const cols = this.tableManager.getColumnDefinitions();
+
+        // Renderizar Headers Visibles
+        cols.filter(c => c.visible).forEach(col => {
             const th = document.createElement('th');
-            th.textContent = 'Código';
-            thead.appendChild(th);
-        }
-        
-        if (columnasVisibles.articulo) {
-            const th = document.createElement('th');
-            th.textContent = 'Artículo';
-            thead.appendChild(th);
-        }
-        
-        if (columnasVisibles.unidades) {
-            const th = document.createElement('th');
-            th.className = 'col-numero';
-            th.textContent = 'Unidades Producidas';
-            thead.appendChild(th);
-        }
-        
-        if (columnasVisibles.kilos) {
-            const th = document.createElement('th');
-            th.className = 'col-numero';
-            th.textContent = 'Peso Total (kg)';
-            thead.appendChild(th);
-        }
-        
-        // Agregar headers de periodos (solo visibles)
-        this.periodosActivos.forEach(periodo => {
-            const colId = `periodo-${periodo.id}`;
-            const esVisible = columnasVisibles[colId] !== false;
-            
-            if (esVisible) {
-                const th = document.createElement('th');
-                th.className = 'header-periodo col-numero';
-                th.textContent = periodo.nombre;
-                th.title = `${periodo.fechaInicio} - ${periodo.fechaFin}`;
-                thead.appendChild(th);
+            th.textContent = col.label;
+            th.dataset.colId = col.id;
+
+            if (col.isNumeric) {
+                th.className = 'col-numero';
             }
+            if (col.subLabel) {
+                th.title = col.subLabel;
+            }
+            if (col.type === 'periodo') {
+                th.classList.add('header-periodo');
+            }
+
+            thead.appendChild(th);
         });
-        
-        // Configurar ordenamiento
-        if (this.tableManager) {
-            this.tableManager.setupSorting(thead);
-        }
+
+        console.log(`✅ [INFORME-PROD] Thead reconstruido con ${thead.children.length} columnas`);
+
+        // Configurar sorting
+        this.tableManager.setupSorting(thead);
     }
 
     /**
      * Refrescar datos (forzar recarga desde API)
+     * ✅ CRÍTICO: Recarga también los periodos para que coincidan con los nuevos filtros
      */
     async refrescarDatos() {
-        console.log('🔄 [INFORME-PROD] Refrescando datos...');
-        
+        console.log('🔄 [INFORME-PROD] Refrescando datos (Global + Periodos)...');
+        this.mostrarLoading();
+
         try {
-            // Limpiar caché
+            // 1. Limpiar caché global
             this.dataFetcher.clearCache();
-            
-            // Recargar datos
-            await this.cargarDatosIniciales();
-            
-            // Recargar periodos
-            for (const periodo of this.periodosActivos) {
-                const datos = await this.dataFetcher.obtenerProduccionPorPeriodo(
-                    periodo.fechaInicio,
-                    periodo.fechaFin,
-                    true // Force refresh
-                );
-                periodo.datos = datos.data;
-                periodo.estadisticas = datos.estadisticas;
+
+            // 2. Recargar datos principales (Datos Base)
+            this.tiposMovimientoActivos = this.tiposMovimientoConfig.getTiposSeleccionados();
+            const resultado = await this.dataFetcher.obtenerHistorial(this.tiposMovimientoActivos);
+            this.datosBase = resultado.data;
+            this.actualizarEstadisticas(resultado.estadisticas);
+
+            // 3. Recargar datos de cada periodo activo con el nuevo filtro de movimientos
+            if (this.periodosActivos.length > 0) {
+                console.log(`🔄 [INFORME-PROD] Recargando ${this.periodosActivos.length} periodos con nuevos filtros...`);
+
+                // Usamos Promise.all para paralelo
+                await Promise.all(this.periodosActivos.map(async (periodo) => {
+                    const datosPeriodo = await this.dataFetcher.obtenerProduccionPorPeriodo(
+                        periodo.fechaInicio,
+                        periodo.fechaFin,
+                        this.tiposMovimientoActivos // PASAR FILTRO ACTUAL
+                    );
+                    // Actualizar el objeto periodo en memoria (referencia compartida con PeriodosConfig)
+                    periodo.datos = datosPeriodo.data;
+                    periodo.estadisticas = datosPeriodo.estadisticas;
+                }));
             }
-            
-            // Re-renderizar
+
+            // 4. Re-renderizar todo
+            this.actualizarEncabezadosTabla();
             this.renderizarTabla(this.datosBase);
-            
-            console.log('✅ [INFORME-PROD] Datos refrescados correctamente');
-            
+
+            console.log('✅ [INFORME-PROD] Todo refrescado correctamente');
+
         } catch (error) {
             console.error('❌ [INFORME-PROD] Error al refrescar datos:', error);
-            alert('Error al refrescar datos: ' + error.message);
+            this.mostrarError('Error al refrescar: ' + error.message);
         }
     }
 }
@@ -573,18 +526,15 @@ class InformeProduccionInterna {
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📄 [INFORME-PROD] DOM cargado, inicializando aplicación...');
-    
+
     try {
-        // Crear instancia global
         window.informeProduccion = new InformeProduccionInterna();
-        
-        // Inicializar
         await window.informeProduccion.init();
-        
-        // Exponer módulos globalmente para los botones de eliminar
+
+        // Exponer módulos globalmente
         window.periodosConfig = window.informeProduccion.periodosConfig;
         window.tiposMovimientoConfig = window.informeProduccion.tiposMovimientoConfig;
-        
+
     } catch (error) {
         console.error('❌ [INFORME-PROD] Error fatal al inicializar:', error);
     }
