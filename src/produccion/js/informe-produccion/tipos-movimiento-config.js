@@ -90,7 +90,7 @@ class TiposMovimientoConfig {
                 tipo.nombre,
                 tipo.checked,
                 'tipo-movimiento',
-                { tipoId: tipo.id }
+                { 'tipo-id': tipo.id } // Fix: Dash case for dataset
             );
             this.checkboxesContainer.appendChild(row);
         });
@@ -272,6 +272,7 @@ class TiposMovimientoConfig {
      * Sincronizar desde TableManager
      */
     setExternalState(tipoId, checked) {
+        // 1. Manejo de Tipos de Movimiento (Array principal)
         const tipo = this.tiposDisponibles.find(t => t.id === tipoId);
         if (tipo && tipo.checked !== checked) {
             tipo.checked = checked;
@@ -279,16 +280,27 @@ class TiposMovimientoConfig {
             const checkbox = document.querySelector(`input[data-tipo-id="${tipoId}"]`);
             if (checkbox) checkbox.checked = checked;
 
-            // 🔥 CRITICO: Disparar la lógica de cambio real (fetch de datos)
-            // porque si oculto columna -> desmarco -> quiero dejar de traer datos (opcional)
-            // O al menos, quiero que el sistema sepa que cambió el filtro.
-            // Para evitar loops, usaremos handleTipoChange pero Main debe romper el loop si ya es igual.
-            // Pero Main llama a TableManager.
-            // TableManager tiene isUpdating.
-            // Así que es SEGURO llamar a handleTipoChange aqui.
-            this.handleTipoChange({ dataset: { tipoId }, checked });
+            // Re-emitir cambio para mantener consistencia
+            this.handleTipoChange({ checked, dataset: { tipoId } });
+        }
+
+        // 2. Manejo de Balance (Caso Especial)
+        if (tipoId === 'balance') {
+            if (this.balanceConfig.mostrar !== checked) {
+                this.balanceConfig.mostrar = checked;
+                const checkbox = document.getElementById('check-balance-main');
+                if (checkbox) checkbox.checked = checked;
+
+                // Actualizar visibilidad de sub-componentes
+                const container = document.getElementById('balance-components');
+                if (container) container.style.display = checked ? 'block' : 'none';
+
+                this.notificarBalanceChange();
+            }
         }
     }
+
+
 
     emiteEstadoInicial() {
         // Emitir tipos default
@@ -299,7 +311,7 @@ class TiposMovimientoConfig {
         if (this.onTiposChange) {
             this.onTiposChange({
                 backendValues: tiposArray,
-                uiState: this.getUIState()
+                uiState: this.tiposDisponibles.reduce((acc, t) => { acc[t.id] = t.checked; return acc; }, {})
             });
         }
 

@@ -50,9 +50,10 @@ async function obtenerHistorialProduccion(req, res) {
                     -- Agregación Condicional por Tipo
                     SUM(CASE WHEN tipo = 'ingreso a producción' THEN cantidad ELSE 0 END) as cantidad_ingresos,
                     SUM(CASE WHEN tipo = 'salida a ventas' THEN ABS(cantidad) ELSE 0 END) as cantidad_salidas,
-                    SUM(CASE WHEN tipo = 'ajuste' AND cantidad > 0 THEN cantidad ELSE 0 END) as cantidad_ajustes_pos,
-                    SUM(CASE WHEN tipo = 'ajuste' AND cantidad < 0 THEN ABS(cantidad) ELSE 0 END) as cantidad_ajustes_neg,
-                    -- Total neto para balance (respetando signos originales: ingresos pos, salidas neg)
+                    -- V11: Filtrado estricto 'registro de ajuste'
+                    SUM(CASE WHEN tipo = 'registro de ajuste' AND cantidad > 0 THEN cantidad ELSE 0 END) as cantidad_ajustes_pos,
+                    SUM(CASE WHEN tipo = 'registro de ajuste' AND cantidad < 0 THEN ABS(cantidad) ELSE 0 END) as cantidad_ajustes_neg,
+                    -- Total neto para balance
                     SUM(cantidad) as balance_neto,
                     
                     COUNT(DISTINCT DATE_TRUNC('month', fecha)) as meses_activos
@@ -165,9 +166,9 @@ async function obtenerProduccionPorPeriodo(req, res) {
                     -- Agregación Condicional
                     SUM(CASE WHEN (tipo = 'ingreso a producción') THEN cantidad ELSE 0 END) as cantidad_ingresos,
                     SUM(CASE WHEN (tipo = 'salida a ventas') THEN ABS(cantidad) ELSE 0 END) as cantidad_salidas,
-                    -- Fix: Handle 'registro de ajuste' explicitly and generic 'ajuste' using ILIKE
-                    SUM(CASE WHEN (tipo ILIKE '%ajuste%') AND cantidad > 0 THEN cantidad ELSE 0 END) as cantidad_ajustes_pos,
-                    SUM(CASE WHEN (tipo ILIKE '%ajuste%') AND cantidad < 0 THEN ABS(cantidad) ELSE 0 END) as cantidad_ajustes_neg,
+                    -- V11: Filtrado estricto 'registro de ajuste'
+                    SUM(CASE WHEN (tipo = 'registro de ajuste') AND cantidad > 0 THEN cantidad ELSE 0 END) as cantidad_ajustes_pos,
+                    SUM(CASE WHEN (tipo = 'registro de ajuste') AND cantidad < 0 THEN ABS(cantidad) ELSE 0 END) as cantidad_ajustes_neg,
                     SUM(cantidad) as balance_neto,
                     
                     ARRAY_AGG(DISTINCT DATE_TRUNC('day', fecha)::date ORDER BY DATE_TRUNC('day', fecha)::date) as fechas_produccion

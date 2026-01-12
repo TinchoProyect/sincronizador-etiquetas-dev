@@ -83,7 +83,13 @@ class TableManager {
     setTiposMovimientoUI(uiState) {
         this.isUpdating = true; // Prevent notification loop
 
-        this.tiposMovimientoUI = uiState || {};
+        // V10: Normalización de claves (Atomic Sync)
+        // Convertimos alias solicitados por usuario a claves internas
+        const normalized = { ...uiState };
+        if (normalized.ajuste_positivo !== undefined) normalized.ajustes_pos = normalized.ajuste_positivo;
+        if (normalized.ajuste_negativo !== undefined) normalized.ajustes_neg = normalized.ajuste_negativo;
+
+        this.tiposMovimientoUI = normalized || {};
 
         // Sincronización Bidireccional:
         Object.keys(this.tiposMovimientoUI).forEach(key => {
@@ -112,6 +118,12 @@ class TableManager {
     }
 
     setBalanceConfig(config) {
+        // V10: Normalización de claves (Atomic Sync)
+        if (config && config.componentes) {
+            if (config.componentes.ajuste_positivo !== undefined) config.componentes.ajustes_pos = config.componentes.ajuste_positivo;
+            if (config.componentes.ajuste_negativo !== undefined) config.componentes.ajustes_neg = config.componentes.ajuste_negativo;
+        }
+
         this.balanceConfig = config || { mostrar: false, componentes: {} };
         this.actualizarMenuColumnas();
     }
