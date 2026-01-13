@@ -31,40 +31,56 @@ class DataFetcher {
      * @param {boolean} forceRefresh - Forzar actualización ignorando caché
      * @returns {Promise<Object>} Datos del historial
      */
-    async obtenerHistorial(tiposMovimiento = null, forceRefresh = false) {
-        const tiposParam = tiposMovimiento ? tiposMovimiento.join(',') : 'salida a ventas,ingreso a producción';
-        const cacheKey = `historial-${tiposParam}`;
-        
-        console.log('📊 [DATA-FETCHER] Obteniendo historial completo...');
-        console.log('🔍 [DATA-FETCHER] Tipos de movimiento:', tiposParam);
-        
+    /**
+     * Obtener historial completo de producción
+     * ✅ UPDATED (V3): Soporte para Filtros de Fecha (Global)
+     * 
+     * @param {Array} tiposMovimiento - Tipos de movimiento a filtrar
+     * @param {string} fechaDesde - Fecha Inicio (YYYY-MM-DD)
+     * @param {string} fechaHasta - Fecha Fin (YYYY-MM-DD)
+     * @param {boolean} forceRefresh - Forzar actualización ignorando caché
+     * @returns {Promise<Object>} Datos del historial
+     */
+    async obtenerHistorialProduccion(tiposMovimiento = null, fechaDesde = null, fechaHasta = null, forceRefresh = false) { // Renamed from obtenerHistorial
+        const tiposParam = tiposMovimiento ? tiposMovimiento.split(',').map(t => t.trim()).join(',') : 'salida a ventas,ingreso a producción'; // Ensure string
+
+        // Cache Key incluye fechas
+        const cacheKey = `historial-${tiposParam}-${fechaDesde || 'inicio'}-${fechaHasta || 'fin'}`;
+
+        console.log('📊 [DATA-FETCHER] Obteniendo historial producción (Filtros)...');
+        console.log(`🔍 [DATA-FETCHER] Params: Tipos=[${tiposParam}], Desde=[${fechaDesde || '-'}], Hasta=[${fechaHasta || '-'}]`);
+
         // Verificar caché
         if (!forceRefresh && this.isCacheValid(cacheKey)) {
             console.log('💾 [DATA-FETCHER] Usando datos en caché');
             return this.cache.get(cacheKey).data;
         }
-        
+
         try {
-            const url = `${this.baseUrl}/historial?tipos=${encodeURIComponent(tiposParam)}`;
+            // Construir URL con params
+            let url = `${this.baseUrl}/historial?tipos=${encodeURIComponent(tiposParam)}`;
+            if (fechaDesde) url += `&fecha_desde=${fechaDesde}`;
+            if (fechaHasta) url += `&fecha_hasta=${fechaHasta}`;
+
             const response = await fetch(url);
-            
+
             if (!response.ok) {
                 throw new Error(`Error HTTP: ${response.status}`);
             }
-            
+
             const result = await response.json();
-            
+
             if (!result.success) {
                 throw new Error(result.error || 'Error al obtener historial');
             }
-            
+
             // Guardar en caché
             this.setCache(cacheKey, result);
-            
+
             console.log(`✅ [DATA-FETCHER] Historial obtenido: ${result.data.length} artículos`);
-            
+
             return result;
-            
+
         } catch (error) {
             console.error('❌ [DATA-FETCHER] Error al obtener historial:', error);
             throw error;
@@ -83,42 +99,42 @@ class DataFetcher {
     async obtenerProduccionPorPeriodo(fechaInicio, fechaFin, tiposMovimiento = null, forceRefresh = false) {
         const tiposParam = tiposMovimiento ? tiposMovimiento.join(',') : 'salida a ventas,ingreso a producción';
         const cacheKey = `periodo-${fechaInicio}-${fechaFin}-${tiposParam}`;
-        
+
         console.log(`📊 [DATA-FETCHER] Obteniendo producción del periodo: ${fechaInicio} a ${fechaFin}`);
         console.log('🔍 [DATA-FETCHER] Tipos de movimiento:', tiposParam);
-        
+
         // Validar fechas
         if (!fechaInicio || !fechaFin) {
             throw new Error('Se requieren fecha de inicio y fin');
         }
-        
+
         // Verificar caché
         if (!forceRefresh && this.isCacheValid(cacheKey)) {
             console.log('💾 [DATA-FETCHER] Usando datos en caché');
             return this.cache.get(cacheKey).data;
         }
-        
+
         try {
             const url = `${this.baseUrl}/periodo?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}&tipos=${encodeURIComponent(tiposParam)}`;
             const response = await fetch(url);
-            
+
             if (!response.ok) {
                 throw new Error(`Error HTTP: ${response.status}`);
             }
-            
+
             const result = await response.json();
-            
+
             if (!result.success) {
                 throw new Error(result.error || 'Error al obtener producción por periodo');
             }
-            
+
             // Guardar en caché
             this.setCache(cacheKey, result);
-            
+
             console.log(`✅ [DATA-FETCHER] Producción del periodo obtenida: ${result.data.length} artículos`);
-            
+
             return result;
-            
+
         } catch (error) {
             console.error('❌ [DATA-FETCHER] Error al obtener producción por periodo:', error);
             throw error;
@@ -133,35 +149,35 @@ class DataFetcher {
      */
     async obtenerRubrosSubrubros(forceRefresh = false) {
         const cacheKey = 'rubros-subrubros';
-        
+
         console.log('📊 [DATA-FETCHER] Obteniendo jerarquía de rubros y subrubros...');
-        
+
         // Verificar caché
         if (!forceRefresh && this.isCacheValid(cacheKey)) {
             console.log('💾 [DATA-FETCHER] Usando datos en caché');
             return this.cache.get(cacheKey).data;
         }
-        
+
         try {
             const response = await fetch(`${this.baseUrl}/rubros`);
-            
+
             if (!response.ok) {
                 throw new Error(`Error HTTP: ${response.status}`);
             }
-            
+
             const result = await response.json();
-            
+
             if (!result.success) {
                 throw new Error(result.error || 'Error al obtener rubros');
             }
-            
+
             // Guardar en caché (más duración para datos estructurales)
             this.setCache(cacheKey, result, 15 * 60 * 1000); // 15 minutos
-            
+
             console.log(`✅ [DATA-FETCHER] Jerarquía obtenida: ${result.data.length} rubros`);
-            
+
             return result;
-            
+
         } catch (error) {
             console.error('❌ [DATA-FETCHER] Error al obtener rubros:', error);
             throw error;
@@ -176,35 +192,35 @@ class DataFetcher {
      */
     async obtenerProduccionMensual(forceRefresh = false) {
         const cacheKey = 'produccion-mensual';
-        
+
         console.log('📊 [DATA-FETCHER] Obteniendo producción mensual...');
-        
+
         // Verificar caché
         if (!forceRefresh && this.isCacheValid(cacheKey)) {
             console.log('💾 [DATA-FETCHER] Usando datos en caché');
             return this.cache.get(cacheKey).data;
         }
-        
+
         try {
             const response = await fetch(`${this.baseUrl}/mensual`);
-            
+
             if (!response.ok) {
                 throw new Error(`Error HTTP: ${response.status}`);
             }
-            
+
             const result = await response.json();
-            
+
             if (!result.success) {
                 throw new Error(result.error || 'Error al obtener producción mensual');
             }
-            
+
             // Guardar en caché
             this.setCache(cacheKey, result);
-            
+
             console.log(`✅ [DATA-FETCHER] Producción mensual obtenida: ${result.data.length} meses`);
-            
+
             return result;
-            
+
         } catch (error) {
             console.error('❌ [DATA-FETCHER] Error al obtener producción mensual:', error);
             throw error;
@@ -221,16 +237,16 @@ class DataFetcher {
         if (!this.cache.has(key)) {
             return false;
         }
-        
+
         const cached = this.cache.get(key);
         const now = Date.now();
         const isValid = (now - cached.timestamp) < cached.duration;
-        
+
         if (!isValid) {
             console.log(`🗑️ [DATA-FETCHER] Caché expirado para: ${key}`);
             this.cache.delete(key);
         }
-        
+
         return isValid;
     }
 
@@ -247,7 +263,7 @@ class DataFetcher {
             timestamp: Date.now(),
             duration: duration || this.cacheDuration
         });
-        
+
         console.log(`💾 [DATA-FETCHER] Datos guardados en caché: ${key}`);
     }
 

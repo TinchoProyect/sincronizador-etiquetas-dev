@@ -1,38 +1,34 @@
 /**
  * ============================================================================
- * MÓDULO: CONFIGURACIÓN DE PERIODOS
+ * MÓDULO: CONFIGURACIÓN DE PERIODOS (V4-STYLED)
  * ============================================================================
  * 
- * Gestiona la configuración de periodos para comparación de producción.
- * Permite agregar múltiples rangos de fechas y generar columnas comparativas
- * en la tabla principal.
- * 
- * Funcionalidades:
- * - Agregar periodos con nombre y rango de fechas
- * - Eliminar periodos
- * - Validación de fechas
- * - Gestión de acordeón
- * - Comunicación con módulo principal para actualizar tabla
+ * Gestiona la configuración de periodos y filtros globales.
+ * Soporta 3 modos de operación:
+ * A) Filtro Rápido (Solo Inicio -> Hasta Hoy)
+ * B) Filtro Global (Inicio - Fin -> Rango específico)
+ * C) Columna Personalizada (Agrega columna sin filtrar tabla)
  * 
  * @author Sistema LAMDA
- * @version 1.0.0
+ * @version 2.1.0
  */
 
 class PeriodosConfig {
-    constructor(dataFetcher, getTiposMovimiento, onPeriodosChange) {
+    constructor(dataFetcher, getTiposMovimiento, onPeriodosChange, onFiltroGlobalChange) {
         this.dataFetcher = dataFetcher;
-        this.getTiposMovimiento = getTiposMovimiento; // Función para obtener tipos seleccionados
-        this.onPeriodosChange = onPeriodosChange; // Callback para notificar cambios
+        this.getTiposMovimiento = getTiposMovimiento;
+        this.onPeriodosChange = onPeriodosChange;       // Callback para Modos C (Columnas)
+        this.onFiltroGlobalChange = onFiltroGlobalChange; // Callback para Modos A/B (Filtros Globales)
+
         this.periodos = [];
         this.nextId = 1;
+
+        // Estado UI
+        this.mode = 'filter'; // 'filter' (A/B) or 'column' (C)
 
         // Elementos del DOM
         this.accordionHeader = null;
         this.accordionContent = null;
-        this.inputNombre = null;
-        this.inputFechaInicio = null;
-        this.inputFechaFin = null;
-        this.btnAgregar = null;
         this.periodosLista = null;
     }
 
@@ -40,320 +36,402 @@ class PeriodosConfig {
      * Inicializar el módulo
      */
     init() {
-        console.log('📅 [PERIODOS-CONFIG] Inicializando módulo...');
+        console.log('📅 [PERIODOS-CONFIG] Inicializando módulo V2.1...');
 
-        // Obtener elementos del DOM
+        // 1. Obtener contenedores base
         this.accordionHeader = document.getElementById('accordion-periodos-header');
         this.accordionContent = document.getElementById('accordion-periodos-content');
-        this.inputNombre = document.getElementById('periodo-nombre');
-        this.inputFechaInicio = document.getElementById('periodo-fecha-inicio');
-        this.inputFechaFin = document.getElementById('periodo-fecha-fin');
-        this.btnAgregar = document.getElementById('btn-agregar-periodo');
         this.periodosLista = document.getElementById('periodos-lista');
 
         if (!this.accordionHeader || !this.accordionContent) {
-            console.error('❌ [PERIODOS-CONFIG] No se encontraron elementos del acordeón');
+            console.error('❌ [PERIODOS-CONFIG] Elementos base no encontrados');
             return;
         }
 
-        // Configurar event listeners
+        // 2. Inyectar nueva estructura de controles
+        this.injectControls();
+
+        // 3. Configurar listeners
         this.setupEventListeners();
 
-        // Expandir acordeón por defecto -> ELIMINADO V5.1
-        // this.toggleAccordion();
-
-        console.log('✅ [PERIODOS-CONFIG] Módulo inicializado correctamente');
+        console.log('✅ [PERIODOS-CONFIG] Módulo inicializado');
     }
 
     /**
-     * Configurar event listeners
+     * Inyectar HTML de controles con Estilos Locales
+     */
+    injectControls() {
+        // Buscamos el contenedor de formulario existente o lo limpiamos
+        let formContainer = this.accordionContent.querySelector('.periodo-form');
+        if (!formContainer) {
+            formContainer = document.createElement('div');
+            formContainer.className = 'periodo-form';
+            // Safer to just prepend
+            this.accordionContent.prepend(formContainer);
+        }
+
+        // Inyectamos estilos locales (Scoped-ish)
+        const styles = `
+            <style>
+                .periodo-form {
+                    padding: 15px;
+                    background-color: #f9f9f9;
+                    border-bottom: 1px solid #eee;
+                }
+                .p-mode-selector {
+                    display: flex;
+                    gap: 15px;
+                    margin-bottom: 15px;
+                    padding-bottom: 10px;
+                    border-bottom: 1px solid #e0e0e0;
+                }
+                .p-radio-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                    color: var(--text-primary);
+                }
+                .p-row {
+                    display: flex;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                }
+                .p-col {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .p-label {
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    margin-bottom: 4px;
+                }
+                .p-input, .p-select {
+                    padding: 8px;
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                    font-size: 0.9rem;
+                    width: 100%;
+                    box-sizing: border-box; /* Critical for layout */
+                }
+                .p-hint {
+                    font-size: 0.75rem;
+                    color: #888;
+                    text-align: center;
+                    margin-top: 5px;
+                    display: block;
+                }
+                .hidden {
+                    display: none !important;
+                }
+                .btn-action-primary {
+                    background-color: var(--primary-color);
+                    color: white;
+                    border: none;
+                    padding: 10px;
+                    width: 100%;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    transition: background 0.2s;
+                }
+                .btn-action-primary:hover {
+                    background-color: var(--primary-dark);
+                }
+                .btn-action-success {
+                    background-color: var(--success-color); /* Green */
+                    color: white; 
+                    border: none;
+                    padding: 10px;
+                    width: 100%;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    transition: background 0.2s;
+                }
+                .btn-action-success:hover {
+                    background-color: #219653;
+                }
+            </style>
+        `;
+
+        formContainer.innerHTML = styles + `
+            <!-- SELECTOR DE MODO -->
+            <div class="p-mode-selector">
+                <label class="p-radio-group">
+                    <input type="radio" name="periodoMode" id="modeFilter" value="filter" checked>
+                    <span>Filtro Tabla (Global)</span>
+                </label>
+                <label class="p-radio-group">
+                    <input type="radio" name="periodoMode" id="modeColumn" value="column">
+                    <span>Nueva Columna</span>
+                </label>
+            </div>
+
+            <!-- FILAS DE INPUTS -->
+            
+            <!-- Fila 1: Nombre -->
+            <div class="p-row" id="groupNombre">
+                <div class="p-col">
+                    <label class="p-label" id="lbl-nombre">Nombre (Opcional)</label>
+                    <input type="text" class="p-input" id="periodo-nombre" placeholder="Ej: Enero 2024">
+                </div>
+            </div>
+
+            <!-- Fila 2: Fechas -->
+            <div class="p-row">
+                <div class="p-col">
+                    <label class="p-label">Desde *</label>
+                    <input type="date" class="p-input" id="periodo-fecha-inicio">
+                </div>
+                <div class="p-col">
+                    <label class="p-label">Hasta</label>
+                    <input type="date" class="p-input" id="periodo-fecha-fin">
+                </div>
+            </div>
+
+            <!-- Fila 3: Métrica (Solo Columna) -->
+            <div class="p-row hidden" id="groupMetric">
+                <div class="p-col">
+                    <label class="p-label">Dato a mostrar</label>
+                    <select class="p-select" id="periodo-metrica">
+                        <option value="balance">⚖️ Balance Neto (Producido)</option>
+                        <option value="ingresos">📥 Ingresos</option>
+                        <option value="salidas">📤 Salidas</option>
+                        <option value="ajustes_pos">➕ Ajustes Positivos</option>
+                        <option value="ajustes_neg">➖ Ajustes Negativos</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Botón Acción -->
+            <div class="p-row" style="margin-top: 10px;">
+                <div class="p-col">
+                    <button class="btn-action-primary" id="btn-accion-periodo">
+                        Aplicar Filtro
+                    </button>
+                    <small class="p-hint" id="hint-text">
+                        Si "Hasta" está vacío, filtra hasta hoy.
+                    </small>
+                </div>
+            </div>
+        `;
+
+        // Referencias a elementos
+        this.radioFilter = document.getElementById('modeFilter');
+        this.radioColumn = document.getElementById('modeColumn');
+        this.inputNombre = document.getElementById('periodo-nombre');
+        this.lblNombre = document.getElementById('lbl-nombre');
+        this.inputFechaInicio = document.getElementById('periodo-fecha-inicio');
+        this.inputFechaFin = document.getElementById('periodo-fecha-fin');
+        this.selectMetrica = document.getElementById('periodo-metrica');
+        this.groupMetric = document.getElementById('groupMetric');
+        this.btnAccion = document.getElementById('btn-accion-periodo');
+        this.hintText = document.getElementById('hint-text');
+    }
+
+    /**
+     * Configurar Listeners
      */
     setupEventListeners() {
-        // Acordeón
-        this.accordionHeader.addEventListener('click', () => this.toggleAccordion());
+        // Toggle Acordeón
+        this.accordionHeader.addEventListener('click', () => {
+            this.accordionHeader.classList.toggle('active');
+            this.accordionContent.classList.toggle('active');
+        });
 
-        // Validación de campos
-        this.inputNombre.addEventListener('input', () => this.validateForm());
-        this.inputFechaInicio.addEventListener('change', () => this.validateForm());
-        this.inputFechaFin.addEventListener('change', () => this.validateForm());
+        // Cambio de Modo
+        const handleModeChange = () => {
+            this.mode = this.radioFilter.checked ? 'filter' : 'column';
+            this.updateUIForMode();
+        };
+        this.radioFilter.addEventListener('change', handleModeChange);
+        this.radioColumn.addEventListener('change', handleModeChange);
 
-        // Botón agregar periodo
-        this.btnAgregar.addEventListener('click', () => this.agregarPeriodo());
-
-        console.log('✅ [PERIODOS-CONFIG] Event listeners configurados');
+        // Botón Acción
+        this.btnAccion.addEventListener('click', () => this.ejecutarAccion());
     }
 
     /**
-     * Alternar estado del acordeón
+     * Actualizar UI según modo seleccionado
      */
-    toggleAccordion() {
-        const isActive = this.accordionHeader.classList.contains('active');
+    updateUIForMode() {
+        if (this.mode === 'filter') {
+            // === MODO FILTRO (A/B) ===
+            this.groupMetric.classList.add('hidden');
 
-        if (isActive) {
-            this.accordionHeader.classList.remove('active');
-            this.accordionContent.classList.remove('active');
+            this.lblNombre.textContent = "Nombre del Filtro (Opcional)";
+            this.inputNombre.placeholder = "Ej: Primer Semestre";
+
+            this.btnAccion.textContent = "Aplicar Filtro Global";
+            this.btnAccion.className = 'btn-action-primary'; // Blue styling
+
+            this.hintText.textContent = 'Si "Hasta" está vacío, filtra hasta la fecha actual.';
+            this.hintText.classList.remove('hidden');
+
         } else {
-            this.accordionHeader.classList.add('active');
-            this.accordionContent.classList.add('active');
+            // === MODO COLUMNA (C) ===
+            this.groupMetric.classList.remove('hidden');
+
+            this.lblNombre.textContent = "Nombre de Columna *";
+            this.inputNombre.placeholder = "Ej: Comparativa Enero";
+
+            this.btnAccion.textContent = "Agregar Columna";
+            this.btnAccion.className = 'btn-action-success'; // Green styling
+
+            this.hintText.classList.add('hidden');
         }
     }
 
     /**
-     * Validar formulario de periodo
+     * Ejecutar acción principal
      */
-    validateForm() {
+    async ejecutarAccion() {
         const nombre = this.inputNombre.value.trim();
-        const fechaInicio = this.inputFechaInicio.value;
-        const fechaFin = this.inputFechaFin.value;
+        const inicio = this.inputFechaInicio.value;
+        const fin = this.inputFechaFin.value;
 
-        // Validar que todos los campos estén completos
-        const isValid = nombre && fechaInicio && fechaFin;
-
-        // Validar que fecha fin sea mayor o igual a fecha inicio
-        let fechasValidas = true;
-        if (fechaInicio && fechaFin) {
-            fechasValidas = new Date(fechaFin) >= new Date(fechaInicio);
-        }
-
-        this.btnAgregar.disabled = !isValid || !fechasValidas;
-
-        return isValid && fechasValidas;
-    }
-
-    /**
-     * Agregar un nuevo periodo
-     */
-    async agregarPeriodo() {
-        if (!this.validateForm()) {
-            console.warn('⚠️ [PERIODOS-CONFIG] Formulario inválido');
+        if (!inicio) {
+            alert('⚠️ Debes seleccionar al menos una Fecha de Inicio.');
             return;
         }
 
-        const nombre = this.inputNombre.value.trim();
-        const fechaInicio = this.inputFechaInicio.value;
-        const fechaFin = this.inputFechaFin.value;
+        if (this.mode === 'filter') {
+            // === MODO A/B: FILTRO GLOBAL ===
+            const descripcion = nombre || (fin ? `${this.formatearFechaCorta(inicio)} - ${this.formatearFechaCorta(fin)}` : `Desde ${this.formatearFechaCorta(inicio)}`);
 
-        console.log(`📅 [PERIODOS-CONFIG] Agregando periodo: ${nombre} (${fechaInicio} - ${fechaFin})`);
+            console.log(`📅 [PERIODOS] Aplicando Filtro Global: ${descripcion}`);
+
+            if (this.onFiltroGlobalChange) {
+                this.onFiltroGlobalChange({
+                    desde: inicio,
+                    hasta: fin || null,
+                    descripcion: descripcion
+                });
+            }
+
+            // Opcional: Colapsar acordeón al aplicar
+            // this.accordionHeader.classList.remove('active');
+            // this.accordionContent.classList.remove('active');
+
+        } else {
+            // === MODO C: NUEVA COLUMNA ===
+            if (!fin) {
+                alert('⚠️ Para columnas, se requiere fecha de inicio y fin.');
+                return;
+            }
+            if (!nombre) {
+                alert('⚠️ Ponle un nombre corto a la columna (ej: "S1").');
+                return;
+            }
+
+            await this.agregarColumnaPersonalizada(nombre, inicio, fin);
+        }
+    }
+
+    /**
+     * Lógica para agregar columna personalizada (Modo C)
+     */
+    async agregarColumnaPersonalizada(nombre, inicio, fin) {
+        const metrica = this.selectMetrica.value;
+        const metricaTexto = this.selectMetrica.options[this.selectMetrica.selectedIndex].text;
+        // Limpiamos emojis del texto para el header
+        const cleanMetricaLabel = metricaTexto.replace(/⚖️|📥|📤|➕|➖/g, '').trim();
+
+        // Estado UI: Cargando
+        const originalText = this.btnAccion.textContent;
+        this.btnAccion.disabled = true;
+        this.btnAccion.textContent = 'Cargando...';
 
         try {
-            // Mostrar loading en el botón
-            const btnTextoOriginal = this.btnAgregar.textContent;
-            this.btnAgregar.textContent = 'Cargando...';
-            this.btnAgregar.disabled = true;
-
-            // Obtener tipos de movimiento actuales
+            // 1. Obtener datos (fetch backend)
+            // Usamos null en tipos para traer todo y filtrar en memoria si fuese necesario,
+            // pero DataFetcher ya filtra si se lo pasamos.
             const tiposMovimiento = this.getTiposMovimiento ? this.getTiposMovimiento() : null;
 
-            // Obtener datos del periodo desde la API
-            const datos = await this.dataFetcher.obtenerProduccionPorPeriodo(fechaInicio, fechaFin, tiposMovimiento);
+            const respuesta = await this.dataFetcher.obtenerProduccionPorPeriodo(inicio, fin, tiposMovimiento);
 
-            // Crear objeto de periodo (seleccionado por defecto)
-            const periodo = {
+            // 2. Crear objeto Periodo/Columna
+            const nuevaColumna = {
                 id: this.nextId++,
-                nombre: nombre,
-                fechaInicio: fechaInicio,
-                fechaFin: fechaFin,
-                datos: datos.data,
-                estadisticas: datos.estadisticas,
-                seleccionado: true
+                nombre: `${nombre} (${cleanMetricaLabel})`,
+                fechaInicio: inicio,
+                fechaFin: fin,
+                datos: respuesta.data,
+                metricaObjetivo: metrica,
+                seleccionado: true,
+                esColumnaCustom: true
             };
 
-            // Agregar a la lista
-            this.periodos.push(periodo);
+            this.periodos.push(nuevaColumna);
+            this.renderPeriodoItem(nuevaColumna);
 
-            // Renderizar en la UI
-            this.renderPeriodo(periodo);
-
-            // Limpiar formulario
-            this.limpiarFormulario();
-
-            // Notificar cambio
+            // 3. Notificar cambios
             if (this.onPeriodosChange) {
                 this.onPeriodosChange(this.periodos);
             }
 
-            console.log(`✅ [PERIODOS-CONFIG] Periodo agregado exitosamente: ${nombre}`);
-
-            // Restaurar botón
-            this.btnAgregar.textContent = btnTextoOriginal;
+            // Reset Form
+            this.inputNombre.value = '';
+            console.log(`✅ [PERIODOS] Columna agregada: ${nuevaColumna.nombre}`);
 
         } catch (error) {
-            console.error('❌ [PERIODOS-CONFIG] Error al agregar periodo:', error);
-            alert(`Error al agregar periodo: ${error.message}`);
-
-            // Restaurar botón
-            this.btnAgregar.textContent = 'Agregar Periodo';
-            this.btnAgregar.disabled = false;
+            console.error('Error al agregar columna:', error);
+            alert('Error: ' + error.message);
+        } finally {
+            this.btnAccion.disabled = false;
+            this.btnAccion.textContent = originalText;
         }
     }
 
     /**
-     * Renderizar un periodo en la lista
-     * ✅ ACTUALIZADO: Con checkbox de selección y botón compacto
-     * 
-     * @param {Object} periodo - Objeto de periodo
+     * Renderizar item en la lista (para poder borrarlo)
      */
-    renderPeriodo(periodo) {
-        const periodoElement = document.createElement('div');
-        periodoElement.className = 'periodo-item';
-        periodoElement.dataset.periodoId = periodo.id;
-
-        periodoElement.innerHTML = `
-            <div class="periodo-checkbox-container">
-                <input 
-                    type="checkbox" 
-                    id="periodo-check-${periodo.id}"
-                    checked
-                    onchange="window.periodosConfig.onPeriodoCheckChange(${periodo.id}, this.checked)"
-                >
+    renderPeriodoItem(periodo) {
+        const div = document.createElement('div');
+        div.className = 'periodo-item';
+        div.dataset.id = periodo.id;
+        div.innerHTML = `
+            <div class="periodo-info">
+                <strong>${periodo.nombre}</strong><br>
+                <small>${this.formatearFechaCorta(periodo.fechaInicio)} - ${this.formatearFechaCorta(periodo.fechaFin)}</small>
             </div>
-            <div class="periodo-info" onclick="window.periodosConfig.togglePeriodoCheck(${periodo.id})">
-                <div class="periodo-nombre">${periodo.nombre}</div>
-                <div class="periodo-fechas">
-                    ${this.formatearFecha(periodo.fechaInicio)} - ${this.formatearFecha(periodo.fechaFin)}
-                </div>
-            </div>
-            <button 
-                class="btn-eliminar-periodo" 
-                onclick="window.periodosConfig.eliminarPeriodo(${periodo.id})"
-                title="Eliminar periodo"
-            ></button>
+            <button class="btn-eliminar-periodo" title="Eliminar columna">×</button>
         `;
 
-        this.periodosLista.appendChild(periodoElement);
+        // Listener borrar
+        div.querySelector('button').addEventListener('click', () => {
+            this.eliminarPeriodo(periodo.id);
+        });
+
+        this.periodosLista.appendChild(div);
     }
 
-    /**
-     * Eliminar un periodo
-     * 
-     * @param {number} periodoId - ID del periodo a eliminar
-     */
-    eliminarPeriodo(periodoId) {
-        console.log(`🗑️ [PERIODOS-CONFIG] Eliminando periodo ID: ${periodoId}`);
+    eliminarPeriodo(id) {
+        if (!confirm('¿Eliminar esta columna comparativa?')) return;
 
-        // Confirmar eliminación
-        if (!confirm('¿Está seguro de eliminar este periodo?')) {
-            return;
-        }
+        this.periodos = this.periodos.filter(p => p.id !== id);
+        this.periodosLista.querySelector(`[data-id="${id}"]`)?.remove();
 
-        // Eliminar del array
-        this.periodos = this.periodos.filter(p => p.id !== periodoId);
-
-        // Eliminar del DOM
-        const elemento = this.periodosLista.querySelector(`[data-periodo-id="${periodoId}"]`);
-        if (elemento) {
-            elemento.remove();
-        }
-
-        // Notificar cambio
         if (this.onPeriodosChange) {
             this.onPeriodosChange(this.periodos);
         }
-
-        console.log(`✅ [PERIODOS-CONFIG] Periodo eliminado: ${periodoId}`);
     }
 
-    /**
-     * Limpiar formulario
-     */
-    limpiarFormulario() {
-        this.inputNombre.value = '';
-        this.inputFechaInicio.value = '';
-        this.inputFechaFin.value = '';
-        this.btnAgregar.disabled = true;
+    formatearFechaCorta(f) {
+        if (!f) return '-';
+        // Asume YYYY-MM-DD
+        const parts = f.split('-');
+        if (parts.length < 3) return f;
+        return `${parts[2]}/${parts[1]}/${parts[0].slice(2)}`; // DD/MM/YY
     }
 
-    /**
-     * Formatear fecha para visualización
-     * 
-     * @param {string} fecha - Fecha en formato YYYY-MM-DD
-     * @returns {string} Fecha formateada
-     */
-    formatearFecha(fecha) {
-        const date = new Date(fecha + 'T00:00:00');
-        return date.toLocaleDateString('es-AR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
-    }
-
-    /**
-     * Obtener todos los periodos configurados
-     * 
-     * @returns {Array} Lista de periodos
-     */
-    getPeriodos() {
-        return this.periodos;
-    }
-
-    /**
-     * Manejar cambio en checkbox de periodo
-     * 
-     * @param {number} periodoId - ID del periodo
-     * @param {boolean} checked - Estado del checkbox
-     */
-    onPeriodoCheckChange(periodoId, checked) {
-        console.log(`📅 [PERIODOS-CONFIG] Periodo ${periodoId} ${checked ? 'seleccionado' : 'deseleccionado'}`);
-
-        // Actualizar estado en el objeto
-        const periodo = this.periodos.find(p => p.id === periodoId);
-        if (periodo) {
-            periodo.seleccionado = checked;
-        }
-
-        // Notificar cambio (solo periodos seleccionados)
-        if (this.onPeriodosChange) {
-            const periodosSeleccionados = this.periodos.filter(p => p.seleccionado);
-            this.onPeriodosChange(periodosSeleccionados);
-        }
-    }
-
-    /**
-     * Alternar checkbox al hacer clic en el periodo
-     * 
-     * @param {number} periodoId - ID del periodo
-     */
-    togglePeriodoCheck(periodoId) {
-        const checkbox = document.getElementById(`periodo-check-${periodoId}`);
-        if (checkbox) {
-            checkbox.checked = !checkbox.checked;
-            this.onPeriodoCheckChange(periodoId, checkbox.checked);
-        }
-    }
-
-    /**
-     * Obtener periodos seleccionados
-     * 
-     * @returns {Array} Lista de periodos seleccionados
-     */
     getPeriodosSeleccionados() {
         return this.periodos.filter(p => p.seleccionado);
     }
-
-    /**
-     * Limpiar todos los periodos
-     */
-    limpiarTodosPeriodos() {
-        if (this.periodos.length === 0) {
-            return;
-        }
-
-        if (!confirm('¿Está seguro de eliminar todos los periodos?')) {
-            return;
-        }
-
-        this.periodos = [];
-        this.periodosLista.innerHTML = '';
-
-        // Notificar cambio
-        if (this.onPeriodosChange) {
-            this.onPeriodosChange(this.periodos);
-        }
-
-        console.log('🗑️ [PERIODOS-CONFIG] Todos los periodos eliminados');
-    }
 }
 
-// Exportar para uso global
 window.PeriodosConfig = PeriodosConfig;

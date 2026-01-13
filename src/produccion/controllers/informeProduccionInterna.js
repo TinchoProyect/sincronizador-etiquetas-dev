@@ -39,8 +39,28 @@ async function obtenerHistorialProduccion(req, res) {
         const tiposParam = req.query.tipos || 'salida a ventas,ingreso a producción';
         const tiposMovimiento = tiposParam.split(',').map(t => t.trim());
 
-        console.log('📊 [INFORME-PROD] Obteniendo historial completo (CTE Refactor)...');
-        console.log('🔍 [INFORME-PROD] Tipos de movimiento:', tiposMovimiento);
+        // FECHAS (Modo A/B)
+        const fechaDesde = req.query.fecha_desde || null;
+        const fechaHasta = req.query.fecha_hasta || null;
+
+        console.log('📊 [INFORME-PROD] Obteniendo historial (Filtros Globales)...');
+        console.log('🔍 [INFORME-PROD] Tipos:', tiposMovimiento);
+        console.log(`📅 [INFORME-PROD] Fechas: ${fechaDesde || 'Inicio'} -> ${fechaHasta || 'Actualidad'}`);
+
+        // Construir parámetros dinámicos SQL
+        const queryParams = [];
+        let paramIndex = 1;
+        let fechaCondition = '';
+
+        if (fechaDesde) {
+            fechaCondition += ` AND fecha >= $${paramIndex++}::date`;
+            queryParams.push(fechaDesde);
+        }
+
+        if (fechaHasta) {
+            fechaCondition += ` AND fecha <= $${paramIndex++}::date + INTERVAL '1 day' - INTERVAL '1 second'`;
+            queryParams.push(fechaHasta);
+        }
 
         const query = `
                 WITH movimientos_agrupados AS (
@@ -57,66 +77,65 @@ async function obtenerHistorialProduccion(req, res) {
                         
                         COUNT(DISTINCT DATE_TRUNC('month', fecha)) as meses_activos
                     FROM stock_ventas_movimientos
-                     -- WHERE tipo filter is applied below loosely or we rely on the specific sums logic
-                     -- We still need to filter broadly.
-                     -- Let's include everything that looks like the requested types.
+                     -- WHERE combinando filtros de tipo y fecha
                     WHERE (
                         tipo ILIKE '%producc%' OR 
                         tipo ILIKE '%ventas%' OR 
                         tipo ILIKE '%ajuste%'
                     )
+                    ${fechaCondition}
                     GROUP BY articulo_numero
                 )
-                SELECT 
-                    a.numero as articulo_codigo,
-                    a.nombre as articulo_nombre,
-                    a.codigo_barras,
-                    COALESCE(pa.rubro, 'Sin Rubro') as rubro,
-                    COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
-                    
-                    -- Datos agregados desde CTE (Garantiza 1:1)
-                    COALESCE(ma.total_registros, 0) as total_registros,
-                    COALESCE(ma.cantidad_ingresos, 0) as cantidad_ingresos,
-                    COALESCE(ma.cantidad_salidas, 0) as cantidad_salidas,
-                    COALESCE(ma.cantidad_ajustes_pos, 0) as cantidad_ajustes_pos,
-                    COALESCE(ma.cantidad_ajustes_neg, 0) as cantidad_ajustes_neg,
-                    COALESCE(ma.balance_neto, 0) as balance_neto,
-                    COALESCE(ma.meses_activos, 0) as meses_activos,
-                    
-                    -- Totales absolutos
-                    (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) as cantidad_total_producida,
-                    
-                    -- Metadata
-                    COALESCE(src.kilos_unidad, 0) as kilos_unidad,
-                    (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) * COALESCE(src.kilos_unidad, 0) as kilos_totales_producidos,
-                    
-                    src.es_pack
+        SELECT
+        a.numero as articulo_codigo,
+            a.nombre as articulo_nombre,
+            a.codigo_barras,
+            COALESCE(pa.rubro, 'Sin Rubro') as rubro,
+            COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
+
+            --Datos agregados desde CTE(Garantiza 1: 1)
+        COALESCE(ma.total_registros, 0) as total_registros,
+            COALESCE(ma.cantidad_ingresos, 0) as cantidad_ingresos,
+            COALESCE(ma.cantidad_salidas, 0) as cantidad_salidas,
+            COALESCE(ma.cantidad_ajustes_pos, 0) as cantidad_ajustes_pos,
+            COALESCE(ma.cantidad_ajustes_neg, 0) as cantidad_ajustes_neg,
+            COALESCE(ma.balance_neto, 0) as balance_neto,
+            COALESCE(ma.meses_activos, 0) as meses_activos,
+
+            --Totales absolutos
+                (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) as cantidad_total_producida,
+
+                --Metadata
+        COALESCE(src.kilos_unidad, 0) as kilos_unidad,
+            (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) * COALESCE(src.kilos_unidad, 0) as kilos_totales_producidos,
+
+            src.es_pack
                 FROM movimientos_agrupados ma
-                -- Usamos RIGHT JOIN o LEFT JOIN asegurando unicidad en Articulos
-                -- Protegemos contra duplicados en tabla articulos usando DISTINCT
-                JOIN (SELECT DISTINCT ON (numero) * FROM articulos ORDER BY numero) a ON a.numero = ma.articulo_numero
-                
-                -- JOINS Optimizados con DISTINCT ON para evitar duplicados en metadatos
-                LEFT JOIN (
-                    SELECT DISTINCT ON (articulo) articulo, rubro, sub_rubro 
+        --Usamos RIGHT JOIN o LEFT JOIN asegurando unicidad en Articulos
+        --Protegemos contra duplicados en tabla articulos usando DISTINCT
+        JOIN(SELECT DISTINCT ON(numero) * FROM articulos ORDER BY numero) a ON a.numero = ma.articulo_numero
+
+        --JOINS Optimizados con DISTINCT ON para evitar duplicados en metadatos
+                LEFT JOIN(
+            SELECT DISTINCT ON(articulo) articulo, rubro, sub_rubro 
                     FROM precios_articulos
                     ORDER BY articulo, rubro, sub_rubro
-                ) pa ON pa.articulo = a.numero
-                LEFT JOIN (
-                    SELECT DISTINCT ON (articulo_numero) articulo_numero, kilos_unidad, es_pack
+        ) pa ON pa.articulo = a.numero
+                LEFT JOIN(
+            SELECT DISTINCT ON(articulo_numero) articulo_numero, kilos_unidad, es_pack
                     FROM stock_real_consolidado
                     ORDER BY articulo_numero
-                ) src ON src.articulo_numero = a.numero
-                ORDER BY 
-                    COALESCE(pa.rubro, 'Sin Rubro') ASC,
-                    COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC,
-                    a.nombre ASC
+        ) src ON src.articulo_numero = a.numero
+                ORDER BY
+        COALESCE(pa.rubro, 'Sin Rubro') ASC,
+            COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC,
+                a.nombre ASC
             `;
 
-        // No pasamos parámetros porque hemos hardcodeado la lógica robusta (Nuclear Fix)
-        const result = await pool.query(query);
+        // Parametros dinámicos (Fechas)
+        const result = await pool.query(query, queryParams);
 
-        console.log(`✅ [INFORME-PROD] Historial obtenido: ${result.rows.length} artículos`);
+        console.log(`✅[INFORME - PROD] Historial obtenido: ${result.rows.length} artículos`);
 
         // Calcular estadísticas generales
         const estadisticas = {
@@ -157,7 +176,7 @@ async function obtenerProduccionPorPeriodo(req, res) {
     try {
         const { fecha_inicio, fecha_fin, tipos } = req.query;
 
-        console.log(`📊 [INFORME-PROD] Obteniendo producción por periodo: ${fecha_inicio} a ${fecha_fin}`);
+        console.log(`📊[INFORME - PROD] Obteniendo producción por periodo: ${fecha_inicio} a ${fecha_fin} `);
 
         // Validar parámetros
         if (!fecha_inicio || !fecha_fin) {
@@ -173,73 +192,73 @@ async function obtenerProduccionPorPeriodo(req, res) {
         // console.log('🔍 [INFORME-PROD] Tipos de movimiento:', tiposMovimiento);
 
         const query = `
-            WITH movimientos_agrupados AS (
-                SELECT 
+            WITH movimientos_agrupados AS(
+                    SELECT 
                     articulo_numero,
                     COUNT(id) as total_registros,
-                    -- Agregación Condicional
+                    --Agregación Condicional
                     SUM(CASE WHEN tipo ILIKE '%producc%' THEN cantidad ELSE 0 END) as cantidad_ingresos,
                     SUM(CASE WHEN tipo ILIKE '%ventas%' THEN ABS(cantidad) ELSE 0 END) as cantidad_salidas,
                     SUM(CASE WHEN tipo ILIKE '%ajuste%' AND cantidad > 0 THEN cantidad ELSE 0 END) as cantidad_ajustes_pos,
                     SUM(CASE WHEN tipo ILIKE '%ajuste%' AND cantidad < 0 THEN ABS(cantidad) ELSE 0 END) as cantidad_ajustes_neg,
                     SUM(cantidad) as balance_neto,
-                    
-                    ARRAY_AGG(DISTINCT DATE_TRUNC('day', fecha)::date ORDER BY DATE_TRUNC('day', fecha)::date) as fechas_produccion
+
+                    ARRAY_AGG(DISTINCT DATE_TRUNC('day', fecha):: date ORDER BY DATE_TRUNC('day', fecha):: date) as fechas_produccion
                 FROM stock_ventas_movimientos
-                WHERE (
+                WHERE(
                         tipo ILIKE '%producc%' OR 
                         tipo ILIKE '%ventas%' OR 
                         tipo ILIKE '%ajuste%'
                     )
-                    AND fecha >= $1::date
-                    AND fecha <= $2::date + INTERVAL '1 day' - INTERVAL '1 second'
+                    AND fecha >= $1:: date
+                    AND fecha <= $2:: date + INTERVAL '1 day' - INTERVAL '1 second'
                 GROUP BY articulo_numero
-            )
-            SELECT 
-                a.numero as articulo_codigo,
-                a.nombre as articulo_nombre,
-                a.codigo_barras,
-                COALESCE(pa.rubro, 'Sin Rubro') as rubro,
-                COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
-                
-                -- Datos agregados
-                COALESCE(ma.total_registros, 0) as total_registros,
-                COALESCE(ma.cantidad_ingresos, 0) as cantidad_ingresos,
-                COALESCE(ma.cantidad_salidas, 0) as cantidad_salidas,
-                COALESCE(ma.cantidad_ajustes_pos, 0) as cantidad_ajustes_pos,
-                COALESCE(ma.cantidad_ajustes_neg, 0) as cantidad_ajustes_neg,
-                COALESCE(ma.balance_neto, 0) as cantidad_producida, -- REUSAMOS KEY para compatibilidad
-                
-                -- Totales para cálculo de KPI
-                (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) as volumen_actividad,
-                
-                COALESCE(ma.fechas_produccion, '{}') as fechas_produccion,
-                
-                COALESCE(src.kilos_unidad, 0) as kilos_unidad,
-                (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) * COALESCE(src.kilos_unidad, 0) as kilos_producidos,
-                
-                src.es_pack
+                )
+        SELECT
+        a.numero as articulo_codigo,
+            a.nombre as articulo_nombre,
+            a.codigo_barras,
+            COALESCE(pa.rubro, 'Sin Rubro') as rubro,
+            COALESCE(pa.sub_rubro, 'Sin Subrubro') as subrubro,
+
+            --Datos agregados
+        COALESCE(ma.total_registros, 0) as total_registros,
+            COALESCE(ma.cantidad_ingresos, 0) as cantidad_ingresos,
+            COALESCE(ma.cantidad_salidas, 0) as cantidad_salidas,
+            COALESCE(ma.cantidad_ajustes_pos, 0) as cantidad_ajustes_pos,
+            COALESCE(ma.cantidad_ajustes_neg, 0) as cantidad_ajustes_neg,
+            COALESCE(ma.balance_neto, 0) as cantidad_producida, --REUSAMOS KEY para compatibilidad
+
+        --Totales para cálculo de KPI
+            (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) as volumen_actividad,
+
+            COALESCE(ma.fechas_produccion, '{}') as fechas_produccion,
+
+            COALESCE(src.kilos_unidad, 0) as kilos_unidad,
+            (COALESCE(ma.cantidad_ingresos, 0) + COALESCE(ma.cantidad_salidas, 0) + COALESCE(ma.cantidad_ajustes_pos, 0) + COALESCE(ma.cantidad_ajustes_neg, 0)) * COALESCE(src.kilos_unidad, 0) as kilos_producidos,
+
+            src.es_pack
             FROM movimientos_agrupados ma
-            JOIN (SELECT DISTINCT ON (numero) * FROM articulos ORDER BY numero) a ON a.numero = ma.articulo_numero
-            LEFT JOIN (
-                SELECT DISTINCT ON (articulo) articulo, rubro, sub_rubro 
+        JOIN(SELECT DISTINCT ON(numero) * FROM articulos ORDER BY numero) a ON a.numero = ma.articulo_numero
+            LEFT JOIN(
+            SELECT DISTINCT ON(articulo) articulo, rubro, sub_rubro 
                 FROM precios_articulos
                 ORDER BY articulo, rubro, sub_rubro
-            ) pa ON pa.articulo = a.numero
-            LEFT JOIN (
-                SELECT DISTINCT ON (articulo_numero) articulo_numero, kilos_unidad, es_pack
+        ) pa ON pa.articulo = a.numero
+            LEFT JOIN(
+            SELECT DISTINCT ON(articulo_numero) articulo_numero, kilos_unidad, es_pack
                 FROM stock_real_consolidado
                 ORDER BY articulo_numero
-            ) src ON src.articulo_numero = a.numero
-            ORDER BY 
-                COALESCE(pa.rubro, 'Sin Rubro') ASC,
-                COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC,
+        ) src ON src.articulo_numero = a.numero
+            ORDER BY
+        COALESCE(pa.rubro, 'Sin Rubro') ASC,
+            COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC,
                 a.nombre ASC
         `;
 
         const result = await pool.query(query, [fecha_inicio, fecha_fin]);
 
-        console.log(`✅ [INFORME-PROD] Producción del periodo obtenida: ${result.rows.length} artículos`);
+        console.log(`✅[INFORME - PROD] Producción del periodo obtenida: ${result.rows.length} artículos`);
 
         // Calcular estadísticas del periodo
         const estadisticas = {
@@ -286,22 +305,22 @@ async function obtenerRubrosSubrubros(req, res) {
         console.log('📊 [INFORME-PROD] Obteniendo jerarquía de Rubros y Subrubros...');
 
         const query = `
-            SELECT 
-                pa.rubro,
-                pa.sub_rubro,
-                COUNT(DISTINCT a.numero) as total_articulos
+        SELECT
+        pa.rubro,
+            pa.sub_rubro,
+            COUNT(DISTINCT a.numero) as total_articulos
             FROM precios_articulos pa
             JOIN articulos a ON a.numero = pa.articulo
-            WHERE EXISTS (
+            WHERE EXISTS(
                 SELECT 1 
                 FROM stock_ventas_movimientos svm 
                 WHERE svm.articulo_numero = a.numero 
                 AND svm.tipo = 'ingreso a producción'
             )
             GROUP BY pa.rubro, pa.sub_rubro
-            ORDER BY 
-                COALESCE(pa.rubro, 'Sin Rubro') ASC,
-                COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC
+            ORDER BY
+        COALESCE(pa.rubro, 'Sin Rubro') ASC,
+            COALESCE(pa.sub_rubro, 'Sin Subrubro') ASC
         `;
 
         const result = await pool.query(query);
@@ -332,7 +351,7 @@ async function obtenerRubrosSubrubros(req, res) {
         // Convertir objeto a array
         const jerarquiaArray = Object.values(jerarquia);
 
-        console.log(`✅ [INFORME-PROD] Jerarquía obtenida: ${jerarquiaArray.length} rubros`);
+        console.log(`✅[INFORME - PROD] Jerarquía obtenida: ${jerarquiaArray.length} rubros`);
 
         res.json({
             success: true,
@@ -365,14 +384,14 @@ async function obtenerProduccionMensual(req, res) {
         console.log('📊 [INFORME-PROD] Obteniendo producción mensual...');
 
         const query = `
-            SELECT 
-                DATE_TRUNC('month', svm.fecha)::date as mes,
-                TO_CHAR(DATE_TRUNC('month', svm.fecha), 'YYYY-MM') as mes_formato,
-                TO_CHAR(DATE_TRUNC('month', svm.fecha), 'Month YYYY') as mes_nombre,
-                COUNT(DISTINCT a.numero) as articulos_diferentes,
-                COUNT(DISTINCT svm.id) as total_registros,
-                SUM(svm.cantidad) as cantidad_total,
-                SUM(svm.kilos) as kilos_totales
+        SELECT
+        DATE_TRUNC('month', svm.fecha):: date as mes,
+            TO_CHAR(DATE_TRUNC('month', svm.fecha), 'YYYY-MM') as mes_formato,
+            TO_CHAR(DATE_TRUNC('month', svm.fecha), 'Month YYYY') as mes_nombre,
+            COUNT(DISTINCT a.numero) as articulos_diferentes,
+            COUNT(DISTINCT svm.id) as total_registros,
+            SUM(svm.cantidad) as cantidad_total,
+            SUM(svm.kilos) as kilos_totales
             FROM stock_ventas_movimientos svm
             JOIN articulos a ON a.numero = svm.articulo_numero
             WHERE svm.tipo = 'ingreso a producción'
@@ -382,7 +401,7 @@ async function obtenerProduccionMensual(req, res) {
 
         const result = await pool.query(query);
 
-        console.log(`✅ [INFORME-PROD] Producción mensual obtenida: ${result.rows.length} meses`);
+        console.log(`✅[INFORME - PROD] Producción mensual obtenida: ${result.rows.length} meses`);
 
         res.json({
             success: true,

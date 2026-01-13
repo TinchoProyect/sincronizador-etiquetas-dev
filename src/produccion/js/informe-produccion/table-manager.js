@@ -229,15 +229,29 @@ class TableManager {
             });
         }
 
-        // 4. Periodos
+        // 4. Periodos (Modo C - Columnas Custom)
         this.periodosActivos.forEach(periodo => {
+            let key = 'cantidad_producida'; // Default (Balance Neto)
+
+            // Mapear métrica seleccionada a clave del JSON (Backend)
+            if (periodo.metricaObjetivo) {
+                switch (periodo.metricaObjetivo) {
+                    case 'ingresos': key = 'cantidad_ingresos'; break;
+                    case 'salidas': key = 'cantidad_salidas'; break;
+                    case 'ajustes_pos': key = 'cantidad_ajustes_pos'; break;
+                    case 'ajustes_neg': key = 'cantidad_ajustes_neg'; break;
+                    case 'balance': key = 'cantidad_producida'; break;
+                    default: key = 'cantidad_producida';
+                }
+            }
+
             definitions.push({
                 id: `periodo-${periodo.id}`,
                 label: periodo.nombre,
                 subLabel: `${this.formatearFechaCorta(periodo.fechaInicio)} - ${this.formatearFechaCorta(periodo.fechaFin)}`,
                 type: 'periodo',
                 periodoId: periodo.id,
-                key: 'cantidad_producida',
+                key: key, // Clave dinámica
                 isNumeric: true,
                 sortable: true
             });

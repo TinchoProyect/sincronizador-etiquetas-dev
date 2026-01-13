@@ -31,6 +31,7 @@ class InformeProduccionInterna {
         this.periodosActivos = []; // Periodos para comparación
         this.tiposMovimientoActivos = null; // Tipos de movimiento seleccionados
         this.tablaElement = null;
+        this.currentFechaFiltro = { desde: null, hasta: null, descripcion: null }; // INITIALIZE STATE
     }
 
     /**
@@ -92,10 +93,12 @@ class InformeProduccionInterna {
         this.tiposMovimientoConfig.init();
 
         // Inicializar PeriodosConfig
+        // Inicializar PeriodosConfig
         this.periodosConfig = new PeriodosConfig(
             this.dataFetcher,
             () => this.tiposMovimientoConfig.getTiposSeleccionados(),
-            (periodos) => this.onPeriodosActualizados(periodos)
+            (periodos) => this.onPeriodosActualizados(periodos),
+            (filtro) => this.onFiltroGlobal(filtro) // ✅ Argumento 4: Callback Global
         );
         this.periodosConfig.init();
 
@@ -115,7 +118,12 @@ class InformeProduccionInterna {
             this.tiposMovimientoActivos = this.tiposMovimientoConfig.getTiposSeleccionados();
 
             // Obtener historial completo con tipos de movimiento
-            const resultado = await this.dataFetcher.obtenerHistorial(this.tiposMovimientoActivos);
+            // Obtener historial completo con tipos de movimiento y filtros de fecha
+            const resultado = await this.dataFetcher.obtenerHistorialProduccion(
+                this.tiposMovimientoActivos ? this.tiposMovimientoActivos.join(',') : null,
+                this.currentFechaFiltro.desde,
+                this.currentFechaFiltro.hasta
+            );
 
             this.datosBase = resultado.data;
 
@@ -206,6 +214,42 @@ class InformeProduccionInterna {
         // Headers y Tabla se actualizan dentro de tableManager.actualizarPeriodos -> actualizarMenuColumnas -> (pero aquí forzamos para asegurar)
         this.actualizarEncabezadosTabla();
         this.renderizarTabla(this.datosBase);
+    }
+
+    /**
+     * Callback cuando cambia el Filtro Global (Desde Configuración de Periodos)
+     * ✅ IMPLEMENTED: Maneja actualización de estado y recarga de datos
+     */
+    async onFiltroGlobal(filtro) {
+        console.log(`📅 [INFORME-PROD] Filtro Global recibido:`, filtro);
+
+        // 1. Actualizar Estado
+        this.currentFechaFiltro = {
+            desde: filtro.desde,
+            hasta: filtro.hasta,
+            descripcion: filtro.descripcion
+        };
+
+        // 2. Actualizar Título de Tabla (Visual)
+        this.actualizarTituloTabla();
+
+        // 3. Recargar Datos (Fetcher usará this.currentFechaFiltro)
+        await this.refrescarDatos();
+    }
+
+    /**
+     * Actualizar Título de la Tabla según filtro activo
+     */
+    actualizarTituloTabla() {
+        // Buscamos el H2 del panel principal
+        const titleEl = document.querySelector('.main-panel-header h2');
+        if (!titleEl) return;
+
+        if (this.currentFechaFiltro.descripcion) {
+            titleEl.innerHTML = `📈 Historial: <span style="font-weight:400; font-size: 0.9em; color: #666;">${this.currentFechaFiltro.descripcion}</span>`;
+        } else {
+            titleEl.textContent = '📈 Historial de Producción Interna';
+        }
     }
 
     /**
@@ -498,7 +542,14 @@ class InformeProduccionInterna {
 
             // 2. Recargar datos principales (Datos Base)
             this.tiposMovimientoActivos = this.tiposMovimientoConfig.getTiposSeleccionados();
-            const resultado = await this.dataFetcher.obtenerHistorial(this.tiposMovimientoActivos);
+
+            // Pasar filtros de fecha al dataFetcher
+            const resultado = await this.dataFetcher.obtenerHistorialProduccion( // Normalizamos nombre a obtenerHistorialProduccion
+                this.tiposMovimientoActivos ? this.tiposMovimientoActivos.join(',') : null,
+                this.currentFechaFiltro.desde,
+                this.currentFechaFiltro.hasta
+            );
+
             this.datosBase = resultado.data;
             this.actualizarEstadisticas(resultado.estadisticas);
 
