@@ -45,7 +45,12 @@ class TableManager {
         // Configuración Balance V4
         this.balanceConfig = {
             mostrar: false,
-            componentes: {}
+            componentes: {
+                ingresos: true,
+                salidas: true,
+                ajustes_pos: true,
+                ajustes_neg: true
+            }
         };
 
         // Estado Resizing
@@ -56,7 +61,7 @@ class TableManager {
 
         // Clave para localStorage
         // Clave para localStorage
-        this.storageKey = 'informe-produccion-table-state-v8'; // Bump version v8 for box-sizing fix
+        this.storageKey = 'informe-produccion-table-state-v9'; // Bump version v9 for cache busting
     }
 
     /**
@@ -81,7 +86,7 @@ class TableManager {
      * Setters para estado dinámico
      */
     setTiposMovimientoUI(uiState) {
-        this.isUpdating = true; // Prevent notification loop
+        this.isUpdating = true; // (No edit yet, I need to check renderizarFila first)ification loop
 
         // V10: Normalización de claves (Atomic Sync)
         // Convertimos alias solicitados por usuario a claves internas
@@ -124,7 +129,15 @@ class TableManager {
             if (config.componentes.ajuste_negativo !== undefined) config.componentes.ajustes_neg = config.componentes.ajuste_negativo;
         }
 
-        this.balanceConfig = config || { mostrar: false, componentes: {} };
+        this.balanceConfig = config || {
+            mostrar: false,
+            componentes: {
+                ingresos: true,
+                salidas: true,
+                ajustes_pos: true,
+                ajustes_neg: true
+            }
+        };
         this.actualizarMenuColumnas();
     }
 
@@ -630,17 +643,47 @@ class TableManager {
             return val;
         }
         else if (colDef.type === 'calculated' && colDef.id === 'balance') {
-            // ✅ CÁLCULO DINÁMICO DE BALANCE
+            // ✅ CÁLCULO INDEPENDIENTE DE LA VISIBILIDAD (User Request)
+            // Se calcula usando estrictamente el objeto de datos 'item' (JSON),
+            // ignorando si las columnas individuales están visibles o renderizadas.
             let balance = 0;
-            const comps = this.balanceConfig.componentes;
+            const comps = this.balanceConfig.componentes || {};
 
-            // Nota: Se asume que los valores en 'item' son magnitudes POSITIVAS
-            // El backend ya los envía separados y (idealmente) positivos.
+            // 1. Obtener valores del objeto de datos (Data Source of Truth)
+            // Usamos los campos retornados por el backend, con fallback a 0
+            const valIngresos = parseFloat(item.cantidad_ingresos) || 0;
+            const valSalidas = parseFloat(item.cantidad_salidas) || 0; // Siempre positivo en JSON
+            const valAjPos = parseFloat(item.cantidad_ajustes_pos) || 0;
+            const valAjNeg = parseFloat(item.cantidad_ajustes_neg) || 0; // Siempre positivo en JSON
 
-            if (comps.ingresos) balance += (parseFloat(item.cantidad_ingresos) || 0);
-            if (comps.salidas) balance -= (parseFloat(item.cantidad_salidas) || 0); // Resta
-            if (comps.ajustes_pos) balance += (parseFloat(item.cantidad_ajustes_pos) || 0);
-            if (comps.ajustes_neg) balance -= (parseFloat(item.cantidad_ajustes_neg) || 0); // Resta
+            // 2. Aplicar lógica de negocio según configuración de Balance
+            // NO usamos la configuración de visibilidad de columnas aquí.
+            if (comps.ingresos) {
+                balance += valIngresos;
+            }
+            if (comps.salidas) {
+                balance -= valSalidas; // Restamos salidas
+            }
+            if (comps.ajustes_pos) {
+                balance += valAjPos; // Sumamos ajustes positivos
+            }
+            if (comps.ajustes_neg) {
+                balance -= valAjNeg; // Restamos ajustes negativos
+            }
+
+            // Debug esporádico para verificar lógica
+            if (item.articulo_codigo === 'HASPx1') {
+                console.log(`⚖️ [BALANCE] ${item.articulo_codigo}: 
+                    Balance Calc: ${balance}
+                    Data Vals -> I:${valIngresos}, S:${valSalidas}, A+: ${valAjPos}, A-: ${valAjNeg}
+                    Config -> I:${comps.ingresos}, S:${comps.salidas}, A+: ${comps.ajustes_pos}, A-: ${comps.ajustes_neg}
+                 `);
+            }
+
+            // Debug esporádico para verificar lógica
+            if (item.articulo_codigo === 'HASPx1') {
+                // console.log(`⚖️ [BALANCE] ${item.articulo_codigo}: ${balance} (I:${valIngresos} S:${valSalidas} A+:${valAjPos} A-:${valAjNeg})`);
+            }
 
             return balance;
         }

@@ -40,15 +40,15 @@ class InformeProduccionInterna {
         console.log('🚀 [INFORME-PROD] ===== INICIANDO MÓDULO DE INFORMES =====');
 
         try {
-            // Inicializar módulos
-            this.initModules();
-
-            // Obtener elementos del DOM
+            // Obtener elementos del DOM (CRÍTICO: Antes de initModules para evitar race conditions)
             this.tablaElement = document.getElementById('tabla-produccion-body');
 
             if (!this.tablaElement) {
                 throw new Error('No se encontró el elemento de la tabla');
             }
+
+            // Inicializar módulos
+            this.initModules();
 
             // Cargar datos iniciales
             await this.cargarDatosIniciales();
@@ -172,14 +172,17 @@ class InformeProduccionInterna {
      * ✅ UPDATE V4: Recibe objeto de configuración completo
      */
     onBalanceConfigUpdate(config) {
-        console.log(`⚖️ [INFORME-PROD] Config Balance:`, config);
+        console.log(`⚖️ [INFORME-PROD] Config Balance Updated:`, config);
 
         if (this.tableManager) {
             this.tableManager.setBalanceConfig(config);
 
-            // Re-renderizar
-            this.actualizarEncabezadosTabla();
-            this.renderizarTabla(this.datosBase);
+            // 🔥 CRITICAL FIX: Reactividad inmediata
+            // No necesitamos hacer fetch de nuevo porque los datos base (ingresos, salidas, ajustes) ya están en memoria.
+            // Solo necesitamos decirle al TableManager que recalcule y renderizar de nuevo.
+
+            this.actualizarEncabezadosTabla(); // Actualizar visibilidad de columna Balance
+            this.renderizarTabla(this.datosBase); // Recalcular valores de celdas
         }
     }
 
@@ -338,6 +341,15 @@ class InformeProduccionInterna {
                 td.textContent = this.formatearNumero(valor);
             } else {
                 td.textContent = valor;
+            }
+
+            // TOOLTIP DEBUG PARA BALANCE (Solicitud de Transparencia)
+            if (col.id === 'balance') {
+                const i = parseFloat(articulo.cantidad_ingresos) || 0;
+                const s = parseFloat(articulo.cantidad_salidas) || 0;
+                const ap = parseFloat(articulo.cantidad_ajustes_pos) || 0;
+                const an = parseFloat(articulo.cantidad_ajustes_neg) || 0;
+                td.title = `Ingresos: ${i}\nSalidas: ${s}\nAjustes (+): ${ap}\nAjustes (-): ${an}`;
             }
 
             tr.appendChild(td);

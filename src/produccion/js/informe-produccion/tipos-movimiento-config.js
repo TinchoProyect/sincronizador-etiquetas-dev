@@ -143,7 +143,7 @@ class TiposMovimientoConfig {
                 c.label,
                 this.balanceConfig.componentes[c.key],
                 'balance-comp',
-                { compKey: c.key }
+                { 'comp-key': c.key }
             );
             componentesContainer.appendChild(compRow);
         });
@@ -185,12 +185,14 @@ class TiposMovimientoConfig {
         // Delegación de eventos para checkboxes
         this.checkboxesContainer.addEventListener('change', (e) => {
             const target = e.target;
+            console.log('🔘 [TIPOS-CONFIG] Change Event:', target.id, target.className);
 
             if (target.classList.contains('tipo-movimiento')) {
                 this.handleTipoChange(target);
             } else if (target.classList.contains('balance-main')) {
                 this.handleBalanceMainChange(target);
             } else if (target.classList.contains('balance-comp')) {
+                console.log('🔘 [TIPOS-CONFIG] Balance Comp Change Detected');
                 this.handleBalanceCompChange(target);
             }
         });
@@ -200,29 +202,38 @@ class TiposMovimientoConfig {
      * Manejadores de eventos
      */
     handleTipoChange(checkbox) {
+        // ... (existing code omitted for brevity if unmodified, but here we replace block)
         const tipoId = checkbox.dataset.tipoId;
         const tipo = this.tiposDisponibles.find(t => t.id === tipoId);
-        if (tipo) tipo.checked = checkbox.checked; // Fix: tipo, not type
+        if (tipo) tipo.checked = checkbox.checked;
 
-        // Validar: Al menos uno seleccionado? No estricto, pero recomendable.
-        // Recopilar valores únicos para backend
-        // Ajustes (+) y (-) usan el mismo valor de backend 'registro de ajuste'.
-        // Solo necesitamos enviarlo una vez si alguno de los dos está activo.
+        // Lógica de Fetch Unificada V6 (NUCLEAR FIX: DATOS SIEMPRE LISTOS)
+        // El usuario requiere "Datos siempre listos" y "Independencia del Balance".
+        // La estrategia más robusta es traer SIEMPRE todos los datos relevantes del backend.
+        // El frontend (TableManager) se encarga de mostrar u ocultar columnas.
+        // El Balance tiene los datos disponibles aunque las columnas estén ocultas.
 
-        const backendTipos = new Set();
-        this.tiposDisponibles.filter(t => t.checked).forEach(t => backendTipos.add(t.valor));
+        const tiposNecesarios = new Set([
+            'ingreso a producción',
+            'salida a ventas',
+            'registro de ajuste'
+        ]);
 
-        const tiposArray = Array.from(backendTipos);
+        // Simplemente convertimos a array. No filtramos por 'checked' para el backend.
+        // Solucionamos: "No pueden aparecer en cero solo porque decidí no mostrar su columna"
+        const backendArray = Array.from(tiposNecesarios);
 
-        if (tiposArray.length === 0) {
-            // alert('Se recomienda seleccionar al menos un tipo.');
+        console.log('🔍 [TIPOS-CONFIG] Backend Request (Unified):', backendArray);
+        console.log('    - Visible Types:', this.tiposDisponibles.filter(t => t.checked).map(t => t.valor));
+        console.log('    - Balance Config:', this.balanceConfig.mostrar ? 'Active' : 'Inactive');
+        if (this.balanceConfig.mostrar) {
+            console.log('    - Balance Components:', this.balanceConfig.componentes);
         }
 
-        // Notificar cambios: Enviamos AMBOS: la lista de valores backend Y el estado detallado de UI
-        // El main.js usará valores backend para fetch, y TableManager usará estado UI para columnas.
         if (this.onTiposChange) {
             this.onTiposChange({
-                backendValues: tiposArray,
+                backendValues: backendArray,
+                // UI State sigue siendo SOLO lo que el usuario ve visualmente en columnas
                 uiState: this.tiposDisponibles.reduce((acc, t) => { acc[t.id] = t.checked; return acc; }, {})
             });
         }
@@ -238,13 +249,31 @@ class TiposMovimientoConfig {
 
     handleBalanceCompChange(checkbox) {
         const key = checkbox.dataset.compKey;
+        console.log(`🔘 [TIPOS-CONFIG] Updating Balance Key: ${key} -> ${checkbox.checked}`);
         this.balanceConfig.componentes[key] = checkbox.checked;
         this.notificarBalanceChange();
     }
 
     notificarBalanceChange() {
+        console.log('🔘 [TIPOS-CONFIG] Notifying Main Module...', this.balanceConfig);
+
+        // Al cambiar configuración de Balance, TAMBIÉN puede cambiar 
+        // los datos que necesitamos del backend (si activé un componente oculto).
+        // Por lo tanto, debemos re-evaluar y notificar tipos también.
+
+        // Re-emitir estado de tipos (esto disparará el fetch unificado)
+        // Usamos un pequeño delay o llamada directa si queremos evitar doble render,
+        // pero por seguridad llamamos a la misma lógica de unificación.
+
+        // Simulamos un "cambio de tipo" para forzar el recalculo de `backendValues`
+        // sin cambiar los checkboxes visuales.
+        const dummyCheckbox = { checked: false, dataset: {} }; // No se usa realmente abajo
+        this.handleTipoChange(dummyCheckbox);
+
         if (this.onBalanceConfigChange) {
             this.onBalanceConfigChange(this.balanceConfig);
+        } else {
+            console.error('❌ [TIPOS-CONFIG] No callback registered for onBalanceConfigChange');
         }
     }
 
@@ -276,11 +305,17 @@ class TiposMovimientoConfig {
         const tipo = this.tiposDisponibles.find(t => t.id === tipoId);
         if (tipo && tipo.checked !== checked) {
             tipo.checked = checked;
-            // Actualizar checkbox DOM si existe
+            // Actualizar checkbox DOM si existe (espejo visual)
             const checkbox = document.querySelector(`input[data-tipo-id="${tipoId}"]`);
-            if (checkbox) checkbox.checked = checked;
+            if (checkbox) {
+                checkbox.checked = checked;
+            } else {
+                // Si el DOM no está listo (ej. inicialización), el estado interno 'tipo.checked' ya es la fuente de la verdad.
+                console.warn(`[TIPOS-CONFIG] Sync warning: Checkbox for ${tipoId} not found/rendered yet.`);
+            }
 
-            // Re-emitir cambio para mantener consistencia
+            // Re-emitir cambio para mantener consistencia global
+            // Evitamos loops infinitos asegurando que esto no dispare otro external update
             this.handleTipoChange({ checked, dataset: { tipoId } });
         }
 
@@ -304,9 +339,12 @@ class TiposMovimientoConfig {
 
     emiteEstadoInicial() {
         // Emitir tipos default
-        const backendTipos = new Set();
-        this.tiposDisponibles.filter(t => t.checked).forEach(t => backendTipos.add(t.valor));
-        const tiposArray = Array.from(backendTipos);
+        // NUCLEAR FIX: Usar la misma lista completa que en handleTipoChange
+        const tiposArray = [
+            'ingreso a producción',
+            'salida a ventas',
+            'registro de ajuste'
+        ];
 
         if (this.onTiposChange) {
             this.onTiposChange({
