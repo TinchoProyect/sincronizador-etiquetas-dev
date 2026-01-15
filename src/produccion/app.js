@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const produccionRoutes = require('./routes/produccion');
 const usuariosRoutes = require('../usuarios/rutas');
 
@@ -21,6 +22,13 @@ const io = new Server(httpServer, {
 const inventarioSesiones = new Map();
 
 // ✅ Middleware para interpretar JSON en los requests
+// NOTA: El proxy debe ir ANTES del body parser para que funcione correctamente el stream
+app.use('/api/presupuestos', createProxyMiddleware({
+    target: 'http://localhost:3003/api/presupuestos',
+    changeOrigin: true,
+    logLevel: 'debug'
+}));
+
 app.use(express.json());
 
 //Temporizacion -Mari
@@ -43,6 +51,7 @@ app.use(express.static(__dirname));
 app.use('/pages', express.static(path.join(__dirname, 'pages')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/css', express.static(path.join(__dirname, 'css')));
+
 
 // Redirigir la raíz a la página principal de producción
 app.get('/', (req, res) => {

@@ -6,7 +6,7 @@ async function cargarUsuariosProduccion() {
     try {
         const response = await fetch(`${API_BASE}/usuarios/con-permiso/Produccion`);
         const usuarios = await response.json();
-        
+
         const listaColaboradores = document.getElementById('lista-colaboradores');
         listaColaboradores.innerHTML = '';
 
@@ -27,7 +27,7 @@ async function cargarUsuariosProduccion() {
         });
     } catch (error) {
         console.error('Error al cargar usuarios:', error);
-        document.getElementById('lista-colaboradores').innerHTML = 
+        document.getElementById('lista-colaboradores').innerHTML =
             '<p class="mensaje-error">Error al cargar la lista de usuarios.</p>';
     }
 }
@@ -41,7 +41,7 @@ function seleccionarUsuario(usuario) {
         rol_id: usuario.rol_id,
         timestamp: new Date().toISOString()
     }));
-    
+
     // Abrir la página personal en una nueva pestaña
     //window.open('/pages/produccion_personal.html', '_blank');
     window.open('/pages/produccion_personal.html', `ventanaProduccion_${usuario.id}`);
@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const fechaCorteInput = document.getElementById('fecha-corte');
     const fechaCorteArticulosInput = document.getElementById('fecha-corte-articulos');
     const hoy = new Date().toISOString().slice(0, 10);
-    
+
     if (fechaCorteInput && !fechaCorteInput.value) {
         fechaCorteInput.value = hoy;
     }
@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirmarBtn) {
         confirmarBtn.addEventListener('click', confirmarAsignacionFaltantes);
     }
-    
+
     // Evento para botón "Imprimir Todos los Presupuestos" (general)
     const btnImprimirTodosGeneral = document.getElementById('imprimir-todos-general');
     if (btnImprimirTodosGeneral) {
@@ -153,7 +153,7 @@ const base = (window.API_BASE || API_BASE || '/api') + '/produccion';
 // Función para cargar pedidos por cliente
 async function cargarPedidosPorCliente() {
     const fechaCorte = document.getElementById('fecha-corte').value;
-    
+
     // Mostrar loading en todos los contenedores
     const containers = ['pedidos-imprimir', 'pedidos-armar', 'pedidos-listo'];
     containers.forEach(id => {
@@ -173,10 +173,10 @@ async function cargarPedidosPorCliente() {
             throw new Error(data.message || 'Error en la respuesta del servidor');
         }
         const pedidos = data.data;
-        
+
         // Guardar datos en variable global para funciones de impresión
         window.clientesPedidos = pedidos;
-        
+
         renderPedidosCliente(pedidos);
     } catch (error) {
         console.error('❌ Error al cargar pedidos:', error);
@@ -203,22 +203,22 @@ function agruparPresupuestosPorSecuencia(clientes) {
         pedido_listo: [],    // Pedido_Listo
         retira_deposito: []  // NUEVO: Retira_Deposito
     };
-    
+
     clientes.forEach(cliente => {
         // Crear versiones del cliente para cada grupo
         const clienteImprimir = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
         const clienteArmar = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
         const clienteListo = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 };
         const clienteRetira = { ...cliente, articulos: [], total_articulos: 0, total_presupuestos: 0 }; // NUEVO
-        
+
         const presupuestosImprimir = new Set();
         const presupuestosArmar = new Set();
         const presupuestosListo = new Set();
         const presupuestosRetira = new Set(); // NUEVO
-        
+
         cliente.articulos.forEach(articulo => {
             const secuencia = (articulo.secuencia || 'Imprimir').trim();
-            
+
             if (secuencia === 'Imprimir' || secuencia === 'Imprimir_Modificado') {
                 clienteImprimir.articulos.push(articulo);
                 presupuestosImprimir.add(articulo.presupuesto_id);
@@ -238,7 +238,7 @@ function agruparPresupuestosPorSecuencia(clientes) {
                 presupuestosImprimir.add(articulo.presupuesto_id);
             }
         });
-        
+
         // Actualizar contadores y agregar a grupos solo si tienen artículos
         if (clienteImprimir.articulos.length > 0) {
             clienteImprimir.total_articulos = clienteImprimir.articulos.length;
@@ -261,14 +261,14 @@ function agruparPresupuestosPorSecuencia(clientes) {
             grupos.retira_deposito.push(clienteRetira);
         }
     });
-    
+
     console.log('📊 [SECUENCIA] Agrupación completada:', {
         imprimir: grupos.imprimir.length,
         armar_pedido: grupos.armar_pedido.length,
         pedido_listo: grupos.pedido_listo.length,
         retira_deposito: grupos.retira_deposito.length
     });
-    
+
     return grupos;
 }
 
@@ -280,19 +280,19 @@ function actualizarContadoresSecuencia(grupos) {
     const contadorArmar = document.getElementById('contador-armar');
     const contadorListo = document.getElementById('contador-listo');
     const contadorRetira = document.getElementById('contador-retira'); // NUEVO
-    
+
     // Contar total de presupuestos en cada grupo
     const totalImprimir = grupos.imprimir.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
     const totalArmar = grupos.armar_pedido.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
     const totalListo = grupos.pedido_listo.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0);
     const totalRetira = grupos.retira_deposito ? grupos.retira_deposito.reduce((sum, cliente) => sum + cliente.total_presupuestos, 0) : 0; // NUEVO
-    
+
     // Mostrar solo el número sin paréntesis
     if (contadorImprimir) contadorImprimir.textContent = totalImprimir;
     if (contadorArmar) contadorArmar.textContent = totalArmar;
     if (contadorListo) contadorListo.textContent = totalListo;
     if (contadorRetira) contadorRetira.textContent = totalRetira; // NUEVO
-    
+
     console.log('🔢 [CONTADORES] Actualizados:', { totalImprimir, totalArmar, totalListo, totalRetira });
 }
 
@@ -305,7 +305,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         console.warn(`⚠️ Contenedor ${containerId} no encontrado`);
         return;
     }
-    
+
     if (!clientes || clientes.length === 0) {
         contenedor.innerHTML = '<p class="mensaje-info">No hay presupuestos en esta etapa</p>';
         return;
@@ -313,17 +313,17 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
 
     console.log(`🔍 Renderizando ${titulo}: ${clientes.length} clientes`);
     contenedor.innerHTML = '';
-    
+
     clientes.forEach(cliente => {
         console.log(`📋 Cliente: ${cliente.cliente_nombre} - ${cliente.total_presupuestos} presupuestos`);
-        
+
         const clienteDiv = document.createElement('div');
         clienteDiv.className = 'cliente-acordeon';
         clienteDiv.setAttribute('data-cliente-id', cliente.cliente_id);
 
         // Calcular total de artículos (suma de todos los presupuestos)
         const totalArticulos = cliente.articulos.length;
-        
+
         const header = document.createElement('div');
         header.className = 'cliente-header';
         header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
@@ -344,6 +344,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             if (!presupuestosMap.has(presupId)) {
                 presupuestosMap.set(presupId, {
                     presupuesto_id: presupId,
+                    id_presupuesto_local: articulo.id_presupuesto_local,
                     presupuesto_fecha: articulo.presupuesto_fecha,
                     articulos: [],
                     // Datos del snapshot (vienen en cada artículo, tomar del primero)
@@ -356,7 +357,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         });
 
         // Convertir a array y ordenar por fecha
-        const presupuestos = Array.from(presupuestosMap.values()).sort((a, b) => 
+        const presupuestos = Array.from(presupuestosMap.values()).sort((a, b) =>
             new Date(b.presupuesto_fecha) - new Date(a.presupuesto_fecha)
         );
 
@@ -374,10 +375,10 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     completos++;
                 }
             });
-            
+
             const estadoPresupuesto = faltantes > 0 ? 'FALTANTES' : 'COMPLETO';
             const estadoClass = faltantes > 0 ? 'indicador-faltantes' : 'indicador-completo';
-            
+
             const presupuestoDiv = document.createElement('div');
             presupuestoDiv.style.marginBottom = '15px';
             presupuestoDiv.style.border = '1px solid #dee2e6';
@@ -392,20 +393,20 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             presupuestoHeader.style.justifyContent = 'space-between';
             presupuestoHeader.style.alignItems = 'center';
             presupuestoHeader.style.gap = '10px';
-            
+
             const fechaFormateada = new Date(presupuesto.presupuesto_fecha).toLocaleDateString('es-AR');
-            
+
             // Verificar si el presupuesto está modificado
-            const esModificado = presupuesto.snapshot_motivo === 'modificado' || 
-                               presupuesto.snapshot_secuencia === 'Imprimir_Modificado';
-            
+            const esModificado = presupuesto.snapshot_motivo === 'modificado' ||
+                presupuesto.snapshot_secuencia === 'Imprimir_Modificado';
+
             let textoModificado = '';
             if (esModificado && presupuesto.snapshot_numero_impresion) {
                 const numeroModificacion = presupuesto.snapshot_numero_impresion - 1;
                 textoModificado = ` <span style="color: #dc3545; font-weight: bold; margin-left: 10px;">📝 Modificado ${numeroModificacion}</span>`;
                 console.log(`[MOD-LIST] Snapshot modificado detectado para presupuesto ${presupuesto.presupuesto_id} - Numero de modificacion: ${numeroModificacion}`);
             }
-            
+
             // Parte clickeable (info + icono)
             const clickeableDiv = document.createElement('div');
             clickeableDiv.style.display = 'flex';
@@ -413,29 +414,29 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             clickeableDiv.style.flex = '1';
             clickeableDiv.style.cursor = 'pointer';
             clickeableDiv.style.gap = '10px';
-            
+
             const iconSpan = document.createElement('span');
             iconSpan.textContent = '▼';
             iconSpan.style.fontSize = '1.2em';
             iconSpan.style.transition = 'transform 0.3s ease';
-            
+
             const estadoSpan = document.createElement('span');
             estadoSpan.className = `indicador-estado ${estadoClass}`;
             estadoSpan.textContent = estadoPresupuesto;
             estadoSpan.style.marginRight = '10px';
-            
+
             const infoSpan = document.createElement('span');
             infoSpan.innerHTML = `<strong>Presupuesto ${presupuesto.presupuesto_id}</strong> <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span> <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>${textoModificado}`;
-            
+
             clickeableDiv.appendChild(iconSpan);
             clickeableDiv.appendChild(estadoSpan);
             clickeableDiv.appendChild(infoSpan);
-            
+
             // Contenedor de botones del presupuesto
             const botonesPresupuesto = document.createElement('div');
             botonesPresupuesto.style.display = 'flex';
             botonesPresupuesto.style.gap = '8px';
-            
+
             // Botón imprimir (solo en acordeón "Imprimir")
             if (containerId === 'pedidos-imprimir') {
                 const btnImprimirPresup = document.createElement('button');
@@ -449,7 +450,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 });
                 botonesPresupuesto.appendChild(btnImprimirPresup);
             }
-            
+
             // Botón verificar (solo en acordeón "Armar Pedido")
             if (containerId === 'pedidos-armar') {
                 const btnVerificarPresup = document.createElement('button');
@@ -464,7 +465,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 });
                 botonesPresupuesto.appendChild(btnVerificarPresup);
             }
-            
+
             // NUEVO: Botón "Retira Depósito" (solo en acordeón "Pedido Listo")
             if (containerId === 'pedidos-listo') {
                 const btnRetiraDeposito = document.createElement('button');
@@ -479,7 +480,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 });
                 botonesPresupuesto.appendChild(btnRetiraDeposito);
             }
-            
+
             // NUEVO: Botón "Volver a Reparto" (solo en acordeón "Retira por Depósito")
             if (containerId === 'pedidos-retira') {
                 const btnVolverReparto = document.createElement('button');
@@ -494,8 +495,25 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     await revertirRetiraDeposito(presupuesto.presupuesto_id, cliente.cliente_id);
                 });
                 botonesPresupuesto.appendChild(btnVolverReparto);
+
+                // NUEVO: Botón "Entregado" (solo en acordeón "Retira por Depósito")
+                const btnEntregado = document.createElement('button');
+                btnEntregado.textContent = '✅ Entregado';
+                btnEntregado.className = 'admin-button';
+                btnEntregado.style.padding = '6px 12px';
+                btnEntregado.style.fontSize = '12px';
+                btnEntregado.style.background = '#28a745'; // Verde
+                btnEntregado.style.color = '#fff';
+                btnEntregado.style.marginLeft = '8px'; // Separación
+                btnEntregado.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    // Usar el ID numérico local si está disponible, sino usar el ID regular (fallback)
+                    const idPresupuesto = presupuesto.id_presupuesto_local || presupuesto.presupuesto_id;
+                    await marcarPresupuestoEntregado(idPresupuesto, cliente.cliente_id);
+                });
+                botonesPresupuesto.appendChild(btnEntregado);
             }
-            
+
             const presupuestoId = `presupuesto-${containerId}-${cliente.cliente_id}-${idx}`;
             clickeableDiv.addEventListener('click', () => {
                 const contenidoPresup = document.getElementById(presupuestoId);
@@ -607,7 +625,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
 
         // Calcular artículos faltantes de todos los presupuestos
         const articulosFaltantes = cliente.articulos.filter(art => art.faltante > 0);
-        
+
         if (articulosFaltantes.length > 0) {
             const btnAsignar = document.createElement('button');
             btnAsignar.textContent = `Asignar Faltantes (${articulosFaltantes.length})`;
@@ -643,23 +661,23 @@ function renderPedidosCliente(pedidos) {
                 container.innerHTML = '<p class="mensaje-info">No hay pedidos pendientes para la fecha seleccionada.</p>';
             }
         });
-        
+
         // Resetear contadores
         actualizarContadoresSecuencia({ imprimir: [], armar_pedido: [], pedido_listo: [] });
         return;
     }
 
     console.log('🔍 Renderizando pedidos por cliente con agrupación por secuencia...');
-    
+
     // Agrupar por secuencia
     const grupos = agruparPresupuestosPorSecuencia(pedidos);
-    
+
     // Renderizar cada grupo en su contenedor
     renderizarGrupoSecuencia('pedidos-imprimir', grupos.imprimir, 'Imprimir / Imprimir Modificado');
     renderizarGrupoSecuencia('pedidos-armar', grupos.armar_pedido, 'Armar Pedido');
     renderizarGrupoSecuencia('pedidos-listo', grupos.pedido_listo, 'Pedido Listo');
     renderizarGrupoSecuencia('pedidos-retira', grupos.retira_deposito, 'Retira por Depósito'); // NUEVO
-    
+
     // Actualizar contadores en títulos
     actualizarContadoresSecuencia(grupos);
 }
@@ -675,7 +693,7 @@ function calcularIndicadorEstado(articulo) {
 function toggleAcordeon(clienteId, containerId) {
     // Buscar el contenido con ID único por sección
     const contenido = document.getElementById(`contenido-${containerId}-${clienteId}`);
-    
+
     if (contenido) {
         if (contenido.style.display === 'block') {
             contenido.style.display = 'none';
@@ -690,42 +708,42 @@ function toggleAcordeon(clienteId, containerId) {
 // Función para abrir acordeon del cliente DENTRO de una sección específica
 function abrirAcordeonEnSeccion(clienteId, containerId) {
     console.log(`🔍 [DEBUG] Iniciando abrirAcordeonEnSeccion(${clienteId}, ${containerId})`);
-    
+
     // PASO 1: Expandir el acordeón del cliente
     const contenidoId = `contenido-${containerId}-${clienteId}`;
     const contenido = document.getElementById(contenidoId);
-    
+
     console.log(`🔍 [DEBUG] Buscando contenido con ID: ${contenidoId}`);
     console.log(`🔍 [DEBUG] Contenido encontrado:`, contenido ? 'SÍ' : 'NO');
-    
+
     if (contenido) {
         const displayAntes = contenido.style.display;
         contenido.style.display = 'block';
         const displayDespues = contenido.style.display;
-        
+
         console.log(`✅ [DEBUG] Acordeón del cliente expandido - Display: ${displayAntes} → ${displayDespues}`);
-        
+
         // PASO 2: Expandir todos los presupuestos dentro del cliente (solo en "Armar Pedido")
         if (containerId === 'pedidos-armar') {
             setTimeout(() => {
                 // Buscar todos los divs de presupuesto dentro del contenido del cliente
                 const presupuestoDivs = contenido.querySelectorAll('div[style*="margin-bottom: 15px"]');
                 console.log(`🔍 [DEBUG] Divs de presupuesto encontrados: ${presupuestoDivs.length}`);
-                
+
                 // Buscar todos los contenidos de presupuesto con el patrón correcto (presupuesto-containerId-clienteId-*)
                 const presupuestosContenido = contenido.querySelectorAll(`[id^="presupuesto-${containerId}-${clienteId}-"]`);
                 console.log(`🔍 [DEBUG] Contenidos de presupuesto encontrados: ${presupuestosContenido.length}`);
-                
+
                 presupuestosContenido.forEach((presupuestoContenido, idx) => {
                     // Expandir el contenido del presupuesto
                     presupuestoContenido.style.display = 'block';
-                    
+
                     // Buscar el header del presupuesto (es el previousElementSibling)
                     const presupuestoHeader = presupuestoContenido.previousElementSibling;
                     if (presupuestoHeader) {
                         // Buscar el div clickeable dentro del header (el primero)
                         const clickeableDiv = presupuestoHeader.querySelector('div[style*="cursor: pointer"]');
-                        
+
                         // Buscar el icono dentro del clickeable div
                         const iconSpan = clickeableDiv ? clickeableDiv.querySelector('span') : presupuestoHeader.querySelector('span');
                         if (iconSpan) {
@@ -733,14 +751,14 @@ function abrirAcordeonEnSeccion(clienteId, containerId) {
                         }
                         presupuestoHeader.style.backgroundColor = '#e9ecef';
                     }
-                    
+
                     console.log(`   ✅ [DEBUG] Presupuesto ${idx} expandido: ${presupuestoContenido.id}`);
                 });
             }, 200);
         }
     } else {
         console.error(`❌ [DEBUG] No se encontró contenido con ID: ${contenidoId}`);
-        
+
         // Listar todos los IDs de contenido en el DOM para debugging
         const todosLosContenidos = document.querySelectorAll('.cliente-contenido');
         console.log(`🔍 [DEBUG] Total de contenidos en el DOM: ${todosLosContenidos.length}`);
@@ -754,7 +772,7 @@ function abrirAcordeonEnSeccion(clienteId, containerId) {
 function forzarExpandirSeccion(sectionId) {
     const content = document.getElementById(sectionId);
     const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
-    
+
     if (content && content.style.display === 'none') {
         // Expandir
         content.style.display = 'block';
@@ -763,11 +781,11 @@ function forzarExpandirSeccion(sectionId) {
         if (button) {
             button.setAttribute('aria-expanded', 'true');
         }
-        
+
         setTimeout(() => {
             content.classList.remove('expanding');
         }, 300);
-        
+
         console.log(`📂 Sección ${sectionId} expandida`);
     } else if (content) {
         console.log(`📂 Sección ${sectionId} ya estaba expandida`);
@@ -780,7 +798,7 @@ function mostrarModalAsignarFaltantes(clienteId, articulosFaltantes) {
     const usuarioSelect = document.getElementById('usuario-asignar');
     const mensaje = document.getElementById('modal-mensaje');
     const listaFaltantes = document.getElementById('articulos-faltantes-lista');
-    
+
     mensaje.textContent = '';
     usuarioSelect.innerHTML = '';
     listaFaltantes.innerHTML = '';
@@ -852,7 +870,7 @@ async function confirmarAsignacionFaltantes() {
     // Recopilar artículos faltantes de los inputs
     const inputs = listaFaltantes.querySelectorAll('input[type="number"]');
     const articulosFaltantes = [];
-    
+
     inputs.forEach(input => {
         const cantidadFaltante = parseInt(input.value);
         if (cantidadFaltante > 0) {
@@ -911,7 +929,7 @@ async function confirmarAsignacionFaltantes() {
 async function actualizarSecuenciaPresupuestos(presupuestosIds) {
     try {
         console.log(`🔄 Actualizando secuencia de ${presupuestosIds.length} presupuestos a "Armar_Pedido"...`);
-        
+
         const response = await fetch(`${base}/actualizar-secuencia`, {
             method: 'POST',
             headers: {
@@ -922,9 +940,9 @@ async function actualizarSecuenciaPresupuestos(presupuestosIds) {
                 nueva_secuencia: 'Armar_Pedido'
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok && data.success) {
             console.log(`✅ Secuencia actualizada: ${data.actualizados} presupuestos`);
             return true;
@@ -946,7 +964,7 @@ async function actualizarSecuenciaPresupuestos(presupuestosIds) {
  */
 function obtenerPresupuestosDeCliente(clienteId, secuenciasFiltro = null) {
     const presupuestosIds = new Set();
-    
+
     // Buscar en los datos cargados
     if (window.clientesPedidos && window.clientesPedidos.length > 0) {
         const cliente = window.clientesPedidos.find(c => c.cliente_id === clienteId);
@@ -966,7 +984,7 @@ function obtenerPresupuestosDeCliente(clienteId, secuenciasFiltro = null) {
             });
         }
     }
-    
+
     return Array.from(presupuestosIds);
 }
 
@@ -977,19 +995,19 @@ function obtenerPresupuestosDeCliente(clienteId, secuenciasFiltro = null) {
  */
 function obtenerTodosLosPresupuestosExternos(secuenciasFiltro = null) {
     const presupuestosIdsExternos = new Set();
-    
+
     console.log(`📋 [OBTENER-PRESUP-EXT] Filtro de secuencias:`, secuenciasFiltro || 'NINGUNO (todos)');
-    
+
     if (window.clientesPedidos && window.clientesPedidos.length > 0) {
         window.clientesPedidos.forEach(cliente => {
             if (cliente.articulos) {
                 // Agrupar por presupuesto_id para obtener id_presupuesto_ext único
                 const presupuestosMap = new Map();
-                
+
                 cliente.articulos.forEach(art => {
                     // Si hay filtro de secuencias, verificar que el artículo pertenezca a alguna
                     const secuenciaArticulo = (art.secuencia || 'Imprimir').trim();
-                    
+
                     if (secuenciasFiltro && secuenciasFiltro.length > 0) {
                         if (secuenciasFiltro.includes(secuenciaArticulo)) {
                             if (art.presupuesto_id && !presupuestosMap.has(art.presupuesto_id)) {
@@ -1008,21 +1026,21 @@ function obtenerTodosLosPresupuestosExternos(secuenciasFiltro = null) {
             }
         });
     }
-    
+
     const resultado = Array.from(presupuestosIdsExternos);
     console.log(`📋 [OBTENER-PRESUP-EXT] IDs externos encontrados: ${resultado.length}`, resultado);
-    
+
     return resultado;
 }
 
 // Función para imprimir todos los presupuestos de un cliente
 async function imprimirPresupuestoCliente(clienteId) {
     console.log(`📄 Imprimiendo presupuestos del cliente ${clienteId}...`);
-    
+
     // 1. Obtener IDs de presupuestos del cliente
     const presupuestosIds = obtenerPresupuestosDeCliente(clienteId);
     console.log(`📋 Presupuestos a imprimir: ${presupuestosIds.length}`);
-    
+
     // 2. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=html`;
@@ -1034,7 +1052,7 @@ async function imprimirPresupuestoCliente(clienteId) {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
-    
+
     // 3. Actualizar secuencia a "Armar_Pedido"
     if (presupuestosIds.length > 0) {
         const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
@@ -1042,11 +1060,11 @@ async function imprimirPresupuestoCliente(clienteId) {
             // Recargar datos y expandir sección "Armar Pedido" + cliente
             setTimeout(() => {
                 cargarPedidosPorCliente();
-                
+
                 setTimeout(() => {
                     console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
                     forzarExpandirSeccion('pedidos-armar-section');
-                    
+
                     // Expandir el cliente DENTRO de la sección "Armar Pedido"
                     setTimeout(() => {
                         abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
@@ -1060,7 +1078,7 @@ async function imprimirPresupuestoCliente(clienteId) {
 // Función para imprimir un presupuesto individual
 async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     console.log(`📄 Imprimiendo presupuesto individual: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
-    
+
     // 1. Abrir impresión
     const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf`;
     const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html`;
@@ -1072,18 +1090,18 @@ async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
-    
+
     // 2. Actualizar secuencia a "Armar_Pedido"
     const actualizado = await actualizarSecuenciaPresupuestos([presupuestoId]);
     if (actualizado) {
         // Recargar datos y expandir sección "Armar Pedido" + cliente
         setTimeout(() => {
             cargarPedidosPorCliente();
-            
+
             setTimeout(() => {
                 console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
                 forzarExpandirSeccion('pedidos-armar-section');
-                
+
                 // Expandir el cliente DENTRO de la sección "Armar Pedido"
                 setTimeout(() => {
                     abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
@@ -1096,21 +1114,21 @@ async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
 // Función para imprimir TODOS los presupuestos del acordeón "Imprimir / Imprimir Modificado"
 async function imprimirTodosLosPresupuestos(fechaCorte) {
     console.log(`📄 [IMPRIMIR-TODOS] Imprimiendo presupuestos del acordeón "Imprimir / Imprimir Modificado"`);
-    
+
     // 1. Obtener IDs EXTERNOS de presupuestos SOLO del acordeón "Imprimir / Imprimir Modificado"
     const secuenciasFiltro = ['Imprimir', 'Imprimir_Modificado'];
     const presupuestosIdsExternos = obtenerTodosLosPresupuestosExternos(secuenciasFiltro);
-    
+
     console.log(`📋 [IMPRIMIR-TODOS] IDs externos filtrados: ${presupuestosIdsExternos.length}`, presupuestosIdsExternos);
-    
+
     if (presupuestosIdsExternos.length === 0) {
         alert('No hay presupuestos para imprimir en el acordeón "Imprimir / Imprimir Modificado"');
         return;
     }
-    
+
     // 2. Construir lista de IDs externos para pasar al backend (igual que botón individual)
     const idsParam = presupuestosIdsExternos.join(',');
-    
+
     // 3. Abrir impresión usando el MISMO FORMATO que el botón individual
     // El botón individual usa: cliente_id + presupuesto_id (id_presupuesto_ext)
     // Para "todos", usamos: fecha + presupuestos_ext_ids
@@ -1126,7 +1144,7 @@ async function imprimirTodosLosPresupuestos(fechaCorte) {
             window.open(urlHtml, '_blank');
         }
     }, 2000);
-    
+
     // 4. Actualizar secuencia a "Armar_Pedido" (usa IDs externos)
     if (presupuestosIdsExternos.length > 0) {
         const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIdsExternos);
@@ -1193,7 +1211,7 @@ async function cargarPedidosArticulos() {
     const contenedor = document.getElementById('articulos-container');
     const totalesDiv = document.getElementById('totales-articulos');
     const fechaCorte = document.getElementById('fecha-corte-articulos').value;
-    
+
     contenedor.innerHTML = '<p class="mensaje-info">Cargando artículos...</p>';
     totalesDiv.innerHTML = '';
 
@@ -1207,11 +1225,11 @@ async function cargarPedidosArticulos() {
         if (!data.success) {
             throw new Error(data.message || 'Error en la respuesta del servidor');
         }
-        
+
         // Guardar datos originales para filtrado
         window.articulosOriginales = data.data;
         window.totalesOriginales = data.totales;
-        
+
         renderPedidosArticulos(data.data, data.totales);
     } catch (error) {
         contenedor.innerHTML = `<p class="mensaje-error">${error.message}</p>`;
@@ -1226,7 +1244,7 @@ async function cargarPedidosArticulos() {
 function renderPedidosArticulos(articulos, totales) {
     const contenedor = document.getElementById('articulos-container');
     const totalesDiv = document.getElementById('totales-articulos');
-    
+
     // Renderizar totales por estado
     if (totales) {
         totalesDiv.innerHTML = `
@@ -1236,7 +1254,7 @@ function renderPedidosArticulos(articulos, totales) {
             <span style="margin-left: 20px; color: #666;">Total: ${articulos.length} artículos</span>
         `;
     }
-    
+
     if (!articulos || articulos.length === 0) {
         contenedor.innerHTML = '<p class="mensaje-info">No hay artículos para la fecha seleccionada.</p>';
         return;
@@ -1299,11 +1317,11 @@ function renderPedidosArticulos(articulos, totales) {
         indicador.textContent = articulo.estado;
         tdEstado.appendChild(indicador);
         tr.appendChild(tdEstado);
-        
+
         // Columna de acciones con botón Pack
         const tdAcciones = document.createElement('td');
         tdAcciones.onclick = (e) => e.stopPropagation();
-        
+
         const btnPack = document.createElement('button');
         btnPack.className = 'pack-button pack-config-btn';
         btnPack.textContent = '🧩 Pack';
@@ -1352,12 +1370,12 @@ function filtrarPedidosArticulos() {
 
     const filtroTexto = document.getElementById('buscar-articulo').value.toLowerCase();
     const filtroEstado = document.getElementById('filtro-estado-articulos').value;
-    
+
     let articulosFiltrados = window.articulosOriginales;
 
     // Filtro por texto (artículo o descripción)
     if (filtroTexto.trim()) {
-        articulosFiltrados = articulosFiltrados.filter(art => 
+        articulosFiltrados = articulosFiltrados.filter(art =>
             art.articulo_numero.toLowerCase().includes(filtroTexto) ||
             (art.descripcion && art.descripcion.toLowerCase().includes(filtroTexto))
         );
@@ -1365,7 +1383,7 @@ function filtrarPedidosArticulos() {
 
     // Filtro por estado
     if (filtroEstado && filtroEstado !== 'todos') {
-        articulosFiltrados = articulosFiltrados.filter(art => 
+        articulosFiltrados = articulosFiltrados.filter(art =>
             art.estado.toLowerCase() === filtroEstado.toLowerCase()
         );
     }
@@ -1407,15 +1425,15 @@ let estadoVerificacion = {
  */
 function abrirModalArmarPedido(clienteId, presupuestoId) {
     console.log(`🔍 Abriendo modal de verificación: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
-    
+
     // Obtener artículos del presupuesto
     const articulos = obtenerArticulosPresupuesto(clienteId, presupuestoId);
-    
+
     if (!articulos || articulos.length === 0) {
         alert('No se encontraron artículos para este presupuesto');
         return;
     }
-    
+
     // Inicializar estado
     estadoVerificacion = {
         presupuesto_id: presupuestoId,
@@ -1428,19 +1446,19 @@ function abrirModalArmarPedido(clienteId, presupuestoId) {
         articulosConfirmados: 0,
         totalArticulos: articulos.length
     };
-    
+
     // Actualizar título del modal
     const titulo = document.getElementById('modal-presupuesto-titulo');
     if (titulo) {
         titulo.textContent = `Presupuesto ${presupuestoId}`;
     }
-    
+
     // Renderizar tabla de artículos
     renderizarTablaVerificacion();
-    
+
     // Actualizar progreso
     actualizarProgreso();
-    
+
     // Limpiar campo de escaneo y feedback
     const scannerInput = document.getElementById('scanner-input');
     const feedback = document.getElementById('scanner-feedback');
@@ -1452,10 +1470,10 @@ function abrirModalArmarPedido(clienteId, presupuestoId) {
         feedback.className = 'feedback-message';
         feedback.style.display = 'none';
     }
-    
+
     // Configurar listener para el campo de escaneo
     configurarScannerInput();
-    
+
     // Mostrar modal
     const modal = document.getElementById('modal-armar-pedido');
     if (modal) {
@@ -1468,10 +1486,10 @@ function abrirModalArmarPedido(clienteId, presupuestoId) {
  */
 function obtenerArticulosPresupuesto(clienteId, presupuestoId) {
     if (!window.clientesPedidos) return [];
-    
+
     const cliente = window.clientesPedidos.find(c => c.cliente_id === clienteId);
     if (!cliente || !cliente.articulos) return [];
-    
+
     // Filtrar artículos que pertenecen al presupuesto
     return cliente.articulos.filter(art => art.presupuesto_id === presupuestoId);
 }
@@ -1482,36 +1500,36 @@ function obtenerArticulosPresupuesto(clienteId, presupuestoId) {
 function renderizarTablaVerificacion() {
     const tbody = document.getElementById('lista-articulos-verificacion');
     if (!tbody) return;
-    
+
     tbody.innerHTML = '';
-    
+
     estadoVerificacion.articulos.forEach((articulo, index) => {
         const tr = document.createElement('tr');
         tr.className = articulo.confirmado ? 'articulo-confirmado' : 'articulo-pendiente';
         tr.id = `articulo-row-${index}`;
-        
+
         // Estado
         const tdEstado = document.createElement('td');
         tdEstado.className = 'estado-check';
         tdEstado.textContent = articulo.confirmado ? '✅' : '⏳';
         tr.appendChild(tdEstado);
-        
+
         // Código
         const tdCodigo = document.createElement('td');
         tdCodigo.textContent = articulo.articulo_numero;
         tr.appendChild(tdCodigo);
-        
+
         // Descripción
         const tdDescripcion = document.createElement('td');
         tdDescripcion.textContent = articulo.descripcion || '-';
         tr.appendChild(tdDescripcion);
-        
+
         // Cantidad Pedida
         const tdPedida = document.createElement('td');
         tdPedida.textContent = articulo.pedido_total;
         tdPedida.style.textAlign = 'center';
         tr.appendChild(tdPedida);
-        
+
         // Cantidad Confirmada
         const tdConfirmada = document.createElement('td');
         const inputConfirmada = document.createElement('input');
@@ -1527,7 +1545,7 @@ function renderizarTablaVerificacion() {
         });
         tdConfirmada.appendChild(inputConfirmada);
         tr.appendChild(tdConfirmada);
-        
+
         // Acciones
         const tdAcciones = document.createElement('td');
         const btnMarcar = document.createElement('button');
@@ -1538,7 +1556,7 @@ function renderizarTablaVerificacion() {
         });
         tdAcciones.appendChild(btnMarcar);
         tr.appendChild(tdAcciones);
-        
+
         tbody.appendChild(tr);
     });
 }
@@ -1549,11 +1567,11 @@ function renderizarTablaVerificacion() {
 function configurarScannerInput() {
     const scannerInput = document.getElementById('scanner-input');
     if (!scannerInput) return;
-    
+
     // Remover listeners anteriores
     const newInput = scannerInput.cloneNode(true);
     scannerInput.parentNode.replaceChild(newInput, scannerInput);
-    
+
     // Agregar nuevo listener
     newInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
@@ -1572,28 +1590,28 @@ function configurarScannerInput() {
  */
 function procesarCodigoEscaneado(codigo) {
     console.log(`🔍 Código escaneado: ${codigo}`);
-    
+
     // Buscar artículo en la lista
-    const index = estadoVerificacion.articulos.findIndex(art => 
+    const index = estadoVerificacion.articulos.findIndex(art =>
         art.articulo_numero === codigo || art.articulo_numero.toString() === codigo
     );
-    
+
     const feedback = document.getElementById('scanner-feedback');
-    
+
     if (index !== -1) {
         // Artículo encontrado
         const articulo = estadoVerificacion.articulos[index];
-        
+
         // Incrementar cantidad confirmada en 1 (no marcar completo directamente)
         const nuevaCantidad = articulo.cantidad_confirmada + 1;
-        
+
         if (nuevaCantidad > articulo.pedido_total) {
             // Ya se escaneó la cantidad completa
             mostrarFeedback(`⚠️ Artículo ${codigo} ya tiene ${articulo.cantidad_confirmada}/${articulo.pedido_total} confirmados`, 'error');
         } else {
             // Incrementar en 1
             marcarArticuloConfirmado(index, nuevaCantidad);
-            
+
             // Feedback diferenciado según si completó o no
             if (nuevaCantidad >= articulo.pedido_total) {
                 mostrarFeedback(`✅ Artículo ${codigo} COMPLETO (${nuevaCantidad}/${articulo.pedido_total})`, 'success');
@@ -1613,17 +1631,17 @@ function procesarCodigoEscaneado(codigo) {
 function marcarArticuloConfirmado(index, cantidad) {
     const articulo = estadoVerificacion.articulos[index];
     const cantidadAnterior = articulo.cantidad_confirmada;
-    
+
     articulo.cantidad_confirmada = cantidad;
     articulo.confirmado = (cantidad >= articulo.pedido_total);
-    
+
     // Si cambió el estado de confirmación, actualizar contador
     if (!articulo.confirmado && cantidadAnterior >= articulo.pedido_total) {
         estadoVerificacion.articulosConfirmados--;
     } else if (articulo.confirmado && cantidadAnterior < articulo.pedido_total) {
         estadoVerificacion.articulosConfirmados++;
     }
-    
+
     // Actualizar fila en la tabla
     const row = document.getElementById(`articulo-row-${index}`);
     if (row) {
@@ -1632,17 +1650,17 @@ function marcarArticuloConfirmado(index, cantidad) {
         if (estadoCell) {
             estadoCell.textContent = articulo.confirmado ? '✅' : '⏳';
         }
-        
+
         // Actualizar input de cantidad
         const input = row.querySelector('input[type="number"]');
         if (input) {
             input.value = cantidad;
         }
     }
-    
+
     // Actualizar progreso
     actualizarProgreso();
-    
+
     // Verificar si se puede habilitar el botón de confirmar
     verificarEstadoCompleto();
 }
@@ -1653,13 +1671,13 @@ function marcarArticuloConfirmado(index, cantidad) {
 function actualizarProgreso() {
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
-    
+
     const porcentaje = (estadoVerificacion.articulosConfirmados / estadoVerificacion.totalArticulos) * 100;
-    
+
     if (progressFill) {
         progressFill.style.width = `${porcentaje}%`;
     }
-    
+
     if (progressText) {
         progressText.textContent = `${estadoVerificacion.articulosConfirmados} de ${estadoVerificacion.totalArticulos} artículos confirmados`;
     }
@@ -1671,10 +1689,10 @@ function actualizarProgreso() {
 function verificarEstadoCompleto() {
     const btnConfirmar = document.getElementById('btn-confirmar-pedido-completo');
     if (!btnConfirmar) return;
-    
+
     const todosConfirmados = estadoVerificacion.articulosConfirmados === estadoVerificacion.totalArticulos;
     btnConfirmar.disabled = !todosConfirmados;
-    
+
     if (todosConfirmados) {
         console.log('✅ Todos los artículos confirmados - Botón habilitado');
     }
@@ -1686,11 +1704,11 @@ function verificarEstadoCompleto() {
 function mostrarFeedback(mensaje, tipo) {
     const feedback = document.getElementById('scanner-feedback');
     if (!feedback) return;
-    
+
     feedback.textContent = mensaje;
     feedback.className = `feedback-message feedback-${tipo}`;
     feedback.style.display = 'block';
-    
+
     // Ocultar después de 3 segundos
     setTimeout(() => {
         feedback.style.display = 'none';
@@ -1702,13 +1720,13 @@ function mostrarFeedback(mensaje, tipo) {
  */
 async function confirmarPedidoCompleto() {
     console.log('✅ Confirmando pedido completo...');
-    
+
     // Verificar que todos estén confirmados
     if (estadoVerificacion.articulosConfirmados !== estadoVerificacion.totalArticulos) {
         alert('Debe confirmar todos los artículos antes de completar el pedido');
         return;
     }
-    
+
     // Actualizar secuencia a "Pedido_Listo"
     try {
         const response = await fetch(`${base}/actualizar-secuencia`, {
@@ -1721,18 +1739,18 @@ async function confirmarPedidoCompleto() {
                 nueva_secuencia: 'Pedido_Listo'
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok && data.success) {
             console.log(`✅ Pedido marcado como listo`);
-            
+
             // Cerrar modal
             cerrarModalArmarPedido();
-            
+
             // Mostrar mensaje de éxito
             mostrarToast('✅ Pedido verificado y marcado como listo', 'success');
-            
+
             // Recargar datos
             setTimeout(() => {
                 cargarPedidosPorCliente();
@@ -1754,7 +1772,7 @@ function cerrarModalArmarPedido() {
     if (modal) {
         modal.style.display = 'none';
     }
-    
+
     // Limpiar estado
     estadoVerificacion = {
         presupuesto_id: null,
@@ -1781,15 +1799,15 @@ function mostrarToast(texto, tipo = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast ${tipo === 'error' ? 'error' : ''}`;
     toast.textContent = texto;
-    
+
     // Agregar al DOM
     document.body.appendChild(toast);
-    
+
     // Mostrar con animación
     setTimeout(() => {
         toast.classList.add('show');
     }, 100);
-    
+
     // Ocultar y remover después de 3 segundos
     setTimeout(() => {
         toast.classList.remove('show');
@@ -1817,56 +1835,56 @@ window.cargarPedidosArticulos = cargarPedidosArticulos;
  */
 async function cargarPresupuestosStandBy() {
     console.log('🔍 [STANDBY] Cargando presupuestos sin confirmar...');
-    
+
     const contenedor = document.getElementById('pedidos-standby-container');
     const contador = document.getElementById('contador-standby');
-    
+
     if (!contenedor) {
         console.error('❌ [STANDBY] No se encontró contenedor pedidos-standby-container');
         return;
     }
-    
+
     // Mostrar loading
     contenedor.innerHTML = '<p class="mensaje-info">Cargando presupuestos...</p>';
     if (contador) contador.textContent = '0';
-    
+
     try {
         // Llamar al endpoint de presupuestos con filtro por estado
         // IMPORTANTE: El módulo de presupuestos corre en puerto 3003
         const response = await fetch('http://localhost:3003/api/presupuestos?estado=Muestra de Fraccionados');
-        
+
         if (!response.ok) {
             throw new Error(`Error HTTP: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log('📊 [STANDBY] Respuesta del servidor:', data);
-        
+
         if (!data.success) {
             throw new Error(data.message || 'Error al cargar presupuestos');
         }
-        
+
         const presupuestos = data.data || [];
         console.log(`✅ [STANDBY] Presupuestos recibidos: ${presupuestos.length}`);
-        
+
         // Actualizar contador
         if (contador) {
             contador.textContent = presupuestos.length;
         }
-        
+
         // Si no hay presupuestos, mostrar mensaje
         if (presupuestos.length === 0) {
             contenedor.innerHTML = '<p class="mensaje-info">No hay presupuestos sin confirmar</p>';
             return;
         }
-        
+
         // Obtener detalles de cada presupuesto (artículos)
         const presupuestosConDetalles = await Promise.all(
             presupuestos.map(async (presup) => {
                 try {
                     const detallesResponse = await fetch(`http://localhost:3003/api/presupuestos/${presup.id}/detalles`);
                     const detallesData = await detallesResponse.json();
-                    
+
                     if (detallesData.success && detallesData.data && detallesData.data.detalles) {
                         return {
                             ...presup,
@@ -1880,9 +1898,9 @@ async function cargarPresupuestosStandBy() {
                 }
             })
         );
-        
+
         console.log('📊 [STANDBY] Presupuestos con detalles obtenidos');
-        
+
         // Obtener stock de todos los artículos en una sola consulta
         const todosLosArticulos = new Set();
         presupuestosConDetalles.forEach(presup => {
@@ -1893,14 +1911,14 @@ async function cargarPresupuestosStandBy() {
                 });
             }
         });
-        
+
         // Transformar al formato esperado por renderizarGrupoSecuencia
         // NO consultamos stock para Stand By - solo mostramos los artículos del presupuesto
         const clientesMap = new Map();
-        
+
         presupuestosConDetalles.forEach(presup => {
             const clienteKey = presup.concepto || 'Sin cliente';
-            
+
             if (!clientesMap.has(clienteKey)) {
                 clientesMap.set(clienteKey, {
                     cliente_id: clienteKey,
@@ -1908,14 +1926,14 @@ async function cargarPresupuestosStandBy() {
                     articulos: []
                 });
             }
-            
+
             // Agregar los artículos reales del presupuesto
             // Para Stand By: solo mostrar artículo, descripción y cantidad
             if (presup.articulos && presup.articulos.length > 0) {
                 presup.articulos.forEach(art => {
                     const cantidad = art.cantidad || 0;
                     const codigoArticulo = art.articulo || art.codigo;
-                    
+
                     clientesMap.get(clienteKey).articulos.push({
                         presupuesto_id: presup.id,
                         presupuesto_fecha: presup.fecha_registro,
@@ -1932,21 +1950,21 @@ async function cargarPresupuestosStandBy() {
                 });
             }
         });
-        
+
         const clientesArray = Array.from(clientesMap.values());
-        
+
         // Calcular totales por cliente
         clientesArray.forEach(cliente => {
             const presupuestosUnicos = new Set(cliente.articulos.map(art => art.presupuesto_id));
             cliente.total_articulos = cliente.articulos.length;
             cliente.total_presupuestos = presupuestosUnicos.size;
         });
-        
+
         // Renderizar usando la función existente
         renderizarGrupoSecuencia('pedidos-standby-container', clientesArray, 'Presupuestos sin Confirmar');
-        
+
         console.log('✅ [STANDBY] Presupuestos renderizados con formato estándar y artículos reales');
-        
+
     } catch (error) {
         console.error('❌ [STANDBY] Error al cargar presupuestos:', error);
         contenedor.innerHTML = `<p class="mensaje-error">Error: ${error.message}</p>`;
@@ -1968,14 +1986,14 @@ function escapeHtmlStandBy(text) {
  */
 function formatearFechaStandBy(dateString) {
     if (!dateString) return 'N/A';
-    
+
     try {
         // Para fechas YYYY-MM-DD (solo fecha)
         if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
             const [y, m, d] = dateString.split('-');
             return `${d}/${m}/${y} 00:00`;
         }
-        
+
         // Para fechas con hora
         const date = new Date(dateString);
         const day = String(date.getDate()).padStart(2, '0');
@@ -1983,7 +2001,7 @@ function formatearFechaStandBy(dateString) {
         const year = date.getFullYear();
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
-        
+
         return `${day}/${month}/${year} ${hours}:${minutes}`;
     } catch (error) {
         console.error('❌ Error al formatear fecha:', error);
@@ -2021,12 +2039,12 @@ function editarPresupuestoStandBy(presupuestoId) {
 // Cargar presupuestos sin confirmar al inicializar la página
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 [STANDBY] Inicializando carga de presupuestos sin confirmar...');
-    
+
     // Cargar después de 2 segundos para no interferir con otras cargas
     setTimeout(() => {
         cargarPresupuestosStandBy();
     }, 2000);
-    
+
     // Recargar cada 60 segundos para mantener actualizado
     setInterval(() => {
         cargarPresupuestosStandBy();
@@ -2050,13 +2068,13 @@ console.log('✅ [STANDBY] Módulo de presupuestos sin confirmar cargado');
  */
 async function marcarComoRetiraDeposito(presupuestoId, clienteId) {
     console.log(`🏪 [RETIRA-DEPOSITO] Marcando presupuesto ${presupuestoId} como "Retira por Depósito"`);
-    
+
     // Confirmar acción con el usuario
     if (!confirm('¿Marcar este presupuesto como "Retira por Depósito"?')) {
         console.log('🏪 [RETIRA-DEPOSITO] Acción cancelada por el usuario');
         return;
     }
-    
+
     try {
         // Llamar al endpoint para actualizar secuencia
         const response = await fetch(`${base}/actualizar-secuencia`, {
@@ -2069,24 +2087,24 @@ async function marcarComoRetiraDeposito(presupuestoId, clienteId) {
                 nueva_secuencia: 'Retira_Deposito'
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok && data.success) {
             console.log(`✅ [RETIRA-DEPOSITO] Presupuesto ${presupuestoId} marcado correctamente`);
-            
+
             // Mostrar mensaje de éxito
             mostrarToast('✅ Presupuesto marcado como "Retira por Depósito"', 'success');
-            
+
             // Recargar datos para reflejar el cambio
             setTimeout(() => {
                 cargarPedidosPorCliente();
-                
+
                 // Expandir sección "Retira por Depósito" después de recargar
                 setTimeout(() => {
                     console.log(`🔍 [RETIRA-DEPOSITO] Expandiendo sección "Retira por Depósito"...`);
                     forzarExpandirSeccion('pedidos-retira-section');
-                    
+
                     // Expandir el cliente DENTRO de la sección "Retira por Depósito"
                     setTimeout(() => {
                         abrirAcordeonEnSeccion(clienteId, 'pedidos-retira');
@@ -2111,13 +2129,13 @@ async function marcarComoRetiraDeposito(presupuestoId, clienteId) {
  */
 async function revertirRetiraDeposito(presupuestoId, clienteId) {
     console.log(`🔙 [REVERTIR-DEPOSITO] Revirtiendo presupuesto ${presupuestoId} a "Pedido Listo"`);
-    
+
     // Confirmar acción con el usuario
     if (!confirm('¿Volver este presupuesto a "Pedido Listo" para reparto?')) {
         console.log('🔙 [REVERTIR-DEPOSITO] Acción cancelada por el usuario');
         return;
     }
-    
+
     try {
         // Llamar al endpoint para actualizar secuencia
         const response = await fetch(`${base}/actualizar-secuencia`, {
@@ -2130,24 +2148,24 @@ async function revertirRetiraDeposito(presupuestoId, clienteId) {
                 nueva_secuencia: 'Pedido_Listo'
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok && data.success) {
             console.log(`✅ [REVERTIR-DEPOSITO] Presupuesto ${presupuestoId} revertido correctamente`);
-            
+
             // Mostrar mensaje de éxito
             mostrarToast('✅ Presupuesto devuelto a "Pedido Listo"', 'success');
-            
+
             // Recargar datos para reflejar el cambio
             setTimeout(() => {
                 cargarPedidosPorCliente();
-                
+
                 // Expandir sección "Pedido Listo" después de recargar
                 setTimeout(() => {
                     console.log(`🔍 [REVERTIR-DEPOSITO] Expandiendo sección "Pedido Listo"...`);
                     forzarExpandirSeccion('pedidos-listo-section');
-                    
+
                     // Expandir el cliente DENTRO de la sección "Pedido Listo"
                     setTimeout(() => {
                         abrirAcordeonEnSeccion(clienteId, 'pedidos-listo');
@@ -2167,5 +2185,44 @@ async function revertirRetiraDeposito(presupuestoId, clienteId) {
 // Exponer funciones globalmente
 window.marcarComoRetiraDeposito = marcarComoRetiraDeposito;
 window.revertirRetiraDeposito = revertirRetiraDeposito;
+
+/**
+ * Marca un presupuesto como ENTREGADO
+ */
+async function marcarPresupuestoEntregado(presupuestoId, clienteId) {
+    if (!confirm(`¿Marcar el presupuesto ${presupuestoId} como ENTREGADO?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/presupuestos/${presupuestoId}/estado`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                estado: 'Entregado',
+                estado_logistico: 'ENTREGADO_DEPOSITO'
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            mostrarToast('✅ Pedido marcado como entregado');
+
+            // Recargar la lista de pedidos
+            await cargarPedidosPorCliente();
+        } else {
+            throw new Error(data.error || 'Error al actualizar el estado');
+        }
+    } catch (error) {
+        console.error('Error al marcar entregado:', error);
+        mostrarToast('❌ Error: ' + error.message, 'error');
+    }
+}
+
+// Exponer la función globalmente
+window.marcarPresupuestoEntregado = marcarPresupuestoEntregado;
 
 console.log('✅ [RETIRA-DEPOSITO] Módulo de "Retira por Depósito" cargado');

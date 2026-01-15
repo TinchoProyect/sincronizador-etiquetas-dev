@@ -2,7 +2,40 @@ import {
   registrarMovimientoIngrediente,
   registrarMovimientoStockVentas
 } from './apiMovimientos.js';
+
 import { actualizarResumenIngredientes, obtenerResumenIngredientesCarro } from './carro.js';
+
+// Función cliente para solicitar impresión de etiqueta
+async function imprimirEtiquetaIngrediente(ingredienteId, nombre, cantidad, codigo, sector) {
+  console.log(`🖨️ [CLIENTE] Solicitando impresión de etiqueta: ${nombre}, ${cantidad}kg`);
+  try {
+    const response = await fetch('/api/produccion/ingredientes/imprimir-etiqueta', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        ingredienteId,
+        nombre,
+        cantidad,
+        codigo,
+        sector
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al imprimir etiqueta');
+    }
+
+    const data = await response.json();
+    console.log('✅ [CLIENTE] Impresión solicitada correctamente:', data);
+    return data;
+  } catch (error) {
+    console.error('❌ [CLIENTE] Error al solicitar impresión:', error);
+    throw error;
+  }
+}
 
 // Función para verificar si un ingrediente es compuesto (mix)
 async function verificarSiEsIngredienteCompuesto(ingredienteId) {
@@ -92,7 +125,7 @@ export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
       if (modalTitle) {
         modalTitle.textContent = esMix ? 'Ingreso Manual de Mix' : 'Ingreso Manual de Ingrediente';
       }
-      
+
       // 🆕 Cargar artículos sugeridos basados en el nombre del ingrediente
       cargarArticulosSugeridos(ingrediente.nombre);
     })
@@ -117,11 +150,11 @@ function inicializarModal() {
 
   console.log('🔧 [INIT] Iniciando inicialización del modal de ingreso manual...');
   console.log('🔧 [INIT] Estado del DOM:', document.readyState);
-  
+
   try {
     // 🛡️ PASO 1: Obtener referencias a elementos del DOM con validación
     console.log('🔍 [INIT] Buscando elementos del DOM...');
-    
+
     modal = document.getElementById('modalIngresoManual');
     if (!modal) {
       console.warn('⚠️ [INIT] Elemento no encontrado: modalIngresoManual - El modal no está disponible en esta página');
@@ -143,6 +176,84 @@ function inicializarModal() {
     } else {
       console.log('✅ [INIT] Botón toggle búsqueda encontrado');
     }
+
+    // ✅ NUEVO: Checkbox de impresión automática (Layout Horizontal Flex)
+    const checkboxImprimir = document.getElementById('checkImprimirEtiqueta');
+    if (!checkboxImprimir) {
+      console.log('🔧 Inyectando controles de impresión en Layout Horizontal...');
+      const footerModal = modal.querySelector('.modal-footer');
+      if (footerModal) {
+        // 1. Configurar Footer para Alineación Horizontal Perfecta
+        footerModal.style.display = 'flex';
+        footerModal.style.flexDirection = 'row';
+        footerModal.style.justifyContent = 'space-between';
+        footerModal.style.alignItems = 'center';
+        footerModal.style.padding = '8px 20px'; // Compacto
+        footerModal.style.minHeight = '60px';
+
+        // 2. Inyectar contenedor de opciones (Izquierda)
+        const divCheck = document.createElement('div');
+        divCheck.className = 'd-flex align-items-center';
+        divCheck.innerHTML = `
+            <style>
+              .impresion-group { display: flex; align-items: center; gap: 20px; }
+              .impresion-option { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+              .impresion-option input { width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: #0d6efd; }
+              .impresion-option label { margin: 0; font-size: 0.9rem; font-weight: 500; color: #495057; cursor: pointer; }
+              
+              /* Estilos forzados para botón */
+              #btnConfirmarIngreso { 
+                  margin: 0 !important; 
+                  height: 38px !important;
+                  padding: 0 25px !important;
+                  font-size: 1rem !important;
+                  display: flex; align-items: center; justify-content: center;
+              }
+              #btnCancelarIngreso { display: none !important; } /* Ocultar cancelar */
+              .botones-modal { margin: 0 !important; padding: 0 !important; }
+            </style>
+            <div class="impresion-group">
+                <div class="impresion-option" onclick="document.getElementById('checkImprimirEtiqueta').click()">
+                    <input class="form-check-input" type="checkbox" id="checkImprimirEtiqueta" checked onclick="event.stopPropagation()">
+                    <label for="checkImprimirEtiqueta">📦 Bultos</label>
+                </div>
+                <div class="impresion-option" onclick="document.getElementById('checkImprimirPorKilos').click()">
+                    <input class="form-check-input" type="checkbox" id="checkImprimirPorKilos" onclick="event.stopPropagation()">
+                    <label for="checkImprimirPorKilos">⚖️ Kilos</label>
+                </div>
+            </div>
+        `;
+
+        // 3. Insertar al inicio del footer
+        if (footerModal.firstChild) {
+          footerModal.insertBefore(divCheck, footerModal.firstChild);
+        } else {
+          footerModal.appendChild(divCheck);
+        }
+
+        // 4. Lógica de Exclusividad Mutua (Radio Behavior)
+        const checkBultos = document.getElementById('checkImprimirEtiqueta');
+        const checkKilos = document.getElementById('checkImprimirPorKilos');
+
+        if (checkBultos && checkKilos) {
+          checkBultos.addEventListener('change', function () {
+            if (this.checked) {
+              checkKilos.checked = false;
+              console.log('📦 Selección manual: Bultos activo -> Kilos desactivado');
+            }
+          });
+
+          checkKilos.addEventListener('change', function () {
+            if (this.checked) {
+              checkBultos.checked = false;
+              console.log('⚖️ Selección manual: Kilos activo -> Bultos desactivado');
+            }
+          });
+        }
+      }
+    }
+
+
 
     listaResultados = document.getElementById('listaArticulos');
     if (!listaResultados) {
@@ -296,7 +407,7 @@ function actualizarModoBusquedaUI() {
       btnToggleBusqueda.textContent = '🔫 Modo Lector';
       inputBusqueda.placeholder = 'Escribir nombre del artículo...';
     }
-    
+
     inputBusqueda.value = '';
     listaResultados.innerHTML = '';
     inputBusqueda.focus();
@@ -313,13 +424,13 @@ function limpiarCamposModal() {
     if (inputCantidad) inputCantidad.value = '1';
     if (listaResultados) listaResultados.innerHTML = '';
     if (nombreIngredienteDisplay) nombreIngredienteDisplay.textContent = '';
-    
+
     articuloSeleccionado = null;
     kilosUnidadOriginal = null;
-    
+
     // Resetear el estado del campo kilos y botón editar
     resetearEstadoCampoKilos();
-    
+
     // Resetear el estado del botón
     reactivarBotonConfirmar();
   } catch (error) {
@@ -331,27 +442,27 @@ function limpiarCamposModal() {
 function crearBotonEditarKilos() {
   try {
     console.log('🔧 [BOTÓN_EDITAR] Creando botón "Editar" para campo kilos...');
-    
+
     // Verificar si el botón ya existe
     if (btnEditarKilos) {
       console.log('ℹ️ [BOTÓN_EDITAR] Botón ya existe, no se crea duplicado');
       return;
     }
-    
+
     // Buscar el contenedor del input kilos
     const inputKilosContainer = inputKilos.parentElement;
     if (!inputKilosContainer) {
       console.warn('⚠️ [BOTÓN_EDITAR] No se encontró el contenedor del input kilos');
       return;
     }
-    
+
     // Crear el botón "Editar"
     btnEditarKilos = document.createElement('button');
     btnEditarKilos.type = 'button';
     btnEditarKilos.className = 'btn-editar-kilos';
     btnEditarKilos.innerHTML = '✎ Editar';
     btnEditarKilos.title = 'Habilitar edición manual del campo kilos';
-    
+
     // Estilos inline para el botón (discreto pero visible)
     btnEditarKilos.style.marginLeft = '8px';
     btnEditarKilos.style.padding = '4px 8px';
@@ -361,15 +472,15 @@ function crearBotonEditarKilos() {
     btnEditarKilos.style.borderRadius = '4px';
     btnEditarKilos.style.cursor = 'pointer';
     btnEditarKilos.style.color = '#6c757d';
-    
+
     // Event listener para el botón
     btnEditarKilos.addEventListener('click', habilitarEdicionKilos);
-    
+
     // Insertar el botón después del input kilos
     inputKilosContainer.appendChild(btnEditarKilos);
-    
+
     console.log('✅ [BOTÓN_EDITAR] Botón "Editar" creado correctamente');
-    
+
   } catch (error) {
     console.error('❌ [BOTÓN_EDITAR] Error al crear botón "Editar":', error);
   }
@@ -379,24 +490,24 @@ function crearBotonEditarKilos() {
 function habilitarEdicionKilos() {
   try {
     console.log('✎ [EDICIÓN_KILOS] Habilitando edición manual del campo kilos...');
-    
+
     // Habilitar el input
     inputKilos.disabled = false;
     inputKilos.style.backgroundColor = '';
     inputKilos.style.color = '';
     inputKilos.style.cursor = '';
-    
+
     // Ocultar el botón "Editar"
     if (btnEditarKilos) {
       btnEditarKilos.style.display = 'none';
     }
-    
+
     // Enfocar el input para facilitar la edición
     inputKilos.focus();
     inputKilos.select();
-    
+
     console.log('✅ [EDICIÓN_KILOS] Campo kilos habilitado para edición manual');
-    
+
   } catch (error) {
     console.error('❌ [EDICIÓN_KILOS] Error al habilitar edición:', error);
   }
@@ -409,7 +520,7 @@ function configurarCampoKilos(kilosUnidad) {
       kilosUnidad: kilosUnidad,
       esNuloOCero: kilosUnidad === null || kilosUnidad === 0
     });
-    
+
     if (kilosUnidad === null || kilosUnidad === 0) {
       // Caso: valor nulo o cero - mostrar "No está configurado"
       inputKilos.value = 'No está configurado';
@@ -417,15 +528,15 @@ function configurarCampoKilos(kilosUnidad) {
       inputKilos.style.backgroundColor = '#f8f9fa';
       inputKilos.style.color = '#6c757d';
       inputKilos.style.cursor = 'not-allowed';
-      
+
       // Mostrar botón "Editar"
       if (btnEditarKilos) {
         btnEditarKilos.style.display = 'inline-block';
         btnEditarKilos.innerHTML = '✎ Editar';
       }
-      
+
       console.log('📝 [CONFIG_KILOS] Campo configurado como "No está configurado"');
-      
+
     } else {
       // Caso: valor existe - mostrar valor y deshabilitar
       inputKilos.value = kilosUnidad.toString();
@@ -433,16 +544,16 @@ function configurarCampoKilos(kilosUnidad) {
       inputKilos.style.backgroundColor = '#f8f9fa';
       inputKilos.style.color = '#495057';
       inputKilos.style.cursor = 'not-allowed';
-      
+
       // Mostrar botón "Editar"
       if (btnEditarKilos) {
         btnEditarKilos.style.display = 'inline-block';
         btnEditarKilos.innerHTML = '✎ Editar';
       }
-      
+
       console.log('📝 [CONFIG_KILOS] Campo configurado con valor:', kilosUnidad);
     }
-    
+
   } catch (error) {
     console.error('❌ [CONFIG_KILOS] Error al configurar campo kilos:', error);
   }
@@ -452,21 +563,21 @@ function configurarCampoKilos(kilosUnidad) {
 function resetearEstadoCampoKilos() {
   try {
     console.log('🔄 [RESET_KILOS] Reseteando estado del campo kilos...');
-    
+
     // Resetear input kilos
     inputKilos.value = '';
     inputKilos.disabled = false;
     inputKilos.style.backgroundColor = '';
     inputKilos.style.color = '';
     inputKilos.style.cursor = '';
-    
+
     // Ocultar botón "Editar"
     if (btnEditarKilos) {
       btnEditarKilos.style.display = 'none';
     }
-    
+
     console.log('✅ [RESET_KILOS] Estado del campo kilos reseteado');
-    
+
   } catch (error) {
     console.error('❌ [RESET_KILOS] Error al resetear estado:', error);
   }
@@ -476,17 +587,17 @@ function resetearEstadoCampoKilos() {
 async function consultarKilosUnidad(articuloNumero) {
   try {
     console.log('🔍 [KILOS_UNIDAD] Consultando kilos_unidad para artículo:', articuloNumero);
-    
+
     const response = await fetch(`http://localhost:3002/api/produccion/articulos`);
     if (!response.ok) {
       throw new Error('Error al consultar artículos');
     }
-    
+
     const responseData = await response.json();
     // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
     const articulos = responseData.data || responseData;
     const articulo = articulos.find(art => art.numero === articuloNumero);
-    
+
     if (articulo && articulo.kilos_unidad !== null && articulo.kilos_unidad !== undefined) {
       console.log('✅ [KILOS_UNIDAD] Valor encontrado:', articulo.kilos_unidad);
       return parseFloat(articulo.kilos_unidad);
@@ -508,13 +619,13 @@ async function actualizarKilosUnidadSiCambio(articuloNumero, nuevoValor) {
       console.log('ℹ️ [KILOS_UNIDAD] Valor no cambió, no se actualiza');
       return;
     }
-    
+
     console.log('🔄 [KILOS_UNIDAD] Actualizando valor:', {
       articuloNumero,
       valorOriginal: kilosUnidadOriginal,
       nuevoValor: nuevoValor
     });
-    
+
     const response = await fetch(`http://localhost:3002/api/produccion/articulos/${articuloNumero}/kilos-unidad`, {
       method: 'PUT',
       headers: {
@@ -522,14 +633,14 @@ async function actualizarKilosUnidadSiCambio(articuloNumero, nuevoValor) {
       },
       body: JSON.stringify({ kilos_unidad: nuevoValor })
     });
-    
+
     if (!response.ok) {
       throw new Error('Error al actualizar kilos_unidad');
     }
-    
+
     const result = await response.json();
     console.log('✅ [KILOS_UNIDAD] Actualizado correctamente:', result);
-    
+
   } catch (error) {
     console.error('❌ [KILOS_UNIDAD] Error al actualizar:', error);
     // No lanzar error para no interrumpir el flujo principal
@@ -539,9 +650,9 @@ async function actualizarKilosUnidadSiCambio(articuloNumero, nuevoValor) {
 // 🔒 Función para desactivar el botón "Confirmar" y prevenir clics múltiples
 function desactivarBotonConfirmar() {
   if (!btnConfirmar) return;
-  
+
   console.log('🔒 DESACTIVANDO BOTÓN CONFIRMAR - Previniendo clics múltiples');
-  
+
   // Guardar el estado original del botón si no se ha guardado ya
   if (!estadoOriginalBoton.innerHTML) {
     estadoOriginalBoton.disabled = btnConfirmar.disabled;
@@ -549,16 +660,16 @@ function desactivarBotonConfirmar() {
     estadoOriginalBoton.innerHTML = btnConfirmar.innerHTML;
     textoOriginalBoton = btnConfirmar.textContent || 'Confirmar';
   }
-  
+
   // Desactivar el botón visual y funcionalmente
   btnConfirmar.disabled = true;
   btnConfirmar.style.opacity = '0.6';
   btnConfirmar.style.cursor = 'not-allowed';
   btnConfirmar.innerHTML = '⏳ Procesando...';
-  
+
   // Marcar que el procesamiento está en curso
   procesamientoEnCurso = true;
-  
+
   console.log('🔒 Botón desactivado correctamente:', {
     disabled: btnConfirmar.disabled,
     innerHTML: btnConfirmar.innerHTML,
@@ -569,19 +680,19 @@ function desactivarBotonConfirmar() {
 // 🔓 Función para reactivar el botón "Confirmar" 
 function reactivarBotonConfirmar() {
   if (!btnConfirmar) return;
-  
+
   console.log('🔓 REACTIVANDO BOTÓN CONFIRMAR');
-  
+
   // Restaurar el estado original del botón
   btnConfirmar.disabled = estadoOriginalBoton.disabled;
   btnConfirmar.className = estadoOriginalBoton.className;
   btnConfirmar.innerHTML = estadoOriginalBoton.innerHTML || textoOriginalBoton;
   btnConfirmar.style.opacity = '';
   btnConfirmar.style.cursor = '';
-  
+
   // Marcar que el procesamiento ha terminado
   procesamientoEnCurso = false;
-  
+
   console.log('🔓 Botón reactivado correctamente:', {
     disabled: btnConfirmar.disabled,
     innerHTML: btnConfirmar.innerHTML,
@@ -662,14 +773,14 @@ function manejarBusqueda() {
         resultados.forEach(art => {
           const li = document.createElement('li');
           const stockDisplay = art.stock_consolidado !== undefined ? Number(art.stock_consolidado).toFixed(2) : '0.00';
-          
+
           // 🆕 Mostrar nombre + stock en el resultado
           const stockClass = parseFloat(stockDisplay) > 0 ? 'stock-disponible' : 'stock-cero';
           li.innerHTML = `
             <span class="articulo-nombre">${art.nombre}</span>
             <span class="articulo-stock ${stockClass}">Stock: ${stockDisplay} kg</span>
           `;
-          
+
           li.addEventListener('click', () => seleccionarArticulo(art));
           listaResultados.appendChild(li);
         });
@@ -691,66 +802,92 @@ function manejarBusqueda() {
 }
 
 async function seleccionarArticulo(art) {
-    articuloSeleccionado = art;
-    inputBusqueda.value = art.nombre;
-    listaResultados.innerHTML = '';
+  articuloSeleccionado = art;
+  inputBusqueda.value = art.nombre;
+  listaResultados.innerHTML = '';
 
-    try {
-        console.log('🔍 [ARTÍCULO_SELECCIONADO] Consultando kilos_unidad para:', art.numero);
-        const kilosUnidad = await consultarKilosUnidad(art.numero);
-        kilosUnidadOriginal = kilosUnidad;
-        configurarCampoKilos(kilosUnidad);
-        console.log('✅ [ARTÍCULO_SELECCIONADO] Campo kilos configurado:', {
-            articuloNumero: art.numero,
-            kilosUnidad: kilosUnidad,
-            comportamiento: kilosUnidad === null || kilosUnidad === 0 ? 'No configurado' : 'Valor existente'
-        });
-    } catch (error) {
-        console.error('❌ [ARTÍCULO_SELECCIONADO] Error al consultar kilos_unidad:', error);
-        kilosUnidadOriginal = 0;
-        configurarCampoKilos(0);
-    }
+  try {
+    console.log('🔍 [ARTÍCULO_SELECCIONADO] Consultando kilos_unidad para:', art.numero);
+    const kilosUnidad = await consultarKilosUnidad(art.numero);
+    kilosUnidadOriginal = kilosUnidad;
+    configurarCampoKilos(kilosUnidad);
+    console.log('✅ [ARTÍCULO_SELECCIONADO] Campo kilos configurado:', {
+      articuloNumero: art.numero,
+      kilosUnidad: kilosUnidad,
+      comportamiento: kilosUnidad === null || kilosUnidad === 0 ? 'No configurado' : 'Valor existente'
+    });
+  } catch (error) {
+    console.error('❌ [ARTÍCULO_SELECCIONADO] Error al consultar kilos_unidad:', error);
+    kilosUnidadOriginal = 0;
+    configurarCampoKilos(0);
+  }
 
-    // 🆕 AUTO-FILL: Detectar patrón "x kilo" y sugerir stock disponible
-    try {
-        // Regex para detectar "x kilo" (case insensitive)
-        const patronXKilo = /x\s+kilo/i;
-        
-        // Buscar el patrón en nombre o descripción
-        const textoNombre = art.nombre || '';
-        const textoDescripcion = art.descripcion || '';
-        
-        const tienePatronEnNombre = patronXKilo.test(textoNombre);
-        const tienePatronEnDescripcion = patronXKilo.test(textoDescripcion);
-        
-        if (tienePatronEnNombre || tienePatronEnDescripcion) {
-            // Patrón encontrado - auto-fill con stock disponible
-            const stockDisponible = parseFloat(art.stock_consolidado) || 0;
-            
-            console.log('🎯 [AUTO-FILL] Patrón "x kilo" detectado:', {
-                articuloNombre: art.nombre,
-                articuloDescripcion: art.descripcion,
-                encontradoEnNombre: tienePatronEnNombre,
-                encontradoEnDescripcion: tienePatronEnDescripcion,
-                stockDisponible: stockDisponible
-            });
-            
-            if (stockDisponible > 0) {
-                inputCantidad.value = stockDisponible;
-                console.log(`✅ [AUTO-FILL] Campo "Cantidad" auto-completado con stock: ${stockDisponible}`);
-            } else {
-                inputCantidad.value = 1;
-                console.log('⚠️ [AUTO-FILL] Stock es 0, manteniendo valor default: 1');
-            }
-        } else {
-            // Patrón NO encontrado - mantener valor default
-            inputCantidad.value = 1;
-            console.log('ℹ️ [AUTO-FILL] Patrón "x kilo" NO detectado, valor default: 1');
-        }
-    } catch (error) {
-        console.error('❌ [AUTO-FILL] Error al procesar auto-fill:', error);
-        inputCantidad.value = 1; // Fallback seguro
+  // 🆕 LOGICA DUAL DE ETIQUETAS "POR KILO"
+  const checkBultos = document.getElementById('checkImprimirEtiqueta');
+  const checkKilos = document.getElementById('checkImprimirPorKilos');
+
+  if (checkBultos && checkKilos) {
+    const descripcion = art.descripcion || '';
+    const nombre = art.nombre || '';
+
+    // Regla: Si dice "x kilo" o "por kilo" (insensitive) -> activar Kilos
+    // Usuario especificó secuencia "X Kilo"
+    const regexKilo = /(x|por)\s+kilo/i;
+
+    const esPorKilo = regexKilo.test(descripcion) || regexKilo.test(nombre);
+
+    if (esPorKilo) {
+      console.log('⚖️ [ETIQUETAS] Detectado patró "X Kilo" -> Activando impresión por kilos');
+      checkBultos.checked = false;
+      checkKilos.checked = true;
+    } else {
+      // Default: Bultos activo
+      console.log('📦 [ETIQUETAS] Artículo estándar -> Activando impresión por bultos');
+      checkBultos.checked = true;
+      checkKilos.checked = false;
     }
+  }
+
+  // 🆕 AUTO-FILL: Detectar patrón "x kilo" y sugerir stock disponible
+  try {
+    // Regex para detectar "x kilo" (case insensitive)
+    const patronXKilo = /x\s+kilo/i;
+
+    // Buscar el patrón en nombre o descripción
+    const textoNombre = art.nombre || '';
+    const textoDescripcion = art.descripcion || '';
+
+    const tienePatronEnNombre = patronXKilo.test(textoNombre);
+    const tienePatronEnDescripcion = patronXKilo.test(textoDescripcion);
+
+    if (tienePatronEnNombre || tienePatronEnDescripcion) {
+      // Patrón encontrado - auto-fill con stock disponible
+      const stockDisponible = parseFloat(art.stock_consolidado) || 0;
+
+      console.log('🎯 [AUTO-FILL] Patrón "x kilo" detectado:', {
+        articuloNombre: art.nombre,
+        articuloDescripcion: art.descripcion,
+        encontradoEnNombre: tienePatronEnNombre,
+        encontradoEnDescripcion: tienePatronEnDescripcion,
+        stockDisponible: stockDisponible
+      });
+
+      if (stockDisponible > 0) {
+        inputCantidad.value = stockDisponible;
+        console.log(`✅ [AUTO-FILL] Campo "Cantidad" auto-completado con stock: ${stockDisponible}`);
+      } else {
+        inputCantidad.value = 1;
+        console.log('⚠️ [AUTO-FILL] Stock es 0, manteniendo valor default: 1');
+      }
+    } else {
+      // Patrón NO encontrado - mantener valor default
+      inputCantidad.value = 1;
+      console.log('ℹ️ [AUTO-FILL] Patrón "x kilo" NO detectado, valor default: 1');
+    }
+  } catch (error) {
+    console.error('❌ [AUTO-FILL] Error al procesar auto-fill:', error);
+    inputCantidad.value = 1; // Fallback seguro
+  }
 }
 
 async function confirmarIngreso() {
@@ -827,19 +964,19 @@ async function confirmarIngreso() {
     }
     const carroData = await carroResponse.json();
     const tipoCarro = carroData.tipo_carro;
-    
+
     console.log(`🔍 Tipo de carro detectado: ${tipoCarro || 'interna'}`);
 
     if (tipoCarro === 'externa') {
       // Verificar si el ingrediente es un mix (ingrediente compuesto)
       const esIngredienteCompuesto = await verificarSiEsIngredienteCompuesto(ingredienteSeleccionado);
-      
+
       if (esIngredienteCompuesto) {
         console.log('🧪 Procesando ingrediente compuesto - descomponiendo en ingredientes simples');
-        
+
         // Obtener la composición del ingrediente compuesto
         const data = await obtenerComposicionIngrediente(ingredienteSeleccionado);
-        
+
         if (!data.mix || !data.mix.receta_base_kg) {
           throw new Error('El ingrediente compuesto no tiene definida la receta base');
         }
@@ -851,18 +988,18 @@ async function confirmarIngreso() {
         const totalKilos = kilos * cantidad;
         const recetaBaseKg = data.mix.receta_base_kg;
         console.log(`📊 Total de kilos a descomponer: ${totalKilos} (Receta base: ${recetaBaseKg}kg)`);
-        
+
         // Registrar cada ingrediente simple por separado
         for (const componente of data.composicion) {
           // Calcular la proporción basada en la receta base
           const proporcion = componente.cantidad / recetaBaseKg;
           const cantidadIngredienteSimple = proporcion * totalKilos;
-          
+
           console.log(`🔹 Ingrediente ${componente.ingrediente_id}:
             Cantidad en receta: ${componente.cantidad}kg
             Proporción: ${(proporcion * 100).toFixed(2)}%
             Cantidad final: ${cantidadIngredienteSimple}kg`);
-            
+
           const stockUsuarioPayload = {
             usuario_id: parseInt(usuarioId),
             ingrediente_id: componente.ingrediente_id,
@@ -895,30 +1032,30 @@ async function confirmarIngreso() {
             throw new Error(`Error al registrar ingrediente simple ${componente.ingrediente_id}: ${errorData.error || 'Error desconocido'}`);
           }
         }
-        
+
         console.log('✅ Todos los ingredientes simples registrados correctamente');
       } else {
         // Ingrediente simple - verificar si proviene de un mix
         console.log('🔸 Procesando ingrediente simple');
-        
+
         // Buscar si este ingrediente proviene de algún mix en el carro
         let origenMixId = null;
         try {
           const mixesResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/mixes?usuarioId=${usuarioId}`);
           if (mixesResponse.ok) {
             const mixes = await mixesResponse.json();
-            
+
             // Por cada mix, verificar si contiene este ingrediente
             for (const mix of mixes) {
               const composicionResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mix.id}/composicion`);
               if (composicionResponse.ok) {
                 const composicionData = await composicionResponse.json();
-                
+
                 // Verificar si el ingrediente está en la composición de este mix
-                const ingredienteEnMix = composicionData.composicion?.find(comp => 
+                const ingredienteEnMix = composicionData.composicion?.find(comp =>
                   comp.ingrediente_id === ingredienteSeleccionado
                 );
-                
+
                 if (ingredienteEnMix) {
                   origenMixId = mix.id;
                   console.log(`🧪 Ingrediente ${ingredienteSeleccionado} proviene del mix ${mix.id} (${mix.nombre})`);
@@ -930,7 +1067,7 @@ async function confirmarIngreso() {
         } catch (error) {
           console.warn('⚠️ No se pudo determinar el origen del mix:', error);
         }
-        
+
         const stockUsuarioPayload = {
           usuario_id: parseInt(usuarioId),
           ingrediente_id: ingredienteSeleccionado,
@@ -977,13 +1114,13 @@ async function confirmarIngreso() {
       };
 
       await registrarMovimientoStockVentas(movimientoStock);
-      
+
     } else {
       console.log('🏭 PROCESANDO INGRESO MANUAL EN CARRO INTERNO');
-      
+
       // 🔧 CORRECCIÓN CRÍTICA: Para carros internos, NO duplicar la multiplicación
       // El backend ya maneja la multiplicación por cantidad en el endpoint /ingredientes_movimientos
-      
+
       const movimientoIngrediente = {
         ingredienteId: ingredienteSeleccionado,
         articuloNumero: articuloSeleccionado.numero,
@@ -1008,7 +1145,7 @@ async function confirmarIngreso() {
         cantidad: cantidad,
         kilosTotales: kilos * cantidad
       });
-      
+
       await registrarMovimientoIngrediente(movimientoIngrediente);
       await registrarMovimientoStockVentas(movimientoStock);
     }
@@ -1058,11 +1195,11 @@ async function confirmarIngreso() {
     cerrarModal();
     // Actualizar el resumen de ingredientes para reflejar el nuevo stock
     actualizarResumenIngredientes();
-    
+
   } catch (error) {
     console.error('❌ Error al registrar ingreso:', error);
     alert('Hubo un error al registrar el ingreso: ' + error.message);
-    
+
     // 🔓 REACTIVAR BOTÓN EN CASO DE ERROR
     reactivarBotonConfirmar();
   }
@@ -1091,21 +1228,93 @@ function sincronizarArrayGlobal() {
 async function registrarIngresoManualEnInforme(datosIngreso) {
   try {
     console.log('📝 Registrando ingreso manual en informe:', datosIngreso);
-    
+
     // Agregar timestamp y ID único
     const ingresoConId = {
       ...datosIngreso,
       id: Date.now() + Math.random(), // ID único temporal
       fechaIngreso: new Date().toLocaleString()
     };
-    
+
     // Agregar al array de ingresos del carro
     ingresosManualesDelCarro.push(ingresoConId);
-    
+
     // Sincronizar con el array global
     sincronizarArrayGlobal();
-    
+
     console.log('✅ Ingreso registrado en informe local y sincronizado globalmente');
+
+    // 🖨️ IMPRESIÓN AUTOMÁTICA DE ETIQUETA
+    // 🖨️ IMPRESIÓN AUTOMÁTICA DE ETIQUETA
+    const checkImprimirBultos = document.getElementById('checkImprimirEtiqueta');
+    const checkImprimirKilos = document.getElementById('checkImprimirPorKilos');
+
+    // Determinar EXACTAMENTE qué modo usar
+    // Prioridad: Si Kilos está marcado, usamos Kilos. Si no, si Bultos está marcado, usamos Bultos.
+    const modoKilosActivo = checkImprimirKilos && checkImprimirKilos.checked;
+    const modoBultosActivo = checkImprimirBultos && checkImprimirBultos.checked;
+
+    if (modoKilosActivo || modoBultosActivo) {
+      console.log('🖨️ INICIANDO IMPRESIÓN DE ETIQUETA');
+
+      try {
+        let cantidadEtiquetas = 1;
+
+        // ⚠️ LÓGICA EXCLUYENTE ESTRICTA
+        if (modoKilosActivo) {
+          console.log('⚖️ MODO KILOS DETECTADO: Usando valor del campo kilos.');
+          const kilosRaw = parseFloat(datosIngreso.kilosTotales); // Este es el valor del inputKilos
+          cantidadEtiquetas = Math.round(kilosRaw);
+          if (cantidadEtiquetas < 1) cantidadEtiquetas = 1;
+          console.log(`⚖️ Cantidad a imprimir: ${cantidadEtiquetas} etiquetas (Input Kilos: ${kilosRaw})`);
+        } else if (modoBultosActivo) {
+          console.log('📦 MODO BULTOS DETECTADO: Usando valor del campo cantidad.');
+          cantidadEtiquetas = parseFloat(datosIngreso.cantidadUnidades);
+          console.log(`📦 Cantidad a imprimir: ${cantidadEtiquetas} etiquetas`);
+        } else {
+          console.warn('⚠️ Ningún modo de impresión activo (lógica redundante).');
+          return;
+        }
+
+        // 🔧 CORRECCIÓN: Usar código del artículo seleccionado
+        const codigoArticulo = datosIngreso.articuloNumero;
+
+        // 🔧 CORRECCIÓN: Extraer letra del sector si existe
+        let sectorLetra = '';
+        try {
+          const ingredienteData = await obtenerIngrediente(datosIngreso.ingredienteId);
+          if (ingredienteData && ingredienteData.sector_descripcion) {
+            const match = ingredienteData.sector_descripcion.match(/"([^"]+)"/);
+            if (match && match[1]) {
+              sectorLetra = match[1];
+            } else {
+              sectorLetra = '';
+            }
+          }
+        } catch (err) {
+          console.warn('⚠️ No se pudo obtener sector para etiqueta:', err);
+        }
+
+        let nombreIngredienteEtiqueta = datosIngreso.articuloNombre || 'Ingrediente Manual';
+        try {
+          const infoIng = await obtenerIngrediente(datosIngreso.ingredienteId);
+          if (infoIng && infoIng.nombre) {
+            nombreIngredienteEtiqueta = infoIng.nombre;
+          }
+        } catch (e) { console.warn('No se pudo obtener nombre ingrediente exacto'); }
+
+        await imprimirEtiquetaIngrediente(
+          datosIngreso.ingredienteId,
+          nombreIngredienteEtiqueta, // ✅ Nombre exacto del ingrediente
+          cantidadEtiquetas, // ✅ Cantidad calculada estrictamente
+          codigoArticulo,
+          sectorLetra
+        );
+        console.log('✅ Orden de impresión enviada con cantidad:', cantidadEtiquetas);
+      } catch (printError) {
+        console.error('❌ Error al intentar imprimir etiqueta:', printError);
+      }
+    }
   } catch (error) {
     console.error('❌ Error al registrar ingreso en informe:', error);
   }
@@ -1114,7 +1323,7 @@ async function registrarIngresoManualEnInforme(datosIngreso) {
 // 🔧 CORRECCIÓN 2: Función específica para filtrar duplicados en carros internos
 function filtrarDuplicadosCarrosInternos(ingresosBackend, ingresosMemoria) {
   const ingresosUnicosMap = new Map();
-  
+
   // Procesar ingresos del backend primero (tienen prioridad)
   ingresosBackend.forEach(ing => {
     const key = `${ing.articulo_numero}-${Math.round(parseFloat(ing.kilos) * 100)}`; // Redondear para evitar diferencias decimales mínimas
@@ -1122,7 +1331,7 @@ function filtrarDuplicadosCarrosInternos(ingresosBackend, ingresosMemoria) {
       ingresosUnicosMap.set(key, { ...ing, fuente: 'backend' });
     }
   });
-  
+
   // Procesar ingresos en memoria solo si NO existen en backend
   ingresosMemoria.forEach(ing => {
     const key = `${ing.articuloNumero}-${Math.round(parseFloat(ing.kilosTotales) * 100)}`;
@@ -1130,7 +1339,7 @@ function filtrarDuplicadosCarrosInternos(ingresosBackend, ingresosMemoria) {
       ingresosUnicosMap.set(key, { ...ing, fuente: 'memoria' });
     }
   });
-  
+
   return Array.from(ingresosUnicosMap.values());
 }
 
@@ -1139,7 +1348,7 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
   try {
     console.log('\n🔄 INICIANDO ACTUALIZACIÓN DE INFORME DE INGRESOS MANUALES');
     console.log('================================================================');
-    
+
     // Agregar delay opcional para permitir que el backend procese
     if (delayMs > 0) {
       console.log(`⏳ Esperando ${delayMs}ms para que el backend procese...`);
@@ -1164,7 +1373,7 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
 
     // PASO 1: Limpiar completamente la memoria local para evitar acumulación
     console.log('🧹 PASO 1: Limpiando memoria local...');
-    ingresosManualesDelCarro = ingresosManualesDelCarro.filter(ing => 
+    ingresosManualesDelCarro = ingresosManualesDelCarro.filter(ing =>
       ing.carroId.toString() !== carroId
     );
     sincronizarArrayGlobal();
@@ -1181,11 +1390,11 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
           'Pragma': 'no-cache'
         }
       });
-      
+
       if (response.ok) {
         ingresosDelBackend = await response.json();
         console.log(`📊 Ingresos obtenidos del backend: ${ingresosDelBackend.length}`);
-        
+
         // Log detallado de cada ingreso
         ingresosDelBackend.forEach((ing, index) => {
           console.log(`  ${index + 1}. ID: ${ing.id} | Artículo: ${ing.articulo_nombre} | Kilos: ${ing.kilos} | Fecha: ${ing.fecha}`);
@@ -1200,11 +1409,11 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
     // PASO 3: Aplicar filtrado robusto para eliminar duplicados absolutos
     console.log('🔍 PASO 3: Aplicando filtrado anti-duplicados...');
     const ingresosUnicos = new Map();
-    
+
     ingresosDelBackend.forEach((ing, index) => {
       // Crear clave única basada en múltiples campos
       const clave = `${ing.articulo_numero}-${ing.ingrediente_id}-${Math.round(parseFloat(ing.kilos || 0) * 1000)}-${ing.fecha}`;
-      
+
       if (!ingresosUnicos.has(clave)) {
         ingresosUnicos.set(clave, {
           ...ing,
@@ -1251,27 +1460,27 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
         const fecha = ingreso.fecha ? new Date(ingreso.fecha).toLocaleString() : '-';
         const ingresoId = `db_${ingreso.id}`;
         const tipoArticulo = ingreso.tipo_articulo || 'simple';
-        
+
         // Determinar iconografía y texto según el tipo de artículo
         const esMix = tipoArticulo === 'mix';
         const esSustitucion = tipoArticulo === 'sustitucion';
-        
+
         // 🔧 CORRECCIÓN: Íconos diferenciados
         let icono, tipoBadge;
         if (esSustitucion) {
-            icono = '🌾'; // Ícono de ingrediente/grano para sustituciones
-            tipoBadge = 'Sustitución';
+          icono = '🌾'; // Ícono de ingrediente/grano para sustituciones
+          tipoBadge = 'Sustitución';
         } else if (esMix) {
-            icono = '🧪'; // Ícono de mix
-            tipoBadge = 'MIX';
+          icono = '🧪'; // Ícono de mix
+          tipoBadge = 'MIX';
         } else {
-            icono = '📦'; // Ícono de artículo/caja
-            tipoBadge = 'Simple';
+          icono = '📦'; // Ícono de artículo/caja
+          tipoBadge = 'Simple';
         }
-        
+
         // Para MIX, omitir las columnas de stock anterior y nuevo
-        const columnasStock = esMix ? 
-          '<td colspan="2" class="mix-info">Artículo compuesto</td>' : 
+        const columnasStock = esMix ?
+          '<td colspan="2" class="mix-info">Artículo compuesto</td>' :
           '<td class="stock-anterior">-</td><td class="stock-nuevo">-</td>';
 
         html += `
@@ -1296,7 +1505,7 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
             </td>
           </tr>
         `;
-        
+
         console.log(`  ${index + 1}. Fila generada: ${nombreArticulo} (${kilos}kg)`);
       } catch (err) {
         console.error('❌ Error al procesar ingreso:', err, ingreso);
@@ -1311,11 +1520,11 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
     // PASO 5: Actualizar DOM
     console.log('🖥️ PASO 5: Actualizando DOM...');
     contenedor.innerHTML = html;
-    
+
     console.log('✅ INFORME DE INGRESOS MANUALES ACTUALIZADO EXITOSAMENTE');
     console.log(`📊 Total de filas mostradas: ${ingresosFiltrados.length}`);
     console.log('================================================================\n');
-    
+
   } catch (error) {
     console.error('❌ ERROR CRÍTICO al actualizar informe de ingresos manuales:', error);
     console.error('❌ Stack trace:', error.stack);
@@ -1331,7 +1540,7 @@ async function eliminarIngresoManual(ingresoId) {
     console.log(`🆔 ID del ingreso a eliminar: "${ingresoId}"`);
     console.log(`📋 Tipo de dato: ${typeof ingresoId}`);
     console.log(`📏 Longitud: ${ingresoId ? ingresoId.length : 'undefined'}`);
-    
+
     if (!confirm('¿Estás seguro de que querés eliminar este ingreso manual? Esta acción no se puede deshacer.')) {
       console.log('❌ Usuario canceló la eliminación');
       return;
@@ -1346,7 +1555,7 @@ async function eliminarIngresoManual(ingresoId) {
 
     if (tipo === 'mem') {
       // Ingreso en memoria - solo eliminar del array local
-      const ingresoIndex = ingresosManualesDelCarro.findIndex(ingreso => 
+      const ingresoIndex = ingresosManualesDelCarro.findIndex(ingreso =>
         ingreso.id.toString() === id
       );
 
@@ -1358,35 +1567,35 @@ async function eliminarIngresoManual(ingresoId) {
 
       ingresosManualesDelCarro.splice(ingresoIndex, 1);
       sincronizarArrayGlobal();
-      
+
       console.log('✅ Ingreso en memoria eliminado correctamente');
     } else if (tipo === 'db') {
       console.log('🗑️ Eliminando ingreso de base de datos físicamente');
-      
+
       // Obtener información del ingreso para determinar el tipo de eliminación
       const carroId = localStorage.getItem('carroActivo');
       const ingresoIdReal = id;
-      
+
       // Primero obtener los datos del ingreso para saber el tipo
       const ingresosResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`);
       if (!ingresosResponse.ok) {
         throw new Error('Error al obtener información del ingreso');
       }
-      
+
       const ingresos = await ingresosResponse.json();
       const ingresoAEliminar = ingresos.find(ing => ing.id.toString() === ingresoIdReal);
-      
+
       if (!ingresoAEliminar) {
         throw new Error('Ingreso no encontrado');
       }
-      
+
       const tipoArticulo = ingresoAEliminar.tipo_articulo || 'simple';
       console.log(`🔍 Tipo de artículo a eliminar: ${tipoArticulo}`);
-      
+
       if (tipoArticulo === 'sustitucion') {
         // 🌾 SUSTITUCIÓN: Eliminar movimientos de ingredientes_movimientos
         console.log('🌾 Eliminando sustitución de ingredientes...');
-        
+
         // Eliminar los movimientos de sustitución (egreso e ingreso)
         const response = await fetch(`http://localhost:3002/api/produccion/sustitucion/${ingresoIdReal}`, {
           method: 'DELETE',
@@ -1404,11 +1613,11 @@ async function eliminarIngresoManual(ingresoId) {
         }
 
         console.log('✅ Sustitución eliminada correctamente');
-        
+
       } else if (tipoArticulo === 'mix') {
         // 🧪 MIX: eliminar de stock_ventas_movimientos y registros relacionados
         console.log('🧪 Eliminando artículo MIX y registros relacionados...');
-        
+
         // Eliminar registros de ingredientes_stock_usuarios relacionados
         const deleteStockUsuariosQuery = await fetch(`http://localhost:3002/api/produccion/ingredientes-stock-usuarios/eliminar-por-mix`, {
           method: 'DELETE',
@@ -1421,11 +1630,11 @@ async function eliminarIngresoManual(ingresoId) {
             articulo_numero: ingresoAEliminar.articulo_numero
           })
         });
-        
+
         if (!deleteStockUsuariosQuery.ok) {
           console.warn('⚠️ Error al eliminar registros de ingredientes_stock_usuarios');
         }
-        
+
         // Eliminar de stock_ventas_movimientos
         const deleteStockVentasQuery = await fetch(`http://localhost:3002/api/produccion/stock-ventas-movimientos/${ingresoIdReal}`, {
           method: 'DELETE',
@@ -1433,15 +1642,15 @@ async function eliminarIngresoManual(ingresoId) {
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (!deleteStockVentasQuery.ok) {
           console.warn('⚠️ Error al eliminar de stock_ventas_movimientos');
         }
-        
+
       } else {
         // 📦 SIMPLE: usar el endpoint existente
         console.log('📦 Eliminando ingrediente simple...');
-        
+
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`, {
           method: 'DELETE',
           headers: {
@@ -1456,7 +1665,7 @@ async function eliminarIngresoManual(ingresoId) {
 
         console.log('✅ Ingrediente simple eliminado correctamente');
       }
-      
+
     } else {
       console.warn('⚠️ Tipo de ingreso inválido:', tipo);
       await actualizarInformeIngresosManuales();
@@ -1466,33 +1675,33 @@ async function eliminarIngresoManual(ingresoId) {
     // 🔧 CORRECCIÓN CRÍTICA: Esperar confirmación del backend antes de actualizar UI
     console.log('⏳ Esperando confirmación completa del backend...');
     await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 segundos para asegurar procesamiento completo
-    
+
     // Actualizar la UI inmediatamente después de la eliminación exitosa
     console.log('🔄 Actualizando UI después de eliminación exitosa...');
     await actualizarInformeIngresosManuales();
-    
+
     // 🔧 CORRECCIÓN CRÍTICA: Forzar recálculo completo y sincronizado del resumen de ingredientes
     console.log('🔄 INICIANDO RECÁLCULO COMPLETO DEL RESUMEN DE INGREDIENTES...');
     console.log('================================================================');
     console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
     console.log(`🗑️ Ingreso eliminado: ${ingresoId}`);
-    
+
     try {
       const carroId = localStorage.getItem('carroActivo');
       const colaboradorData = localStorage.getItem('colaboradorActivo');
-      
+
       if (!carroId || !colaboradorData) {
         console.warn('⚠️ No hay carro activo o colaborador para actualizar resumen');
         return;
       }
-      
+
       const colaborador = JSON.parse(colaboradorData);
       console.log(`🚚 Recalculando para carro ${carroId}, usuario ${colaborador.id}`);
-      
+
       // PASO 1: Obtener resumen fresco desde el backend (fuerza recálculo en servidor)
       console.log('📡 PASO 1: Obteniendo resumen fresco desde el backend...');
       const { obtenerResumenIngredientesCarro, mostrarResumenIngredientes } = await import('./carro.js');
-      
+
       // Forzar recarga completa con parámetros de cache
       const ingredientesActualizados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}&_t=${Date.now()}`, {
         method: 'GET',
@@ -1507,21 +1716,21 @@ async function eliminarIngresoManual(ingresoId) {
         }
         return response.json();
       });
-      
+
       console.log('📊 Ingredientes actualizados obtenidos del backend:', ingredientesActualizados.length);
-      
+
       // Log detallado de cada ingrediente para verificar stock_actual
       console.log('\n🔍 VERIFICACIÓN DE STOCK_ACTUAL DESPUÉS DE ELIMINACIÓN:');
       ingredientesActualizados.forEach((ing, index) => {
         console.log(`${index + 1}. ${ing.nombre}: stock_actual = ${ing.stock_actual} (${typeof ing.stock_actual})`);
       });
-      
+
       // PASO 2: Actualizar la UI con los datos frescos
       console.log('🎨 PASO 2: Actualizando UI con datos frescos...');
       mostrarResumenIngredientes(ingredientesActualizados);
-      
+
       console.log('✅ Resumen de ingredientes recalculado y actualizado correctamente');
-      
+
       // PASO 3: También actualizar resumen de mixes si existe
       console.log('🧪 PASO 3: Actualizando resumen de mixes...');
       try {
@@ -1532,14 +1741,14 @@ async function eliminarIngresoManual(ingresoId) {
       } catch (mixError) {
         console.warn('⚠️ No se pudo actualizar resumen de mixes:', mixError);
       }
-      
+
       console.log('✅ RECÁLCULO COMPLETO FINALIZADO EXITOSAMENTE');
       console.log('================================================================');
-      
+
     } catch (resumenError) {
       console.error('❌ ERROR CRÍTICO al recalcular resumen de ingredientes:', resumenError);
       console.error('❌ Stack trace completo:', resumenError.stack);
-      
+
       // Fallback: intentar actualización básica
       console.log('🔄 Intentando fallback con actualización básica...');
       try {
@@ -1552,10 +1761,10 @@ async function eliminarIngresoManual(ingresoId) {
         alert('Error crítico: No se pudo actualizar el resumen de ingredientes. Por favor, recarga la página.');
       }
     }
-    
+
   } catch (error) {
     console.error('❌ Error al eliminar ingreso manual:', error);
-    
+
     // Si hay error, al menos actualizar la UI para reflejar el estado real
     try {
       await actualizarInformeIngresosManuales();
@@ -1566,7 +1775,7 @@ async function eliminarIngresoManual(ingresoId) {
     } catch (updateError) {
       console.error('❌ Error adicional al actualizar UI:', updateError);
     }
-    
+
     alert('Error al eliminar el ingreso: ' + error.message);
   }
 }
@@ -1593,11 +1802,11 @@ export function limpiarInformeIngresosManuales() {
 
     console.log('🧹 Limpiando informe visual de ingresos manuales');
     contenedor.innerHTML = '<p>No se han realizado ingresos manuales en este carro</p>';
-    
+
     // También limpiar el array en memoria
     ingresosManualesDelCarro = [];
     sincronizarArrayGlobal();
-    
+
     console.log('✅ Informe de ingresos manuales limpiado correctamente');
   } catch (error) {
     console.error('❌ Error al limpiar informe de ingresos manuales:', error);
@@ -1622,17 +1831,19 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
 
     // 🔧 CORRECCIÓN: Consultar los datos correctos del ingrediente
     console.log('🔍 [ETIQUETA-DEBUG] Consultando datos del ingrediente para obtener nombre y código correctos...');
-    
+
     const ingredienteData = await obtenerIngrediente(ingredienteId);
-    
+
     if (!ingredienteData) {
       throw new Error(`No se encontraron datos para el ingrediente ID: ${ingredienteId}`);
     }
 
     // ✅ USAR DATOS CORRECTOS DEL INGREDIENTE (no del artículo)
     const nombreIngredienteCorrect = ingredienteData.nombre;
-    const codigoIngredienteCorrect = ingredienteData.codigo || ingredienteId.toString();
-    
+    // CORRECCIÓN: Usar el código del artículo pasado como parámetro, NO el del ingrediente
+    // El usuario pidió: "Origen del código: Asegúrate de enviar el articuloSeleccionado.numero"
+    const codigoIngredienteCorrect = articuloNumero || ingredienteData.codigo || ingredienteId.toString();
+
     console.log('🔍 [ETIQUETA-DEBUG] Comparación de datos:');
     console.log('❌ DATOS INCORRECTOS (artículo):');
     console.log(`   - Nombre del artículo: "${ingredienteNombre}"`);
@@ -1650,8 +1861,10 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        nombre: nombreIngredienteCorrect, // ✅ CORREGIDO: Usar nombre del ingrediente
-        codigo: codigoIngredienteCorrect  // ✅ CORREGIDO: Usar código del ingrediente
+        nombre: nombreIngredienteCorrect,
+        codigo: codigoIngredienteCorrect,
+        cantidad: 1, // Default 1 si se llama desde botón 'Etiqueta' (aunque este botón usa la función imprimirEtiquetaIngredienteDesdeIngreso normalmente con parámetros)
+        sector: ingredienteData.sector_descripcion ? (ingredienteData.sector_descripcion.match(/"([^"]+)"/)?.[1] || '') : ''
       })
     });
 
@@ -1664,20 +1877,20 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
 
     const result = await response.json();
     console.log('✅ Respuesta exitosa del servidor:', result);
-    
+
     // Mostrar confirmación visual
     alert(`✅ Etiqueta del ingrediente "${nombreIngredienteCorrect}" enviada a imprimir correctamente\nCódigo: ${codigoIngredienteCorrect}`);
-    
+
     console.log('✅ IMPRESIÓN DE ETIQUETA COMPLETADA EXITOSAMENTE');
     console.log('================================================================');
-    
+
   } catch (error) {
     console.error('❌ ERROR AL IMPRIMIR ETIQUETA DE INGREDIENTE');
     console.error('================================================================');
     console.error('❌ Detalles del error:', error);
     console.error('❌ Stack trace:', error.stack);
     console.error('================================================================');
-    
+
     // Mostrar error al usuario
     alert(`❌ Error al imprimir etiqueta: ${error.message}`);
   }
@@ -1687,56 +1900,56 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
 async function cargarArticulosSugeridos(nombreIngrediente) {
   try {
     console.log('⚡ [SUGERIDOS] Cargando artículos sugeridos basados en historial para ingrediente ID:', ingredienteSeleccionado);
-    
+
     const container = document.getElementById('articulos-sugeridos-container');
     const grid = document.getElementById('articulos-sugeridos-grid');
-    
+
     if (!container || !grid) {
       console.warn('⚠️ [SUGERIDOS] Contenedores no encontrados');
       return;
     }
-    
+
     // ✅ CORRECCIÓN: Consultar el endpoint de historial real
     const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteSeleccionado}/articulos-sugeridos`);
-    
+
     if (!response.ok) {
       throw new Error('Error al obtener artículos sugeridos del historial');
     }
-    
+
     const articulosSugeridos = await response.json();
-    
+
     console.log(`⚡ [SUGERIDOS] Encontrados ${articulosSugeridos.length} artículos del historial real`);
-    
+
     if (articulosSugeridos.length === 0) {
       console.log('ℹ️ [SUGERIDOS] No hay historial de uso para este ingrediente - ocultando panel');
       container.style.display = 'none';
       return;
     }
-    
+
     // Generar las tarjetas de sugeridos
     grid.innerHTML = '';
     articulosSugeridos.forEach((art, index) => {
       const stock = parseFloat(art.stock_actual) || 0;
       const stockClass = stock > 0 ? '' : 'sin-stock';
       const esMasReciente = index === 0; // El primero es el más reciente
-      
+
       const card = document.createElement('div');
       card.className = 'articulo-sugerido-card';
       if (esMasReciente) {
         card.style.borderColor = '#007bff';
         card.style.backgroundColor = '#f8f9ff';
       }
-      
+
       card.innerHTML = `
         <p class="articulo-sugerido-nombre">${esMasReciente ? '⭐ ' : ''}${art.articulo_nombre}</p>
         <p class="articulo-sugerido-stock ${stockClass}">Stock: ${stock.toFixed(2)} kg</p>
       `;
-      
+
       // Al hacer clic, seleccionar el artículo automáticamente
       card.addEventListener('click', () => {
         console.log('⚡ [SUGERIDOS] Artículo seleccionado desde historial:', art.articulo_nombre);
         console.log(`📊 [SUGERIDOS] Última vez usado: ${art.ultima_fecha_uso}, Frecuencia: ${art.frecuencia_uso}`);
-        
+
         // Crear objeto artículo compatible con seleccionarArticulo()
         const articuloParaSeleccionar = {
           numero: art.articulo_numero,
@@ -1744,17 +1957,17 @@ async function cargarArticulosSugeridos(nombreIngrediente) {
           codigo_barras: art.codigo_barras,
           stock_consolidado: art.stock_actual
         };
-        
+
         seleccionarArticulo(articuloParaSeleccionar);
       });
-      
+
       grid.appendChild(card);
     });
-    
+
     // Mostrar el contenedor
     container.style.display = 'block';
     console.log('✅ [SUGERIDOS] Panel de sugeridos cargado correctamente desde historial real');
-    
+
   } catch (error) {
     console.error('❌ [SUGERIDOS] Error al cargar artículos sugeridos:', error);
     // No mostrar el panel si hay error

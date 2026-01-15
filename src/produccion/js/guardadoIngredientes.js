@@ -10,13 +10,13 @@ export async function abrirModalGuardadoIngredientes(carroId, usuarioId) {
   console.log('\n🚀 [DIAGNÓSTICO] INICIANDO FUNCIÓN abrirModalGuardadoIngredientes');
   console.log('================================================================');
   console.log('⏰ Timestamp:', new Date().toISOString());
-  console.log('🔍 [GUARDADO] Parámetros recibidos:', { 
-    carroId: carroId, 
+  console.log('🔍 [GUARDADO] Parámetros recibidos:', {
+    carroId: carroId,
     tipoCarroId: typeof carroId,
-    usuarioId: usuarioId, 
-    tipoUsuarioId: typeof usuarioId 
+    usuarioId: usuarioId,
+    tipoUsuarioId: typeof usuarioId
   });
-  
+
   // PASO 1: Validar parámetros
   console.log('\n📋 PASO 1: Validando parámetros...');
   if (!carroId || !usuarioId) {
@@ -25,7 +25,7 @@ export async function abrirModalGuardadoIngredientes(carroId, usuarioId) {
     return;
   }
   console.log('✅ Parámetros válidos');
-  
+
   carroIdGlobal = carroId;
   usuarioIdGlobal = usuarioId;
   console.log('✅ Variables globales asignadas');
@@ -34,7 +34,7 @@ export async function abrirModalGuardadoIngredientes(carroId, usuarioId) {
   console.log('\n📋 PASO 2: Verificando estado del modal...');
   console.log('🔍 Modal actual:', !!modal);
   console.log('🔍 Modal en DOM (por ID):', !!document.getElementById('modal-guardado-ingredientes'));
-  
+
   if (!modal) {
     console.log('📋 Modal no existe, inicializando...');
     inicializarModal();
@@ -47,7 +47,7 @@ export async function abrirModalGuardadoIngredientes(carroId, usuarioId) {
   console.log('\n📋 PASO 3: Verificando modal después de inicialización...');
   console.log('🔍 Modal object:', modal);
   console.log('🔍 Modal en DOM:', !!document.getElementById('modal-guardado-ingredientes'));
-  
+
   if (modal) {
     const estilosComputados = window.getComputedStyle(modal);
     console.log('🔍 Estado inicial del modal:');
@@ -74,15 +74,15 @@ export async function abrirModalGuardadoIngredientes(carroId, usuarioId) {
   if (modal) {
     console.log('   - display antes:', window.getComputedStyle(modal).display);
     console.log('   - visibility antes:', window.getComputedStyle(modal).visibility);
-    
+
     modal.style.display = 'block';
-    
+
     console.log('🔍 Estado DESPUÉS de mostrar:');
     console.log('   - display después:', window.getComputedStyle(modal).display);
     console.log('   - visibility después:', window.getComputedStyle(modal).visibility);
     console.log('   - opacity después:', window.getComputedStyle(modal).opacity);
     console.log('   - z-index después:', window.getComputedStyle(modal).zIndex);
-    
+
     // Verificación final después de un breve delay
     setTimeout(() => {
       const estilosFinales = window.getComputedStyle(modal);
@@ -97,18 +97,18 @@ export async function abrirModalGuardadoIngredientes(carroId, usuarioId) {
       console.log('   - width final:', estilosFinales.width);
       console.log('   - height final:', estilosFinales.height);
     }, 100);
-    
+
     console.log('✅ [GUARDADO] Modal mostrado correctamente');
   } else {
     console.error('❌ Modal es null, no se puede mostrar');
   }
-  
+
   console.log('================================================================\n');
 }
 
 function inicializarModal() {
   console.log('🔧 [GUARDADO] Inicializando modal');
-  
+
   modal = document.createElement('div');
   modal.id = 'modal-guardado-ingredientes';
   modal.className = 'modal';
@@ -174,14 +174,14 @@ async function cargarIngredientes() {
   try {
     console.log('📡 [GUARDADO] Cargando ingredientes consolidados...');
     const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/ingredientes-consolidados?usuarioId=${usuarioIdGlobal}`);
-    
+
     if (!response.ok) {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
     ingredientes = data;
-    
+
     console.log(`✅ [GUARDADO] Ingredientes cargados: ${data.total_ingredientes}`);
     renderizarTabla();
   } catch (error) {
@@ -192,21 +192,21 @@ async function cargarIngredientes() {
 
 function renderizarTabla() {
   console.log('🎨 [GUARDADO] Renderizando tabla de ingredientes');
-  
+
   if (!ingredientes.ingredientes || ingredientes.ingredientes.length === 0) {
     tablaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No hay ingredientes para mostrar</td></tr>';
     return;
   }
 
   tablaBody.innerHTML = '';
-  
+
   ingredientes.ingredientes.forEach((ing, index) => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid #ddd';
 
     const sectorNombre = ing.sector_nombre || 'Sin sector';
     const origenBadge = ing.origen === 'receta' ? '📋' : ing.origen === 'ingreso_manual' ? '✋' : '📋✋';
-    
+
     tr.innerHTML = `
       <td style="padding: 8px; border: 1px solid #ddd;">${sectorNombre}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">
@@ -268,39 +268,87 @@ function renderizarTabla() {
 async function imprimirEtiqueta(ingredienteId, nombre) {
   try {
     console.log(`🏷️ [GUARDADO] Imprimiendo etiqueta: ${nombre} (ID: ${ingredienteId})`);
-    
-    // 🔍 DIAGNÓSTICO: Buscar el código de barras del ingrediente en los datos cargados
+
+    // 🔍 DIAGNÓSTICO: Buscar el código de barras y sector del ingrediente
+    // Usamos toString() para asegurar coincidencia de tipos
     const ingredienteData = ingredientes.ingredientes?.find(ing => ing.id.toString() === ingredienteId.toString());
-    let codigoBarras = ingredienteId.toString(); // Fallback al ID si no se encuentra código
-    
+
+    // 1. Definir CÓDIGO (Prioridad: ingredienteData.codigo > ingredienteId)
+    let codigoBarras = ingredienteId.toString();
     if (ingredienteData && ingredienteData.codigo) {
       codigoBarras = ingredienteData.codigo;
-      console.log(`✅ [ETIQUETA-DEBUG] Código de barras encontrado: ${codigoBarras}`);
-    } else {
-      console.warn(`⚠️ [ETIQUETA-DEBUG] No se encontró código de barras para ingrediente ${ingredienteId}, usando ID como fallback`);
     }
-    
-    console.log(`🔍 [ETIQUETA-DEBUG] Datos para impresión:`);
-    console.log(`- Nombre: ${nombre}`);
-    console.log(`- ID interno: ${ingredienteId}`);
-    console.log(`- Código de barras: ${codigoBarras}`);
-    
-    // Llamar al endpoint de impresión con el código de barras correcto
+
+    // 2. Definir NOMBRE (Prioridad: ingredienteData.nombre > parámetro nombre)
+    let nombreFinal = nombre;
+    if (ingredienteData && ingredienteData.nombre) {
+      nombreFinal = ingredienteData.nombre;
+    }
+
+    // 3. Definir SECTOR (MOLDE EXACTO: src/produccion/js/ingresoManual.js)
+    let sectorLetter = '';
+
+    if (ingredienteData) {
+      console.log(`🔍 [DEBUG SECTOR] Raw Data:`, {
+        sector_id: ingredienteData.sector_id,
+        sector_nombre: ingredienteData.sector_nombre,
+        sector_descripcion: ingredienteData.sector_descripcion
+      });
+
+      // Lógica clonada de ingresoManual.js: 
+      if (ingredienteData.sector_descripcion) {
+        const match = ingredienteData.sector_descripcion.match(/"([^"]+)"/);
+        if (match && match[1]) {
+          sectorLetter = match[1];
+          console.log(`✅ [DEBUG SECTOR] Letra encontrada en descripcion: ${sectorLetter}`);
+        }
+      }
+
+      // Fallback: Si no hay descripcion o no tiene comillas, buscar en sector_nombre si es corto ("Sector A")
+      // IMPORTANTE: Evitar "FRUTOS SECOS FRACCIONES"
+      if (!sectorLetter && ingredienteData.sector_nombre) {
+        const matchNombre = ingredienteData.sector_nombre.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
+        if (matchNombre && matchNombre[1]) {
+          sectorLetter = matchNombre[1];
+          console.log(`✅ [DEBUG SECTOR] Letra encontrada en nombre: ${sectorLetter}`);
+        } else {
+          // Último recurso: si el nombre es SOLO la letra (length <= 2)
+          const clean = ingredienteData.sector_nombre.replace(/Sector\s*/i, '').replace(/["']/g, '').trim();
+          if (clean.length <= 2) {
+            sectorLetter = clean;
+            console.log(`✅ [DEBUG SECTOR] Letra encontrada (clean): ${sectorLetter}`);
+          }
+        }
+      }
+    }
+
+    if (!ingredienteData) {
+      console.warn(`⚠️ [ETIQUETA-DEBUG] No se encontraron datos completos para ingrediente ${ingredienteId}`);
+    }
+
+    console.log(`🔍 [ETIQUETA-DEBUG] Datos finales para impresión:`);
+    console.log(`- Nombre: ${nombreFinal}`);
+    console.log(`- Código: ${codigoBarras}`);
+    console.log(`- Sector: ${sectorLetter} (Original Nombre: ${ingredienteData?.sector_nombre}, Desc: ${ingredienteData?.sector_descripcion})`);
+
+    // Llamar al endpoint de impresión con todos los datos requeridos
     const response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        nombre: nombre, 
-        codigo: codigoBarras  // ✅ CORREGIDO: Usar código de barras real
+      body: JSON.stringify({
+        nombre: nombreFinal,
+        codigo: codigoBarras,
+        sector: sectorLetter,   // ✅ Enviar letra del sector (o vacío si no se pudo extraer una válida)
+        cantidad: 1             // ✅ Enviar cantidad = 1 (bulto)
       })
     });
-    
+
     if (!response.ok) {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
-    
-    console.log(`✅ [GUARDADO] Etiqueta enviada a imprimir: ${nombre} con código ${codigoBarras}`);
-    alert(`✅ Etiqueta de "${nombre}" enviada a imprimir correctamente\nCódigo: ${codigoBarras}`);
+
+    console.log(`✅ [GUARDADO] Etiqueta enviada a imprimir: ${nombreFinal} con código ${codigoBarras}`);
+    alert(`✅ Etiqueta de "${nombreFinal}" enviada a imprimir correctamente\nCódigo: ${codigoBarras}\nSector: ${sectorLetter || 'N/A'}`);
   } catch (error) {
     console.error('❌ [GUARDADO] Error al imprimir etiqueta:', error);
     alert('❌ Error al imprimir etiqueta: ' + error.message);
@@ -314,7 +362,7 @@ async function imprimirTodasEtiquetas() {
   }
 
   console.log(`🏷️ [GUARDADO] Imprimiendo todas las etiquetas (${ingredientes.ingredientes.length})`);
-  
+
   let exitosas = 0;
   let errores = 0;
 
@@ -337,7 +385,7 @@ async function imprimirTodasEtiquetas() {
 function toggleAjusteIngrediente(checkbox) {
   const ingredienteId = checkbox.getAttribute('data-ingrediente-id');
   const inputAjuste = checkbox.closest('tr').querySelector('.input-ajuste');
-  
+
   if (checkbox.checked) {
     // Habilitar el input y cambiar estilos
     inputAjuste.disabled = false;
@@ -390,7 +438,7 @@ async function guardarAjustes() {
   // Mostrar confirmación con resumen
   const resumen = ajustes.map(a => `• Ingrediente ${a.articulo_numero}: ${a.kilos}kg`).join('\n');
   const confirmar = confirm(`🔄 ¿Confirmar ajustes selectivos?\n\n📊 Se ajustarán ${ajustes.length} ingredientes:\n\n${resumen}\n\n⚠️ Esta acción modificará el stock actual.`);
-  
+
   if (!confirmar) {
     console.log('❌ [GUARDADO] Usuario canceló los ajustes');
     return;
@@ -398,21 +446,21 @@ async function guardarAjustes() {
 
   try {
     console.log(`💾 [GUARDADO] Guardando ${ajustes.length} ajustes selectivos...`);
-    
+
     const response = await fetch('http://localhost:3002/api/produccion/ingredientes-ajustes/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ajustes })
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || `Error ${response.status}`);
     }
-    
+
     const result = await response.json();
     console.log('✅ [GUARDADO] Ajustes selectivos guardados:', result);
-    
+
     alert(`✅ Ajustes selectivos guardados correctamente!\n\n📊 ${result.ajustes_aplicados} ingredientes actualizados\n🎯 Solo se modificaron los ingredientes seleccionados`);
     cerrarModal();
   } catch (error) {

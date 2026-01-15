@@ -20,16 +20,16 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
 
         // Validar parámetros
         if (!carroId || !usuarioId) {
-            return res.status(400).json({ 
-                error: 'Faltan parámetros obligatorios: carroId y usuarioId' 
+            return res.status(400).json({
+                error: 'Faltan parámetros obligatorios: carroId y usuarioId'
             });
         }
 
         // Validar que el carro pertenece al usuario
         const esValido = await validarPropiedadCarro(carroId, usuarioId);
         if (!esValido) {
-            return res.status(403).json({ 
-                error: 'El carro no pertenece al usuario especificado' 
+            return res.status(403).json({
+                error: 'El carro no pertenece al usuario especificado'
             });
         }
 
@@ -40,15 +40,15 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
             WHERE id = $1
         `;
         const estadoResult = await pool.query(queryEstadoCarro, [carroId]);
-        
+
         if (estadoResult.rows.length === 0) {
             return res.status(404).json({ error: 'Carro no encontrado' });
         }
 
         const carro = estadoResult.rows[0];
         if (!carro.fecha_confirmacion) {
-            return res.status(400).json({ 
-                error: 'El carro debe estar finalizado para acceder al guardado de ingredientes' 
+            return res.status(400).json({
+                error: 'El carro debe estar finalizado para acceder al guardado de ingredientes'
             });
         }
 
@@ -75,18 +75,19 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                 i.codigo,
                 i.sector_id,
                 s.nombre as sector_nombre,
+                s.descripcion as sector_descripcion,
                 SUM(im.kilos) as cantidad_ingresada
             FROM ingredientes_movimientos im
             JOIN ingredientes i ON i.id = im.ingrediente_id
             LEFT JOIN sectores_ingredientes s ON s.id = i.sector_id
             WHERE im.carro_id = $1 AND im.tipo = 'ingreso'
-            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual, i.codigo, i.sector_id, s.nombre
+            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual, i.codigo, i.sector_id, s.nombre, s.descripcion
             ORDER BY s.nombre ASC NULLS LAST, i.nombre ASC
         `;
-        
+
         const ingresosResult = await pool.query(queryIngresosManuales, [carroId]);
         const ingredientesIngresos = ingresosResult.rows;
-        
+
         console.log(`✅ Ingredientes de ingresos manuales obtenidos: ${ingredientesIngresos.length}`);
         ingredientesIngresos.forEach((ing, index) => {
             console.log(`  ${index + 1}. ${ing.nombre} - Ingresado: ${ing.cantidad_ingresada}kg - Sector: ${ing.sector_nombre || 'Sin sector'}`);
@@ -108,6 +109,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     codigo: null, // Se obtendrá en el siguiente paso
                     sector_id: null, // Se obtendrá en el siguiente paso
                     sector_nombre: null,
+                    sector_descripcion: null,
                     origen: 'receta',
                     cantidad_ingresada: 0
                 });
@@ -123,6 +125,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                 existente.codigo = ing.codigo;
                 existente.sector_id = ing.sector_id;
                 existente.sector_nombre = ing.sector_nombre;
+                existente.sector_descripcion = ing.sector_descripcion;
                 existente.origen = 'ambos';
             } else {
                 // Si no existe, agregar como nuevo
@@ -135,6 +138,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     codigo: ing.codigo,
                     sector_id: ing.sector_id,
                     sector_nombre: ing.sector_nombre,
+                    sector_descripcion: ing.sector_descripcion,
                     origen: 'ingreso_manual',
                     cantidad_ingresada: Number(parseFloat(ing.cantidad_ingresada).toFixed(3))
                 });
@@ -153,20 +157,22 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     i.id,
                     i.codigo,
                     i.sector_id,
-                    s.nombre as sector_nombre
+                    s.nombre as sector_nombre,
+                    s.descripcion as sector_descripcion
                 FROM ingredientes i
                 LEFT JOIN sectores_ingredientes s ON s.id = i.sector_id
                 WHERE i.id = ANY($1)
             `;
-            
+
             const sectoresResult = await pool.query(querySectores, [idsIngredientes]);
-            
+
             sectoresResult.rows.forEach(sector => {
                 const ingrediente = ingredientesConsolidados.get(sector.id);
                 if (ingrediente) {
                     ingrediente.codigo = sector.codigo;
                     ingrediente.sector_id = sector.sector_id;
                     ingrediente.sector_nombre = sector.sector_nombre;
+                    ingrediente.sector_descripcion = sector.sector_descripcion;
                 }
             });
         }
@@ -188,12 +194,12 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
         console.log(`\n✅ CONSOLIDACIÓN COMPLETADA`);
         console.log(`📊 Total ingredientes consolidados: ${ingredientesFinales.length}`);
         console.log(`📋 Resumen por origen:`);
-        
+
         const resumenOrigen = ingredientesFinales.reduce((acc, ing) => {
             acc[ing.origen] = (acc[ing.origen] || 0) + 1;
             return acc;
         }, {});
-        
+
         Object.entries(resumenOrigen).forEach(([origen, cantidad]) => {
             console.log(`  - ${origen}: ${cantidad} ingredientes`);
         });
@@ -225,9 +231,9 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
     } catch (error) {
         console.error('❌ Error al obtener ingredientes consolidados:', error);
         console.error('❌ Stack trace:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error interno al obtener ingredientes consolidados',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 }
@@ -252,23 +258,23 @@ async function ajustarStockIngrediente(req, res) {
 
         // Validar parámetros
         if (!ingredienteId || cantidad_ajuste === undefined || !usuario_id) {
-            return res.status(400).json({ 
-                error: 'Faltan parámetros obligatorios: ingredienteId, cantidad_ajuste, usuario_id' 
+            return res.status(400).json({
+                error: 'Faltan parámetros obligatorios: ingredienteId, cantidad_ajuste, usuario_id'
             });
         }
 
         const cantidadNumerica = parseFloat(cantidad_ajuste);
         if (isNaN(cantidadNumerica)) {
-            return res.status(400).json({ 
-                error: 'La cantidad de ajuste debe ser un número válido' 
+            return res.status(400).json({
+                error: 'La cantidad de ajuste debe ser un número válido'
             });
         }
 
         // Si la cantidad es 0, no hacer nada
         if (cantidadNumerica === 0) {
             console.log(`ℹ️ Cantidad de ajuste es 0, no se registra movimiento`);
-            return res.json({ 
-                success: true, 
+            return res.json({
+                success: true,
                 mensaje: 'No se realizó ajuste (cantidad = 0)',
                 stock_actualizado: null
             });
@@ -281,7 +287,7 @@ async function ajustarStockIngrediente(req, res) {
             WHERE id = $1
         `;
         const ingredienteResult = await pool.query(queryIngrediente, [ingredienteId]);
-        
+
         if (ingredienteResult.rows.length === 0) {
             return res.status(404).json({ error: 'Ingrediente no encontrado' });
         }
@@ -295,8 +301,8 @@ async function ajustarStockIngrediente(req, res) {
 
         // Validar que no se genere stock negativo
         if (stockAnterior + cantidadNumerica < 0) {
-            return res.status(400).json({ 
-                error: `El ajuste generaría stock negativo. Stock actual: ${stockAnterior}, Ajuste: ${cantidadNumerica}` 
+            return res.status(400).json({
+                error: `El ajuste generaría stock negativo. Stock actual: ${stockAnterior}, Ajuste: ${cantidadNumerica}`
             });
         }
 
@@ -364,9 +370,9 @@ async function ajustarStockIngrediente(req, res) {
     } catch (error) {
         console.error('❌ Error al ajustar stock de ingrediente:', error);
         console.error('❌ Stack trace:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error interno al ajustar stock',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 }

@@ -9,9 +9,9 @@ const port = 3000;
 
 // Configuración CORS
 app.use(cors({
-    origin: 'http://localhost:3002',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type']
+  origin: 'http://localhost:3002',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
 }));
 
 // 🔐 Importar rutas del sistema de usuarios
@@ -55,7 +55,7 @@ app.use('/api/presupuestos', createProxyMiddleware({
   changeOrigin: true,
   onError: (err, req, res) => {
     console.error('❌ [PRESUPUESTOS] Error en proxy:', err.message);
-    res.status(503).json({ 
+    res.status(503).json({
       error: 'Servicio de presupuestos no disponible',
       message: 'Verifique que el servidor de presupuestos esté ejecutándose en puerto 3003'
     });
@@ -83,7 +83,7 @@ const router = express.Router();
 router.get('/config/status', (req, res) => {
   const dbName = process.env.DB_NAME || 'etiquetas';
   const nodeEnv = process.env.NODE_ENV || 'production';
-  
+
   res.json({
     database: dbName,
     environment: nodeEnv,
@@ -158,13 +158,21 @@ router.post('/imprimir-personalizada', (req, res) => {
 
 // Endpoint para imprimir etiquetas de ingredientes
 router.post('/etiquetas/ingrediente', (req, res) => {
-  const { nombre, codigo } = req.body;
+  const { nombre, codigo, sector, cantidad } = req.body;
 
   if (!nombre || !codigo) {
     return res.status(400).json({ error: 'Faltan datos del ingrediente' });
   }
 
-  const datos = { nombre, codigo };
+  const datos = {
+    nombre,
+    codigo,
+    sector: sector || ''
+  };
+
+  // Usar cantidad recibida o fallback a 1
+  // El script de impresión espera un entero
+  const cantidadImpresion = parseInt(cantidad) || 1;
 
   const scriptPath = path.resolve(__dirname, '../scripts/imprimirEtiquetaIngrediente.js');
   const tempDir = path.join(__dirname, 'temp');
@@ -173,14 +181,16 @@ router.post('/etiquetas/ingrediente', (req, res) => {
   }
   const tempDataPath = path.join(tempDir, 'temp-ingrediente.json');
   fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
-  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" 1`;
+
+  // Ejecutar script con la cantidad dinámica
+  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidadImpresion}`;
 
   exec(command, (error, stdout, stderr) => {
     if (error) {
       console.error('Error al imprimir etiqueta de ingrediente:', error);
       return res.status(500).json({ error: 'Error al imprimir etiqueta' });
     }
-    console.log('Etiqueta de ingrediente enviada a imprimir.');
+    console.log(`Etiqueta de ingrediente enviada a imprimir (Cant: ${cantidadImpresion}).`);
     res.json({ message: 'Etiqueta enviada a imprimir' });
   });
 });

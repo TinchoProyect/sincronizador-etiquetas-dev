@@ -8,7 +8,7 @@ import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from 
 window.editarIngredienteCompuesto = async (mixId) => {
     try {
         console.log('🔧 editarIngredienteCompuesto llamado con:', mixId, typeof mixId);
-        
+
         // Si mixId es un string (nombre), necesitamos obtener el ID
         let actualMixId = mixId;
         if (typeof mixId === 'string') {
@@ -26,31 +26,31 @@ window.editarIngredienteCompuesto = async (mixId) => {
                 throw error;
             }
         }
-        
+
         console.log('🚀 Abriendo modal para mix ID:', actualMixId);
         console.log('🔗 Llamando a abrirEdicionMix desde carro.js...');
         // Mostrar el modal de edición de composición del mix
         await abrirEdicionMix(actualMixId);
         console.log('✅ abrirEdicionMix completado');
-        
+
         // Hacer disponible la función de actualización para el modal
         window.actualizarResumenIngredientes = async () => {
             const carroId = localStorage.getItem('carroActivo');
             const colaboradorData = localStorage.getItem('colaboradorActivo');
-            
+
             if (carroId && colaboradorData) {
                 const colaborador = JSON.parse(colaboradorData);
-                
+
                 // Actualizar resumen de ingredientes
                 const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
                 mostrarResumenIngredientes(ingredientes);
-                
+
                 // Actualizar resumen de mixes
                 const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
                 mostrarResumenMixes(mixes);
             }
         };
-        
+
     } catch (error) {
         console.error('Error al editar ingrediente compuesto:', error);
         mostrarError('No se pudo abrir el editor de ingrediente compuesto');
@@ -62,30 +62,30 @@ export async function actualizarEstadoCarro() {
     const carroId = localStorage.getItem('carroActivo');
     const carroInfo = document.getElementById('carro-actual');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
-    
+
     if (!colaboradorData) {
         carroInfo.innerHTML = '<p>No hay colaborador seleccionado</p>';
         return;
     }
 
     const colaborador = JSON.parse(colaboradorData);
-    
+
     try {
         console.log('Obteniendo carros para usuario:', colaborador.id);
         // Obtener todos los carros del usuario
         const response = await fetch(`http://localhost:3002/api/produccion/usuario/${colaborador.id}/carros`);
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             console.error('Error response:', errorData);
             throw new Error(errorData.error || 'Error al obtener carros del usuario');
         }
-        
+
         let carros = await response.json();
-        
+
         // Ordenar carros por fecha (más reciente primero)
         carros = carros.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
-        
+
         if (carros.length === 0) {
             carroInfo.innerHTML = `
                 <div class="no-carros">
@@ -96,34 +96,34 @@ export async function actualizarEstadoCarro() {
             return;
         }
 
-      // Verificar permisos para mostrar botón de producción externa
-            let botonProduccionExterna = '';
-            try {
+        // Verificar permisos para mostrar botón de producción externa
+        let botonProduccionExterna = '';
+        try {
             if (colaborador.rol_id != null) {
                 const respPerm = await fetch(
-                `http://localhost:3002/api/roles/${encodeURIComponent(colaborador.rol_id)}/permisos`
+                    `http://localhost:3002/api/roles/${encodeURIComponent(colaborador.rol_id)}/permisos`
                 );
                 if (respPerm.ok) {
-                const permisos = await respPerm.json();
-                const tienePermisoExterno = Array.isArray(permisos) &&
-                    permisos.some(p => p.nombre === 'ProduccionesExternas');
+                    const permisos = await respPerm.json();
+                    const tienePermisoExterno = Array.isArray(permisos) &&
+                        permisos.some(p => p.nombre === 'ProduccionesExternas');
 
-                if (tienePermisoExterno) {
-                    botonProduccionExterna = `
+                    if (tienePermisoExterno) {
+                        botonProduccionExterna = `
                     <button onclick="crearNuevoCarro('externa')" class="btn btn-primary" style="margin-left: 10px;">
                         🚚 Crear Carro de Producción Externa
                     </button>
                     `;
-                }
+                    }
                 } else {
-                console.debug('[ROLES] permisos HTTP', respPerm.status);
+                    console.debug('[ROLES] permisos HTTP', respPerm.status);
                 }
             } else {
                 console.debug('[ROLES] colaborador.rol_id es null/undefined');
             }
-            } catch (error) {
+        } catch (error) {
             console.debug('[ROLES] error obteniendo permisos:', error);
-            }
+        }
 
 
         // Agrupar carros por semanas y meses (nueva funcionalidad mixta)
@@ -142,18 +142,18 @@ export async function actualizarEstadoCarro() {
             const claseGrupo = grupo.esActual ? 'semana-actual' : '';
             const totalCarros = grupo.carros.length;
             const esGrupoMensual = grupo.anio !== undefined; // Los grupos mensuales tienen propiedades anio y mes
-            
+
             // 🔍 DEPURACIÓN: Determinar si el grupo debe estar expandido por defecto
             const esEstaSemanaSoloExpandida = grupo.etiqueta.includes('Esta semana');
             console.log(`🔍 DEBUG EXPANSIÓN - Grupo: "${grupo.etiqueta}" | Es "Esta semana": ${esEstaSemanaSoloExpandida}`);
-            
+
             const estaExpandido = esEstaSemanaSoloExpandida;
             const indicadorColapso = estaExpandido ? '▼' : '▶';
             const displayTabla = estaExpandido ? 'table' : 'none';
             const claseColapsado = estaExpandido ? '' : 'colapsado';
-            
+
             console.log(`🔍 DEBUG EXPANSIÓN - Resultado: expandido=${estaExpandido}, display=${displayTabla}, clase="${claseColapsado}"`);
-            
+
             html += `
                 <div class="grupo-temporal ${claseGrupo} ${esGrupoMensual ? 'grupo-mensual' : 'grupo-semanal'} ${claseColapsado}" data-grupo="${indiceGrupo}">
                     <div class="header-grupo-temporal" onclick="toggleGrupoTemporal(${indiceGrupo})">
@@ -184,7 +184,7 @@ export async function actualizarEstadoCarro() {
                 const esExterno = carro.tipo_carro === 'externa';
                 const esFinalizado = carro.fecha_confirmacion !== null;
                 const esHoy = carro.esHoy;
-                
+
                 // Aplicar clases CSS para diferenciación visual
                 let clasesFila = '';
                 if (estaActivo) {
@@ -215,10 +215,10 @@ export async function actualizarEstadoCarro() {
                         </td>
                         <td>
                             <div class="btn-group">
-                                ${estaActivo ? 
-                                    '<button class="btn-deseleccionar" onclick="event.stopPropagation(); deseleccionarCarro()">Deseleccionar</button>' :
-                                    ''
-                                }
+                                ${estaActivo ?
+                        '<button class="btn-deseleccionar" onclick="event.stopPropagation(); deseleccionarCarro()">Deseleccionar</button>' :
+                        ''
+                    }
                                 <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})">Eliminar</button>
                             </div>
                         </td>
@@ -226,7 +226,7 @@ export async function actualizarEstadoCarro() {
                 `;
             });
 
-        html += `
+            html += `
                     </tbody>
                 </table>
             </div>
@@ -315,12 +315,12 @@ document.addEventListener('change', (e) => {
 const debouncedActualizarResumen = debounce(async () => {
     const carroId = localStorage.getItem('carroActivo');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
-    
+
     if (carroId && colaboradorData) {
         const colaborador = JSON.parse(colaboradorData);
         const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
         mostrarResumenIngredientes(ingredientes);
-        
+
         // También actualizar el resumen de mixes
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
@@ -416,7 +416,7 @@ function eliminarArticuloDelDOM(numeroArticulo) {
 
         // Buscar el contenedor de ingredientes (siguiente elemento hermano)
         const ingredientesContainer = articulo.nextElementSibling;
-        
+
         // Buscar el artículo vinculado (si existe)
         let articuloVinculado = null;
         if (ingredientesContainer && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
@@ -437,12 +437,12 @@ function eliminarArticuloDelDOM(numeroArticulo) {
         if (!articuloVinculado) {
             articuloVinculado = document.querySelector(`.articulo-vinculado[data-articulo-padre="${numeroArticulo}"]`);
         }
-        
+
         // Eliminar con animación suave
         articulo.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
         articulo.style.opacity = '0';
         articulo.style.transform = 'translateX(-100%)';
-        
+
         if (ingredientesContainer && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
             ingredientesContainer.style.transition = 'opacity 0.3s ease-out';
             ingredientesContainer.style.opacity = '0';
@@ -495,9 +495,9 @@ function mostrarNotificacionEliminacion(numeroArticulo) {
         animation: slideIn 0.3s ease-out;
         font-size: 14px;
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
         if (notification.parentNode) {
             notification.parentNode.removeChild(notification);
@@ -510,13 +510,13 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
     try {
         const carroId = localStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
-        
+
         if (!carroId || !colaboradorData) {
             throw new Error('No hay carro activo o colaborador seleccionado');
         }
 
         const colaborador = JSON.parse(colaboradorData);
-        
+
         const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulo/${numeroArticuloEncoded}?usuarioId=${colaborador.id}`, {
             method: 'PUT',
@@ -534,7 +534,7 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
 
         // Actualizar solo los ingredientes del artículo modificado
         await actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad);
-        
+
         // Actualizar resumen de ingredientes
         await actualizarResumenIngredientes();
 
@@ -543,7 +543,7 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
         mostrarError(error.message);
         // Recargar la tabla para mostrar el valor anterior en caso de error
         await mostrarArticulosDelCarro();
-        
+
         // Actualizar resumen de ingredientes
         await actualizarResumenIngredientes();
     }
@@ -555,16 +555,16 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
         // Buscar el contenedor del artículo
         const inputCantidad = document.querySelector(`input[data-numero="${numeroArticulo}"]`);
         if (!inputCantidad) return;
-        
+
         const articuloContainer = inputCantidad.closest('.articulo-container');
         if (!articuloContainer) return;
-        
+
         const ingredientesContainer = articuloContainer.nextElementSibling;
         if (!ingredientesContainer || !ingredientesContainer.classList.contains('ingredientes-expandidos')) return;
 
         // Obtener ingredientes actualizados
         const ingredientes = await obtenerIngredientesExpandidos(numeroArticulo);
-        
+
         if (ingredientes && ingredientes.length > 0) {
             // Generar nuevo HTML para la tabla de ingredientes
             let htmlIngredientes = `
@@ -586,11 +586,11 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
                 htmlIngredientes += `
                     <tr>
                         <td>
-                            ${ing.es_mix ? 
-                                `<span class="mix-nombre" 
+                            ${ing.es_mix ?
+                        `<span class="mix-nombre" 
                                        style="cursor: pointer; color: #0275d8; text-decoration: underline;"
-                                       onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
-                                ing.nombre}
+                                       onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` :
+                        ing.nombre}
                         </td>
                 <td data-valor="${cantidadTotal}">${cantidadTotal.toFixed(2)}</td>
                         <td>${ing.unidad_medida}</td>
@@ -627,7 +627,7 @@ export async function validarCarroActivo(usuarioId) {
     try {
         // Intentar obtener los artículos del carro para validar propiedad
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${usuarioId}`);
-        
+
         if (!response.ok) {
             // Si hay error, probablemente el carro no pertenece al usuario
             console.log('El carro no pertenece al usuario actual');
@@ -645,7 +645,7 @@ export async function validarCarroActivo(usuarioId) {
 export async function crearNuevoCarro(tipoCarro = 'interna') {
     try {
         console.log(`Iniciando creación de carro tipo: ${tipoCarro}`);
-        
+
         // Verificar si ya existe un carro activo
         const carroActivo = localStorage.getItem('carroActivo');
         if (carroActivo) {
@@ -659,7 +659,7 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
 
         const colaborador = JSON.parse(colaboradorData);
         console.log('Enviando solicitud para crear carro...');
-        
+
         const response = await fetch('http://localhost:3002/api/produccion/carro', {
             method: 'POST',
             headers: {
@@ -678,19 +678,19 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
 
         const data = await response.json();
         console.log(`✅ Carro de producción ${tipoCarro} creado con ID:`, data.id);
-        
+
         // Guardar el ID del carro en localStorage y variable global
         localStorage.setItem('carroActivo', data.id);
         window.carroIdGlobal = data.id;
-        
+
         console.log('Actualizando interfaz...');
-        
+
         // Actualizar la información visual del carro
         await actualizarEstadoCarro();
-        
+
         // Mostrar los artículos del carro (inicialmente vacío)
         await mostrarArticulosDelCarro();
-        
+
         // Actualizar la visibilidad de los botones según el estado
         if (typeof window.actualizarVisibilidadBotones === 'function') {
             console.log('Actualizando visibilidad de botones...');
@@ -706,15 +706,15 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
 }
 
 // Función para alternar la visibilidad de grupos temporales (semanas y meses)
-window.toggleGrupoTemporal = function(indiceGrupo) {
+window.toggleGrupoTemporal = function (indiceGrupo) {
     const grupo = document.querySelector(`[data-grupo="${indiceGrupo}"]`);
     if (!grupo) return;
-    
+
     const tabla = grupo.querySelector('.tabla-carros-grupo');
     const indicador = grupo.querySelector('.indicador-colapso');
-    
+
     if (!tabla || !indicador) return;
-    
+
     // Alternar visibilidad de la tabla
     if (tabla.style.display === 'none') {
         tabla.style.display = 'table';
@@ -735,200 +735,200 @@ window.eliminarCarro = eliminarCarro;
 
 // Función para seleccionar un carro
 export async function seleccionarCarro(carroId) {
-  try {
-    console.log(`Seleccionando carro ID: ${carroId}`);
-
-    // --- Usuario / validaciones ---
-    const colaboradorData = localStorage.getItem('colaboradorActivo');
-    if (!colaboradorData) {
-      throw new Error('No hay colaborador seleccionado');
-    }
-    const colaborador = JSON.parse(colaboradorData);
-    const usuarioId = colaborador.id;
-
-    // Validar pertenencia del carro
-    const validarResp = await fetch(
-      `http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${usuarioId}`
-    );
-    if (!validarResp.ok) {
-      throw new Error('No se puede seleccionar este carro');
-    }
-
-    // --- Establecer carro activo ---
-    localStorage.setItem('carroActivo', String(carroId));
-    window.carroIdGlobal = carroId;
-
-    // 🧹 LIMPIEZA AGRESIVA: Limpiar TODAS las secciones antes de cargar nuevo carro
-    console.log('🧹 [LIMPIEZA] Limpiando UI completa antes de cargar nuevo carro...');
-    
-    // Limpiar datos del carro anterior
-    limpiarIngresosManualesDelCarro();
-    
-    // Limpiar y ocultar TODAS las secciones específicas de tipo de carro
-    const seccionArticulos = document.getElementById('resumen-articulos');
-    const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
-    const seccionMixes = document.getElementById('resumen-mixes');
-    const contenedorMixes = document.getElementById('tabla-resumen-mixes');
-    const contenedorIngredientes = document.getElementById('tabla-resumen-ingredientes');
-    
-    // Ocultar y limpiar artículos externos
-    if (seccionArticulos) {
-        seccionArticulos.style.display = 'none';
-        console.log('🧹 [LIMPIEZA] Sección de artículos externos ocultada');
-    }
-    if (contenedorArticulos) {
-        contenedorArticulos.innerHTML = '<p>Cargando...</p>';
-        console.log('🧹 [LIMPIEZA] Contenedor de artículos externos limpiado');
-    }
-    
-    // Ocultar y limpiar mixes
-    if (seccionMixes) {
-        seccionMixes.style.display = 'none';
-        console.log('🧹 [LIMPIEZA] Sección de mixes ocultada');
-    }
-    if (contenedorMixes) {
-        contenedorMixes.innerHTML = '<p>Cargando...</p>';
-        console.log('🧹 [LIMPIEZA] Contenedor de mixes limpiado');
-    }
-    
-    // Limpiar ingredientes
-    if (contenedorIngredientes) {
-        contenedorIngredientes.innerHTML = '<p>Cargando...</p>';
-        console.log('🧹 [LIMPIEZA] Contenedor de ingredientes limpiado');
-    }
-    
-    // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
-    console.log('🧹 [LIMPIEZA] Limpiando paneles de carro preparado al cambiar de carro...');
-    
-    // Panel de artículos secundarios/vinculados editables
-    const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
-    if (seccionSecundarios) {
-        seccionSecundarios.remove();
-        console.log('✅ [LIMPIEZA] Panel de artículos vinculados editables eliminado');
-    }
-    
-    // Panel de ingredientes/artículos vinculados
-    const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
-    if (seccionInformesVinculados) {
-        seccionInformesVinculados.remove();
-        console.log('✅ [LIMPIEZA] Panel de ingredientes vinculados eliminado');
-    }
-    
-    // Panel de kilos producidos (solo carros externos)
-    const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
-    if (kilosProducidosContainer) {
-        kilosProducidosContainer.remove();
-        console.log('✅ [LIMPIEZA] Panel de kilos producidos eliminado');
-    }
-    
-    // 🧹 LIMPIAR CLASES CSS DE ESTADOS AVANZADOS (segundo-plano, minimizado)
-    console.log('🧹 [LIMPIEZA] Removiendo clases CSS de estados avanzados...');
-    
-    // Remover clase 'segundo-plano' de artículos padres
-    const articulosPadres = document.querySelectorAll('.articulo-container.segundo-plano');
-    articulosPadres.forEach(articulo => {
-        articulo.classList.remove('segundo-plano');
-    });
-    if (articulosPadres.length > 0) {
-        console.log(`✅ [LIMPIEZA] Clase 'segundo-plano' removida de ${articulosPadres.length} artículos`);
-    }
-    
-    // Remover clase 'minimizado' de secciones de resumen
-    const seccionesMinimizadas = document.querySelectorAll('.minimizado');
-    seccionesMinimizadas.forEach(seccion => {
-        seccion.classList.remove('minimizado');
-    });
-    if (seccionesMinimizadas.length > 0) {
-        console.log(`✅ [LIMPIEZA] Clase 'minimizado' removida de ${seccionesMinimizadas.length} secciones`);
-    }
-    
-    // Remover clase 'activa' de paneles dinámicos
-    const panelesActivos = document.querySelectorAll('.seccion-articulos-secundarios.activa, .seccion-resumen.activa');
-    panelesActivos.forEach(panel => {
-        panel.classList.remove('activa');
-    });
-    if (panelesActivos.length > 0) {
-        console.log(`✅ [LIMPIEZA] Clase 'activa' removida de ${panelesActivos.length} paneles`);
-    }
-    
-    // Limpiar informe de ingresos manuales
-    limpiarInformeIngresosManuales();
-    console.log('✅ [LIMPIEZA] UI completamente limpiada');
-
-    console.log('Actualizando interfaz después de seleccionar carro...');
-
-    // --- UI / datos ---
-    await actualizarEstadoCarro();
-    await mostrarArticulosDelCarro();
-
-    // Obtener tipo de carro PRIMERO para gestionar visibilidad
-    let tipoCarro = 'interna';
     try {
-        const estadoResp = await fetch(`/api/produccion/carro/${carroId}/estado`);
-        if (estadoResp.ok) {
-            const estadoData = await estadoResp.json();
-            tipoCarro = estadoData.tipo_carro || 'interna';
-            console.log(`📊 [TIPO-CARRO] Tipo detectado: ${tipoCarro}`);
+        console.log(`Seleccionando carro ID: ${carroId}`);
+
+        // --- Usuario / validaciones ---
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        if (!colaboradorData) {
+            throw new Error('No hay colaborador seleccionado');
         }
-    } catch (error) {
-        console.warn('⚠️ No se pudo obtener tipo de carro, asumiendo interna');
-    }
+        const colaborador = JSON.parse(colaboradorData);
+        const usuarioId = colaborador.id;
 
-    // 🎯 GESTIONAR VISIBILIDAD DE SECCIONES SEGÚN TIPO DE CARRO
-    gestionarVisibilidadSeccionesPorTipo(tipoCarro);
+        // Validar pertenencia del carro
+        const validarResp = await fetch(
+            `http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${usuarioId}`
+        );
+        if (!validarResp.ok) {
+            throw new Error('No se puede seleccionar este carro');
+        }
 
-    // 📊 CARGAR DATOS SEGÚN TIPO DE CARRO
-    
-    // Resumen de ingredientes (SIEMPRE)
-    const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
-    await mostrarResumenIngredientes(ingredientes);
-    console.log('✅ [REACTIVIDAD] Resumen de ingredientes actualizado');
+        // --- Establecer carro activo ---
+        localStorage.setItem('carroActivo', String(carroId));
+        window.carroIdGlobal = carroId;
 
-    // Resumen de mixes (SOLO si es carro externo)
-    if (tipoCarro === 'externa') {
-        const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
-        mostrarResumenMixes(mixes);
-        console.log('✅ [REACTIVIDAD] Resumen de mixes actualizado');
-    }
+        // 🧹 LIMPIEZA AGRESIVA: Limpiar TODAS las secciones antes de cargar nuevo carro
+        console.log('🧹 [LIMPIEZA] Limpiando UI completa antes de cargar nuevo carro...');
 
-    // Resumen de artículos externos (SOLO si es carro externo)
-    if (tipoCarro === 'externa') {
-        const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
-        if (articulos && articulos.length > 0) {
-            mostrarResumenArticulos(articulos);
-            if (seccionArticulos) {
-                seccionArticulos.style.display = 'block';
-                console.log('✅ [REACTIVIDAD] Sección de artículos externos mostrada');
+        // Limpiar datos del carro anterior
+        limpiarIngresosManualesDelCarro();
+
+        // Limpiar y ocultar TODAS las secciones específicas de tipo de carro
+        const seccionArticulos = document.getElementById('resumen-articulos');
+        const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
+        const seccionMixes = document.getElementById('resumen-mixes');
+        const contenedorMixes = document.getElementById('tabla-resumen-mixes');
+        const contenedorIngredientes = document.getElementById('tabla-resumen-ingredientes');
+
+        // Ocultar y limpiar artículos externos
+        if (seccionArticulos) {
+            seccionArticulos.style.display = 'none';
+            console.log('🧹 [LIMPIEZA] Sección de artículos externos ocultada');
+        }
+        if (contenedorArticulos) {
+            contenedorArticulos.innerHTML = '<p>Cargando...</p>';
+            console.log('🧹 [LIMPIEZA] Contenedor de artículos externos limpiado');
+        }
+
+        // Ocultar y limpiar mixes
+        if (seccionMixes) {
+            seccionMixes.style.display = 'none';
+            console.log('🧹 [LIMPIEZA] Sección de mixes ocultada');
+        }
+        if (contenedorMixes) {
+            contenedorMixes.innerHTML = '<p>Cargando...</p>';
+            console.log('🧹 [LIMPIEZA] Contenedor de mixes limpiado');
+        }
+
+        // Limpiar ingredientes
+        if (contenedorIngredientes) {
+            contenedorIngredientes.innerHTML = '<p>Cargando...</p>';
+            console.log('🧹 [LIMPIEZA] Contenedor de ingredientes limpiado');
+        }
+
+        // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
+        console.log('🧹 [LIMPIEZA] Limpiando paneles de carro preparado al cambiar de carro...');
+
+        // Panel de artículos secundarios/vinculados editables
+        const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
+        if (seccionSecundarios) {
+            seccionSecundarios.remove();
+            console.log('✅ [LIMPIEZA] Panel de artículos vinculados editables eliminado');
+        }
+
+        // Panel de ingredientes/artículos vinculados
+        const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
+        if (seccionInformesVinculados) {
+            seccionInformesVinculados.remove();
+            console.log('✅ [LIMPIEZA] Panel de ingredientes vinculados eliminado');
+        }
+
+        // Panel de kilos producidos (solo carros externos)
+        const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
+        if (kilosProducidosContainer) {
+            kilosProducidosContainer.remove();
+            console.log('✅ [LIMPIEZA] Panel de kilos producidos eliminado');
+        }
+
+        // 🧹 LIMPIAR CLASES CSS DE ESTADOS AVANZADOS (segundo-plano, minimizado)
+        console.log('🧹 [LIMPIEZA] Removiendo clases CSS de estados avanzados...');
+
+        // Remover clase 'segundo-plano' de artículos padres
+        const articulosPadres = document.querySelectorAll('.articulo-container.segundo-plano');
+        articulosPadres.forEach(articulo => {
+            articulo.classList.remove('segundo-plano');
+        });
+        if (articulosPadres.length > 0) {
+            console.log(`✅ [LIMPIEZA] Clase 'segundo-plano' removida de ${articulosPadres.length} artículos`);
+        }
+
+        // Remover clase 'minimizado' de secciones de resumen
+        const seccionesMinimizadas = document.querySelectorAll('.minimizado');
+        seccionesMinimizadas.forEach(seccion => {
+            seccion.classList.remove('minimizado');
+        });
+        if (seccionesMinimizadas.length > 0) {
+            console.log(`✅ [LIMPIEZA] Clase 'minimizado' removida de ${seccionesMinimizadas.length} secciones`);
+        }
+
+        // Remover clase 'activa' de paneles dinámicos
+        const panelesActivos = document.querySelectorAll('.seccion-articulos-secundarios.activa, .seccion-resumen.activa');
+        panelesActivos.forEach(panel => {
+            panel.classList.remove('activa');
+        });
+        if (panelesActivos.length > 0) {
+            console.log(`✅ [LIMPIEZA] Clase 'activa' removida de ${panelesActivos.length} paneles`);
+        }
+
+        // Limpiar informe de ingresos manuales
+        limpiarInformeIngresosManuales();
+        console.log('✅ [LIMPIEZA] UI completamente limpiada');
+
+        console.log('Actualizando interfaz después de seleccionar carro...');
+
+        // --- UI / datos ---
+        await actualizarEstadoCarro();
+        await mostrarArticulosDelCarro();
+
+        // Obtener tipo de carro PRIMERO para gestionar visibilidad
+        let tipoCarro = 'interna';
+        try {
+            const estadoResp = await fetch(`/api/produccion/carro/${carroId}/estado`);
+            if (estadoResp.ok) {
+                const estadoData = await estadoResp.json();
+                tipoCarro = estadoData.tipo_carro || 'interna';
+                console.log(`📊 [TIPO-CARRO] Tipo detectado: ${tipoCarro}`);
             }
+        } catch (error) {
+            console.warn('⚠️ No se pudo obtener tipo de carro, asumiendo interna');
+        }
+
+        // 🎯 GESTIONAR VISIBILIDAD DE SECCIONES SEGÚN TIPO DE CARRO
+        gestionarVisibilidadSeccionesPorTipo(tipoCarro);
+
+        // 📊 CARGAR DATOS SEGÚN TIPO DE CARRO
+
+        // Resumen de ingredientes (SIEMPRE)
+        const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
+        await mostrarResumenIngredientes(ingredientes);
+        console.log('✅ [REACTIVIDAD] Resumen de ingredientes actualizado');
+
+        // Resumen de mixes (SOLO si es carro externo)
+        if (tipoCarro === 'externa') {
+            const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
+            mostrarResumenMixes(mixes);
+            console.log('✅ [REACTIVIDAD] Resumen de mixes actualizado');
+        }
+
+        // Resumen de artículos externos (SOLO si es carro externo)
+        if (tipoCarro === 'externa') {
+            const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
+            if (articulos && articulos.length > 0) {
+                mostrarResumenArticulos(articulos);
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'block';
+                    console.log('✅ [REACTIVIDAD] Sección de artículos externos mostrada');
+                }
+            } else {
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'none';
+                    console.log('ℹ️ [REACTIVIDAD] No hay artículos externos, sección oculta');
+                }
+            }
+            console.log('✅ [REACTIVIDAD] Resumen de artículos externos actualizado');
+        }
+
+        // Informe de ingresos manuales (si existe)
+        if (typeof window.actualizarInformeIngresosManuales === 'function') {
+            console.log('Actualizando ingresos manuales después de seleccionar carro...');
+            await window.actualizarInformeIngresosManuales();
+        }
+
+        // Visibilidad de botones según estado
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            console.log('Actualizando visibilidad de botones después de seleccionar carro...');
+            await window.actualizarVisibilidadBotones();
         } else {
-            if (seccionArticulos) {
-                seccionArticulos.style.display = 'none';
-                console.log('ℹ️ [REACTIVIDAD] No hay artículos externos, sección oculta');
-            }
+            console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
         }
-        console.log('✅ [REACTIVIDAD] Resumen de artículos externos actualizado');
-    }
 
-    // Informe de ingresos manuales (si existe)
-    if (typeof window.actualizarInformeIngresosManuales === 'function') {
-      console.log('Actualizando ingresos manuales después de seleccionar carro...');
-      await window.actualizarInformeIngresosManuales();
-    }
+        console.log('✅ [SELECCIÓN-CARRO] Carro seleccionado y UI actualizada completamente');
 
-    // Visibilidad de botones según estado
-    if (typeof window.actualizarVisibilidadBotones === 'function') {
-      console.log('Actualizando visibilidad de botones después de seleccionar carro...');
-      await window.actualizarVisibilidadBotones();
-    } else {
-      console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
+    } catch (error) {
+        console.error('Error al seleccionar carro:', error);
+        mostrarError(error.message);
     }
-    
-    console.log('✅ [SELECCIÓN-CARRO] Carro seleccionado y UI actualizada completamente');
-
-  } catch (error) {
-    console.error('Error al seleccionar carro:', error);
-    mostrarError(error.message);
-  }
 }
 
 
@@ -936,65 +936,65 @@ export async function seleccionarCarro(carroId) {
 // Función para deseleccionar el carro actual
 export async function deseleccionarCarro() {
     console.log('Deseleccionando carro activo...');
-    
+
     localStorage.removeItem('carroActivo');
     window.carroIdGlobal = null;
-    
+
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
-    
+
     // Limpiar resumen de ingredientes
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (contenedor) {
         contenedor.innerHTML = '<p>No hay carro activo</p>';
     }
-    
+
     // Limpiar resumen de mixes
     const contenedorMixes = document.getElementById('tabla-resumen-mixes');
     if (contenedorMixes) {
         contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
     }
-    
+
     // Limpiar resumen de artículos externos
     const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
     if (contenedorArticulos) {
         contenedorArticulos.innerHTML = '<p>No hay carro activo</p>';
     }
-    
+
     // Ocultar sección de artículos externos
     const seccionArticulos = document.getElementById('resumen-articulos');
     if (seccionArticulos) {
         seccionArticulos.style.display = 'none';
     }
-    
+
     // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
     console.log('🧹 Limpiando paneles de carro preparado...');
-    
+
     // Panel de artículos secundarios/vinculados editables
     const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
     if (seccionSecundarios) {
         seccionSecundarios.remove();
         console.log('✅ Panel de artículos vinculados editables eliminado');
     }
-    
+
     // Panel de ingredientes/artículos vinculados
     const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
     if (seccionInformesVinculados) {
         seccionInformesVinculados.remove();
         console.log('✅ Panel de ingredientes vinculados eliminado');
     }
-    
+
     // Panel de kilos producidos (solo carros externos)
     const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
     if (kilosProducidosContainer) {
         kilosProducidosContainer.remove();
         console.log('✅ Panel de kilos producidos eliminado');
     }
-    
+
     // Limpiar informe de ingresos manuales
     console.log('🧹 Limpiando informe de ingresos manuales al deseleccionar carro...');
     limpiarInformeIngresosManuales();
-    
+
     // Actualizar la visibilidad de los botones (deben ocultarse al no haber carro)
     if (typeof window.actualizarVisibilidadBotones === 'function') {
         console.log('Actualizando visibilidad de botones después de deseleccionar carro...');
@@ -1017,7 +1017,7 @@ export async function eliminarCarro(carroId) {
         }
 
         const colaborador = JSON.parse(colaboradorData);
-        
+
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}?usuarioId=${colaborador.id}`, {
             method: 'DELETE'
         });
@@ -1030,81 +1030,81 @@ export async function eliminarCarro(carroId) {
         const carroActivo = localStorage.getItem('carroActivo');
         if (carroActivo === String(carroId)) {
             console.log('🧹 Limpiando UI completa del carro eliminado...');
-            
+
             // Limpiar localStorage
             localStorage.removeItem('carroActivo');
             window.carroIdGlobal = null;
-            
+
             // Limpiar lista de artículos
             const listaArticulos = document.getElementById('lista-articulos');
             if (listaArticulos) {
                 listaArticulos.innerHTML = '<p>No hay carro activo</p>';
             }
-            
+
             // Limpiar resumen de ingredientes
             const contenedorIngredientes = document.getElementById('tabla-resumen-ingredientes');
             if (contenedorIngredientes) {
                 contenedorIngredientes.innerHTML = '<p>No hay carro activo</p>';
             }
-            
+
             // Limpiar resumen de mixes
             const contenedorMixes = document.getElementById('tabla-resumen-mixes');
             if (contenedorMixes) {
                 contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
             }
-            
+
             // Limpiar resumen de artículos externos
             const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
             if (contenedorArticulos) {
                 contenedorArticulos.innerHTML = '<p>No hay carro activo</p>';
             }
-            
+
             // Ocultar sección de artículos externos
             const seccionArticulos = document.getElementById('resumen-articulos');
             if (seccionArticulos) {
                 seccionArticulos.style.display = 'none';
             }
-            
+
             // Ocultar sección de mixes
             const seccionMixes = document.getElementById('resumen-mixes');
             if (seccionMixes) {
                 seccionMixes.style.display = 'none';
             }
-            
+
             // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
             console.log('🧹 Limpiando paneles de carro preparado al eliminar...');
-            
+
             // Panel de artículos secundarios/vinculados editables
             const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
             if (seccionSecundarios) {
                 seccionSecundarios.remove();
                 console.log('✅ Panel de artículos vinculados editables eliminado');
             }
-            
+
             // Panel de ingredientes/artículos vinculados
             const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
             if (seccionInformesVinculados) {
                 seccionInformesVinculados.remove();
                 console.log('✅ Panel de ingredientes vinculados eliminado');
             }
-            
+
             // Panel de kilos producidos (solo carros externos)
             const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
             if (kilosProducidosContainer) {
                 kilosProducidosContainer.remove();
                 console.log('✅ Panel de kilos producidos eliminado');
             }
-            
+
             // Limpiar informe de ingresos manuales
             console.log('🧹 Limpiando informe de ingresos manuales...');
             limpiarInformeIngresosManuales();
-            
+
             // Actualizar visibilidad de botones
             if (typeof window.actualizarVisibilidadBotones === 'function') {
                 console.log('🔄 Actualizando visibilidad de botones...');
                 await window.actualizarVisibilidadBotones();
             }
-            
+
             console.log('✅ UI limpiada completamente');
         }
 
@@ -1129,7 +1129,7 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
         } else {
             console.warn('⚠️ No se pudo obtener el tipo de carro, asumiendo interna');
         }
-        
+
         // Obtener ingredientes base
         const responseBase = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
         if (!responseBase.ok) {
@@ -1139,10 +1139,10 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
 
         // Obtener ingredientes de artículos vinculados (solo para carros externos)
         let ingredientesVinculados = [];
-        
+
         if (tipoCarro === 'externa') {
             const responseVinculados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${usuarioId}`);
-            
+
             if (responseVinculados.ok) {
                 ingredientesVinculados = await responseVinculados.json();
                 console.log(`🔗 Ingredientes vinculados obtenidos: ${ingredientesVinculados.length}`);
@@ -1173,7 +1173,7 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
 export async function obtenerResumenMixesCarro(carroId, usuarioId) {
     try {
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/mixes?usuarioId=${usuarioId}`);
-        
+
         if (!response.ok) {
             throw new Error('No se pudo obtener el resumen de mixes');
         }
@@ -1225,7 +1225,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
     const carroId = localStorage.getItem('carroActivo');
     let estadoCarro = 'en_preparacion';
     let tipoCarro = 'interna';
-    
+
     if (carroId) {
         try {
             const response = await fetch(`/api/produccion/carro/${carroId}/estado`);
@@ -1240,29 +1240,51 @@ export async function mostrarResumenIngredientes(ingredientes) {
         }
     }
 
-    // 🎯 LÓGICA DE PERMISOS: Determinar si mostrar acciones
-    const carroFinalizado = (estadoCarro === 'confirmado');
-    
-    console.log(`📊 [TABLA-INGREDIENTES] Renderizando - Finalizado: ${carroFinalizado} (Vista: ${carroFinalizado ? 'HISTÓRICA' : 'ACTIVA'})`);
+    // 🎯 LÓGICA DE PERMISOS: Determinar si el carro está finalizado (preparado/confirmado)
+    const carroFinalizado = (estadoCarro === 'confirmado' || estadoCarro === 'preparado');
+
+    console.log(`📊 [TABLA-INGREDIENTES] Renderizando - Estado: ${estadoCarro}, Tipo: ${tipoCarro} (Vista: ${carroFinalizado ? 'SOLO LECTURA' : 'ACTIVA'})`);
 
     // 📋 VISTA HISTÓRICA vs VISTA ACTIVA
     let html = '';
-    
+    let manualesPorIngrediente = {};
+
     if (carroFinalizado) {
-        // 📜 VISTA HISTÓRICA: Tabla simplificada sin colores ni alertas
+        // 🔄 FETCH DE INGRESOS MANUALES PARA CÁLCULO DE TRAZABILIDAD
+        try {
+            const respIngresos = await fetch(`/api/produccion/carro/${carroId}/ingresos-manuales`);
+            if (respIngresos.ok) {
+                const ingresos = await respIngresos.json();
+                // Agrupar por ingrediente_id
+                ingresos.forEach(m => {
+                    if (!manualesPorIngrediente[m.ingrediente_id]) {
+                        manualesPorIngrediente[m.ingrediente_id] = 0;
+                    }
+                    manualesPorIngrediente[m.ingrediente_id] += parseFloat(m.kilos_totales || m.kilos || 0);
+                });
+                console.log('📊 Ingresos manuales recuperados para trazabilidad:', manualesPorIngrediente);
+            }
+        } catch (err) {
+            console.error('Error recuperando ingresos manuales:', err);
+        }
+
+        // 📜 VISTA HISTÓRICA COMPLETA (TRAIMOS LA LÓGICA DEL PDF A LA PANTALLA)
         html = `
             <table class="tabla-resumen tabla-historica">
                 <thead>
                     <tr>
                         <th>Ingrediente</th>
-                        <th>Cantidad Utilizada</th>
+                        <th style="background: #e3f2fd;">Stock Anterior</th>
+                        <th style="background: #fff3e0;">Gestión Manual</th>
+                        <th>Requerido</th>
+                        <th style="background: #f5f5f5;">Nuevo Stock</th>
                         <th>Unidad</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
     } else {
-        // 🔴 VISTA ACTIVA: Tabla completa con stock y acciones
+        // 🔴 VISTA ACTIVA: Tabla standard
         html = `
             <table class="tabla-resumen">
                 <thead>
@@ -1280,70 +1302,69 @@ export async function mostrarResumenIngredientes(ingredientes) {
     }
 
     ingredientes.forEach((ing, index) => {
-        // 🔍 LOG DE DEPURACIÓN 3: Justo antes del procesamiento
-        console.log(`🔍 PROCESANDO INGREDIENTE ${index + 1}: ${ing.nombre}`, {
-            cantidadRaw: ing.cantidad,
-            tipoCantidadRaw: typeof ing.cantidad,
-            esNull: ing.cantidad === null,
-            esUndefined: ing.cantidad === undefined,
-            esString: typeof ing.cantidad === 'string',
-            valorString: ing.cantidad?.toString(),
-            stockActualRaw: ing.stock_actual,
-            tipoStockRaw: typeof ing.stock_actual,
-            objetoCompleto: ing
-        });
-
-        // Validación robusta para evitar errores con .toFixed()
-        const stockActualRaw = ing.stock_actual;
+        // Validación robusta
+        const stockFinalRaw = ing.stock_actual; // En carro finalizado, esto es el "Stock Final" (post-producción)
         const cantidadNecesariaRaw = ing.cantidad;
-        
+
         // Convertir a números de forma segura
-        let stockActual = 0;
+        let stockFinal = 0;
         let cantidadNecesaria = 0;
-        
-        if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
-            const stockParsed = parseFloat(stockActualRaw);
-            stockActual = isNaN(stockParsed) ? 0 : stockParsed;
+
+        if (stockFinalRaw !== null && stockFinalRaw !== undefined && stockFinalRaw !== '') {
+            const stockParsed = parseFloat(stockFinalRaw);
+            stockFinal = isNaN(stockParsed) ? 0 : stockParsed;
         }
-        
+
         if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
             const cantidadParsed = parseFloat(cantidadNecesariaRaw);
             cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
         }
-        
-        // 🔍 LOG DE DEPURACIÓN 4: Después de la conversión
-        console.log(`🔍 CONVERSIÓN COMPLETADA para ${ing.nombre}:`, {
-            stockActualFinal: stockActual,
-            cantidadNecesariaFinal: cantidadNecesaria,
-            conversionExitosa: !isNaN(stockActual) && !isNaN(cantidadNecesaria)
-        });
-        
-        // Log para diagnóstico
-        if (cantidadNecesaria === 0 && cantidadNecesariaRaw !== 0) {
-            console.warn(`⚠️ Cantidad inválida para ingrediente ${ing.nombre}:`, {
-                raw: cantidadNecesariaRaw,
-                type: typeof cantidadNecesariaRaw,
-                parsed: cantidadNecesaria
-            });
-        }
-
-        // Calcular datos de stock (siempre, aunque no se muestren)
-        const diferencia = stockActual - cantidadNecesaria;
-        const tieneStock = diferencia >= -0.01;
-        const faltante = tieneStock ? 0 : Math.abs(diferencia);
 
         if (carroFinalizado) {
-            // 📜 VISTA HISTÓRICA: Solo nombre, cantidad utilizada y unidad (sin colores)
+            // 🧮 LÓGICA ROBUSTA BASADA EN SNAPSHOT (FWD CALCULATION)
+            // El backend nos envía 'stock_snapshot' (o stock_actual) que representa el stock
+            // que había en el momento EXACTO de "Carro Listo" (incluyendo ingresos manuales previos).
+
+            // 1. Obtener el Snapshot (Stock Disponible al momento de producir)
+            const stockDisponibleSnapshot = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
+
+            // 2. Obtener lo que se gestionó manualmente
+            // Nota: Asegurar comparacion de IDs string vs int
+            const ingresoManual = manualesPorIngrediente[ing.id] || 0;
+
+            // 3. Calcular Stock Anterior (Lo que había antes de meter mano)
+            // Formula: Snapshot - Manual
+            const stockAnterior = stockDisponibleSnapshot - ingresoManual;
+
+            // 4. Calcular Nuevo Stock (Lo que quedó después de consumir)
+            // Formula: Snapshot - Requerido
+            const stockNuevo = stockDisponibleSnapshot - cantidadNecesaria;
+
+            const colorStockAnterior = stockAnterior < 0 ? '#dc3545' : '#28a745';
+
             html += `
-                <tr class="fila-historica">
-                    <td>${ing.nombre || 'Sin nombre'}</td>
-                    <td>${cantidadNecesaria.toFixed(2)}</td>
-                    <td>${ing.unidad_medida || ''}</td>
+                <tr>
+                    <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
+                    <td style="text-align: center; background: #e3f2fd; color: ${colorStockAnterior}; font-weight: bold;">
+                        ${stockAnterior.toFixed(2)}
+                    </td>
+                    <td style="text-align: center; background: #fff3e0;">
+                        ${ingresoManual > 0 ? `+${ingresoManual.toFixed(2)}` : '-'}
+                    </td>
+                    <td style="text-align: center;">${cantidadNecesaria.toFixed(2)}</td>
+                    <td style="text-align: center; background: #f5f5f5; font-weight: bold;">
+                        ${stockNuevo.toFixed(2)}
+                    </td>
+                    <td style="text-align: center;">${ing.unidad_medida || ''}</td>
                 </tr>
-            `;
+             `;
+
         } else {
-            // 🔴 VISTA ACTIVA: Tabla completa con lógica de permisos
-            
+            // 🔴 VISTA ACTIVA
+            const diferencia = stockFinal - cantidadNecesaria;
+            const tieneStock = diferencia >= -0.01;
+            const faltante = tieneStock ? 0 : Math.abs(diferencia);
+
             // Generar indicador de estado
             let indicadorEstado = '';
             if (tieneStock) {
@@ -1354,36 +1375,31 @@ export async function mostrarResumenIngredientes(ingredientes) {
 
             // 🎯 LÓGICA DE PERMISOS PARA BOTONES DE ACCIÓN
             const esIngredienteVinculado = ing.es_de_articulo_vinculado === true;
-            let mostrarBotones = false;
-            
+            let mostrarBotones = true;
+
             if (tipoCarro === 'externa') {
-                // 🚚 CARRO EXTERNO - Lógica específica
                 if (estadoCarro === 'en_preparacion') {
-                    // Etapa A: Solo ingredientes personales (NO vinculados) son editables
                     mostrarBotones = !esIngredienteVinculado;
-                    console.log(`🔍 [PERMISOS-EXTERNO-PREP] ${ing.nombre}: vinculado=${esIngredienteVinculado}, editable=${mostrarBotones}`);
-                } else if (estadoCarro === 'preparado') {
-                    // Etapa B: Solo ingredientes vinculados (locales) son editables
-                    mostrarBotones = esIngredienteVinculado;
-                    console.log(`🔍 [PERMISOS-EXTERNO-LISTO] ${ing.nombre}: vinculado=${esIngredienteVinculado}, editable=${mostrarBotones}`);
+                } else {
+                    mostrarBotones = false;
                 }
             } else {
-                // 🏭 CARRO INTERNO - Todos editables mientras no esté finalizado
-                mostrarBotones = true;
+                mostrarBotones = (estadoCarro !== 'preparado' && estadoCarro !== 'confirmado');
             }
-            
+
             let botonesAccion = '';
+
             if (mostrarBotones) {
                 const deshabilitado = (window.carroIdGlobal == null);
-                
+
                 const botonIngresoManual = deshabilitado
                     ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
                     : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
-                
+
                 const botonAjusteRapido = deshabilitado
                     ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
-                    : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockActual}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
-                
+                    : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockFinal}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
+
                 botonesAccion = `
                     <div style="display: flex; gap: 8px; justify-content: center;">
                         ${botonIngresoManual}
@@ -1391,29 +1407,25 @@ export async function mostrarResumenIngredientes(ingredientes) {
                     </div>
                 `;
             } else {
-                // Ingrediente en modo solo lectura
                 botonesAccion = `<span style="color: #6c757d; font-style: italic; font-size: 0.9em;">Solo lectura</span>`;
             }
 
-            // Aplicar clases CSS de stock
+            // Aplicar clases CSS
             let clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
             if (ing.es_de_articulo_vinculado) {
                 clasesFila += ' ingrediente-vinculado';
             }
 
-            // Clase para celda sustituible (solo si hay faltante)
-            const claseCeldaSustituible = !tieneStock ? 'celda-sustituible' : '';
-            
-            // Evento double-click para sustitución (solo si hay faltante)
-            const eventoDblClick = !tieneStock
-                ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${ing.unidad_medida || ''}')"` 
+            const claseCeldaSustituible = (!tieneStock) ? 'celda-sustituible' : '';
+            const eventoDblClick = (!tieneStock)
+                ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${ing.unidad_medida || ''}')"`
                 : '';
 
             html += `
                 <tr class="${clasesFila.trim()}">
                     <td>${ing.nombre || 'Sin nombre'}</td>
                     <td>${cantidadNecesaria.toFixed(2)}</td>
-                    <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">${stockActual.toFixed(2)}</td>
+                    <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">${stockFinal.toFixed(2)}</td>
                     <td>${indicadorEstado}</td>
                     <td>${ing.unidad_medida || ''}</td>
                     <td>${botonesAccion}</td>
@@ -1440,7 +1452,7 @@ export function mostrarResumenMixes(mixes) {
     console.log('==========================================');
     console.log('Array final de mixes recibido para mostrar en la UI:');
     console.log('Cantidad de mixes únicos:', mixes?.length || 0);
-    
+
     if (mixes && mixes.length > 0) {
         console.log('\n📋 MIXES FINALES PARA EL INFORME:');
         mixes.forEach((mix, index) => {
@@ -1509,7 +1521,7 @@ export function mostrarResumenMixes(mixes) {
 export async function obtenerResumenArticulosCarro(carroId, usuarioId) {
     try {
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${usuarioId}`);
-        
+
         if (!response.ok) {
             if (response.status === 404) {
                 // No hay artículos o no es un carro externo
@@ -1534,7 +1546,7 @@ export function mostrarResumenArticulos(articulos) {
     console.log('==========================================');
     console.log('Array final de artículos recibido para mostrar en la UI:');
     console.log('Cantidad de artículos únicos:', articulos?.length || 0);
-    
+
     if (articulos && articulos.length > 0) {
         console.log('\n📋 ARTÍCULOS FINALES PARA EL INFORME:');
         articulos.forEach((art, index) => {
@@ -1577,28 +1589,28 @@ export function mostrarResumenArticulos(articulos) {
         // Validación robusta para evitar errores con .toFixed()
         const stockActualRaw = art.stock_actual;
         const cantidadTotalRaw = art.cantidad_total;
-        
+
         // Convertir a números de forma segura
         let stockActual = 0;
         let cantidadNecesaria = 0;
-        
+
         if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
             const stockParsed = parseFloat(stockActualRaw);
             stockActual = isNaN(stockParsed) ? 0 : stockParsed;
         }
-        
+
         if (cantidadTotalRaw !== null && cantidadTotalRaw !== undefined && cantidadTotalRaw !== '') {
             const cantidadParsed = parseFloat(cantidadTotalRaw);
             cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
         }
-        
+
         // 🔍 LOG DE DEPURACIÓN: Después de la conversión
         console.log(`🔍 CONVERSIÓN COMPLETADA para artículo ${art.articulo_numero}:`, {
             stockActualFinal: stockActual,
             cantidadNecesariaFinal: cantidadNecesaria,
             conversionExitosa: !isNaN(stockActual) && !isNaN(cantidadNecesaria)
         });
-        
+
         // Log para diagnóstico
         if (cantidadNecesaria === 0 && cantidadTotalRaw !== 0) {
             console.warn(`⚠️ Cantidad total inválida para artículo ${art.articulo_numero}:`, {
@@ -1643,7 +1655,7 @@ export function mostrarResumenArticulos(articulos) {
 async function obtenerArticulosDeRecetas(carroId, usuarioId) {
     try {
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos-recetas?usuarioId=${usuarioId}`);
-        
+
         if (!response.ok) {
             if (response.status === 404) {
                 // No hay artículos de receta o no es un carro externo
@@ -1673,12 +1685,12 @@ async function obtenerIngredientesExpandidos(numeroArticulo) {
                 // Obtener el ID del ingrediente
                 const queryId = await fetch(`http://localhost:3002/api/produccion/ingredientes/buscar?nombre=${encodeURIComponent(ing.nombre)}`);
                 const { id } = await queryId.json();
-                
+
                 if (id) {
                     // Verificar si es un mix
                     const queryEsMix = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/es-mix`);
                     const { es_mix } = await queryEsMix.json();
-                    
+
                     return {
                         ...ing,
                         id,
@@ -1813,18 +1825,18 @@ export async function mostrarArticulosDelCarro() {
                 ingredientes.forEach(ing => {
                     // Multiplicar la cantidad del ingrediente por la cantidad del artículo en el carro
                     const cantidadTotal = ing.cantidad * art.cantidad;
-                    
+
                     // Verificar si es un Mix por el nombre (contiene "Mix" al inicio)
                     const esMix = ing.nombre && ing.nombre.toLowerCase().startsWith('mix');
-                    
+
                     html += `
                         <tr>
                             <td>
-                                ${ing.es_mix ? 
-                                    `<span class="mix-nombre" 
+                                ${ing.es_mix ?
+                            `<span class="mix-nombre" 
                                            style="cursor: pointer; color: #0275d8; text-decoration: underline;"
-                                           onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` : 
-                                    ing.nombre}
+                                           onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` :
+                            ing.nombre}
                             </td>
                 <td data-base="${ing.cantidad}" data-valor="${cantidadTotal}">${parseFloat(cantidadTotal.toFixed(2))}</td>
                             <td>${ing.unidad_medida}</td>
@@ -1873,7 +1885,7 @@ export async function mostrarArticulosDelCarro() {
         }
     }
 
-   
+
 
 
 
@@ -1919,11 +1931,11 @@ function generarFilaArticuloVinculado(articuloProduccionCodigo, relacion) {
     // Obtener el multiplicador, por defecto 1 si no existe
     const multiplicador = relacion.multiplicador_ingredientes || 1;
     const multiplicadorTexto = multiplicador === 1 ? '' : ` (×${multiplicador})`;
-    
+
     // Obtener descripción y código de barras del artículo vinculado
     const descripcionVinculado = relacion.articulo_kilo_nombre || 'Artículo vinculado por kilo';
     const codigoBarrasVinculado = relacion.articulo_kilo_codigo_barras || '';
-    
+
     return `
         <div class="articulo-vinculado" data-articulo-padre="${articuloProduccionCodigo}">
             <div class="articulo-info">
@@ -1966,13 +1978,13 @@ function generarFilaArticuloVinculado(articuloProduccionCodigo, relacion) {
 async function abrirModalVincularArticulo(articuloCodigo) {
     try {
         console.log(`🔗 Abriendo modal simplificado para vincular artículo: ${articuloCodigo}`);
-        
+
         // Obtener información del artículo padre
         const articuloInfo = await obtenerInfoArticulo(articuloCodigo);
-        
+
         // Abrir el modal simplificado en modo crear
         await abrirModalEditarVinculoSimplificado(articuloCodigo, null, articuloInfo);
-        
+
         // Cambiar el título del modal para reflejar que es para vincular
         const modal = document.getElementById('modal-editar-vinculo');
         if (modal) {
@@ -1980,12 +1992,12 @@ async function abrirModalVincularArticulo(articuloCodigo) {
             if (titulo) {
                 titulo.textContent = '➕ Vincular Artículo por Kilo';
             }
-            
+
             // Configurar el modal para modo crear
             modal.dataset.modo = 'crear';
             delete modal.dataset.relacionId; // No hay relación existente
         }
-        
+
     } catch (error) {
         console.error('Error al abrir modal de vinculación:', error);
         mostrarError('No se pudo abrir el modal de vinculación');
@@ -2000,13 +2012,13 @@ async function abrirModalVincularArticulo(articuloCodigo) {
 async function abrirModalEditarRelacion(articuloCodigo, relacionId) {
     try {
         console.log(`✏️ Abriendo modal simplificado para editar relación: ${articuloCodigo} (ID: ${relacionId})`);
-        
+
         // Obtener información del artículo padre
         const articuloInfo = await obtenerInfoArticulo(articuloCodigo);
-        
+
         // Abrir el modal simplificado
         await abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, articuloInfo);
-        
+
     } catch (error) {
         console.error('Error al abrir modal de edición:', error);
         mostrarError('No se pudo abrir el modal de edición');
@@ -2024,20 +2036,20 @@ async function obtenerInfoArticulo(articuloCodigo) {
         if (!response.ok) {
             throw new Error('Error al obtener información del artículo');
         }
-        
+
         const responseData = await response.json();
-        
+
         // 🛡️ BLINDAJE: Extraer array de diferentes formatos de respuesta
         const lista = responseData.data || responseData || [];
-        
+
         // Validar que sea array
         if (!Array.isArray(lista)) {
             console.warn('⚠️ Respuesta no es array, asumiendo vacío');
             return { numero: articuloCodigo, nombre: 'Artículo no encontrado' };
         }
-        
+
         const articulo = lista.find(art => art.numero === articuloCodigo);
-        
+
         return articulo || { numero: articuloCodigo, nombre: 'Artículo no encontrado' };
     } catch (error) {
         console.error('Error al obtener info del artículo:', error);
@@ -2061,7 +2073,7 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
         // Configurar información del artículo padre
         const codigoPadre = modal.querySelector('.articulo-codigo-padre');
         const descripcionPadre = modal.querySelector('.articulo-descripcion-padre');
-        
+
         if (codigoPadre) codigoPadre.textContent = articuloCodigo;
         if (descripcionPadre) descripcionPadre.textContent = articuloInfo.nombre || 'Sin descripción';
 
@@ -2077,59 +2089,59 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
             console.log('===============================================');
             console.log('- relacionId:', relacionId, typeof relacionId);
             console.log('- URL a consultar:', `http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
-            
+
             try {
                 const response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
                 console.log('- Response status:', response.status);
                 console.log('- Response ok:', response.ok);
-                
+
                 // 🛡️ MANEJO GRACEFUL DE 404: Tratar como nueva relación
                 if (response.status === 404) {
                     console.log('⚠️ Relación no encontrada (404) - tratando como nueva relación');
                     console.log('🔄 Limpiando campos para permitir crear relación desde cero');
-                    
+
                     // Limpiar selector y multiplicador para modo "crear"
                     const selector = document.getElementById('selector-articulo-vinculo');
                     if (selector) {
                         selector.selectedIndex = 0; // Volver a "Seleccione un artículo..."
                     }
-                    
+
                     const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
                     if (inputMultiplicador) {
                         inputMultiplicador.value = 1; // Valor por defecto
                     }
-                    
+
                     // Cambiar el modo del modal a "crear"
                     delete modal.dataset.relacionId;
                     console.log('✅ Modal configurado en modo CREAR (relación no encontrada)');
-                    
+
                 } else if (response.ok) {
                     const relacion = await response.json();
                     console.log(`\n📋 DATOS DE RELACIÓN RECIBIDOS DEL SERVIDOR:`);
                     console.log('- Objeto completo:', JSON.stringify(relacion, null, 2));
                     console.log('- articulo_kilo_codigo:', relacion.articulo_kilo_codigo);
                     console.log('- multiplicador_ingredientes RAW:', relacion.multiplicador_ingredientes, typeof relacion.multiplicador_ingredientes);
-                    
+
                     // Guardar artículo actualmente vinculado para resaltarlo
                     articuloActualmenteVinculado = relacion.articulo_kilo_codigo;
-                    
+
                     // Preseleccionar el artículo vinculado
                     const selector = document.getElementById('selector-articulo-vinculo');
                     if (selector && relacion.articulo_kilo_codigo) {
                         selector.value = relacion.articulo_kilo_codigo;
                         console.log('✅ Artículo preseleccionado en selector:', relacion.articulo_kilo_codigo);
-                        
+
                         // 🎨 RESALTAR ARTÍCULO SELECCIONADO: Agregar indicador visual
                         resaltarArticuloSeleccionado(relacion.articulo_kilo_codigo);
                     } else {
                         console.log('⚠️ No se pudo preseleccionar artículo - selector:', !!selector, 'codigo:', relacion.articulo_kilo_codigo);
                     }
-                    
+
                     // Cargar el multiplicador existente
                     const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
                     console.log('\n🔢 PROCESANDO MULTIPLICADOR:');
                     console.log('- Input multiplicador encontrado:', !!inputMultiplicador);
-                    
+
                     if (inputMultiplicador) {
                         const valorMultiplicador = relacion.multiplicador_ingredientes || 1;
                         inputMultiplicador.value = valorMultiplicador;
@@ -2152,7 +2164,7 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
         } else {
             console.log(`\n🔢 ESTABLECIENDO MULTIPLICADOR POR DEFECTO:`);
             console.log('- relacionId es null/undefined, estableciendo valor por defecto');
-            
+
             // Para nuevas relaciones, establecer valor por defecto
             const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
             if (inputMultiplicador) {
@@ -2166,22 +2178,22 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
 
         // 🎯 OCULTAR MULTIPLICADOR COMPLETO: Simplificación UX
         const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
-        
+
         if (inputMultiplicador) {
             inputMultiplicador.value = 1; // Siempre forzar a 1
-            
+
             // Buscar la sección completa del multiplicador (incluye el h3 con el título)
             const seccionMultiplicador = inputMultiplicador.closest('.multiplicador-section');
-            
+
             if (seccionMultiplicador) {
                 seccionMultiplicador.style.display = 'none'; // Ocultar sección completa con título
                 console.log('🎯 [UX-OPTIMIZADA] Sección completa del multiplicador ocultada (incluye título)');
             } else {
                 // Fallback: intentar ocultar form-group
-                const contenedorCompleto = inputMultiplicador.closest('.form-group') || 
-                                          inputMultiplicador.closest('div') || 
-                                          inputMultiplicador.parentElement;
-                
+                const contenedorCompleto = inputMultiplicador.closest('.form-group') ||
+                    inputMultiplicador.closest('div') ||
+                    inputMultiplicador.parentElement;
+
                 if (contenedorCompleto) {
                     contenedorCompleto.style.display = 'none';
                     console.log('🎯 [UX-OPTIMIZADA] Contenedor del multiplicador ocultado (fallback)');
@@ -2218,19 +2230,19 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
  */
 function hacerModalDraggable(modal) {
     if (!modal) return;
-    
+
     // Buscar el encabezado del modal (h2, h3, o .modal-header)
     const header = modal.querySelector('h2') || modal.querySelector('h3') || modal.querySelector('.modal-header');
-    
+
     if (!header) {
         console.warn('⚠️ No se encontró encabezado para hacer el modal draggable');
         return;
     }
-    
+
     // Cambiar cursor para indicar que es arrastrable
     header.style.cursor = 'move';
     header.title = 'Arrastra para mover el modal';
-    
+
     let isDragging = false;
     let currentX;
     let currentY;
@@ -2238,38 +2250,38 @@ function hacerModalDraggable(modal) {
     let initialY;
     let xOffset = 0;
     let yOffset = 0;
-    
+
     // Obtener el contenedor del modal (modal-content)
     const modalContent = modal.querySelector('.modal-content') || modal;
-    
+
     header.addEventListener('mousedown', dragStart);
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', dragEnd);
-    
+
     function dragStart(e) {
         initialX = e.clientX - xOffset;
         initialY = e.clientY - yOffset;
-        
+
         if (e.target === header || header.contains(e.target)) {
             isDragging = true;
             modalContent.style.transition = 'none'; // Desactivar transiciones durante el arrastre
         }
     }
-    
+
     function drag(e) {
         if (isDragging) {
             e.preventDefault();
-            
+
             currentX = e.clientX - initialX;
             currentY = e.clientY - initialY;
-            
+
             xOffset = currentX;
             yOffset = currentY;
-            
+
             setTranslate(currentX, currentY, modalContent);
         }
     }
-    
+
     function dragEnd(e) {
         if (isDragging) {
             initialX = currentX;
@@ -2278,11 +2290,11 @@ function hacerModalDraggable(modal) {
             modalContent.style.transition = ''; // Restaurar transiciones
         }
     }
-    
+
     function setTranslate(xPos, yPos, el) {
         el.style.transform = `translate(${xPos}px, ${yPos}px)`;
     }
-    
+
     console.log('🖱️ [DRAGGABLE] Modal configurado como draggable desde el encabezado');
 }
 
@@ -2292,12 +2304,12 @@ function hacerModalDraggable(modal) {
  */
 function resaltarArticuloSeleccionado(articuloCodigo) {
     if (!articuloCodigo) return;
-    
+
     // Esperar un momento para que el selector esté completamente renderizado
     setTimeout(() => {
         const selector = document.getElementById('selector-articulo-vinculo');
         if (!selector) return;
-        
+
         // Buscar la opción correspondiente
         const opciones = selector.querySelectorAll('option');
         opciones.forEach(opcion => {
@@ -2313,7 +2325,7 @@ function resaltarArticuloSeleccionado(articuloCodigo) {
                 console.log('🎨 [RESALTADO] Artículo actualmente vinculado resaltado:', articuloCodigo);
             }
         });
-        
+
         // Hacer scroll al artículo seleccionado
         if (selector.value === articuloCodigo) {
             const opcionSeleccionada = selector.querySelector(`option[value="${articuloCodigo}"]`);
@@ -2336,10 +2348,10 @@ async function cargarArticulosParaVinculo() {
         }
 
         const responseData = await response.json();
-        
+
         // 🛡️ BLINDAJE: Extraer array de diferentes formatos de respuesta
         let lista = responseData.data || responseData || [];
-        
+
         // Validar que sea array antes de usar .sort()
         if (!Array.isArray(lista)) {
             console.warn('⚠️ Respuesta no es array, asumiendo vacío');
@@ -2349,23 +2361,23 @@ async function cargarArticulosParaVinculo() {
             }
             return;
         }
-        
+
         // 🎯 FILTRADO INTELIGENTE: Solo artículos fraccionables (por kilo)
         const articulosFraccionables = lista.filter(art => {
             const nombreLower = (art.nombre || '').toLowerCase();
             const unidadMedida = (art.unidad_medida || '').toLowerCase();
-            
+
             return nombreLower.includes('por kilo') ||
-                   nombreLower.includes('x kilo') ||
-                   nombreLower.includes('x kg') ||
-                   nombreLower.includes('xkg') ||
-                   unidadMedida === 'kilo';
+                nombreLower.includes('x kilo') ||
+                nombreLower.includes('x kg') ||
+                nombreLower.includes('xkg') ||
+                unidadMedida === 'kilo';
         });
-        
+
         console.log(`🎯 [FILTRO-VINCULO] Artículos totales: ${lista.length}, Fraccionables: ${articulosFraccionables.length}`);
-        
+
         const selector = document.getElementById('selector-articulo-vinculo');
-        
+
         if (!selector) return;
 
         // Limpiar opciones existentes
@@ -2402,17 +2414,17 @@ async function cargarArticulosParaVinculo() {
 function configurarBusquedaVinculo(articulos) {
     const inputBusqueda = document.getElementById('buscar-articulo-vinculo');
     const selector = document.getElementById('selector-articulo-vinculo');
-    
+
     if (!inputBusqueda || !selector) return;
 
     inputBusqueda.addEventListener('input', (e) => {
         const termino = e.target.value.toLowerCase().trim();
-        
+
         // Limpiar selector
         selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
-        
+
         // Filtrar artículos
-        const articulosFiltrados = articulos.filter(articulo => 
+        const articulosFiltrados = articulos.filter(articulo =>
             articulo.numero.toLowerCase().includes(termino) ||
             articulo.nombre.toLowerCase().includes(termino)
         );
@@ -2438,15 +2450,15 @@ function cerrarModalEditarVinculo() {
         setTimeout(() => {
             modal.style.display = 'none';
         }, 300);
-        
+
         // Limpiar datos
         delete modal.dataset.articuloCodigo;
         delete modal.dataset.relacionId;
-        
+
         // Limpiar campos
         const inputBusqueda = document.getElementById('buscar-articulo-vinculo');
         const selector = document.getElementById('selector-articulo-vinculo');
-        
+
         if (inputBusqueda) inputBusqueda.value = '';
         if (selector) selector.selectedIndex = 0;
     }
@@ -2459,16 +2471,16 @@ async function procesarGuardadoVinculo() {
     try {
         console.log('\n🔍 DEPURACIÓN FRONTEND - procesarGuardadoVinculo():');
         console.log('=======================================================');
-        
+
         const modal = document.getElementById('modal-editar-vinculo');
         const selector = document.getElementById('selector-articulo-vinculo');
         const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
-        
+
         console.log('\n📋 ELEMENTOS DEL MODAL:');
         console.log('- modal encontrado:', !!modal);
         console.log('- selector encontrado:', !!selector);
         console.log('- inputMultiplicador encontrado:', !!inputMultiplicador);
-        
+
         if (!modal || !selector) {
             console.log('❌ ERROR: No se encontraron los elementos del modal');
             throw new Error('No se encontraron los elementos del modal');
@@ -2477,7 +2489,7 @@ async function procesarGuardadoVinculo() {
         const articuloCodigo = modal.dataset.articuloCodigo;
         const relacionId = modal.dataset.relacionId;
         const articuloKiloCodigo = selector.value;
-        
+
         // 🎯 FORZAR MULTIPLICADOR A 1: Simplificación UX
         const multiplicadorIngredientes = 1;
 
@@ -2512,12 +2524,12 @@ async function procesarGuardadoVinculo() {
                 articulo_kilo_codigo: articuloKiloCodigo,
                 multiplicador_ingredientes: multiplicadorIngredientes
             };
-            
+
             console.log(`\n✏️ EDITANDO RELACIÓN EXISTENTE:`);
             console.log('- URL:', `http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
             console.log('- Method: PUT');
             console.log('- Body:', JSON.stringify(requestBody, null, 2));
-            
+
             response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`, {
                 method: 'PUT',
                 headers: {
@@ -2533,12 +2545,12 @@ async function procesarGuardadoVinculo() {
                 articulo_kilo_codigo: articuloKiloCodigo,
                 multiplicador_ingredientes: multiplicadorIngredientes
             };
-            
+
             console.log(`\n➕ CREANDO NUEVA RELACIÓN:`);
             console.log('- URL:', 'http://localhost:3002/api/produccion/relacion-articulo');
             console.log('- Method: POST');
             console.log('- Body:', JSON.stringify(requestBody, null, 2));
-            
+
             response = await fetch('http://localhost:3002/api/produccion/relacion-articulo', {
                 method: 'POST',
                 headers: {
@@ -2586,24 +2598,24 @@ async function eliminarRelacionArticulo(articuloCodigo, relacionId) {
     try {
         const confirmar = confirm(`¿Está seguro de que desea eliminar el vínculo del artículo ${articuloCodigo}?`);
         if (!confirmar) return;
-        
+
         console.log(`🗑️ Eliminando relación: ${articuloCodigo} (ID: ${relacionId})`);
-        
+
         const response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`, {
             method: 'DELETE'
         });
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Error al eliminar la relación');
         }
-        
+
         // Mostrar notificación de éxito
         mostrarNotificacionExito('Vínculo eliminado correctamente');
-        
+
         // Actualizar la vista del carro
         await mostrarArticulosDelCarro();
-        
+
     } catch (error) {
         console.error('Error al eliminar relación:', error);
         mostrarError(error.message);
@@ -2627,14 +2639,14 @@ async function abrirModalArticulosSinFiltros() {
 
         // Cargar TODOS los artículos sin filtros
         const response = await fetch('http://localhost:3002/api/produccion/articulos');
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Error al obtener artículos');
         }
 
         const articulos = await response.json();
-        
+
         if (articulos.length === 0) {
             mostrarError('No se encontraron artículos disponibles');
             return;
@@ -2659,7 +2671,7 @@ async function abrirModalArticulosSinFiltros() {
 
         // Actualizar la tabla con todos los artículos
         await actualizarTablaArticulosVinculacion(articulos);
-        
+
     } catch (error) {
         console.error('Error al abrir modal sin filtros:', error);
         mostrarError(error.message);
@@ -2721,11 +2733,11 @@ async function procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNomb
         }
 
         const { articuloProduccion, relacionId, tipo } = window.modoVinculacion;
-        
+
         console.log(`🔗 Procesando vinculación: ${articuloProduccion} -> ${articuloKiloCodigo}`);
-        
+
         let response;
-        
+
         if (tipo === 'crear') {
             // Crear nueva relación
             response = await fetch('http://localhost:3002/api/produccion/relacion-articulo', {
@@ -2750,22 +2762,22 @@ async function procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNomb
                 })
             });
         }
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Error al procesar la vinculación');
         }
-        
+
         // Mostrar notificación de éxito
         const mensaje = tipo === 'crear' ? 'Vínculo creado correctamente' : 'Vínculo actualizado correctamente';
         mostrarNotificacionExito(mensaje);
-        
+
         // Cerrar modal y limpiar modo vinculación
         cerrarModalVinculacion();
-        
+
         // Actualizar la vista del carro
         await mostrarArticulosDelCarro();
-        
+
     } catch (error) {
         console.error('Error al procesar vinculación:', error);
         mostrarError(error.message);
@@ -2783,12 +2795,12 @@ function cerrarModalVinculacion() {
             modal.style.display = 'none';
         }, 300);
     }
-    
+
     // Limpiar campos de filtro
     // Limpiar campo de código de barras
     const codigoBarras = document.getElementById('codigo-barras');
     if (codigoBarras) codigoBarras.value = '';
-    
+
     // Mostrar nuevamente el switch de filtro de producción
     const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
     if (filtroProduccionSwitch) {
@@ -2797,7 +2809,7 @@ function cerrarModalVinculacion() {
             formCheck.style.display = 'block';
         }
     }
-    
+
     // Limpiar modo vinculación
     window.modoVinculacion = null;
 }
@@ -2821,9 +2833,9 @@ function mostrarNotificacionExito(mensaje) {
         animation: slideIn 0.3s ease-out;
         font-size: 14px;
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
         if (notification.parentNode) {
             notification.parentNode.removeChild(notification);
@@ -2841,50 +2853,50 @@ document.addEventListener('click', async (e) => {
         e.target.textContent = ingredientes.classList.contains('hidden') ?
             'Ver' : 'Ocultar';
     }
-    
+
     // Botón vincular artículo
     if (e.target.classList.contains('btn-vincular-articulo')) {
         const articuloCodigo = e.target.dataset.articulo;
         await abrirModalVincularArticulo(articuloCodigo);
     }
-    
+
     // Botón editar relación
     if (e.target.classList.contains('btn-editar-relacion')) {
         const articuloCodigo = e.target.dataset.articulo;
         const relacionId = e.target.dataset.relacionId;
         await abrirModalEditarRelacion(articuloCodigo, relacionId);
     }
-    
+
     // Botón editar relación simple
     if (e.target.classList.contains('btn-editar-relacion-simple')) {
         const articuloCodigo = e.target.dataset.articulo;
         const relacionId = e.target.dataset.relacionId;
         await abrirModalEditarRelacion(articuloCodigo, relacionId);
     }
-    
+
     // Botón eliminar relación
     if (e.target.classList.contains('btn-eliminar-relacion')) {
         const articuloCodigo = e.target.dataset.articulo;
         const relacionId = e.target.dataset.relacionId;
         await eliminarRelacionArticulo(articuloCodigo, relacionId);
     }
-    
+
     // ✅ NUEVOS EVENT LISTENERS PARA ARTÍCULOS SECUNDARIOS
-    
+
     // Botón editar vínculo secundario
     if (e.target.classList.contains('btn-editar-vinculo-secundario')) {
         const articuloCodigo = e.target.dataset.articuloPadre;
         const relacionId = e.target.dataset.relacionId;
         await abrirModalEditarRelacion(articuloCodigo, relacionId);
     }
-    
+
     // Botón eliminar vínculo secundario
     if (e.target.classList.contains('btn-eliminar-vinculo-secundario')) {
         const articuloCodigo = e.target.dataset.articuloPadre;
         const relacionId = e.target.dataset.relacionId;
         await eliminarRelacionArticulo(articuloCodigo, relacionId);
     }
-    
+
     // Botón seleccionar en modo vinculación
     if (e.target.classList.contains('btn-seleccionar-vinculacion')) {
         const articuloKiloCodigo = e.target.dataset.numero;
@@ -2905,10 +2917,10 @@ window.mostrarResumenIngredientes = mostrarResumenIngredientes;
  * Función genérica para toggle de secciones colapsables (acordeón)
  * @param {string} seccionId - ID de la sección a colapsar/expandir
  */
-window.toggleSeccion = function(seccionId) {
+window.toggleSeccion = function (seccionId) {
     const seccion = document.getElementById(seccionId);
     if (!seccion) return;
-    
+
     seccion.classList.toggle('collapsed');
     console.log(`🔄 Sección ${seccionId} ${seccion.classList.contains('collapsed') ? 'colapsada' : 'expandida'}`);
 };
@@ -2919,7 +2931,7 @@ window.toggleSeccion = function(seccionId) {
  */
 export function gestionarVisibilidadSeccionesPorTipo(tipoCarro) {
     const seccionMixes = document.getElementById('resumen-mixes');
-    
+
     if (tipoCarro === 'interna') {
         // Ocultar sección de ingredientes compuestos para carros internos
         if (seccionMixes) {
@@ -2947,22 +2959,22 @@ export function gestionarVisibilidadSeccionesPorTipo(tipoCarro) {
  * @param {number} stockActual - Stock actual del ingrediente
  * @param {number} carroId - ID del carro activo
  */
-window.abrirModalAjusteDesdeCarro = async function(ingredienteId, nombreIngrediente, stockActual, carroId) {
+window.abrirModalAjusteDesdeCarro = async function (ingredienteId, nombreIngrediente, stockActual, carroId) {
     console.log('🚚 [CARRO-AJUSTE] Abriendo modal de ajuste desde carro...');
     console.log(`   - Ingrediente: ${nombreIngrediente} (ID: ${ingredienteId})`);
     console.log(`   - Stock actual: ${stockActual}`);
     console.log(`   - Carro ID: ${carroId}`);
-    
+
     // Obtener datos del colaborador
     const colaboradorData = localStorage.getItem('colaboradorActivo');
     if (!colaboradorData) {
         alert('❌ Error: No hay colaborador seleccionado');
         return;
     }
-    
+
     const colaborador = JSON.parse(colaboradorData);
     const usuarioId = colaborador.id;
-    
+
     // Obtener tipo de carro para determinar si es stock de usuario
     let esStockUsuario = false;
     try {
@@ -2975,7 +2987,7 @@ window.abrirModalAjusteDesdeCarro = async function(ingredienteId, nombreIngredie
     } catch (error) {
         console.warn('⚠️ [CARRO-AJUSTE] No se pudo determinar tipo de carro');
     }
-    
+
     // 🔧 Configurar contexto en el modal usando data-attributes
     const modalAjuste = document.getElementById('modalAjusteKilos');
     if (modalAjuste && esStockUsuario) {
@@ -2983,28 +2995,28 @@ window.abrirModalAjusteDesdeCarro = async function(ingredienteId, nombreIngredie
         modalAjuste.dataset.origenContexto = 'carro_externo';
         console.log(`✅ [CARRO-AJUSTE] Contexto establecido: usuario=${usuarioId}, origen=carro_externo`);
     }
-    
+
     // 🔧 Configurar función de actualización ANTES de abrir el modal
     window.actualizarResumenIngredientes = async () => {
         console.log('🔄 [CARRO-AJUSTE] Actualizando resumen después del ajuste...');
         const carroIdActual = localStorage.getItem('carroActivo');
         const colaboradorDataActual = localStorage.getItem('colaboradorActivo');
-        
+
         if (carroIdActual && colaboradorDataActual) {
             const colaboradorActual = JSON.parse(colaboradorDataActual);
-            
+
             // Actualizar resumen de ingredientes
             const ingredientes = await obtenerResumenIngredientesCarro(carroIdActual, colaboradorActual.id);
             await mostrarResumenIngredientes(ingredientes);
-            
+
             // Actualizar resumen de mixes
             const mixes = await obtenerResumenMixesCarro(carroIdActual, colaboradorActual.id);
             mostrarResumenMixes(mixes);
-            
+
             console.log('✅ [CARRO-AJUSTE] Resumen actualizado correctamente');
         }
     };
-    
+
     // Abrir el modal de ajuste
     if (typeof window.abrirModalAjusteRapido === 'function') {
         console.log('🚀 [CARRO-AJUSTE] Llamando a abrirModalAjusteRapido...');
@@ -3020,5 +3032,5 @@ export {
     cerrarModalEditarVinculo,
     procesarGuardadoVinculo
 };
- 
+
 

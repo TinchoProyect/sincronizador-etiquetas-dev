@@ -6,7 +6,7 @@ const pool = require('../config/database');
 const tiemposCtrl = require('../controllers/tiemposCarro');
 
 // ✅ alias (mantener compatibilidad con front viejo)
-router.post('/carro/:carroId/articulo/:numero/iniciar',  tiemposCtrl.iniciarTemporizadorArticulo);
+router.post('/carro/:carroId/articulo/:numero/iniciar', tiemposCtrl.iniciarTemporizadorArticulo);
 router.post('/carro/:carroId/articulo/:numero/finalizar', tiemposCtrl.finalizarTemporizadorArticulo);
 router.get('/carro/:carroId/tiempo-total', tiemposCtrl.obtenerTiempoTotalCarro);
 
@@ -15,11 +15,11 @@ router.get('/carro/:carroId/tiempo-total', tiemposCtrl.obtenerTiempoTotalCarro);
 const { dbMiddleware } = require('../middleware');
 // Aplicar middleware de base de datos a todas las rutas
 router.use(dbMiddleware);
-const { 
-    crearReceta, 
-    obtenerEstadoRecetas, 
+const {
+    crearReceta,
+    obtenerEstadoRecetas,
     validarIntegridadRecetas,
-    obtenerReceta, 
+    obtenerReceta,
     actualizarReceta,
     obtenerIngredientesExpandidos,
     eliminarReceta,
@@ -43,6 +43,7 @@ const { obtenerArticulos, buscarArticuloPorCodigo, actualizarProduccionLambda, a
 // Controladores para pedidos por cliente
 const { obtenerPedidosPorCliente, obtenerPedidosArticulos, asignarFaltantes, actualizarPackMapping } = require('../controllers/pedidosPorCliente');
 const { imprimirPresupuestoCliente } = require('../controllers/impresionPresupuestos');
+const { imprimirEtiquetaIngrediente } = require('../controllers/impresionEtiquetasIngredientes');
 
 // Controladores para compras pendientes
 const { crearPendienteCompra, obtenerPendientesCompra } = require('../controllers/comprasPendientes');
@@ -109,6 +110,9 @@ router.use('/mixes', mixesRouter);     // ← Montar rutas para mixes
 router.use('/carro', carroIngredientesRouter); // ← Montar rutas para ingredientes de carro
 router.use('/', historialInventariosRouter); // ← Montar rutas para historial de inventarios
 
+// Ruta para imprimir etiqueta de ingrediente
+router.post('/ingredientes/imprimir-etiqueta', imprimirEtiquetaIngrediente);
+
 // Rutas para ingredientes
 router.get('/ingredientes', async (req, res) => {
     try {
@@ -139,11 +143,11 @@ router.post('/ingredientes/por-sectores', async (req, res) => {
     try {
         console.log('🔍 [DIFERENCIAS] Solicitando ingredientes por sectores...');
         const { sectores } = req.body;
-        
+
         if (!sectores) {
             return res.status(400).json({ error: 'Se requiere el parámetro sectores' });
         }
-        
+
         console.log('🔍 [DIFERENCIAS] Sectores recibidos:', sectores);
         const ingredientes = await obtenerIngredientesPorSectores(sectores);
         console.log(`✅ [DIFERENCIAS] Enviando ${ingredientes.length} ingredientes`);
@@ -214,11 +218,11 @@ router.delete('/sectores/:id', async (req, res) => {
 router.get('/ingredientes/:id/nutrientes', async (req, res) => {
     try {
         const ingredienteId = parseInt(req.params.id);
-        
+
         if (isNaN(ingredienteId)) {
             return res.status(400).json({ error: 'ID de ingrediente inválido' });
         }
-        
+
         console.log(`🔍 [NUTRIENTES] Solicitando nutrientes para ingrediente ${ingredienteId}`);
         const nutrientes = await obtenerNutrientes(ingredienteId);
         res.json(nutrientes);
@@ -236,20 +240,20 @@ router.patch('/ingredientes/nutrientes/:id', async (req, res) => {
     try {
         const vinculoId = parseInt(req.params.id);
         const { activo } = req.body;
-        
+
         if (isNaN(vinculoId)) {
             return res.status(400).json({ error: 'ID de vínculo inválido' });
         }
-        
+
         if (typeof activo !== 'boolean') {
-            return res.status(400).json({ 
-                error: 'El campo activo debe ser booleano' 
+            return res.status(400).json({
+                error: 'El campo activo debe ser booleano'
             });
         }
-        
+
         console.log(`🔄 [NUTRIENTES] Actualizando vínculo ${vinculoId} a estado: ${activo}`);
         const vinculo = await actualizarVinculo(vinculoId, activo);
-        
+
         res.json({
             message: `Vínculo ${activo ? 'activado' : 'desactivado'} correctamente`,
             vinculo: vinculo
@@ -270,9 +274,9 @@ router.get('/ingredientes/usuarios-con-stock', async (req, res) => {
         res.json(usuarios);
     } catch (error) {
         console.error('❌ Error al obtener usuarios con stock:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error al obtener usuarios con stock',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 });
@@ -282,20 +286,20 @@ router.get('/ingredientes/stock-usuario/:usuarioId', async (req, res) => {
     try {
         const usuarioId = parseInt(req.params.usuarioId);
         console.log(`🔄 Procesando solicitud GET /ingredientes/stock-usuario/${usuarioId}`);
-        
+
         if (isNaN(usuarioId)) {
             console.warn('⚠️ ID de usuario inválido:', req.params.usuarioId);
             return res.status(400).json({ error: 'ID de usuario inválido' });
         }
-        
+
         const stock = await obtenerStockPorUsuario(usuarioId);
         console.log(`✅ Stock obtenido para usuario ${usuarioId}:`, stock);
         res.json(stock);
     } catch (error) {
         console.error(`❌ Error al obtener stock para usuario ${req.params.usuarioId}:`, error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error al obtener stock por usuario',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 });
@@ -315,14 +319,14 @@ router.get('/ingredientes/nuevo-codigo', async (req, res) => {
 router.get('/ingredientes/buscar', async (req, res) => {
     try {
         const { nombre, codigo } = req.query;
-        
+
         if (codigo) {
             // Buscar por código usando el controlador
             const { buscarIngredientePorCodigo } = require('../controllers/ingredientes');
             const ingrediente = await buscarIngredientePorCodigo(codigo);
             return res.json(ingrediente);
         }
-        
+
         if (nombre) {
             // Buscar por nombre (lógica original)
             const query = `
@@ -331,14 +335,14 @@ router.get('/ingredientes/buscar', async (req, res) => {
                 WHERE LOWER(nombre) = LOWER($1)
             `;
             const result = await req.db.query(query, [nombre]);
-            
+
             if (result.rows.length === 0) {
                 return res.status(404).json({ error: 'Ingrediente no encontrado' });
             }
-            
+
             return res.json({ id: result.rows[0].id });
         }
-        
+
         return res.status(400).json({ error: 'Se requiere el parámetro nombre o codigo' });
     } catch (error) {
         console.error('Error en ruta GET /ingredientes/buscar:', error);
@@ -356,7 +360,7 @@ router.get('/ingredientes/:id/es-mix', async (req, res) => {
         if (isNaN(id)) {
             return res.status(400).json({ error: 'ID inválido' });
         }
-        
+
         const query = `
             SELECT COUNT(*)::integer as count 
             FROM ingrediente_composicion 
@@ -364,7 +368,7 @@ router.get('/ingredientes/:id/es-mix', async (req, res) => {
         `;
         const result = await req.db.query(query, [id]);
         const es_mix = result.rows[0].count > 0;
-        
+
         res.json({ es_mix });
     } catch (error) {
         console.error('Error en ruta GET /ingredientes/:id/es-mix:', error);
@@ -377,17 +381,17 @@ router.get('/ingredientes/:id/es-mix', async (req, res) => {
 router.get('/ingredientes/:id/es-compuesto', async (req, res) => {
     try {
         const ingredienteId = req.params.id;
-        
+
         // Consultar si el ingrediente es un mix verificando si tiene composición
         const query = `
             SELECT COUNT(*)::integer as count
             FROM ingrediente_composicion
             WHERE mix_id = $1
         `;
-        
+
         const result = await req.db.query(query, [ingredienteId]);
         const esCompuesto = result.rows[0].count > 0;
-        
+
         res.json({ esCompuesto });
     } catch (error) {
         console.error('Error al verificar si el ingrediente es compuesto:', error);
@@ -401,7 +405,7 @@ router.get('/ingredientes/:id/composicion', async (req, res) => {
         if (isNaN(mixId)) {
             return res.status(400).json({ error: 'ID inválido' });
         }
-        
+
         // Obtener información del mix
         const mixQuery = `
             SELECT id, nombre, unidad_medida, receta_base_kg
@@ -409,11 +413,11 @@ router.get('/ingredientes/:id/composicion', async (req, res) => {
             WHERE id = $1
         `;
         const mixResult = await req.db.query(mixQuery, [mixId]);
-        
+
         if (mixResult.rows.length === 0) {
             return res.status(404).json({ error: 'Mix no encontrado' });
         }
-        
+
         // Obtener composición del mix
         const composicionQuery = `
             SELECT 
@@ -427,7 +431,7 @@ router.get('/ingredientes/:id/composicion', async (req, res) => {
             ORDER BY i.nombre
         `;
         const composicionResult = await req.db.query(composicionQuery, [mixId]);
-        
+
         res.json({
             mix: mixResult.rows[0],
             composicion: composicionResult.rows
@@ -442,16 +446,16 @@ router.post('/ingredientes/:id/composicion', async (req, res) => {
     try {
         const mixId = parseInt(req.params.id);
         const { ingrediente_id, cantidad } = req.body;
-        
+
         if (isNaN(mixId) || !ingrediente_id || !cantidad) {
             return res.status(400).json({ error: 'Datos inválidos' });
         }
-        
+
         // Verificar que el ingrediente no sea el mismo mix (evitar ciclos)
         if (parseInt(ingrediente_id) === mixId) {
             return res.status(400).json({ error: 'Un mix no puede contenerse a sí mismo' });
         }
-        
+
         const query = `
             INSERT INTO ingrediente_composicion (mix_id, ingrediente_id, cantidad)
             VALUES ($1, $2, $3)
@@ -459,7 +463,7 @@ router.post('/ingredientes/:id/composicion', async (req, res) => {
             DO UPDATE SET cantidad = $3
         `;
         await req.db.query(query, [mixId, ingrediente_id, cantidad]);
-        
+
         res.json({ message: 'Ingrediente agregado a la composición' });
     } catch (error) {
         console.error('Error en ruta POST /ingredientes/:id/composicion:', error);
@@ -472,22 +476,22 @@ router.put('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) =
         const mixId = parseInt(req.params.mixId);
         const ingredienteId = parseInt(req.params.ingredienteId);
         const { cantidad } = req.body;
-        
+
         if (isNaN(mixId) || isNaN(ingredienteId) || !cantidad) {
             return res.status(400).json({ error: 'Datos inválidos' });
         }
-        
+
         const query = `
             UPDATE ingrediente_composicion 
             SET cantidad = $1
             WHERE mix_id = $2 AND ingrediente_id = $3
         `;
         const result = await req.db.query(query, [cantidad, mixId, ingredienteId]);
-        
+
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Composición no encontrada' });
         }
-        
+
         res.json({ message: 'Cantidad actualizada' });
     } catch (error) {
         console.error('Error en ruta PUT /ingredientes/:mixId/composicion/:ingredienteId:', error);
@@ -499,18 +503,18 @@ router.put('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res) =
 router.delete('/ingredientes/:mixId/composicion', async (req, res) => {
     try {
         const mixId = parseInt(req.params.mixId);
-        
+
         if (isNaN(mixId)) {
             return res.status(400).json({ error: 'ID inválido' });
         }
-        
+
         // 1. Eliminar toda la composición
         const deleteQuery = `
             DELETE FROM ingrediente_composicion 
             WHERE mix_id = $1
         `;
         await req.db.query(deleteQuery, [mixId]);
-        
+
         // 2. Actualizar receta_base_kg a null
         const updateQuery = `
             UPDATE ingredientes 
@@ -518,7 +522,7 @@ router.delete('/ingredientes/:mixId/composicion', async (req, res) => {
             WHERE id = $1
         `;
         await req.db.query(updateQuery, [mixId]);
-        
+
         res.json({ message: 'Composición eliminada completamente' });
     } catch (error) {
         console.error('Error en ruta DELETE /ingredientes/:mixId/composicion:', error);
@@ -530,21 +534,21 @@ router.delete('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res
     try {
         const mixId = parseInt(req.params.mixId);
         const ingredienteId = parseInt(req.params.ingredienteId);
-        
+
         if (isNaN(mixId) || isNaN(ingredienteId)) {
             return res.status(400).json({ error: 'IDs inválidos' });
         }
-        
+
         const query = `
             DELETE FROM ingrediente_composicion 
             WHERE mix_id = $1 AND ingrediente_id = $2
         `;
         const result = await req.db.query(query, [mixId, ingredienteId]);
-        
+
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Composición no encontrada' });
         }
-        
+
         res.json({ message: 'Ingrediente eliminado de la composición' });
     } catch (error) {
         console.error('Error en ruta DELETE /ingredientes/:mixId/composicion/:ingredienteId:', error);
@@ -563,7 +567,7 @@ router.get('/ingredientes/:id', async (req, res) => {
     } catch (error) {
         console.error('Error en ruta GET /ingredientes/:id:', error);
         res.status(error.message.includes('no encontrado') ? 404 : 500)
-           .json({ error: error.message });
+            .json({ error: error.message });
     }
 });
 
@@ -588,7 +592,7 @@ router.put('/ingredientes/:id', async (req, res) => {
     } catch (error) {
         console.error('Error en ruta PUT /ingredientes/:id:', error);
         res.status(error.message.includes('no encontrado') ? 404 : 500)
-           .json({ error: error.message });
+            .json({ error: error.message });
     }
 });
 
@@ -603,7 +607,7 @@ router.delete('/ingredientes/:id', async (req, res) => {
     } catch (error) {
         console.error('Error en ruta DELETE /ingredientes/:id:', error);
         res.status(error.message.includes('no encontrado') ? 404 : 500)
-           .json({ error: error.message });
+            .json({ error: error.message });
     }
 });
 
@@ -624,7 +628,7 @@ router.get('/usuarios', async (req, res) => {
             WHERE rol_id = $1 AND activo = $2
             ORDER BY nombre_completo ASC
         `;
-        
+
         const result = await req.db.query(query, [rolId, esActivo]);
         res.json(result.rows);
     } catch (error) {
@@ -638,16 +642,16 @@ router.get('/usuarios', async (req, res) => {
 router.get('/articulos', async (req, res) => {
     try {
         const { tipo_carro, codigo_barras } = req.query;
-        
+
         // Validación del parámetro tipo_carro
         if (tipo_carro && !['interna', 'externa'].includes(tipo_carro)) {
             return res.status(400).json({ error: 'El tipo de carro debe ser "interna" o "externa"' });
         }
-        
+
         console.log('Recibida solicitud GET /articulos con filtros:', { tipo_carro: tipo_carro || 'sin filtro', codigo_barras: codigo_barras || 'sin filtro' });
         const articulos = await obtenerArticulos(tipo_carro, codigo_barras);
         console.log(`Enviando respuesta con ${articulos.length} artículos`);
-        
+
         // Formato de respuesta consistente con otros endpoints
         res.json({
             success: true,
@@ -656,9 +660,9 @@ router.get('/articulos', async (req, res) => {
         });
     } catch (error) {
         console.error('Error en ruta GET /articulos:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -712,20 +716,20 @@ const validarReceta = (req, res, next) => {
     if (ingredientes.length > 0) {
         const ingredientesValidos = ingredientes.every(ing => {
             const cantidadNumerica = parseFloat(ing.cantidad);
-            return ing.nombre_ingrediente && 
-                   typeof ing.nombre_ingrediente === 'string' && 
-                   ing.nombre_ingrediente.trim() &&
-                   ing.unidad_medida && 
-                   typeof ing.unidad_medida === 'string' &&
-                   ing.unidad_medida.trim() &&
-                   !isNaN(cantidadNumerica) && 
-                   cantidadNumerica > 0;
+            return ing.nombre_ingrediente &&
+                typeof ing.nombre_ingrediente === 'string' &&
+                ing.nombre_ingrediente.trim() &&
+                ing.unidad_medida &&
+                typeof ing.unidad_medida === 'string' &&
+                ing.unidad_medida.trim() &&
+                !isNaN(cantidadNumerica) &&
+                cantidadNumerica > 0;
         });
 
         if (!ingredientesValidos) {
             console.log('❌ validarReceta - Error: ingredientes inválidos');
-            return res.status(400).json({ 
-                error: 'Cada ingrediente debe tener nombre válido, unidad de medida y cantidad mayor a 0' 
+            return res.status(400).json({
+                error: 'Cada ingrediente debe tener nombre válido, unidad de medida y cantidad mayor a 0'
             });
         }
     }
@@ -783,7 +787,7 @@ router.get('/recetas/:numero_articulo', async (req, res) => {
     } catch (error) {
         console.error('Error al obtener receta:', error);
         res.status(error.message === 'Receta no encontrada' ? 404 : 500)
-           .json({ error: error.message });
+            .json({ error: error.message });
     }
 });
 
@@ -824,9 +828,9 @@ router.get('/recetas/:numero_articulo/sugerencia', async (req, res) => {
         await obtenerSugerencia(req, res);
     } catch (error) {
         console.error('[SUGERENCIAS] Error en ruta GET sugerencia:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error al obtener sugerencia',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 });
@@ -841,9 +845,9 @@ router.put('/recetas/:numero_articulo/sugerencia', async (req, res) => {
         await guardarSugerencia(req, res);
     } catch (error) {
         console.error('[SUGERENCIAS] Error en ruta PUT sugerencia:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error al guardar sugerencia',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 });
@@ -858,9 +862,9 @@ router.delete('/recetas/:numero_articulo/sugerencia', async (req, res) => {
         await eliminarSugerencia(req, res);
     } catch (error) {
         console.error('[SUGERENCIAS] Error en ruta DELETE sugerencia:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error al eliminar sugerencia',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 });
@@ -869,7 +873,7 @@ router.delete('/recetas/:numero_articulo/sugerencia', async (req, res) => {
 router.post('/carro', async (req, res) => {
     try {
         const { usuarioId, enAuditoria, tipoCarro } = req.body;
-        
+
         if (!usuarioId || isNaN(parseInt(usuarioId))) {
             return res.status(400).json({ error: 'Se requiere un ID de usuario válido' });
         }
@@ -890,7 +894,7 @@ router.post('/carro', async (req, res) => {
 router.get('/usuario/:usuarioId/carros', async (req, res) => {
     try {
         const usuarioId = parseInt(req.params.usuarioId);
-        
+
         if (!usuarioId || isNaN(usuarioId)) {
             return res.status(400).json({ error: 'ID de usuario inválido' });
         }
@@ -1109,7 +1113,7 @@ router.get('/articulos/buscar', async (req, res) => {
         if (!codigo_barras) {
             return res.status(400).json({ error: 'Se requiere el parámetro codigo_barras' });
         }
-        
+
         const articulo = await buscarArticuloPorCodigo(codigo_barras);
         res.json(articulo);
     } catch (error) {
@@ -1126,13 +1130,13 @@ router.get('/articulos/buscar', async (req, res) => {
 router.get('/stock/:codigo', async (req, res) => {
     try {
         const { codigo } = req.params;
-        
+
         if (!codigo) {
             return res.status(400).json({ error: 'Se requiere el código del artículo' });
         }
-        
+
         console.log(`🔍 [STOCK] Consultando kilos_unidad para artículo: ${codigo}`);
-        
+
         const query = `
             SELECT 
                 articulo_numero,
@@ -1142,32 +1146,32 @@ router.get('/stock/:codigo', async (req, res) => {
             FROM stock_real_consolidado
             WHERE articulo_numero = $1
         `;
-        
+
         const result = await req.db.query(query, [codigo]);
-        
+
         if (result.rows.length === 0) {
             console.warn(`⚠️ [STOCK] Artículo no encontrado en stock_real_consolidado: ${codigo}`);
-            return res.status(404).json({ 
+            return res.status(404).json({
                 error: 'Artículo no encontrado en stock',
                 kilos_unidad: 0
             });
         }
-        
+
         const articulo = result.rows[0];
         console.log(`✅ [STOCK] Artículo encontrado:`, articulo);
-        
+
         res.json({
             articulo_numero: articulo.articulo_numero,
             descripcion: articulo.descripcion,
             kilos_unidad: parseFloat(articulo.kilos_unidad || 0),
             stock_consolidado: parseFloat(articulo.stock_consolidado || 0)
         });
-        
+
     } catch (error) {
         console.error('❌ [STOCK] Error al obtener kilos_unidad:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error al consultar stock del artículo',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 });
@@ -1177,7 +1181,7 @@ router.patch('/articulos/:articulo_numero/produccion', async (req, res) => {
     try {
         const { articulo_numero } = req.params;
         const { no_producido_por_lambda } = req.body;
-        
+
         if (!articulo_numero) {
             return res.status(400).json({ error: 'Número de artículo requerido' });
         }
@@ -1203,7 +1207,7 @@ router.put('/articulos/:articuloId/toggle-produccion', async (req, res) => {
     try {
         const { articuloId } = req.params;
         const { no_producido_por_lambda } = req.body;
-        
+
         if (!articuloId) {
             return res.status(400).json({ error: 'ID de artículo requerido' });
         }
@@ -1269,11 +1273,11 @@ router.post('/ingredientes/:ingredienteId/ajustar-stock', async (req, res) => {
 router.post('/ingredientes-ajustes/batch', async (req, res) => {
     try {
         const { ajustes } = req.body;
-        
+
         console.log(`\n🔧 [AJUSTES-INGREDIENTES] ===== PROCESANDO BATCH DE AJUSTES PUNTUALES =====`);
         console.log(`📥 [DATOS] Total ajustes recibidos: ${ajustes?.length || 0}`);
         console.log(`📋 [DATOS] Datos completos:`, JSON.stringify(req.body, null, 2));
-        
+
         if (!ajustes || !Array.isArray(ajustes) || ajustes.length === 0) {
             console.error('❌ [ERROR] No se recibió array de ajustes válido');
             return res.status(400).json({ error: 'Se requiere una lista de ajustes' });
@@ -1291,22 +1295,22 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                 const ajuste = ajustes[i];
                 console.log(`\n📦 [AJUSTE ${i + 1}/${ajustes.length}] ===== PROCESANDO =====`);
                 console.log(`📦 [AJUSTE ${i + 1}] Datos:`, ajuste);
-                
+
                 const { articulo_numero, usuario_id, tipo, kilos, cantidad, observacion } = ajuste;
-                
+
                 try {
                     console.log(`🎯 [AJUSTE-PUNTUAL] Iniciando procesamiento`);
                     console.log(`🎯 [AJUSTE-PUNTUAL] Ingrediente: ${articulo_numero}`);
                     console.log(`🎯 [AJUSTE-PUNTUAL] Ajuste: ${kilos} kg`);
                     console.log(`🎯 [AJUSTE-PUNTUAL] Usuario: ${usuario_id}`);
-                    
+
                     // 🔍 BUSCAR INGREDIENTE
                     console.log(`🔍 [BUSCAR] Buscando ingrediente...`);
-                    
+
                     const articuloStr = articulo_numero.toString();
                     const esNumerico = /^\d+$/.test(articuloStr);
                     const articuloInt = esNumerico ? parseInt(articuloStr) : null;
-                    
+
                     const buscarQuery = `
                         SELECT id, nombre, codigo, stock_actual 
                         FROM ingredientes 
@@ -1314,46 +1318,46 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                     `;
                     console.log(`🔍 [BUSCAR] Query: ${buscarQuery}`);
                     console.log(`🔍 [BUSCAR] Parámetros: ["${articuloStr}", ${articuloInt}, ${esNumerico}]`);
-                    
+
                     const buscarResult = await req.db.query(buscarQuery, [articuloStr, articuloInt, esNumerico]);
                     console.log(`🔍 [BUSCAR] Filas encontradas: ${buscarResult.rows.length}`);
-                    
+
                     if (buscarResult.rows.length === 0) {
                         const error = `Ingrediente no encontrado: ${articulo_numero}`;
                         console.error(`❌ [ERROR] ${error}`);
                         erroresEncontrados.push(error);
                         continue;
                     }
-                    
+
                     const ingrediente = buscarResult.rows[0];
                     console.log(`✅ [ENCONTRADO] Ingrediente completo:`, ingrediente);
                     console.log(`✅ [ENCONTRADO] ID: ${ingrediente.id}`);
                     console.log(`✅ [ENCONTRADO] Nombre: ${ingrediente.nombre}`);
                     console.log(`✅ [ENCONTRADO] Código: ${ingrediente.codigo}`);
                     console.log(`✅ [ENCONTRADO] Stock actual: ${ingrediente.stock_actual}`);
-                    
+
                     // 🧮 CALCULAR DIFERENCIA PARA TRIGGER
                     const stockAnterior = parseFloat(ingrediente.stock_actual) || 0;
                     const nuevoStockDeseado = parseFloat(kilos) || 0;
                     const diferencia = nuevoStockDeseado - stockAnterior;
-                    
+
                     console.log(`🧮 [CÁLCULO] ===== CALCULANDO AJUSTE PARA TRIGGER =====`);
                     console.log(`🧮 [CÁLCULO] Stock anterior: ${stockAnterior}`);
                     console.log(`🧮 [CÁLCULO] Nuevo stock deseado: ${nuevoStockDeseado}`);
                     console.log(`🧮 [CÁLCULO] Diferencia calculada: ${diferencia}`);
                     console.log(`🔧 [CORRECCIÓN] Usando trigger actualizar_stock_ingrediente`);
-                    
+
                     // Si la diferencia es 0, no hacer nada
                     if (Math.abs(diferencia) < 0.001) {
                         console.log(`ℹ️ [SKIP] Diferencia es 0, no se registra movimiento`);
                         ajustesAplicados++;
                         continue;
                     }
-                    
+
                     // 🔧 CORRECCIÓN: Siempre usar "ajuste" para movimientos desde guardado de ingredientes
                     const tipoMovimiento = 'ajuste';
                     const kilosParaTrigger = diferencia; // El trigger suma/resta según el valor (+ o -)
-                    
+
                     // Log de depuración para auditoría
                     console.log("🔍 DEBUG - Guardando ajuste de ingrediente desde batch", {
                         ingrediente_id: ingrediente.id,
@@ -1361,17 +1365,17 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                         tipo: tipoMovimiento,
                         carro_id: ajuste.carro_id || null
                     });
-                    
+
                     const insertMovimientoQuery = `
                         INSERT INTO ingredientes_movimientos 
                         (ingrediente_id, tipo, kilos, fecha, carro_id, observaciones)
                         VALUES ($1, $2, $3, NOW(), $4, $5)
                         RETURNING id
                     `;
-                    
+
                     console.log(`🔄 [MOVIMIENTO] Registrando en ingredientes_movimientos...`);
                     console.log(`🔄 [MOVIMIENTO] Tipo: ${tipoMovimiento}, Kilos: ${kilosParaTrigger}, Carro: ${ajuste.carro_id || 'NULL'}`);
-                    
+
                     const movimientoResult = await req.db.query(insertMovimientoQuery, [
                         ingrediente.id,
                         tipoMovimiento,
@@ -1379,20 +1383,20 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                         ajuste.carro_id || null,
                         observacion || `Ajuste puntual desde guardado - De ${stockAnterior} a ${nuevoStockDeseado}`
                     ]);
-                    
+
                     const movimientoId = movimientoResult.rows[0].id;
                     console.log(`✅ [MOVIMIENTO] Movimiento registrado con ID: ${movimientoId}`);
                     console.log(`✅ [TRIGGER] El trigger actualizar_stock_ingrediente actualizará stock_actual automáticamente`);
-                    
+
                     // 📝 REGISTRAR EN INGREDIENTES_AJUSTES para auditoría
                     const insertAjusteQuery = `
                         INSERT INTO ingredientes_ajustes 
                         (ingrediente_id, usuario_id, tipo_ajuste, stock_anterior, stock_nuevo, observacion, fecha)
                         VALUES ($1, $2, $3, $4, $5, $6, NOW())
                     `;
-                    
+
                     console.log(`📝 [AUDITORÍA] Registrando en ingredientes_ajustes...`);
-                    
+
                     const insertResult = await req.db.query(insertAjusteQuery, [
                         ingrediente.id,
                         usuario_id,
@@ -1401,12 +1405,12 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
                         nuevoStockDeseado,
                         observacion || `Ajuste puntual - Movimiento ID: ${movimientoId}`
                     ]);
-                    
+
                     console.log(`✅ [AUDITORÍA] Ajuste registrado para auditoría`);
-                    
+
                     ajustesAplicados++;
                     console.log(`🎯 [AJUSTE-PUNTUAL] Completado exitosamente para ${ingrediente.nombre}`);
-                    
+
                 } catch (ajusteError) {
                     console.error(`❌ [AJUSTE-PUNTUAL] Error procesando ingrediente ${articulo_numero}:`, ajusteError);
                     erroresEncontrados.push(`Error en ajuste puntual de ${articulo_numero}: ${ajusteError.message}`);
@@ -1431,7 +1435,7 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
             await req.db.query('ROLLBACK');
             console.error('❌ [ERROR] Error en batch de ajustes puntuales:', error);
             console.error('❌ [ERROR] Stack trace:', error.stack);
-            
+
             res.status(500).json({
                 error: 'Error al aplicar ajustes puntuales',
                 detalle: error.message
@@ -1439,7 +1443,7 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
         }
 
         console.log(`🏁 [FIN] ===== BATCH DE AJUSTES PUNTUALES COMPLETADO =====\n`);
-        
+
     } catch (error) {
         console.error('❌ [FATAL] Error crítico en batch de ajustes puntuales:', error);
         res.status(500).json({
@@ -1453,22 +1457,22 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
 router.post('/stock-ventas-movimientos/batch', async (req, res) => {
     try {
         const { ajustes } = req.body;
-        
+
         console.log('[ARTÍCULOS-DEBUG] Ingreso al endpoint /stock-ventas-movimientos/batch con', ajustes.length, 'ajustes recibidos');
-        
+
         if (!ajustes || !Array.isArray(ajustes) || ajustes.length === 0) {
             return res.status(400).json({ error: 'Se requiere una lista de ajustes' });
         }
 
         // 🛑 VALIDACIÓN: Rechazar datos de ingredientes
-        const tieneIngredientes = ajustes.some(ajuste => 
-            ajuste.tipo === 'ajuste puntual' || 
-            ajuste.ingrediente_id || 
+        const tieneIngredientes = ajustes.some(ajuste =>
+            ajuste.tipo === 'ajuste puntual' ||
+            ajuste.ingrediente_id ||
             (ajuste.observacion && ajuste.observacion.includes('ingrediente'))
         );
-        
+
         console.log('[ARTÍCULOS-DEBUG] ¿Contiene ingredientes? →', tieneIngredientes);
-        
+
         if (tieneIngredientes) {
             ajustes.forEach(a => {
                 if (a.tipo === 'ajuste puntual' || a.ingrediente_id || (a.observacion && a.observacion.includes('ingrediente'))) {
@@ -1479,9 +1483,9 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
                     });
                 }
             });
-            
-            return res.status(400).json({ 
-                error: 'Este endpoint procesa exclusivamente movimientos de artículos. Use /ingredientes-ajustes/batch para ingredientes.' 
+
+            return res.status(400).json({
+                error: 'Este endpoint procesa exclusivamente movimientos de artículos. Use /ingredientes-ajustes/batch para ingredientes.'
             });
         }
 
@@ -1497,20 +1501,20 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
             for (let i = 0; i < ajustes.length; i++) {
                 const ajuste = ajustes[i];
                 const { articulo_numero, usuario_id, tipo, kilos, cantidad, observacion } = ajuste;
-                
+
                 try {
                     console.log('[ARTÍCULOS-DEBUG] Procesando artículo:', { articulo_numero, cantidad });
-                    
+
                     // 1. Registrar movimiento en stock_ventas_movimientos
                     const insertMovimientoQuery = `
                         INSERT INTO stock_ventas_movimientos 
                         (articulo_numero, usuario_id, tipo, kilos, cantidad, fecha)
                         VALUES ($1, $2, $3, $4, $5, NOW())
                     `;
-                    
+
                     const params = [articulo_numero, usuario_id, tipo, kilos, cantidad];
                     await req.db.query(insertMovimientoQuery, params);
-                    
+
                     // 2. Actualizar stock_ajustes en stock_real_consolidado
                     const updateStockQuery = `
                         INSERT INTO stock_real_consolidado (
@@ -1524,17 +1528,17 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
                             stock_ajustes = COALESCE(stock_real_consolidado.stock_ajustes, 0) + $2,
                             ultima_actualizacion = NOW()
                     `;
-                    
+
                     // Para ajustes de inventario, usar la cantidad como ajuste
                     const ajusteStock = parseFloat(cantidad) || 0;
                     await req.db.query(updateStockQuery, [articulo_numero, ajusteStock]);
-                    
+
                     // Agregar artículo a la lista para recalcular
                     articulosAfectados.add(articulo_numero);
-                    
+
                     movimientosRegistrados++;
                     console.log('[ARTÍCULOS-DEBUG] Artículo procesado exitosamente:', articulo_numero);
-                    
+
                 } catch (articuloError) {
                     console.error('[ARTÍCULOS-DEBUG] Error procesando artículo:', articulo_numero, articuloError);
                     erroresEncontrados.push(`Error en movimiento de artículo ${articulo_numero}: ${articuloError.message}`);
@@ -1566,13 +1570,13 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
             // Revertir transacción en caso de error
             await req.db.query('ROLLBACK');
             console.error('[ARTÍCULOS-DEBUG] Error en transacción, realizando rollback:', error);
-            
+
             res.status(500).json({
                 error: 'Error al registrar movimientos de artículos',
                 detalle: error.message
             });
         }
-        
+
     } catch (error) {
         console.error('[ARTÍCULOS-DEBUG] Error crítico:', error);
         res.status(500).json({
@@ -1751,16 +1755,16 @@ router.post('/ingredientes-stock-usuarios', async (req, res) => {
         console.log('\n🔍 DEPURACIÓN ENDPOINT /ingredientes-stock-usuarios:');
         console.log('=======================================================');
         console.log('📥 PAYLOAD RECIBIDO:', JSON.stringify(req.body, null, 2));
-        
+
         const { usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id } = req.body;
-        
+
         console.log('\n📋 VALIDACIÓN DE CAMPOS:');
         console.log('- usuario_id:', usuario_id, typeof usuario_id);
         console.log('- ingrediente_id:', ingrediente_id, typeof ingrediente_id);
         console.log('- cantidad:', cantidad, typeof cantidad);
         console.log('- origen_carro_id:', origen_carro_id, typeof origen_carro_id);
         console.log('- origen_mix_id:', origen_mix_id, typeof origen_mix_id);
-        
+
         if (!usuario_id || !ingrediente_id || cantidad === undefined || !origen_carro_id) {
             console.log('❌ ERROR: Faltan datos requeridos');
             return res.status(400).json({ error: 'Faltan datos requeridos' });
@@ -1772,18 +1776,18 @@ router.post('/ingredientes-stock-usuarios', async (req, res) => {
             VALUES ($1, $2, $3, $4, NOW(), $5)
             RETURNING id
         `;
-        
+
         const params = [usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id];
         console.log('\n📝 QUERY A EJECUTAR:', query);
         console.log('📊 PARÁMETROS:', params);
-        
+
         const result = await req.db.query(query, params);
-        
+
         console.log(`\n✅ REGISTRO EXITOSO:`);
         console.log(`- ID generado: ${result.rows[0].id}`);
         console.log(`- origen_mix_id guardado: ${origen_mix_id || 'NULL'}`);
-        
-        res.json({ 
+
+        res.json({
             message: 'Movimiento registrado correctamente',
             id: result.rows[0].id
         });
@@ -1913,7 +1917,7 @@ router.get('/carro/:id/articulos-recetas', async (req, res) => {
 
         // Importar la función del controlador
         const { obtenerArticulosDeRecetas } = require('../controllers/carroIngredientes');
-        
+
         const articulos = await obtenerArticulosDeRecetas(carroId, usuarioId);
         res.json(articulos);
     } catch (error) {
@@ -1926,13 +1930,13 @@ router.get('/carro/:id/articulos-recetas', async (req, res) => {
 router.get('/ingredientes/:id/articulos-sugeridos', async (req, res) => {
     try {
         const ingredienteId = parseInt(req.params.id);
-        
+
         if (isNaN(ingredienteId)) {
             return res.status(400).json({ error: 'ID de ingrediente inválido' });
         }
 
         console.log(`⚡ [SUGERIDOS] Obteniendo artículos sugeridos para ingrediente ${ingredienteId}`);
-        
+
         // 🔧 CONSULTA CORREGIDA V2: Priorizar historial real sobre stock disponible
         // Mostrar artículos sin stock pero indicarlos claramente
         const query = `
@@ -1981,24 +1985,24 @@ router.get('/ingredientes/:id/articulos-sugeridos', async (req, res) => {
                 frecuencia_uso DESC         -- Finalmente por frecuencia
             LIMIT 3
         `;
-        
+
         const result = await req.db.query(query, [ingredienteId]);
-        
+
         console.log(`⚡ [SUGERIDOS] Encontrados ${result.rows.length} artículos sugeridos con stock`);
-        
+
         if (result.rows.length > 0) {
             console.log('📊 [SUGERIDOS] Detalle:');
             result.rows.forEach((art, index) => {
                 console.log(`  ${index + 1}. ${art.articulo_nombre} - Stock: ${art.stock_actual} - Última vez: ${art.ultima_fecha_uso} - Frecuencia: ${art.frecuencia_uso}`);
             });
         }
-        
+
         res.json(result.rows);
     } catch (error) {
         console.error('❌ [SUGERIDOS] Error al obtener artículos sugeridos:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Error al obtener artículos sugeridos',
-            detalle: error.message 
+            detalle: error.message
         });
     }
 });
@@ -2007,7 +2011,7 @@ router.get('/ingredientes/:id/articulos-sugeridos', async (req, res) => {
 router.get('/carro/:id/ingresos-manuales', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         // 🔍 PASO 1: Obtener el tipo de carro para determinar qué consulta usar
         const carroQuery = `
             SELECT tipo_carro 
@@ -2015,16 +2019,16 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
             WHERE id = $1
         `;
         const carroResult = await req.db.query(carroQuery, [id]);
-        
+
         if (carroResult.rows.length === 0) {
             return res.status(404).json({ error: 'Carro no encontrado' });
         }
-        
+
         const tipoCarro = carroResult.rows[0].tipo_carro || 'interna';
         console.log(`🔍 Tipo de carro detectado: ${tipoCarro}`);
-        
+
         let query;
-        
+
         if (tipoCarro === 'interna') {
             // 🏭 CARROS INTERNOS: Artículos + Sustituciones
             // 🔧 CORRECCIÓN: Agregar UNION ALL para incluir sustituciones
@@ -2125,29 +2129,29 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
             `;
             console.log('🌐 Usando consulta para CARRO EXTERNO (ambas fuentes)');
         }
-        
+
         try {
             console.log('📋 Consulta SQL para ingresos manuales:', query);
             console.log('📋 Parámetros:', [id]);
             const result = await req.db.query(query, [id]);
-            
+
             // Log de depuración para ingresos manuales
             console.log(`\n📋 INGRESOS MANUALES - Carro ${id} (${tipoCarro}):`);
             console.log(`Total de registros encontrados: ${result.rows.length}`);
-            
+
             // Logs específicos para depuración de MIX
             const registrosMix = result.rows.filter(row => row.tipo_articulo === 'mix');
             const registrosSimple = result.rows.filter(row => row.tipo_articulo === 'simple');
             console.log(`🔍 MIX - Registros encontrados: ${registrosMix.length}`);
             console.log(`🔍 SIMPLE - Registros encontrados: ${registrosSimple.length}`);
-            
+
             if (registrosMix.length > 0) {
                 console.log(`🧪 Detalle de registros MIX:`);
                 registrosMix.forEach((mix, index) => {
                     console.log(`  ${index + 1}. ${mix.articulo_nombre} - ${mix.kilos}kg - Fuente: ${mix.fuente_datos}`);
                 });
             }
-            
+
             if (result.rows.length > 0) {
                 console.table(result.rows.map(row => ({
                     id: row.id,
@@ -2158,7 +2162,7 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                     fecha: new Date(row.fecha).toLocaleString('es-AR')
                 })));
             }
-            
+
             res.json(result.rows);
         } catch (error) {
             console.error('❌ Error al obtener ingresos manuales:', error);
@@ -2174,37 +2178,37 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
 router.get('/carro/:id/estado', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         const query = `
             SELECT fecha_preparado, fecha_confirmacion, usuario_id, fecha_inicio, tipo_carro
             FROM carros_produccion 
             WHERE id = $1
         `;
-        
+
         const result = await req.db.query(query, [id]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Carro no encontrado' });
         }
-        
+
         const carro = result.rows[0];
         const preparado = carro.fecha_preparado !== null;
         const confirmado = carro.fecha_confirmacion !== null;
         const tipoCarro = carro.tipo_carro || 'interna';
-        
+
         let estado = 'en_preparacion';
         if (confirmado) {
             estado = 'confirmado';
         } else if (preparado) {
             estado = 'preparado';
         }
-        
+
         // Determinar fase actual para carros externos
         let faseActual = 'articulos_padres';
         if (tipoCarro === 'externa' && preparado && !confirmado) {
             faseActual = 'articulos_secundarios';
         }
-        
+
         res.json({
             estado: estado,
             fecha_preparado: carro.fecha_preparado,
@@ -2216,7 +2220,7 @@ router.get('/carro/:id/estado', async (req, res) => {
             mostrar_artículos_padres: faseActual === 'articulos_padres',
             mostrar_artículos_secundarios: faseActual === 'articulos_secundarios'
         });
-        
+
     } catch (error) {
         console.error('Error al obtener estado del carro:', error);
         res.status(500).json({ error: 'Error interno del servidor' });
@@ -2229,206 +2233,206 @@ router.get('/carro/:id/estado', async (req, res) => {
  * 🔧 NUEVA ESTRATEGIA: Usa ingredientes_ajustes para ajustes puntuales
  */
 router.post('/ingredientes_movimientos', async (req, res) => {
-  const client = await req.db.connect();
-  try {
-    console.log('📥 Solicitud POST /ingredientes_movimientos recibida');
-    const { ingrediente_id, kilos, carro_id, tipo, observaciones } = req.body;
+    const client = await req.db.connect();
+    try {
+        console.log('📥 Solicitud POST /ingredientes_movimientos recibida');
+        const { ingrediente_id, kilos, carro_id, tipo, observaciones } = req.body;
 
-    console.log('🔍 Datos recibidos:', req.body);
+        console.log('🔍 Datos recibidos:', req.body);
 
-    if (
-      ingrediente_id == null ||
-      kilos == null ||
-      isNaN(Number(kilos))
-    ) {
-      console.warn('⚠️ Validación fallida en POST /ingredientes_movimientos');
-      return res.status(400).json({ error: 'Faltan campos obligatorios o kilos inválidos' });
-    }
+        if (
+            ingrediente_id == null ||
+            kilos == null ||
+            isNaN(Number(kilos))
+        ) {
+            console.warn('⚠️ Validación fallida en POST /ingredientes_movimientos');
+            return res.status(400).json({ error: 'Faltan campos obligatorios o kilos inválidos' });
+        }
 
-    // Iniciar transacción
-    await client.query('BEGIN');
+        // Iniciar transacción
+        await client.query('BEGIN');
 
-    // 🔧 DETECCIÓN DE AJUSTE PUNTUAL: Si las observaciones contienen "Ajuste puntual"
-    const esAjustePuntual = observaciones && observaciones.includes('Ajuste puntual');
-    
-    if (esAjustePuntual) {
-      console.log('🔧 [AJUSTE PUNTUAL] Detectado ajuste puntual - Iniciando proceso de depuración');
-      
-      // Obtener información del ingrediente
-      const ingredienteQuery = `
+        // 🔧 DETECCIÓN DE AJUSTE PUNTUAL: Si las observaciones contienen "Ajuste puntual"
+        const esAjustePuntual = observaciones && observaciones.includes('Ajuste puntual');
+
+        if (esAjustePuntual) {
+            console.log('🔧 [AJUSTE PUNTUAL] Detectado ajuste puntual - Iniciando proceso de depuración');
+
+            // Obtener información del ingrediente
+            const ingredienteQuery = `
         SELECT nombre, unidad_medida, stock_actual 
         FROM ingredientes 
         WHERE id = $1
       `;
-      console.log(`🔍 [DEBUG] Consultando ingrediente con ID: ${ingrediente_id}`);
-      const ingredienteResult = await client.query(ingredienteQuery, [ingrediente_id]);
-      
-      if (ingredienteResult.rows.length === 0) {
-        console.error(`❌ [DEBUG] ERROR CRÍTICO: Ingrediente con ID ${ingrediente_id} no encontrado en la base de datos`);
-        throw new Error(`Ingrediente con ID ${ingrediente_id} no encontrado`);
-      }
-      
-      const ingredienteInfo = ingredienteResult.rows[0];
-      console.log(`✅ [DEBUG] Ingrediente encontrado exitosamente`);
-      
-      console.log(`\n🔍 ===== DEPURACIÓN AJUSTE PUNTUAL =====`);
-      console.log(`📋 [DEBUG] INGREDIENTE SELECCIONADO:`);
-      console.log(`   - ID: ${ingrediente_id}`);
-      console.log(`   - Nombre: "${ingredienteInfo.nombre}"`);
-      console.log(`   - Unidad de medida: ${ingredienteInfo.unidad_medida}`);
-      console.log(`📊 [DEBUG] STOCK ACTUAL ANTES DEL AJUSTE: ${ingredienteInfo.stock_actual}`);
-      
-      const stockActualReal = parseFloat(ingredienteInfo.stock_actual);
-      const tipoMovimiento = tipo.toLowerCase();
-      const cantidadMovimiento = Number(kilos);
-      
-      console.log(`🔢 [DEBUG] VALORES PROCESADOS:`);
-      console.log(`   - Stock actual (parseado): ${stockActualReal}`);
-      console.log(`   - Tipo de movimiento: "${tipoMovimiento}"`);
-      console.log(`   - Cantidad del movimiento: ${cantidadMovimiento}`);
-      
-      // Calcular el stock nuevo deseado
-      const stockNuevo = tipoMovimiento === 'ingreso' 
-        ? stockActualReal + cantidadMovimiento 
-        : stockActualReal - cantidadMovimiento;
-      
-      const diferencia = stockNuevo - stockActualReal;
-      
-      console.log(`📊 [DEBUG] STOCK NUEVO INGRESADO: ${stockNuevo}`);
-      console.log(`📊 [DEBUG] DIFERENCIA CALCULADA: ${diferencia}`);
-      console.log(`⚡ [DEBUG] OPERACIÓN: ${stockActualReal} ${tipoMovimiento === 'ingreso' ? '+' : '-'} ${cantidadMovimiento} = ${stockNuevo}`);
-      
-      // 1. Actualizar directamente el stock_actual en la tabla ingredientes
-      const updateStockQuery = `
+            console.log(`🔍 [DEBUG] Consultando ingrediente con ID: ${ingrediente_id}`);
+            const ingredienteResult = await client.query(ingredienteQuery, [ingrediente_id]);
+
+            if (ingredienteResult.rows.length === 0) {
+                console.error(`❌ [DEBUG] ERROR CRÍTICO: Ingrediente con ID ${ingrediente_id} no encontrado en la base de datos`);
+                throw new Error(`Ingrediente con ID ${ingrediente_id} no encontrado`);
+            }
+
+            const ingredienteInfo = ingredienteResult.rows[0];
+            console.log(`✅ [DEBUG] Ingrediente encontrado exitosamente`);
+
+            console.log(`\n🔍 ===== DEPURACIÓN AJUSTE PUNTUAL =====`);
+            console.log(`📋 [DEBUG] INGREDIENTE SELECCIONADO:`);
+            console.log(`   - ID: ${ingrediente_id}`);
+            console.log(`   - Nombre: "${ingredienteInfo.nombre}"`);
+            console.log(`   - Unidad de medida: ${ingredienteInfo.unidad_medida}`);
+            console.log(`📊 [DEBUG] STOCK ACTUAL ANTES DEL AJUSTE: ${ingredienteInfo.stock_actual}`);
+
+            const stockActualReal = parseFloat(ingredienteInfo.stock_actual);
+            const tipoMovimiento = tipo.toLowerCase();
+            const cantidadMovimiento = Number(kilos);
+
+            console.log(`🔢 [DEBUG] VALORES PROCESADOS:`);
+            console.log(`   - Stock actual (parseado): ${stockActualReal}`);
+            console.log(`   - Tipo de movimiento: "${tipoMovimiento}"`);
+            console.log(`   - Cantidad del movimiento: ${cantidadMovimiento}`);
+
+            // Calcular el stock nuevo deseado
+            const stockNuevo = tipoMovimiento === 'ingreso'
+                ? stockActualReal + cantidadMovimiento
+                : stockActualReal - cantidadMovimiento;
+
+            const diferencia = stockNuevo - stockActualReal;
+
+            console.log(`📊 [DEBUG] STOCK NUEVO INGRESADO: ${stockNuevo}`);
+            console.log(`📊 [DEBUG] DIFERENCIA CALCULADA: ${diferencia}`);
+            console.log(`⚡ [DEBUG] OPERACIÓN: ${stockActualReal} ${tipoMovimiento === 'ingreso' ? '+' : '-'} ${cantidadMovimiento} = ${stockNuevo}`);
+
+            // 1. Actualizar directamente el stock_actual en la tabla ingredientes
+            const updateStockQuery = `
         UPDATE ingredientes 
         SET stock_actual = $1 
         WHERE id = $2
       `;
-      
-      console.log(`🔄 [DEBUG] Ejecutando actualización de stock en tabla ingredientes...`);
-      console.log(`   - Query: UPDATE ingredientes SET stock_actual = ${stockNuevo} WHERE id = ${ingrediente_id}`);
-      
-      const updateResult = await client.query(updateStockQuery, [stockNuevo, ingrediente_id]);
-      console.log(`✅ [DEBUG] Actualización ejecutada - Filas afectadas: ${updateResult.rowCount}`);
-      
-      if (updateResult.rowCount === 0) {
-        console.error(`❌ [DEBUG] ERROR: No se actualizó ninguna fila. El ingrediente ID ${ingrediente_id} podría no existir.`);
-      } else {
-        console.log(`✅ [DEBUG] Stock actualizado correctamente: ${stockActualReal} → ${stockNuevo}`);
-      }
-      
-      // 2. Extraer usuario_id de las observaciones si está disponible
-      let usuario_id = null;
-      const usuarioMatch = observaciones.match(/Usuario:\s*(\d+)/);
-      if (usuarioMatch) {
-        usuario_id = parseInt(usuarioMatch[1]);
-        console.log(`👤 [DEBUG] Usuario extraído de observaciones: ${usuario_id}`);
-      } else {
-        console.log(`⚠️ [DEBUG] No se pudo extraer usuario_id de las observaciones: "${observaciones}"`);
-      }
-      
-      // 3. Registrar el ajuste en la nueva tabla ingredientes_ajustes
-      const insertAjusteQuery = `
+
+            console.log(`🔄 [DEBUG] Ejecutando actualización de stock en tabla ingredientes...`);
+            console.log(`   - Query: UPDATE ingredientes SET stock_actual = ${stockNuevo} WHERE id = ${ingrediente_id}`);
+
+            const updateResult = await client.query(updateStockQuery, [stockNuevo, ingrediente_id]);
+            console.log(`✅ [DEBUG] Actualización ejecutada - Filas afectadas: ${updateResult.rowCount}`);
+
+            if (updateResult.rowCount === 0) {
+                console.error(`❌ [DEBUG] ERROR: No se actualizó ninguna fila. El ingrediente ID ${ingrediente_id} podría no existir.`);
+            } else {
+                console.log(`✅ [DEBUG] Stock actualizado correctamente: ${stockActualReal} → ${stockNuevo}`);
+            }
+
+            // 2. Extraer usuario_id de las observaciones si está disponible
+            let usuario_id = null;
+            const usuarioMatch = observaciones.match(/Usuario:\s*(\d+)/);
+            if (usuarioMatch) {
+                usuario_id = parseInt(usuarioMatch[1]);
+                console.log(`👤 [DEBUG] Usuario extraído de observaciones: ${usuario_id}`);
+            } else {
+                console.log(`⚠️ [DEBUG] No se pudo extraer usuario_id de las observaciones: "${observaciones}"`);
+            }
+
+            // 3. Registrar el ajuste en la nueva tabla ingredientes_ajustes
+            const insertAjusteQuery = `
         INSERT INTO ingredientes_ajustes 
         (ingrediente_id, usuario_id, tipo_ajuste, stock_anterior, stock_nuevo, diferencia, observacion, fecha)
         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       `;
-      
-      console.log(`🔄 [DEBUG] Registrando ajuste en tabla ingredientes_ajustes...`);
-      console.log(`   - ingrediente_id: ${ingrediente_id}`);
-      console.log(`   - usuario_id: ${usuario_id || 'NULL'}`);
-      console.log(`   - tipo_ajuste: 'ajuste_puntual'`);
-      console.log(`   - stock_anterior: ${stockActualReal}`);
-      console.log(`   - stock_nuevo: ${stockNuevo}`);
-      console.log(`   - diferencia: ${diferencia}`);
-      console.log(`   - observacion: "${observaciones}"`);
-      
-      const insertResult = await client.query(insertAjusteQuery, [
-        ingrediente_id,
-        usuario_id,
-        'ajuste_puntual',
-        stockActualReal,
-        stockNuevo,
-        diferencia,
-        observaciones
-      ]);
-      
-      console.log(`✅ [DEBUG] Ajuste registrado exitosamente en ingredientes_ajustes`);
-      console.log(`   - Filas insertadas: ${insertResult.rowCount}`);
-      
-      // 4. Verificación post-ajuste
-      console.log(`🔍 [DEBUG] Verificando stock final en base de datos...`);
-      const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
-      const verificacionResult = await client.query(verificacionQuery, [ingrediente_id]);
-      const stockFinal = parseFloat(verificacionResult.rows[0].stock_actual);
-      
-      console.log(`📊 [DEBUG] RESULTADO DE LA OPERACIÓN:`);
-      console.log(`   - Stock esperado: ${stockNuevo}`);
-      console.log(`   - Stock final en BD: ${stockFinal}`);
-      console.log(`   - Diferencia entre esperado y real: ${Math.abs(stockFinal - stockNuevo)}`);
-      
-      const operacionExitosa = Math.abs(stockFinal - stockNuevo) < 0.001;
-      console.log(`🎯 [DEBUG] ¿OPERACIÓN EXITOSA?: ${operacionExitosa ? 'SÍ ✅' : 'NO ❌'}`);
-      
-      if (!operacionExitosa) {
-        console.error(`❌ [DEBUG] ERROR: El stock final no coincide con el esperado`);
-        console.error(`   - Esto indica un problema en la actualización de la base de datos`);
-      }
-      
-      console.log(`===============================================\n`);
-      
-    } else {
-      // 🔄 MOVIMIENTO NORMAL: Usar lógica original para movimientos de producción
-      console.log('🔄 [MOVIMIENTO NORMAL] Aplicando lógica estándar para movimientos de producción');
-      
-      const movimiento = {
-        ingrediente_id,
-        kilos: Number(kilos),
-        tipo: tipo || 'ingreso',
-        carro_id,
-        observaciones: observaciones || null
-      };
-      
-      // Obtener stock antes para logs
-      const stockAntesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
-      const stockAntesResult = await client.query(stockAntesQuery, [ingrediente_id]);
-      const stockAntes = stockAntesResult.rows[0]?.stock_actual || 0;
-      const nombreIngrediente = stockAntesResult.rows[0]?.nombre || 'Desconocido';
-      
-      console.log(`📋 INGREDIENTE: "${nombreIngrediente}" - STOCK ANTES: ${stockAntes}`);
-      
-      await registrarMovimientoIngrediente(movimiento, client);
+
+            console.log(`🔄 [DEBUG] Registrando ajuste en tabla ingredientes_ajustes...`);
+            console.log(`   - ingrediente_id: ${ingrediente_id}`);
+            console.log(`   - usuario_id: ${usuario_id || 'NULL'}`);
+            console.log(`   - tipo_ajuste: 'ajuste_puntual'`);
+            console.log(`   - stock_anterior: ${stockActualReal}`);
+            console.log(`   - stock_nuevo: ${stockNuevo}`);
+            console.log(`   - diferencia: ${diferencia}`);
+            console.log(`   - observacion: "${observaciones}"`);
+
+            const insertResult = await client.query(insertAjusteQuery, [
+                ingrediente_id,
+                usuario_id,
+                'ajuste_puntual',
+                stockActualReal,
+                stockNuevo,
+                diferencia,
+                observaciones
+            ]);
+
+            console.log(`✅ [DEBUG] Ajuste registrado exitosamente en ingredientes_ajustes`);
+            console.log(`   - Filas insertadas: ${insertResult.rowCount}`);
+
+            // 4. Verificación post-ajuste
+            console.log(`🔍 [DEBUG] Verificando stock final en base de datos...`);
+            const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
+            const verificacionResult = await client.query(verificacionQuery, [ingrediente_id]);
+            const stockFinal = parseFloat(verificacionResult.rows[0].stock_actual);
+
+            console.log(`📊 [DEBUG] RESULTADO DE LA OPERACIÓN:`);
+            console.log(`   - Stock esperado: ${stockNuevo}`);
+            console.log(`   - Stock final en BD: ${stockFinal}`);
+            console.log(`   - Diferencia entre esperado y real: ${Math.abs(stockFinal - stockNuevo)}`);
+
+            const operacionExitosa = Math.abs(stockFinal - stockNuevo) < 0.001;
+            console.log(`🎯 [DEBUG] ¿OPERACIÓN EXITOSA?: ${operacionExitosa ? 'SÍ ✅' : 'NO ❌'}`);
+
+            if (!operacionExitosa) {
+                console.error(`❌ [DEBUG] ERROR: El stock final no coincide con el esperado`);
+                console.error(`   - Esto indica un problema en la actualización de la base de datos`);
+            }
+
+            console.log(`===============================================\n`);
+
+        } else {
+            // 🔄 MOVIMIENTO NORMAL: Usar lógica original para movimientos de producción
+            console.log('🔄 [MOVIMIENTO NORMAL] Aplicando lógica estándar para movimientos de producción');
+
+            const movimiento = {
+                ingrediente_id,
+                kilos: Number(kilos),
+                tipo: tipo || 'ingreso',
+                carro_id,
+                observaciones: observaciones || null
+            };
+
+            // Obtener stock antes para logs
+            const stockAntesQuery = `SELECT stock_actual, nombre FROM ingredientes WHERE id = $1`;
+            const stockAntesResult = await client.query(stockAntesQuery, [ingrediente_id]);
+            const stockAntes = stockAntesResult.rows[0]?.stock_actual || 0;
+            const nombreIngrediente = stockAntesResult.rows[0]?.nombre || 'Desconocido';
+
+            console.log(`📋 INGREDIENTE: "${nombreIngrediente}" - STOCK ANTES: ${stockAntes}`);
+
+            await registrarMovimientoIngrediente(movimiento, client);
+        }
+
+        // 🔍 VERIFICACIÓN POST-MOVIMIENTO
+        const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
+        const verificacionResult = await client.query(verificacionQuery, [ingrediente_id]);
+        const stockFinal = verificacionResult.rows[0]?.stock_actual || 0;
+
+        console.log(`✅ STOCK FINAL DESPUÉS DEL MOVIMIENTO: ${stockFinal}`);
+        console.log(`===============================================\n`);
+
+        // Confirmar transacción
+        await client.query('COMMIT');
+        console.log('✅ Transacción completada exitosamente');
+
+        return res.status(201).json({
+            message: 'Movimiento registrado correctamente',
+            stock_final: stockFinal
+        });
+
+    } catch (error) {
+        // Revertir transacción en caso de error
+        await client.query('ROLLBACK');
+        console.error('❌ Error en POST /ingredientes_movimientos:', error);
+        console.error('❌ Stack trace:', error.stack);
+        return res.status(500).json({
+            error: 'Error al registrar el movimiento',
+            detalle: error.message
+        });
+    } finally {
+        client.release();
     }
-
-    // 🔍 VERIFICACIÓN POST-MOVIMIENTO
-    const verificacionQuery = `SELECT stock_actual FROM ingredientes WHERE id = $1`;
-    const verificacionResult = await client.query(verificacionQuery, [ingrediente_id]);
-    const stockFinal = verificacionResult.rows[0]?.stock_actual || 0;
-    
-    console.log(`✅ STOCK FINAL DESPUÉS DEL MOVIMIENTO: ${stockFinal}`);
-    console.log(`===============================================\n`);
-
-    // Confirmar transacción
-    await client.query('COMMIT');
-    console.log('✅ Transacción completada exitosamente');
-
-    return res.status(201).json({ 
-      message: 'Movimiento registrado correctamente',
-      stock_final: stockFinal
-    });
-
-  } catch (error) {
-    // Revertir transacción en caso de error
-    await client.query('ROLLBACK');
-    console.error('❌ Error en POST /ingredientes_movimientos:', error);
-    console.error('❌ Stack trace:', error.stack);
-    return res.status(500).json({ 
-      error: 'Error al registrar el movimiento',
-      detalle: error.message 
-    });
-  } finally {
-    client.release();
-  }
 });
 
 
@@ -2459,18 +2463,18 @@ router.get('/carro/:id/relaciones-articulos', async (req, res) => {
 router.get('/relacion-articulo/:articuloCodigo', async (req, res) => {
     try {
         const articuloCodigo = req.params.articuloCodigo;
-        
+
         if (!articuloCodigo) {
             return res.status(400).json({ error: 'Código de artículo requerido' });
         }
 
         console.log(`🔍 Buscando relación para artículo ${articuloCodigo}`);
         const relacion = await obtenerRelacionPorArticulo(articuloCodigo);
-        
+
         if (!relacion) {
             return res.status(404).json({ error: 'No se encontró relación para este artículo' });
         }
-        
+
         res.json(relacion);
     } catch (error) {
         console.error('Error al obtener relación por artículo:', error);
@@ -2484,18 +2488,18 @@ router.post('/relacion-articulo', async (req, res) => {
         console.log('\n🔍 DEPURACIÓN POST /relacion-articulo:');
         console.log('===========================================');
         console.log('📥 PAYLOAD COMPLETO RECIBIDO:', JSON.stringify(req.body, null, 2));
-        
+
         const { articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes } = req.body;
-        
+
         console.log('\n📋 CAMPOS EXTRAÍDOS:');
         console.log('- articulo_produccion_codigo:', articulo_produccion_codigo);
         console.log('- articulo_kilo_codigo:', articulo_kilo_codigo);
         console.log('- multiplicador_ingredientes:', multiplicador_ingredientes, typeof multiplicador_ingredientes);
-        
+
         if (!articulo_produccion_codigo || !articulo_kilo_codigo) {
             console.log('❌ ERROR: Faltan códigos requeridos');
-            return res.status(400).json({ 
-                error: 'Se requieren ambos códigos: articulo_produccion_codigo y articulo_kilo_codigo' 
+            return res.status(400).json({
+                error: 'Se requieren ambos códigos: articulo_produccion_codigo y articulo_kilo_codigo'
             });
         }
 
@@ -2505,9 +2509,9 @@ router.post('/relacion-articulo', async (req, res) => {
 
         console.log(`➕ Creando relación: ${articulo_produccion_codigo} -> ${articulo_kilo_codigo} (multiplicador: ${multiplicador})`);
         const nuevaRelacion = await crearRelacion(articulo_produccion_codigo, articulo_kilo_codigo, multiplicador);
-        
+
         console.log('✅ RELACIÓN CREADA:', JSON.stringify(nuevaRelacion, null, 2));
-        
+
         res.status(201).json({
             message: 'Relación creada correctamente',
             relacion: nuevaRelacion
@@ -2531,20 +2535,20 @@ router.put('/relacion-articulo/:id', async (req, res) => {
         console.log('============================================');
         console.log('📥 PAYLOAD COMPLETO RECIBIDO:', JSON.stringify(req.body, null, 2));
         console.log('📋 ID DE RELACIÓN:', req.params.id);
-        
+
         const relacionId = parseInt(req.params.id);
         const { articulo_kilo_codigo, multiplicador_ingredientes } = req.body;
-        
+
         console.log('\n📋 CAMPOS EXTRAÍDOS:');
         console.log('- relacionId:', relacionId);
         console.log('- articulo_kilo_codigo:', articulo_kilo_codigo);
         console.log('- multiplicador_ingredientes:', multiplicador_ingredientes, typeof multiplicador_ingredientes);
-        
+
         if (isNaN(relacionId)) {
             console.log('❌ ERROR: ID de relación inválido');
             return res.status(400).json({ error: 'ID de relación inválido' });
         }
-        
+
         if (!articulo_kilo_codigo) {
             console.log('❌ ERROR: Falta código del artículo por kilo');
             return res.status(400).json({ error: 'Se requiere el código del artículo por kilo' });
@@ -2556,9 +2560,9 @@ router.put('/relacion-articulo/:id', async (req, res) => {
 
         console.log(`✏️ Actualizando relación ${relacionId} con artículo: ${articulo_kilo_codigo} y multiplicador: ${multiplicador}`);
         const relacionActualizada = await actualizarRelacion(relacionId, articulo_kilo_codigo, multiplicador);
-        
+
         console.log('✅ RELACIÓN ACTUALIZADA:', JSON.stringify(relacionActualizada, null, 2));
-        
+
         res.json({
             message: 'Relación actualizada correctamente',
             relacion: relacionActualizada
@@ -2577,14 +2581,14 @@ router.put('/relacion-articulo/:id', async (req, res) => {
 router.delete('/relacion-articulo/:id', async (req, res) => {
     try {
         const relacionId = parseInt(req.params.id);
-        
+
         if (isNaN(relacionId)) {
             return res.status(400).json({ error: 'ID de relación inválido' });
         }
 
         console.log(`🗑️ Eliminando relación ${relacionId}`);
         await eliminarRelacion(relacionId);
-        
+
         res.json({ message: 'Relación eliminada correctamente' });
     } catch (error) {
         console.error('Error al eliminar relación:', error);
@@ -2600,14 +2604,14 @@ router.delete('/relacion-articulo/:id', async (req, res) => {
 router.delete('/relacion-articulo/por-articulo/:articuloCodigo', async (req, res) => {
     try {
         const articuloCodigo = req.params.articuloCodigo;
-        
+
         if (!articuloCodigo) {
             return res.status(400).json({ error: 'Código de artículo requerido' });
         }
 
         console.log(`🗑️ Eliminando relación para artículo ${articuloCodigo}`);
         await eliminarRelacionPorArticulo(articuloCodigo);
-        
+
         res.json({ message: 'Relación eliminada correctamente' });
     } catch (error) {
         console.error('Error al eliminar relación por artículo:', error);
@@ -2894,9 +2898,9 @@ router.post('/validar-presupuestos', async (req, res) => {
 // RUTAS PARA SUSTITUCIÓN DE INGREDIENTES
 // ==========================================
 
-const { 
-    obtenerIngredientesConStock, 
-    sustituirIngrediente 
+const {
+    obtenerIngredientesConStock,
+    sustituirIngrediente
 } = require('../controllers/sustitucionIngredientes');
 
 /**
@@ -2906,7 +2910,7 @@ const {
 router.get('/ingredientes-con-stock', async (req, res) => {
     try {
         const { carroId } = req.query;
-        
+
         if (!carroId) {
             return res.status(400).json({ error: 'Se requiere el parámetro carroId' });
         }
@@ -2944,14 +2948,14 @@ router.post('/sustituir-ingrediente', async (req, res) => {
 
         // Validar datos de entrada
         if (!ingredienteOrigenId || !ingredienteDestinoId || !cantidad || !carroId || !usuarioId) {
-            return res.status(400).json({ 
-                error: 'Faltan datos requeridos para la sustitución' 
+            return res.status(400).json({
+                error: 'Faltan datos requeridos para la sustitución'
             });
         }
 
         if (cantidad <= 0) {
-            return res.status(400).json({ 
-                error: 'La cantidad debe ser mayor a 0' 
+            return res.status(400).json({
+                error: 'La cantidad debe ser mayor a 0'
             });
         }
 
@@ -2983,9 +2987,9 @@ router.delete('/sustitucion/:id', async (req, res) => {
     try {
         const movimientoId = parseInt(req.params.id);
         const { carro_id } = req.body;
-        
+
         console.log('🗑️ [SUSTITUCION] Eliminando sustitución:', { movimientoId, carro_id });
-        
+
         // Obtener el movimiento de egreso para encontrar su par de ingreso
         const queryMovimiento = `
             SELECT 
@@ -2999,30 +3003,30 @@ router.delete('/sustitucion/:id', async (req, res) => {
               AND im.tipo = 'egreso'
               AND im.observaciones LIKE 'SUSTITUCIÓN:%'
         `;
-        
+
         const movimientoResult = await req.db.query(queryMovimiento, [movimientoId, carro_id]);
-        
+
         if (movimientoResult.rows.length === 0) {
             return res.status(404).json({ error: 'Movimiento de sustitución no encontrado' });
         }
-        
+
         const movimientoEgreso = movimientoResult.rows[0];
-        
+
         // Extraer el ID del ingrediente destino de las observaciones
         const match = movimientoEgreso.observaciones.match(/\(ID: (\d+)\)/);
         const ingredienteDestinoId = match ? parseInt(match[1]) : null;
-        
+
         if (!ingredienteDestinoId) {
             return res.status(400).json({ error: 'No se pudo determinar el ingrediente destino' });
         }
-        
+
         console.log('🔍 Movimiento de egreso encontrado:', {
             id: movimientoEgreso.id,
             ingrediente_origen_id: movimientoEgreso.ingrediente_id,
             ingrediente_destino_id: ingredienteDestinoId,
             kilos: movimientoEgreso.kilos
         });
-        
+
         // Buscar el movimiento de ingreso correspondiente
         const queryMovimientoIngreso = `
             SELECT id
@@ -3037,50 +3041,50 @@ router.delete('/sustitucion/:id', async (req, res) => {
             ORDER BY fecha ASC
             LIMIT 1
         `;
-        
+
         const movimientoIngresoResult = await req.db.query(queryMovimientoIngreso, [
             ingredienteDestinoId,
             carro_id,
             Math.abs(movimientoEgreso.kilos),
             movimientoId
         ]);
-        
+
         if (movimientoIngresoResult.rows.length === 0) {
             return res.status(404).json({ error: 'No se encontró el movimiento de ingreso correspondiente' });
         }
-        
+
         const movimientoIngresoId = movimientoIngresoResult.rows[0].id;
         console.log('🔍 Movimiento de ingreso encontrado:', movimientoIngresoId);
-        
+
         // Eliminar ambos movimientos en una transacción
         await req.db.query('BEGIN');
-        
+
         try {
             // Eliminar movimiento de egreso
             await req.db.query('DELETE FROM ingredientes_movimientos WHERE id = $1', [movimientoId]);
             console.log('✅ Movimiento de egreso eliminado');
-            
+
             // Eliminar movimiento de ingreso
             await req.db.query('DELETE FROM ingredientes_movimientos WHERE id = $1', [movimientoIngresoId]);
             console.log('✅ Movimiento de ingreso eliminado');
-            
+
             await req.db.query('COMMIT');
             console.log('✅ Transacción confirmada');
-            
-            res.json({ 
-                success: true, 
+
+            res.json({
+                success: true,
                 mensaje: 'Sustitución eliminada correctamente',
                 movimientos_eliminados: {
                     egreso: movimientoId,
                     ingreso: movimientoIngresoId
                 }
             });
-            
+
         } catch (error) {
             await req.db.query('ROLLBACK');
             throw error;
         }
-        
+
     } catch (error) {
         console.error('❌ [SUSTITUCION] Error al eliminar sustitución:', error);
         res.status(500).json({ error: error.message });
@@ -3096,83 +3100,83 @@ router.delete('/sustitucion/:id', async (req, res) => {
  * 🎯 CONTEXTUAL: Ajusta stock general O stock de usuario según el tipo de carro
  */
 router.post('/ingredientes/ajuste-rapido', async (req, res) => {
-  try {
-    console.log('\n🔧 [AJUSTE RÁPIDO CONTEXTUAL] Nueva solicitud de ajuste');
-    console.log('================================================================');
-    console.log('Body recibido:', JSON.stringify(req.body, null, 2));
+    try {
+        console.log('\n🔧 [AJUSTE RÁPIDO CONTEXTUAL] Nueva solicitud de ajuste');
+        console.log('================================================================');
+        console.log('Body recibido:', JSON.stringify(req.body, null, 2));
 
-    const { ingrediente_id, stock_real, carro_id, observaciones, es_stock_usuario, usuario_id, origen_contexto } = req.body;
+        const { ingrediente_id, stock_real, carro_id, observaciones, es_stock_usuario, usuario_id, origen_contexto } = req.body;
 
-    // Validaciones
-    if (!ingrediente_id || stock_real === undefined) {
-      console.log('❌ [AJUSTE] Datos incompletos');
-      return res.status(400).json({ 
-        error: 'Faltan datos requeridos: ingrediente_id, stock_real' 
-      });
-    }
-    
-    // Validación adicional para stock de usuario
-    if (es_stock_usuario && !usuario_id) {
-      console.log('❌ [AJUSTE] Falta usuario_id para ajuste de stock personal');
-      return res.status(400).json({ 
-        error: 'Se requiere usuario_id para ajustes de stock personal' 
-      });
-    }
+        // Validaciones
+        if (!ingrediente_id || stock_real === undefined) {
+            console.log('❌ [AJUSTE] Datos incompletos');
+            return res.status(400).json({
+                error: 'Faltan datos requeridos: ingrediente_id, stock_real'
+            });
+        }
 
-    const stockRealNum = parseFloat(stock_real);
-    if (isNaN(stockRealNum) || stockRealNum < 0) {
-      console.log('❌ [AJUSTE] Stock real inválido:', stock_real);
-      return res.status(400).json({ 
-        error: 'El stock real debe ser un número mayor o igual a 0' 
-      });
-    }
+        // Validación adicional para stock de usuario
+        if (es_stock_usuario && !usuario_id) {
+            console.log('❌ [AJUSTE] Falta usuario_id para ajuste de stock personal');
+            return res.status(400).json({
+                error: 'Se requiere usuario_id para ajustes de stock personal'
+            });
+        }
 
-    console.log(`🎯 [CONTEXTO] Es stock de usuario: ${es_stock_usuario}`);
-    console.log(`🎯 [CONTEXTO] Usuario ID: ${usuario_id || 'N/A'}`);
+        const stockRealNum = parseFloat(stock_real);
+        if (isNaN(stockRealNum) || stockRealNum < 0) {
+            console.log('❌ [AJUSTE] Stock real inválido:', stock_real);
+            return res.status(400).json({
+                error: 'El stock real debe ser un número mayor o igual a 0'
+            });
+        }
 
-    // 🎯 BIFURCACIÓN CONTEXTUAL: Stock de usuario vs Stock general
-    if (es_stock_usuario && usuario_id) {
-      // ==========================================
-      // RAMA 1: AJUSTE DE STOCK PERSONAL (Carro Externo)
-      // ==========================================
-      console.log('\n👤 [STOCK PERSONAL] Procesando ajuste de stock de usuario...');
-      
-      // Obtener stock actual del usuario para este ingrediente
-      const queryStockUsuario = `
+        console.log(`🎯 [CONTEXTO] Es stock de usuario: ${es_stock_usuario}`);
+        console.log(`🎯 [CONTEXTO] Usuario ID: ${usuario_id || 'N/A'}`);
+
+        // 🎯 BIFURCACIÓN CONTEXTUAL: Stock de usuario vs Stock general
+        if (es_stock_usuario && usuario_id) {
+            // ==========================================
+            // RAMA 1: AJUSTE DE STOCK PERSONAL (Carro Externo)
+            // ==========================================
+            console.log('\n👤 [STOCK PERSONAL] Procesando ajuste de stock de usuario...');
+
+            // Obtener stock actual del usuario para este ingrediente
+            const queryStockUsuario = `
         SELECT COALESCE(SUM(cantidad), 0) as stock_actual
         FROM ingredientes_stock_usuarios
         WHERE usuario_id = $1 AND ingrediente_id = $2
       `;
-      const resultStockUsuario = await req.db.query(queryStockUsuario, [usuario_id, ingrediente_id]);
-      const stockUsuarioActual = parseFloat(resultStockUsuario.rows[0].stock_actual);
-      
-      const diferenciaUsuario = stockRealNum - stockUsuarioActual;
-      
-      console.log(`📊 [STOCK PERSONAL] Cálculo:`);
-      console.log(`   - Stock Usuario Actual: ${stockUsuarioActual} kg`);
-      console.log(`   - Stock Real Deseado: ${stockRealNum} kg`);
-      console.log(`   - Diferencia: ${diferenciaUsuario} kg`);
-      
-      // Si no hay diferencia significativa, no hacer nada
-      if (Math.abs(diferenciaUsuario) < 0.01) {
-        console.log('ℹ️ [STOCK PERSONAL] No hay diferencia significativa');
-        return res.json({
-          mensaje: 'No se requiere ajuste (diferencia menor a 0.01 kg)',
-          stock_anterior: stockUsuarioActual,
-          stock_nuevo: stockUsuarioActual,
-          diferencia: 0,
-          tipo_ajuste: 'stock_usuario'
-        });
-      }
-      
-      // Registrar movimiento de ajuste en ingredientes_stock_usuarios
-      // 🆕 MANEJO DE CARRO_ID NULL: Para ajustes desde vista de stock personal
-      const carroIdFinal = carro_id || null;
-      const observacionesFinal = carro_id 
-        ? observaciones 
-        : `${observaciones} - Ajuste Manual desde Vista de Stock Personal`;
-      
-      const queryAjusteUsuario = `
+            const resultStockUsuario = await req.db.query(queryStockUsuario, [usuario_id, ingrediente_id]);
+            const stockUsuarioActual = parseFloat(resultStockUsuario.rows[0].stock_actual);
+
+            const diferenciaUsuario = stockRealNum - stockUsuarioActual;
+
+            console.log(`📊 [STOCK PERSONAL] Cálculo:`);
+            console.log(`   - Stock Usuario Actual: ${stockUsuarioActual} kg`);
+            console.log(`   - Stock Real Deseado: ${stockRealNum} kg`);
+            console.log(`   - Diferencia: ${diferenciaUsuario} kg`);
+
+            // Si no hay diferencia significativa, no hacer nada
+            if (Math.abs(diferenciaUsuario) < 0.01) {
+                console.log('ℹ️ [STOCK PERSONAL] No hay diferencia significativa');
+                return res.json({
+                    mensaje: 'No se requiere ajuste (diferencia menor a 0.01 kg)',
+                    stock_anterior: stockUsuarioActual,
+                    stock_nuevo: stockUsuarioActual,
+                    diferencia: 0,
+                    tipo_ajuste: 'stock_usuario'
+                });
+            }
+
+            // Registrar movimiento de ajuste en ingredientes_stock_usuarios
+            // 🆕 MANEJO DE CARRO_ID NULL: Para ajustes desde vista de stock personal
+            const carroIdFinal = carro_id || null;
+            const observacionesFinal = carro_id
+                ? observaciones
+                : `${observaciones} - Ajuste Manual desde Vista de Stock Personal`;
+
+            const queryAjusteUsuario = `
         INSERT INTO ingredientes_stock_usuarios (
           usuario_id,
           ingrediente_id,
@@ -3183,100 +3187,100 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
         ) VALUES ($1, $2, $3, $4, NOW(), NULL)
         RETURNING id
       `;
-      
-      console.log(`🔍 [DEBUG] Ejecutando INSERT en ingredientes_stock_usuarios...`);
-      console.log(`🔍 [DEBUG] Parámetros:`, [usuario_id, ingrediente_id, diferenciaUsuario, carroIdFinal]);
-      
-      const resultAjuste = await req.db.query(queryAjusteUsuario, [
-        usuario_id,
-        ingrediente_id,
-        diferenciaUsuario,  // Cantidad con signo (+ o -)
-        carroIdFinal        // 🆕 Puede ser NULL
-      ]);
-      
-      console.log(`📝 [STOCK PERSONAL] Observaciones: ${observacionesFinal}`);
-      console.log(`📝 [STOCK PERSONAL] Origen contexto: ${origen_contexto || 'no especificado'}`);
-      
-      console.log(`✅ [STOCK PERSONAL] Ajuste registrado con ID: ${resultAjuste.rows[0].id}`);
-      console.log(`   - Stock anterior: ${stockUsuarioActual} kg`);
-      console.log(`   - Stock nuevo: ${stockRealNum} kg`);
-      console.log(`   - Diferencia aplicada: ${diferenciaUsuario} kg`);
-      
-      // 🔍 VERIFICACIÓN: Consultar el stock después del INSERT
-      const verificacionQuery = `
+
+            console.log(`🔍 [DEBUG] Ejecutando INSERT en ingredientes_stock_usuarios...`);
+            console.log(`🔍 [DEBUG] Parámetros:`, [usuario_id, ingrediente_id, diferenciaUsuario, carroIdFinal]);
+
+            const resultAjuste = await req.db.query(queryAjusteUsuario, [
+                usuario_id,
+                ingrediente_id,
+                diferenciaUsuario,  // Cantidad con signo (+ o -)
+                carroIdFinal        // 🆕 Puede ser NULL
+            ]);
+
+            console.log(`📝 [STOCK PERSONAL] Observaciones: ${observacionesFinal}`);
+            console.log(`📝 [STOCK PERSONAL] Origen contexto: ${origen_contexto || 'no especificado'}`);
+
+            console.log(`✅ [STOCK PERSONAL] Ajuste registrado con ID: ${resultAjuste.rows[0].id}`);
+            console.log(`   - Stock anterior: ${stockUsuarioActual} kg`);
+            console.log(`   - Stock nuevo: ${stockRealNum} kg`);
+            console.log(`   - Diferencia aplicada: ${diferenciaUsuario} kg`);
+
+            // 🔍 VERIFICACIÓN: Consultar el stock después del INSERT
+            const verificacionQuery = `
         SELECT COALESCE(SUM(cantidad), 0) as stock_verificado
         FROM ingredientes_stock_usuarios
         WHERE usuario_id = $1 AND ingrediente_id = $2
       `;
-      const verificacionResult = await req.db.query(verificacionQuery, [usuario_id, ingrediente_id]);
-      const stockVerificado = parseFloat(verificacionResult.rows[0].stock_verificado);
-      
-      console.log(`🔍 [VERIFICACIÓN] Stock después del INSERT: ${stockVerificado} kg`);
-      console.log(`🔍 [VERIFICACIÓN] ¿Coincide con esperado?: ${Math.abs(stockVerificado - stockRealNum) < 0.01 ? 'SÍ ✅' : 'NO ❌'}`);
-      
-      res.json({
-        mensaje: 'Ajuste de stock personal procesado correctamente',
-        stock_anterior: stockUsuarioActual,
-        stock_nuevo: stockRealNum,
-        stock_verificado: stockVerificado,
-        diferencia: diferenciaUsuario,
-        tipo_ajuste: 'stock_usuario',
-        movimiento_id: resultAjuste.rows[0].id
-      });
-      
-    } else {
-      // ==========================================
-      // RAMA 2: AJUSTE DE STOCK GENERAL (Carro Interno o Inventario General)
-      // ==========================================
-      console.log('\n🏢 [STOCK GENERAL] Procesando ajuste de stock general...');
-      
-      // Obtener stock actual del sistema
-      const queryStockActual = `
+            const verificacionResult = await req.db.query(verificacionQuery, [usuario_id, ingrediente_id]);
+            const stockVerificado = parseFloat(verificacionResult.rows[0].stock_verificado);
+
+            console.log(`🔍 [VERIFICACIÓN] Stock después del INSERT: ${stockVerificado} kg`);
+            console.log(`🔍 [VERIFICACIÓN] ¿Coincide con esperado?: ${Math.abs(stockVerificado - stockRealNum) < 0.01 ? 'SÍ ✅' : 'NO ❌'}`);
+
+            res.json({
+                mensaje: 'Ajuste de stock personal procesado correctamente',
+                stock_anterior: stockUsuarioActual,
+                stock_nuevo: stockRealNum,
+                stock_verificado: stockVerificado,
+                diferencia: diferenciaUsuario,
+                tipo_ajuste: 'stock_usuario',
+                movimiento_id: resultAjuste.rows[0].id
+            });
+
+        } else {
+            // ==========================================
+            // RAMA 2: AJUSTE DE STOCK GENERAL (Carro Interno o Inventario General)
+            // ==========================================
+            console.log('\n🏢 [STOCK GENERAL] Procesando ajuste de stock general...');
+
+            // Obtener stock actual del sistema
+            const queryStockActual = `
         SELECT stock_actual 
         FROM ingredientes 
         WHERE id = $1
       `;
-      const resultStock = await pool.query(queryStockActual, [ingrediente_id]);
+            const resultStock = await pool.query(queryStockActual, [ingrediente_id]);
 
-      if (resultStock.rows.length === 0) {
-        console.log('❌ [AJUSTE] Ingrediente no encontrado:', ingrediente_id);
-        return res.status(404).json({ error: 'Ingrediente no encontrado' });
-      }
+            if (resultStock.rows.length === 0) {
+                console.log('❌ [AJUSTE] Ingrediente no encontrado:', ingrediente_id);
+                return res.status(404).json({ error: 'Ingrediente no encontrado' });
+            }
 
-      const stockSistema = parseFloat(resultStock.rows[0].stock_actual);
-      const diferencia = stockRealNum - stockSistema;
+            const stockSistema = parseFloat(resultStock.rows[0].stock_actual);
+            const diferencia = stockRealNum - stockSistema;
 
-      console.log(`📊 [STOCK GENERAL] Cálculo:`);
-      console.log(`   - Stock Sistema: ${stockSistema} kg`);
-      console.log(`   - Stock Real: ${stockRealNum} kg`);
-      console.log(`   - Diferencia: ${diferencia} kg`);
+            console.log(`📊 [STOCK GENERAL] Cálculo:`);
+            console.log(`   - Stock Sistema: ${stockSistema} kg`);
+            console.log(`   - Stock Real: ${stockRealNum} kg`);
+            console.log(`   - Diferencia: ${diferencia} kg`);
 
-      // Si no hay diferencia significativa, no hacer nada
-      if (Math.abs(diferencia) < 0.01) {
-        console.log('ℹ️ [STOCK GENERAL] No hay diferencia significativa');
-        return res.json({
-          mensaje: 'No se requiere ajuste (diferencia menor a 0.01 kg)',
-          stock_anterior: stockSistema,
-          stock_nuevo: stockSistema,
-          diferencia: 0,
-          tipo_ajuste: 'stock_general'
-        });
-      }
+            // Si no hay diferencia significativa, no hacer nada
+            if (Math.abs(diferencia) < 0.01) {
+                console.log('ℹ️ [STOCK GENERAL] No hay diferencia significativa');
+                return res.json({
+                    mensaje: 'No se requiere ajuste (diferencia menor a 0.01 kg)',
+                    stock_anterior: stockSistema,
+                    stock_nuevo: stockSistema,
+                    diferencia: 0,
+                    tipo_ajuste: 'stock_general'
+                });
+            }
 
-      // Determinar tipo de movimiento
-      const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
-      const kilosMovimiento = diferencia; // Mantener el signo para el registro
+            // Determinar tipo de movimiento
+            const tipoMovimiento = diferencia > 0 ? 'ingreso' : 'egreso';
+            const kilosMovimiento = diferencia; // Mantener el signo para el registro
 
-      // Preparar observaciones
-      const observacionesFinal = observaciones || `Ajuste rápido - Stock real: ${stockRealNum} kg`;
+            // Preparar observaciones
+            const observacionesFinal = observaciones || `Ajuste rápido - Stock real: ${stockRealNum} kg`;
 
-      console.log(`📝 [STOCK GENERAL] Registrando movimiento:`);
-      console.log(`   - Tipo: ${tipoMovimiento}`);
-      console.log(`   - Kilos: ${kilosMovimiento}`);
-      console.log(`   - Carro ID: ${carro_id}`);
+            console.log(`📝 [STOCK GENERAL] Registrando movimiento:`);
+            console.log(`   - Tipo: ${tipoMovimiento}`);
+            console.log(`   - Kilos: ${kilosMovimiento}`);
+            console.log(`   - Carro ID: ${carro_id}`);
 
-      // Registrar movimiento en ingredientes_movimientos
-      const queryMovimiento = `
+            // Registrar movimiento en ingredientes_movimientos
+            const queryMovimiento = `
         INSERT INTO ingredientes_movimientos (
           ingrediente_id,
           kilos,
@@ -3288,45 +3292,45 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
         RETURNING id
       `;
 
-      const resultMovimiento = await pool.query(queryMovimiento, [
-        ingrediente_id,
-        kilosMovimiento,
-        tipoMovimiento,
-        carro_id,
-        observacionesFinal
-      ]);
+            const resultMovimiento = await pool.query(queryMovimiento, [
+                ingrediente_id,
+                kilosMovimiento,
+                tipoMovimiento,
+                carro_id,
+                observacionesFinal
+            ]);
 
-      console.log(`✅ [STOCK GENERAL] Movimiento registrado con ID: ${resultMovimiento.rows[0].id}`);
+            console.log(`✅ [STOCK GENERAL] Movimiento registrado con ID: ${resultMovimiento.rows[0].id}`);
 
-      // El trigger actualizar_stock_ingrediente se encargará de actualizar el stock automáticamente
+            // El trigger actualizar_stock_ingrediente se encargará de actualizar el stock automáticamente
 
-      // Obtener el nuevo stock después del ajuste
-      const resultNuevoStock = await pool.query(queryStockActual, [ingrediente_id]);
-      const nuevoStock = parseFloat(resultNuevoStock.rows[0].stock_actual);
+            // Obtener el nuevo stock después del ajuste
+            const resultNuevoStock = await pool.query(queryStockActual, [ingrediente_id]);
+            const nuevoStock = parseFloat(resultNuevoStock.rows[0].stock_actual);
 
-      console.log(`✅ [STOCK GENERAL] Ajuste completado exitosamente`);
-      console.log(`   - Stock anterior: ${stockSistema} kg`);
-      console.log(`   - Stock nuevo: ${nuevoStock} kg`);
-      console.log('================================================================\n');
+            console.log(`✅ [STOCK GENERAL] Ajuste completado exitosamente`);
+            console.log(`   - Stock anterior: ${stockSistema} kg`);
+            console.log(`   - Stock nuevo: ${nuevoStock} kg`);
+            console.log('================================================================\n');
 
-      res.json({
-        mensaje: 'Ajuste procesado correctamente',
-        stock_anterior: stockSistema,
-        stock_nuevo: nuevoStock,
-        diferencia: diferencia,
-        tipo_movimiento: tipoMovimiento,
-        tipo_ajuste: 'stock_general',
-        movimiento_id: resultMovimiento.rows[0].id
-      });
+            res.json({
+                mensaje: 'Ajuste procesado correctamente',
+                stock_anterior: stockSistema,
+                stock_nuevo: nuevoStock,
+                diferencia: diferencia,
+                tipo_movimiento: tipoMovimiento,
+                tipo_ajuste: 'stock_general',
+                movimiento_id: resultMovimiento.rows[0].id
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ [AJUSTE] Error al procesar ajuste rápido:', error);
+        res.status(500).json({
+            error: 'Error al procesar el ajuste de stock',
+            detalles: error.message
+        });
     }
-
-  } catch (error) {
-    console.error('❌ [AJUSTE] Error al procesar ajuste rápido:', error);
-    res.status(500).json({ 
-      error: 'Error al procesar el ajuste de stock',
-      detalles: error.message 
-    });
-  }
 });
 
 // ==========================================

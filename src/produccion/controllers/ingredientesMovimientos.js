@@ -6,18 +6,11 @@ async function registrarMovimientoIngrediente(movimiento, db) {
       tipo,
       carro_id,
       observaciones,
-      articuloNumero // ← Se admite como campo adicional
+      articuloNumero,
+      stock_anterior // ← Nuevo campo para snapshot
     } = movimiento;
 
-    console.log('📥 Datos recibidos en registrarMovimientoIngrediente:');
-    console.log({
-      ingrediente_id,
-      kilos,
-      tipo,
-      carro_id,
-      observaciones,
-      articuloNumero
-    });
+    console.log('📥 Datos recibidos en registrarMovimientoIngrediente:', movimiento);
 
     // ✅ Validación de campos
     if (
@@ -49,9 +42,9 @@ async function registrarMovimientoIngrediente(movimiento, db) {
 
     const query = `
       INSERT INTO ingredientes_movimientos 
-        (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha)
+        (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
       VALUES 
-        ($1, $2, $3, $4, $5, NOW())
+        ($1, $2, $3, $4, $5, NOW(), $6)
       RETURNING *;
     `;
 
@@ -60,7 +53,8 @@ async function registrarMovimientoIngrediente(movimiento, db) {
       Number(kilos),
       tipo,
       carro_id,
-      textoObservacion
+      textoObservacion,
+      stock_anterior !== undefined ? Number(stock_anterior) : 0 // Guardar 0 si no viene definido
     ];
 
     console.log('📤 Insertando movimiento con:', values);

@@ -7,16 +7,16 @@ console.log('🔍 [PRESUPUESTOS] Cargando controlador de presupuestos...');
  * @returns {Object|null} Registro del presupuesto o null si no existe
  */
 async function resolvePresupuesto(client, idParam) {
-  // Si es todo dígitos, lo tratamos como id (integer); si no, como ext
-  const isNumeric = /^\d+$/.test(idParam);
-  const { rows } = await client.query(
-    `SELECT id, id_presupuesto_ext
+    // Si es todo dígitos, lo tratamos como id (integer); si no, como ext
+    const isNumeric = /^\d+$/.test(idParam);
+    const { rows } = await client.query(
+        `SELECT id, id_presupuesto_ext
        FROM public.presupuestos
       WHERE ${isNumeric ? 'id = $1' : 'id_presupuesto_ext = $1'}
       LIMIT 1`,
-    [isNumeric ? Number(idParam) : idParam]
-  );
-  return rows[0] || null;
+        [isNumeric ? Number(idParam) : idParam]
+    );
+    return rows[0] || null;
 }
 
 /**
@@ -26,51 +26,51 @@ async function resolvePresupuesto(client, idParam) {
  * @returns {Object} Objeto con tiposDetectados, formatosDetectados, fechasFuturas, ejemplosFechasFuturas
  */
 function analyzeDateData(rows) {
-  const tiposDetectados = new Set();
-  const formatosDetectados = new Set();
-  const fechasFuturas = [];
-  const ahora = new Date();
-  const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
+    const tiposDetectados = new Set();
+    const formatosDetectados = new Set();
+    const fechasFuturas = [];
+    const ahora = new Date();
+    const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
 
-  rows.forEach(row => {
-    const fechaValue = row.fecha_registro;
-    if (!fechaValue) return;
+    rows.forEach(row => {
+        const fechaValue = row.fecha_registro;
+        if (!fechaValue) return;
 
-    const tipoDetectado = typeof fechaValue;
-    tiposDetectados.add(tipoDetectado);
+        const tipoDetectado = typeof fechaValue;
+        tiposDetectados.add(tipoDetectado);
 
-    // Detectar formato específico
-    if (fechaValue instanceof Date) {
-      formatosDetectados.add('Date object');
-    } else if (typeof fechaValue === 'string') {
-      if (fechaValue.includes('T') && fechaValue.includes('Z')) {
-        formatosDetectados.add('ISO UTC (YYYY-MM-DDTHH:mm:ss.sssZ)');
-      } else if (fechaValue.includes('T')) {
-        formatosDetectados.add('ISO con hora (YYYY-MM-DDTHH:mm:ss)');
-      } else if (fechaValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        formatosDetectados.add('YYYY-MM-DD (solo fecha)');
-      } else if (fechaValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-        formatosDetectados.add('DD/MM/YYYY');
-      } else {
-        formatosDetectados.add('Otro formato string');
-      }
-    } else if (typeof fechaValue === 'number') {
-      formatosDetectados.add('Timestamp numérico');
-    }
+        // Detectar formato específico
+        if (fechaValue instanceof Date) {
+            formatosDetectados.add('Date object');
+        } else if (typeof fechaValue === 'string') {
+            if (fechaValue.includes('T') && fechaValue.includes('Z')) {
+                formatosDetectados.add('ISO UTC (YYYY-MM-DDTHH:mm:ss.sssZ)');
+            } else if (fechaValue.includes('T')) {
+                formatosDetectados.add('ISO con hora (YYYY-MM-DDTHH:mm:ss)');
+            } else if (fechaValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                formatosDetectados.add('YYYY-MM-DD (solo fecha)');
+            } else if (fechaValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                formatosDetectados.add('DD/MM/YYYY');
+            } else {
+                formatosDetectados.add('Otro formato string');
+            }
+        } else if (typeof fechaValue === 'number') {
+            formatosDetectados.add('Timestamp numérico');
+        }
 
-    // Detectar fechas futuras (más de 1 año)
-    const fechaObj = new Date(fechaValue);
-    if (fechaObj > unAñoFuturo) {
-      fechasFuturas.push({ id: row.id, fecha: fechaValue, fechaObj });
-    }
-  });
+        // Detectar fechas futuras (más de 1 año)
+        const fechaObj = new Date(fechaValue);
+        if (fechaObj > unAñoFuturo) {
+            fechasFuturas.push({ id: row.id, fecha: fechaValue, fechaObj });
+        }
+    });
 
-  return {
-    tiposDetectados: Array.from(tiposDetectados),
-    formatosDetectados: Array.from(formatosDetectados),
-    fechasFuturas: fechasFuturas.length,
-    ejemplosFechasFuturas: fechasFuturas.slice(0, 5)
-  };
+    return {
+        tiposDetectados: Array.from(tiposDetectados),
+        formatosDetectados: Array.from(formatosDetectados),
+        fechasFuturas: fechasFuturas.length,
+        ejemplosFechasFuturas: fechasFuturas.slice(0, 5)
+    };
 }
 
 /**
@@ -84,7 +84,7 @@ function analyzeDateData(rows) {
 const obtenerPresupuestos = async (req, res) => {
     try {
         console.log('🔍 [PRESUPUESTOS] Iniciando obtención de presupuestos...');
-        
+
         // Extraer parámetros de filtrado y paginación - Filtro cliente + Typeahead + Fechas + Estado – 2024-12-19
         const {
             categoria,
@@ -110,25 +110,25 @@ const obtenerPresupuestos = async (req, res) => {
             order_by,
             order_dir
         } = req.query;
-        
+
         // Convertir parámetros de paginación nueva a formato interno
         const currentPage = parseInt(page);
         const itemsPerPage = parseInt(pageSize);
         const calculatedOffset = (currentPage - 1) * itemsPerPage;
         const calculatedLimit = itemsPerPage;
-        
+
         // Usar parámetros nuevos o legacy para compatibilidad
         const finalLimit = limit ? parseInt(limit) : calculatedLimit;
         const finalOffset = offset !== undefined ? parseInt(offset) : calculatedOffset;
         const finalSortBy = sortBy || order_by || 'fecha';
         const finalOrder = order || order_dir || 'desc';
-        
+
         console.log('📋 [PRESUPUESTOS] Filtros aplicados:', {
-            categoria, concepto, clienteId, clienteName, estado, fecha_desde, fecha_hasta, 
-            monto_min, monto_max, sheet_id, 
+            categoria, concepto, clienteId, clienteName, estado, fecha_desde, fecha_hasta,
+            monto_min, monto_max, sheet_id,
             page: currentPage, pageSize: itemsPerPage, sortBy: finalSortBy, order: finalOrder
         });
-        
+
         // Construir consulta dinámica con JOIN a clientes según relaciones confirmadas - 2024-12-19
         let query = `
             SELECT 
@@ -145,17 +145,17 @@ const obtenerPresupuestos = async (req, res) => {
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.activo = true
         `;
-        
+
         const params = [];
         let paramCount = 0;
-        
+
         // Aplicar filtros dinámicos
         if (categoria) {
             paramCount++;
             query += ` AND LOWER(p.tipo_comprobante) LIKE LOWER($${paramCount})`;
             params.push(`%${categoria}%`);
         }
-        
+
         // Filtro de cliente mejorado - Filtro cliente + Typeahead + Fechas – 2024-12-19
         if (clienteId) {
             // Filtro por ID de cliente exacto (número de 3 cifras)
@@ -173,37 +173,37 @@ const obtenerPresupuestos = async (req, res) => {
             query += ` AND (LOWER(c.nombre) LIKE LOWER($${paramCount}) OR LOWER(c.apellido) LIKE LOWER($${paramCount}) OR LOWER(c.otros) LIKE LOWER($${paramCount}))`;
             params.push(`%${concepto}%`);
         }
-        
+
         if (fecha_desde) {
             paramCount++;
             query += ` AND p.fecha >= $${paramCount}`;
             params.push(fecha_desde);
         }
-        
+
         if (fecha_hasta) {
             paramCount++;
             query += ` AND p.fecha <= $${paramCount}`;
             params.push(fecha_hasta);
         }
-        
+
         if (monto_min) {
             paramCount++;
             query += ` AND 0 >= $${paramCount}`;
             params.push(parseFloat(monto_min));
         }
-        
+
         if (monto_max) {
             paramCount++;
             query += ` AND 0 <= $${paramCount}`;
             params.push(parseFloat(monto_max));
         }
-        
+
         if (sheet_id) {
             paramCount++;
             query += ` AND p.id_presupuesto_ext = $${paramCount}`;
             params.push(sheet_id);
         }
-        
+
         // Filtro por estado - Filtro por Estado – 2024-12-19
         if (estado) {
             // Soportar múltiples estados (array o string separado por comas)
@@ -213,17 +213,17 @@ const obtenerPresupuestos = async (req, res) => {
             } else if (typeof estado === 'string') {
                 estadosArray = estado.split(',').map(e => e.trim()).filter(e => e.length > 0);
             }
-            
+
             if (estadosArray.length > 0) {
                 const estadosPlaceholders = estadosArray.map((_, index) => `$${paramCount + index + 1}`).join(', ');
                 paramCount += estadosArray.length;
                 query += ` AND p.estado IN (${estadosPlaceholders})`;
                 params.push(...estadosArray);
-                
+
                 console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Filtro estado: [${estadosArray.join(', ')}]`);
             }
         }
-        
+
         // Ordenamiento - Orden por fecha DESC + paginación – 2024-12-19
         const validOrderFields = ['fecha', 'fecha_registro', 'categoria', 'concepto', 'monto'];
         let orderField;
@@ -239,43 +239,43 @@ const obtenerPresupuestos = async (req, res) => {
             orderField = 'p.fecha'; // Default: ordenar por fecha
         }
         const orderDirection = finalOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-        
+
         // Manejo de fecha DATE (YYYY-MM-DD) sin UTC; orden servidor – [YYYY-MM-DD] – 2024-12-19
         query += ` ORDER BY ${orderField} ${orderDirection} NULLS LAST, p.id DESC`;
-        
+
         // Paginación - Orden por fecha DESC + paginación – 2024-12-19
         if (finalLimit) {
             paramCount++;
             query += ` LIMIT $${paramCount}`;
             params.push(finalLimit);
         }
-        
+
         if (finalOffset) {
             paramCount++;
             query += ` OFFSET $${paramCount}`;
             params.push(finalOffset);
         }
-        
+
         console.log('📋 [PRESUPUESTOS] Consulta SQL:', query);
         console.log('📋 [PRESUPUESTOS] Parámetros:', params);
-        
+
         const result = await req.db.query(query, params);
-        
+
         // AUDITORÍA DE FECHAS - Instrumentación completa de logs inteligentes
         const auditoriaDeFechas = process.env.DEBUG_FECHAS === 'true' || req.query.debug_fechas === 'true';
-        
+
         if (auditoriaDeFechas && result.rows.length > 0) {
             console.log('\n🔍 [AUDITORÍA-FECHAS] ===== PASO 1: LECTURA DESDE BASE DE DATOS =====');
-            
+
             // Generar ID único para correlacionar logs de toda la solicitud
             const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
             console.log(`[AUDITORÍA-FECHAS] Request ID de correlación: ${requestId}`);
-            
+
             // Análisis de muestra distribuida (máximo 20 registros representativos)
             const totalRegistros = result.rows.length;
             const muestraSize = Math.min(20, totalRegistros);
             const indices = [];
-            
+
             if (totalRegistros <= 20) {
                 // Si hay 20 o menos, tomar todos
                 for (let i = 0; i < totalRegistros; i++) indices.push(i);
@@ -288,11 +288,11 @@ const obtenerPresupuestos = async (req, res) => {
                     if (indices.length < 20) indices.push(i);
                 }
             }
-            
+
             // Análisis de la muestra
             const muestraFechas = indices.map(i => result.rows[i]);
             const fechasValidas = muestraFechas.filter(row => row.fecha_registro);
-            
+
             if (fechasValidas.length > 0) {
                 const { tiposDetectados, formatosDetectados, fechasFuturas, ejemplosFechasFuturas } = analyzeDateData(fechasValidas);
                 // Ordenar fechas para análisis
@@ -302,7 +302,7 @@ const obtenerPresupuestos = async (req, res) => {
 
                 const fechaMinima = fechasOrdenadas[0];
                 const fechaMaxima = fechasOrdenadas[fechasOrdenadas.length - 1];
-                
+
                 // PASO 1: RESUMEN DE LECTURA DESDE BD
                 console.log(`[AUDITORÍA-FECHAS] 📊 RESUMEN PASO 1 - LECTURA BD (${requestId}):`);
                 console.log(`[AUDITORÍA-FECHAS] - Total registros consultados: ${totalRegistros}`);
@@ -312,7 +312,7 @@ const obtenerPresupuestos = async (req, res) => {
                 console.log(`[AUDITORÍA-FECHAS] - Tipos de datos detectados: ${Array.from(tiposDetectados).join(', ')}`);
                 console.log(`[AUDITORÍA-FECHAS] - Formatos detectados: ${Array.from(formatosDetectados).join(', ')}`);
                 console.log(`[AUDITORÍA-FECHAS] - Fechas futuras detectadas: ${fechasFuturas.length}`);
-                
+
                 // Ejemplos de fechas futuras (máximo 5)
                 if (fechasFuturas.length > 0) {
                     console.log(`[AUDITORÍA-FECHAS] ⚠️ EJEMPLOS DE FECHAS FUTURAS (hasta 5):`);
@@ -320,19 +320,18 @@ const obtenerPresupuestos = async (req, res) => {
                         console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, fecha_futura="${item.fecha}", año=${item.fechaObj.getFullYear()}`);
                     });
                 }
-                
+
                 // Ejemplos representativos de la muestra (máximo 10)
                 console.log(`[AUDITORÍA-FECHAS] 📋 EJEMPLOS PASO 1 - VALORES CRUDOS BD (hasta 10):`);
                 muestraFechas.slice(0, 10).forEach((row, idx) => {
                     const fechaValue = row.fecha_registro;
-                    console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${row.id}, valor_crudo="${fechaValue}", tipo=${typeof fechaValue}, formato_detectado=${
-                        fechaValue instanceof Date ? 'Date object' :
-                        typeof fechaValue === 'string' && fechaValue.includes('T') ? 'ISO con hora' :
-                        typeof fechaValue === 'string' && fechaValue.match(/^\d{4}-\d{2}-\d{2}$/) ? 'YYYY-MM-DD' :
-                        'Otro'
-                    }`);
+                    console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${row.id}, valor_crudo="${fechaValue}", tipo=${typeof fechaValue}, formato_detectado=${fechaValue instanceof Date ? 'Date object' :
+                            typeof fechaValue === 'string' && fechaValue.includes('T') ? 'ISO con hora' :
+                                typeof fechaValue === 'string' && fechaValue.match(/^\d{4}-\d{2}-\d{2}$/) ? 'YYYY-MM-DD' :
+                                    'Otro'
+                        }`);
                 });
-                
+
                 // Guardar datos para correlación con pasos siguientes
                 result.auditData = {
                     requestId,
@@ -349,7 +348,7 @@ const obtenerPresupuestos = async (req, res) => {
                 };
             }
         }
-        
+
         // Consulta para total de registros (sin paginación) - Ajuste según relaciones confirmadas - 2024-12-19
         let countQuery = `
             SELECT COUNT(*) as total
@@ -357,17 +356,17 @@ const obtenerPresupuestos = async (req, res) => {
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.activo = true
         `;
-        
+
         // Aplicar mismos filtros para el conteo
         let countParams = [];
         let countParamCount = 0;
-        
+
         if (categoria) {
             countParamCount++;
             countQuery += ` AND LOWER(p.tipo_comprobante) LIKE LOWER($${countParamCount})`;
             countParams.push(`%${categoria}%`);
         }
-        
+
         // Aplicar mismo filtro de cliente para el conteo - Filtro cliente + Typeahead + Fechas – 2024-12-19
         if (clienteId) {
             countParamCount++;
@@ -382,37 +381,37 @@ const obtenerPresupuestos = async (req, res) => {
             countQuery += ` AND (LOWER(c.nombre) LIKE LOWER($${countParamCount}) OR LOWER(c.apellido) LIKE LOWER($${countParamCount}) OR LOWER(c.otros) LIKE LOWER($${countParamCount}))`;
             countParams.push(`%${concepto}%`);
         }
-        
+
         if (fecha_desde) {
             countParamCount++;
             countQuery += ` AND p.fecha >= $${countParamCount}`;
             countParams.push(fecha_desde);
         }
-        
+
         if (fecha_hasta) {
             countParamCount++;
             countQuery += ` AND p.fecha <= $${countParamCount}`;
             countParams.push(fecha_hasta);
         }
-        
+
         if (monto_min) {
             countParamCount++;
             countQuery += ` AND 0 >= $${countParamCount}`;
             countParams.push(parseFloat(monto_min));
         }
-        
+
         if (monto_max) {
             countParamCount++;
             countQuery += ` AND 0 <= $${countParamCount}`;
             countParams.push(parseFloat(monto_max));
         }
-        
+
         if (sheet_id) {
             countParamCount++;
             countQuery += ` AND p.id_presupuesto_ext = $${countParamCount}`;
             countParams.push(sheet_id);
         }
-        
+
         // Aplicar mismo filtro de estado para el conteo - Filtro por Estado – 2024-12-19
         if (estado) {
             let estadosArray = [];
@@ -421,7 +420,7 @@ const obtenerPresupuestos = async (req, res) => {
             } else if (typeof estado === 'string') {
                 estadosArray = estado.split(',').map(e => e.trim()).filter(e => e.length > 0);
             }
-            
+
             if (estadosArray.length > 0) {
                 const estadosPlaceholders = estadosArray.map((_, index) => `$${countParamCount + index + 1}`).join(', ');
                 countParamCount += estadosArray.length;
@@ -429,22 +428,22 @@ const obtenerPresupuestos = async (req, res) => {
                 countParams.push(...estadosArray);
             }
         }
-        
+
         const countResult = await req.db.query(countQuery, countParams);
         const totalRecords = parseInt(countResult.rows[0].total);
-        
+
         console.log(`✅ [PRESUPUESTOS] Presupuestos obtenidos: ${result.rows.length} de ${totalRecords} registros`);
-        
+
         // Log de categorías encontradas para debugging
         const categorias = [...new Set(result.rows.map(row => row.categoria))];
         console.log('📊 [PRESUPUESTOS] Tipos de comprobante encontrados:', categorias);
         console.log('📊 [PRESUPUESTOS] Muestra de datos:', result.rows.slice(0, 3));
-        
+
         // AUDITORÍA DE FECHAS - PASO 2: Transformaciones en backend (si las hay)
         if (auditoriaDeFechas && result.auditData) {
             const { requestId } = result.auditData;
             console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 2: TRANSFORMACIONES EN BACKEND (${requestId}) =====`);
-            
+
             // En este punto, verificamos si hay transformaciones entre la lectura de BD y la preparación para envío
             // Como estamos usando el resultado directo de la BD sin transformaciones adicionales,
             // documentamos que no hay transformaciones en el backend
@@ -454,7 +453,7 @@ const obtenerPresupuestos = async (req, res) => {
             console.log(`[AUDITORÍA-FECHAS] - Zona horaria: Sin manipulación de zona horaria`);
             console.log(`[AUDITORÍA-FECHAS] - Formateo: Sin formateo adicional aplicado`);
             console.log(`[AUDITORÍA-FECHAS] ✅ No se detectaron transformaciones en el backend`);
-            
+
             // Actualizar datos de auditoría
             result.auditData.paso2 = {
                 transformacionesDetectadas: false,
@@ -464,38 +463,38 @@ const obtenerPresupuestos = async (req, res) => {
                 formateoAplicado: 'Ninguno'
             };
         }
-        
+
         // AUDITORÍA DE FECHAS - PASO 3: Serialización de la API (antes de enviar respuesta)
         if (auditoriaDeFechas && result.rows.length > 0) {
             const requestId = result.auditData?.requestId || 'NO-ID';
             console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 3: SERIALIZACIÓN DE LA API (${requestId}) =====`);
-            
+
             // Analizar fechas que se van a enviar al frontend
             const fechasParaEnviar = result.rows.filter(row => row.fecha_registro);
-            
+
             if (fechasParaEnviar.length > 0) {
                 // Análisis de muestra para serialización (máximo 10 registros)
                 const muestraEnvio = fechasParaEnviar.slice(0, 10);
-                
+
                 const fechasOrdenadas = fechasParaEnviar
                     .map(row => ({ ...row, fechaObj: new Date(row.fecha_registro) }))
                     .sort((a, b) => a.fechaObj - b.fechaObj);
-                
+
                 const fechaMinima = fechasOrdenadas[0];
                 const fechaMaxima = fechasOrdenadas[fechasOrdenadas.length - 1];
-                
+
                 // Detectar tipos y formatos en la serialización
                 const tiposEnvio = new Set();
                 const formatosEnvio = new Set();
                 const fechasFuturasEnvio = [];
                 const ahora = new Date();
                 const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
-                
+
                 fechasParaEnviar.forEach(row => {
                     const fechaValue = row.fecha_registro;
                     const tipoDetectado = typeof fechaValue;
                     tiposEnvio.add(tipoDetectado);
-                    
+
                     // Detectar formato específico en serialización
                     if (fechaValue instanceof Date) {
                         formatosEnvio.add('Date object');
@@ -514,14 +513,14 @@ const obtenerPresupuestos = async (req, res) => {
                     } else if (typeof fechaValue === 'number') {
                         formatosEnvio.add('Timestamp numérico');
                     }
-                    
+
                     // Detectar fechas futuras en serialización
                     const fechaObj = new Date(fechaValue);
                     if (fechaObj > unAñoFuturo) {
                         fechasFuturasEnvio.push({ id: row.id, fecha: fechaValue, fechaObj });
                     }
                 });
-                
+
                 // PASO 3: RESUMEN DE SERIALIZACIÓN API
                 console.log(`[AUDITORÍA-FECHAS] 📤 RESUMEN PASO 3 - SERIALIZACIÓN API (${requestId}):`);
                 console.log(`[AUDITORÍA-FECHAS] - Total registros a enviar: ${result.rows.length}`);
@@ -530,7 +529,7 @@ const obtenerPresupuestos = async (req, res) => {
                 console.log(`[AUDITORÍA-FECHAS] - Tipos en serialización: ${Array.from(tiposEnvio).join(', ')}`);
                 console.log(`[AUDITORÍA-FECHAS] - Formatos en serialización: ${Array.from(formatosEnvio).join(', ')}`);
                 console.log(`[AUDITORÍA-FECHAS] - Fechas futuras en serialización: ${fechasFuturasEnvio.length}`);
-                
+
                 // Ejemplos de fechas futuras en serialización (máximo 5)
                 if (fechasFuturasEnvio.length > 0) {
                     console.log(`[AUDITORÍA-FECHAS] ⚠️ EJEMPLOS DE FECHAS FUTURAS EN SERIALIZACIÓN (hasta 5):`);
@@ -538,19 +537,18 @@ const obtenerPresupuestos = async (req, res) => {
                         console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, fecha_futura_api="${item.fecha}", año=${item.fechaObj.getFullYear()}`);
                     });
                 }
-                
+
                 // Ejemplos de lo que se va a enviar (máximo 10)
                 console.log(`[AUDITORÍA-FECHAS] 📤 EJEMPLOS PASO 3 - VALORES A ENVIAR (hasta 10):`);
                 muestraEnvio.forEach((row, idx) => {
                     const fechaValue = row.fecha_registro;
-                    console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${row.id}, valor_a_enviar="${fechaValue}", tipo=${typeof fechaValue}, será_serializado_como=${
-                        fechaValue instanceof Date ? 'ISO string por JSON.stringify' :
-                        typeof fechaValue === 'string' ? 'string (sin cambios)' :
-                        typeof fechaValue === 'number' ? 'number (sin cambios)' :
-                        'unknown'
-                    }`);
+                    console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${row.id}, valor_a_enviar="${fechaValue}", tipo=${typeof fechaValue}, será_serializado_como=${fechaValue instanceof Date ? 'ISO string por JSON.stringify' :
+                            typeof fechaValue === 'string' ? 'string (sin cambios)' :
+                                typeof fechaValue === 'number' ? 'number (sin cambios)' :
+                                    'unknown'
+                        }`);
                 });
-                
+
                 // Comparar con paso anterior para detectar transformaciones
                 const datosAnterior = result.auditData?.paso1;
                 if (datosAnterior) {
@@ -559,7 +557,7 @@ const obtenerPresupuestos = async (req, res) => {
                         formatosEnvio.size !== datosAnterior.formatosDetectados.length ||
                         fechasFuturasEnvio.length !== datosAnterior.fechasFuturas
                     );
-                    
+
                     if (transformacionDetectada) {
                         console.log(`[AUDITORÍA-FECHAS] ⚠️ TRANSFORMACIÓN DETECTADA ENTRE PASO 1 Y PASO 3:`);
                         console.log(`[AUDITORÍA-FECHAS] - Cambio en tipos: ${datosAnterior.tiposDetectados.join(', ')} → ${Array.from(tiposEnvio).join(', ')}`);
@@ -569,7 +567,7 @@ const obtenerPresupuestos = async (req, res) => {
                         console.log(`[AUDITORÍA-FECHAS] ✅ No se detectaron transformaciones entre Paso 1 y Paso 3`);
                     }
                 }
-                
+
                 // Actualizar datos de auditoría para el paso 3
                 if (result.auditData) {
                     result.auditData.paso3 = {
@@ -584,7 +582,7 @@ const obtenerPresupuestos = async (req, res) => {
                 }
             }
         }
-        
+
         // Respuesta con formato de paginación mejorado - Orden por fecha DESC + paginación – 2024-12-19
         res.json({
             success: true,
@@ -617,7 +615,7 @@ const obtenerPresupuestos = async (req, res) => {
             // Incluir requestId para correlación con frontend
             ...(auditoriaDeFechas && result.requestId && { auditRequestId: result.requestId })
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al obtener presupuestos:', error);
         res.status(500).json({
@@ -633,23 +631,23 @@ const obtenerPresupuestos = async (req, res) => {
  * Obtener sugerencias de clientes para typeahead - Filtro cliente + Typeahead + Fechas – 2024-12-19
  */
 const obtenerSugerenciasClientes = async (req, res) => {
-  try {
-    const qRaw = (req.query.q || '').trim();
-    if (!qRaw) {
-      return res.json({
-        success: true,
-        data: [],
-        message: 'Query muy corto para sugerencias',
-        timestamp: new Date().toISOString()
-      });
-    }
+    try {
+        const qRaw = (req.query.q || '').trim();
+        if (!qRaw) {
+            return res.json({
+                success: true,
+                data: [],
+                message: 'Query muy corto para sugerencias',
+                timestamp: new Date().toISOString()
+            });
+        }
 
-    const limitParam = parseInt(req.query.limit, 10);
-    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 100) : 10;
+        const limitParam = parseInt(req.query.limit, 10);
+        const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 100) : 10;
 
-    // ¿Buscan por ID numérico corto?
-    if (/^\d{1,6}$/.test(qRaw)) {
-      const query = `
+        // ¿Buscan por ID numérico corto?
+        if (/^\d{1,6}$/.test(qRaw)) {
+            const query = `
         SELECT DISTINCT
           c.cliente_id,
           c.nombre,
@@ -664,44 +662,44 @@ const obtenerSugerenciasClientes = async (req, res) => {
         ORDER BY total_presupuestos DESC, c.nombre
         LIMIT $2
       `;
-      const params = [parseInt(qRaw, 10), limit];
+            const params = [parseInt(qRaw, 10), limit];
 
-      const result = await req.db.query(query, params);
-      const sugerencias = result.rows.map(cliente => ({
-        id: cliente.cliente_id,
-        text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
-        nombre: cliente.nombre,
-        apellido: cliente.apellido,
-        otros: cliente.otros,
-        total_presupuestos: parseInt(cliente.total_presupuestos)
-      }));
+            const result = await req.db.query(query, params);
+            const sugerencias = result.rows.map(cliente => ({
+                id: cliente.cliente_id,
+                text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
+                nombre: cliente.nombre,
+                apellido: cliente.apellido,
+                otros: cliente.otros,
+                total_presupuestos: parseInt(cliente.total_presupuestos)
+            }));
 
-      return res.json({
-        success: true,
-        data: sugerencias,
-        query: qRaw,
-        total: sugerencias.length,
-        timestamp: new Date().toISOString()
-      });
-    }
+            return res.json({
+                success: true,
+                data: sugerencias,
+                query: qRaw,
+                total: sugerencias.length,
+                timestamp: new Date().toISOString()
+            });
+        }
 
-    // Texto libre → múltiples términos (AND), buscando en nombre + apellido + otros
-    const tokens = qRaw
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
+        // Texto libre → múltiples términos (AND), buscando en nombre + apellido + otros
+        const tokens = qRaw
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .split(/\s+/)
+            .filter(Boolean);
 
-    let p = 0;
-    const params = [];
-    const andConds = tokens.map(t => {
-      p += 1; const ph = `$${p}`; params.push(`%${t}%`);
-      return `(LOWER(c.nombre) ILIKE ${ph} OR LOWER(c.apellido) ILIKE ${ph} OR LOWER(c.otros) ILIKE ${ph})`;
-    });
+        let p = 0;
+        const params = [];
+        const andConds = tokens.map(t => {
+            p += 1; const ph = `$${p}`; params.push(`%${t}%`);
+            return `(LOWER(c.nombre) ILIKE ${ph} OR LOWER(c.apellido) ILIKE ${ph} OR LOWER(c.otros) ILIKE ${ph})`;
+        });
 
-    p += 1; params.push(limit);
+        p += 1; params.push(limit);
 
-    const query = `
+        const query = `
       SELECT DISTINCT
         c.cliente_id,
         c.nombre,
@@ -717,103 +715,103 @@ const obtenerSugerenciasClientes = async (req, res) => {
       LIMIT $${p}
     `;
 
-    const result = await req.db.query(query, params);
+        const result = await req.db.query(query, params);
 
-    const sugerencias = result.rows.map(cliente => ({
-      id: cliente.cliente_id,
-      text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
-      nombre: cliente.nombre,
-      apellido: cliente.apellido,
-      otros: cliente.otros,
-      total_presupuestos: parseInt(cliente.total_presupuestos)
-    }));
+        const sugerencias = result.rows.map(cliente => ({
+            id: cliente.cliente_id,
+            text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
+            nombre: cliente.nombre,
+            apellido: cliente.apellido,
+            otros: cliente.otros,
+            total_presupuestos: parseInt(cliente.total_presupuestos)
+        }));
 
-    return res.json({
-      success: true,
-      data: sugerencias,
-      query: qRaw,
-      total: sugerencias.length,
-      timestamp: new Date().toISOString()
-    });
+        return res.json({
+            success: true,
+            data: sugerencias,
+            query: qRaw,
+            total: sugerencias.length,
+            timestamp: new Date().toISOString()
+        });
 
-  } catch (error) {
-    console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de clientes:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Error al obtener sugerencias de clientes',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de clientes:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Error al obtener sugerencias de clientes',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
 };
 
 /**
  * Obtener sugerencias de artículos para autocompletar en detalles
  */
 const obtenerSugerenciasArticulos = async (req, res) => {
-  try {
-    const qRaw = (req.query.q || '').trim();
-    if (!qRaw) {
-      return res.json({
-        success: true,
-        data: [],
-        message: 'Escribí para buscar artículos...',
-        timestamp: new Date().toISOString()
-      });
-    }
+    try {
+        const qRaw = (req.query.q || '').trim();
+        if (!qRaw) {
+            return res.json({
+                success: true,
+                data: [],
+                message: 'Escribí para buscar artículos...',
+                timestamp: new Date().toISOString()
+            });
+        }
 
-    // limit: default 50, máximo 200
-    const limitParam = parseInt(req.query.limit, 10);
-    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 200) : 50;
+        // limit: default 50, máximo 200
+        const limitParam = parseInt(req.query.limit, 10);
+        const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 200) : 50;
 
-    // Tokenización (múltiples palabras) – tolerante a espacios y acentos (solo para logs);
-    // en SQL usamos ILIKE para insensibilidad de mayúsc/minúsc.
-    const tokens = qRaw
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
+        // Tokenización (múltiples palabras) – tolerante a espacios y acentos (solo para logs);
+        // en SQL usamos ILIKE para insensibilidad de mayúsc/minúsc.
+        const tokens = qRaw
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .split(/\s+/)
+            .filter(Boolean);
 
-    // Si parece código de barras (solo dígitos 8–14), lo priorizamos como igualdad exacta
-    const isBarcode = /^\d{8,14}$/.test(qRaw);
+        // Si parece código de barras (solo dígitos 8–14), lo priorizamos como igualdad exacta
+        const isBarcode = /^\d{8,14}$/.test(qRaw);
 
-    // Armado dinámico del WHERE con placeholders
-    const fields = ['src.descripcion', 'src.articulo_numero', 'src.codigo_barras'];
-    const whereParts = [];
-    const params = [];
-    let p = 0;
+        // Armado dinámico del WHERE con placeholders
+        const fields = ['src.descripcion', 'src.articulo_numero', 'src.codigo_barras'];
+        const whereParts = [];
+        const params = [];
+        let p = 0;
 
-    if (isBarcode) {
-      p += 1;
-      whereParts.push(`src.codigo_barras = $${p}`);
-      params.push(qRaw);
-    }
+        if (isBarcode) {
+            p += 1;
+            whereParts.push(`src.codigo_barras = $${p}`);
+            params.push(qRaw);
+        }
 
-    if (tokens.length) {
-      const andGroup = tokens.map(t => {
-        p += 1;
-        const ph = `$${p}`;
-        params.push(`%${t}%`);
-        return `(${fields.map(f => `${f} ILIKE ${ph}`).join(' OR ')})`;
-      });
-      // Si ya agregamos el OR de código de barras exacto, incluimos AND-group aparte
-      if (isBarcode) {
-        whereParts.push(`(${andGroup.join(' AND ')})`);
-      } else {
-        whereParts.push(...andGroup);
-      }
-    }
+        if (tokens.length) {
+            const andGroup = tokens.map(t => {
+                p += 1;
+                const ph = `$${p}`;
+                params.push(`%${t}%`);
+                return `(${fields.map(f => `${f} ILIKE ${ph}`).join(' OR ')})`;
+            });
+            // Si ya agregamos el OR de código de barras exacto, incluimos AND-group aparte
+            if (isBarcode) {
+                whereParts.push(`(${andGroup.join(' AND ')})`);
+            } else {
+                whereParts.push(...andGroup);
+            }
+        }
 
-    // Si no hay condiciones, devolvemos vacío (no debería ocurrir porque qRaw existe)
-    if (!whereParts.length) {
-      return res.json({ success: true, data: [], query: qRaw, total: 0, timestamp: new Date().toISOString() });
-    }
+        // Si no hay condiciones, devolvemos vacío (no debería ocurrir porque qRaw existe)
+        if (!whereParts.length) {
+            return res.json({ success: true, data: [], query: qRaw, total: 0, timestamp: new Date().toISOString() });
+        }
 
-    const whereClause = isBarcode
-      ? `WHERE (${whereParts[0]}) OR (${whereParts.slice(1).join(' AND ') || 'FALSE'})`
-      : `WHERE ${whereParts.join(' AND ')}`;
+        const whereClause = isBarcode
+            ? `WHERE (${whereParts[0]}) OR (${whereParts.slice(1).join(' AND ') || 'FALSE'})`
+            : `WHERE ${whereParts.join(' AND ')}`;
 
-    const sql = `
+        const sql = `
       SELECT
         src.codigo_barras,
         src.articulo_numero,
@@ -826,40 +824,40 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         src.descripcion ASC
       LIMIT $${p + 1}
     `;
-    params.push(limit);
+        params.push(limit);
 
-    console.log('📋 [PRESUPUESTOS] Query artículos:', sql);
-    console.log('📋 [PRESUPUESTOS] Parámetros:', params);
+        console.log('📋 [PRESUPUESTOS] Query artículos:', sql);
+        console.log('📋 [PRESUPUESTOS] Parámetros:', params);
 
-    const result = await req.db.query(sql, params);
+        const result = await req.db.query(sql, params);
 
-    const sugerencias = result.rows.map(a => ({
-      codigo_barras: a.codigo_barras,
-      articulo_numero: a.articulo_numero,
-      descripcion: a.descripcion,
-      stock_consolidado: parseFloat(a.stock_consolidado || 0),
-      text: `${a.descripcion} — [${a.articulo_numero}] (stock: ${Math.floor(a.stock_consolidado || 0)})`
-    }));
+        const sugerencias = result.rows.map(a => ({
+            codigo_barras: a.codigo_barras,
+            articulo_numero: a.articulo_numero,
+            descripcion: a.descripcion,
+            stock_consolidado: parseFloat(a.stock_consolidado || 0),
+            text: `${a.descripcion} — [${a.articulo_numero}] (stock: ${Math.floor(a.stock_consolidado || 0)})`
+        }));
 
-    console.log(`✅ [PRESUPUESTOS] Sugerencias de artículos encontradas: ${sugerencias.length} (limit=${limit})`);
+        console.log(`✅ [PRESUPUESTOS] Sugerencias de artículos encontradas: ${sugerencias.length} (limit=${limit})`);
 
-    return res.json({
-      success: true,
-      data: sugerencias,
-      query: qRaw,
-      total: sugerencias.length,
-      timestamp: new Date().toISOString()
-    });
+        return res.json({
+            success: true,
+            data: sugerencias,
+            query: qRaw,
+            total: sugerencias.length,
+            timestamp: new Date().toISOString()
+        });
 
-  } catch (error) {
-    console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de artículos:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Error al obtener sugerencias de artículos',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al obtener sugerencias de artículos:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Error al obtener sugerencias de artículos',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
 };
 
 /**
@@ -869,56 +867,56 @@ const obtenerSugerenciasArticulos = async (req, res) => {
  * Si no se encuentra, devolver 0s (pedido explícito).
  */
 const obtenerPrecioArticuloCliente = async (req, res) => {
-  try {
-    const idCliente = parseInt(req.query.cliente_id, 10) || 0;
-    const codigoBarras = (req.query.codigo_barras || '').trim();
-    let descripcion = (req.query.descripcion || '').trim();
+    try {
+        const idCliente = parseInt(req.query.cliente_id, 10) || 0;
+        const codigoBarras = (req.query.codigo_barras || '').trim();
+        let descripcion = (req.query.descripcion || '').trim();
 
-    if (!codigoBarras && !descripcion) {
-      return res.status(400).json({
-        success: false,
-        error: 'Falta codigo_barras o descripcion',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // 1) Lista de precios del cliente (default 1)
-    let lista = 1;
-    if (idCliente > 0) {
-      try {
-        const rLista = await req.db.query(
-          'SELECT lista_precios FROM public.clientes WHERE cliente_id = $1 LIMIT 1',
-          [idCliente]
-        );
-        if (rLista.rows.length) {
-          const n = parseInt(rLista.rows[0].lista_precios, 10);
-          if (Number.isFinite(n) && n >= 1 && n <= 5) lista = n;
+        if (!codigoBarras && !descripcion) {
+            return res.status(400).json({
+                success: false,
+                error: 'Falta codigo_barras o descripcion',
+                timestamp: new Date().toISOString()
+            });
         }
-      } catch (e) {
-        console.warn('[PRECIOS] No se pudo leer lista_precios del cliente, usando 1 por defecto');
-      }
-    }
 
-    // 2) Si no vino descripción y sí código de barras, resolverla
-    if (!descripcion && codigoBarras) {
-      const rDesc = await req.db.query(
-        'SELECT descripcion FROM public.stock_real_consolidado WHERE codigo_barras = $1 LIMIT 1',
-        [codigoBarras]
-      );
-      if (rDesc.rows.length) descripcion = rDesc.rows[0].descripcion;
-    }
+        // 1) Lista de precios del cliente (default 1)
+        let lista = 1;
+        if (idCliente > 0) {
+            try {
+                const rLista = await req.db.query(
+                    'SELECT lista_precios FROM public.clientes WHERE cliente_id = $1 LIMIT 1',
+                    [idCliente]
+                );
+                if (rLista.rows.length) {
+                    const n = parseInt(rLista.rows[0].lista_precios, 10);
+                    if (Number.isFinite(n) && n >= 1 && n <= 5) lista = n;
+                }
+            } catch (e) {
+                console.warn('[PRECIOS] No se pudo leer lista_precios del cliente, usando 1 por defecto');
+            }
+        }
 
-    if (!descripcion) {
-      return res.json({
-        success: true,
-        data: { valor1: 0, iva: 0, lista_precios: lista },
-        message: 'Artículo no encontrado',
-        timestamp: new Date().toISOString()
-      });
-    }
+        // 2) Si no vino descripción y sí código de barras, resolverla
+        if (!descripcion && codigoBarras) {
+            const rDesc = await req.db.query(
+                'SELECT descripcion FROM public.stock_real_consolidado WHERE codigo_barras = $1 LIMIT 1',
+                [codigoBarras]
+            );
+            if (rDesc.rows.length) descripcion = rDesc.rows[0].descripcion;
+        }
 
-    // 3) Buscar precios por descripción (igual exacto → fallback ILIKE)
-    let rPrecio = await req.db.query(`
+        if (!descripcion) {
+            return res.json({
+                success: true,
+                data: { valor1: 0, iva: 0, lista_precios: lista },
+                message: 'Artículo no encontrado',
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        // 3) Buscar precios por descripción (igual exacto → fallback ILIKE)
+        let rPrecio = await req.db.query(`
       SELECT 
         COALESCE(iva,0)              AS iva,
         COALESCE(precio_neg,0)       AS precio_neg,
@@ -931,8 +929,8 @@ const obtenerPrecioArticuloCliente = async (req, res) => {
       LIMIT 1
     `, [descripcion]);
 
-    if (rPrecio.rows.length === 0) {
-      rPrecio = await req.db.query(`
+        if (rPrecio.rows.length === 0) {
+            rPrecio = await req.db.query(`
         SELECT 
           COALESCE(iva,0)              AS iva,
           COALESCE(precio_neg,0)       AS precio_neg,
@@ -945,44 +943,44 @@ const obtenerPrecioArticuloCliente = async (req, res) => {
         ORDER BY LENGTH(descripcion) ASC
         LIMIT 1
       `, [descripcion]);
+        }
+
+        if (rPrecio.rows.length === 0) {
+            return res.json({
+                success: true,
+                data: { valor1: 0, iva: 0, lista_precios: lista },
+                message: 'Sin precio para la descripción',
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        const p = rPrecio.rows[0];
+        const valor =
+            lista === 1 ? p.precio_neg :
+                lista === 2 ? p.mayorista :
+                    lista === 3 ? p.especial_brus :
+                        lista === 4 ? p.consumidor_final :
+                            lista === 5 ? p.lista_5 : p.precio_neg;
+
+        return res.json({
+            success: true,
+            data: {
+                valor1: Number(valor) || 0,
+                iva: Number(p.iva) || 0,
+                lista_precios: lista,
+                descripcion_resuelta: descripcion
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en obtenerPrecioArticuloCliente:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener precio/IVA',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
     }
-
-    if (rPrecio.rows.length === 0) {
-      return res.json({
-        success: true,
-        data: { valor1: 0, iva: 0, lista_precios: lista },
-        message: 'Sin precio para la descripción',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    const p = rPrecio.rows[0];
-    const valor =
-      lista === 1 ? p.precio_neg :
-      lista === 2 ? p.mayorista :
-      lista === 3 ? p.especial_brus :
-      lista === 4 ? p.consumidor_final :
-      lista === 5 ? p.lista_5 : p.precio_neg;
-
-    return res.json({
-      success: true,
-      data: {
-        valor1: Number(valor) || 0,
-        iva: Number(p.iva) || 0,
-        lista_precios: lista,
-        descripcion_resuelta: descripcion
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('❌ [PRESUPUESTOS] Error en obtenerPrecioArticuloCliente:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Error interno al obtener precio/IVA',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
 };
 
 
@@ -993,7 +991,7 @@ const obtenerPresupuestosPorCategoria = async (req, res) => {
     try {
         const { categoria } = req.params;
         console.log(`🔍 [PRESUPUESTOS] Obteniendo presupuestos para categoría: ${categoria}`);
-        
+
         const query = `
             SELECT 
                 p.id,
@@ -1010,11 +1008,11 @@ const obtenerPresupuestosPorCategoria = async (req, res) => {
             WHERE p.activo = true AND LOWER(p.tipo_comprobante) = LOWER($1)
             ORDER BY p.fecha DESC, concepto
         `;
-        
+
         const result = await req.db.query(query, [categoria]);
-        
+
         console.log(`✅ [PRESUPUESTOS] Presupuestos encontrados para '${categoria}': ${result.rows.length} registros`);
-        
+
         res.json({
             success: true,
             data: result.rows,
@@ -1022,7 +1020,7 @@ const obtenerPresupuestosPorCategoria = async (req, res) => {
             total: result.rows.length,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS] Error al obtener presupuestos por categoría:`, error);
         res.status(500).json({
@@ -1040,7 +1038,7 @@ const obtenerPresupuestosPorCategoria = async (req, res) => {
 const obtenerEstadisticas = async (req, res) => {
     try {
         console.log('🔍 [PRESUPUESTOS] Calculando estadísticas...');
-        
+
         const query = `
             SELECT 
                 COUNT(*) as total_registros,
@@ -1056,10 +1054,10 @@ const obtenerEstadisticas = async (req, res) => {
             FROM public.presupuestos 
             WHERE activo = true
         `;
-        
+
         const result = await req.db.query(query);
         const stats = result.rows[0];
-        
+
         // Obtener distribución por categorías
         const categoriasQuery = `
             SELECT 
@@ -1072,13 +1070,13 @@ const obtenerEstadisticas = async (req, res) => {
             GROUP BY tipo_comprobante 
             ORDER BY cantidad DESC
         `;
-        
+
         const categoriasResult = await req.db.query(categoriasQuery);
-        
+
         console.log('✅ [PRESUPUESTOS] Estadísticas calculadas exitosamente');
         console.log(`📊 [PRESUPUESTOS] Total registros: ${stats.total_registros}`);
         console.log(`💰 [PRESUPUESTOS] Monto total: $${parseFloat(stats.monto_total || 0).toFixed(2)}`);
-        
+
         res.json({
             success: true,
             estadisticas: {
@@ -1093,7 +1091,7 @@ const obtenerEstadisticas = async (req, res) => {
             categorias: categoriasResult.rows,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al calcular estadísticas:', error);
         res.status(500).json({
@@ -1111,7 +1109,7 @@ const obtenerEstadisticas = async (req, res) => {
 const obtenerConfiguracion = async (req, res) => {
     try {
         console.log('🔍 [PRESUPUESTOS] Obteniendo configuración actual...');
-        
+
         const query = `
             SELECT 
                 id,
@@ -1127,9 +1125,9 @@ const obtenerConfiguracion = async (req, res) => {
             ORDER BY fecha_creacion DESC 
             LIMIT 1
         `;
-        
+
         const result = await req.db.query(query);
-        
+
         if (result.rows.length === 0) {
             console.log('⚠️ [PRESUPUESTOS] No se encontró configuración activa');
             return res.json({
@@ -1139,16 +1137,16 @@ const obtenerConfiguracion = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const config = result.rows[0];
         console.log('✅ [PRESUPUESTOS] Configuración encontrada:', config.sheet_id);
-        
+
         res.json({
             success: true,
             data: config,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al obtener configuración:', error);
         res.status(500).json({
@@ -1166,13 +1164,13 @@ const obtenerConfiguracion = async (req, res) => {
 const obtenerPresupuestoPorId = async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         console.log(`🔍 [PRESUPUESTOS] Obteniendo presupuesto por ID: ${id}`);
-        
+
         // Validar formato de ID: numérico (legacy) o UUIDv7 con prefijo P-
         const isNumericId = /^\d+$/.test(id);
         const isUUIDv7Id = /^P-[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-        
+
         if (!isNumericId && !isUUIDv7Id) {
             console.log('❌ [PRESUPUESTOS] ID inválido proporcionado:', id);
             return res.status(400).json({
@@ -1181,7 +1179,7 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const query = `
             SELECT 
                 p.id,
@@ -1221,9 +1219,9 @@ const obtenerPresupuestoPorId = async (req, res) => {
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.id = $1 AND p.activo = true
         `;
-        
+
         const result = await req.db.query(query, [parseInt(id)]);
-        
+
         if (result.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] Presupuesto no encontrado: ID ${id}`);
             return res.status(404).json({
@@ -1232,21 +1230,21 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const presupuesto = result.rows[0];
-        console.log(`[GET/:id] resp`, { 
-            id: presupuesto.id, 
-            descuento: presupuesto.descuento, 
-            nota: presupuesto.nota, 
-            punto_entrega: presupuesto.punto_entrega 
+        console.log(`[GET/:id] resp`, {
+            id: presupuesto.id,
+            descuento: presupuesto.descuento,
+            nota: presupuesto.nota,
+            punto_entrega: presupuesto.punto_entrega
         });
-        
+
         res.json({
             success: true,
             data: presupuesto,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al obtener presupuesto por ID:', error);
         res.status(500).json({
@@ -1265,9 +1263,9 @@ const crearPresupuesto = async (req, res) => {
     try {
         const { sheet_id, sheet_name, categoria, concepto, monto } = req.body;
         const usuario_id = req.user?.id || 1; // TODO: Obtener de sesión real
-        
+
         console.log('🔍 [PRESUPUESTOS] Creando nuevo presupuesto:', { categoria, concepto, monto });
-        
+
         // Validaciones
         if (!concepto || concepto.trim() === '') {
             console.log('❌ [PRESUPUESTOS] Concepto requerido');
@@ -1277,7 +1275,7 @@ const crearPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         if (monto === undefined || monto === null || isNaN(parseFloat(monto))) {
             console.log('❌ [PRESUPUESTOS] Monto inválido:', monto);
             return res.status(400).json({
@@ -1286,7 +1284,7 @@ const crearPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // Verificar duplicados
         const duplicateQuery = `
             SELECT p.id FROM public.presupuestos p
@@ -1296,13 +1294,13 @@ const crearPresupuesto = async (req, res) => {
             AND p.id_presupuesto_ext = $3 
             AND p.activo = true
         `;
-        
+
         const duplicateResult = await req.db.query(duplicateQuery, [
             concepto.trim(),
             (categoria || 'Sin categoría').trim(),
             sheet_id || 'manual'
         ]);
-        
+
         if (duplicateResult.rows.length > 0) {
             console.log('⚠️ [PRESUPUESTOS] Presupuesto duplicado detectado');
             return res.status(409).json({
@@ -1311,7 +1309,7 @@ const crearPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // Insertar nuevo presupuesto
         const insertQuery = `
             INSERT INTO public.presupuestos 
@@ -1319,7 +1317,7 @@ const crearPresupuesto = async (req, res) => {
             VALUES ($1, $2, '999', NOW(), 'Manual', true)
             RETURNING *
         `;
-        
+
         const insertResult = await req.db.query(insertQuery, [
             sheet_id || 'manual',
             sheet_name || 'Ingreso Manual',
@@ -1327,19 +1325,19 @@ const crearPresupuesto = async (req, res) => {
             concepto.trim(),
             parseFloat(monto)
         ]);
-        
+
         const nuevoPresupuesto = insertResult.rows[0];
-        
+
         console.log(`✅ [PRESUPUESTOS] Presupuesto creado con ID: ${nuevoPresupuesto.id}`);
         console.log(`📋 [PRESUPUESTOS] Detalles: ${nuevoPresupuesto.concepto} - $${nuevoPresupuesto.monto}`);
-        
+
         res.status(201).json({
             success: true,
             data: nuevoPresupuesto,
             message: 'Presupuesto creado exitosamente',
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al crear presupuesto:', error);
         res.status(500).json({
@@ -1462,9 +1460,9 @@ const actualizarPresupuesto = async (req, res) => {
 const eliminarPresupuesto = async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         console.log(`🔍 [PRESUPUESTOS] Eliminando presupuesto ID: ${id}`);
-        
+
         if (!id || isNaN(parseInt(id))) {
             console.log('❌ [PRESUPUESTOS] ID inválido:', id);
             return res.status(400).json({
@@ -1473,7 +1471,7 @@ const eliminarPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // Verificar que el presupuesto existe
         const existsQuery = `
             SELECT p.id, COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto 
@@ -1481,9 +1479,9 @@ const eliminarPresupuesto = async (req, res) => {
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.id = $1 AND p.activo = true
         `;
-        
+
         const existsResult = await req.db.query(existsQuery, [parseInt(id)]);
-        
+
         if (existsResult.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] Presupuesto no encontrado para eliminar: ID ${id}`);
             return res.status(404).json({
@@ -1492,9 +1490,9 @@ const eliminarPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const presupuesto = existsResult.rows[0];
-        
+
         // Soft delete
         const deleteQuery = `
             UPDATE public.presupuestos 
@@ -1502,12 +1500,12 @@ const eliminarPresupuesto = async (req, res) => {
             WHERE id = $1
             RETURNING id, 'Presupuesto eliminado' as concepto
         `;
-        
+
         const deleteResult = await req.db.query(deleteQuery, [parseInt(id)]);
         const presupuestoEliminado = deleteResult.rows[0];
-        
+
         console.log(`✅ [PRESUPUESTOS] Presupuesto eliminado (soft delete): ${presupuestoEliminado.concepto}`);
-        
+
         res.json({
             success: true,
             data: {
@@ -1518,7 +1516,7 @@ const eliminarPresupuesto = async (req, res) => {
             message: 'Presupuesto eliminado exitosamente',
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al eliminar presupuesto:', error);
         res.status(500).json({
@@ -1535,20 +1533,20 @@ const eliminarPresupuesto = async (req, res) => {
  */
 const obtenerResumen = async (req, res) => {
     try {
-        const { 
-            tipo = 'categoria', 
-            fecha_desde, 
+        const {
+            tipo = 'categoria',
+            fecha_desde,
             fecha_hasta,
-            categoria 
+            categoria
         } = req.query;
-        
+
         console.log(`🔍 [PRESUPUESTOS] Generando resumen por: ${tipo}`);
         console.log('📋 [PRESUPUESTOS] Filtros:', { fecha_desde, fecha_hasta, categoria });
-        
+
         let query = '';
         let params = [];
         let paramCount = 0;
-        
+
         if (tipo === 'categoria') {
             query = `
                 SELECT 
@@ -1563,31 +1561,31 @@ const obtenerResumen = async (req, res) => {
                 FROM public.presupuestos p
                 WHERE p.activo = true
             `;
-            
+
             // Filtros adicionales
             if (fecha_desde) {
                 paramCount++;
                 query += ` AND fecha_registro >= $${paramCount}`;
                 params.push(fecha_desde);
             }
-            
+
             if (fecha_hasta) {
                 paramCount++;
                 query += ` AND fecha_registro <= $${paramCount}`;
                 params.push(fecha_hasta);
             }
-            
+
             if (categoria) {
                 paramCount++;
                 query += ` AND LOWER(categoria) LIKE LOWER($${paramCount})`;
                 params.push(`%${categoria}%`);
             }
-            
+
             query += `
                 GROUP BY categoria
                 ORDER BY monto_total DESC
             `;
-            
+
         } else if (tipo === 'fecha') {
             query = `
                 SELECT 
@@ -1599,31 +1597,31 @@ const obtenerResumen = async (req, res) => {
                 FROM public.presupuestos p
                 WHERE p.activo = true
             `;
-            
+
             // Filtros adicionales
             if (fecha_desde) {
                 paramCount++;
                 query += ` AND fecha_registro >= $${paramCount}`;
                 params.push(fecha_desde);
             }
-            
+
             if (fecha_hasta) {
                 paramCount++;
                 query += ` AND fecha_registro <= $${paramCount}`;
                 params.push(fecha_hasta);
             }
-            
+
             if (categoria) {
                 paramCount++;
                 query += ` AND LOWER(categoria) LIKE LOWER($${paramCount})`;
                 params.push(`%${categoria}%`);
             }
-            
+
             query += `
                 GROUP BY DATE(fecha_registro)
                 ORDER BY fecha DESC
             `;
-            
+
         } else {
             console.log('❌ [PRESUPUESTOS] Tipo de resumen inválido:', tipo);
             return res.status(400).json({
@@ -1632,12 +1630,12 @@ const obtenerResumen = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         console.log('📋 [PRESUPUESTOS] Query de resumen:', query);
         console.log('📋 [PRESUPUESTOS] Parámetros:', params);
-        
+
         const result = await req.db.query(query, params);
-        
+
         // Calcular totales generales
         const totalesQuery = `
             SELECT 
@@ -1651,13 +1649,13 @@ const obtenerResumen = async (req, res) => {
             ${fecha_hasta ? `AND fecha_registro <= '${fecha_hasta}'` : ''}
             ${categoria ? `AND LOWER(categoria) LIKE LOWER('%${categoria}%')` : ''}
         `;
-        
+
         const totalesResult = await req.db.query(totalesQuery);
         const totales = totalesResult.rows[0];
-        
+
         console.log(`✅ [PRESUPUESTOS] Resumen generado: ${result.rows.length} grupos`);
         console.log(`📊 [PRESUPUESTOS] Totales: ${totales.total_registros} registros, $${parseFloat(totales.monto_total || 0).toFixed(2)}`);
-        
+
         res.json({
             success: true,
             tipo: tipo,
@@ -1675,7 +1673,7 @@ const obtenerResumen = async (req, res) => {
             },
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al generar resumen:', error);
         res.status(500).json({
@@ -1693,9 +1691,9 @@ const obtenerResumen = async (req, res) => {
 const obtenerDetallesPresupuesto = async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         console.log(`🔍 [PRESUPUESTOS] Obteniendo detalles de artículos para presupuesto ID: ${id}`);
-        
+
         // Validación de ID ya se hace en middleware validarIdPresupuesto
         if (!id) {
             console.log('❌ [PRESUPUESTOS] ID faltante:', id);
@@ -1705,16 +1703,16 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // Verificar que el presupuesto existe y obtener id_presupuesto_ext
         const presupuestoQuery = `
             SELECT id, id_presupuesto_ext, tipo_comprobante 
             FROM public.presupuestos 
             WHERE id = $1 AND activo = true
         `;
-        
+
         const presupuestoResult = await req.db.query(presupuestoQuery, [parseInt(id)]);
-        
+
         if (presupuestoResult.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] Presupuesto no encontrado: ID ${id}`);
             return res.status(404).json({
@@ -1723,9 +1721,9 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const presupuesto = presupuestoResult.rows[0];
-        
+
         // Obtener detalles de artículos usando id_presupuesto_ext con JOIN a stock para descripción - Ajuste según relaciones confirmadas - 2024-12-19
         // CORRECCIÓN DE CÁLCULOS NETO/IVA/TOTAL según reglas de negocio - 2024-12-19
         // MAPEO CORREGIDO: K=camp2, L=camp3, M=camp4, N=camp5
@@ -1751,11 +1749,11 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             WHERE pd.id_presupuesto_ext = $1
             ORDER BY pd.id
         `;
-        
+
         const detallesResult = await req.db.query(detallesQuery, [presupuesto.id_presupuesto_ext]);
-        
+
         console.log(`✅ [PRESUPUESTOS] Detalles encontrados: ${detallesResult.rows.length} artículos para presupuesto ${presupuesto.id_presupuesto_ext}`);
-        
+
         // Mapear resultados - CORRECCIÓN: Devolver valores UNITARIOS + TOTALES
         // El frontend de edición espera valores UNITARIOS en valor1/precio1/iva1
         // Los totales (neto/iva/total) son para el resumen
@@ -1778,7 +1776,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             iva: parseFloat(item.iva_linea || 0),
             total: parseFloat(item.total_linea || 0)
         }));
-        
+
         // Calcular totales con redondeo por renglón antes de acumular
         const totales = detallesConCalculos.reduce((acc, item) => {
             acc.cantidad_total += item.cantidad;
@@ -1792,26 +1790,26 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             iva_total: 0,
             total_general: 0
         });
-        
+
         // Redondear totales finales
         totales.cantidad_total = Math.round(totales.cantidad_total * 100) / 100;
         totales.neto_total = Math.round(totales.neto_total * 100) / 100;
         totales.iva_total = Math.round(totales.iva_total * 100) / 100;
         totales.total_general = Math.round(totales.total_general * 100) / 100;
-        
+
         // Verificar que totalFinal = totalNeto + totalIVA
         const sumaCalculada = Math.round((totales.neto_total + totales.iva_total) * 100) / 100;
         const diferencia = Math.abs(totales.total_general - sumaCalculada);
-        
+
         if (diferencia > 0.01) {
             console.log(`⚠️ [PRESUPUESTOS] Diferencia en totales detectada: ${diferencia.toFixed(2)}`);
         }
-        
+
         // Log de control por presupuesto según especificación
         console.log(`[DETALLE] sumNeto= ${totales.neto_total.toFixed(2)} sumIVA= ${totales.iva_total.toFixed(2)} sumTotal= ${totales.total_general.toFixed(2)}`);
-        
+
         console.log('📊 [PRESUPUESTOS] Totales calculados:', totales);
-        
+
         res.json({
             success: true,
             data: {
@@ -1826,7 +1824,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             },
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al obtener detalles:', error);
         res.status(500).json({
@@ -1844,7 +1842,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
 const obtenerEstados = async (req, res) => {
     try {
         console.log('🔍 [PRESUPUESTOS] Obteniendo estados distintos...');
-        
+
         const query = `
             SELECT DISTINCT estado
             FROM public.presupuestos 
@@ -1853,25 +1851,25 @@ const obtenerEstados = async (req, res) => {
             AND TRIM(estado) != ''
             ORDER BY estado ASC
         `;
-        
+
         const result = await req.db.query(query);
-        
+
         // Filtrar y limpiar estados
         const estados = result.rows
             .map(row => row.estado.trim())
             .filter(estado => estado.length > 0)
             .sort();
-        
+
         console.log(`🔍 [PRESUPUESTOS] Ruta GET /estados - estados distintos: ${estados.length}`);
         console.log('📊 [PRESUPUESTOS] Estados encontrados:', estados);
-        
+
         res.json({
             success: true,
             estados: estados,
             total: estados.length,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al obtener estados:', error);
         res.status(500).json({
@@ -1890,9 +1888,9 @@ const actualizarEstadoPresupuesto = async (req, res) => {
     try {
         const { id } = req.params;
         const { estado } = req.body;
-        
+
         console.log(`🔍 [PRESUPUESTOS] Actualizando estado de presupuesto ID: ${id} a: ${estado}`);
-        
+
         if (!id || isNaN(parseInt(id))) {
             console.log('❌ [PRESUPUESTOS] ID inválido:', id);
             return res.status(400).json({
@@ -1901,7 +1899,7 @@ const actualizarEstadoPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         if (!estado || estado.trim() === '') {
             console.log('❌ [PRESUPUESTOS] Estado requerido');
             return res.status(400).json({
@@ -1910,15 +1908,15 @@ const actualizarEstadoPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // Verificar que el presupuesto existe
         const existsQuery = `
             SELECT id, estado FROM presupuestos 
             WHERE id = $1 AND activo = true
         `;
-        
+
         const existsResult = await req.db.query(existsQuery, [parseInt(id)]);
-        
+
         if (existsResult.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] Presupuesto no encontrado para actualizar estado: ID ${id}`);
             return res.status(404).json({
@@ -1927,27 +1925,44 @@ const actualizarEstadoPresupuesto = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
-        // Actualizar estado
-        const updateQuery = `
-            UPDATE presupuestos
-            SET estado = $1
-            WHERE id = $2 AND activo = true
-            RETURNING *
-        `;
-        
-        const updateResult = await req.db.query(updateQuery, [estado.trim(), parseInt(id)]);
+
+        // Actualizar estado (y estado_logistico si viene en el body)
+        let updateQuery;
+        let queryParams;
+
+        // Verificar si se envió estado_logistico
+        // Verificar usando hasOwnProperty o in para distinguir undefined
+        if (req.body.estado_logistico !== undefined) {
+            console.log(`📦 [PRESUPUESTOS] Actualizando también estado_logistico a: ${req.body.estado_logistico}`);
+            updateQuery = `
+                UPDATE presupuestos
+                SET estado = $1, estado_logistico = $2
+                WHERE id = $3 AND activo = true
+                RETURNING *
+            `;
+            queryParams = [estado.trim(), req.body.estado_logistico, parseInt(id)];
+        } else {
+            updateQuery = `
+                UPDATE presupuestos
+                SET estado = $1
+                WHERE id = $2 AND activo = true
+                RETURNING *
+            `;
+            queryParams = [estado.trim(), parseInt(id)];
+        }
+
+        const updateResult = await req.db.query(updateQuery, queryParams);
         const presupuestoActualizado = updateResult.rows[0];
-        
+
         console.log(`✅ [PRESUPUESTOS] Estado actualizado: ${presupuestoActualizado.estado}`);
-        
+
         res.json({
             success: true,
             data: presupuestoActualizado,
             message: 'Estado de presupuesto actualizado exitosamente',
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error al actualizar estado:', error);
         res.status(500).json({
@@ -1965,10 +1980,10 @@ const actualizarEstadoPresupuesto = async (req, res) => {
 const obtenerDatosCliente = async (req, res) => {
     const requestId = `cliente-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`🔍 [PRESUPUESTOS] ${requestId} - Obteniendo datos del cliente`);
-    
+
     try {
         const { id_cliente } = req.params;
-        
+
         if (!id_cliente) {
             return res.status(400).json({
                 success: false,
@@ -1977,9 +1992,9 @@ const obtenerDatosCliente = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         console.log(`📊 [PRESUPUESTOS] ${requestId} - Buscando cliente ID: ${id_cliente}`);
-        
+
         const query = `
             SELECT 
                 cliente_id as id_cliente,
@@ -1990,9 +2005,9 @@ const obtenerDatosCliente = async (req, res) => {
             WHERE cliente_id = $1
             LIMIT 1
         `;
-        
+
         const result = await req.db.query(query, [parseInt(id_cliente)]);
-        
+
         if (result.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] ${requestId} - Cliente no encontrado: ${id_cliente}`);
             return res.status(404).json({
@@ -2002,21 +2017,21 @@ const obtenerDatosCliente = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const cliente = result.rows[0];
         console.log(`✅ [PRESUPUESTOS] ${requestId} - Cliente encontrado:`, {
             id_cliente: cliente.id_cliente,
             nombre: cliente.nombre,
             condicion_iva: cliente.condicion_iva
         });
-        
+
         res.json({
             success: true,
             data: cliente,
             requestId,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al obtener datos del cliente:`, error);
         res.status(500).json({
@@ -2036,10 +2051,10 @@ const obtenerDatosCliente = async (req, res) => {
 const obtenerHistorialEntregasCliente = async (req, res) => {
     const requestId = `historial-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`🔍 [PRESUPUESTOS] ${requestId} - Obteniendo historial de entregas del cliente`);
-    
+
     try {
         const { id_cliente } = req.params;
-        
+
         if (!id_cliente) {
             return res.status(400).json({
                 success: false,
@@ -2048,9 +2063,9 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         console.log(`📊 [PRESUPUESTOS] ${requestId} - Buscando entregas para cliente ID: ${id_cliente}`);
-        
+
         // Consulta para obtener TODOS los detalles de presupuestos entregados del cliente
         // Incluimos fecha_entrega para ordenar por la más reciente
         // ✅ NUEVO: Incluir precios actuales de la tabla precios_articulos
@@ -2163,11 +2178,11 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
               AND LOWER(p.estado) = 'entregado'
             ORDER BY fecha_entrega DESC, p.id DESC
         `;
-        
+
         const result = await req.db.query(query, [id_cliente.toString()]);
-        
+
         console.log(`📦 [PRESUPUESTOS] ${requestId} - Total detalles encontrados: ${result.rows.length}`);
-        
+
         if (result.rows.length === 0) {
             console.log(`ℹ️ [PRESUPUESTOS] ${requestId} - Cliente sin entregas previas`);
             return res.json({
@@ -2182,14 +2197,14 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         // PASO 1: Eliminar duplicados - quedarse con la entrega más reciente por producto
         // Clave única: codigo_barras + articulo_numero
         const productosUnicos = new Map();
-        
+
         result.rows.forEach(item => {
             const clave = `${item.codigo_barras}|${item.articulo_numero}`;
-            
+
             // Si no existe o la fecha actual es más reciente, actualizar
             if (!productosUnicos.has(clave)) {
                 productosUnicos.set(clave, item);
@@ -2197,21 +2212,21 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 const existente = productosUnicos.get(clave);
                 const fechaExistente = new Date(existente.fecha_entrega);
                 const fechaNueva = new Date(item.fecha_entrega);
-                
+
                 if (fechaNueva > fechaExistente) {
                     productosUnicos.set(clave, item);
                 }
             }
         });
-        
+
         const productosUnicosArray = Array.from(productosUnicos.values());
         console.log(`🔍 [PRESUPUESTOS] ${requestId} - Productos únicos (última entrega): ${productosUnicosArray.length}`);
-        
+
         // PASO 2: Agrupar por buckets temporales
         const ahora = new Date();
         const mesActual = ahora.getMonth();
         const añoActual = ahora.getFullYear();
-        
+
         // Función helper para calcular diferencia de meses
         const mesesDiferencia = (fecha) => {
             const f = new Date(fecha);
@@ -2219,13 +2234,13 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             const diffMeses = mesActual - f.getMonth();
             return diffAnios * 12 + diffMeses;
         };
-        
+
         // Nombres de meses en español
         const nombresMeses = [
             'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
         ];
-        
+
         // Inicializar grupos
         const grupos = {
             mes_actual: { label: `${nombresMeses[mesActual]} ${añoActual}`, productos: [] },
@@ -2237,7 +2252,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             mes_6: { label: '', productos: [] },
             historico: { label: 'Más de 6 meses', productos: [] }
         };
-        
+
         // Calcular labels para meses anteriores
         for (let i = 1; i <= 6; i++) {
             const fecha = new Date(añoActual, mesActual - i, 1);
@@ -2245,16 +2260,16 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             const año = fecha.getFullYear();
             grupos[`mes_${i}`].label = `${nombresMeses[mes]} ${año}`;
         }
-        
+
         // Clasificar productos en grupos
         productosUnicosArray.forEach(producto => {
             const mesesAtras = mesesDiferencia(producto.fecha_entrega);
-            
+
             // Helper function para calcular precio según lista
             const calcularPrecioSegunLista = (lista, precios) => {
                 const listaNum = parseInt(lista) || 1;
-                
-                switch(listaNum) {
+
+                switch (listaNum) {
                     case 1: return parseFloat(precios.precio_neg || 0);
                     case 2: return parseFloat(precios.mayorista || 0);
                     case 3: return parseFloat(precios.especial_brus || 0);
@@ -2263,7 +2278,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                     default: return parseFloat(precios.precio_neg || 0);
                 }
             };
-            
+
             // Calcular precio actual según lista del cliente
             const precioActual = calcularPrecioSegunLista(
                 producto.lista_precios_cliente,
@@ -2275,15 +2290,15 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                     lista_5: producto.precio_actual_lista5
                 }
             );
-            
+
             // ✅ ETAPA 2: Calcular precio por kilo
             const kilosUnidad = parseFloat(producto.kilos_unidad || 0);
             const precioPorKilo = kilosUnidad > 0 ? parseFloat((precioActual / kilosUnidad).toFixed(2)) : 0;
-            
+
             // ✅ AUDITORÍA: Log para casos específicos de debugging
             const stockConsolidado = parseFloat(producto.stock_consolidado || 0);
             const esProducible = producto.es_producible === true || producto.es_producible === 't';
-            
+
             // Log de auditoría para artículos con "mariposa" en el nombre
             if (producto.descripcion && producto.descripcion.toLowerCase().includes('mariposa')) {
                 console.log(`🕵️ [AUDITORÍA-STOCK] ${requestId} - Artículo Mariposa detectado:`, {
@@ -2296,7 +2311,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                     tiene_stock_significativo: stockConsolidado > 0.001
                 });
             }
-            
+
             const productoFormateado = {
                 codigo_barras: producto.codigo_barras,
                 articulo_numero: producto.articulo_numero,
@@ -2304,29 +2319,29 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 cantidad: parseFloat(producto.cantidad || 0),
                 fecha_entrega: producto.fecha_entrega,
                 presupuesto_id: producto.presupuesto_id,
-                
+
                 // ✅ NUEVO: Precio actual según lista del cliente
                 precio_actual: precioActual,
                 iva_actual: parseFloat(producto.iva_actual || 0),
                 lista_precios: parseInt(producto.lista_precios_cliente || 1),
-                
+
                 // ✅ ETAPA 2: Datos adicionales para agrupación y cálculos
                 rubro: producto.rubro || 'Sin categoría',
                 sub_rubro: producto.sub_rubro || 'Sin subcategoría',
                 kilos_unidad: kilosUnidad,
                 precio_por_kilo: precioPorKilo,
-                
+
                 // ✅ ETAPA 2: Stock consolidado para visualización (con umbral de tolerancia)
                 stock_consolidado: stockConsolidado,
-                
+
                 // ✅ NUEVO: Datos de PACK para visualización en frontend
                 es_pack: producto.es_pack === true || producto.es_pack === 't',
                 pack_unidades: parseInt(producto.pack_unidades || 0),
-                
+
                 // ✅ NUEVO: Stock Inteligente - Indicador de producibilidad
                 es_producible: esProducible
             };
-            
+
             if (mesesAtras === 0) {
                 grupos.mes_actual.productos.push(productoFormateado);
             } else if (mesesAtras === 1) {
@@ -2345,7 +2360,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 grupos.historico.productos.push(productoFormateado);
             }
         });
-        
+
         // Convertir a array y filtrar grupos vacíos
         const gruposArray = [
             { key: 'mes_actual', ...grupos.mes_actual },
@@ -2357,19 +2372,19 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             { key: 'mes_6', ...grupos.mes_6 },
             { key: 'historico', ...grupos.historico }
         ].filter(grupo => grupo.productos.length > 0);
-        
+
         console.log(`✅ [PRESUPUESTOS] ${requestId} - Historial agrupado en ${gruposArray.length} períodos`);
-        console.log(`📊 [PRESUPUESTOS] ${requestId} - Distribución:`, 
+        console.log(`📊 [PRESUPUESTOS] ${requestId} - Distribución:`,
             gruposArray.map(g => `${g.label}: ${g.productos.length}`).join(', ')
         );
-        
+
         // Obtener datos del cliente para el encabezado
         let datosCliente = {
             cliente_id: id_cliente,
             nombre: null,
             apellido: null
         };
-        
+
         try {
             const clienteQuery = `
                 SELECT cliente_id, nombre, apellido
@@ -2378,7 +2393,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 LIMIT 1
             `;
             const clienteResult = await req.db.query(clienteQuery, [parseInt(id_cliente)]);
-            
+
             if (clienteResult.rows.length > 0) {
                 datosCliente = {
                     cliente_id: clienteResult.rows[0].cliente_id,
@@ -2389,7 +2404,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
         } catch (errorCliente) {
             console.warn(`⚠️ [PRESUPUESTOS] ${requestId} - No se pudieron cargar datos del cliente`);
         }
-        
+
         res.json({
             success: true,
             data: {
@@ -2403,7 +2418,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             requestId,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al obtener historial de entregas:`, error);
         res.status(500).json({
@@ -2499,7 +2514,7 @@ const obtenerCatalogoGeneral = async (req, res) => {
         // Consulta para totales
         console.log(`📊 [PRESUPUESTOS] ${requestId} - Ejecutando consulta de conteo...`);
         const countQuery = query.replace(/SELECT[\s\S]+FROM/, 'SELECT COUNT(*) as total FROM');
-        
+
         let totalRecords = 0;
         try {
             const countResult = await req.db.query(countQuery, params);
@@ -2560,7 +2575,7 @@ const obtenerCatalogoGeneral = async (req, res) => {
                 const stockConsolidado = parseFloat(producto.stock_consolidado || 0);
                 const esPack = producto.es_pack === true || producto.es_pack === 't';
                 const packUnidades = parseInt(producto.pack_unidades || 0);
-                
+
                 let stockVirtual = stockConsolidado;
                 if (esPack && packUnidades > 0) {
                     stockVirtual = Math.floor(stockConsolidado / packUnidades);
@@ -2618,7 +2633,7 @@ const obtenerCatalogoGeneral = async (req, res) => {
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS] ${requestId} - Error obteniendo catálogo general:`, error.message);
         console.error(`❌ [PRESUPUESTOS] ${requestId} - Stack completo:`, error.stack);
-        
+
         // ✅ RESPUESTA DE ERROR MÁS DESCRIPTIVA
         res.status(500).json({
             success: false,
@@ -2638,10 +2653,10 @@ const obtenerCatalogoGeneral = async (req, res) => {
 const obtenerArticulosExcluidos = async (req, res) => {
     const requestId = `excluidos-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`🔍 [PRESUPUESTOS] ${requestId} - Obteniendo artículos excluidos`);
-    
+
     try {
         const { id_cliente } = req.params;
-        
+
         if (!id_cliente) {
             return res.status(400).json({
                 success: false,
@@ -2650,9 +2665,9 @@ const obtenerArticulosExcluidos = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         console.log(`📊 [PRESUPUESTOS] ${requestId} - Buscando artículos excluidos para cliente ID: ${id_cliente}`);
-        
+
         // Consulta para obtener artículos excluidos con información completa
         // ✅ OPTIMIZADO: JOIN robusto para obtener rubro y sub-rubro correctamente
         const query = `
@@ -2683,26 +2698,26 @@ const obtenerArticulosExcluidos = async (req, res) => {
                 pa.sub_rubro ASC,
                 ae.fecha_creacion DESC
         `;
-        
+
         const result = await req.db.query(query, [parseInt(id_cliente)]);
-        
+
         console.log(`📦 [PRESUPUESTOS] ${requestId} - Artículos excluidos encontrados: ${result.rows.length}`);
-        
+
         // Agrupar por rubro y sub-rubro
         const articulosAgrupados = {};
-        
+
         result.rows.forEach(articulo => {
             const rubro = articulo.rubro || 'Sin categoría';
             const subRubro = articulo.sub_rubro || 'Sin subcategoría';
-            
+
             if (!articulosAgrupados[rubro]) {
                 articulosAgrupados[rubro] = {};
             }
-            
+
             if (!articulosAgrupados[rubro][subRubro]) {
                 articulosAgrupados[rubro][subRubro] = [];
             }
-            
+
             articulosAgrupados[rubro][subRubro].push({
                 id: articulo.id,
                 articulo_numero: articulo.articulo_numero,
@@ -2712,7 +2727,7 @@ const obtenerArticulosExcluidos = async (req, res) => {
                 fecha_creacion: articulo.fecha_creacion
             });
         });
-        
+
         res.json({
             success: true,
             data: {
@@ -2724,7 +2739,7 @@ const obtenerArticulosExcluidos = async (req, res) => {
             requestId,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al obtener artículos excluidos:`, error);
         res.status(500).json({
@@ -2743,11 +2758,11 @@ const obtenerArticulosExcluidos = async (req, res) => {
 const excluirArticulo = async (req, res) => {
     const requestId = `excluir-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`🔍 [PRESUPUESTOS] ${requestId} - Excluyendo artículo`);
-    
+
     try {
         const { id_cliente } = req.params;
         const { articulo_numero } = req.body;
-        
+
         if (!id_cliente || !articulo_numero) {
             return res.status(400).json({
                 success: false,
@@ -2756,9 +2771,9 @@ const excluirArticulo = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         console.log(`📊 [PRESUPUESTOS] ${requestId} - Excluyendo artículo ${articulo_numero} para cliente ${id_cliente}`);
-        
+
         // Insertar en tabla de exclusiones (ON CONFLICT para evitar duplicados)
         const query = `
             INSERT INTO public.articulos_excluidos_config (cliente_id, articulo_numero)
@@ -2766,9 +2781,9 @@ const excluirArticulo = async (req, res) => {
             ON CONFLICT (cliente_id, articulo_numero) DO NOTHING
             RETURNING id, cliente_id, articulo_numero, fecha_creacion
         `;
-        
+
         const result = await req.db.query(query, [parseInt(id_cliente), articulo_numero.trim()]);
-        
+
         if (result.rows.length === 0) {
             console.log(`ℹ️ [PRESUPUESTOS] ${requestId} - Artículo ya estaba excluido`);
             return res.json({
@@ -2779,10 +2794,10 @@ const excluirArticulo = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const articuloExcluido = result.rows[0];
         console.log(`✅ [PRESUPUESTOS] ${requestId} - Artículo excluido exitosamente:`, articuloExcluido);
-        
+
         res.status(201).json({
             success: true,
             message: 'Artículo excluido exitosamente',
@@ -2790,7 +2805,7 @@ const excluirArticulo = async (req, res) => {
             requestId,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al excluir artículo:`, error);
         res.status(500).json({
@@ -2809,10 +2824,10 @@ const excluirArticulo = async (req, res) => {
 const reincluirArticulo = async (req, res) => {
     const requestId = `reincluir-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`🔍 [PRESUPUESTOS] ${requestId} - Re-incluyendo artículo`);
-    
+
     try {
         const { id_cliente, articulo_numero } = req.params;
-        
+
         if (!id_cliente || !articulo_numero) {
             return res.status(400).json({
                 success: false,
@@ -2821,18 +2836,18 @@ const reincluirArticulo = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         console.log(`📊 [PRESUPUESTOS] ${requestId} - Re-incluyendo artículo ${articulo_numero} para cliente ${id_cliente}`);
-        
+
         // Eliminar de tabla de exclusiones
         const query = `
             DELETE FROM public.articulos_excluidos_config
             WHERE cliente_id = $1 AND articulo_numero = $2
             RETURNING id, cliente_id, articulo_numero
         `;
-        
+
         const result = await req.db.query(query, [parseInt(id_cliente), articulo_numero.trim()]);
-        
+
         if (result.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] ${requestId} - Artículo no estaba excluido`);
             return res.status(404).json({
@@ -2842,10 +2857,10 @@ const reincluirArticulo = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
         const articuloReincluido = result.rows[0];
         console.log(`✅ [PRESUPUESTOS] ${requestId} - Artículo re-incluido exitosamente:`, articuloReincluido);
-        
+
         res.json({
             success: true,
             message: 'Artículo re-incluido exitosamente',
@@ -2853,7 +2868,7 @@ const reincluirArticulo = async (req, res) => {
             requestId,
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         console.error(`❌ [PRESUPUESTOS] ${requestId} - Error al re-incluir artículo:`, error);
         res.status(500).json({
