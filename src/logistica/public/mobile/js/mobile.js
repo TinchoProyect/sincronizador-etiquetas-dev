@@ -55,13 +55,13 @@ function limpiarSesion() {
  */
 function verificarSesion() {
     const sesion = obtenerSesion();
-    
+
     if (!sesion || !sesion.token) {
         console.log('[SESION] No hay sesión activa, redirigiendo a login');
         window.location.href = 'index.html';
         return false;
     }
-    
+
     state.sesion = sesion;
     console.log('[SESION] Sesión activa:', sesion.usuario);
     return true;
@@ -73,16 +73,16 @@ function verificarSesion() {
 async function iniciarSesion() {
     const usuario = document.getElementById('usuario').value.trim();
     const password = document.getElementById('password').value;
-    
+
     if (!usuario || !password) {
         mostrarError('Por favor complete todos los campos');
         return;
     }
-    
+
     const btnLogin = document.getElementById('btn-login');
     btnLogin.disabled = true;
     btnLogin.textContent = 'Iniciando sesión...';
-    
+
     try {
         // Llamar a API de login móvil
         const response = await fetch(`${API_BASE_URL}/api/logistica/movil/login`, {
@@ -90,9 +90,9 @@ async function iniciarSesion() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ usuario, password })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success && result.data) {
             // Guardar sesión
             guardarSesion({
@@ -101,20 +101,20 @@ async function iniciarSesion() {
                 nombre: result.data.nombre_completo || usuario,
                 id: result.data.id
             });
-            
+
             console.log('[LOGIN] Sesión iniciada exitosamente');
-            
+
             // Redirigir a ruta
             window.location.href = 'ruta.html';
-            
+
         } else {
             throw new Error(result.error || 'Credenciales inválidas');
         }
-        
+
     } catch (error) {
         console.error('[LOGIN] Error:', error);
         mostrarError(error.message || 'Error al iniciar sesión. Verifique sus credenciales.');
-        
+
         btnLogin.disabled = false;
         btnLogin.textContent = 'Iniciar Sesión';
     }
@@ -138,7 +138,7 @@ function mostrarError(mensaje) {
     if (errorDiv) {
         errorDiv.textContent = mensaje;
         errorDiv.style.display = 'block';
-        
+
         // Ocultar después de 5 segundos
         setTimeout(() => {
             errorDiv.style.display = 'none';
@@ -162,49 +162,49 @@ function mostrarExito(mensaje) {
  */
 async function cargarRutaActiva() {
     const container = document.getElementById('entregas-container');
-    
+
     if (!container) {
         console.warn('[RUTA] Contenedor de entregas no encontrado');
         return;
     }
-    
+
     try {
         const sesion = obtenerSesion();
-        
+
         if (!sesion) {
             window.location.href = 'index.html';
             return;
         }
-        
+
         // Llamar a API de ruta activa
         const response = await fetch(`${API_BASE_URL}/api/logistica/movil/ruta-activa`, {
             headers: {
                 'Authorization': `Bearer ${sesion.token}`
             }
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success && result.data) {
             state.ruta = result.data.ruta;
             state.entregas = result.data.entregas || [];
-            
+
             // Actualizar header
             actualizarHeader();
-            
+
             // Renderizar entregas
             renderizarEntregas();
-            
+
             console.log('[RUTA] Ruta cargada:', state.ruta.nombre_ruta);
             console.log('[RUTA] Entregas:', state.entregas.length);
-            
+
         } else {
             throw new Error(result.error || 'No se encontró ruta activa');
         }
-        
+
     } catch (error) {
         console.error('[RUTA] Error al cargar ruta:', error);
-        
+
         // Mostrar estado vacío
         container.innerHTML = `
             <div class="empty-state">
@@ -222,39 +222,39 @@ async function cargarRutaActiva() {
  */
 function actualizarHeader() {
     const sesion = obtenerSesion();
-    
+
     // Nombre del chofer
     const choferNombre = document.getElementById('chofer-nombre');
     if (choferNombre) {
         choferNombre.textContent = sesion.nombre || sesion.usuario;
     }
-    
+
     // Nombre de la ruta
     const rutaNombre = document.getElementById('ruta-nombre');
     if (rutaNombre && state.ruta) {
         rutaNombre.textContent = state.ruta.nombre_ruta || `Ruta #${state.ruta.id}`;
     }
-    
+
     // Estadísticas
     const totalEntregas = state.entregas.length;
     const completadas = state.entregas.filter(e => e.estado_logistico === 'ENTREGADO').length;
     const pendientes = totalEntregas - completadas;
-    
+
     const totalEl = document.getElementById('total-entregas');
     const completadasEl = document.getElementById('entregas-completadas');
     const pendientesEl = document.getElementById('entregas-pendientes');
-    
+
     if (totalEl) totalEl.textContent = totalEntregas;
     if (completadasEl) completadasEl.textContent = completadas;
     if (pendientesEl) pendientesEl.textContent = pendientes;
 }
 
 /**
- * Renderizar lista de entregas
+ * Renderizar lista de entregas (Agrupadas por Parada)
  */
 function renderizarEntregas() {
     const container = document.getElementById('entregas-container');
-    
+
     if (!state.entregas || state.entregas.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
@@ -265,55 +265,119 @@ function renderizarEntregas() {
         `;
         return;
     }
-    
-    container.innerHTML = state.entregas.map((entrega, index) => {
-        const esCompletada = entrega.estado_logistico === 'ENTREGADO';
-        const claseCard = esCompletada ? 'entrega-card completada' : 'entrega-card';
-        const claseBadge = esCompletada ? 'entrega-badge badge-completada' : 'entrega-badge badge-pendiente';
-        const textoBadge = esCompletada ? 'Completada' : 'Pendiente';
-        
+
+    // AGRUPAR POR CLIENTE Y DOMICILIO
+    const paradas = agruparEntregasEnParadas(state.entregas);
+
+    container.innerHTML = paradas.map((parada, index) => {
+        const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO');
+        const primerEntrega = parada.entregas[0];
+
+        const claseCard = esCompletadaTotal ? 'entrega-card completada' : 'entrega-card';
+        // Badge general de la parada (si todos entregados -> Completada, sino -> X pendientes)
+        const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO').length;
+
+        let headerBadgeHTML = '';
+        if (esCompletadaTotal) {
+            headerBadgeHTML = '<div class="entrega-badge badge-completada">Completada</div>';
+        } else {
+            headerBadgeHTML = `<div class="entrega-badge badge-pendiente">${pendientes} Pendiente${pendientes !== 1 ? 's' : ''}</div>`;
+        }
+
+        // Renderizar lista de pedidos dentro de la parada
+        const pedidosListHTML = parada.entregas.map(entrega => {
+            const entregado = entrega.estado_logistico === 'ENTREGADO';
+            return `
+                <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: #475569;">Pedido #${entrega.id_presupuesto}</div>
+                        ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
+                    </div>
+                    <div>
+                        <button class="btn-confirmar-sm" 
+                                onclick="confirmarEntrega(${entrega.id_presupuesto})" 
+                                ${entregado ? 'disabled' : ''}
+                                style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; ${entregado ? 'background: #dcfce7; color: #166534; border: none;' : 'background: #2563eb; color: white; border: none;'}">
+                            ${entregado ? '✓ Entregado' : 'Entregar'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
         return `
-            <div class="${claseCard}" data-id="${entrega.id_presupuesto}">
+            <div class="${claseCard}" data-parada-key="${parada.key}">
                 <div class="entrega-header">
-                    <div class="entrega-numero">${entrega.orden_entrega || index + 1}</div>
-                    <div class="${claseBadge}">${textoBadge}</div>
+                    <div class="entrega-numero" style="background: #1e3a8a;">${index + 1}</div>
+                    ${headerBadgeHTML}
                 </div>
                 
-                <div class="entrega-cliente">
-                    👤 ${entrega.cliente.nombre || 'Cliente sin nombre'}
-                </div>
-                
-                <div class="entrega-direccion">
-                    📍 ${entrega.domicilio.direccion || 'Sin dirección'}
-                    ${entrega.domicilio.localidad ? `<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${entrega.domicilio.localidad}` : ''}
-                </div>
-                
-                ${entrega.total ? `
-                    <div class="entrega-monto">
-                        💰 $${parseFloat(entrega.total).toFixed(2)}
+                <!-- CLIENTE DESTACADO -->
+                <div class="entrega-cliente" style="margin-top: 0.5rem;">
+                    <div style="font-size: 1.25rem; font-weight: 800; color: #1e40af; margin-bottom: 0.25rem;">
+                        #${primerEntrega.cliente.id || 'S/N'}
                     </div>
-                ` : ''}
-                
-                ${entrega.domicilio.instrucciones_entrega ? `
-                    <div style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem; padding: 0.5rem; background-color: #fef3c7; border-radius: 0.375rem;">
-                        💡 ${entrega.domicilio.instrucciones_entrega}
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #1e293b;">
+                        ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
                     </div>
-                ` : ''}
+                </div>
+                
+                <div class="entrega-direccion" style="margin-top: 0.5rem; padding-bottom: 0.5rem; border-bottom: 2px dashed #e2e8f0;">
+                    📍 ${primerEntrega.domicilio.direccion || 'Sin dirección'}
+                    ${primerEntrega.domicilio.localidad ? `<br><small style="color: #64748b; margin-left: 1.5rem;">${primerEntrega.domicilio.localidad}</small>` : ''}
+                    
+                    ${primerEntrega.domicilio.instrucciones_entrega ? `
+                        <div style="font-size: 0.85rem; color: #b45309; margin-top: 0.5rem; padding: 0.5rem; background-color: #fffbeb; border-radius: 0.375rem; border-left: 3px solid #f59e0b;">
+                            💡 ${primerEntrega.domicilio.instrucciones_entrega}
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <!-- LISTA DE PEDIDOS -->
+                <div class="entregas-lista-interna" style="margin-bottom: 1rem;">
+                    ${pedidosListHTML}
+                </div>
                 
                 <div class="entrega-actions">
-                    <button class="btn-navegar" onclick="navegarAEntrega(${entrega.domicilio.latitud}, ${entrega.domicilio.longitud}, '${encodeURIComponent(entrega.domicilio.direccion || '')}')">
-                        🗺️ Navegar
-                    </button>
-                    <button class="btn-confirmar" onclick="confirmarEntrega(${entrega.id_presupuesto})" ${esCompletada ? 'disabled' : ''}>
-                        ${esCompletada ? '✅ Entregado' : '✅ Confirmar'}
+                    <button class="btn-navegar" onclick="navegarAEntrega(${primerEntrega.domicilio.latitud}, ${primerEntrega.domicilio.longitud}, '${encodeURIComponent(primerEntrega.domicilio.direccion || '')}')"
+                            style="width: 100%; padding: 0.75rem; background: #fff; color: #2563eb; border: 1px solid #2563eb; font-weight: 600;">
+                        🗺️ Navegar al Domicilio
                     </button>
                 </div>
             </div>
         `;
     }).join('');
-    
+
     // Agregar clase de animación
     container.classList.add('fade-in');
+}
+
+/**
+ * Agrupar entregas por Cliente + Domicilio
+ */
+function agruparEntregasEnParadas(entregas) {
+    if (!entregas || entregas.length === 0) return [];
+
+    const paradas = [];
+    const mapaParadas = new Map();
+
+    entregas.forEach(entrega => {
+        // Clave única: cliente + domicilio
+        const key = `${entrega.cliente.id}_${entrega.domicilio.id || 'sin_dom'}`;
+
+        if (!mapaParadas.has(key)) {
+            const nuevaParada = {
+                key: key,
+                entregas: []
+            };
+            paradas.push(nuevaParada);
+            mapaParadas.set(key, nuevaParada);
+        }
+
+        mapaParadas.get(key).entregas.push(entrega);
+    });
+
+    return paradas;
 }
 
 /**
@@ -324,13 +388,13 @@ function navegarAEntrega(latitud, longitud, direccion) {
         mostrarError('Esta entrega no tiene coordenadas GPS');
         return;
     }
-    
+
     // Generar link de Google Maps con navegación
     const direccionEncoded = encodeURIComponent(decodeURIComponent(direccion));
     const link = `https://www.google.com/maps/dir/?api=1&destination=${latitud},${longitud}&destination_place_id=${direccionEncoded}`;
-    
+
     console.log('[NAVEGACION] Abriendo Google Maps:', link);
-    
+
     // Abrir en nueva pestaña/app
     window.open(link, '_blank');
 }
@@ -341,7 +405,7 @@ function navegarAEntrega(latitud, longitud, direccion) {
  */
 function confirmarEntrega(presupuestoId) {
     console.log('[ENTREGA] Confirmar entrega de presupuesto:', presupuestoId);
-    
+
     // Importar dinámicamente el módulo de confirmación
     import('./modules/confirmacion.js').then(module => {
         module.mostrarModalOpciones(presupuestoId);
@@ -422,43 +486,43 @@ async function procesarAutologin() {
     const autologin = urlParams.get('autologin');
     const usuario = urlParams.get('u');
     const password = urlParams.get('p');
-    
+
     if (autologin === 'true' && usuario && password) {
         console.log('[AUTOLOGIN] Detectados parámetros de autologin');
         console.log('[AUTOLOGIN] Usuario:', usuario);
         console.log('[AUTOLOGIN] API Base URL:', API_BASE_URL);
-        
+
         // Limpiar URL (quitar parámetros sensibles)
         window.history.replaceState({}, document.title, window.location.pathname);
-        
+
         // Ejecutar login automático
         try {
             // Construir URL completa para debugging
             const loginUrl = `${API_BASE_URL}/api/logistica/movil/login`;
             console.log('[AUTOLOGIN] Llamando a:', loginUrl);
-            
+
             const response = await fetch(loginUrl, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({ 
-                    usuario: decodeURIComponent(usuario), 
-                    password: decodeURIComponent(password) 
+                body: JSON.stringify({
+                    usuario: decodeURIComponent(usuario),
+                    password: decodeURIComponent(password)
                 })
             });
-            
+
             console.log('[AUTOLOGIN] Response status:', response.status);
             console.log('[AUTOLOGIN] Response ok:', response.ok);
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
             const result = await response.json();
             console.log('[AUTOLOGIN] Result:', result);
-            
+
             if (result.success && result.data) {
                 // Guardar sesión
                 guardarSesion({
@@ -467,35 +531,35 @@ async function procesarAutologin() {
                     nombre: result.data.nombre_completo || usuario,
                     id: result.data.id
                 });
-                
+
                 console.log('[AUTOLOGIN] Login automático exitoso');
-                
+
                 // Pequeño delay para que el usuario vea el éxito
                 await new Promise(resolve => setTimeout(resolve, 500));
-                
+
                 // Redirigir a ruta
                 window.location.href = 'ruta.html';
-                
+
             } else {
                 throw new Error(result.error || 'Autologin falló: respuesta inválida');
             }
-            
+
         } catch (error) {
             console.error('[AUTOLOGIN] Error completo:', error);
-            
+
             // Quitar overlay
             const overlay = document.getElementById('autologin-overlay');
             if (overlay) {
                 overlay.remove();
             }
-            
+
             // Restaurar formulario
             const loginForm = document.querySelector('.login-form');
             if (loginForm) {
                 loginForm.style.opacity = '1';
                 loginForm.style.pointerEvents = 'auto';
             }
-            
+
             // Mostrar error detallado
             const errorMsg = `❌ Error en Auto-Login:\n\n${error.message}\n\nAPI: ${API_BASE_URL}\n\nPor favor inicie sesión manualmente.`;
             alert(errorMsg);
@@ -510,22 +574,22 @@ console.log('[MOBILE-APP] App móvil inicializada');
 console.log('[MOBILE-APP] API Base URL:', API_BASE_URL);
 
 // Inicializar cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     console.log('[MOBILE-APP] DOM cargado');
-    
+
     // Procesar autologin si está en la página de login
-    const esLogin = window.location.pathname.includes('index.html') || 
-                    window.location.pathname.endsWith('/mobile/') ||
-                    window.location.pathname.endsWith('/mobile');
-    
+    const esLogin = window.location.pathname.includes('index.html') ||
+        window.location.pathname.endsWith('/mobile/') ||
+        window.location.pathname.endsWith('/mobile');
+
     if (esLogin) {
         const urlParams = new URLSearchParams(window.location.search);
         const autologin = urlParams.get('autologin');
-        
+
         if (autologin === 'true') {
             // Mostrar feedback visual
             mostrarFeedbackAutologin();
-            
+
             // Ejecutar autologin
             procesarAutologin();
         }
@@ -537,12 +601,12 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 function mostrarFeedbackAutologin() {
     const loginForm = document.querySelector('.login-form');
-    
+
     if (loginForm) {
         // Ocultar formulario
         loginForm.style.opacity = '0.5';
         loginForm.style.pointerEvents = 'none';
-        
+
         // Crear overlay de carga
         const overlay = document.createElement('div');
         overlay.id = 'autologin-overlay';
@@ -560,7 +624,7 @@ function mostrarFeedbackAutologin() {
             z-index: 9999;
             padding: 20px;
         `;
-        
+
         overlay.innerHTML = `
             <div style="text-align: center; max-width: 90%;">
                 <div style="font-size: 3rem; margin-bottom: 1rem; animation: spin 1s linear infinite;">
@@ -583,9 +647,9 @@ function mostrarFeedbackAutologin() {
                 }
             </style>
         `;
-        
+
         document.body.appendChild(overlay);
-        
+
         console.log('[AUTOLOGIN] Feedback visual mostrado');
         console.log('[AUTOLOGIN] API Base URL:', API_BASE_URL);
     }
