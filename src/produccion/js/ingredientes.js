@@ -10,51 +10,32 @@ let filtrosSectorActivos = new Set(); // Para rastrear filtros activos por secto
 let vistaActual = 'deposito'; // Para identificar la vista actual ('deposito' o 'usuario-X')
 let sectoresDisponibles = []; // Para almacenar la lista de sectores
 
-
-
 // ✅ NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
 let estadoFiltrosGuardado = null; // Para guardar temporalmente el estado de filtros
 
 // ✅ FUNCIONES PARA MANTENER ESTADO DE FILTROS
 function guardarEstadoFiltros() {
-    console.log('💾 Guardando estado actual de filtros antes de la acción');
     estadoFiltrosGuardado = {
         categorias: new Set(filtrosActivos),
         tipos: new Set(filtrosTipoActivos),
         stocks: new Set(filtrosStockActivos),
         sectores: new Set(filtrosSectorActivos)
     };
-    console.log('✅ Estado guardado:', {
-        categorias: Array.from(estadoFiltrosGuardado.categorias),
-        tipos: Array.from(estadoFiltrosGuardado.tipos),
-        stocks: Array.from(estadoFiltrosGuardado.stocks),
-        sectores: Array.from(estadoFiltrosGuardado.sectores)
-    });
 }
 
 function restaurarEstadoFiltros() {
     if (!estadoFiltrosGuardado) {
-        console.log('⚠️ No hay estado de filtros guardado para restaurar');
         return;
     }
-    
-    console.log('🔄 Restaurando estado de filtros después de la acción');
-    
+
     // Restaurar los Sets de filtros
     filtrosActivos = new Set(estadoFiltrosGuardado.categorias);
     filtrosTipoActivos = new Set(estadoFiltrosGuardado.tipos);
     filtrosStockActivos = new Set(estadoFiltrosGuardado.stocks);
     filtrosSectorActivos = new Set(estadoFiltrosGuardado.sectores);
-    
+
     // Restaurar estado visual de los botones
     restaurarEstadoVisualFiltros();
-    
-    console.log('✅ Estado de filtros restaurado:', {
-        categorias: Array.from(filtrosActivos),
-        tipos: Array.from(filtrosTipoActivos),
-        stocks: Array.from(filtrosStockActivos),
-        sectores: Array.from(filtrosSectorActivos)
-    });
 }
 
 function restaurarEstadoVisualFiltros() {
@@ -66,7 +47,7 @@ function restaurarEstadoVisualFiltros() {
             btn.classList.remove('activo');
         }
     });
-    
+
     // Restaurar botones de tipo
     document.querySelectorAll('.tipos-botones .btn-filtro').forEach(btn => {
         const tipo = btn.dataset.tipo;
@@ -76,7 +57,7 @@ function restaurarEstadoVisualFiltros() {
             btn.classList.remove('activo');
         }
     });
-    
+
     // Restaurar botones de stock
     document.querySelectorAll('.stock-botones .btn-filtro').forEach(btn => {
         const stock = btn.dataset.stock;
@@ -86,7 +67,7 @@ function restaurarEstadoVisualFiltros() {
             btn.classList.remove('activo');
         }
     });
-    
+
     // Restaurar botones de sector
     document.querySelectorAll('.sectores-botones .btn-filtro').forEach(btn => {
         const sectorId = btn.dataset.sectorId;
@@ -101,8 +82,6 @@ function restaurarEstadoVisualFiltros() {
 // ✅ NUEVA FUNCIÓN PARA RECARGAR DATOS SIN PERDER FILTROS
 async function recargarDatosMantenendoFiltros() {
     try {
-        console.log('🔄 Recargando datos y manteniendo filtros activos...');
-        
         // Cargar datos frescos del servidor
         const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
         if (!response.ok) {
@@ -111,25 +90,19 @@ async function recargarDatosMantenendoFiltros() {
         }
 
         const datos = await response.json();
-        console.log('✅ Datos frescos recibidos:', datos.length, 'ingredientes');
-        
+
         // Actualizar lista completa y mix.js
         ingredientesOriginales = datos;
         window.actualizarListaIngredientes(datos);
-        
-        // Verificar estado de mix para todos los ingredientes
-        const ingredientesConEstado = await Promise.all(datos.map(async (ingrediente) => {
-            const tieneMix = await esMix(ingrediente.id);
-            return { ...ingrediente, esMix: tieneMix };
-        }));
-        
+
+        // Mapear es_mix a esMix para consistencia
+        const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
+
         ingredientesOriginales = ingredientesConEstado;
-        
+
         // Aplicar filtros existentes sin reinicializar
         await actualizarTablaFiltrada();
-        
-        console.log('✅ Datos recargados manteniendo filtros activos');
-        
+
     } catch (error) {
         console.error('❌ Error al recargar datos:', error);
         mostrarMensaje(error.message || 'No se pudieron recargar los datos');
@@ -139,18 +112,16 @@ async function recargarDatosMantenendoFiltros() {
 // Función para cargar sectores disponibles
 async function cargarSectores() {
     try {
-        console.log('🔄 Cargando sectores disponibles...');
         const response = await fetch('http://localhost:3002/api/produccion/sectores');
         if (!response.ok) {
             throw new Error('Error al cargar sectores');
         }
-        
+
         sectoresDisponibles = await response.json();
-        console.log('✅ Sectores cargados:', sectoresDisponibles);
-        
+
         // Actualizar selector de sectores en el modal
         actualizarSelectorSectores();
-        
+
     } catch (error) {
         console.error('❌ Error al cargar sectores:', error);
         // No mostrar error al usuario, el selector quedará con opción por defecto
@@ -162,10 +133,10 @@ async function cargarSectores() {
 function actualizarSelectorSectores() {
     const selectorSector = document.getElementById('sector');
     if (!selectorSector) return;
-    
+
     // Limpiar opciones existentes
     selectorSector.innerHTML = '<option value="">Sin sector asignado</option>';
-    
+
     // Agregar sectores disponibles
     sectoresDisponibles.forEach(sector => {
         const option = document.createElement('option');
@@ -215,25 +186,23 @@ function mostrarMensaje(mensaje, tipo = 'error') {
     const mensajeDiv = document.createElement('div');
     mensajeDiv.className = tipo === 'error' ? 'mensaje-error' : 'mensaje-exito';
     mensajeDiv.textContent = mensaje;
-    
+
     // Remover mensaje anterior si existe
     const mensajeAnterior = document.querySelector('.mensaje-error, .mensaje-exito');
     if (mensajeAnterior) {
         mensajeAnterior.remove();
     }
-    
+
     contenedor.insertBefore(mensajeDiv, contenedor.firstChild);
-    
+
     // Remover el mensaje después de 3 segundos
     setTimeout(() => {
         mensajeDiv.remove();
     }, 3000);
 }
 
-// Función para inicializar los filtros de categorías, tipo y stock (ADAPTADA AL NUEVO LAYOUT)
+// Función para inicializar los filtros de categorías, tipo y stock
 function inicializarFiltros(ingredientes) {
-    console.log('🔧 Inicializando filtros en panel lateral con acordeones');
-
     // ✅ INICIALIZAR TODOS LOS FILTROS VACÍOS
     filtrosActivos = new Set();
     filtrosTipoActivos = new Set();
@@ -390,8 +359,6 @@ function inicializarFiltros(ingredientes) {
             sectoresContainer.appendChild(btn);
         });
     }
-
-    console.log('✅ Filtros inicializados en panel lateral');
 }
 
 // ✅ FUNCIÓN AUXILIAR: Normalizar texto (eliminar tildes y caracteres especiales)
@@ -426,7 +393,6 @@ async function actualizarTablaFiltrada() {
             filtrosSectorActivos.size === 0 &&
             !nombreFiltro
         ) {
-            console.log('🔄 No hay filtros activos - mostrando todos los ingredientes');
             await actualizarTablaIngredientes(ingredientesOriginales);
             return;
         }
@@ -441,19 +407,19 @@ async function actualizarTablaFiltrada() {
                     .split(/\s+/) // Dividir por uno o más espacios
                     .filter(t => t.length > 0) // Eliminar términos vacíos
                     .map(t => normalizarTexto(t)); // Normalizar cada término
-                
+
                 if (terminos.length > 0) {
                     // Normalizar SOLO el nombre del ingrediente
                     const nombreNormalizado = normalizarTexto(ing.nombre);
-                    
+
                     // Verificar que TODOS los términos estén presentes en el nombre
                     pasaNombre = terminos.every(termino => nombreNormalizado.includes(termino));
                 }
             }
-           
+
             // Filtro por categoría (si hay filtros de categoría activos)
             const pasaCategoria = filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria);
-            
+
             // Filtro por tipo (si hay filtros de tipo activos)
             let pasaTipo = filtrosTipoActivos.size === 0;
             if (filtrosTipoActivos.size > 0) {
@@ -465,13 +431,13 @@ async function actualizarTablaFiltrada() {
                     pasaTipo = true;
                 }
             }
-            
+
             // Filtro por stock (si hay filtros de stock activos)
             let pasaStock = filtrosStockActivos.size === 0;
             if (filtrosStockActivos.size > 0) {
                 const stockActual = parseFloat(ing.stock_actual) || 0;
                 const tolerancia = 0.001;
-                
+
                 if (filtrosStockActivos.has('con-stock') && stockActual > tolerancia) {
                     pasaStock = true;
                 }
@@ -489,29 +455,10 @@ async function actualizarTablaFiltrada() {
                 }
             }
 
-            
-
-            
             // El ingrediente pasa si cumple TODOS los tipos de filtros activos
-            return pasaCategoria && pasaTipo && pasaStock && pasaSector && pasaNombre; //Modificacion Mari &&pasaNombre
+            return pasaCategoria && pasaTipo && pasaStock && pasaSector && pasaNombre;
         });
 
-        // Log detallado de filtros activos
-        const filtrosInfo = [];
-        if (filtrosActivos.size > 0) {
-            filtrosInfo.push(`Categorías: ${Array.from(filtrosActivos).join(', ')}`);
-        }
-        if (filtrosTipoActivos.size > 0) {
-            filtrosInfo.push(`Tipos: ${Array.from(filtrosTipoActivos).join(', ')}`);
-        }
-        if (filtrosStockActivos.size > 0) {
-            filtrosInfo.push(`Stock: ${Array.from(filtrosStockActivos).join(', ')}`);
-        }
-        if (filtrosSectorActivos.size > 0) {
-            filtrosInfo.push(`Sectores: ${Array.from(filtrosSectorActivos).join(', ')}`);
-        }
-        
-        console.log(`🔄 Filtros combinados activos: ${filtrosInfo.join(' | ')} - mostrando ${ingredientesFiltrados.length} ingredientes`);
         await actualizarTablaIngredientes(ingredientesFiltrados);
     }
 }
@@ -520,88 +467,64 @@ async function actualizarTablaFiltrada() {
 async function cargarIngredientes(usuarioId = null) {
     try {
         let response;
-        console.log(`🔄 Cargando ${usuarioId ? 'stock de usuario' : 'ingredientes del depósito'}...`);
-        
+
         if (usuarioId) {
             vistaActual = `usuario-${usuarioId}`;
-            
+
             // 🛡️ LIMPIEZA DE ESTADO: Limpiar todos los filtros al cambiar a vista usuario
-            console.log('🧹 [LIMPIEZA] Limpiando filtros activos para vista de usuario...');
             filtrosActivos.clear();
             filtrosTipoActivos.clear();
             filtrosStockActivos.clear();
             filtrosSectorActivos.clear();
-            console.log('✅ [LIMPIEZA] Filtros limpiados');
-            
+
             // 🛡️ LIMPIEZA DE ESTADO: Limpiar campo de búsqueda por nombre
             const inputFiltroNombre = document.getElementById('filtro-nombre');
             if (inputFiltroNombre) {
                 inputFiltroNombre.value = '';
-                console.log('✅ [LIMPIEZA] Campo de búsqueda limpiado');
             }
-            
+
             response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
         } else {
             vistaActual = 'deposito';
             response = await fetch('http://localhost:3002/api/produccion/ingredientes');
         }
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Error al obtener los datos');
         }
 
         const datos = await response.json();
-        console.log(`✅ Datos recibidos del servidor: ${datos.length} registros`);
-        
+
         if (vistaActual === 'deposito') {
             // ==========================================
             // RAMA 1: VISTA DEPÓSITO (Inventario General)
             // ==========================================
-            console.log('🏢 [VISTA DEPÓSITO] Procesando datos del depósito general...');
-            
+
             // Guardar lista completa y actualizar mix.js
             ingredientesOriginales = datos;
             window.actualizarListaIngredientes(datos);
-            
+
             // Inicializar filtros
             inicializarFiltros(datos);
-            
+
             // Verificar estado de mix para todos los ingredientes
-            const ingredientesConEstado = await Promise.all(datos.map(async (ingrediente) => {
-                const tieneMix = await esMix(ingrediente.id);
-                return { ...ingrediente, esMix: tieneMix };
-            }));
-            
+            // OPTIMIZACIÓN: Backend calc
+            const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
+
             ingredientesOriginales = ingredientesConEstado;
             await actualizarTablaFiltrada();
-            
-            console.log(`✅ [VISTA DEPÓSITO] Tabla renderizada con ${ingredientesConEstado.length} ingredientes`);
         } else {
             // ==========================================
             // RAMA 2: VISTA USUARIO (Stock Personal)
             // ==========================================
-            console.log(`👤 [VISTA USUARIO] Procesando stock personal del usuario ${usuarioId}...`);
-            console.log(`📊 [VISTA USUARIO] Ingredientes recibidos del backend: ${datos.length}`);
-            
-            // 🛡️ VALIDACIÓN: Verificar que los datos sean del usuario
-            if (datos.length > 0) {
-                console.log('📋 [VISTA USUARIO] Muestra de datos recibidos:');
-                datos.slice(0, 3).forEach((ing, index) => {
-                    console.log(`  ${index + 1}. ${ing.nombre_ingrediente}: ${ing.stock_total} kg (${ing.tipo_origen})`);
-                });
-            } else {
-                console.log('ℹ️ [VISTA USUARIO] El usuario no tiene stock de ingredientes');
-            }
-            
+
             // 🛡️ NO guardar en ingredientesOriginales para evitar contaminación
             // 🛡️ NO llamar a inicializarFiltros()
             // 🛡️ NO llamar a actualizarTablaFiltrada()
-            
+
             // Renderizar directamente la tabla con los datos del usuario
             await actualizarTablaIngredientes(datos, true);
-            
-            console.log(`✅ [VISTA USUARIO] Tabla renderizada con ${datos.length} ingredientes del usuario`);
         }
 
     } catch (error) {
@@ -610,15 +533,13 @@ async function cargarIngredientes(usuarioId = null) {
     }
 }
 
-
-
 // Función para crear selector de sectores inline
 function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNombre) {
     const select = document.createElement('select');
     select.className = 'selector-sector-inline';
     select.dataset.ingredienteId = ingredienteId;
     select.dataset.sectorOriginal = sectorActualId || '';
-    
+
     // Estilos inline para el selector
     select.style.cssText = `
         width: 100%;
@@ -630,13 +551,13 @@ function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNo
         cursor: pointer;
         transition: all 0.2s ease;
     `;
-    
+
     // Opción por defecto
     const optionDefault = document.createElement('option');
     optionDefault.value = '';
     optionDefault.textContent = 'Sin asignar';
     select.appendChild(optionDefault);
-    
+
     // Agregar sectores disponibles
     sectoresDisponibles.forEach(sector => {
         const option = document.createElement('option');
@@ -644,52 +565,50 @@ function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNo
         option.textContent = sector.nombre;
         select.appendChild(option);
     });
-    
+
     // Establecer valor actual
     select.value = sectorActualId || '';
-    
+
     // Evento de cambio para actualización inmediata
     select.addEventListener('change', async (e) => {
         await actualizarSectorIngrediente(ingredienteId, e.target.value, e.target);
     });
-    
+
     // Efectos visuales
     select.addEventListener('focus', () => {
         select.style.borderColor = '#007bff';
         select.style.boxShadow = '0 0 0 0.2rem rgba(0,123,255,.25)';
     });
-    
+
     select.addEventListener('blur', () => {
         select.style.borderColor = '#ddd';
         select.style.boxShadow = 'none';
     });
-    
+
     return select;
 }
 
 // Función para actualizar sector de ingrediente con feedback visual
 async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selectorElement) {
     const sectorOriginal = selectorElement.dataset.sectorOriginal;
-    
+
     try {
-        console.log(`🔄 Actualizando sector del ingrediente ${ingredienteId} a sector ${nuevoSectorId || 'sin asignar'}`);
-        
         // Feedback visual: deshabilitar selector y mostrar loading
         selectorElement.disabled = true;
         selectorElement.style.opacity = '0.6';
         selectorElement.style.cursor = 'wait';
-        
+
         // Crear indicador de carga
         const loadingIndicator = document.createElement('span');
         loadingIndicator.textContent = '⏳';
         loadingIndicator.style.marginLeft = '5px';
         selectorElement.parentNode.appendChild(loadingIndicator);
-        
+
         // Preparar datos para actualización
         const datos = {
             sector_id: nuevoSectorId || null
         };
-        
+
         // Realizar petición de actualización
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
             method: 'PUT',
@@ -698,49 +617,47 @@ async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selecto
             },
             body: JSON.stringify(datos)
         });
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Error al actualizar el sector');
         }
-        
+
         // Éxito: actualizar estado y mostrar feedback
         selectorElement.dataset.sectorOriginal = nuevoSectorId || '';
-        
+
         // Feedback visual de éxito
         selectorElement.style.borderColor = '#28a745';
         selectorElement.style.backgroundColor = '#f8fff9';
-        
+
         // Mostrar mensaje de éxito discreto
         mostrarMensajeDiscretoSector('Sector actualizado', 'exito');
-        
-        console.log(`✅ Sector actualizado exitosamente para ingrediente ${ingredienteId}`);
-        
+
     } catch (error) {
         console.error('❌ Error al actualizar sector:', error);
-        
+
         // Revertir cambio en caso de error
         selectorElement.value = sectorOriginal;
-        
+
         // Feedback visual de error
         selectorElement.style.borderColor = '#dc3545';
         selectorElement.style.backgroundColor = '#fff5f5';
-        
+
         // Mostrar mensaje de error
         mostrarMensajeDiscretoSector(error.message || 'Error al actualizar sector', 'error');
-        
+
     } finally {
         // Restaurar estado del selector
         selectorElement.disabled = false;
         selectorElement.style.opacity = '1';
         selectorElement.style.cursor = 'pointer';
-        
+
         // Remover indicador de carga
         const loadingIndicator = selectorElement.parentNode.querySelector('span');
         if (loadingIndicator) {
             loadingIndicator.remove();
         }
-        
+
         // Restaurar estilos después de 2 segundos
         setTimeout(() => {
             selectorElement.style.borderColor = '#ddd';
@@ -756,19 +673,19 @@ function mostrarMensajeDiscretoSector(mensaje, tipo = 'info') {
     if (mensajeAnterior) {
         mensajeAnterior.remove();
     }
-    
+
     const mensajeDiv = document.createElement('div');
     mensajeDiv.className = 'mensaje-sector-discreto';
-    
+
     // Estilos según el tipo
     const colores = {
         exito: { bg: '#d4edda', border: '#c3e6cb', text: '#155724' },
         error: { bg: '#f8d7da', border: '#f5c6cb', text: '#721c24' },
         info: { bg: '#d1ecf1', border: '#bee5eb', text: '#0c5460' }
     };
-    
+
     const color = colores[tipo] || colores.info;
-    
+
     mensajeDiv.style.cssText = `
         position: fixed;
         top: 20px;
@@ -783,10 +700,10 @@ function mostrarMensajeDiscretoSector(mensaje, tipo = 'info') {
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         animation: slideInRight 0.3s ease-out;
     `;
-    
+
     mensajeDiv.textContent = mensaje;
     document.body.appendChild(mensajeDiv);
-    
+
     // Remover después de 3 segundos
     setTimeout(() => {
         mensajeDiv.style.animation = 'slideOutRight 0.3s ease-in';
@@ -806,22 +723,21 @@ function invalidarCacheNutrientes(ingredienteId) {
 async function cargarNutrientes(ingredienteId) {
     // Verificar caché
     if (cacheNutrientes.has(ingredienteId)) {
-        console.log(`📦 [CACHE] Usando caché para ingrediente ${ingredienteId}`);
         return cacheNutrientes.get(ingredienteId);
     }
-    
+
     // Cargar del servidor
     const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/nutrientes`);
-    
+
     if (!response.ok) {
         throw new Error('Error al cargar nutrientes');
     }
-    
+
     const nutrientes = await response.json();
-    
+
     // Guardar en caché
     cacheNutrientes.set(ingredienteId, nutrientes);
-    
+
     return nutrientes;
 }
 
@@ -830,7 +746,7 @@ async function toggleDetallesNutrientes(ingredienteId, filaActual) {
     const filaDetalles = document.querySelector(`tr[data-detalles-id="${ingredienteId}"]`);
     const btnExpandir = filaActual.querySelector('.btn-expandir');
     const iconoExpandir = btnExpandir.querySelector('.icono-expandir');
-    
+
     if (filaDetalles) {
         // Ya está expandido, colapsar
         filaDetalles.remove();
@@ -840,16 +756,16 @@ async function toggleDetallesNutrientes(ingredienteId, filaActual) {
         // Expandir y cargar datos
         iconoExpandir.textContent = '▼';
         iconoExpandir.style.transform = 'rotate(90deg)';
-        
+
         try {
             // Cargar nutrientes del servidor
             const nutrientes = await cargarNutrientes(ingredienteId);
-            
+
             // Crear fila de detalles
             const trDetalles = document.createElement('tr');
             trDetalles.dataset.detallesId = ingredienteId;
             trDetalles.className = 'fila-detalles-nutrientes';
-            
+
             trDetalles.innerHTML = `
                 <td colspan="11">
                     <div class="contenedor-detalles-nutrientes">
@@ -858,7 +774,7 @@ async function toggleDetallesNutrientes(ingredienteId, filaActual) {
                     </div>
                 </td>
             `;
-            
+
             // Insertar después de la fila actual
             filaActual.after(trDetalles);
         } catch (error) {
@@ -875,9 +791,9 @@ function renderizarTablaNutrientes(respuesta, ingredienteId) {
     if (!respuesta || !respuesta.datos || respuesta.datos.length === 0) {
         return '<p class="sin-nutrientes">No hay datos disponibles para este ingrediente</p>';
     }
-    
+
     const { tipo, datos } = respuesta;
-    
+
     if (tipo === 'mix') {
         // Renderizar tabla para ingredientes MIX (componentes)
         return renderizarTablaMix(datos);
@@ -892,7 +808,7 @@ function renderizarTablaSimple(nutrientes, ingredienteId) {
     const totalPotencial = nutrientes
         .filter(n => n.activo)
         .reduce((sum, n) => sum + (parseFloat(n.kilos_potenciales) || 0), 0);
-    
+
     return `
         <table class="tabla-nutrientes">
             <thead>
@@ -947,9 +863,9 @@ function renderizarTablaMix(componentes) {
         const minKilos = parseFloat(min.kilos_mix_posibles) || 0;
         return kilosPosibles < minKilos ? comp : min;
     }, componentes[0]);
-    
+
     const stockPotencialMix = parseFloat(limitante?.kilos_mix_posibles) || 0;
-    
+
     return `
         <div class="info-mix-producibilidad">
             <p class="info-limitante">
@@ -968,8 +884,8 @@ function renderizarTablaMix(componentes) {
             </thead>
             <tbody>
                 ${componentes.map(comp => {
-                    const esLimitante = comp.componente_id === limitante.componente_id;
-                    return `
+        const esLimitante = comp.componente_id === limitante.componente_id;
+        return `
                         <tr class="${esLimitante ? 'componente-limitante' : ''}">
                             <td>
                                 ${esLimitante ? '🔴 ' : ''}
@@ -984,7 +900,7 @@ function renderizarTablaMix(componentes) {
                             </td>
                         </tr>
                     `;
-                }).join('')}
+    }).join('')}
             </tbody>
             <tfoot>
                 <tr class="fila-total-potencial">
@@ -999,8 +915,6 @@ function renderizarTablaMix(componentes) {
 // Función para toggle de vínculo activo/inactivo
 async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
     try {
-        console.log(`🔄 [VINCULO] Actualizando vínculo ${vinculoId} a estado: ${nuevoEstado}`);
-        
         const response = await fetch(
             `http://localhost:3002/api/produccion/ingredientes/nutrientes/${vinculoId}`,
             {
@@ -1009,17 +923,17 @@ async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
                 body: JSON.stringify({ activo: nuevoEstado })
             }
         );
-        
+
         if (!response.ok) {
             throw new Error('Error al actualizar vínculo');
         }
-        
+
         // Invalidar caché de nutrientes
         invalidarCacheNutrientes(ingredienteId);
-        
+
         // Recargar datos del ingrediente para actualizar stock potencial
         await recargarDatosMantenendoFiltros();
-        
+
         // Actualizar la tabla de nutrientes expandida
         const filaActual = document.querySelector(`tr[data-id="${ingredienteId}"]`);
         if (filaActual) {
@@ -1027,7 +941,7 @@ async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
             await toggleDetallesNutrientes(ingredienteId, filaActual);
             await toggleDetallesNutrientes(ingredienteId, filaActual);
         }
-        
+
         mostrarMensaje(
             `Vínculo ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`,
             'exito'
@@ -1050,15 +964,18 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
         return;
     }
 
+    // OPTIMIZACIÓN DOM: Usar DocumentFragment para evitar reflows por cada fila
+    const fragment = document.createDocumentFragment();
+
     ingredientes.forEach(ingrediente => {
         const tr = document.createElement('tr');
         tr.dataset.id = ingrediente.id;
-        
+
         if (esVistaUsuario) {
             // Vista de usuario: mostrar stock personal (sin botón expandir ni stock potencial)
             // 🔧 FIX: Usar ingrediente_id en lugar de id para vista de usuario
             const ingredienteIdReal = ingrediente.ingrediente_id || ingrediente.id;
-            
+
             tr.innerHTML = `
                 <td></td>
                 <td>${ingrediente.nombre_ingrediente}</td>
@@ -1086,7 +1003,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
             const nombreSector = ingrediente.sector_nombre || 'Sin asignar';
             const stockPotencial = parseFloat(ingrediente.stock_potencial) || parseFloat(ingrediente.stock_actual) || 0;
             const vinculosActivos = parseInt(ingrediente.vinculos_activos) || 0;
-            
+
             // Crear fila
             tr.innerHTML = `
                 <td class="td-expandir">
@@ -1100,51 +1017,52 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 <td>${formatearStock(ingrediente.stock_actual)}</td>
                 <td class="stock-potencial">
                     ${formatearStock(stockPotencial)}
-                    ${vinculosActivos > 0 
-                        ? `<span class="badge-vinculos">${vinculosActivos}</span>` 
-                        : ''}
+                    ${vinculosActivos > 0
+                    ? `<span class="badge-vinculos">${vinculosActivos}</span>`
+                    : ''}
                 </td>
                 <td class="sector-cell"></td>
                 <td>${ingrediente.descripcion || '-'}</td>
                 <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
                 <td>
-                    ${ingrediente.esMix 
-                        ? `<div class="btn-group">
+                    ${ingrediente.esMix
+                    ? `<div class="btn-group">
                             <button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Gestionar composición</button>
                             <button class="btn-eliminar" onclick="eliminarComposicionMix(${ingrediente.id})">Eliminar composición</button>
-                           </div>` 
-                        : (!ingrediente.padre_id 
-                            ? `<button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Crear composición</button>`
-                            : '-')}
+                           </div>`
+                    : (!ingrediente.padre_id
+                        ? `<button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Crear composición</button>`
+                        : '-')}
                 </td>
                 <td>
                     <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
                     <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
                 </td>
             `;
-            
+
             // Agregar selector de sector inline en la celda correspondiente
             const sectorCell = tr.querySelector('.sector-cell');
             const selectorSector = crearSelectorSectorInline(
-                ingrediente.id, 
-                ingrediente.sector_id, 
+                ingrediente.id,
+                ingrediente.sector_id,
                 nombreSector
             );
             sectorCell.appendChild(selectorSector);
-            
+
             // Agregar evento de expansión al botón
             const btnExpandir = tr.querySelector('.btn-expandir');
             btnExpandir.addEventListener('click', () => toggleDetallesNutrientes(ingrediente.id, tr));
         }
-        
-        tbody.appendChild(tr);
+
+        fragment.appendChild(tr);
     });
+
+    tbody.appendChild(fragment);
 }
 
 // Función para crear un nuevo ingrediente
 async function crearIngrediente(datos) {
     try {
-        console.log('Creando ingrediente:', datos);
         const response = await fetch('http://localhost:3002/api/produccion/ingredientes', {
             method: 'POST',
             headers: {
@@ -1165,7 +1083,7 @@ async function crearIngrediente(datos) {
         const nuevoIngrediente = await response.json();
         await cargarIngredientes();
         mostrarMensaje('Ingrediente creado exitosamente', 'exito');
-        
+
         // Mostrar botón de impresión después de crear
         document.getElementById('codigo').value = nuevoIngrediente.codigo;
         actualizarBotonImpresion();
@@ -1178,7 +1096,6 @@ async function crearIngrediente(datos) {
 // Función para actualizar un ingrediente
 async function actualizarIngrediente(id, datos) {
     try {
-        console.log('Actualizando ingrediente:', id, datos);
         guardarEstadoFiltros();
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
             method: 'PUT',
@@ -1210,7 +1127,6 @@ async function eliminarIngrediente(id) {
     }
 
     try {
-        console.log('Eliminando ingrediente:', id);
         guardarEstadoFiltros();
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
             method: 'DELETE'
@@ -1233,7 +1149,6 @@ async function eliminarIngrediente(id) {
 // Función para editar un ingrediente
 async function editarIngrediente(id) {
     try {
-        console.log('Obteniendo ingrediente para editar:', id);
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`);
         if (!response.ok) {
             const errorData = await response.json();
@@ -1251,7 +1166,7 @@ async function editarIngrediente(id) {
         document.getElementById('categoria').value = ingrediente.categoria;
         document.getElementById('stock').value = ingrediente.stock_actual;
         document.getElementById('descripcion').value = ingrediente.descripcion || '';
-        
+
         // Cargar sector si existe
         const selectorSector = document.getElementById('sector');
         if (selectorSector) {
@@ -1296,7 +1211,7 @@ async function imprimirEtiqueta(ingrediente) {
 function actualizarBotonImpresion() {
     const btnImprimir = document.getElementById('btn-imprimir');
     const codigo = document.getElementById('codigo').value;
-    
+
     if (btnImprimir) {
         btnImprimir.style.display = codigo ? 'block' : 'none';
     }
@@ -1304,7 +1219,6 @@ function actualizarBotonImpresion() {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Página cargada, inicializando...');
 
     // Configurar botón de impresión
     const btnImprimir = document.getElementById('btn-imprimir');
@@ -1312,7 +1226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnImprimir.addEventListener('click', () => {
             const codigo = document.getElementById('codigo').value;
             const nombre = document.getElementById('nombre').value;
-            
+
             if (codigo && nombre) {
                 imprimirEtiqueta({ codigo, nombre });
             }
@@ -1321,13 +1235,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     //Filtro por nombre -Mari
     document.getElementById('filtro-nombre').addEventListener('input', () => {
-    actualizarTablaFiltrada();
+        actualizarTablaFiltrada();
     });
 
-    
+
     // Cargar sectores disponibles al inicializar
     await cargarSectores();
-    
+
     // Cargar ingredientes al iniciar
     cargarIngredientes();
 
@@ -1341,7 +1255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     modales.forEach(modal => {
         let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
         const header = modal.querySelector('.modal-header');
-        
+
         if (header) {
             header.onmousedown = dragMouseDown;
         }
@@ -1385,10 +1299,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalesConfig.forEach(({ id, closeHandler }) => {
         const modal = document.getElementById(id);
         const closeBtn = modal.querySelector('.close-modal');
-        
+
         // Botón de cerrar
         closeBtn.addEventListener('click', () => closeHandler(modal));
-        
+
         // Cerrar al hacer clic fuera
         window.addEventListener('click', (e) => {
             if (e.target === modal) {
@@ -1400,11 +1314,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Manejar envío del formulario
     document.getElementById('form-ingrediente').addEventListener('submit', async (e) => {
         e.preventDefault();
-        console.log('Formulario enviado');
 
         // Obtener valor del sector
         const sectorValue = document.getElementById('sector').value;
-        
+
         const datos = {
             codigo: document.getElementById('codigo').value,
             nombre: document.getElementById('nombre').value,
@@ -1415,8 +1328,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             padre_id: ingredienteEditando ? ingredienteEditando.padre_id : null,
             sector_id: sectorValue || null // Incluir sector_id, null si no hay selección
         };
-
-        console.log('Datos a enviar:', datos);
 
         if (ingredienteEditando) {
             await actualizarIngrediente(ingredienteEditando.id, datos);
@@ -1433,9 +1344,8 @@ async function eliminarComposicionMix(id) {
     }
 
     try {
-        console.log('🗑️ Eliminando composición del mix:', id);
         guardarEstadoFiltros();
-        
+
         // Usar el nuevo endpoint que elimina toda la composición y actualiza receta_base_kg
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/composicion`, {
             method: 'DELETE'
@@ -1468,7 +1378,7 @@ window.toggleVinculo = toggleVinculo;
 function gestionarComposicionMix(id) {
     const modalMix = document.getElementById('modal-mix');
     modalMix.style.display = 'block';
-    
+
     // Llamar a la función de mix.js para cargar la composición
     window.abrirEdicionMix(id);
 }
@@ -1496,24 +1406,19 @@ window.abrirVentana = abrirVentana;
 // ==========================================
 // FUNCIÓN GLOBAL: ABRIR MODAL DE AJUSTE (INYECTADA)
 // ==========================================
-window.abrirModalAjusteDesdeTabla = async function(dummy, nombreIngrediente, stockActual, ingredienteIdReal) {
-    console.log('✏️ [AJUSTE-JS] Solicitando ajuste para:', nombreIngrediente);
-    console.log('🔍 [AJUSTE-JS] Ingrediente ID recibido:', ingredienteIdReal);
-    console.log('📍 [AJUSTE-JS] Vista actual:', vistaActual);
-    
+window.abrirModalAjusteDesdeTabla = async function (dummy, nombreIngrediente, stockActual, ingredienteIdReal) {
+
     let usuarioId = null;
-    
+
     if (vistaActual.startsWith('usuario-')) {
         usuarioId = parseInt(vistaActual.replace('usuario-', ''));
-        console.log('✅ [AJUSTE-JS] Usuario detectado desde vistaActual:', usuarioId);
     } else {
         const sectorActivo = document.querySelector('.sector-item.activo[data-usuario-id]');
         if (sectorActivo) {
             usuarioId = parseInt(sectorActivo.dataset.usuarioId);
-            console.log('✅ [AJUSTE-JS] Usuario detectado desde DOM:', usuarioId);
         }
     }
-    
+
     if (!usuarioId) {
         alert('❌ Error: No se pudo detectar el usuario activo.');
         return;
@@ -1524,9 +1429,8 @@ window.abrirModalAjusteDesdeTabla = async function(dummy, nombreIngrediente, sto
     if (modalAjuste) {
         modalAjuste.dataset.usuarioActivo = usuarioId;
         modalAjuste.dataset.origenContexto = 'vista_stock_personal';
-        console.log(`✅ [AJUSTE-JS] Contexto establecido en modal: usuario=${usuarioId}, origen=vista_stock_personal`);
     }
-    
+
     // 🔧 MANTENER COMPATIBILIDAD: Crear selector solo si no existe (para no romper código existente)
     let selectorFiltro = document.getElementById('filtro-usuario');
     if (!selectorFiltro) {
@@ -1535,13 +1439,12 @@ window.abrirModalAjusteDesdeTabla = async function(dummy, nombreIngrediente, sto
         selectorFiltro.style.display = 'none';
         selectorFiltro.dataset.origen = 'ingredientes-vista'; // Marcar origen
         document.body.appendChild(selectorFiltro);
-        console.log('✅ [AJUSTE-JS] Selector filtro-usuario creado (compatibilidad)');
     }
-    
+
     // Solo actualizar si el selector es de esta vista
     if (selectorFiltro.dataset.origen === 'ingredientes-vista' || !selectorFiltro.dataset.origen) {
         let optionExistente = Array.from(selectorFiltro.options).find(opt => opt.value === usuarioId.toString());
-        
+
         if (!optionExistente) {
             selectorFiltro.innerHTML = '';
             const option = document.createElement('option');
@@ -1549,23 +1452,17 @@ window.abrirModalAjusteDesdeTabla = async function(dummy, nombreIngrediente, sto
             option.textContent = usuarioId;
             option.selected = true;
             selectorFiltro.appendChild(option);
-            console.log('✅ [AJUSTE-JS] Opción creada en selector');
         } else {
             optionExistente.selected = true;
-            console.log('✅ [AJUSTE-JS] Opción existente seleccionada');
         }
         selectorFiltro.value = usuarioId;
     }
-    
-    console.log(`✅ [AJUSTE-JS] Usuario ${usuarioId} establecido correctamente`);
-    
+
     if (typeof window.abrirModalAjusteRapido === 'function') {
-        console.log('🚀 [AJUSTE-JS] Llamando a abrirModalAjusteRapido con ID:', ingredienteIdReal);
         window.abrirModalAjusteRapido(ingredienteIdReal, nombreIngrediente, stockActual, null);
-        
+
         const actualizarOriginal = window.actualizarResumenIngredientes;
-        window.actualizarResumenIngredientes = async function() {
-            console.log('🔄 [AJUSTE-JS] Recargando tabla después del ajuste...');
+        window.actualizarResumenIngredientes = async function () {
             await cargarIngredientes(usuarioId);
             window.actualizarResumenIngredientes = actualizarOriginal;
         };

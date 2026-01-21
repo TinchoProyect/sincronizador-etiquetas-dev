@@ -8,15 +8,15 @@ function mostrarMensaje(mensaje, tipo = 'error') {
     const mensajeDiv = document.createElement('div');
     mensajeDiv.className = tipo === 'error' ? 'mensaje-error' : 'mensaje-exito';
     mensajeDiv.textContent = mensaje;
-    
+
     // Remover mensaje anterior si existe
     const mensajeAnterior = document.querySelector('.mensaje-error, .mensaje-exito');
     if (mensajeAnterior) {
         mensajeAnterior.remove();
     }
-    
+
     contenedor.insertBefore(mensajeDiv, contenedor.firstChild);
-    
+
     // Remover el mensaje después de 3 segundos
     setTimeout(() => {
         mensajeDiv.remove();
@@ -26,18 +26,16 @@ function mostrarMensaje(mensaje, tipo = 'error') {
 // Función para cargar sectores
 async function cargarSectores() {
     try {
-        console.log('🔄 Cargando sectores...');
         const response = await fetch('http://localhost:3002/api/produccion/sectores');
-        
+
         if (!response.ok) {
             throw new Error('Error al cargar sectores');
         }
-        
+
         sectoresList = await response.json();
-        console.log('✅ Sectores cargados:', sectoresList);
-        
+
         actualizarTablaSectores();
-        
+
     } catch (error) {
         console.error('❌ Error al cargar sectores:', error);
         mostrarMensaje('No se pudieron cargar los sectores');
@@ -89,7 +87,6 @@ function cerrarModal() {
 // Función para crear un nuevo sector
 async function crearSector(datos) {
     try {
-        console.log('📝 Creando sector:', datos);
         const response = await fetch('http://localhost:3002/api/produccion/sectores', {
             method: 'POST',
             headers: {
@@ -106,7 +103,7 @@ async function crearSector(datos) {
         await cargarSectores();
         mostrarMensaje('Sector creado exitosamente', 'exito');
         cerrarModal();
-        
+
     } catch (error) {
         console.error('❌ Error:', error);
         mostrarMensaje(error.message || 'No se pudo crear el sector');
@@ -116,7 +113,6 @@ async function crearSector(datos) {
 // Función para actualizar un sector
 async function actualizarSector(id, datos) {
     try {
-        console.log('📝 Actualizando sector:', id, datos);
         const response = await fetch(`http://localhost:3002/api/produccion/sectores/${id}`, {
             method: 'PUT',
             headers: {
@@ -133,7 +129,7 @@ async function actualizarSector(id, datos) {
         await cargarSectores();
         mostrarMensaje('Sector actualizado exitosamente', 'exito');
         cerrarModal();
-        
+
     } catch (error) {
         console.error('❌ Error:', error);
         mostrarMensaje(error.message || 'No se pudo actualizar el sector');
@@ -143,9 +139,8 @@ async function actualizarSector(id, datos) {
 // Función para editar un sector
 async function editarSector(id) {
     try {
-        console.log('✏️ Editando sector:', id);
         const sector = sectoresList.find(s => s.id === id);
-        
+
         if (!sector) {
             throw new Error('Sector no encontrado');
         }
@@ -158,7 +153,7 @@ async function editarSector(id) {
         document.getElementById('descripcion').value = sector.descripcion || '';
 
         abrirModal('Editar Sector');
-        
+
     } catch (error) {
         console.error('❌ Error:', error);
         mostrarMensaje(error.message || 'No se pudo cargar el sector para editar');
@@ -178,7 +173,6 @@ async function eliminarSector(id) {
     }
 
     try {
-        console.log('🗑️ Eliminando sector:', id);
         const response = await fetch(`http://localhost:3002/api/produccion/sectores/${id}`, {
             method: 'DELETE'
         });
@@ -190,7 +184,7 @@ async function eliminarSector(id) {
 
         await cargarSectores();
         mostrarMensaje('Sector eliminado exitosamente', 'exito');
-        
+
     } catch (error) {
         console.error('❌ Error:', error);
         mostrarMensaje(error.message || 'No se pudo eliminar el sector');
@@ -199,7 +193,6 @@ async function eliminarSector(id) {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Página de sectores cargada, inicializando...');
 
     // Cargar sectores al iniciar
     cargarSectores();
@@ -224,14 +217,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Manejar envío del formulario
     document.getElementById('form-sector').addEventListener('submit', async (e) => {
         e.preventDefault();
-        console.log('📝 Formulario de sector enviado');
 
         const datos = {
             nombre: document.getElementById('nombre').value.trim(),
             descripcion: document.getElementById('descripcion').value.trim() || null
         };
-
-        console.log('📊 Datos a enviar:', datos);
 
         if (sectorEditando) {
             await actualizarSector(sectorEditando.id, datos);

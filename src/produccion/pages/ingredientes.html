@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -41,7 +42,8 @@
             background-color: var(--primary-dark, #0056b3);
         }
 
-        .btn-editar, .btn-eliminar {
+        .btn-editar,
+        .btn-eliminar {
             padding: 6px 12px;
             border: none;
             border-radius: 4px;
@@ -77,7 +79,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.5);
+            background-color: rgba(0, 0, 0, 0.5);
             z-index: 1000;
             overflow-y: auto;
         }
@@ -182,6 +184,7 @@
                 transform: translateX(100%);
                 opacity: 0;
             }
+
             to {
                 transform: translateX(0);
                 opacity: 1;
@@ -193,6 +196,7 @@
                 transform: translateX(0);
                 opacity: 1;
             }
+
             to {
                 transform: translateX(100%);
                 opacity: 0;
@@ -200,27 +204,28 @@
         }
 
         /* Ajuste del container principal para el nuevo layout */
-        body > .container {
+        body>.container {
             max-width: 100%;
             padding: 0;
             margin: 0;
         }
 
-        body > .container > header {
+        body>.container>header {
             padding: 20px;
             background: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             margin-bottom: 0;
         }
 
-        body > .container > footer {
+        body>.container>footer {
             padding: 20px;
             background: white;
-            box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
             margin-top: 0;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -233,7 +238,7 @@
             <div class="panel-config" id="panel-config">
                 <!-- Resizer Handle -->
                 <div class="panel-resizer" id="panel-resizer"></div>
-                
+
                 <div class="config-header">
                     <h2>⚙️ Filtros y Configuración</h2>
                     <p>Personaliza la vista de ingredientes</p>
@@ -319,10 +324,13 @@
                         <div class="actions-bar">
                             <h2>Lista de Ingredientes</h2>
                             <div class="actions-buttons">
-                                <button id="btn-inventario-ingredientes" class="btn-inventario" onclick="abrirVentana('inventario-ingredientes.html', 'inventarioIngredientes')">
+                                <button id="btn-inventario-ingredientes" class="btn-inventario"
+                                    onclick="abrirVentana('inventario-ingredientes.html', 'inventarioIngredientes')">
                                     📋 Inventario
                                 </button>
-                                <button id="btn-gestionar-sectores" class="btn-inventario" onclick="abrirVentana('sectores.html', 'gestionSectores')" style="background-color: #28a745;">
+                                <button id="btn-gestionar-sectores" class="btn-inventario"
+                                    onclick="abrirVentana('sectores.html', 'gestionSectores')"
+                                    style="background-color: #28a745;">
                                     🏢 Gestionar Sectores
                                 </button>
                                 <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
@@ -420,28 +428,18 @@
                     <h5 id="modal-mix-titulo">Composición del Mix</h5>
                     <span class="close-modal">&times;</span>
                 </div>
-                
+
                 <!-- Sección de agregar ingrediente (compacta en una línea) -->
                 <div class="agregar-ingrediente-row">
                     <div class="input-ingrediente-wrapper">
-                        <input 
-                            type="text" 
-                            id="buscar-ingrediente-mix" 
-                            placeholder="Buscar ingrediente..."
-                            autocomplete="off"
-                        >
+                        <input type="text" id="buscar-ingrediente-mix" placeholder="Buscar ingrediente..."
+                            autocomplete="off">
                         <ul id="lista-resultados-mix" class="lista-resultados-mix"></ul>
                     </div>
-                    <input 
-                        type="number" 
-                        id="cantidad-ingrediente-mix" 
-                        placeholder="Kg"
-                        step="0.001" 
-                        min="0.001"
-                    >
+                    <input type="number" id="cantidad-ingrediente-mix" placeholder="Kg" step="0.001" min="0.001">
                     <button id="btn-agregar-a-mix" class="btn-agregar-inline" title="Agregar ingrediente">+</button>
                 </div>
-                
+
                 <!-- Tabla de composición actual -->
                 <div class="tabla-mix-container">
                     <table class="tabla-mix-ingredientes">
@@ -494,12 +492,14 @@
 
                     <div class="form-group">
                         <label for="nuevos-kilos">Nuevos kilos:</label>
-                        <input type="number" id="nuevos-kilos" min="0" step="0.01" placeholder="Ingrese los nuevos kilos">
+                        <input type="number" id="nuevos-kilos" min="0" step="0.01"
+                            placeholder="Ingrese los nuevos kilos">
                     </div>
 
                     <div class="form-group">
                         <label for="motivo-ajuste">Motivo del ajuste:</label>
-                        <textarea id="motivo-ajuste" rows="3" placeholder="Describa el motivo del ajuste (opcional)"></textarea>
+                        <textarea id="motivo-ajuste" rows="3"
+                            placeholder="Describa el motivo del ajuste (opcional)"></textarea>
                     </div>
 
                     <div class="modal-actions">
@@ -525,7 +525,7 @@
         function toggleAccordion(accordionId) {
             const header = event.currentTarget;
             const content = document.getElementById(`accordion-${accordionId}`);
-            
+
             header.classList.toggle('collapsed');
             content.classList.toggle('collapsed');
         }
@@ -572,11 +572,10 @@
 
         // Inicializar sistema de sectores
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('🚀 Inicializando sistema de sectores...');
-            
+
             // Cargar usuarios con stock y crear lista en panel lateral
             await inicializarSectoresPanel();
-            
+
             // Activar depósito por defecto
             await activarTabDeposito();
         });
@@ -584,20 +583,18 @@
         // Función para cargar usuarios con stock y crear lista en panel
         async function inicializarSectoresPanel() {
             try {
-                console.log('🔍 Cargando usuarios con stock...');
                 const response = await fetch('http://localhost:3002/api/produccion/ingredientes/usuarios-con-stock');
-                
+
                 if (!response.ok) {
                     console.warn('⚠️ No se pudieron cargar usuarios con stock');
                     return;
                 }
-                
+
                 usuariosConStock = await response.json();
-                console.log(`✅ Encontrados ${usuariosConStock.length} usuarios con stock`);
-                
+
                 // Renderizar lista de sectores en el panel
                 renderizarSectoresPanel();
-                
+
             } catch (error) {
                 console.error('❌ Error al cargar usuarios con stock:', error);
             }
@@ -607,9 +604,9 @@
         function renderizarSectoresPanel() {
             const container = document.getElementById('sectores-lista-container');
             if (!container) return;
-            
+
             container.innerHTML = '';
-            
+
             // Crear item para Depósito
             const depositoItem = document.createElement('div');
             depositoItem.className = 'sector-item activo';
@@ -617,7 +614,7 @@
             depositoItem.textContent = '📦 Depósito';
             depositoItem.onclick = () => activarSector(depositoItem, 'deposito');
             container.appendChild(depositoItem);
-            
+
             // Crear items para usuarios con stock
             usuariosConStock.forEach(usuario => {
                 const item = document.createElement('div');
@@ -637,7 +634,7 @@
                 item.classList.remove('activo');
             });
             element.classList.add('activo');
-            
+
             // Activar la vista correspondiente
             if (usuarioId) {
                 activarTabUsuario(usuarioId);
@@ -648,16 +645,15 @@
 
         // Función para activar tab de depósito
         async function activarTabDeposito() {
-            console.log('🔄 Activando vista de depósito...');
-            
+
             tabActiva = 'deposito';
-            
+
             // Actualizar encabezado de columna
             const columnaDinamica = document.getElementById('columna-dinamica');
             if (columnaDinamica) {
                 columnaDinamica.textContent = 'Stock Actual';
             }
-            
+
             // Cargar ingredientes del depósito
             if (window.cargarIngredientes) {
                 await window.cargarIngredientes();
@@ -666,16 +662,15 @@
 
         // Función para activar tab de usuario
         async function activarTabUsuario(usuarioId) {
-            console.log(`🔄 Activando vista de usuario ${usuarioId}...`);
-            
+
             tabActiva = `usuario-${usuarioId}`;
-            
+
             // Actualizar encabezado de columna
             const columnaDinamica = document.getElementById('columna-dinamica');
             if (columnaDinamica) {
                 columnaDinamica.textContent = 'Stock Personal';
             }
-            
+
             // Cargar stock del usuario
             await cargarStockUsuario(usuarioId);
         }
@@ -683,22 +678,20 @@
         // Función para cargar stock de usuario
         async function cargarStockUsuario(usuarioId) {
             try {
-                console.log(`🔍 Cargando stock para usuario ${usuarioId}...`);
                 const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
-                
+
                 if (!response.ok) {
                     throw new Error('Error al cargar stock del usuario');
                 }
-                
+
                 const stockUsuario = await response.json();
-                console.log(`✅ Stock cargado:`, stockUsuario);
-                
+
                 // Renderizar tabla
                 renderizarTablaUsuario(stockUsuario);
-                
+
                 // Limpiar filtros
                 limpiarFiltros();
-                
+
             } catch (error) {
                 console.error(`❌ Error al cargar stock del usuario ${usuarioId}:`, error);
                 mostrarError('No se pudo cargar el stock del usuario');
@@ -706,82 +699,28 @@
         }
 
         // Función para renderizar tabla de usuario
-        
-        // --- FUNCIÓN PUENTE PARA EL MODAL DE AJUSTE ---
-        window.abrirModalAjusteDesdeTabla = function(dummy, nombre, stock, idReal) {
-            console.log(' Click en ajuste:', nombre, stock, idReal);
-            
-            // Buscar el ID de usuario activo desde el DOM (clase .activo)
-            const itemActivo = document.querySelector('.sector-item.activo');
-            const usuarioId = itemActivo ? itemActivo.dataset.usuarioId : null;
-
-            if (!usuarioId) {
-                alert('Error: No se detectó el usuario activo.');
-                return;
-            }
-
-            // 🔧 CRÍTICO: Crear selector filtro-usuario ANTES de llamar a abrirModalAjusteRapido
-            let selectorFiltro = document.getElementById('filtro-usuario');
-            if (!selectorFiltro) {
-                selectorFiltro = document.createElement('select');
-                selectorFiltro.id = 'filtro-usuario';
-                selectorFiltro.style.display = 'none';
-                document.body.appendChild(selectorFiltro);
-                console.log('✅ [AJUSTE] Selector filtro-usuario creado');
-            }
-            selectorFiltro.value = usuarioId;
-            console.log(`✅ [AJUSTE] Usuario ${usuarioId} establecido en filtro-usuario`);
-
-            // Intentar usar la función del módulo externo si está disponible
-            if (typeof window.abrirModalAjusteRapido === 'function') {
-                // Parámetros: (ingredienteId, nombreIngrediente, stockActual, carroId)
-                // En vista de usuario, carroId es null
-                window.abrirModalAjusteRapido(idReal, nombre, stock, null);
-                
-                // Recarga automática al confirmar
-                setTimeout(() => {
-                    const btn = document.getElementById('btn-confirmar-ajuste');
-                    if (btn) {
-                        // Clonamos para evitar listeners duplicados
-                        const newBtn = btn.cloneNode(true);
-                        btn.parentNode.replaceChild(newBtn, btn);
-                        
-                        newBtn.addEventListener('click', () => {
-                            console.log(' Recargando vista de usuario...');
-                            setTimeout(() => cargarStockUsuario(usuarioId), 500); 
-                        });
-                    }
-                }, 500);
-            } else {
-                console.error('Falta ajusteRapido.js');
-                alert('El módulo de ajustes no está cargado. Recarga la página con Ctrl+F5.');
-            }
-        };
-        
-
         function renderizarTablaUsuario(stockUsuario) {
             const tbody = document.getElementById('tabla-ingredientes-body');
             if (!tbody) return;
-            
+
             tbody.innerHTML = '';
-            
+
             if (!stockUsuario || stockUsuario.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="9" class="text-center">Este usuario no tiene stock de ingredientes</td></tr>';
                 return;
             }
-            
+
             stockUsuario.forEach(item => {
                 const row = document.createElement('tr');
-                
+
                 let tipoOrigen = 'Simple';
                 if (item.origen_mix_id !== null && item.origen_mix_id !== undefined) {
                     tipoOrigen = 'Sobrante de Mix';
                 }
-                
+
                 // 🔍 DEBUG: Ver qué ID tiene el item
                 const ingredienteId = item.ingrediente_id || item.id;
-                console.log(`🔍 [TABLA] ${item.nombre_ingrediente}: ingrediente_id=${item.ingrediente_id}, id=${item.id}, final=${ingredienteId}`);
-                
+
                 row.innerHTML = `
                     <td>${item.nombre_ingrediente}</td>
                     <td>${item.unidad_medida || '-'}</td>
@@ -802,7 +741,7 @@
                         </button>
                     </td>
                 `;
-                
+
                 tbody.appendChild(row);
             });
         }
@@ -815,7 +754,7 @@
                 'filtros-stock-container',
                 'filtros-sectores-container'
             ];
-            
+
             containers.forEach(containerId => {
                 const container = document.getElementById(containerId);
                 if (container) {
@@ -830,58 +769,24 @@
             const mensajeDiv = document.createElement('div');
             mensajeDiv.className = 'mensaje-error';
             mensajeDiv.textContent = mensaje;
-            
+
             const mensajeAnterior = document.querySelector('.mensaje-error, .mensaje-exito');
             if (mensajeAnterior) {
                 mensajeAnterior.remove();
             }
-            
+
             contenedor.insertBefore(mensajeDiv, contenedor.firstChild);
-            
+
             setTimeout(() => {
                 mensajeDiv.remove();
             }, 5000);
         }
 
-        // ==========================================
-        // FUNCIÓN PARA ABRIR AJUSTE DESDE TABLA HTML
-        // ==========================================
-        window.abrirModalAjusteDesdeTablaHTML = async function(ingredienteId, nombreIngrediente, stockActual, usuarioId) {
-            console.log('🔧 [AJUSTE-HTML] Abriendo modal de ajuste desde tabla HTML');
-            console.log(`   - Ingrediente: ${nombreIngrediente} (ID: ${ingredienteId})`);
-            console.log(`   - Stock actual: ${stockActual}`);
-            console.log(`   - Usuario ID: ${usuarioId}`);
-            
-            // Crear selector oculto para que ajusteRapido.js lo detecte
-            let selectorFiltro = document.getElementById('filtro-usuario');
-            if (!selectorFiltro) {
-                selectorFiltro = document.createElement('select');
-                selectorFiltro.id = 'filtro-usuario';
-                selectorFiltro.style.display = 'none';
-                document.body.appendChild(selectorFiltro);
-            }
-            selectorFiltro.value = usuarioId;
-            
-            // Llamar a la función de ajusteRapido.js
-            if (typeof window.abrirModalAjusteRapido === 'function') {
-                window.abrirModalAjusteRapido(ingredienteId, nombreIngrediente, stockActual, null);
-                
-                // Configurar recarga después del ajuste
-                const actualizarOriginal = window.actualizarResumenIngredientes;
-                window.actualizarResumenIngredientes = async function() {
-                    console.log('🔄 [AJUSTE-HTML] Recargando tabla después del ajuste...');
-                    await cargarStockUsuario(usuarioId);
-                    window.actualizarResumenIngredientes = actualizarOriginal;
-                };
-            } else {
-                alert('❌ Error: Módulo de ajuste rápido no disponible');
-            }
-        };
-        
         // Hacer funciones disponibles globalmente
         window.tabActiva = () => tabActiva;
         window.activarTabDeposito = activarTabDeposito;
         window.activarTabUsuario = activarTabUsuario;
     </script>
 </body>
+
 </html>

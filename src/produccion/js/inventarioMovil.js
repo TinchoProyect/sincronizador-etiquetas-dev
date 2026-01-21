@@ -386,6 +386,9 @@ function configurarUI() {
     const btnPrintSector = document.getElementById('btn-print-sector-movil');
     if (btnPrintSector) btnPrintSector.addEventListener('click', window.imprimirEtiquetaSector);
 
+    const btnFinalizar = document.getElementById('btn-finalizar-movil');
+    if (btnFinalizar) btnFinalizar.addEventListener('click', window.solicitarFinalizarInventario);
+
     // MODAL SECTORES
     const btnCancelPrint = document.getElementById('btn-cancelar-print-movil');
     if (btnCancelPrint) btnCancelPrint.addEventListener('click', () => {
@@ -812,6 +815,27 @@ function updateDiffBar(diff, neutral = false) {
     }
 }
 
+function resetearFormulario() {
+    articuloActual = null;
+
+    // Ocultar panel de datos
+    const panel = document.getElementById('info-articulo');
+    if (panel) panel.style.display = 'none';
+
+    // Mostrar placeholder
+    const placeholder = document.getElementById('placeholder-carga');
+    if (placeholder) placeholder.style.display = 'block';
+
+    // Limpiar input de busqueda principal
+    const buscador = document.getElementById('buscador-movil');
+    if (buscador) {
+        buscador.value = '';
+    }
+
+    // Foco el input principal
+    focarInputPrincipal();
+}
+
 function enviarDatos() {
     if (!articuloActual) return;
 
@@ -842,13 +866,60 @@ function enviarDatos() {
     articuloActual.stock_contado = cantidad;
     articuloActual.contado = true;
 
+    // Feedback inmediato UI (Optimistic update)
+    // El socket 'articulo_confirmado' hara el resto, pero podemos avanzar UI
+    articuloActual.stock_contado = cantidad;
+    articuloActual.contado = true;
+
     const btn = document.getElementById('btn-cargar');
     if (btn) {
         btn.textContent = "✅ GUARDADO";
         btn.classList.remove('btn-primary-block');
         btn.classList.add('btn-success');
     }
+
+    // AUTO-FOCUS / SCANNER FIRST
+    // Esperar un momento visual y resetear para permitir input inmediato
+    setTimeout(() => {
+        resetearFormulario(); // Esto debería borrar el articuloActual y mostrar el input de busqueda
+        focarInputPrincipal();
+    }, 800);
 }
+
+// ==========================================
+// 🏁 FINALIZACIÓN DEL INVENTARIO
+// ==========================================
+window.solicitarFinalizarInventario = () => {
+    // 1. Calcular resumen de cambios a CERO
+    // Items que tienen stock en sistema > 0 pero NO fueron contados
+    const itemsAZero = listaIngredientes.filter(i => !i.contado && (i.stock_sistema || i.stock_actual) > 0);
+
+    let mensaje = "⚠️ ¿Finalizar Inventario?\n\n";
+
+    if (itemsAZero.length > 0) {
+        mensaje += `📉 SE PONDRÁN A CERO (${itemsAZero.length}) ARTÍCULOS:\n`;
+        // Mostrar los primeros 5 como ejemplo
+        itemsAZero.slice(0, 5).forEach(i => {
+            mensaje += ` - ${i.nombre} (Sys: ${i.stock_sistema || i.stock_actual})\n`;
+        });
+        if (itemsAZero.length > 5) mensaje += `... y ${itemsAZero.length - 5} más.\n`;
+    } else {
+        mensaje += "✅ Todo parece en orden. No hay items con stock que queden sin contar.\n";
+    }
+
+    mensaje += "\nEsta acción es irreversible. Se generará el informe y cerrará la sesión.";
+
+    // 2. Confirmación Nativa
+    if (confirm(mensaje)) {
+        if (confirm("¿Estás 100% seguro?")) {
+            socket.emit('finalizar_inventario', {
+                sessionId,
+                confirmado: true
+            });
+            mostrarToast("🏁 Finalizando...");
+        }
+    }
+};
 
 window.solicitarImpresion = () => {
     if (articuloActual) {

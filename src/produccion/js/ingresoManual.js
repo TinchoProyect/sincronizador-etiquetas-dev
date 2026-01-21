@@ -101,8 +101,6 @@ let estadoOriginalBoton = {
 let isModalInitialized = false;
 
 export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
-  console.log('✔️ Función abrirModalIngresoManual ejecutada');
-  console.log(`Tipo de ingrediente: ${esMix ? 'Mix' : 'Simple'}`);
   ingredienteSeleccionado = ingredienteId;
   carroIdGlobal = carroId;
 
@@ -144,43 +142,23 @@ export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
 function inicializarModal() {
   // Prevenir inicialización múltiple
   if (isModalInitialized) {
-    console.log('ℹ️ Modal ya inicializado, omitiendo...');
     return;
   }
 
-  console.log('🔧 [INIT] Iniciando inicialización del modal de ingreso manual...');
-  console.log('🔧 [INIT] Estado del DOM:', document.readyState);
-
   try {
     // 🛡️ PASO 1: Obtener referencias a elementos del DOM con validación
-    console.log('🔍 [INIT] Buscando elementos del DOM...');
-
     modal = document.getElementById('modalIngresoManual');
     if (!modal) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: modalIngresoManual - El modal no está disponible en esta página');
       return; // Salir silenciosamente si el modal no existe
     }
-    console.log('✅ [INIT] Modal principal encontrado');
 
     // Buscar elementos dentro del modal
     inputBusqueda = document.getElementById('busquedaArticulo');
-    if (!inputBusqueda) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: busquedaArticulo');
-    } else {
-      console.log('✅ [INIT] Input de búsqueda encontrado');
-    }
-
     btnToggleBusqueda = document.getElementById('btnToggleBusqueda');
-    if (!btnToggleBusqueda) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: btnToggleBusqueda');
-    } else {
-      console.log('✅ [INIT] Botón toggle búsqueda encontrado');
-    }
 
     // ✅ NUEVO: Checkbox de impresión automática (Layout Horizontal Flex)
     const checkboxImprimir = document.getElementById('checkImprimirEtiqueta');
     if (!checkboxImprimir) {
-      console.log('🔧 Inyectando controles de impresión en Layout Horizontal...');
       const footerModal = modal.querySelector('.modal-footer');
       if (footerModal) {
         // 1. Configurar Footer para Alineación Horizontal Perfecta
@@ -239,63 +217,24 @@ function inicializarModal() {
           checkBultos.addEventListener('change', function () {
             if (this.checked) {
               checkKilos.checked = false;
-              console.log('📦 Selección manual: Bultos activo -> Kilos desactivado');
             }
           });
 
           checkKilos.addEventListener('change', function () {
             if (this.checked) {
               checkBultos.checked = false;
-              console.log('⚖️ Selección manual: Kilos activo -> Bultos desactivado');
             }
           });
         }
       }
     }
 
-
-
     listaResultados = document.getElementById('listaArticulos');
-    if (!listaResultados) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: listaArticulos');
-    } else {
-      console.log('✅ [INIT] Lista de resultados encontrada');
-    }
-
     inputKilos = document.getElementById('inputKilos');
-    if (!inputKilos) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: inputKilos');
-    } else {
-      console.log('✅ [INIT] Input de kilos encontrado');
-    }
-
     inputCantidad = document.getElementById('inputCantidad');
-    if (!inputCantidad) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: inputCantidad');
-    } else {
-      console.log('✅ [INIT] Input de cantidad encontrado');
-    }
-
     btnConfirmar = document.getElementById('btnConfirmarIngreso');
-    if (!btnConfirmar) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: btnConfirmarIngreso');
-    } else {
-      console.log('✅ [INIT] Botón confirmar encontrado');
-    }
-
     btnCancelar = document.getElementById('btnCancelarIngreso');
-    if (!btnCancelar) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: btnCancelarIngreso');
-    } else {
-      console.log('✅ [INIT] Botón cancelar encontrado');
-    }
-
     nombreIngredienteDisplay = modal.querySelector('.nombre-ingrediente');
-    if (!nombreIngredienteDisplay) {
-      console.warn('⚠️ [INIT] Elemento no encontrado: .nombre-ingrediente');
-    } else {
-      console.log('✅ [INIT] Display de nombre de ingrediente encontrado');
-    }
 
     // 🛡️ PASO 2: Crear botón editar kilos (solo si inputKilos existe)
     if (inputKilos) {
@@ -303,8 +242,6 @@ function inicializarModal() {
     }
 
     // 🛡️ PASO 3: Asignar event listeners con validación
-    console.log('🔗 [INIT] Asignando event listeners...');
-
     if (inputBusqueda) {
       inputBusqueda.addEventListener('input', manejarBusqueda);
       inputBusqueda.addEventListener('keydown', (e) => {
@@ -315,70 +252,41 @@ function inicializarModal() {
           }
         }
       });
-      console.log('✅ [INIT] Listeners de inputBusqueda asignados');
     }
 
     if (btnToggleBusqueda) {
       btnToggleBusqueda.addEventListener('click', toggleModoBusqueda);
-      console.log('✅ [INIT] Listener de btnToggleBusqueda asignado');
     }
 
     if (btnConfirmar) {
       btnConfirmar.addEventListener('click', confirmarIngreso);
-      console.log('✅ [INIT] Listener de btnConfirmar asignado');
     }
-
-    // ❌ ELIMINADO: Botón "Cancelar" ya no existe en el HTML
-    // El modal ahora solo se cierra con el botón X del header
 
     // Agregar listener al botón X de cierre en el header
     const btnCloseHeader = modal.querySelector('.modal-header .close-modal');
     if (btnCloseHeader) {
       btnCloseHeader.addEventListener('click', cerrarModal);
-      console.log('✅ [INIT] Listener del botón X (header) asignado');
-    } else {
-      console.warn('⚠️ [INIT] Botón X del header no encontrado');
     }
-
-    // ❌ ELIMINADO: Listener para cerrar modal al hacer clic fuera
-    // El modal ahora es ESTÁTICO (no se cierra al hacer clic en el backdrop)
-    console.log('✅ [INIT] Modal configurado como ESTÁTICO (no cierra con clic externo)');
 
     // ✅ NUEVO: Hacer el modal DRAGGABLE desde el header
     hacerModalDraggable();
-    console.log('✅ [INIT] Funcionalidad DRAGGABLE habilitada');
 
     // 🛡️ PASO 4: Marcar como inicializado
     isModalInitialized = true;
-    console.log('✅ [INIT] Modal de ingreso manual inicializado correctamente');
-    console.log('📊 [INIT] Resumen de elementos:');
-    console.log(`   - Modal: ${modal ? '✅' : '❌'}`);
-    console.log(`   - Input Búsqueda: ${inputBusqueda ? '✅' : '❌'}`);
-    console.log(`   - Botón Toggle: ${btnToggleBusqueda ? '✅' : '❌'}`);
-    console.log(`   - Lista Resultados: ${listaResultados ? '✅' : '❌'}`);
-    console.log(`   - Input Kilos: ${inputKilos ? '✅' : '❌'}`);
-    console.log(`   - Input Cantidad: ${inputCantidad ? '✅' : '❌'}`);
-    console.log(`   - Botón Confirmar: ${btnConfirmar ? '✅' : '❌'}`);
-    console.log(`   - Botón Cancelar: ${btnCancelar ? '✅' : '❌'}`);
 
   } catch (error) {
     console.error('❌ [INIT] Error crítico durante la inicialización del modal:', error);
-    console.error('❌ [INIT] Stack trace:', error.stack);
-    // No lanzar el error para evitar romper otros scripts
   }
 }
 
 // 🛡️ INICIALIZACIÓN SEGURA CON MÚLTIPLES ESTRATEGIAS
 // Estrategia 1: DOMContentLoaded (preferida)
 if (document.readyState === 'loading') {
-  console.log('📄 [INIT] DOM aún cargando, esperando DOMContentLoaded...');
   document.addEventListener('DOMContentLoaded', () => {
-    console.log('📄 [INIT] DOMContentLoaded disparado, inicializando modal...');
     inicializarModal();
   });
 } else {
   // Estrategia 2: DOM ya cargado, inicializar inmediatamente
-  console.log('📄 [INIT] DOM ya cargado, inicializando modal inmediatamente...');
   inicializarModal();
 }
 
