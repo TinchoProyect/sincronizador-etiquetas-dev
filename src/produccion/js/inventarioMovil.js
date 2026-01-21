@@ -1,842 +1,934 @@
 /**
- * Inventario Móvil - JavaScript
- * 
- * Este archivo maneja la lógica de la vista móvil para inventario.
- * Se conecta con el formulario de inventario de la PC mediante WebSocket.
- * NO modifica directamente el stock, solo envía datos al formulario de PC.
+ * Inventario Móvil Full-Service - JavaScript
+ * Versión 6.0 - Final Refinements (Sectors, Decimals, Printing)
  */
 
-// Declaraciones de tipos para evitar errores de TypeScript/ESLint
-/* global io */
-
-// Variables globales para el inventario móvil
 let socket = null;
 let sessionId = null;
 let articuloActual = null;
-let conectado = false;
+let listaIngredientes = [];
+let sectoresSesion = [];
 let codeReader = null;
-let intentosConexion = 0;
-const MAX_INTENTOS_CONEXION = 3;
-const DELAY_RETRY_MS = 1000;
 
-/**
- * Inicializa la aplicación móvil
- */
+const CONF = { RETRY: 2000, MAX: 5 };
+
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('📱 [MÓVIL] ===== INICIANDO APLICACIÓN MÓVIL =====');
-    console.log('📱 [MÓVIL] Timestamp:', new Date().toISOString());
-    console.log('📱 [MÓVIL] User Agent:', navigator.userAgent);
-    
-    // Obtener y validar sessionId de la URL
     const urlParams = new URLSearchParams(window.location.search);
     sessionId = urlParams.get('session');
-    
-    console.log('🔍 [MÓVIL] URL completa:', window.location.href);
-    console.log('🔍 [MÓVIL] Search params:', window.location.search);
-    console.log('🔍 [MÓVIL] Hash:', window.location.hash);
-    console.log('🔍 [MÓVIL] Pathname:', window.location.pathname);
-    console.log('🔍 [MÓVIL] Session ID extraído:', sessionId);
-    
-    // Validación detallada del sessionId
-    if (!sessionId) {
-        console.error('❌ [MÓVIL] ERROR: No se encontró sessionId en la URL');
-        console.error('❌ [MÓVIL] URL params disponibles:', Array.from(urlParams.entries()));
-        mostrarSinInventario('No se proporcionó un ID de sesión válido. Verifique el enlace QR.');
-        return;
-    }
 
-    if (sessionId.trim() === '') {
-        console.error('❌ [MÓVIL] ERROR: sessionId está vacío');
-        mostrarSinInventario('El ID de sesión está vacío. Verifique el enlace QR.');
-        return;
+    if (sessionId) {
+        inicializarWebSocket();
+        configurarUI();
+        focarInputPrincipal();
+    } else {
+        alert("Session ID faltante");
     }
-    
-    // Validar formato del sessionId
-    if (!sessionId.startsWith('inv_')) {
-        console.error('❌ [MÓVIL] ERROR: Formato de sessionId inválido');
-        console.error('❌ [MÓVIL] sessionId recibido:', sessionId);
-        console.error('❌ [MÓVIL] Formato esperado: inv_TIMESTAMP_RANDOM');
-        mostrarSinInventario('ID de sesión inválido. Verifique el enlace QR.');
-        return;
-    }
-
-    // VALIDACIÓN SIMPLIFICADA Y ROBUSTA - Compatible con ambos formatos
-    console.log('🔍 [MÓVIL] Session ID recibido:', sessionId);
-    
-    // Validar que tenga el formato correcto para ingredientes o artículos
-    const esIngredientes = sessionId.startsWith('inv_ing_');
-    const esArticulos = sessionId.startsWith('inv_') && !sessionId.startsWith('inv_ing_');
-    
-    console.log('🔍 [MÓVIL] Es ingredientes:', esIngredientes);
-    console.log('🔍 [MÓVIL] Es artículos:', esArticulos);
-    
-    // Validación básica - solo verificar que sea uno de los dos tipos válidos
-    if (!esIngredientes && !esArticulos) {
-        console.error('❌ [MÓVIL] ERROR: sessionId no es de inventario válido');
-        console.error('❌ [MÓVIL] sessionId recibido:', sessionId);
-        mostrarSinInventario('Tipo de inventario no reconocido. Verifique el enlace QR.');
-        return;
-    }
-    
-    console.log('✅ [MÓVIL] Validación exitosa - Tipo detectado:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
-    
-    console.log('✅ [MÓVIL] Tipo de inventario detectado:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
-    
-    console.log('✅ Session ID válido:', sessionId);
-    
-    // Inicializar WebSocket
-    inicializarWebSocket();
-    configurarEventListeners();
-    
-    // Cargar la librería @zxing/browser de forma dinámica
-    cargarLibreriaZXing();
 });
 
-/**
- * Carga la librería @zxing/browser de forma dinámica
- */
-async function cargarLibreriaZXing() {
-    try {
-        console.log('📱 [MÓVIL] Cargando librería @zxing/browser...');
-        
-        // Verificar si ya está cargada
-        if (window.ZXing) {
-            console.log('📱 [MÓVIL] Librería @zxing/browser ya está disponible');
+// ==========================================
+// 🔌 CONECTIVIDAD
+// ==========================================
+function inicializarWebSocket() {
+    socket = io({ reconnection: true });
+
+    socket.on('connect', () => {
+        socket.emit('unirse_inventario', { sessionId });
+    });
+
+    socket.on('conexion_exitosa', (data) => {
+        console.log("📥 [DEBUG MOVIL] Conexion Exitosa Payload:", data);
+        const elSinInv = document.getElementById('sin-inventario');
+        if (elSinInv) elSinInv.style.display = 'none';
+
+        // No necesitamos 'vista-carga' porque usamos TABS (tab-carga está activo por default)
+        // document.getElementById('vista-carga').style.display = 'block'; 
+
+
+        // Header Info
+        if (data.sectores) {
+            sectoresSesion = data.sectores;
+            actualizarHeaderSectores(sectoresSesion);
+        }
+
+        // AUDITORÍA: Guardar lista maestra
+        if (data.ingredientes && Array.isArray(data.ingredientes)) {
+            console.log(`📥 [SYNC] Recibidos ${data.ingredientes.length} ingredientes base`);
+
+            if (data.ingredientes.length === 0) {
+                console.warn("⚠️ [DEBUG MOVIL] Recibí array de ingredientes VACÍO");
+            }
+
+            // Mapear para asegurar campos
+            listaIngredientes = data.ingredientes.map(i => ({
+                ...i,
+                contado: false,
+                stock_contado: 0
+            }));
+
+            console.log("✅ [DEBUG MOVIL] listaIngredientes actualizada. Longitud:", listaIngredientes.length);
+
+            // Renderizar inicial
+            actualizarProgreso();
+            renderizarHistorialLista();
+        } else {
+            console.error("❌ [DEBUG MOVIL] No llegaron ingredientes o no es array:", data.ingredientes);
+        }
+
+        if (data.usuario) {
+            const badge = document.getElementById('usuario-badge');
+            if (badge) {
+                badge.textContent = data.usuario.nombre.split(' ')[0];
+                badge.style.display = 'inline-block';
+            }
+        }
+    });
+
+    socket.on('datos_inventario', (data) => {
+        console.log("📥 [DEBUG MOVIL] Evento datos_inventario:", data);
+        // Fallback si el backend manda updates parciales
+        // Pero en teoría usamos la lista local como verdad para la UI
+        if (data.ingredientes && Array.isArray(data.ingredientes)) {
+            if (data.ingredientes.length > 0) {
+                listaIngredientes = data.ingredientes;
+                console.log("✅ [DEBUG MOVIL] listaIngredientes actualizada via datos_inventario. Longitud:", listaIngredientes.length);
+            } else {
+                console.warn("⚠️ [DEBUG MOVIL] datos_inventario trajo lista VACÍA. Ignorando para no borrar local.");
+            }
+        }
+        actualizarProgreso();
+        renderizarHistorialLista();
+    });
+
+    socket.on('nuevo_articulo', (data) => {
+        console.log("📥 [WS] Nuevo articulo recibido (Sync Mirror):", data);
+        const item = data.articulo || data.ingrediente;
+        const cant = data.cantidad;
+
+        if (!item) return;
+
+        // Actualizar modelo local
+        // Buscar por ID para seguridad
+        const localItem = listaIngredientes.find(i => i.id === item.id);
+
+        if (localItem) {
+            localItem.contado = true;
+            localItem.stock_contado = parseFloat(cant);
+            // Si el backend manda stock_sistema actualizado, lo tomamos
+            if (item.stock_actual) localItem.stock_actual = item.stock_actual;
+
+            // UI Feedback
+            mostrarToast(`🔄 Sincronizado: ${localItem.nombre}`);
+            actualizarProgreso();
+
+            // Re-render activo si es necesario
+            if (window.tabActual === 'pendientes') renderizarListaPendientes();
+            if (window.tabActual === 'contados') renderizarListaContados();
+        }
+    });
+
+    socket.on('articulo_confirmado', (data) => {
+        mostrarToast("✅ Guardado");
+
+        // Match robusto: ID primero, luego Nombre
+        let local = null;
+        if (data.ingrediente && data.ingrediente.id) {
+            local = listaIngredientes.find(i => i.id === data.ingrediente.id);
+        }
+        if (!local && (data.ingrediente || data.articulo)) {
+            const nombre = (data.ingrediente?.nombre || data.ingrediente || data.articulo).toString().trim();
+            local = listaIngredientes.find(i => i.nombre.trim() === nombre);
+        }
+
+        if (local) {
+            local.stock_contado = parseFloat(data.cantidad);
+            local.contado = true;
+            console.log("✅ [SOCKET] Local update:", local.nombre, local.stock_contado);
+        } else {
+            console.warn("⚠️ [SOCKET] No se encontró localmente item para actualizar:", data);
+        }
+
+        resetearFormulario();
+        actualizarProgreso(); // Esto actualiza los contadores DE INMEDIATO
+
+        // Si estamos en listados, refrescar
+        if (window.tabActual === 'pendientes') renderizarListaPendientes();
+        if (window.tabActual === 'contados') renderizarListaContados();
+    });
+
+    socket.on('inventario_finalizado', (data) => {
+        alert(data.mensaje);
+        location.reload();
+    });
+
+    socket.on('print_status', (data) => {
+        if (data.success) {
+            mostrarToast("🖨️ " + (data.msg || "Imprimiendo..."));
+        } else {
+            console.error("❌ Print error:", data.msg);
+            mostrarToast("❌ " + (data.msg || "Error al imprimir"));
+        }
+    });
+
+    // MOVIDO PARA EVITAR NULL ERROR
+    socket.on('inventario_cancelado', () => {
+        alert("⛔ El inventario ha sido cancelado.");
+        window.location.reload();
+    });
+}
+// FIX: Lógica de extracción de letras
+function actualizarHeaderSectores(sectores) {
+    const el = document.getElementById('info-sectores');
+    if (!el || !sectores) return;
+
+    // Si la lista está vacía, asumimos "TODOS"
+    if (sectores.length === 0) {
+        el.textContent = "TODOS";
+        return;
+    }
+
+    // Intentar extraer letras de descripciones tipo 'Sector "G"'
+    // Si son objetos { id, descripcion ... }
+    // Si son strings directos ...
+    const letras = sectores.map(s => {
+        // Si es objeto
+        let desc = typeof s === 'object' ? (s.descripcion || s.nombre || '') : String(s);
+
+        // Regex para sacar contenido entre comillas: "G" o 'G'
+        const match = desc.match(/["']([^"']+)["']/);
+        if (match && match[1]) {
+            return match[1].toUpperCase();
+        }
+        // Fallback: Si es un número (ID de sector), retornarlo tal cual o buscar la letra si supiéramos el mapa
+        // Si desc es "Sector G" sin comillas, intentar sacar la última letra
+        if (desc.includes('Sector')) {
+            return desc.replace('Sector', '').trim();
+        }
+        return desc;
+    }).filter(x => x);
+
+    // Si detectamos que son muchos o todos, ajustar
+    // Lógica simplificada:
+    // Si detectamos que son muchos o todos, ajustar
+    // Lógica simplificada:
+    let textoSector = '';
+    if (letras.length > 3) {
+        textoSector = `Sec: ${letras.slice(0, 3).join(',')}...`;
+    } else {
+        textoSector = `Sec: ${letras.join(', ')}`;
+    }
+
+    // Inyectar HTML con botón de imprimir y CANCELAR (dentro de la función)
+    el.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span>${textoSector}</span>
+            <button class="btn-xs" onclick="imprimirEtiquetaSector()" style="background:#444; color:#fff; border:none; padding:4px 8px; border-radius:4px;">
+                🖨️
+            </button>
+            <button class="btn-xs" onclick="cancelarInventario()" style="background:#d32f2f; color:#fff; border:none; padding:4px 8px; border-radius:4px; margin-left:5px;">
+                ❌
+            </button>
+        </div>
+    `;
+}
+
+// NUEVO: Cancelar inventario desde móvil
+window.cancelarInventario = () => {
+    if (confirm("⚠️ ¿Estás seguro de CANCELAR el inventario?\n\nSe perderá todo el progreso y se cerrará la sesión.")) {
+        if (confirm("Confirma por segunda vez: ¿CANCELAR definitivamente?")) {
+            socket.emit('cancelar_inventario', { sessionId });
+        }
+    }
+};
+
+// FIX: Lógica de extracción de letras
+
+// NUEVO: Función para imprimir etiqueta de sector (Abre Modal)
+window.imprimirEtiquetaSector = () => {
+    if (!sectoresSesion || !sectoresSesion.length) return;
+
+    const modal = document.getElementById('modal-imprimir-sectores');
+    const container = document.getElementById('lista-sectores-movil');
+    if (!modal || !container) return;
+
+    container.innerHTML = '';
+
+    // "Todos" Header
+    const divTodos = document.createElement('div');
+    divTodos.style.padding = "8px";
+    divTodos.style.borderBottom = "1px solid #eee";
+    divTodos.style.marginBottom = "5px";
+    divTodos.style.fontWeight = "bold";
+    divTodos.innerHTML = `
+        <label style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" id="check-todos-movil" checked style="transform:scale(1.3);"> 
+            Seleccionar Todos
+        </label>`;
+    container.appendChild(divTodos);
+
+    const checkTodos = divTodos.querySelector('input');
+
+    // List Loop
+    sectoresSesion.forEach((sect, index) => {
+        const desc = typeof sect === 'object' ? (sect.descripcion || sect.nombre || '') : String(sect);
+
+        let nombreMostrar = desc;
+        const match = desc.match(/["']([^"']+)["']/);
+        if (match && match[1]) nombreMostrar = `Sector ${match[1].toUpperCase()}`;
+
+        const div = document.createElement('div');
+        div.style.padding = "10px";
+        div.style.borderBottom = "1px solid #f9f9f9";
+        div.innerHTML = `
+            <label style="display:flex; align-items:center; gap:10px;">
+                <input type="checkbox" class="check-sector-print" value="${index}" checked style="transform:scale(1.3);"> 
+                ${nombreMostrar}
+            </label>`;
+        container.appendChild(div);
+    });
+
+    checkTodos.onchange = (e) => {
+        container.querySelectorAll('.check-sector-print').forEach(c => c.checked = e.target.checked);
+    };
+
+    modal.style.display = 'flex';
+};
+
+// ==========================================
+// 📱 TABS LOGIC
+// ==========================================
+window.tabActual = 'carga'; // carga | pendientes | contados
+
+function configurarTabs() {
+    const tabs = document.querySelectorAll('.tab-link');
+    tabs.forEach(t => {
+        t.addEventListener('click', () => {
+            const tabName = t.dataset.tab;
+            cambiarTab(tabName);
+        });
+    });
+
+    // Filtro Pendientes
+    const filtroP = document.getElementById('filtro-pendientes');
+    if (filtroP) {
+        filtroP.addEventListener('input', (e) => {
+            renderizarListaPendientes(e.target.value);
+        });
+    }
+}
+
+function cambiarTab(tabName) {
+    window.tabActual = tabName;
+
+    // 1. Update Buttons
+    document.querySelectorAll('.tab-link').forEach(t => {
+        if (t.dataset.tab === tabName) t.classList.add('active');
+        else t.classList.remove('active');
+    });
+
+    // 2. Update Content
+    document.querySelectorAll('.tab-content').forEach(c => {
+        if (c.id === `tab-${tabName}`) c.classList.add('active');
+        else c.classList.remove('active');
+    });
+
+    // 3. Logic specifics
+    if (tabName === 'carga') {
+        focarInputPrincipal();
+    } else {
+        // Renderizar on demand por si hubo updates minimos
+        if (tabName === 'pendientes') renderizarListaPendientes();
+        if (tabName === 'contados') renderizarListaContados();
+    }
+}
+
+// ==========================================
+// 📱 UI LOGIC REFACTORED
+// ==========================================
+function configurarUI() {
+    configurarTabs();
+    configurarBuscador(); // NUEVO: Lógica de búsqueda separada
+
+    // 2. INPUT CANTIDAD
+    const inputCant = document.getElementById('cantidad');
+    if (inputCant) {
+        inputCant.addEventListener('input', (e) => {
+            let val = e.target.value;
+            if (val.includes(',')) val = val.replace(/,/g, '.');
+            inputCant.value = val;
+            calcularDiferencia();
+        });
+        inputCant.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') enviarDatos();
+        });
+    }
+
+    // 3. BOTONES ACCION
+    const btnCargar = document.getElementById('btn-cargar');
+    if (btnCargar) btnCargar.addEventListener('click', enviarDatos);
+
+    const btnImp = document.getElementById('btn-imprimir');
+    if (btnImp) btnImp.addEventListener('click', solicitarImpresion);
+
+    const btnCam = document.getElementById('btn-camera-toggle');
+    if (btnCam) btnCam.addEventListener('click', abrirCamara);
+
+    const btnCloseCam = document.getElementById('btn-cerrar-scanner');
+    if (btnCloseCam) btnCloseCam.addEventListener('click', () => {
+        document.getElementById('modal-scanner').style.display = 'none';
+        if (codeReader) codeReader.reset();
+        focarInputPrincipal();
+    });
+
+    // 4. NUEVOS BOTONES GLOBALES
+    const btnCancelGlobal = document.getElementById('btn-cancelar-global');
+    if (btnCancelGlobal) btnCancelGlobal.addEventListener('click', window.cancelarInventario);
+
+    const btnPrintSector = document.getElementById('btn-print-sector-movil');
+    if (btnPrintSector) btnPrintSector.addEventListener('click', window.imprimirEtiquetaSector);
+
+    // MODAL SECTORES
+    const btnCancelPrint = document.getElementById('btn-cancelar-print-movil');
+    if (btnCancelPrint) btnCancelPrint.addEventListener('click', () => {
+        document.getElementById('modal-imprimir-sectores').style.display = 'none';
+    });
+
+    const btnConfirmPrint = document.getElementById('btn-confirmar-print-movil');
+    if (btnConfirmPrint) {
+        // Logica ya definida arriba, solo asegurarse que no se duplique listener si re-init
+        // Mejor asignar onclick directo o limpiar antes.
+        // Como 'configurarUI' corre una vez, esta bien addEventListener
+        btnConfirmPrint.onclick = ejecutarImpresionMultipleMovil;
+    }
+}
+
+async function ejecutarImpresionMultipleMovil() {
+    const container = document.getElementById('lista-sectores-movil');
+    const selectedIndices = Array.from(container.querySelectorAll('.check-sector-print:checked')).map(c => parseInt(c.value));
+
+    if (selectedIndices.length === 0) {
+        alert("⚠️ Selecciona al menos un sector.");
+        return;
+    }
+
+    if (confirm(`¿Imprimir ${selectedIndices.length} sectores?`)) {
+        mostrarToast(`🖨️ Iniciando impresión...`);
+        for (let i = 0; i < selectedIndices.length; i++) {
+            const idx = selectedIndices[i];
+            const s = sectoresSesion[idx];
+            let cleanDesc = typeof s === 'object' ? (s.descripcion || s.nombre || `Sector ${s.id}`) : String(s);
+
+            console.log(`🖨️ [MOVIL PRINT ${i + 1}] Enviando:`, cleanDesc);
+            socket.emit('imprimir_etiqueta_sector', { sector: cleanDesc });
+            await new Promise(r => setTimeout(r, 500));
+        }
+        mostrarToast(`✅ Enviadas ${selectedIndices.length} ordenes.`);
+        document.getElementById('modal-imprimir-sectores').style.display = 'none';
+    }
+}
+
+// ------------------------------------------
+// 🔍 BUSQUEDA Y SUGERENCIAS
+// ------------------------------------------
+function configurarBuscador() {
+    const buscador = document.getElementById('buscador-movil');
+    if (!buscador) return;
+
+    buscador.addEventListener('input', (e) => {
+        const val = e.target.value;
+
+        // REGLA: Si empieza con número -> Asumir Barcode -> Silencio (Esperar Enter)
+        if (/^\d/.test(val)) {
+            ocultarDropdown();
             return;
         }
-        
-        // Cargar desde CDN
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/@zxing/browser@latest/umd/index.min.js';
-        script.onload = () => {
-            console.log('✅ [MÓVIL] Librería @zxing/browser cargada exitosamente');
-        };
-        script.onerror = () => {
-            console.error('❌ [MÓVIL] Error al cargar librería @zxing/browser');
-        };
-        document.head.appendChild(script);
-        
-    } catch (error) {
-        console.error('❌ [MÓVIL] Error al cargar librería @zxing/browser:', error);
-    }
-}
 
-/**
- * Inicializa la conexión WebSocket
- */
-function inicializarWebSocket() {
-    try {
-        console.log('📱 [MÓVIL] ===== INICIANDO CONEXIÓN WEBSOCKET =====');
-        console.log('📱 [MÓVIL] Timestamp:', new Date().toISOString());
-        console.log('📱 [MÓVIL] Session ID a usar:', sessionId);
-        console.log('📱 [MÓVIL] URL del servidor:', window.location.origin);
-        
-        // Inicializar socket con reconexión automática
-        socket = io({
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
-        });
-        
-        socket.on('connect', () => {
-            console.log('✅ [MÓVIL] ===== WEBSOCKET CONECTADO =====');
-            console.log('✅ [MÓVIL] Socket ID asignado:', socket.id);
-            console.log('✅ [MÓVIL] Estado de conexión:', socket.connected);
-            
-            // Resetear contador de intentos al conectar
-            intentosConexion = 0;
-            
-            // Intentar unirse a la sesión
-            intentarUnirseAInventario();
-        });
-        
-        /**
-         * Intenta unirse a la sesión de inventario con retry automático
-         */
-        function intentarUnirseAInventario() {
-            intentosConexion++;
-            
-            console.log(`📤 [MÓVIL] ===== INTENTO DE UNIÓN #${intentosConexion}/${MAX_INTENTOS_CONEXION} =====`);
-            console.log('📤 [MÓVIL] Session ID:', sessionId);
-            console.log('📤 [MÓVIL] Timestamp:', new Date().toISOString());
-            
-            // Unirse a la sesión de inventario
-            const datosUnion = { 
-                sessionId,
-                timestamp: Date.now(),
-                userAgent: navigator.userAgent,
-                intento: intentosConexion
-            };
-            
-            console.log('📤 [MÓVIL] Enviando unirse_inventario:');
-            console.log(JSON.stringify(datosUnion, null, 2));
-            
-            socket.emit('unirse_inventario', datosUnion);
+        const valTrimmed = val.trim();
+        // REGLA: Si es texto (>2 chars) -> Buscador
+        if (valTrimmed.length >= 2) {
+            buscarTextoAvanzado(valTrimmed);
+        } else {
+            ocultarDropdown();
+            // Si borró todo, restaurar lista original si estamos en pendientes
+            if (valTrimmed.length === 0 && window.tabActual === 'pendientes') {
+                renderizarListaPendientes();
+            }
         }
+    });
 
-        socket.on('connect_error', (error) => {
-            console.error('❌ [MÓVIL] Error de conexión WebSocket:', error);
-            mostrarSinInventario('Error de conexión con el servidor');
-        });
-        
-        socket.on('conexion_exitosa', (data) => {
-            console.log('🎉 [MÓVIL] ===== CONEXIÓN EXITOSA =====');
-            console.log('🎉 [MÓVIL] Timestamp:', new Date().toISOString());
-            console.log('🎉 [MÓVIL] Datos completos:', JSON.stringify(data, null, 2));
-            console.log('🎉 [MÓVIL] Conectado en intento:', intentosConexion);
-            
-            // Resetear contador de intentos al conectar exitosamente
-            intentosConexion = 0;
-            
-            if (!data || !data.sessionId || !data.usuario) {
-                console.error('❌ [MÓVIL] Datos de conexión incompletos');
-                mostrarSinInventario('Error: Datos de conexión incompletos');
-                return;
-            }
-            
-            if (data.sessionId !== sessionId) {
-                console.error('❌ [MÓVIL] Session ID no coincide');
-                console.error('- Esperado:', sessionId);
-                console.error('- Recibido:', data.sessionId);
-                mostrarSinInventario('Error: ID de sesión no coincide');
-                return;
-            }
-            
-            conectado = true;
-            mostrarFormularioCarga();
-            
-            // Mostrar el usuario que inició el inventario
-            if (data.usuario && data.usuario.nombre) {
-                console.log('👤 [MÓVIL] Usuario del inventario:', data.usuario.nombre);
-                mostrarUsuarioActivo(`Inventario iniciado por: ${data.usuario.nombre}`);
-            } else {
-                console.error('❌ [MÓVIL] No hay información de usuario en la respuesta');
-                mostrarSinInventario('Error: No hay información de usuario');
-                return;
-            }
-            
-            // MOSTRAR INFORMACIÓN DE SECTORES SI ES INVENTARIO DE INGREDIENTES
-            if (esSessionDeIngredientes() && data.sectores) {
-                console.log('🏢 [MÓVIL] Mostrando información de sectores para ingredientes');
-                mostrarInfoSectoresMovil(data.sectores);
-            }
-            
-            console.log('✅ [MÓVIL] Formulario de carga mostrado y listo');
-        });
-        
-        socket.on('error_conexion', (data) => {
-            console.error('❌ [MÓVIL] ERROR DE CONEXIÓN');
-            console.error('❌ [MÓVIL] Mensaje:', data.mensaje);
-            console.error('❌ [MÓVIL] Datos completos:', data);
-            console.error('❌ [MÓVIL] Intento actual:', intentosConexion);
-            
-            // CORRECCIÓN: Si es error de sesión no encontrada y quedan intentos, reintentar
-            const esSesionNoEncontrada = data.mensaje && 
-                (data.mensaje.includes('no encontrada') || data.mensaje.includes('expirada'));
-            
-            if (esSesionNoEncontrada && intentosConexion < MAX_INTENTOS_CONEXION) {
-                console.log(`⏳ [MÓVIL] Reintentando conexión en ${DELAY_RETRY_MS}ms...`);
-                console.log(`⏳ [MÓVIL] Intentos restantes: ${MAX_INTENTOS_CONEXION - intentosConexion}`);
-                
-                // Mostrar mensaje temporal al usuario
-                mostrarSinInventario(`Conectando al inventario... (Intento ${intentosConexion}/${MAX_INTENTOS_CONEXION})`);
-                
-                setTimeout(() => {
-                    if (!conectado) {
-                        console.log('🔄 [MÓVIL] Ejecutando reintento...');
-                        intentarUnirseAInventario();
-                    } else {
-                        console.log('✅ [MÓVIL] Ya conectado, cancelando reintento');
-                    }
-                }, DELAY_RETRY_MS);
-            } else {
-                // Mostrar error definitivo después de agotar intentos
-                console.error('❌ [MÓVIL] Intentos agotados o error no recuperable');
-                mostrarSinInventario(data.mensaje || 'Error al conectar con la sesión');
-            }
-        });
-        
-        socket.on('pc_desconectada_temporal', (data) => {
-            console.log('⚠️ [MÓVIL] PC DESCONECTADA TEMPORALMENTE');
-            console.log('⚠️ [MÓVIL] Mensaje:', data.mensaje);
-            console.log('⚠️ [MÓVIL] Estado anterior conectado:', conectado);
-            
-            // NO cerrar la conexión, solo mostrar advertencia
-            mostrarMensaje('⚠️ PC desconectada. Esperando reconexión...', 'info');
-        });
-        
-        socket.on('sesion_expirada', (data) => {
-            console.log('❌ [MÓVIL] SESIÓN EXPIRADA DEFINITIVAMENTE');
-            console.log('❌ [MÓVIL] Mensaje:', data.mensaje);
-            conectado = false;
-            mostrarSinInventario(data.mensaje || 'La sesión ha expirado. La PC no se reconectó.');
-        });
-
-        socket.on('inventario_finalizado', (data) => {
-            console.log('🏁 [MÓVIL] INVENTARIO FINALIZADO');
-            console.log('🏁 [MÓVIL] Datos de finalización:', data);
-            conectado = false;
-            mostrarSinInventario(data.mensaje || 'El inventario ha finalizado');
-        });
-
-        socket.on('articulo_confirmado', (data) => {
-            console.log('✅ [MÓVIL] ARTÍCULO CONFIRMADO');
-            console.log('✅ [MÓVIL] Datos de confirmación:', data);
-            mostrarMensaje(`${data.articulo} registrado: ${data.cantidad}`, 'info');
-        });
-
-        socket.on('ingrediente_confirmado', (data) => {
-            console.log('✅ [MÓVIL] INGREDIENTE CONFIRMADO');
-            console.log('✅ [MÓVIL] Datos de confirmación:', data);
-            mostrarMensaje(`${data.ingrediente} registrado: ${data.cantidad}`, 'info');
-        });
-        
-        socket.on('disconnect', () => {
-            console.log('❌ [MÓVIL] DESCONECTADO DE WEBSOCKET');
-            console.log('❌ [MÓVIL] Session ID era:', sessionId);
-            console.log('❌ [MÓVIL] Socket ID era:', socket.id);
-            conectado = false;
-            mostrarSinInventario('Conexión perdida con el servidor');
-        });
-        
-        // Agregar listener para errores generales
-        socket.on('error', (error) => {
-            console.error('❌ [MÓVIL] Error en WebSocket:', error);
-        });
-        
-        // Agregar listener para eventos no manejados
-        socket.onAny((eventName, ...args) => {
-            if (!['connect', 'conexion_exitosa', 'error_conexion', 'pc_desconectada', 
-                'inventario_finalizado', 'articulo_confirmado', 'disconnect'].includes(eventName)) {
-                console.log('🔔 [MÓVIL] Evento WebSocket no manejado:', eventName, args);
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error al inicializar WebSocket:', error);
-        mostrarSinInventario('Error al conectar con el servidor');
-    }
-}
-
-/**
- * Muestra el formulario de carga
- */
-function mostrarFormularioCarga() {
-    document.getElementById('sin-inventario').style.display = 'none';
-    document.getElementById('form-carga').style.display = 'block';
-}
-
-/**
- * Muestra el mensaje de sin inventario
- */
-function mostrarSinInventario(mensaje = 'No hay un inventario activo en este momento') {
-    document.getElementById('form-carga').style.display = 'none';
-    const sinInventarioDiv = document.getElementById('sin-inventario');
-    sinInventarioDiv.innerHTML = `
-        ${mensaje}
-        <br>
-        Debe iniciar el inventario desde una PC.
-    `;
-    sinInventarioDiv.style.display = 'block';
-}
-
-/**
- * Muestra el usuario activo en el header
- */
-function mostrarUsuarioActivo(texto) {
-    const usuarioDiv = document.getElementById('usuario-activo');
-    usuarioDiv.textContent = texto;
-    usuarioDiv.style.display = 'block';
-}
-
-/**
- * Configura los event listeners
- */
-function configurarEventListeners() {
-    const codigoInput = document.getElementById('codigo-barras');
-    const cantidadInput = document.getElementById('cantidad');
-    const btnCargar = document.getElementById('btn-cargar');
-    const btnEscanear = document.getElementById('btn-escanear');
-    const btnCerrarScanner = document.getElementById('btn-cerrar-scanner');
-
-    // Event listener para el código de barras
-    codigoInput.addEventListener('input', manejarCodigoBarras);
-    codigoInput.addEventListener('keypress', (e) => {
+    buscador.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            buscarArticulo();
+            ocultarDropdown();
+            manejarBusquedaDirecta(buscador.value.trim());
         }
     });
 
-    // Event listener para la cantidad
-    cantidadInput.addEventListener('input', validarFormulario);
-    cantidadInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !btnCargar.disabled) {
-            e.preventDefault();
-            enviarArticuloAPC();
-        }
+    // Global click listener to close dropdown
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.input-group')) ocultarDropdown();
+    });
+}
+
+
+
+function buscarNumerico(val) {
+    // Buscar coincidencia exacta o parcial inicio en códigos
+    // FIX: Convertir a String explícitamente y usar trim
+    const matches = listaIngredientes.filter(i =>
+        String(i.codigo).trim().startsWith(val) || String(i.codigo_barras || '').trim().startsWith(val)
+    ).slice(0, 10);
+
+    mostrarResultadosBusqueda(matches);
+}
+
+function buscarTextoAvanzado(texto) {
+    // Búsqueda "Doble Filtro" por espacios (AND logic)
+    const terminos = texto.toLowerCase().split(' ').filter(t => t.length > 0);
+
+    const matches = listaIngredientes.filter(ing => {
+        const nombre = (ing.nombre || '').toLowerCase();
+        return terminos.every(t => nombre.includes(t));
+    }).slice(0, 10);
+
+    // DEBUG VISUAL PARA EL USUARIO (Temporal)
+    console.log(`🔍 [DEBUG] Buscando '${texto}', encontrados: ${matches.length}`);
+    const debugMsg = document.getElementById('diff-text');
+    if (debugMsg && matches.length === 0) {
+        debugMsg.innerText = `Debug: Buscando '${texto}' (0 hallazgos)`;
+    }
+
+    mostrarResultadosBusqueda(matches);
+}
+
+function mostrarResultadosBusqueda(matches) {
+    const list = document.getElementById('search-dropdown');
+
+    // Clear content
+    list.innerHTML = '';
+
+    if (!matches || matches.length === 0) {
+        list.style.display = 'none';
+        return;
+    }
+
+    // Generate elements
+    matches.forEach(ing => {
+        const div = document.createElement('div');
+        div.className = 'dropdown-item';
+        div.innerHTML = `
+            <div>${ing.nombre}</div>
+            <small style="color:#888">${ing.codigo || ''}</small>
+        `;
+        // Attach listener DIRECTLY to element logic
+        div.addEventListener('click', (e) => {
+            e.stopPropagation();
+            console.log("🖱️ [CLICK] Sugerencia seleccionada:", ing.id);
+            seleccionarSugerencia(ing.id);
+        });
+        list.appendChild(div);
     });
 
-    // Event listener para el botón cargar
-    btnCargar.addEventListener('click', enviarArticuloAPC);
-
-    // Event listener para el botón de escanear
-    btnEscanear.addEventListener('click', abrirEscaner);
-
-    // Event listener para cerrar el escáner
-    btnCerrarScanner.addEventListener('click', cerrarEscaner);
+    list.style.display = 'block';
 }
 
-/**
- * Maneja el input del código de barras
- */
-function manejarCodigoBarras() {
-    const codigo = document.getElementById('codigo-barras').value.trim();
-    
-    if (codigo.length >= 3) {
-        buscarArticulo();
-    } else {
-        ocultarInfoArticulo();
-        validarFormulario();
+window.seleccionarSugerencia = (id) => {
+    const item = listaIngredientes.find(i => i.id === id);
+    if (item) {
+        ocultarDropdown();
+        cargarArticulo(item);
+        // Limpiar buscador visualmente
+        const buscador = document.getElementById('buscador-movil');
+        if (buscador) buscador.value = '';
     }
+};
+
+function ocultarDropdown() {
+    const list = document.getElementById('search-dropdown');
+    if (list) list.style.display = 'none';
 }
 
-/**
- * Busca un artículo o ingrediente por código de barras
- */
-async function buscarArticulo() {
-    const codigo = document.getElementById('codigo-barras').value.trim();
-    
-    if (!codigo) {
-        ocultarInfoArticulo();
+function manejarBusquedaDirecta(texto) {
+    if (!texto) return;
+    const term = texto.trim();
+
+    // 1. Exacto
+    const exacto = listaIngredientes.find(i =>
+        String(i.codigo).trim() === term ||
+        String(i.codigo_barras || '').trim() === term
+    );
+
+    if (exacto) {
+        cargarArticulo(exacto);
+        const buscador = document.getElementById('buscador-movil');
+        if (buscador) buscador.value = '';
         return;
     }
 
-    try {
-        const esIngredientes = esSessionDeIngredientes();
-        const tipoItem = esIngredientes ? 'ingrediente' : 'artículo';
-        
-        // Determinar endpoint según el tipo de inventario
-        let endpoint;
-        if (esIngredientes) {
-            endpoint = `/api/produccion/ingredientes/buscar?codigo=${codigo}`;
-        } else {
-            endpoint = `/api/produccion/articulos/buscar?codigo_barras=${codigo}`;
-        }
-        
-        console.log(`🔍 [MÓVIL] Buscando ${tipoItem} con código:`, codigo);
-        console.log(`🔍 [MÓVIL] Endpoint:`, endpoint);
-        
-        const response = await fetch(endpoint);
-        
-        if (!response.ok) {
-            throw new Error(`${tipoItem} no encontrado`);
-        }
-
-        const item = await response.json();
-        articuloActual = item;
-        mostrarInfoArticulo(item);
-        
-        console.log(`✅ [MÓVIL] ${tipoItem} encontrado:`, item.nombre);
-        
-        // Enfocar el input de cantidad
-        document.getElementById('cantidad').focus();
-        
-    } catch (error) {
-        const esIngredientes = esSessionDeIngredientes();
-        const tipoItem = esIngredientes ? 'Ingrediente' : 'Artículo';
-        
-        console.error(`Error al buscar ${tipoItem.toLowerCase()}:`, error);
-        articuloActual = null;
-        ocultarInfoArticulo();
-        mostrarMensajeError(`${tipoItem} no encontrado`);
-    }
-    
-    validarFormulario();
+    // 2. Fallback a texto avanzado si presionó enter
+    buscarTextoAvanzado(term);
 }
 
-/**
- * Muestra la información del artículo/ingrediente encontrado
- */
-function mostrarInfoArticulo(item) {
-    const infoDiv = document.getElementById('info-articulo');
-    const nombreElement = document.getElementById('nombre-articulo');
-    const codigoElement = document.getElementById('codigo-articulo');
-    const stockElement = document.getElementById('stock-actual');
+// ------------------------------------------
+// 🔦 RENDERING LISTAS (Tabs)
+// ------------------------------------------
+function actualizarProgreso() {
+    // Badges en Tabs
+    const contados = listaIngredientes.filter(i => i.contado).length;
+    const pendientes = listaIngredientes.length - contados;
 
-    const esIngredientes = esSessionDeIngredientes();
-    
-    nombreElement.textContent = item.nombre;
-    
-    if (esIngredientes) {
-        // Para ingredientes
-        codigoElement.textContent = `Código: ${item.codigo || item.id}`;
-        stockElement.textContent = `Stock actual: ${item.stock_actual || 0} ${item.unidad_medida || 'kg'}`;
-    } else {
-        // Para artículos
-        codigoElement.textContent = `Código: ${item.numero}`;
-        stockElement.textContent = `Stock actual: ${item.stock_consolidado || 0}`;
+    document.getElementById('badge-contados').textContent = contados;
+    document.getElementById('badge-pendientes').textContent = pendientes;
+
+    // Footer summary (opcional si se mantiene)
+    const progCounter = document.getElementById('contador-progreso');
+    if (progCounter) progCounter.textContent = `${contados}/${listaIngredientes.length}`;
+
+    // Renderizar Tab Actual (Live Update)
+    if (window.tabActual === 'pendientes') renderizarListaPendientes();
+    if (window.tabActual === 'contados') renderizarListaContados();
+}
+
+function renderizarListaPendientes(filtro = "") {
+    const container = document.getElementById('lista-pendientes-container');
+    if (!container) return; // Si no existe aun
+
+    let items = listaIngredientes.filter(i => !i.contado);
+
+    // Filtro texto
+    if (filtro) {
+        const t = filtro.toLowerCase();
+        items = items.filter(i => i.nombre.toLowerCase().includes(t) || String(i.codigo).includes(t));
     }
 
-    infoDiv.style.display = 'block';
-}
-
-/**
- * Oculta la información del artículo
- */
-function ocultarInfoArticulo() {
-    document.getElementById('info-articulo').style.display = 'none';
-    articuloActual = null;
-}
-
-/**
- * Valida el formulario y habilita/deshabilita el botón cargar
- */
-function validarFormulario() {
-    const btnCargar = document.getElementById('btn-cargar');
-    const cantidad = document.getElementById('cantidad').value;
-    
-    const esValido = articuloActual && 
-                     cantidad && 
-                     !isNaN(cantidad) && 
-                     parseInt(cantidad) >= 0 &&
-                     conectado;
-
-    btnCargar.disabled = !esValido;
-}
-
-/**
- * Detecta si la sesión es de ingredientes o artículos
- */
-function esSessionDeIngredientes() {
-    return sessionId && sessionId.startsWith('inv_ing_');
-}
-
-/**
- * Envía el artículo o ingrediente a la PC mediante WebSocket
- */
-function enviarArticuloAPC() {
-    const esIngredientes = esSessionDeIngredientes();
-    const tipoItem = esIngredientes ? 'ingrediente' : 'artículo';
-    const emoji = esIngredientes ? '🧪' : '📦';
-    
-    console.log(`🚀 [MÓVIL] Iniciando envío de ${tipoItem} a PC...`);
-    console.log('🔍 [MÓVIL] Estado de conexión:', conectado);
-    console.log('🔍 [MÓVIL] Socket ID actual:', socket?.id);
-    console.log('🔍 [MÓVIL] Session ID actual:', sessionId);
-    console.log('🔍 [MÓVIL] Tipo de sesión:', esIngredientes ? 'INGREDIENTES' : 'ARTÍCULOS');
-    
-    if (!articuloActual || !conectado) {
-        console.error('❌ [MÓVIL] Error de validación:');
-        console.error(`- ${tipoItem} actual:`, articuloActual ? '✅' : '❌');
-        console.error('- Conectado:', conectado ? '✅' : '❌');
-        mostrarMensajeError(`No hay conexión con la PC o falta información del ${tipoItem}`);
+    if (items.length === 0) {
+        container.innerHTML = `<div class="empty-state-placeholder">✨ No hay pendientes ${filtro ? 'con ese filtro' : ''}</div>`;
         return;
     }
 
-    const cantidad = parseFloat(document.getElementById('cantidad').value);
-    console.log(`${emoji} [MÓVIL] Cantidad a enviar:`, cantidad);
-    
-    if (isNaN(cantidad) || cantidad < 0) {
-        console.error('❌ [MÓVIL] Cantidad inválida:', cantidad);
-        mostrarMensajeError('La cantidad debe ser un número válido');
+    container.innerHTML = items.map(i => `
+        <div class="item-card pendiente">
+            <div class="item-info" onclick="seleccionarSugerencia(${i.id})">
+                <h4>${i.nombre}</h4>
+                <div class="item-meta">
+                    COD: ${i.codigo || '-'} | Sys: <strong>${i.stock_sistema || 0}</strong> ${i.unidad || ''}
+                </div>
+            </div>
+            <button class="item-action" onclick="solicitarImpresionItemLista(${i.id})">🖨️</button>
+        </div>
+    `).join('');
+}
+
+function renderizarListaContados() {
+    const container = document.getElementById('lista-contados-container');
+    if (!container) return;
+
+    // Ordenar: Ultimos contados arriba (si tuvieramos timestamp, por ahora reverse del array filtrado asumiendo orden de llegada)
+    // Como 'listaIngredientes' no cambia orden, mejor no confiar en reverse puro.
+    // Idealmente 'contado' deberia ser timestamp.
+    let items = listaIngredientes.filter(i => i.contado);
+
+    if (items.length === 0) {
+        container.innerHTML = `<div class="empty-state-placeholder">Empieza a escanear para ver resultados aquí</div>`;
         return;
     }
 
-    try {
-        // Preparar datos para envío según el tipo de sesión
-        const datosEnvio = {
+    // Reverse visual simple
+    const reversed = [...items].reverse();
+
+    container.innerHTML = reversed.map(i => `
+        <div class="item-card contado">
+            <div class="item-info" onclick="seleccionarSugerencia(${i.id})">
+                <h4>${i.nombre}</h4>
+                 <div class="item-meta">
+                    <span style="color:#28a745; font-weight:bold;">Contado: ${i.stock_contado} ${i.unidad || ''}</span>
+                    <br><small>Diferencia: ${(i.stock_contado - (i.stock_sistema || 0)).toFixed(2)}</small>
+                </div>
+            </div>
+            <button class="item-action" onclick="solicitarImpresionItemLista(${i.id})">🖨️</button>
+        </div>
+    `).join('');
+}
+
+// Helper externo
+window.solicitarImpresionItemLista = (id) => {
+    console.log("🖨️ [UI] Solicitar impresion ID:", id, typeof id);
+    // Usar loose equality por si id viene como string del HTML
+    const item = listaIngredientes.find(i => i.id == id);
+
+    if (item) {
+        console.log("✅ [UI] Item encontrado:", item.nombre);
+
+        const payload = {
             sessionId: sessionId,
-            cantidad: cantidad
+            ingrediente: item,
+            impresora: 'ZEBRA_FRENTE' // Paridad exacta con PC
         };
-        
-        // Usar evento unificado 'articulo_escaneado' para ambos tipos
-        const evento = 'articulo_escaneado';
-        
-        if (esIngredientes) {
-            console.log('🧪 [MÓVIL] Escaneando ingrediente desde móvil...');
-            datosEnvio.ingrediente = articuloActual;
+
+        console.log("📤 [SOCKET] Emitiendo imprimir_etiqueta_ingrediente:", payload);
+
+        if (socket && socket.connected) {
+            socket.emit('imprimir_etiqueta_ingrediente', payload);
+            mostrarToast("🖨️ Solicitando...");
         } else {
-            console.log('📦 [MÓVIL] Escaneando artículo desde móvil...');
-            datosEnvio.articulo = articuloActual;
+            console.error("❌ [SOCKET] No hay conexión activa");
+            mostrarToast("❌ Error: Sin conexión");
         }
-        
-        console.log(`📤 [MÓVIL] ===== ENVIANDO ${tipoItem.toUpperCase()} =====`);
-        console.log('📤 [MÓVIL] Evento a emitir:', evento);
-        console.log('📤 [MÓVIL] Datos completos:', JSON.stringify(datosEnvio, null, 2));
-        console.log('📤 [MÓVIL] Socket conectado:', socket.connected);
-        
-        // Enviar según el tipo de sesión
-        socket.emit(evento, datosEnvio);
-        console.log(`✅ [MÓVIL] Evento ${evento} emitido`);
-
-        // Mostrar confirmación
-        mostrarConfirmacion();
-        console.log('✅ [MÓVIL] Confirmación mostrada al usuario');
-        
-        // Limpiar formulario
-        limpiarFormulario();
-        console.log('✅ [MÓVIL] Formulario limpiado');
-        
-        console.log(`🎉 [MÓVIL] ===== ENVÍO DE ${tipoItem.toUpperCase()} COMPLETADO =====`);
-        
-    } catch (error) {
-        console.error(`❌ [MÓVIL] Error al enviar ${tipoItem} a PC:`, error);
-        console.error('❌ [MÓVIL] Stack:', error.stack);
-        mostrarMensajeError(`Error al enviar el ${tipoItem} a la PC`);
+    } else {
+        console.error("❌ [UI] Item no encontrado en lista local para ID:", id);
+        mostrarToast("❌ Error: Item no encontrado");
     }
+};
+
+
+// (Mantenemos renderizarHistorialLista por compatibilidad si algo lo llama, pero redirigimos)
+function renderizarHistorialLista() {
+    actualizarProgreso();
 }
 
-/**
- * Muestra el mensaje de confirmación
- */
-function mostrarConfirmacion() {
-    const confirmacionDiv = document.getElementById('confirmacion');
-    confirmacionDiv.style.display = 'block';
-    
-    // Ocultar después de 2 segundos
-    setTimeout(() => {
-        confirmacionDiv.style.display = 'none';
-    }, 2000);
+// Funciones Globales para la UI
+window.cambiarTab = (tab) => {
+    tabActual = tab;
+    renderizarHistorialLista();
+    focarInputPrincipal();
+};
+
+window.cargarDesdeLista = (id) => {
+    const item = listaIngredientes.find(x => x.id === id);
+    if (item) {
+        document.getElementById('vista-historial').style.display = 'none';
+        cargarArticulo(item);
+    }
+};
+
+window.imprimirItemLista = (id) => {
+    const item = listaIngredientes.find(x => x.id === id);
+    if (item) {
+        socket.emit('imprimir_etiqueta_ingrediente', {
+            sessionId,
+            ingrediente: item
+        });
+        mostrarToast(`🖨️ Imprimiendo ${item.nombre}...`);
+        focarInputPrincipal();
+    }
+};
+
+function mostrarModalCierre() {
+    const total = listaIngredientes.length;
+    // FIX: Usar la bandera 'contado' verdadera, no la existencia de stock_contado (que inicia en 0)
+    const contados = listaIngredientes.filter(i => i.contado === true).length;
+    const pendientes = total - contados;
+
+    document.getElementById('res-total').textContent = total;
+    document.getElementById('res-contados').textContent = contados;
+    document.getElementById('res-pendientes').textContent = pendientes;
+    document.getElementById('modal-resumen').style.display = 'flex';
 }
 
-/**
- * Limpia el formulario después de enviar un artículo
- */
-function limpiarFormulario() {
-    document.getElementById('codigo-barras').value = '';
-    document.getElementById('cantidad').value = '';
-    ocultarInfoArticulo();
-    validarFormulario();
-    
-    // Enfocar nuevamente el código de barras
-    document.getElementById('codigo-barras').focus();
+function mostrarToast(msg) {
+    const t = document.getElementById('confirmacion');
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 2000);
 }
 
-/**
- * Abre el escáner de códigos de barras usando @zxing/browser
- */
-function abrirEscaner() {
-    console.log('📱 [MÓVIL] ===== INICIANDO ESCÁNER @ZXING/BROWSER =====');
-    
-    const modal = document.getElementById('modal-scanner');
-    modal.style.display = 'block';
+// ------------------------------------------
+// 🧠 LOGICA DE NEGOCIO (Selección y Calculo)
+// ------------------------------------------
+function cargarArticulo(item) {
+    articuloActual = item; // GLOBAL reference
 
-    // Verificar si la librería ZXing está disponible
-    if (!window.ZXing) {
-        console.error('❌ [MÓVIL] Librería @zxing/browser no está disponible');
-        mostrarMensajeError('Error: Librería de escaneo no disponible');
-        cerrarEscaner();
+    // 1. Mostrar Panel Info
+    const panel = document.getElementById('info-articulo');
+    if (panel) panel.style.display = 'block';
+    const placeholder = document.getElementById('placeholder-carga');
+    if (placeholder) placeholder.style.display = 'none';
+
+    // 2. Llenar Datos
+    document.getElementById('nombre-articulo').textContent = item.nombre;
+    document.getElementById('codigo-articulo').textContent = `COD: ${item.codigo || item.id}`;
+    document.getElementById('stock-sistema-badge').textContent = `Sys: ${item.stock_sistema || 0}`;
+
+    // 3. Reset Inputs
+    const inputCant = document.getElementById('cantidad');
+    inputCant.value = ''; // Limpiar para que el usuario ingrese
+    inputCant.placeholder = `${item.stock_contado || '0.00'}`;
+
+    // 4. Habilitar Botón Confirmar (Se habilita al seleccionar para permitir workflows rápidos, o validamos 0?)
+    // Requerimiento: "no veo el boton de confirmar... igual no selecciona"
+    // Habilitamos inicialmente pero requerimos input para acción real si se desea.
+    const btn = document.getElementById('btn-cargar');
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = "CONFIRMAR PESO";
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-primary-block');
+    }
+
+    // 5. Calcular Inicial (mostrar diferencia vs 0 o vs lo que había)
+    calcularDiferencia();
+
+    // 6. Focus Teclado numerico
+    setTimeout(() => inputCant.focus(), 100);
+}
+
+function calcularDiferencia() {
+    if (!articuloActual) return;
+
+    const input = document.getElementById('cantidad');
+    let val = parseFloat(input.value);
+    if (isNaN(val)) val = 0; // Si está vacío asumimos 0 visualmente para el calculo de diferencia? 
+    // Mmm, mejor si vacío no mostramos diferencia engañosa.
+    if (input.value.trim() === '') {
+        // Estado neutro
+        updateDiffBar(0, true);
         return;
     }
 
-    try {
-        // Crear instancia del lector si no existe
-        if (!codeReader) {
-            codeReader = new window.ZXing.BrowserMultiFormatReader();
-            console.log('📱 [MÓVIL] Instancia de BrowserMultiFormatReader creada');
-        }
+    const sys = parseFloat(articuloActual.stock_sistema || 0);
+    const diff = val - sys;
 
-        console.log('📱 [MÓVIL] Configurando formatos de códigos de barra 1D...');
-        
-        // Configurar hints para códigos de barra 1D
-        const hints = new Map();
-        const formats = [
-            window.ZXing.BarcodeFormat.EAN_13,
-            window.ZXing.BarcodeFormat.EAN_8,
-            window.ZXing.BarcodeFormat.UPC_A,
-            window.ZXing.BarcodeFormat.UPC_E,
-            window.ZXing.BarcodeFormat.CODE_39,
-            window.ZXing.BarcodeFormat.CODE_128,
-            window.ZXing.BarcodeFormat.ITF,
-            window.ZXing.BarcodeFormat.CODABAR
-        ];
-        
-        hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-        hints.set(window.ZXing.DecodeHintType.TRY_HARDER, true);
-        
-        console.log('📱 [MÓVIL] Formatos configurados:', formats.length);
-        console.log('📱 [MÓVIL] Obteniendo dispositivos de video...');
+    updateDiffBar(diff);
+}
 
-        // Obtener dispositivos de video disponibles
-        codeReader.listVideoInputDevices()
-            .then(videoInputDevices => {
-                console.log('📱 [MÓVIL] Dispositivos de video encontrados:', videoInputDevices.length);
-                
-                if (videoInputDevices.length === 0) {
-                    console.error('❌ [MÓVIL] No se encontraron cámaras disponibles');
-                    mostrarMensajeError('No se encontraron cámaras disponibles');
-                    cerrarEscaner();
-                    return;
-                }
+function updateDiffBar(diff, neutral = false) {
+    const bar = document.getElementById('diff-bar');
+    const text = document.getElementById('diff-text');
 
-                // Buscar cámara trasera preferentemente
-                let selectedDeviceId = videoInputDevices[0].deviceId;
-                for (const device of videoInputDevices) {
-                    if (device.label.toLowerCase().includes('back') || 
-                        device.label.toLowerCase().includes('rear') ||
-                        device.label.toLowerCase().includes('environment')) {
-                        selectedDeviceId = device.deviceId;
-                        break;
-                    }
-                }
+    // Reset classes
+    bar.classList.remove('positive', 'negative', 'neutral');
 
-                const selectedDevice = videoInputDevices.find(d => d.deviceId === selectedDeviceId);
-                console.log('📱 [MÓVIL] Cámara seleccionada:', selectedDevice?.label || selectedDeviceId);
+    if (neutral) {
+        bar.classList.add('neutral');
+        text.textContent = "Ingrese cantidad...";
+        return;
+    }
 
-                // Iniciar decodificación desde video
-                console.log('📱 [MÓVIL] Iniciando decodificación desde video...');
-                
-                codeReader.decodeFromVideoDevice(
-                    selectedDeviceId,
-                    'reader',
-                    (result, err) => {
-                        if (result) {
-                            console.log('🎉 [MÓVIL] ===== CÓDIGO ESCANEADO EXITOSAMENTE =====');
-                            console.log('🎉 [MÓVIL] Código:', result.getText());
-                            console.log('🎉 [MÓVIL] Formato:', result.getBarcodeFormat());
-                            console.log('🎉 [MÓVIL] Timestamp:', new Date().toISOString());
-                            
-                            // Cerrar escáner
-                            cerrarEscaner();
-                            
-                            // Colocar código en input y buscar artículo
-                            document.getElementById('codigo-barras').value = result.getText();
-                            buscarArticulo();
-                            
-                            // Mostrar mensaje de éxito
-                            mostrarMensaje(`Código escaneado: ${result.getText()}`, 'info');
-                        }
-                        
-                        if (err && !(err instanceof window.ZXing.NotFoundException)) {
-                            console.error('❌ [MÓVIL] Error en escaneo:', err);
-                            // No mostrar error por NotFoundException ya que es normal durante el escaneo
-                            if (!(err instanceof window.ZXing.ChecksumException) && 
-                                !(err instanceof window.ZXing.FormatException)) {
-                                mostrarMensajeError('Error al escanear el código');
-                            }
-                        }
-                    },
-                    hints
-                );
-                
-                console.log('✅ [MÓVIL] Escáner iniciado correctamente');
-                
-            })
-            .catch(err => {
-                console.error('❌ [MÓVIL] Error al listar dispositivos de video:', err);
-                mostrarMensajeError('No se pudo acceder a la cámara');
-                cerrarEscaner();
-            });
-
-    } catch (error) {
-        console.error('❌ [MÓVIL] Error al configurar escáner:', error);
-        mostrarMensajeError('Error al configurar el escáner');
-        cerrarEscaner();
+    if (diff >= 0) {
+        bar.classList.add('positive');
+        text.textContent = `Sobra: +${diff.toFixed(2)}`;
+    } else {
+        bar.classList.add('negative');
+        text.textContent = `Falta: ${diff.toFixed(2)}`;
     }
 }
 
-/**
- * Cierra el escáner de códigos de barras
- */
-function cerrarEscaner() {
-    console.log('📱 [MÓVIL] ===== CERRANDO ESCÁNER =====');
-    
+function enviarDatos() {
+    if (!articuloActual) return;
+
+    const input = document.getElementById('cantidad');
+    let cantidad = parseFloat(input.value);
+
+    // Permitir 0 si explícitamente se escribe "0"
+    if (isNaN(cantidad) && input.value.trim() !== '') {
+        alert("Ingrese una cantidad válida");
+        return;
+    }
+    // Si está vacío, ¿asumimos lo contado prev? No, mejor obligar input.
+    if (input.value.trim() === '') {
+        alert("Ingrese la cantidad contada.");
+        return;
+    }
+
+    console.log(`📤 [ACCION] Confirmando ${articuloActual.nombre}: ${cantidad}`);
+
+    socket.emit('articulo_escaneado', {
+        sessionId,
+        ingrediente: articuloActual, // Enviar objeto completo actualizado? Mejor el ref
+        cantidad: cantidad
+    });
+
+    // Feedback inmediato UI (Optimistic update)
+    // El socket 'articulo_confirmado' hara el resto, pero podemos avanzar UI
+    articuloActual.stock_contado = cantidad;
+    articuloActual.contado = true;
+
+    const btn = document.getElementById('btn-cargar');
+    if (btn) {
+        btn.textContent = "✅ GUARDADO";
+        btn.classList.remove('btn-primary-block');
+        btn.classList.add('btn-success');
+    }
+}
+
+window.solicitarImpresion = () => {
+    if (articuloActual) {
+        socket.emit('imprimir_etiqueta_ingrediente', {
+            sessionId,
+            ingrediente: articuloActual
+        });
+        mostrarToast("🖨️ Imprimiendo...");
+    }
+};
+
+
+
+// NUEVO: Función para abrir cámara con ZXing
+window.abrirCamara = () => {
     const modal = document.getElementById('modal-scanner');
-    modal.style.display = 'none';
+    if (!modal) return;
+
+    modal.style.display = 'flex';
 
     if (codeReader) {
-        try {
-            console.log('📱 [MÓVIL] Deteniendo lector de códigos...');
-            codeReader.reset();
-            console.log('✅ [MÓVIL] Lector detenido correctamente');
-        } catch (error) {
-            console.error('❌ [MÓVIL] Error al detener lector:', error);
-        }
-    }
-}
-
-/**
- * Muestra un mensaje temporal (error o info)
- */
-function mostrarMensaje(mensaje, tipo = 'error') {
-    // Crear elemento de mensaje si no existe
-    let mensajeDiv = document.querySelector('.mensaje-temporal');
-    
-    if (!mensajeDiv) {
-        mensajeDiv = document.createElement('div');
-        mensajeDiv.className = 'mensaje-temporal';
-        mensajeDiv.style.cssText = `
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 4px;
-            z-index: 1001;
-            font-size: 14px;
-        `;
-        document.body.appendChild(mensajeDiv);
-    }
-    
-    // Cambiar color según el tipo
-    mensajeDiv.style.backgroundColor = tipo === 'error' ? '#dc3545' : '#28a745';
-    mensajeDiv.textContent = mensaje;
-    mensajeDiv.style.display = 'block';
-    
-    // Ocultar después de 3 segundos
-    setTimeout(() => {
-        if (mensajeDiv.parentNode) {
-            mensajeDiv.style.display = 'none';
-        }
-    }, 3000);
-}
-
-/**
- * Muestra un mensaje de error temporal
- */
-function mostrarMensajeError(mensaje) {
-    mostrarMensaje(mensaje, 'error');
-}
-
-/**
- * Muestra la información de sectores en la aplicación móvil
- */
-function mostrarInfoSectoresMovil(sectores) {
-    console.log('🏢 [MÓVIL-SECTORES] ===== MOSTRANDO INFORMACIÓN DE SECTORES =====');
-    console.log('🏢 [MÓVIL-SECTORES] Sectores recibidos:', sectores);
-    
-    const infoSectoresDiv = document.getElementById('info-sectores-movil');
-    const sectoresTextoElement = document.getElementById('sectores-movil-texto');
-    
-    if (!infoSectoresDiv || !sectoresTextoElement) {
-        console.error('❌ [MÓVIL-SECTORES] No se encontraron elementos de sectores en el DOM');
-        return;
-    }
-    
-    // Mostrar el contenedor de sectores
-    infoSectoresDiv.style.display = 'block';
-    
-    if (sectores === 'TODOS') {
-        console.log('🏢 [MÓVIL-SECTORES] Mostrando: Todos los sectores');
-        sectoresTextoElement.innerHTML = '📦 <strong>Todos los sectores</strong>';
-    } else if (Array.isArray(sectores)) {
-        console.log('🏢 [MÓVIL-SECTORES] Sectores específicos:', sectores);
-        
-        if (sectores.length === 0) {
-            console.log('🏢 [MÓVIL-SECTORES] No hay sectores específicos');
-            sectoresTextoElement.innerHTML = '⚠️ <strong>Sin sectores específicos</strong>';
-        } else {
-            // Para el móvil, mostrar solo los IDs ya que no tenemos los nombres
-            // En una implementación completa, se podrían enviar los nombres desde el servidor
-            const textoSectores = sectores.map(id => `Sector ${id}`).join(', ');
-            sectoresTextoElement.innerHTML = `🏢 <strong>Sectores:</strong> ${textoSectores}`;
-        }
+        codeReader.reset();
     } else {
-        console.error('❌ [MÓVIL-SECTORES] Formato de sectores no reconocido:', sectores);
-        sectoresTextoElement.innerHTML = '❌ <strong>Error</strong> - Formato de sectores inválido';
+        if (typeof ZXing === 'undefined') {
+            alert("Librería de scanner no cargada");
+            return;
+        }
+        codeReader = new ZXing.BrowserMultiFormatReader();
     }
-    
-    console.log('✅ [MÓVIL-SECTORES] Información de sectores mostrada correctamente');
-}
+
+    console.log("📷 [CAM] Iniciando scanner...");
+
+    codeReader.decodeFromVideoDevice(null, 'reader', (result, err) => {
+        if (result) {
+            console.log("📷 [CAM] Scan Success:", result.text);
+
+            // Feedback sonoro/vibración si fuera posible
+            if (navigator.vibrate) navigator.vibrate(200);
+
+            // Cerrar modal
+            modal.style.display = 'none';
+            codeReader.reset();
+
+            // Procesar
+            manejarBusquedaDirecta(result.text);
+
+        }
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.warn("📷 [CAM] Scan Error:", err);
+        }
+    }).catch(err => {
+        console.error("❌ [CAM] Error inicio:", err);
+        alert("Error al iniciar cámara: " + err);
+        modal.style.display = 'none';
+    });
+};
+
+// NUEVO: Función para enfocar input principal
+window.focarInputPrincipal = () => {
+    const input = document.getElementById('buscador-movil');
+    if (input) {
+        // Pequeño timeout para asegurar que el teclado virtual no cierre otras cosas
+        setTimeout(() => {
+            input.focus();
+        }, 100);
+    }
+};
+
+/* 
+ * ==========================================
+ * EXPOSICIÓN GLOBAL
+ * ==========================================
+ */
+window.seleccionarSugerencia = seleccionarSugerencia;
+window.cargarDesdeLista = cargarDesdeLista;
+window.imprimirItemLista = imprimirItemLista;
+window.abrirCamara = abrirCamara;
+window.focarInputPrincipal = focarInputPrincipal;
+window.configurarUI = configurarUI;
+window.actualizarProgreso = actualizarProgreso;
+window.renderizarListaPendientes = renderizarListaPendientes;
+
+console.log("🚀 [MOVIL] Functions exposed to window.");

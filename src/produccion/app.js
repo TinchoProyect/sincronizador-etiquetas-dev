@@ -58,6 +58,26 @@ app.get('/', (req, res) => {
     res.redirect('/pages/produccion.html');
 });
 
+// Endpoint para obtener la IP local del servidor
+app.get('/api/config/network-ip', (req, res) => {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    let networkIp = 'localhost';
+
+    // Buscar una dirección IPv4 externa
+    Object.keys(interfaces).forEach((ifname) => {
+        interfaces[ifname].forEach((iface) => {
+            // Saltar direcciones internas (127.0.0.1) y no-IPv4
+            if ('IPv4' !== iface.family || iface.internal) {
+                return;
+            }
+            networkIp = iface.address;
+        });
+    });
+
+    res.json({ ip: networkIp });
+});
+
 // Ruta para la vista móvil de inventario
 app.get('/inventario-movil', (req, res) => {
     res.redirect('/pages/inventario-movil.html');
@@ -139,6 +159,7 @@ io.on('connection', (socket) => {
             // Agregar datos específicos para ingredientes
             if (tipoInventario === 'ingredientes') {
                 sesionData.sectores = sectores;
+                sesionData.ingredientes = data.ingredientes || []; // Guardar lista maestra
                 sesionData.tipo = 'ingredientes';
             }
 
@@ -226,7 +247,9 @@ io.on('connection', (socket) => {
         // CORRECCIÓN: Confirmar conexión al móvil con objeto usuario completo
         const respuestaConexion = {
             sessionId,
-            usuario: session.usuario // Enviar objeto completo {id, nombre}
+            usuario: session.usuario, // Enviar objeto completo {id, nombre}
+            sectores: session.sectores, // Enviar sectores también
+            ingredientes: session.ingredientes // Enviar Lista Maestra para auditoría
         };
 
         // Para ingredientes, incluir información de sectores
@@ -294,7 +317,17 @@ io.on('connection', (socket) => {
             timestamp: new Date()
         });
 
-        // Confirmar al móvil usando evento unificado
+        // NUEVO: Enviar también al Móvil (Mirroring)
+        if (session.mobileSocketId) {
+            io.to(session.mobileSocketId).emit('nuevo_articulo', {
+                sessionId,
+                [tipoInventario === 'ingredientes' ? 'ingrediente' : 'articulo']: item,
+                cantidad,
+                timestamp: new Date()
+            });
+        }
+
+        // Confirmar al emisor (PC o Móvil)
         socket.emit('articulo_confirmado', {
             [tipoInventario === 'ingredientes' ? 'ingrediente' : 'articulo']: item.nombre,
             cantidad
@@ -302,12 +335,123 @@ io.on('connection', (socket) => {
 
         console.log(`✅ [WS] ${tipoInventario.slice(0, -1)} procesado exitosamente`);
         console.log(`📊 [WS] Total items en sesión:`, session.items.size);
+        console.log(`✅ [WS] ${tipoInventario.slice(0, -1)} procesado exitosamente`);
+        console.log(`📊 [WS] Total items en sesión:`, session.items.size);
+    });
+
+    // Relay de datos de inventario (PC -> Móvil)
+    socket.on('sincronizar_datos_inventario', (data) => {
+        const { sessionId, ingredientes } = data;
+        const session = inventarioSesiones.get(sessionId);
+
+        if (session && session.mobileSocketId) {
+            console.log(`📦 [WS] Sincronizando ${ingredientes.length} ingredientes con móvil...`);
+            io.to(session.mobileSocketId).emit('datos_inventario', { ingredientes });
+        }
+    });
+
+    // Relay de solicitud de impresión (Móvil -> PC)
+    socket.on('solicitar_impresion', (data) => {
+        const { sessionId, ingredientes } = data; // Legacy support
+        // ...
+    });
+
+    // ✅ FIX: Listener específico para impresión de etiquetas de ingredientes
+    // ✅ FIX: Listener específico para impresión de etiquetas de ingredientes
+    // ✅ FIX: Listener específico para impresión de etiquetas de ingredientes
+    socket.on('imprimir_etiqueta_ingrediente', async (data) => {
+        const { sessionId, ingrediente } = data; // Ahora esperamos el objeto ingrediente completo
+        const session = inventarioSesiones.get(sessionId);
+
+        // TRAZA NIVEL 2: Recepción
+        console.log(`TRAZA-SERVER: Orden de impresión recibida del cliente [${socket.id}] para [${ingrediente?.id}]`);
+        console.log(`🖨️ [WS] Solicitud de impresión para: ${ingrediente?.nombre || 'Desconocido'}`);
+
+        // NO Relay a PC (Centralizamos la impresión en el Servidor para soportar Móvil y evitar duplicados)
+        // Si la PC necesita feedback, escuchará 'print_status'
+
+        if (ingrediente) {
+            try {
+                // Usar módulo HTTP nativo para máxima compatibilidad (Node < 18 fallback)
+                const http = require('http');
+                const postData = JSON.stringify({
+                    ingredienteId: ingrediente.id,
+                    nombre: ingrediente.nombre,
+                    codigo: ingrediente.codigo,
+                    sector: ingrediente.sector_letra || ingrediente.sector_id || ''
+                });
+
+                // TRAZA NIVEL 3: Puente
+                console.log(`TRAZA-SERVER: Enviando orden final al puerto 3000 con los datos: ${postData}`);
+
+                const options = {
+                    hostname: 'localhost',
+                    port: 3000,
+                    path: '/api/etiquetas/ingrediente',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Content-Length': Buffer.byteLength(postData)
+                    }
+                };
+
+                const req = http.request(options, (res) => {
+                    let responseData = '';
+                    res.on('data', (chunk) => { responseData += chunk; });
+                    res.on('end', () => {
+                        if (res.statusCode >= 200 && res.statusCode < 300) {
+                            console.log("✅ [IMP] Orden enviada a localhost:3000 con éxito.");
+                            socket.emit('print_status', { success: true, msg: 'Imprimiendo...' });
+                        } else {
+                            console.error(`TRAZA-SERVER-ERROR: Servicio de impresión respondió con error: Status ${res.statusCode} - ${responseData}`);
+                            console.error(`❌ [IMP] Error del servicio (Status: ${res.statusCode}): ${responseData}`);
+                            socket.emit('print_status', { success: false, msg: 'Error en servicio de impresión' });
+                        }
+                    });
+                });
+
+                req.on('error', (e) => {
+                    console.error(`TRAZA-SERVER-ERROR: Error de conexión con puerto 3000: ${e.message}`);
+                    console.error(`❌ [IMP] Error de conexión con localhost:3000: ${e.message}`);
+                    socket.emit('print_status', { success: false, msg: 'Error: Servicio de impresión no disponible' });
+                });
+
+                // Write data to request body
+                req.write(postData);
+                req.end();
+
+            } catch (err) {
+                console.error("TRAZA-SERVER-ERROR: Excepción crítica server-side:", err.message);
+                console.error("❌ [IMP] Excepción crítica al intentar imprimir:", err.message);
+                socket.emit('print_status', { success: false, msg: 'Error interno de impresión' });
+            }
+        } else {
+            console.warn("⚠️ [IMP] Datos de ingrediente inválidos/faltantes");
+            socket.emit('print_status', { success: false, msg: 'Datos inválidos' });
+        }
+    });
+
+    // NUEVO: Listener para impresión de sector (Relay a puerto 3000)
+    socket.on('imprimir_etiqueta_sector', async (data) => {
+        console.log(`🖨️ [WS] Imprimir etiqueta SECTOR: ${data.sector}`);
+        try {
+            // Enviamos al endpoint genérico de impresión de texto o específico si existe
+            // Asumo /api/etiquetas/sector o similar. Si no, ajustar a /texto
+            await fetch('http://localhost:3000/api/etiquetas/sector', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sector: data.sector })
+            });
+            console.log("✅ [IMP] Orden imprimir sector enviada");
+        } catch (e) {
+            console.error("❌ [IMP] Error al imprimir sector:", e.message);
+        }
     });
 
     // PC finaliza inventario (UNIFICADO)
     socket.on('finalizar_inventario', (data) => {
         const sessionId = data.sessionId;
-        console.log('🏁 [WS] ===== FINALIZANDO INVENTARIO =====');
+        console.log('🏁 [WS] ===== FINALIZANDO INVENTARIO (Desde Móvil) =====');
         console.log('🆔 [WS] Session ID:', sessionId);
 
         const session = inventarioSesiones.get(sessionId);
@@ -317,27 +461,46 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // RELAY CRÍTICO: Ordenar a la PC que ejecute el cierre
+        if (session.pcSocketId) {
+            console.log('💻 [WS] Enviando solicitud_cierre_remoto a PC...');
+            io.to(session.pcSocketId).emit('solicitud_cierre_remoto', { sessionId });
+        }
+
         // Marcar sesión como finalizada
         session.estado = 'finalizada';
 
-        // Notificar al móvil si está conectado
+        // Notificar al móvil
         if (session.mobileSocketId) {
-            console.log('📱 [WS] Notificando al móvil...');
             io.to(session.mobileSocketId).emit('inventario_finalizado', {
-                mensaje: 'El inventario ha sido finalizado desde la PC'
+                mensaje: 'Procesando cierre de inventario...'
             });
         }
 
-        // Mantener la sesión por un tiempo antes de eliminarla
+        // Limpieza diferida
         setTimeout(() => {
             if (inventarioSesiones.has(sessionId)) {
                 inventarioSesiones.delete(sessionId);
-                console.log('🗑️ [WS] Sesión eliminada:', sessionId);
-                console.log('📊 [WS] Sesiones restantes:', inventarioSesiones.size);
             }
-        }, 5000); // Mantener por 5 segundos para asegurar que lleguen las notificaciones
+        }, 5000);
+    });
 
-        console.log('✅ [WS] Inventario finalizado correctamente');
+    // NUEVO: Cancelar inventario (Sin guardar nada)
+    socket.on('cancelar_inventario', (data) => {
+        const sessionId = data.sessionId;
+        console.log('⛔ [WS] ===== CANCELANDO INVENTARIO =====');
+        console.log('🆔 [WS] Session ID:', sessionId);
+
+        const session = inventarioSesiones.get(sessionId);
+        if (!session) return;
+
+        // Notificar a ambos
+        if (session.pcSocketId) io.to(session.pcSocketId).emit('inventario_cancelado');
+        if (session.mobileSocketId) io.to(session.mobileSocketId).emit('inventario_cancelado');
+
+        // Limpiar sesión inmediatamente
+        inventarioSesiones.delete(sessionId);
+        console.log('🗑️ [WS] Sesión eliminada por cancelación');
     });
 
     // Limpiar cuando se desconectan

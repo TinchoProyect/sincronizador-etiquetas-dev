@@ -33,6 +33,25 @@ async function obtenerNuevoCodigo() {
 }
 
 /**
+ * Extrae la letra del sector desde la descripción (ej: 'Sector "G"' -> 'G')
+ * @param {string} descripcion - Descripción del sector
+ * @returns {string|null} Letra del sector o null
+ */
+function extraerLetraSector(descripcion) {
+    if (!descripcion) return null;
+    // Intentar extraer contenido entre comillas
+    const match = descripcion.match(/["']([^"']+)["']/);
+    if (match && match[1]) return match[1].toUpperCase();
+
+    // Fallback: si dice 'Sector G', quitar 'Sector'
+    if (descripcion.includes('Sector')) {
+        return descripcion.replace('Sector', '').trim();
+    }
+
+    return descripcion; // Retornar tal cual si no coincide patrones
+}
+
+/**
  * Obtiene todos los ingredientes con información de sector y stock potencial
  * @returns {Promise<Array>} Lista de ingredientes con sector y stock potencial
  */
@@ -50,6 +69,7 @@ async function obtenerIngredientes() {
                 i.stock_actual,
                 i.sector_id,
                 s.nombre as sector_nombre,
+                s.descripcion as sector_descripcion,
                 -- ✅ CÁLCULO DE STOCK POTENCIAL
                 COALESCE(
                     i.stock_actual + (
@@ -76,14 +96,18 @@ async function obtenerIngredientes() {
         const result = await pool.query(query);
         console.log(`✅ [SECTORES] Encontrados ${result.rows.length} ingredientes`);
 
-        // Log de depuración para sectores y stock potencial
-        const conSector = result.rows.filter(ing => ing.sector_id !== null).length;
-        const sinSector = result.rows.length - conSector;
-        const conVinculos = result.rows.filter(ing => ing.vinculos_activos > 0).length;
-        console.log(`📊 [SECTORES] Ingredientes con sector: ${conSector}, sin sector: ${sinSector}`);
-        console.log(`📊 [POTENCIAL] Ingredientes con vínculos activos: ${conVinculos}`);
+        // Enriquecer con letra de sector
+        const ingredientesEnriquecidos = result.rows.map(ing => ({
+            ...ing,
+            sector_letra: extraerLetraSector(ing.sector_descripcion) || ing.sector_id
+        }));
 
-        return result.rows;
+        // Log de depuración para sectores y stock potencial
+        const conSector = ingredientesEnriquecidos.filter(ing => ing.sector_id !== null).length;
+        const sinSector = ingredientesEnriquecidos.length - conSector;
+        console.log(`📊 [SECTORES] Ingredientes con sector: ${conSector}, sin sector: ${sinSector}`);
+
+        return ingredientesEnriquecidos;
     } catch (error) {
         console.error('❌ [SECTORES] Error en obtenerIngredientes:', error);
         throw new Error('No se pudo obtener la lista de ingredientes');
@@ -230,7 +254,10 @@ async function obtenerIngrediente(id) {
         }
 
         const ingrediente = result.rows[0];
-        console.log(`✅ [SECTORES] Ingrediente obtenido: ${ingrediente.nombre}, sector: ${ingrediente.sector_nombre || 'Sin asignar'}`);
+        // Enriquecer
+        ingrediente.sector_letra = extraerLetraSector(ingrediente.sector_descripcion) || ingrediente.sector_id;
+
+        console.log(`✅ [SECTORES] Ingrediente obtenido: ${ingrediente.nombre}, sector: ${ingrediente.sector_letra || 'Sin asignar'}`);
 
         return ingrediente;
     } catch (error) {
@@ -651,8 +678,10 @@ async function buscarIngredientePorCodigo(codigo) {
                 i.unidad_medida,
                 i.categoria,
                 i.stock_actual,
+                i.stock_actual,
                 i.sector_id,
-                s.nombre as sector_nombre
+                s.nombre as sector_nombre,
+                s.descripcion as sector_descripcion
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
             WHERE i.codigo = $1;
@@ -666,7 +695,9 @@ async function buscarIngredientePorCodigo(codigo) {
         }
 
         const ingrediente = result.rows[0];
-        console.log(`✅ [BUSQUEDA] Ingrediente encontrado: ${ingrediente.nombre}, sector: ${ingrediente.sector_nombre || 'Sin asignar'}`);
+        ingrediente.sector_letra = extraerLetraSector(ingrediente.sector_descripcion) || ingrediente.sector_id;
+
+        console.log(`✅ [BUSQUEDA] Ingrediente encontrado: ${ingrediente.nombre}, sector: ${ingrediente.sector_letra || 'Sin asignar'}`);
 
         return ingrediente;
     } catch (error) {
@@ -698,8 +729,10 @@ async function obtenerIngredientesPorSectores(sectores) {
                     i.unidad_medida,
                     i.categoria,
                     i.stock_actual,
+                    i.stock_actual,
                     i.sector_id,
-                    s.nombre as sector_nombre
+                    s.nombre as sector_nombre,
+                    s.descripcion as sector_descripcion
                 FROM ingredientes i
                 LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
                 ORDER BY i.nombre ASC;
@@ -720,7 +753,8 @@ async function obtenerIngredientesPorSectores(sectores) {
                     i.categoria,
                     i.stock_actual,
                     i.sector_id,
-                    s.nombre as sector_nombre
+                    s.nombre as sector_nombre,
+                    s.descripcion as sector_descripcion
                 FROM ingredientes i
                 LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
                 WHERE i.sector_id IN (${placeholders})
@@ -735,10 +769,16 @@ async function obtenerIngredientesPorSectores(sectores) {
         const result = await pool.query(query, params);
         console.log(`✅ [DIFERENCIAS] Encontrados ${result.rows.length} ingredientes para los sectores especificados`);
 
+        // Enriquecer resultados
+        const ingredientesEnriquecidos = result.rows.map(ing => ({
+            ...ing,
+            sector_letra: extraerLetraSector(ing.sector_descripcion) || ing.sector_id
+        }));
+
         // Log detallado para debugging
         if (sectores !== 'TODOS') {
             const porSector = {};
-            result.rows.forEach(ing => {
+            ingredientesEnriquecidos.forEach(ing => {
                 const sectorNombre = ing.sector_nombre || 'Sin sector';
                 if (!porSector[sectorNombre]) porSector[sectorNombre] = 0;
                 porSector[sectorNombre]++;
@@ -746,7 +786,7 @@ async function obtenerIngredientesPorSectores(sectores) {
             console.log('📊 [DIFERENCIAS] Distribución por sector:', porSector);
         }
 
-        return result.rows;
+        return ingredientesEnriquecidos;
     } catch (error) {
         console.error('❌ [DIFERENCIAS] Error en obtenerIngredientesPorSectores:', error);
         throw new Error('No se pudieron obtener los ingredientes por sectores');

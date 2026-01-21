@@ -187,10 +187,58 @@ router.post('/etiquetas/ingrediente', (req, res) => {
 
   exec(command, (error, stdout, stderr) => {
     if (error) {
-      console.error('Error al imprimir etiqueta de ingrediente:', error);
-      return res.status(500).json({ error: 'Error al imprimir etiqueta' });
     }
     console.log(`Etiqueta de ingrediente enviada a imprimir (Cant: ${cantidadImpresion}).`);
+    res.json({ message: 'Etiqueta enviada a imprimir' });
+  });
+});
+
+// NUEVO: Endpoint para imprimir etiqueta de SECTOR
+router.post('/etiquetas/sector', (req, res) => {
+  const { sector } = req.body; // Espera "Sector 'G'" o similar
+
+  if (!sector) {
+    return res.status(400).json({ error: 'Falta el nombre del sector' });
+  }
+
+  // Usamos el script de texto manual para imprimir el sector
+  // Formato: Texto grande y centrado
+  const datos = {
+    textoPrincipal: sector,
+    textoSecundario: "", // Opcional
+    esSector: true // Flag por si el script lo necesita
+  };
+
+  const scriptPath = path.resolve(__dirname, '../scripts/etiquetaTextoManual.js');
+  const tempDir = path.join(__dirname, 'temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  // CORRECCION: Usar archivo unico para evitar colisiones en concurrencia
+  const uniqueId = Date.now() + Math.random().toString(36).substring(7);
+  const tempFileName = `temp-texto-${uniqueId}.json`;
+  const tempDataPath = path.join(tempDir, tempFileName);
+
+  fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
+
+  // Cantidad siempre 1 para sector. Pasamos el path del archivo temp como argumento extra si el script lo soporta
+  // OJO: El script etiquetaTextoManual.js debe saber leer este archivo.
+  // Si el script busca hardcoded 'temp-texto.json', fallará.
+  // Vamos a modificar la llamada para que el script lea EL ARCHIVO QUE LE PASAMOS.
+  // Asumimos que modificaremos etiquetaTextoManual.js para aceptar un argumento opcional de archivo.
+
+  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" 1 "${tempDataPath}"`;
+
+  exec(command, (error, stdout, stderr) => {
+    // Limpieza: Borrar archivo temporal
+    try {
+      if (fs.existsSync(tempDataPath)) fs.unlinkSync(tempDataPath);
+    } catch (e) { console.error("Error borrando temp:", e); }
+
+    if (error) {
+      console.error('Error al imprimir etiqueta de SECTOR:', error);
+      return res.status(500).json({ error: 'Error al imprimir etiqueta' });
+    }
+    console.log(`Etiqueta de SECTOR enviada: ${sector}`);
     res.json({ message: 'Etiqueta enviada a imprimir' });
   });
 });

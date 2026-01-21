@@ -62,12 +62,19 @@ async function main() {
     console.log('Directorio temporal:', tempDir);
 
     // Leer datos del archivo JSON
-    const jsonPath = path.join(tempDir, 'temp-texto.json');
-    console.log('Leyendo archivo JSON:', jsonPath);
-    
+    // OJO: Nuevo soporte para argumento opcional con el path del archivo unico
+    let jsonPath = path.join(tempDir, 'temp-texto.json'); // Default legacy
+
+    if (process.argv[3]) {
+      // Si viene un 4to argumento (indice 3), es el path del archivo especifico
+      jsonPath = process.argv[3];
+    }
+
+    console.log('Leyendo archivo JSON desde:', jsonPath);
+
     const jsonContent = await fs.readFile(jsonPath, 'utf8');
     console.log('Contenido JSON leído:', jsonContent);
-    
+
     const datos = JSON.parse(jsonContent);
     console.log('JSON parseado:', datos);
 
@@ -106,25 +113,31 @@ async function main() {
     }
 
     // Escribir archivo
-    const nombreArchivo = path.join(tempDir, 'etiqueta_texto.zpl');
+    // FIX: Usar nombre unico basado en el input para evitar colisiones
+    const uniqueId = path.basename(jsonPath, '.json').replace('temp-texto-', '') || Date.now();
+    const nombreArchivo = path.join(tempDir, `etiqueta_texto_${uniqueId}.zpl`);
+
     try {
       await fs.writeFile(nombreArchivo, contenido);
       console.log('Archivo ZPL creado exitosamente en:', nombreArchivo);
-      
+
       // Verificar archivo
       const stats = await fs.stat(nombreArchivo);
       console.log('Tamaño del archivo:', stats.size, 'bytes');
-      
-      // Listar archivos
-      const files = await fs.readdir(tempDir);
-      console.log('Archivos en el directorio temporal:', files);
     } catch (err) {
       throw new Error(`Error al escribir archivo: ${err.message}`);
     }
 
     // Enviar a impresora
     const nombreImpresora = 'Zebra';
-    exec(`COPY /B "${nombreArchivo}" \\\\localhost\\${nombreImpresora}`, (error, stdout, stderr) => {
+    // COPY es un comando de cmd, necesitamos comillas alrededor de los paths
+    exec(`COPY /B "${nombreArchivo}" \\\\localhost\\${nombreImpresora}`, async (error, stdout, stderr) => {
+      // Limpieza: borrar ZPL despues de enviar
+      try {
+        await fs.unlink(nombreArchivo);
+        console.log("Archivo ZPL temporal eliminado.");
+      } catch (e) { console.error("Error borrando ZPL:", e); }
+
       if (error) {
         console.error(`Error al imprimir: ${error.message}`);
         process.exit(1);
