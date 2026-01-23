@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -28,7 +29,7 @@
             margin-bottom: 20px;
             border-radius: 8px;
             overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         .acordeon-toggle {
@@ -48,7 +49,7 @@
         .acordeon-toggle:hover {
             background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
             transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .acordeon-toggle h2 {
@@ -182,6 +183,48 @@
             margin: 20px 0;
         }
 
+        /* Estilos para Cliente (Agrupamiento) */
+        .cliente-item {
+            margin-bottom: 20px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .cliente-header {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e9ecef;
+            transition: background-color 0.2s;
+        }
+
+        .cliente-header:hover {
+            background-color: #e2e6ea;
+        }
+
+        .cliente-content {
+            padding: 15px;
+            background-color: #fff;
+        }
+
+        /* Ajuste para presupuestos anidados */
+        .cliente-content .presupuesto-item {
+            margin-bottom: 15px;
+            border: 1px solid #dee2e6;
+            box-shadow: none;
+        }
+
+        .cliente-content .presupuesto-item:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Estilos existentes */
         .presupuesto-item {
             margin-bottom: 15px;
             border: 1px solid #dee2e6;
@@ -271,6 +314,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -328,8 +372,7 @@
             const content = document.getElementById(acordeonId);
             const button = document.querySelector(`[onclick="toggleAcordeon('${acordeonId}')"]`);
             const isExpanded = button.getAttribute('aria-expanded') === 'true';
-            
-            if (isExpanded) {
+ if (isExpanded) {
                 content.classList.remove('show');
                 button.setAttribute('aria-expanded', 'false');
             } else {
@@ -387,19 +430,19 @@
 
             // Agrupar por presupuesto
             const presupuestosMap = new Map();
-            
+
             for (const pendiente of pendientes) {
                 const presupId = pendiente.id_presupuesto_local;
-                
+
                 if (!presupuestosMap.has(presupId)) {
                     // Obtener datos del presupuesto
                     const presupuestoResponse = await fetch(`/api/produccion/pedidos-por-cliente?ids=${presupId}`);
                     const presupuestoData = await presupuestoResponse.json();
-                    
+
                     if (presupuestoData.success && presupuestoData.data.length > 0) {
                         const cliente = presupuestoData.data[0];
                         const articulos = cliente.articulos.filter(a => a.id_presupuesto_local === presupId);
-                        
+
                         presupuestosMap.set(presupId, {
                             id_local: presupId,
                             id_ext: pendiente.id_presupuesto_ext,
@@ -410,93 +453,128 @@
                         });
                     }
                 }
-                
+
                 if (presupuestosMap.has(presupId)) {
                     presupuestosMap.get(presupId).pendientes.push(pendiente);
                 }
             }
 
-            // Renderizar HTML
-            const html = Array.from(presupuestosMap.values()).map(presupuesto => {
-                const fechaFormateada = presupuesto.articulos[0]?.presupuesto_fecha 
-                    ? new Date(presupuesto.articulos[0].presupuesto_fecha).toLocaleDateString('es-AR')
-                    : '-';
+            // AHORA: Agrupar Presupuestos por CLIENTE
+            const clientesMap = new Map();
+            presupuestosMap.forEach(pres => {
+                const cliId = String(pres.cliente_id);
+                if (!clientesMap.has(cliId)) {
+                    clientesMap.set(cliId, {
+                        id: cliId,
+                        nombre: pres.cliente_nombre,
+                        presupuestos: []
+                    });
+                }
+                clientesMap.get(cliId).presupuestos.push(pres);
+            });
 
-                // Crear mapa de pendientes para marcar en rojo
-                const pendientesSet = new Set(
-                    presupuesto.pendientes.map(p => p.codigo_barras_real || p.codigo_barras)
-                );
+            // Renderizar HTML: Iterar Clientes -> Presupuestos
+            const html = Array.from(clientesMap.values()).map(cliente => {
+                
+                // Generar HTML de los presupuestos de este cliente
+                const presupuestosHtml = cliente.presupuestos.map(presupuesto => {
+                    const fechaFormateada = presupuesto.articulos[0]?.presupuesto_fecha 
+                        ? new Date(presupuesto.articulos[0].presupuesto_fecha).toLocaleDateString('es-AR')
+                        : '-';
 
-                return `
-                    <div class="presupuesto-item">
-                        <div class="presupuesto-header" onclick="togglePresupuesto('pres-${presupuesto.id_local}')">
-                            <div>
-                                <strong>Presupuesto ${presupuesto.id_ext}</strong>
-                                <span style="color: #6c757d; margin-left: 10px;">👤 ${presupuesto.cliente_nombre}</span>
-                                <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span>
-                                <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.pendientes.length} artículos derivados)</span>
+                    // Crear mapa de pendientes para marcar en rojo
+                    const pendientesSet = new Set(
+                        presupuesto.pendientes.map(p => p.codigo_barras_real || p.codigo_barras)
+                    );
+
+                    return `
+                        <div class="presupuesto-item">
+                            <div class="presupuesto-header" onclick="togglePresupuesto('pres-${presupuesto.id_local}')">
+                                <div>
+                                    <strong>Presupuesto ${presupuesto.id_ext}</strong>
+                                    <span style="color: #6c757d; margin-left: 10px;">👤 ${presupuesto.cliente_nombre}</span>
+                                    <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span>
+                                    <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.pendientes.length} art. derivados)</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    ${tipo === 'imprimir' ? `
+                                        <button class="btn-imprimir-pendiente" onclick="event.stopPropagation(); imprimirPendiente(${presupuesto.id_local}, '${presupuesto.id_ext}', ${presupuesto.cliente_id})">
+                                            📄 Imprimir
+                                        </button>
+                                    ` : ''}
+                                    <span class="toggle-icon" style="font-size: 1.2em;">▼</span>
+                                </div>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                ${tipo === 'imprimir' ? `
-                                    <button class="btn-imprimir-pendiente" onclick="event.stopPropagation(); imprimirPendiente(${presupuesto.id_local}, '${presupuesto.id_ext}', ${presupuesto.cliente_id})">
-                                        📄 Imprimir
-                                    </button>
+                            <div id="pres-${presupuesto.id_local}" class="presupuesto-content">
+                                ${tipo === 'espera' ? `
+                                    <div class="info-espera">
+                                        <strong>⏳ Esperando llegada de mercadería</strong>
+                                        <p>Este presupuesto ya fue impreso y está en espera de que lleguen los artículos pendientes.</p>
+                                    </div>
                                 ` : ''}
-                                <span class="toggle-icon" style="font-size: 1.2em;">▼</span>
+                                
+                                <table class="tabla-pendientes">
+                                    <thead>
+                                        <tr>
+                                            <th>Artículo</th>
+                                            <th>Descripción</th>
+                                            <th>Cantidad</th>
+                                            <th>Stock</th>
+                                            <th>Faltante</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${presupuesto.articulos.map(articulo => {
+                                            const esPendiente = pendientesSet.has(articulo.articulo_numero);
+                                            // Robust matching
+                                            const pendienteData = presupuesto.pendientes.find(p => 
+                                                String(p.codigo_barras_real || p.codigo_barras || p.articulo_numero).trim() === String(articulo.articulo_numero).trim()
+                                            );
+
+                                            return `
+                                                <tr ${esPendiente ? 'class="articulo-derivado"' : ''}>
+                                                    <td>${articulo.articulo_numero}</td>
+                                                    <td>${articulo.descripcion}</td>
+                                                    <td>${parseFloat(articulo.pedido_total).toFixed(2)}</td>
+                                                    <td>${parseFloat(articulo.stock_disponible).toFixed(2)}</td>
+                                                    <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">
+                                                        ${parseFloat(articulo.faltante).toFixed(2)}
+                                                    </td>
+                                                    <td>
+                                                        ${esPendiente && pendienteData ? `
+                                                            <button class="btn-revertir" onclick="revertirPendiente(${pendienteData.id})" title="Volver a Pendientes">
+                                                                ↩️ Revertir
+                                                            </button>
+                                                        ` : ''}
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-                        <div id="pres-${presupuesto.id_local}" class="presupuesto-content">
-                            ${tipo === 'espera' ? `
-                                <div class="info-espera">
-                                    <strong>⏳ Esperando llegada de mercadería</strong>
-                                    <p>Este presupuesto ya fue impreso y está en espera de que lleguen los artículos del proveedor.</p>
-                                </div>
-                            ` : ''}
-                            
-                            <table class="tabla-pendientes">
-                                <thead>
-                                    <tr>
-                                        <th>Artículo</th>
-                                        <th>Descripción</th>
-                                        <th>Cantidad</th>
-                                        <th>Stock</th>
-                                        <th>Faltante</th>
-                                        <th>Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${presupuesto.articulos.map(articulo => {
-                                        const esPendiente = pendientesSet.has(articulo.articulo_numero);
-                                        const pendienteData = presupuesto.pendientes.find(p => 
-                                            (p.codigo_barras_real || p.codigo_barras) === articulo.articulo_numero
-                                        );
-                                        
-                                        return `
-                                            <tr ${esPendiente ? 'class="articulo-derivado"' : ''}>
-                                                <td>${articulo.articulo_numero}</td>
-                                                <td>${articulo.descripcion}</td>
-                                                <td>${parseFloat(articulo.pedido_total).toFixed(2)}</td>
-                                                <td>${parseFloat(articulo.stock_disponible).toFixed(2)}</td>
-                                                <td class="${articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa'}">
-                                                    ${parseFloat(articulo.faltante).toFixed(2)}
-                                                </td>
-                                                <td>
-                                                    ${esPendiente && pendienteData ? `
-                                                        <button class="btn-revertir" onclick="revertirPendiente(${pendienteData.id})">
-                                                            ↩️ Revertir
-                                                        </button>
-                                                    ` : '-'}
-                                                </td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
+                    `;
+                }).join('');
+
+                // Renderizar contenedor del CLIENTE
+                return `
+                    <div class="cliente-item">
+                        <div class="cliente-header" onclick="toggleCliente('cli-${cliente.id}')">
+                            <div>
+                                <strong>👤 ${cliente.nombre}</strong>
+                                <span style="color: #6c757d; margin-left: 10px;">(${cliente.presupuestos.length} presupuestos)</span>
+                            </div>
+                            <div class="toggle-icon">▼</div>
+                        </div>
+                        <div id="cli-${cliente.id}" class="cliente-content" style="display: block;">
+                            ${presupuestosHtml}
                         </div>
                     </div>
                 `;
             }).join('');
-
+            
             container.innerHTML = html || `
                 <div class="mensaje-vacio">
                     <span>✅</span>
@@ -505,12 +583,28 @@
             `;
         }
 
-        // Toggle de presupuesto
         function togglePresupuesto(presupuestoId) {
             const contenido = document.getElementById(presupuestoId);
             const header = document.querySelector(`[onclick="togglePresupuesto('${presupuestoId}')"]`);
             const icon = header ? header.querySelector('.toggle-icon') : null;
-            
+
+            if (contenido) {
+                if (contenido.style.display === 'none' || contenido.style.display === '') {
+                    contenido.style.display = 'block';
+                    if (icon) icon.style.transform = 'rotate(180deg)';
+                } else {
+                    contenido.style.display = 'none';
+                    if (icon) icon.style.transform = 'rotate(0deg)';
+                }
+            }
+        }
+
+        // Toggle de Cliente (NUEVO)
+        function toggleCliente(clienteId) {
+            const contenido = document.getElementById(clienteId);
+            const header = document.querySelector(`[onclick="toggleCliente('${clienteId}')"]`);
+            const icon = header ? header.querySelector('.toggle-icon') : null;
+
             if (contenido) {
                 if (contenido.style.display === 'none' || contenido.style.display === '') {
                     contenido.style.display = 'block';
@@ -527,12 +621,11 @@
             if (!confirm(`¿Imprimir pendiente del presupuesto ${idPresupuestoExt}?\n\nEsto marcará el presupuesto como "En Espera" y pasará al segundo acordeón.`)) {
                 return;
             }
-
-            try {
+           try {
                 console.log(`📄 [IMPRIMIR-PENDIENTE] Iniciando impresión...`);
                 console.log(`📄 [IMPRIMIR-PENDIENTE] Cliente: ${clienteId}, Presupuesto Local: ${idPresupuestoLocal}, Ext: ${idPresupuestoExt}`);
-                
-                // 1. Marcar como impreso ANTES de imprimir (cambia secuencia a "Armar_Pedido")
+
+ // 1. Marcar como impreso ANTES de imprimir (cambia secuencia a "Armar_Pedido")
                 console.log(`📄 [IMPRIMIR-PENDIENTE] Marcando presupuesto como impreso...`);
                 const marcarResponse = await fetch(`/api/produccion/compras/pendientes/presupuesto/${idPresupuestoLocal}/marcar-impreso`, {
                     method: 'PATCH'
@@ -550,17 +643,17 @@
                 // 2. Abrir ventana de impresión usando el MISMO ENDPOINT que el flujo principal
                 // Endpoint: /api/produccion/impresion-presupuesto (formato Remito R)
                 console.log(`📄 [IMPRIMIR-PENDIENTE] Abriendo impresión con formato Remito R del flujo principal...`);
-                
+
                 // Intentar PDF primero, fallback a HTML
                 // IMPORTANTE: Agregar parámetro pendiente_compra=true para que el backend marque artículos en falta
                 const urlPdf = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=pdf&pendiente_compra=true`;
                 const urlHtml = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=html&pendiente_compra=true`;
-                
+
                 console.log(`📄 [IMPRIMIR-PENDIENTE] URL PDF: ${urlPdf}`);
                 console.log(`📄 [IMPRIMIR-PENDIENTE] URL HTML (fallback): ${urlHtml}`);
-                
+
                 const win = window.open(urlPdf, '_blank');
-                
+
                 // Fallback a HTML si PDF falla
                 setTimeout(() => {
                     if (!win || win.closed || typeof win.closed == 'undefined') {
@@ -624,4 +717,5 @@
         document.addEventListener('DOMContentLoaded', cargarPendientesAgrupados);
     </script>
 </body>
+
 </html>
