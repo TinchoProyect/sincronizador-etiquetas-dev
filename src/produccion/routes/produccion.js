@@ -110,6 +110,9 @@ router.use('/mixes', mixesRouter);     // ← Montar rutas para mixes
 router.use('/carro', carroIngredientesRouter); // ← Montar rutas para ingredientes de carro
 router.use('/', historialInventariosRouter); // ← Montar rutas para historial de inventarios
 
+const mantenimientoRouter = require('./mantenimiento'); // ← Router de Mantenimiento
+router.use('/mantenimiento', mantenimientoRouter); // ← /api/produccion/mantenimiento
+
 // Ruta para imprimir etiqueta de ingrediente
 router.post('/ingredientes/imprimir-etiqueta', imprimirEtiquetaIngrediente);
 

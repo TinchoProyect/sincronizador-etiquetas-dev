@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Mantenimiento - Producción</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/ingredientes-panel.css">
+    <!-- Reutilizamos estilos del panel de ingredientes para consistencia -->
+    <style>
+        /* Estilos específicos para Mantenimiento */
+        .status-cuarentena {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        .badge-ingreso {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .badge-liberacion {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+
+        .badge-ajuste {
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
+
+        .table-container {
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+
+        .section-title {
+            color: var(--primary-color);
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .refresh-btn {
+            background: none;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Resizer styles */
+        .panel-config {
+            position: relative;
+            min-width: 200px;
+            max-width: 500px;
+        }
+
+        .panel-resizer {
+            width: 5px;
+            height: 100%;
+            background: transparent;
+            position: absolute;
+            right: 0;
+            top: 0;
+            cursor: col-resize;
+            z-index: 10;
+            transition: background 0.2s;
+        }
+
+        .panel-resizer:hover,
+        .panel-resizer.resizing {
+            background: var(--primary-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🛠️ Gestión de Almacén de Mantenimiento</h1>
+            <a href="produccion.html" class="back-button">← Volver al Panel</a>
+        </header>
+
+        <main class="ingredientes-container">
+            <!-- PANEL IZQUIERDO: FILTROS (Simplificado por ahora) -->
+            <div class="panel-config" id="panel-config" style="width: 300px;">
+                <div class="panel-resizer" id="panel-resizer"></div>
+                <div class="config-header">
+                    <h2>⚙️ Filtros</h2>
+                    <p>Visualización de Stock</p>
+                </div>
+                <div class="config-body">
+                    <div class="config-accordion">
+                        <div class="accordion-header">
+                            <span>📦 Estado</span>
+                        </div>
+                        <div class="accordion-content" style="display:block; padding:10px;">
+                            <label><input type="checkbox" checked disabled> Stock en Cuarentena</label>
+                            <br>
+                            <label><input type="checkbox" checked disabled> Historial Reciente</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PANEL DERECHO: CONTENIDO -->
+            <div class="panel-main">
+                <div class="panel-main-content">
+
+                    <!-- SECCIÓN 1: STOCK EN CUARENTENA -->
+                    <div class="content-section">
+                        <div class="section-title">
+                            <h2>📦 Stock Actualmente en Mantenimiento</h2>
+                            <button class="refresh-btn" onclick="cargarStock()">🔄 Actualizar</button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="tabla-ingredientes">
+                                <thead>
+                                    <tr>
+                                        <th>Artículo (ID)</th>
+                                        <th>Stock Cuarentena</th>
+                                        <th>Estado</th>
+                                        <th>Última Act.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-stock">
+                                    <tr>
+                                        <td colspan="4" class="text-center">Cargando...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 2: HISTORIAL -->
+                    <div class="content-section" style="margin-top: 30px;">
+                        <div class="section-title">
+                            <h2>📜 Historial de Movimientos (Últimos 50)</h2>
+                            <button class="refresh-btn" onclick="cargarHistorial()">🔄 Actualizar</button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="tabla-ingredientes">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Artículo</th>
+                                        <th>Movimiento</th>
+                                        <th>Cantidad</th>
+                                        <th>Usuario</th>
+                                        <th>Observaciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-historial">
+                                    <tr>
+                                        <td colspan="6" class="text-center">Cargando...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 Gestiones Lamda - Módulo de Mantenimiento</p>
+        </footer>
+    </div>
+
+    <!-- SCRIPT DE LÓGICA -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            initResizer();
+            cargarStock();
+            cargarHistorial();
+        });
+
+        function initResizer() {
+            const resizer = document.getElementById('panel-resizer');
+            const panel = document.getElementById('panel-config');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                resizer.classList.add('resizing');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                const newWidth = e.clientX - panel.getBoundingClientRect().left; // Calculate relative to panel left
+                if (newWidth > 200 && newWidth < 600) {
+                    panel.style.width = `${newWidth}px`;
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    resizer.classList.remove('resizing');
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+            });
+        }
+
+        async function cargarStock() {
+            const tbody = document.getElementById('tbody-stock');
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">⏳ Cargando datos...</td></tr>';
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/stock');
+                if (!res.ok) throw new Error('Error al cargar stock');
+                const data = await res.json();
+
+                tbody.innerHTML = '';
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center">✅ No hay artículos en cuarentena.</td></tr>';
+                    return;
+                }
+
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${item.articulo_numero}</strong></td>
+                        <td style="font-size: 1.1em; color: #856404;">
+                            ${parseFloat(item.stock_mantenimiento).toFixed(3)}
+                        </td>
+                        <td><span class="status-cuarentena">🔒 En Custodia</span></td>
+                        <td>${new Date(item.ultima_actualizacion).toLocaleString()}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="4" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
+
+        async function cargarHistorial() {
+            const tbody = document.getElementById('tbody-historial');
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/historial');
+                if (!res.ok) throw new Error('Error al cargar historial');
+                const data = await res.json();
+
+                tbody.innerHTML = '';
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay movimientos registrados.</td></tr>';
+                    return;
+                }
+
+                data.forEach(mov => {
+                    let badgeClass = 'badge-ajuste';
+                    if (mov.tipo_movimiento === 'INGRESO') badgeClass = 'badge-ingreso';
+                    if (mov.tipo_movimiento === 'LIBERACION') badgeClass = 'badge-liberacion';
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${new Date(mov.fecha_movimiento).toLocaleString()}</td>
+                        <td>${mov.articulo_numero}</td>
+                        <td><span class="status-badge ${badgeClass}">${mov.tipo_movimiento}</span></td>
+                        <td><strong>${parseFloat(mov.cantidad).toFixed(3)}</strong></td>
+                        <td>${mov.usuario}</td>
+                        <td style="font-style: italic; color: #666;">${mov.observaciones || '-'}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="6" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
+    </script>
+</body>
+
+</html>

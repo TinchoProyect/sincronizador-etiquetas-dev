@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,12 +15,12 @@
             gap: 20px;
             padding: 20px;
         }
-        
+
         .colaborador-card {
             background-color: white;
             border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
             cursor: pointer;
             border: 1px solid var(--border-color);
@@ -28,10 +29,10 @@
             align-items: center;
             text-align: center;
         }
-        
+
         .colaborador-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             border-color: var(--primary-color);
         }
 
@@ -77,7 +78,7 @@
         }
 
         .admin-button:hover {
-            background-color:var(--secondary-color-dark, #5092a7);
+            background-color: var(--secondary-color-dark, #5092a7);
         }
 
         /* Estilos para la sección de pedidos por cliente */
@@ -386,7 +387,7 @@
         .section-toggle:hover {
             background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
             transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .section-toggle h2 {
@@ -410,7 +411,7 @@
         .section-toggle[aria-expanded="true"] .toggle-icon {
             transform: rotate(90deg);
         }
-        
+
         /* Estilos para contadores de secuencia - DESTACADOS */
         .contador-secuencia {
             font-weight: bold;
@@ -425,7 +426,7 @@
             display: inline-block;
             transition: all 0.3s ease;
         }
-        
+
         .contador-secuencia:hover {
             transform: scale(1.05);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
@@ -453,6 +454,7 @@
                 padding-top: 0;
                 padding-bottom: 0;
             }
+
             to {
                 opacity: 1;
                 max-height: 1000px;
@@ -468,6 +470,7 @@
                 padding-top: 20px;
                 padding-bottom: 20px;
             }
+
             to {
                 opacity: 0;
                 max-height: 0;
@@ -489,7 +492,7 @@
             background-color: #fff;
             border-radius: 8px;
             border: 1px solid #dee2e6;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .summary-header {
@@ -578,6 +581,7 @@
                 opacity: 0;
                 transform: translateY(-10px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -934,7 +938,7 @@
             background: #0056b3;
         }
 
-        
+
         /* Estilos para búsqueda dual en modal pack */
         .search-mode-tabs {
             display: flex;
@@ -1013,7 +1017,7 @@
         /* ==========================================
            ESTILOS PARA PANEL CONFIGURAR CARROS
            ========================================== */
-        
+
         .carros-panel-section {
             margin: 20px 0;
             padding: 0;
@@ -1362,8 +1366,15 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .feedback-success {
@@ -1390,7 +1401,7 @@
             background: #e9ecef;
             border-radius: 15px;
             overflow: hidden;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .progress-fill {
@@ -1519,6 +1530,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- Solapa lateral fija -->
     <div style="position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 999;">
@@ -1534,443 +1546,471 @@
             <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
         </header>
 
-<main>
-    <!-- Sección de Encabezado Principal -->
-    <section class="header-section">
-        <div class="welcome-section">
-            <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
-            
-            <div class="admin-buttons">
-                <a href="ingredientes.html" class="admin-button">
-                    Gestionar Ingredientes
-                </a>
-                <a href="articulos.html" class="admin-button" style="margin-left: 10px;">
-                    Gestión de Artículos
-                </a>
-                <a href="informe-produccion-interna.html" class="admin-button" style="margin-left: 10px; background-color: #28a745;">
-                    📊 Informes Producción
-                </a>
-            </div>
-            
-            <div id="lista-colaboradores" class="lista-colaboradores">
-                <!-- Los colaboradores se cargarán dinámicamente aquí -->
-            </div>
-        </div>
-    </section>
+        <main>
+            <!-- Sección de Encabezado Principal -->
+            <section class="header-section">
+                <div class="welcome-section">
+                    <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
 
-    <!-- Separador Visual -->
-    <div class="section-separator"></div>
+                    <div class="admin-buttons">
+                        <a href="ingredientes.html" class="admin-button">
+                            Gestionar Ingredientes
+                        </a>
+                        <a href="gestion-mantenimiento.html" class="admin-button"
+                            style="margin-left: 10px; background-color: #ffc107; color: #333;">
+                            🛠️ Gestión Mantenimiento
+                        </a>
+                        <a href="articulos.html" class="admin-button" style="margin-left: 10px;">
+                            Gestión de Artículos
+                        </a>
+                        <a href="informe-produccion-interna.html" class="admin-button"
+                            style="margin-left: 10px; background-color: #28a745;">
+                            📊 Informes Producción
+                        </a>
+                    </div>
 
-    <!-- Panel Lateral: Configurar Carros -->
-    <section class="carros-panel-section">
-        <button class="section-toggle" onclick="toggleSection('carros-panel-content')" aria-expanded="false">
-            <span class="toggle-icon">▶</span>
-            <h2>🛒 Configurar Carros</h2>
-        </button>
-        
-        <div id="carros-panel-content" class="collapsible-content" style="display: none;">
-            <div class="carros-panel-container">
-                <!-- Selector de Usuario -->
-                <div class="carros-usuario-section">
-                    <label for="carros-usuario-select">👤 Usuario asignado:</label>
-                    <select id="carros-usuario-select" class="carros-usuario-select">
-                        <option value="">-- Seleccionar usuario --</option>
-                    </select>
-                    
-                    <!-- Botonera rápida de usuarios -->
-                    <div id="carros-usuario-botonera" class="carros-usuario-botonera" style="margin-top: 12px;">
-                        <!-- Botones se cargarán dinámicamente -->
+                    <div id="lista-colaboradores" class="lista-colaboradores">
+                        <!-- Los colaboradores se cargarán dinámicamente aquí -->
                     </div>
                 </div>
+            </section>
 
-                <!-- Resumen de Faltantes dentro del panel -->
-                <div class="carros-resumen-section">
-                    <h3>📋 Faltantes y Parciales</h3>
-                    <div id="carros-lista-container" class="carros-lista-container">
-                        <p class="mensaje-info">Cargando artículos...</p>
-                    </div>
-                </div>
+            <!-- Separador Visual -->
+            <div class="section-separator"></div>
 
-                <!-- Botones de Acción -->
-                <div class="carros-acciones-section">
-                    <button id="carros-armar-uno-btn" class="carros-btn carros-btn-primary" disabled>
-                        🛒 Armar 1 Carro
-                    </button>
-                    <button id="carros-armar-varios-btn" class="carros-btn carros-btn-secondary" disabled title="Funcionalidad en desarrollo">
-                        🛒 Armar Varios Carros (TODO)
-                    </button>
-                </div>
+            <!-- Panel Lateral: Configurar Carros -->
+            <section class="carros-panel-section">
+                <button class="section-toggle" onclick="toggleSection('carros-panel-content')" aria-expanded="false">
+                    <span class="toggle-icon">▶</span>
+                    <h2>🛒 Configurar Carros</h2>
+                </button>
 
-                <!-- Mensajes de Estado -->
-                <div id="carros-mensaje" class="carros-mensaje" style="display: none;"></div>
-            </div>
-        </div>
-    </section>
+                <div id="carros-panel-content" class="collapsible-content" style="display: none;">
+                    <div class="carros-panel-container">
+                        <!-- Selector de Usuario -->
+                        <div class="carros-usuario-section">
+                            <label for="carros-usuario-select">👤 Usuario asignado:</label>
+                            <select id="carros-usuario-select" class="carros-usuario-select">
+                                <option value="">-- Seleccionar usuario --</option>
+                            </select>
 
-    <!-- Separador Visual -->
-    <div class="section-separator"></div>
-
-    <!-- Resumen de Faltantes y Parciales -->
-    <section class="summary-section">
-        <div class="summary-header">
-            <h3>⚠️ Resumen de Faltantes y Parciales</h3>
-        </div>
-        <div id="summary-container" class="summary-container">
-            <div id="summary-loading" class="summary-message">
-                <span>Cargando resumen...</span>
-            </div>
-            <div id="summary-empty" class="summary-message" style="display: none;">
-                <span>✅ Sin faltantes ni parciales</span>
-            </div>
-            <div id="summary-content" style="display: none;">
-                <table class="articulos-tabla summary-table">
-                    <thead>
-                        <tr>
-                            <th class="col-articulo">Artículo</th>
-                            <th>Descripción</th>
-                            <th>Pedido Total</th>
-                            <th>Stock Disponible</th>
-                            <th>Faltante</th>
-                            <th>Estado</th>
-                            <th style="width: 100px;">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="summary-tbody">
-                        <!-- Filas se cargarán dinámicamente -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </section>
-
-    <!-- Sección de Informes de Presupuestos -->
-    <section class="reports-section">
-        <!-- 1. Imprimir / Imprimir Modificado -->
-        <section class="pedidos-por-cliente-section collapsible-section">
-            <button class="section-toggle" onclick="toggleSection('pedidos-imprimir-section')" aria-expanded="false">
-                <span class="toggle-icon">▶</span>
-                <h2>📄 Imprimir / Imprimir Modificado <span id="contador-imprimir" class="contador-secuencia">(0)</span></h2>
-            </button>
-            
-            <div id="pedidos-imprimir-section" class="collapsible-content" style="display: none;">
-                <div class="pedidos-header">
-                    <div class="pedidos-controls">
-                        <label for="fecha-corte">Fecha límite:</label>
-                        <input type="date" id="fecha-corte" name="fecha-corte" />
-                        <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." />
-                        <button id="refresh-pedidos" class="admin-button">Actualizar</button>
-                        <button id="imprimir-todos-general" class="admin-button" style="background-color: #28a745;">📄 Imprimir Todos</button>
-                    </div>
-                </div>
-                <div id="pedidos-imprimir" class="pedidos-container">
-                    <!-- Contenido dinámico -->
-                </div>
-            </div>
-        </section>
-
-        <!-- 2. Armar Pedido -->
-        <section class="pedidos-por-cliente-section collapsible-section">
-            <button class="section-toggle" onclick="toggleSection('pedidos-armar-section')" aria-expanded="false">
-                <span class="toggle-icon">▶</span>
-                <h2>📦 Armar Pedido <span id="contador-armar" class="contador-secuencia">(0)</span></h2>
-            </button>
-            
-            <div id="pedidos-armar-section" class="collapsible-content" style="display: none;">
-                <div id="pedidos-armar" class="pedidos-container">
-                    <!-- Contenido dinámico -->
-                </div>
-            </div>
-        </section>
-
-        <!-- 3. Pedido Listo -->
-        <section class="pedidos-por-cliente-section collapsible-section">
-            <button class="section-toggle" onclick="toggleSection('pedidos-listo-section')" aria-expanded="false">
-                <span class="toggle-icon">▶</span>
-                <h2>✅ Pedido Listo <span id="contador-listo" class="contador-secuencia">(0)</span></h2>
-            </button>
-            
-            <div id="pedidos-listo-section" class="collapsible-content" style="display: none;">
-                <div id="pedidos-listo" class="pedidos-container">
-                    <!-- Contenido dinámico -->
-                </div>
-            </div>
-        </section>
-
-        <!-- 4. Retira por Depósito -->
-        <section class="pedidos-por-cliente-section collapsible-section">
-            <button class="section-toggle" onclick="toggleSection('pedidos-retira-section')" aria-expanded="false">
-                <span class="toggle-icon">▶</span>
-                <h2>🏪 Retira por Depósito <span id="contador-retira" class="contador-secuencia">(0)</span></h2>
-            </button>
-            
-            <div id="pedidos-retira-section" class="collapsible-content" style="display: none;">
-                <div id="pedidos-retira" class="pedidos-container">
-                    <!-- Contenido dinámico -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Nueva sección: Presupuestos sin Confirmar (Stand By) -->
-        <section class="pedidos-por-cliente-section collapsible-section">
-            <!-- Botón de Toggle -->
-            <button class="section-toggle" onclick="toggleSection('presupuestos-standby-section')" aria-expanded="false">
-                <span class="toggle-icon">▶</span>
-                <h2>Presupuestos sin Confirmar <span id="contador-standby" class="contador-secuencia">(0)</span></h2>
-            </button>
-            
-            <!-- Contenido Colapsable -->
-            <div id="presupuestos-standby-section" class="collapsible-content" style="display: none;">
-                <div id="pedidos-standby-container" class="pedidos-container">
-                    <!-- Contenido dinámico se cargará aquí con el mismo formato que otros acordeones -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Nueva sección: Artículos de Pedidos Confirmados -->
-        <section class="pedidos-por-cliente-section collapsible-section">
-            <!-- Botón de Toggle -->
-            <button class="section-toggle" onclick="toggleSection('articulos-section')" aria-expanded="false">
-                <span class="toggle-icon">▶</span>
-                <h2>Artículos de Pedidos Confirmados</h2>
-            </button>
-            
-            <!-- Contenido Colapsable -->
-            <div id="articulos-section" class="collapsible-content" style="display: none;">
-                <div class="pedidos-header">
-                    <div class="pedidos-controls">
-                        <label for="fecha-corte-articulos">Fecha limite:</label>
-                        <input type="date" id="fecha-corte-articulos" name="fecha-corte-articulos" />
-                        <input type="text" id="buscar-articulo" placeholder="Buscar artículo..." />
-                        <select id="filtro-estado-articulos">
-                            <option value="todos">Todos los estados</option>
-                            <option value="faltante">Solo faltantes</option>
-                            <option value="parcial">Solo parciales</option>
-                            <option value="completo">Solo completos</option>
-                        </select>
-                        <button id="refresh-articulos" class="admin-button">Actualizar</button>
-                    </div>
-                </div>
-                
-                <!-- Totales por estado -->
-                <div id="totales-articulos" class="totales-estado" style="padding: 10px; margin-bottom: 10px; background-color: #e9ecef; border-radius: 4px; text-align: center; font-weight: bold;">
-                    <!-- Los totales se cargarán dinámicamente -->
-                </div>
-                
-                <div id="articulos-container" class="pedidos-container">
-                    <!-- Aquí se renderizará la tabla de artículos consolidados -->
-                </div>
-            </div>
-        </section>
-
-        <!-- Modal para asignar faltantes -->
-        <div id="modal-asignar-faltantes" class="modal-overlay" style="display:none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Asignar Faltantes a Produccion</h3>
-                    <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalAsignar()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <label for="usuario-asignar">Usuario:</label>
-                    <select id="usuario-asignar" name="usuario-asignar">
-                        <!-- Opciones cargadas dinámicamente -->
-                    </select>
-                    <div id="articulos-faltantes-lista" class="faltantes-lista">
-                        <!-- Lista de artículos faltantes para asignar -->
-                    </div>
-                    <div id="modal-mensaje" class="mensaje-info"></div>
-                </div>
-                <div class="modal-footer">
-                    <button id="confirmar-asignacion" class="admin-button">Asignar a Produccion</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal para configurar pack -->
-        <div id="modal-pack" class="modal-pack-overlay" style="display:none;">
-            <div class="modal-pack-content">
-                <div class="modal-pack-header">
-                    <h3 id="modal-pack-titulo">Crear nuevo pack</h3>
-                    <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalPack()">&times;</button>
-                </div>
-                <div class="modal-pack-body">
-                    <!-- Información del padre (sin input, solo display) -->
-                    <div style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #6f42c1;">
-                        <div style="font-size: 18px; font-weight: 700; color: #333; margin-bottom: 5px;" id="pack-padre-descripcion">
-                            Cargando...
-                        </div>
-                        <div style="font-size: 12px; color: #6c757d; font-weight: 500;">
-                            Codigo: <span id="pack-padre-codigo-display" style="font-family: monospace;">-</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Campo oculto para mantener el código del padre -->
-                    <input type="hidden" id="pack-padre-codigo">
-
-                    <!-- Búsqueda de artículo hijo con MODO DUAL -->
-                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">
-                        🔗 Articulo Hijo:
-                    </label>
-                    
-                    <!-- Tabs para cambiar modo de búsqueda -->
-                    <div class="search-mode-tabs">
-                        <button type="button" id="btn-busqueda-codigo" class="search-tab active">Busqueda por codigo</button>
-                        <button type="button" id="btn-busqueda-descripcion" class="search-tab">Busqueda por descripcion</button>
-                    </div>
-                    
-                    <!-- Contenedor wrapper para búsqueda con posicionamiento relativo -->
-                    <div style="position: relative;">
-                        <!-- Input para MODO CÓDIGO (nuevo, activo por defecto) -->
-                        <div id="search-codigo-container" style="margin-bottom: 15px;">
-                            <input 
-                                type="text" 
-                                id="pack-hijo-codigo-input" 
-                                placeholder="Escanear o ingresar codigo de barras..."
-                                autocomplete="off"
-                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
-                            <div id="ayuda-busqueda-codigo" class="ayuda-busqueda">
-                                Para buscar por texto, usa "Busqueda por descripcion"
+                            <!-- Botonera rápida de usuarios -->
+                            <div id="carros-usuario-botonera" class="carros-usuario-botonera" style="margin-top: 12px;">
+                                <!-- Botones se cargarán dinámicamente -->
                             </div>
                         </div>
-                        
-                        <!-- Input para MODO DESCRIPCIÓN (existente, oculto por defecto) -->
-                        <div id="search-descripcion-container" style="margin-bottom: 15px; display: none;">
-                            <input 
-                                type="text" 
-                                id="pack-hijo-busqueda" 
-                                placeholder="Buscar por descripcion (ej: gi 500 a)..."
-                                autocomplete="off"
-                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
-                            <div id="aviso-codigo-barras" class="aviso-codigo-barras">
-                                Parece un codigo de barras. ¿Queres buscar por codigo?
-                                <button type="button" onclick="cambiarAModoCodigo()">Cambiar a modo codigo</button>
+
+                        <!-- Resumen de Faltantes dentro del panel -->
+                        <div class="carros-resumen-section">
+                            <h3>📋 Faltantes y Parciales</h3>
+                            <div id="carros-lista-container" class="carros-lista-container">
+                                <p class="mensaje-info">Cargando artículos...</p>
                             </div>
                         </div>
-                        
-                        <!-- Lista desplegable de resultados (compartida por ambos modos) -->
-                        <div id="pack-hijo-resultados" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #6f42c1; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 1001; margin-top: -15px;">
-                            <!-- Resultados dinámicos -->
+
+                        <!-- Botones de Acción -->
+                        <div class="carros-acciones-section">
+                            <button id="carros-armar-uno-btn" class="carros-btn carros-btn-primary" disabled>
+                                🛒 Armar 1 Carro
+                            </button>
+                            <button id="carros-armar-varios-btn" class="carros-btn carros-btn-secondary" disabled
+                                title="Funcionalidad en desarrollo">
+                                🛒 Armar Varios Carros (TODO)
+                            </button>
                         </div>
-                    </div>
-                    
-                    <!-- Campo oculto para el código del hijo seleccionado -->
-                    <input type="hidden" id="pack-hijo-codigo">
-                    
-                    <!-- Mostrar hijo seleccionado -->
-                    <div id="pack-hijo-seleccionado" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 4px; border-left: 4px solid #28a745;">
-                        <div style="font-weight: 600; color: #155724;" id="pack-hijo-seleccionado-texto"></div>
-                    </div>
 
-                    <label for="pack-unidades" style="font-weight: 600; margin-bottom: 8px; display: block;">
-                        🔢 Unidades por Pack:
-                    </label>
-                    <input 
-                        type="number" 
-                        id="pack-unidades" 
-                        min="1" 
-                        placeholder="Ej: 2"
-                        style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
-                    
-                    <div id="pack-mensaje" class="mensaje-info" style="display:none; margin-top: 15px;"></div>
-                </div>
-                <div class="modal-pack-footer">
-                    <button id="pack-guardar" class="pack-save-button" disabled>Guardar</button>
-                    <button id="pack-quitar" class="pack-remove-button" style="display:none;">Quitar mapeo</button>
-                    <button class="pack-cancel-button" onclick="cerrarModalPack()">Cancelar</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal para Derivar a Compras -->
-        <div id="modal-derivar-compras" class="modal-overlay" style="display:none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>🛒 Derivar a Compras</h3>
-                    <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalDerivarCompras()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <label>Artículo:</label>
-                    <input type="text" id="derivar-articulo-numero" readonly style="background-color: #f8f9fa;">
-                    
-                    <label>Código Barras:</label>
-                    <input type="text" id="derivar-codigo-barras" readonly style="background-color: #f8f9fa;">
-                    
-                    <label>ID Presupuesto Local:</label>
-                    <input type="number" id="derivar-id-presupuesto-local" readonly style="background-color: #f8f9fa;">
-                    
-                    <label>ID Presupuesto Ext:</label>
-                    <input type="text" id="derivar-id-presupuesto-ext" readonly style="background-color: #f8f9fa;">
-                    
-                    <label>Cantidad Faltante:</label>
-                    <input type="number" id="derivar-cantidad-faltante" readonly style="background-color: #f8f9fa;" step="0.01">
-                    
-                    <label>Nota (opcional):</label>
-                    <textarea id="derivar-nota" rows="3" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;" placeholder="Observaciones..."></textarea>
-                    
-                    <div id="derivar-mensaje" class="mensaje-info" style="display:none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button id="btn-confirmar-derivar" class="admin-button" style="background-color: #28a745;" onclick="confirmarDerivarCompras()">Confirmar Derivación</button>
-                    <button class="admin-button" style="background-color: #6c757d;" onclick="cerrarModalDerivarCompras()">Cancelar</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal para Armar Pedido (Verificación Interactiva) -->
-        <div id="modal-armar-pedido" class="modal-overlay" style="display:none;">
-            <div class="modal-content modal-armar-grande">
-                <div class="modal-header">
-                    <h3>🔍 Verificar Pedido - <span id="modal-presupuesto-titulo"></span></h3>
-                    <button class="modal-close" aria-label="Cerrar modal" onclick="cerrarModalArmarPedido()">&times;</button>
-                </div>
-                
-                <div class="modal-body">
-                    <!-- Campo de escaneo -->
-                    <div class="scanner-section">
-                        <label for="scanner-input">Escanear Código de Barras:</label>
-                        <input type="text" id="scanner-input" placeholder="Escanee o ingrese código de artículo..." autocomplete="off">
-                        <div id="scanner-feedback" class="feedback-message"></div>
+                        <!-- Mensajes de Estado -->
+                        <div id="carros-mensaje" class="carros-mensaje" style="display: none;"></div>
                     </div>
-                    
-                    <!-- Progreso -->
-                    <div class="progress-section">
-                        <div class="progress-bar">
-                            <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
-                        </div>
-                        <p id="progress-text" style="text-align: center; margin-top: 10px; font-weight: bold;">0 de 0 artículos confirmados</p>
+                </div>
+            </section>
+
+            <!-- Separador Visual -->
+            <div class="section-separator"></div>
+
+            <!-- Resumen de Faltantes y Parciales -->
+            <section class="summary-section">
+                <div class="summary-header">
+                    <h3>⚠️ Resumen de Faltantes y Parciales</h3>
+                </div>
+                <div id="summary-container" class="summary-container">
+                    <div id="summary-loading" class="summary-message">
+                        <span>Cargando resumen...</span>
                     </div>
-                    
-                    <!-- Lista de artículos -->
-                    <div class="articulos-verificacion">
-                        <table class="articulos-tabla tabla-verificacion">
+                    <div id="summary-empty" class="summary-message" style="display: none;">
+                        <span>✅ Sin faltantes ni parciales</span>
+                    </div>
+                    <div id="summary-content" style="display: none;">
+                        <table class="articulos-tabla summary-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 60px;">Estado</th>
-                                    <th>Código</th>
+                                    <th class="col-articulo">Artículo</th>
                                     <th>Descripción</th>
-                                    <th style="width: 100px;">Pedida</th>
-                                    <th style="width: 120px;">Confirmada</th>
+                                    <th>Pedido Total</th>
+                                    <th>Stock Disponible</th>
+                                    <th>Faltante</th>
+                                    <th>Estado</th>
                                     <th style="width: 100px;">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody id="lista-articulos-verificacion">
-                                <!-- Filas dinámicas -->
+                            <tbody id="summary-tbody">
+                                <!-- Filas se cargarán dinámicamente -->
                             </tbody>
                         </table>
                     </div>
                 </div>
-                
-                <div class="modal-footer">
-                    <button id="btn-confirmar-pedido-completo" class="btn-confirmar-pedido" disabled>
-                        ✅ Confirmar Pedido Completo
+            </section>
+
+            <!-- Sección de Informes de Presupuestos -->
+            <section class="reports-section">
+                <!-- 1. Imprimir / Imprimir Modificado -->
+                <section class="pedidos-por-cliente-section collapsible-section">
+                    <button class="section-toggle" onclick="toggleSection('pedidos-imprimir-section')"
+                        aria-expanded="false">
+                        <span class="toggle-icon">▶</span>
+                        <h2>📄 Imprimir / Imprimir Modificado <span id="contador-imprimir"
+                                class="contador-secuencia">(0)</span></h2>
                     </button>
-                    <button class="admin-button" style="background: #6c757d;" onclick="cerrarModalArmarPedido()">
-                        Cancelar
+
+                    <div id="pedidos-imprimir-section" class="collapsible-content" style="display: none;">
+                        <div class="pedidos-header">
+                            <div class="pedidos-controls">
+                                <label for="fecha-corte">Fecha límite:</label>
+                                <input type="date" id="fecha-corte" name="fecha-corte" />
+                                <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." />
+                                <button id="refresh-pedidos" class="admin-button">Actualizar</button>
+                                <button id="imprimir-todos-general" class="admin-button"
+                                    style="background-color: #28a745;">📄 Imprimir Todos</button>
+                            </div>
+                        </div>
+                        <div id="pedidos-imprimir" class="pedidos-container">
+                            <!-- Contenido dinámico -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. Armar Pedido -->
+                <section class="pedidos-por-cliente-section collapsible-section">
+                    <button class="section-toggle" onclick="toggleSection('pedidos-armar-section')"
+                        aria-expanded="false">
+                        <span class="toggle-icon">▶</span>
+                        <h2>📦 Armar Pedido <span id="contador-armar" class="contador-secuencia">(0)</span></h2>
                     </button>
+
+                    <div id="pedidos-armar-section" class="collapsible-content" style="display: none;">
+                        <div id="pedidos-armar" class="pedidos-container">
+                            <!-- Contenido dinámico -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. Pedido Listo -->
+                <section class="pedidos-por-cliente-section collapsible-section">
+                    <button class="section-toggle" onclick="toggleSection('pedidos-listo-section')"
+                        aria-expanded="false">
+                        <span class="toggle-icon">▶</span>
+                        <h2>✅ Pedido Listo <span id="contador-listo" class="contador-secuencia">(0)</span></h2>
+                    </button>
+
+                    <div id="pedidos-listo-section" class="collapsible-content" style="display: none;">
+                        <div id="pedidos-listo" class="pedidos-container">
+                            <!-- Contenido dinámico -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. Retira por Depósito -->
+                <section class="pedidos-por-cliente-section collapsible-section">
+                    <button class="section-toggle" onclick="toggleSection('pedidos-retira-section')"
+                        aria-expanded="false">
+                        <span class="toggle-icon">▶</span>
+                        <h2>🏪 Retira por Depósito <span id="contador-retira" class="contador-secuencia">(0)</span></h2>
+                    </button>
+
+                    <div id="pedidos-retira-section" class="collapsible-content" style="display: none;">
+                        <div id="pedidos-retira" class="pedidos-container">
+                            <!-- Contenido dinámico -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Nueva sección: Presupuestos sin Confirmar (Stand By) -->
+                <section class="pedidos-por-cliente-section collapsible-section">
+                    <!-- Botón de Toggle -->
+                    <button class="section-toggle" onclick="toggleSection('presupuestos-standby-section')"
+                        aria-expanded="false">
+                        <span class="toggle-icon">▶</span>
+                        <h2>Presupuestos sin Confirmar <span id="contador-standby" class="contador-secuencia">(0)</span>
+                        </h2>
+                    </button>
+
+                    <!-- Contenido Colapsable -->
+                    <div id="presupuestos-standby-section" class="collapsible-content" style="display: none;">
+                        <div id="pedidos-standby-container" class="pedidos-container">
+                            <!-- Contenido dinámico se cargará aquí con el mismo formato que otros acordeones -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Nueva sección: Artículos de Pedidos Confirmados -->
+                <section class="pedidos-por-cliente-section collapsible-section">
+                    <!-- Botón de Toggle -->
+                    <button class="section-toggle" onclick="toggleSection('articulos-section')" aria-expanded="false">
+                        <span class="toggle-icon">▶</span>
+                        <h2>Artículos de Pedidos Confirmados</h2>
+                    </button>
+
+                    <!-- Contenido Colapsable -->
+                    <div id="articulos-section" class="collapsible-content" style="display: none;">
+                        <div class="pedidos-header">
+                            <div class="pedidos-controls">
+                                <label for="fecha-corte-articulos">Fecha limite:</label>
+                                <input type="date" id="fecha-corte-articulos" name="fecha-corte-articulos" />
+                                <input type="text" id="buscar-articulo" placeholder="Buscar artículo..." />
+                                <select id="filtro-estado-articulos">
+                                    <option value="todos">Todos los estados</option>
+                                    <option value="faltante">Solo faltantes</option>
+                                    <option value="parcial">Solo parciales</option>
+                                    <option value="completo">Solo completos</option>
+                                </select>
+                                <button id="refresh-articulos" class="admin-button">Actualizar</button>
+                            </div>
+                        </div>
+
+                        <!-- Totales por estado -->
+                        <div id="totales-articulos" class="totales-estado"
+                            style="padding: 10px; margin-bottom: 10px; background-color: #e9ecef; border-radius: 4px; text-align: center; font-weight: bold;">
+                            <!-- Los totales se cargarán dinámicamente -->
+                        </div>
+
+                        <div id="articulos-container" class="pedidos-container">
+                            <!-- Aquí se renderizará la tabla de artículos consolidados -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Modal para asignar faltantes -->
+                <div id="modal-asignar-faltantes" class="modal-overlay" style="display:none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Asignar Faltantes a Produccion</h3>
+                            <button class="modal-close" aria-label="Cerrar modal"
+                                onclick="cerrarModalAsignar()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <label for="usuario-asignar">Usuario:</label>
+                            <select id="usuario-asignar" name="usuario-asignar">
+                                <!-- Opciones cargadas dinámicamente -->
+                            </select>
+                            <div id="articulos-faltantes-lista" class="faltantes-lista">
+                                <!-- Lista de artículos faltantes para asignar -->
+                            </div>
+                            <div id="modal-mensaje" class="mensaje-info"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="confirmar-asignacion" class="admin-button">Asignar a Produccion</button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
-    </section>
-</main>
+
+                <!-- Modal para configurar pack -->
+                <div id="modal-pack" class="modal-pack-overlay" style="display:none;">
+                    <div class="modal-pack-content">
+                        <div class="modal-pack-header">
+                            <h3 id="modal-pack-titulo">Crear nuevo pack</h3>
+                            <button class="modal-close" aria-label="Cerrar modal"
+                                onclick="cerrarModalPack()">&times;</button>
+                        </div>
+                        <div class="modal-pack-body">
+                            <!-- Información del padre (sin input, solo display) -->
+                            <div
+                                style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #6f42c1;">
+                                <div style="font-size: 18px; font-weight: 700; color: #333; margin-bottom: 5px;"
+                                    id="pack-padre-descripcion">
+                                    Cargando...
+                                </div>
+                                <div style="font-size: 12px; color: #6c757d; font-weight: 500;">
+                                    Codigo: <span id="pack-padre-codigo-display"
+                                        style="font-family: monospace;">-</span>
+                                </div>
+                            </div>
+
+                            <!-- Campo oculto para mantener el código del padre -->
+                            <input type="hidden" id="pack-padre-codigo">
+
+                            <!-- Búsqueda de artículo hijo con MODO DUAL -->
+                            <label style="font-weight: 600; margin-bottom: 8px; display: block;">
+                                🔗 Articulo Hijo:
+                            </label>
+
+                            <!-- Tabs para cambiar modo de búsqueda -->
+                            <div class="search-mode-tabs">
+                                <button type="button" id="btn-busqueda-codigo" class="search-tab active">Busqueda por
+                                    codigo</button>
+                                <button type="button" id="btn-busqueda-descripcion" class="search-tab">Busqueda por
+                                    descripcion</button>
+                            </div>
+
+                            <!-- Contenedor wrapper para búsqueda con posicionamiento relativo -->
+                            <div style="position: relative;">
+                                <!-- Input para MODO CÓDIGO (nuevo, activo por defecto) -->
+                                <div id="search-codigo-container" style="margin-bottom: 15px;">
+                                    <input type="text" id="pack-hijo-codigo-input"
+                                        placeholder="Escanear o ingresar codigo de barras..." autocomplete="off"
+                                        style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                                    <div id="ayuda-busqueda-codigo" class="ayuda-busqueda">
+                                        Para buscar por texto, usa "Busqueda por descripcion"
+                                    </div>
+                                </div>
+
+                                <!-- Input para MODO DESCRIPCIÓN (existente, oculto por defecto) -->
+                                <div id="search-descripcion-container" style="margin-bottom: 15px; display: none;">
+                                    <input type="text" id="pack-hijo-busqueda"
+                                        placeholder="Buscar por descripcion (ej: gi 500 a)..." autocomplete="off"
+                                        style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                                    <div id="aviso-codigo-barras" class="aviso-codigo-barras">
+                                        Parece un codigo de barras. ¿Queres buscar por codigo?
+                                        <button type="button" onclick="cambiarAModoCodigo()">Cambiar a modo
+                                            codigo</button>
+                                    </div>
+                                </div>
+
+                                <!-- Lista desplegable de resultados (compartida por ambos modos) -->
+                                <div id="pack-hijo-resultados"
+                                    style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #6f42c1; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 1001; margin-top: -15px;">
+                                    <!-- Resultados dinámicos -->
+                                </div>
+                            </div>
+
+                            <!-- Campo oculto para el código del hijo seleccionado -->
+                            <input type="hidden" id="pack-hijo-codigo">
+
+                            <!-- Mostrar hijo seleccionado -->
+                            <div id="pack-hijo-seleccionado"
+                                style="display: none; margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 4px; border-left: 4px solid #28a745;">
+                                <div style="font-weight: 600; color: #155724;" id="pack-hijo-seleccionado-texto"></div>
+                            </div>
+
+                            <label for="pack-unidades" style="font-weight: 600; margin-bottom: 8px; display: block;">
+                                🔢 Unidades por Pack:
+                            </label>
+                            <input type="number" id="pack-unidades" min="1" placeholder="Ej: 2"
+                                style="width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+
+                            <div id="pack-mensaje" class="mensaje-info" style="display:none; margin-top: 15px;"></div>
+                        </div>
+                        <div class="modal-pack-footer">
+                            <button id="pack-guardar" class="pack-save-button" disabled>Guardar</button>
+                            <button id="pack-quitar" class="pack-remove-button" style="display:none;">Quitar
+                                mapeo</button>
+                            <button class="pack-cancel-button" onclick="cerrarModalPack()">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal para Derivar a Compras -->
+                <div id="modal-derivar-compras" class="modal-overlay" style="display:none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>🛒 Derivar a Compras</h3>
+                            <button class="modal-close" aria-label="Cerrar modal"
+                                onclick="cerrarModalDerivarCompras()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <label>Artículo:</label>
+                            <input type="text" id="derivar-articulo-numero" readonly style="background-color: #f8f9fa;">
+
+                            <label>Código Barras:</label>
+                            <input type="text" id="derivar-codigo-barras" readonly style="background-color: #f8f9fa;">
+
+                            <label>ID Presupuesto Local:</label>
+                            <input type="number" id="derivar-id-presupuesto-local" readonly
+                                style="background-color: #f8f9fa;">
+
+                            <label>ID Presupuesto Ext:</label>
+                            <input type="text" id="derivar-id-presupuesto-ext" readonly
+                                style="background-color: #f8f9fa;">
+
+                            <label>Cantidad Faltante:</label>
+                            <input type="number" id="derivar-cantidad-faltante" readonly
+                                style="background-color: #f8f9fa;" step="0.01">
+
+                            <label>Nota (opcional):</label>
+                            <textarea id="derivar-nota" rows="3"
+                                style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;"
+                                placeholder="Observaciones..."></textarea>
+
+                            <div id="derivar-mensaje" class="mensaje-info" style="display:none;"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="btn-confirmar-derivar" class="admin-button" style="background-color: #28a745;"
+                                onclick="confirmarDerivarCompras()">Confirmar Derivación</button>
+                            <button class="admin-button" style="background-color: #6c757d;"
+                                onclick="cerrarModalDerivarCompras()">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal para Armar Pedido (Verificación Interactiva) -->
+                <div id="modal-armar-pedido" class="modal-overlay" style="display:none;">
+                    <div class="modal-content modal-armar-grande">
+                        <div class="modal-header">
+                            <h3>🔍 Verificar Pedido - <span id="modal-presupuesto-titulo"></span></h3>
+                            <button class="modal-close" aria-label="Cerrar modal"
+                                onclick="cerrarModalArmarPedido()">&times;</button>
+                        </div>
+
+                        <div class="modal-body">
+                            <!-- Campo de escaneo -->
+                            <div class="scanner-section">
+                                <label for="scanner-input">Escanear Código de Barras:</label>
+                                <input type="text" id="scanner-input"
+                                    placeholder="Escanee o ingrese código de artículo..." autocomplete="off">
+                                <div id="scanner-feedback" class="feedback-message"></div>
+                            </div>
+
+                            <!-- Progreso -->
+                            <div class="progress-section">
+                                <div class="progress-bar">
+                                    <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <p id="progress-text" style="text-align: center; margin-top: 10px; font-weight: bold;">0
+                                    de 0 artículos confirmados</p>
+                            </div>
+
+                            <!-- Lista de artículos -->
+                            <div class="articulos-verificacion">
+                                <table class="articulos-tabla tabla-verificacion">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 60px;">Estado</th>
+                                            <th>Código</th>
+                                            <th>Descripción</th>
+                                            <th style="width: 100px;">Pedida</th>
+                                            <th style="width: 120px;">Confirmada</th>
+                                            <th style="width: 100px;">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="lista-articulos-verificacion">
+                                        <!-- Filas dinámicas -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button id="btn-confirmar-pedido-completo" class="btn-confirmar-pedido" disabled>
+                                ✅ Confirmar Pedido Completo
+                            </button>
+                            <button class="admin-button" style="background: #6c757d;"
+                                onclick="cerrarModalArmarPedido()">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
 
         <footer>
             <p>&copy; 2024 Gestiones Lamda</p>
@@ -1983,10 +2023,12 @@
         <div class="modal-content" style="max-width: 650px; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header" style="cursor: move;" id="modal-abrir-caja-header">
                 <h3>🔓 Abrir Caja</h3>
-                <button class="modal-close" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()" aria-label="Cerrar">&times;</button>
+                <button class="modal-close" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()"
+                    aria-label="Cerrar">&times;</button>
             </div>
             <div class="modal-body">
-                <div style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
+                <div
+                    style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
                     <div style="font-size: 18px; font-weight: 700; color: #1565c0;" id="unidad-descripcion-caja">-</div>
                     <div style="font-size: 13px; color: #424242; margin-top: 5px;">
                         Código: <span id="unidad-codigo-caja" style="font-family: monospace; font-weight: 600;">-</span>
@@ -1996,19 +2038,23 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Usuario: <span style="color: #d32f2f;">*</span></label>
+                    <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Usuario: <span
+                            style="color: #d32f2f;">*</span></label>
                     <select id="abrir-caja-usuario" class="form-control" required>
                         <option value="">-- Seleccionar usuario --</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Cantidad de unidades por caja: <span style="color: #d32f2f;">*</span></label>
-                    <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1" placeholder="Ej: 12" required>
+                    <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Cantidad de unidades por caja: <span
+                            style="color: #d32f2f;">*</span></label>
+                    <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1"
+                        placeholder="Ej: 12" required>
                     <small style="color: #757575;">¿Cuántas unidades trae la caja?</small>
                 </div>
                 <div id="sugerencias-container-caja" style="margin: 20px 0; display: none;">
                     <label style="font-weight: 600; color: #388e3c;">💡 Sugerencias (basadas en historial):</label>
-                    <div id="sugerencias-lista-caja" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;"></div>
+                    <div id="sugerencias-lista-caja"
+                        style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;"></div>
                 </div>
                 <div class="buscador-manual">
                     <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔍 Buscar Caja:</label>
@@ -2017,15 +2063,21 @@
                         <button type="button" id="btn-descripcion-caja" class="search-tab">Descripción</button>
                     </div>
                     <div id="container-codigo-caja" style="position: relative;">
-                        <input type="text" id="input-codigo-caja" class="form-control" placeholder="Escanear código..." autocomplete="off">
+                        <input type="text" id="input-codigo-caja" class="form-control" placeholder="Escanear código..."
+                            autocomplete="off">
                     </div>
                     <div id="container-descripcion-caja" style="position: relative; display: none;">
-                        <input type="text" id="input-descripcion-caja" class="form-control" placeholder="Buscar por descripción..." autocomplete="off">
-                        <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe múltiples palabras separadas por espacio</small>
+                        <input type="text" id="input-descripcion-caja" class="form-control"
+                            placeholder="Buscar por descripción..." autocomplete="off">
+                        <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe múltiples palabras
+                            separadas por espacio</small>
                     </div>
-                    <div id="resultados-caja" style="display: none; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"></div>
+                    <div id="resultados-caja"
+                        style="display: none; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                    </div>
                 </div>
-                <div id="caja-seleccionada-display" style="display: none; margin: 20px 0; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
+                <div id="caja-seleccionada-display"
+                    style="display: none; margin: 20px 0; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
                     <div style="font-weight: 600; color: #2e7d32; font-size: 16px;" id="caja-nombre">-</div>
                     <div style="font-size: 13px; color: #424242; margin-top: 5px;">
                         Código: <span id="caja-codigo" style="font-family: monospace; font-weight: 600;">-</span>
@@ -2039,7 +2091,8 @@
             <div class="modal-footer">
                 <button id="btn-imprimir-caja" class="btn btn-info" disabled>🏷️ Imprimir Etiquetas</button>
                 <button id="btn-confirmar-caja" class="btn btn-success" disabled>🔓 Abrir Caja</button>
-                <button class="btn btn-secondary" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()">Cancelar</button>
+                <button class="btn btn-secondary"
+                    onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()">Cancelar</button>
             </div>
         </div>
     </div>
@@ -2051,32 +2104,32 @@
     <script src="/js/derivar-compras.js?v=1.0"></script>
     <script>console.log('🔍 [DEBUG] Modal HTML cargado, ID:', document.getElementById('modal-abrir-caja') ? 'ENCONTRADO' : 'NO ENCONTRADO');</script>
     <script src="/js/modal-abrir-caja.js?v=2.7"></script>
-    
+
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
         function toggleSection(sectionId) {
             const content = document.getElementById(sectionId);
             const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
             const icon = button.querySelector('.toggle-icon');
-            
+
             if (content.style.display === 'none' || content.style.display === '') {
                 // Expandir sección
                 content.style.display = 'block';
                 content.classList.add('expanding');
                 content.classList.remove('collapsing');
                 button.setAttribute('aria-expanded', 'true');
-                
+
                 // Remover clase de animación después de completarse
                 setTimeout(() => {
                     content.classList.remove('expanding');
                 }, 300);
-                
+
             } else {
                 // Colapsar sección
                 content.classList.add('collapsing');
                 content.classList.remove('expanding');
                 button.setAttribute('aria-expanded', 'false');
-                
+
                 // Ocultar después de la animación
                 setTimeout(() => {
                     content.style.display = 'none';
@@ -2086,21 +2139,21 @@
         }
 
         // Función para inicializar el estado de las secciones al cargar la página
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             console.log('[INIT] PASO 1 - DOMContentLoaded disparado - Inicializando secciones colapsables');
-            
+
             // Asegurar que todas las secciones estén colapsadas al inicio
             const collapsibleSections = document.querySelectorAll('.collapsible-content');
             const toggleButtons = document.querySelectorAll('.section-toggle');
-            
+
             collapsibleSections.forEach(section => {
                 section.style.display = 'none';
             });
-            
+
             toggleButtons.forEach(button => {
                 button.setAttribute('aria-expanded', 'false');
             });
-            
+
             console.log('[INIT] PASO 1 COMPLETADO - Secciones colapsables inicializadas correctamente');
         });
 
@@ -2108,7 +2161,7 @@
         function expandSection(sectionId) {
             const content = document.getElementById(sectionId);
             const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
-            
+
             if (content && content.style.display === 'none') {
                 toggleSection(sectionId);
             }
@@ -2118,14 +2171,14 @@
         function collapseSection(sectionId) {
             const content = document.getElementById(sectionId);
             const button = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
-            
+
             if (content && content.style.display !== 'none') {
                 toggleSection(sectionId);
             }
         }
 
         // ===== FUNCIONALIDAD DEL RESUMEN DE FALTANTES Y PARCIALES =====
-        
+
         // Variable global para compartir datos entre resumen y panel principal
         let datosArticulosCompartidos = null;
         let ultimaActualizacion = 0;
@@ -2133,7 +2186,7 @@
         // Función para normalizar estados (corregir variantes tipográficas)
         function normalizarEstado(estado) {
             if (!estado) return '';
-            
+
             return estado.toString()
                 .trim()
                 .toUpperCase()
@@ -2156,23 +2209,23 @@
         function obtenerDatosDesdeDOM() {
             console.log('[RESUMEN] obtenerDatosDesdeDOM() - Iniciando extracción');
             const articulos = [];
-            
+
             try {
                 // Buscar la tabla de artículos en el panel principal
                 const container = document.querySelector('#articulos-container');
                 console.log('[RESUMEN] Container encontrado:', !!container);
-                
+
                 const tabla = document.querySelector('#articulos-container .articulos-tabla tbody');
                 console.log('[RESUMEN] Tabla encontrada:', !!tabla);
-                
+
                 if (!tabla) {
                     console.log('[RESUMEN] ⚠️ No se encontró tabla de artículos en el DOM - retornando array vacío');
                     return [];
                 }
-                
+
                 const filas = tabla.querySelectorAll('tr');
                 console.debug('🔍 Encontradas', filas.length, 'filas en la tabla');
-                
+
                 filas.forEach((fila, index) => {
                     const celdas = fila.querySelectorAll('td');
                     if (celdas.length >= 6) {
@@ -2182,18 +2235,18 @@
                         const pedidoTotal = parseNumeroSeguro(celdas[2]?.textContent?.trim());
                         const stockDisponible = parseNumeroSeguro(celdas[3]?.textContent?.trim());
                         const faltante = parseNumeroSeguro(celdas[4]?.textContent?.trim());
-                        
+
                         // Extraer estado del badge/indicador
                         const estadoElement = celdas[5]?.querySelector('.indicador-estado');
                         const estado = estadoElement?.textContent?.trim() || '';
-                        
+
                         // Log del primer elemento para debug
                         if (index === 0) {
                             console.debug('🔍 Primer artículo extraído:', {
                                 codigo, descripcion, pedidoTotal, stockDisponible, faltante, estado
                             });
                         }
-                        
+
                         articulos.push({
                             codigo,
                             descripcion,
@@ -2204,10 +2257,10 @@
                         });
                     }
                 });
-                
+
                 console.debug('📊 Artículos extraídos del DOM:', articulos.length);
                 return articulos;
-                
+
             } catch (error) {
                 console.error('❌ Error al extraer datos del DOM:', error);
                 return [];
@@ -2217,35 +2270,35 @@
         // Función para obtener datos - USA EL MISMO ENDPOINT QUE EL PANEL PRINCIPAL
         async function obtenerDatosArticulosConFiltros() {
             console.log('[RESUMEN] obtenerDatosArticulosConFiltros() - Usando endpoint /pedidos-articulos');
-            
+
             try {
                 // Usar los mismos filtros que el panel principal
                 const fechaCorte = document.getElementById('fecha-corte-articulos')?.value || '';
-                
+
                 let url = '/api/produccion/pedidos-articulos';
                 const params = new URLSearchParams();
-                
+
                 if (fechaCorte) params.append('fecha', fechaCorte);
                 // NO aplicar filtro de estado aquí - lo haremos después
-                
+
                 if (params.toString()) {
                     url += '?' + params.toString();
                 }
-                
+
                 console.log('[RESUMEN] Fetching desde:', url);
-                
+
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`Error HTTP: ${response.status}`);
                 }
-                
+
                 const result = await response.json();
                 console.log('[RESUMEN] Respuesta del servidor:', result);
-                
+
                 // El endpoint retorna { success, data, total_articulos, totales }
                 const articulos = result.data || [];
                 console.log('[RESUMEN] Artículos recibidos:', articulos.length);
-                
+
                 // Verificar que no hay promesas en las descripciones
                 if (articulos.length > 0) {
                     const primerArticulo = articulos[0];
@@ -2256,10 +2309,10 @@
                         esPromise: primerArticulo.descripcion && typeof primerArticulo.descripcion.then === 'function'
                     });
                 }
-                
+
                 datosArticulosCompartidos = articulos;
                 ultimaActualizacion = Date.now();
-                
+
                 return articulos;
             } catch (error) {
                 console.error('❌ [RESUMEN] Error al obtener datos:', error);
@@ -2276,36 +2329,36 @@
          */
         function consolidarArticulosPorCodigo(articulos) {
             console.log('[CONSOLIDAR] Iniciando consolidación de', articulos.length, 'artículos');
-            
+
             if (!Array.isArray(articulos) || articulos.length === 0) {
                 console.log('[CONSOLIDAR] ⚠️ Array vacío o inválido');
                 return [];
             }
-            
+
             // Usar Map para agrupar por articulo_numero
             const articulosMap = new Map();
-            
+
             articulos.forEach((art, index) => {
                 const codigo = art.articulo_numero || art.codigo || art.articulo;
-                
+
                 if (!codigo) {
                     console.warn('[CONSOLIDAR] Artículo sin código en índice', index, art);
                     return;
                 }
-                
+
                 if (articulosMap.has(codigo)) {
                     // Artículo ya existe: SOLO sumar pedido_total
                     const existente = articulosMap.get(codigo);
-                    
+
                     // SUMAR: pedido_total (demanda total)
                     existente.pedido_total = parseNumeroSeguro(existente.pedido_total) + parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0);
-                    
+
                     // NO SUMAR: stock_disponible (es el mismo para todos los pedidos)
                     // Mantener el stock del primer registro
-                    
+
                     // RECALCULAR: faltante = pedido_total - stock_disponible
                     existente.faltante = Math.max(0, existente.pedido_total - existente.stock_disponible);
-                    
+
                     console.log(`[CONSOLIDAR] Sumando artículo duplicado: ${codigo}`, {
                         pedido_total: existente.pedido_total,
                         stock_disponible: existente.stock_disponible,
@@ -2316,7 +2369,7 @@
                     // Primera vez que vemos este artículo: agregarlo al Map
                     const stockDisponible = parseNumeroSeguro(art.stock_disponible || art.stock || 0);
                     const pedidoTotal = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0);
-                    
+
                     articulosMap.set(codigo, {
                         articulo_numero: codigo,
                         codigo: codigo,
@@ -2335,28 +2388,28 @@
                     });
                 }
             });
-            
+
             // Convertir Map a Array
             const articulosConsolidados = Array.from(articulosMap.values());
-            
+
             console.log('[CONSOLIDAR] Consolidación completada:', {
                 articulosOriginales: articulos.length,
                 articulosConsolidados: articulosConsolidados.length,
                 articulosEliminados: articulos.length - articulosConsolidados.length
             });
-            
+
             // Log de ejemplo de consolidación
             if (articulosConsolidados.length > 0) {
                 console.log('[CONSOLIDAR] Ejemplo de artículo consolidado:', articulosConsolidados[0]);
             }
-            
+
             return articulosConsolidados;
         }
 
         // Función para filtrar faltantes y parciales - USA EL CAMPO estado DEL BACKEND
         function filtrarFaltantesYParciales(articulos) {
             console.log('[RESUMEN] filtrarFaltantesYParciales() - Filtrando', articulos.length, 'artículos');
-            
+
             if (!Array.isArray(articulos)) {
                 console.log('[RESUMEN] ⚠️ Dataset no es array:', typeof articulos);
                 return { faltantes: [], parciales: [] };
@@ -2364,12 +2417,12 @@
 
             const faltantes = [];
             const parciales = [];
-            
+
             // El backend ya clasifica los artículos con el campo "estado"
             // Solo necesitamos filtrar por estado !== "COMPLETO"
             articulos.forEach((art, index) => {
                 const estadoNormalizado = normalizarEstado(art.estado);
-                
+
                 // Log del primer elemento
                 if (index === 0) {
                     console.log('[RESUMEN] Primer artículo del backend:', {
@@ -2380,7 +2433,7 @@
                         tipoDescripcion: typeof art.descripcion
                     });
                 }
-                
+
                 // Filtrar por estado (excluir COMPLETO)
                 if (estadoNormalizado === 'FALTANTE') {
                     faltantes.push(art);
@@ -2403,7 +2456,7 @@
         // CON SOPORTE PARA EXPANSIÓN DE HIJOS
         function renderizarFilaResumen(articulo, tipo) {
             console.log('[RENDER-FILA] Entrada:', { articulo, tipo });
-            
+
             // Extraer valores directamente
             const codigoArticulo = articulo.articulo_numero || articulo.codigo || articulo.articulo || '-';
             const codigoBarras = articulo.codigo_barras || ''; // Código de barras real (puede estar vacío)
@@ -2411,11 +2464,11 @@
             const pedidoTotal = formatearNumeroResumen(articulo.pedido_total || articulo.cantidad_pedida || 0);
             const stockDisponible = formatearNumeroResumen(articulo.stock_disponible || articulo.stock || 0);
             const faltante = formatearNumeroResumen(articulo.faltante || articulo.cantidad_faltante || 0);
-            
+
             // Extraer IDs de presupuesto (vienen del backend en datosArticulosCompartidos)
             const idPresupuestoLocal = articulo.presupuesto_id || articulo.id_presupuesto_local || articulo.id_presupuesto || 0;
             const idPresupuestoExt = articulo.presupuesto_ext || articulo.id_presupuesto_ext || '';
-            
+
             console.log('[RENDER-FILA] Valores:', {
                 codigoArticulo,
                 codigoBarras,
@@ -2427,15 +2480,15 @@
                 idPresupuestoLocal,
                 idPresupuestoExt
             });
-            
+
             const estadoClass = tipo === 'FALTANTE' ? 'indicador-faltantes' : 'indicador-parcial';
             const rowClass = tipo === 'FALTANTE' ? 'faltante-row expandible-row parent-row' : 'parcial-row expandible-row parent-row';
-            
+
             // Escapar comillas para JSON
             const descripcionEscapada = descripcion.replace(/'/g, "\\'");
             const idPresupuestoExtEscapado = String(idPresupuestoExt).replace(/'/g, "\\'");
             const codigoBarrasEscapado = codigoBarras.replace(/'/g, "\\'");
-            
+
             // IMPORTANTE: Agregar onclick y oncontextmenu a la fila completa
             // onclick: maneja click izquierdo para expandir
             // oncontextmenu: maneja click derecho para menú contextual
@@ -2455,9 +2508,9 @@
                     </td>
                 </tr>
             `;
-            
+
             console.log('[RENDER-FILA] HTML generado, tipo:', typeof html, 'longitud:', html.length);
-            
+
             return html;
         }
 
@@ -2486,9 +2539,9 @@
                 console.log('[RESUMEN] Llamando a obtenerDatosArticulosConFiltros()...');
                 // Obtener datos con los mismos filtros que el panel principal
                 const articulos = await obtenerDatosArticulosConFiltros();
-                
+
                 console.log('[RESUMEN] Datos recibidos de obtenerDatosArticulosConFiltros():', articulos);
-                
+
                 // ✅ [RESUMEN] Diagnóstico: Verificar que articulos es un array válido
                 console.log('📊 [RESUMEN] Datos obtenidos:', {
                     esArray: Array.isArray(articulos),
@@ -2500,12 +2553,12 @@
                         esPromise: articulos[0].descripcion && typeof articulos[0].descripcion.then === 'function'
                     } : null
                 });
-                
+
                 // 🔄 CONSOLIDAR ARTÍCULOS DUPLICADOS ANTES DE FILTRAR
                 console.log('[RESUMEN] 🔄 Consolidando artículos duplicados...');
                 const articulosConsolidados = consolidarArticulosPorCodigo(articulos);
                 console.log('[RESUMEN] ✅ Artículos consolidados:', articulosConsolidados.length);
-                
+
                 // Filtrar faltantes y parciales DESPUÉS de consolidar
                 const { faltantes, parciales } = filtrarFaltantesYParciales(articulosConsolidados);
 
@@ -2523,7 +2576,7 @@
                     contentEl.style.display = 'block';
 
                     let html = '';
-                    
+
                     // Agregar faltantes primero (orden solicitado)
                     if (faltantes.length > 0) {
                         faltantes.forEach((articulo, idx) => {
@@ -2533,7 +2586,7 @@
                                 tipoDescripcion: typeof articulo.descripcion,
                                 esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
                             });
-                            
+
                             const filaHtml = renderizarFilaResumen(articulo, 'FALTANTE');
                             console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
                             html += filaHtml;
@@ -2554,7 +2607,7 @@
                                 tipoDescripcion: typeof articulo.descripcion,
                                 esPromise: articulo.descripcion && typeof articulo.descripcion.then === 'function'
                             });
-                            
+
                             const filaHtml = renderizarFilaResumen(articulo, 'PARCIAL');
                             console.log(`[RESUMEN-RENDER] HTML generado (primeros 200 chars):`, filaHtml.substring(0, 200));
                             html += filaHtml;
@@ -2564,13 +2617,13 @@
                     console.log('[RESUMEN-RENDER] HTML completo generado, longitud:', html.length);
                     tbodyEl.innerHTML = html;
                     console.log('✅ [RESUMEN] Resumen renderizado:', faltantes.length, 'faltantes,', parciales.length, 'parciales');
-                    
+
                     // [RESUMEN] Actualizar íconos de expansión INMEDIATAMENTE después de renderizar
                     if (typeof window.actualizarIconosExpansion === 'function') {
                         console.log('[RESUMEN] Actualizando íconos de expansión inmediatamente...');
                         setTimeout(async () => {
                             await window.actualizarIconosExpansion();
-                            
+
                             // Preservar expansión tras re-render
                             if (typeof window.preservarExpansion === 'function') {
                                 console.log('[RESUMEN] Preservando estado de expansión...');
@@ -2580,12 +2633,12 @@
                             }
                         }, 100);
                     }
-                    
+
                     // [RESUMEN] Exponer datos globalmente y emitir evento para sincronización
                     const datosFaltantesYParciales = [...faltantes, ...parciales];
                     window.__resumenFaltantesDatos = datosFaltantesYParciales;
                     console.log(`[RESUMEN] Datos listos (items: ${datosFaltantesYParciales.length})`);
-                    
+
                     // Emitir evento para que otros módulos se sincronicen
                     window.dispatchEvent(new CustomEvent('resumen:faltantes:listo', {
                         detail: { datos: datosFaltantesYParciales }
@@ -2652,23 +2705,23 @@
         }
 
         // Inicializar el resumen cuando se carga la página
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             console.log('[INIT] PASO 2 - Inicializando resumen de faltantes y parciales');
-            
+
             try {
                 console.log('[RESUMEN] Verificando elementos del DOM...');
                 const loadingEl = document.getElementById('summary-loading');
                 const emptyEl = document.getElementById('summary-empty');
                 const contentEl = document.getElementById('summary-content');
                 const tbodyEl = document.getElementById('summary-tbody');
-                
+
                 console.log('[RESUMEN] Elementos encontrados:', {
                     loading: !!loadingEl,
                     empty: !!emptyEl,
                     content: !!contentEl,
                     tbody: !!tbodyEl
                 });
-                
+
                 // Inicializar después de que se carguen los controles del panel
                 console.log('[RESUMEN] Programando actualización en 2 segundos...');
                 setTimeout(() => {
@@ -2676,7 +2729,7 @@
                     actualizarResumen();
                     sincronizarConInformePrincipal();
                 }, 2000);
-                
+
                 console.log('[INIT] PASO 2 COMPLETADO - Resumen programado');
             } catch (error) {
                 console.error('[INIT] ERROR en PASO 2:', error);
@@ -2684,7 +2737,7 @@
         });
 
         // Función pública para actualizar el resumen (llamada externa)
-        window.actualizarResumenFaltantes = function() {
+        window.actualizarResumenFaltantes = function () {
             console.debug('🔄 Actualización externa del resumen solicitada');
             actualizarResumen();
         };
@@ -2693,28 +2746,28 @@
         async function actualizarContadorPendientes() {
             try {
                 console.log('📊 [CONTADOR-PENDIENTES] Actualizando contador...');
-                
+
                 // CORRECCIÓN: Usar endpoint agrupado para contar TODOS los pendientes (ambos acordeones)
                 const response = await fetch('/api/produccion/compras/pendientes-agrupados');
                 const result = await response.json();
-                
+
                 if (result.success) {
                     // Contar TODOS los pendientes (por_imprimir + en_espera)
                     const total = result.totales.total;
-                    
+
                     console.log(`📊 [CONTADOR-PENDIENTES] Total artículos derivados a compra: ${total}`);
                     console.log(`📊 [CONTADOR-PENDIENTES] Desglose:`, {
                         por_imprimir: result.totales.por_imprimir,
                         en_espera: result.totales.en_espera,
                         total: result.totales.total
                     });
-                    
+
                     const contadorSolapa = document.getElementById('contador-solapa');
                     const solapaPendientes = document.getElementById('solapa-pendientes');
-                    
+
                     if (contadorSolapa && solapaPendientes) {
                         contadorSolapa.textContent = total;
-                        
+
                         // Mostrar/ocultar contador y cambiar color según cantidad
                         if (total > 0) {
                             // Hay pendientes: mostrar contador y activar color rojo
@@ -2741,10 +2794,10 @@
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
         // Las funciones window.abrirModalPack y window.cerrarModalPack están definidas en:
         // src/produccion/js/modal-pack-dual-search.js (cargado arriba)
-        
+
         console.log('[INIT] PASO 3 - Modal pack: usando busqueda dual (modal-pack-dual-search.js v3.0)');
 
     </script>
 </body>
-</html>
 
+</html>

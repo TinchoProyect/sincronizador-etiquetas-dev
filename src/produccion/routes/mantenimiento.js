@@ -1,0 +1,15 @@
+const express = require('express');
+const router = express.Router();
+const mantenimientoCtrl = require('../controllers/mantenimiento');
+
+// Middleware para logging
+router.use((req, res, next) => {
+    console.log(`🛠️ [MANTENIMIENTO API] ${req.method} ${req.url}`);
+    next();
+});
+
+// Rutas GET (Visualización)
+router.get('/stock', mantenimientoCtrl.getStockMantenimiento);
+router.get('/historial', mantenimientoCtrl.getHistorialMantenimiento);
+
+module.exports = router;
