@@ -56,7 +56,7 @@ function normalizeNumber(numberInput) {
 async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId, db) {
     try {
         console.log(`🚀 [SYNC-UP] ${requestId} - Iniciando push automático a Sheets: ${presupuestoId} (${detallesCount} detalles)`);
-        
+
         // Obtener configuración de Sheets
         let config = null;
         try {
@@ -68,7 +68,7 @@ async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId
                 LIMIT 1
             `;
             const configResult = await db.query(configQuery);
-            
+
             if (configResult.rows.length > 0) {
                 const configPersistida = configResult.rows[0];
                 config = {
@@ -108,14 +108,14 @@ async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId
         // Leer datos actuales de Sheets para el push
         console.log(`🔍 [SYNC-UP] ${requestId} - Leyendo datos actuales de Sheets...`);
         const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
-        
+
         // Push de cabecera (solo el presupuesto recién creado)
         console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de cabecera...`);
         const insertedIds = await pushAltasLocalesASheets(presupuestosData, config, db);
-        
+
         if (insertedIds && insertedIds.size > 0 && insertedIds.has(presupuestoId)) {
             console.log(`✅ [SYNC-UP] ${requestId} - Cabecera enviada exitosamente: ${presupuestoId}`);
-            
+
             // Push de detalles
             console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de detalles...`);
             await pushDetallesLocalesASheets(insertedIds, config, db);
@@ -223,7 +223,7 @@ const crearPresupuesto = async (req, res) => {
                 LIMIT 1
             `;
             const configResult = await client.query(configQuery);
-            
+
             let configHojaUrl = process.env.SPREADSHEET_URL || '';
             if (configResult.rows.length > 0) {
                 configHojaUrl = configResult.rows[0].hoja_url;
@@ -261,26 +261,26 @@ const crearPresupuesto = async (req, res) => {
 
             // Helpers numéricos locales para cálculos
 
-           // Busca el costo unitario por código de barras (detalle.articulo)
-async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
-    const cb = (codigoBarras ?? '').toString().trim();
-    if (!cb) return 0;
-    const sql = `
+            // Busca el costo unitario por código de barras (detalle.articulo)
+            async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
+                const cb = (codigoBarras ?? '').toString().trim();
+                if (!cb) return 0;
+                const sql = `
         SELECT pa.costo
         FROM articulos a
         JOIN precios_articulos pa ON pa.articulo = a.numero
         WHERE TRIM(a.codigo_barras)::text = $1
         LIMIT 1
     `;
-    try {
-        const r = await pgClient.query(sql, [cb]);
-        const costo = r.rows?.[0]?.costo;
-        return normalizeNumber(costo);
-    } catch (e) {
-        console.warn('⚠️ [PRESUPUESTOS-WRITE] ' + requestId + ' - lookup costo falló para barcode ' + cb + ': ' + e.message);
-        return 0;
-    }
-}
+                try {
+                    const r = await pgClient.query(sql, [cb]);
+                    const costo = r.rows?.[0]?.costo;
+                    return normalizeNumber(costo);
+                } catch (e) {
+                    console.warn('⚠️ [PRESUPUESTOS-WRITE] ' + requestId + ' - lookup costo falló para barcode ' + cb + ': ' + e.message);
+                    return 0;
+                }
+            }
 
 
             function round2(valor) {
@@ -300,41 +300,41 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
             const detallesInput = Array.isArray(detalles) ? detalles : [];
 
             for (const det of detallesInput) {
-            const cantidad = normalizeNumber(det.cantidad || 0);          // D
-            const netoUnit = normalizeNumber(det.valor1 || 0);            // E
-            const alicDec  = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
-            const ivaUnit  = round2(netoUnit * alicDec);                  // G = E × K
-            const brutoUnit = round2(netoUnit + ivaUnit);                 // F = E + G
+                const cantidad = normalizeNumber(det.cantidad || 0);          // D
+                const netoUnit = normalizeNumber(det.valor1 || 0);            // E
+                const alicDec = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
+                const ivaUnit = round2(netoUnit * alicDec);                  // G = E × K
+                const brutoUnit = round2(netoUnit + ivaUnit);                 // F = E + G
 
-            const netoTotal  = round2(cantidad * netoUnit);               // L
-            const ivaTotal   = round2(cantidad * ivaUnit);                // N
-            const brutoTotal = round2(netoTotal + ivaTotal);              // M
+                const netoTotal = round2(cantidad * netoUnit);               // L
+                const ivaTotal = round2(cantidad * ivaUnit);                // N
+                const brutoTotal = round2(netoTotal + ivaTotal);              // M
 
-            const barcode   = (det.articulo || '').toString().trim();
-            const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+                const barcode = (det.articulo || '').toString().trim();
+                const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
 
-            // LOG ANTES - Mapeo actual detectado
-            console.log(`🔍 [CAMP-MAPPING-ANTES] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal`);
+                // LOG ANTES - Mapeo actual detectado
+                console.log(`🔍 [CAMP-MAPPING-ANTES] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal`);
 
-            detallesNormalizados.push({
-                id: generateDetalleId(),
-                id_presupuesto_ext: presupuestoId,
-                articulo: barcode,
-                cantidad,
-                valor1: netoUnit,                 // E
-                precio1: brutoUnit,               // F (con IVA)
-                iva1: ivaUnit,                    // G (monto unitario)
-                diferencia: round2(brutoUnit - costoUnit), // H = Precio1 - Costo
-                camp1: netoUnit,                  // I (sin cambio)
-                camp2: alicDec,                   // K (era camp3) - CORRIMIENTO
-                camp3: netoTotal,                 // L (era camp4) - CORRIMIENTO  
-                camp4: brutoTotal,                // M (era camp5) - CORRIMIENTO
-                camp5: ivaTotal,                  // N (era camp6) - CORRIMIENTO
-                camp6: null                       // Sin uso (era ivaTotal)
-            });
+                detallesNormalizados.push({
+                    id: generateDetalleId(),
+                    id_presupuesto_ext: presupuestoId,
+                    articulo: barcode,
+                    cantidad,
+                    valor1: netoUnit,                 // E
+                    precio1: brutoUnit,               // F (con IVA)
+                    iva1: ivaUnit,                    // G (monto unitario)
+                    diferencia: round2(brutoUnit - costoUnit), // H = Precio1 - Costo
+                    camp1: netoUnit,                  // I (sin cambio)
+                    camp2: alicDec,                   // K (era camp3) - CORRIMIENTO
+                    camp3: netoTotal,                 // L (era camp4) - CORRIMIENTO  
+                    camp4: brutoTotal,                // M (era camp5) - CORRIMIENTO
+                    camp5: ivaTotal,                  // N (era camp6) - CORRIMIENTO
+                    camp6: null                       // Sin uso (era ivaTotal)
+                });
 
-            // LOG DESPUÉS - Mapeo efectivo aplicado
-            console.log(`✅ [CAMP-MAPPING-DESPUES] ${requestId} - CAMP2<=alicDec, CAMP3<=netoTotal, CAMP4<=brutoTotal, CAMP5<=ivaTotal, CAMP6<=null`);
+                // LOG DESPUÉS - Mapeo efectivo aplicado
+                console.log(`✅ [CAMP-MAPPING-DESPUES] ${requestId} - CAMP2<=alicDec, CAMP3<=netoTotal, CAMP4<=brutoTotal, CAMP5<=ivaTotal, CAMP6<=null`);
             }
 
             const insertDetalleQuery = `
@@ -343,10 +343,10 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
                  diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
             `;
-                let detallesInsertados = 0;
-                for (const detalle of detallesNormalizados) {
-                    console.log(`[PUT-DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
-                    await client.query(insertDetalleQuery, [
+            let detallesInsertados = 0;
+            for (const detalle of detallesNormalizados) {
+                console.log(`[PUT-DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
+                await client.query(insertDetalleQuery, [
                     presupuestoBD.id,
                     detalle.id_presupuesto_ext,
                     detalle.articulo,
@@ -393,7 +393,7 @@ async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
 
         } catch (dbErr) {
             // Rollback si algo falló dentro de la transacción
-            try { await client.query('ROLLBACK'); } catch (_) {}
+            try { await client.query('ROLLBACK'); } catch (_) { }
             console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error en transacción:`, dbErr);
 
             // Códigos útiles: 55P03 (lock_not_available), 57014 (query_canceled por timeout)
@@ -467,12 +467,12 @@ const editarPresupuesto = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { 
-            agente, 
-            nota, 
-            punto_entrega, 
-            descuento, 
-            fecha_entrega, 
+        const {
+            agente,
+            nota,
+            punto_entrega,
+            descuento,
+            fecha_entrega,
             detalles,
             // NUEVOS: Campos del encabezado que faltaban
             tipo_comprobante,
@@ -482,8 +482,8 @@ const editarPresupuesto = async (req, res) => {
             secuencia
         } = req.body;
 
-    console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
-    console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos para edición:`, req.body);
+        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
+        console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos para edición:`, req.body);
 
         // Helpers numéricos locales para cálculos (copiados del POST)
         function round2(valor) {
@@ -528,7 +528,7 @@ const editarPresupuesto = async (req, res) => {
             // Resolver identificador: numérico vs externo
             const isNumericId = /^\d+$/.test(id);
             let campo, valor;
-            
+
             if (isNumericId) {
                 campo = 'id (numérico)';
                 valor = parseInt(id);
@@ -646,7 +646,7 @@ const editarPresupuesto = async (req, res) => {
                 paramCount++;
                 updates.push(`fecha_actualizacion = $${paramCount}`);
                 params.push(new Date().toISOString());
-                
+
                 paramCount++;
                 params.push(presupuesto.id);
 
@@ -702,15 +702,15 @@ const editarPresupuesto = async (req, res) => {
                     console.log(`[PUT-DET] Procesando detalle:`, det);
                     const cantidad = normalizeNumber(det.cantidad || 0);          // D
                     const netoUnit = normalizeNumber(det.valor1 || 0);            // E
-                    const alicDec  = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
-                    const ivaUnit  = round2(netoUnit * alicDec);                  // G = E × K
+                    const alicDec = toAlicuotaDecimal(det.iva1 || 0);            // K (decimal)
+                    const ivaUnit = round2(netoUnit * alicDec);                  // G = E × K
                     const brutoUnit = round2(netoUnit + ivaUnit);                 // F = E + G
 
-                    const netoTotal  = round2(cantidad * netoUnit);               // L
-                    const ivaTotal   = round2(cantidad * ivaUnit);                // N
+                    const netoTotal = round2(cantidad * netoUnit);               // L
+                    const ivaTotal = round2(cantidad * ivaUnit);                // N
                     const brutoTotal = round2(netoTotal + ivaTotal);              // M
 
-                    const barcode   = (det.articulo || '').toString().trim();
+                    const barcode = (det.articulo || '').toString().trim();
                     const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
 
                     // LOG ANTES - Mapeo actual detectado (edición)
@@ -779,13 +779,13 @@ const editarPresupuesto = async (req, res) => {
                 console.log(`[PUT-DET] Detalles eliminados: ${detallesEliminados}`);
                 console.log(`[PUT-DET] Detalles insertados: ${detallesInsertados}`);
                 console.log(`[PUT-DET] ✅ Operación de detalles completada`);
-                
+
                 // Log antes del COMMIT
                 console.log(`[TRACE-EDIT-LOCAL] id=${presupuesto.id_presupuesto_ext} detalles_eliminados=${detallesEliminados} detalles_insertados=${detallesNormalizados.length}`);
             }
 
             await client.query('COMMIT');
-            
+
             // Log después del COMMIT
             console.log(`[TRACE-EDIT-LOCAL] commit_ok id=${presupuesto.id_presupuesto_ext}`);
 
@@ -795,18 +795,18 @@ const editarPresupuesto = async (req, res) => {
             console.log(`📸 [SNAPSHOT-MOD] ===== INICIO ACTUALIZACIÓN SNAPSHOT =====`);
             console.log(`📸 [SNAPSHOT-MOD] Entrando a editarPresupuesto, id_presupuesto=${presupuesto.id}, id_ext=${presupuesto.id_presupuesto_ext}`);
             console.log(`📸 [SNAPSHOT-MOD] Llamando a actualizarSnapshotConDiferencias...`);
-            
+
             try {
                 const { actualizarSnapshotConDiferencias } = require('../services/snapshotService');
                 const resultadoSnapshot = await actualizarSnapshotConDiferencias(
-                    presupuesto.id, 
+                    presupuesto.id,
                     presupuesto.id_presupuesto_ext,
                     req.db
                 );
-                
+
                 console.log(`📸 [SNAPSHOT-MOD] Finalizó actualizarSnapshotConDiferencias`);
                 console.log(`📸 [SNAPSHOT-MOD] Resultado:`, JSON.stringify(resultadoSnapshot, null, 2));
-                
+
                 if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && resultadoSnapshot.hasDifferences) {
                     console.log(`✅ [SNAPSHOT-MOD] Snapshot actualizado para presupuesto id=${presupuesto.id}`);
                     console.log(`✅ [SNAPSHOT-MOD] Diferencias: ${resultadoSnapshot.diferencias_count}, Número impresión: ${resultadoSnapshot.numero_impresion}`);
@@ -821,7 +821,7 @@ const editarPresupuesto = async (req, res) => {
                 console.error(`❌ [SNAPSHOT-MOD] Error en actualización de snapshot (no crítico):`, snapshotError.message);
                 console.error(`❌ [SNAPSHOT-MOD] Stack:`, snapshotError.stack);
             }
-            
+
             console.log(`📸 [SNAPSHOT-MOD] ===== FIN ACTUALIZACIÓN SNAPSHOT =====`);
 
             res.json({
@@ -834,7 +834,7 @@ const editarPresupuesto = async (req, res) => {
 
         } catch (dbErr) {
             // Rollback si algo falló dentro de la transacción
-            try { await client.query('ROLLBACK'); } catch (_) {}
+            try { await client.query('ROLLBACK'); } catch (_) { }
             console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error en transacción:`, dbErr);
 
             // Códigos útiles: 55P03 (lock_not_available), 57014 (query_canceled por timeout)
@@ -956,16 +956,16 @@ const eliminarPresupuesto = async (req, res) => {
             await client.query("SET LOCAL statement_timeout TO '15s'");
 
             // SOFT-DELETE (solo encabezado, sin tocar detalles)
-                await client.query(`
+            await client.query(`
                 UPDATE presupuestos
                     SET activo = false,
                         estado = CASE WHEN COALESCE(estado,'')='' THEN 'Anulado' ELSE estado END
                 WHERE id = $1 AND activo = true
                 `, [presupuesto.id]);
 
-                await client.query('COMMIT');
+            await client.query('COMMIT');
 
-                return res.json({
+            return res.json({
                 success: true,
                 data: {
                     id: presupuesto.id,
@@ -979,7 +979,7 @@ const eliminarPresupuesto = async (req, res) => {
 
         } catch (dbErr) {
             // Rollback si algo falló dentro de la transacción
-            try { await client.query('ROLLBACK'); } catch (_) {}
+            try { await client.query('ROLLBACK'); } catch (_) { }
             console.error(`❌ [PRESUPUESTOS-WRITE] ${requestId} - Error en transacción:`, dbErr);
 
             // Códigos útiles: 55P03 (lock_not_available), 57014 (query_canceled por timeout)
@@ -1311,5 +1311,6 @@ module.exports = {
     eliminarPresupuesto,
     reintentarPresupuesto,
     obtenerEstadoPresupuesto,
-    actualizarFormatoImpresion
+    actualizarFormatoImpresion,
+    pushToSheetsFireAndForget
 };

@@ -313,6 +313,112 @@
             border-left: 4px solid #ffc107 !important;
         }
     </style>
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 600px;
+            max-width: 90%;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .close-modal {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-modal:hover {
+            color: black;
+        }
+
+        .toolbar-modal {
+            margin: 15px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-cancel {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .tabla-container-modal {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            border: 1px solid #dee2e6;
+        }
+
+        .modal-footer {
+            text-align: right;
+            padding-top: 15px;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .btn-dividir {
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 4px;
+            margin-right: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-dividir:hover {
+            background-color: #138496;
+        }
+    </style>
 </head>
 
 <body>
@@ -366,13 +472,52 @@
         </footer>
     </div>
 
+    <!-- Modal División Presupuesto -->
+    <div id="modal-division" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="cerrarModalDivision()">&times;</span>
+            <h2 style="color: var(--primary-color);">✂️ Dividir Presupuesto - Entrega Parcial</h2>
+            <div id="modal-division-info" style="margin-bottom: 15px; color: #6c757d; font-weight: bold;"></div>
+
+            <div class="toolbar-modal">
+                <button onclick="seleccionarDisponibles()" class="btn-secondary">✨ Seleccionar Disponibles</button>
+                <span style="font-size: 0.9em; color: #666;">Marca automáticamente artículos sin faltantes.</span>
+            </div>
+
+            <div class="tabla-container-modal">
+                <table class="tabla-pendientes" id="tabla-division" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;"><input type="checkbox" id="check-all-division"
+                                    onclick="toggleAllDivision(this)"></th>
+                            <th>Sup</th>
+                            <th>Artículo</th>
+                            <th>Descripción</th>
+                            <th style="text-align: right;">Cant.</th>
+                            <th style="text-align: right;">Stock</th>
+                            <th style="text-align: right;">Faltante</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-division"></tbody>
+                </table>
+            </div>
+
+            <div class="modal-footer">
+                <button onclick="cerrarModalDivision()" class="btn-cancel">Cancelar</button>
+                <button onclick="confirmarDivision()" class="btn-primary">Confirmar División</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Toggle de acordeones
         function toggleAcordeon(acordeonId) {
             const content = document.getElementById(acordeonId);
             const button = document.querySelector(`[onclick="toggleAcordeon('${acordeonId}')"]`);
             const isExpanded = button.getAttribute('aria-expanded') === 'true';
- if (isExpanded) {
+
+            if (isExpanded) {
                 content.classList.remove('show');
                 button.setAttribute('aria-expanded', 'false');
             } else {
@@ -405,8 +550,8 @@
                 document.getElementById('contador-espera').textContent = totales.en_espera;
 
                 // Renderizar acordeones
-                renderizarAcordeon('contenido-imprimir', por_imprimir, 'imprimir');
-                renderizarAcordeon('contenido-espera', en_espera, 'espera');
+                await renderizarAcordeon('contenido-imprimir', por_imprimir, 'imprimir');
+                await renderizarAcordeon('contenido-espera', en_espera, 'espera');
 
             } catch (error) {
                 console.error('Error al cargar pendientes agrupados:', error);
@@ -418,7 +563,7 @@
         async function renderizarAcordeon(containerId, pendientes, tipo) {
             const container = document.getElementById(containerId);
 
-            if (pendientes.length === 0) {
+            if (!pendientes || pendientes.length === 0) {
                 container.innerHTML = `
                     <div class="mensaje-vacio">
                         <span>✅</span>
@@ -428,66 +573,55 @@
                 return;
             }
 
-            // Agrupar por presupuesto
-            const presupuestosMap = new Map();
+            // Agrupar IDs de presupuestos necesarios
+            const presupuestosIds = [...new Set(pendientes.map(p => p.id_presupuesto_local))];
 
-            for (const pendiente of pendientes) {
-                const presupId = pendiente.id_presupuesto_local;
+            try {
+                // Fetch detalles
+                const response = await fetch(`/api/produccion/pedidos-por-cliente?ids=${presupuestosIds.join(',')}`);
+                const result = await response.json();
 
-                if (!presupuestosMap.has(presupId)) {
-                    // Obtener datos del presupuesto
-                    const presupuestoResponse = await fetch(`/api/produccion/pedidos-por-cliente?ids=${presupId}`);
-                    const presupuestoData = await presupuestoResponse.json();
+                if (!result.success) throw new Error(result.error);
 
-                    if (presupuestoData.success && presupuestoData.data.length > 0) {
-                        const cliente = presupuestoData.data[0];
-                        const articulos = cliente.articulos.filter(a => a.id_presupuesto_local === presupId);
+                const data = result.data; // Array de Clientes con articulos
 
-                        presupuestosMap.set(presupId, {
-                            id_local: presupId,
-                            id_ext: pendiente.id_presupuesto_ext,
-                            cliente_id: cliente.cliente_id,
-                            cliente_nombre: cliente.cliente_nombre,
-                            articulos: articulos,
-                            pendientes: []
-                        });
-                    }
-                }
+                // Mapear pendientes para acceso rápido
+                const pendientesMap = new Map();
+                pendientes.forEach(p => {
+                    if (!pendientesMap.has(p.id_presupuesto_local)) pendientesMap.set(p.id_presupuesto_local, []);
+                    pendientesMap.get(p.id_presupuesto_local).push(p);
+                });
 
-                if (presupuestosMap.has(presupId)) {
-                    presupuestosMap.get(presupId).pendientes.push(pendiente);
-                }
-            }
-
-            // AHORA: Agrupar Presupuestos por CLIENTE
-            const clientesMap = new Map();
-            presupuestosMap.forEach(pres => {
-                const cliId = String(pres.cliente_id);
-                if (!clientesMap.has(cliId)) {
-                    clientesMap.set(cliId, {
-                        id: cliId,
-                        nombre: pres.cliente_nombre,
-                        presupuestos: []
+                const html = data.map(cliente => {
+                    const presupuestosDelCliente = {};
+                    cliente.articulos.forEach(art => {
+                        if (pendientesMap.has(art.id_presupuesto_local)) {
+                            if (!presupuestosDelCliente[art.id_presupuesto_local]) {
+                                presupuestosDelCliente[art.id_presupuesto_local] = {
+                                    id_local: art.id_presupuesto_local,
+                                    id_ext: art.presupuesto_id,
+                                    cliente_id: cliente.cliente_id,
+                                    cliente_nombre: cliente.cliente_nombre,
+                                    fecha: art.presupuesto_fecha,
+                                    articulos: [],
+                                    pendientes: pendientesMap.get(art.id_presupuesto_local)
+                                };
+                            }
+                            presupuestosDelCliente[art.id_presupuesto_local].articulos.push(art);
+                        }
                     });
-                }
-                clientesMap.get(cliId).presupuestos.push(pres);
-            });
 
-            // Renderizar HTML: Iterar Clientes -> Presupuestos
-            const html = Array.from(clientesMap.values()).map(cliente => {
-                
-                // Generar HTML de los presupuestos de este cliente
-                const presupuestosHtml = cliente.presupuestos.map(presupuesto => {
-                    const fechaFormateada = presupuesto.articulos[0]?.presupuesto_fecha 
-                        ? new Date(presupuesto.articulos[0].presupuesto_fecha).toLocaleDateString('es-AR')
-                        : '-';
+                    if (Object.keys(presupuestosDelCliente).length === 0) return '';
 
-                    // Crear mapa de pendientes para marcar en rojo
-                    const pendientesSet = new Set(
-                        presupuesto.pendientes.map(p => p.codigo_barras_real || p.codigo_barras)
-                    );
+                    const presupuestosHtml = Object.values(presupuestosDelCliente).map(presupuesto => {
+                        const fecha = new Date(presupuesto.fecha);
+                        const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()}`;
 
-                    return `
+                        const pendientesSet = new Set(presupuesto.pendientes.map(p =>
+                            String(p.codigo_barras_real || p.codigo_barras || p.articulo_numero).trim()
+                        ));
+
+                        return `
                         <div class="presupuesto-item">
                             <div class="presupuesto-header" onclick="togglePresupuesto('pres-${presupuesto.id_local}')">
                                 <div>
@@ -502,17 +636,23 @@
                                             📄 Imprimir
                                         </button>
                                     ` : ''}
+                                    ${tipo === 'espera' ? `
+                                        <button class="btn-dividir" onclick="event.stopPropagation(); abrirModalFaltantes(${presupuesto.id_local}, '${presupuesto.id_ext}', ${presupuesto.cliente_id})">
+                                            ✂️ Dividir
+                                        </button>
+                                    ` : ''}
                                     <span class="toggle-icon" style="font-size: 1.2em;">▼</span>
                                 </div>
                             </div>
+                            
                             <div id="pres-${presupuesto.id_local}" class="presupuesto-content">
                                 ${tipo === 'espera' ? `
                                     <div class="info-espera">
                                         <strong>⏳ Esperando llegada de mercadería</strong>
-                                        <p>Este presupuesto ya fue impreso y está en espera de que lleguen los artículos pendientes.</p>
+                                        <p>Este presupuesto ya fue impreso y está en espera de que lleguen los artículos faltantes.</p>
                                     </div>
                                 ` : ''}
-                                
+
                                 <table class="tabla-pendientes">
                                     <thead>
                                         <tr>
@@ -526,14 +666,14 @@
                                     </thead>
                                     <tbody>
                                         ${presupuesto.articulos.map(articulo => {
-                                            const esPendiente = pendientesSet.has(articulo.articulo_numero);
-                                            // Robust matching
-                                            const pendienteData = presupuesto.pendientes.find(p => 
-                                                String(p.codigo_barras_real || p.codigo_barras || p.articulo_numero).trim() === String(articulo.articulo_numero).trim()
-                                            );
+                            const key = String(articulo.articulo_numero).trim();
+                            const esPendiente = pendientesSet.has(key);
+                            const pendienteData = presupuesto.pendientes.find(p =>
+                                String(p.codigo_barras_real || p.codigo_barras || p.articulo_numero).trim() === key
+                            );
 
-                                            return `
-                                                <tr ${esPendiente ? 'class="articulo-derivado"' : ''}>
+                            return `
+                                                <tr ${esPendiente ? 'class="articulo-en-falta-marca"' : ''}>
                                                     <td>${articulo.articulo_numero}</td>
                                                     <td>${articulo.descripcion}</td>
                                                     <td>${parseFloat(articulo.pedido_total).toFixed(2)}</td>
@@ -550,37 +690,41 @@
                                                     </td>
                                                 </tr>
                                             `;
-                                        }).join('')}
+                        }).join('')}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                        `;
+                    }).join('');
+
+                    return `
+                        <div class="cliente-item">
+                            <div class="cliente-header" onclick="toggleCliente('cli-${cliente.cliente_id}')">
+                                <div>
+                                    <strong>👤 ${cliente.cliente_nombre}</strong>
+                                    <span style="color: #6c757d; margin-left: 10px;">(${Object.keys(presupuestosDelCliente).length} presupuestos)</span>
+                                </div>
+                                <div class="toggle-icon">▼</div>
+                            </div>
+                            <div id="cli-${cliente.cliente_id}" class="cliente-content" style="display: block;">
+                                ${presupuestosHtml}
                             </div>
                         </div>
                     `;
                 }).join('');
 
-                // Renderizar contenedor del CLIENTE
-                return `
-                    <div class="cliente-item">
-                        <div class="cliente-header" onclick="toggleCliente('cli-${cliente.id}')">
-                            <div>
-                                <strong>👤 ${cliente.nombre}</strong>
-                                <span style="color: #6c757d; margin-left: 10px;">(${cliente.presupuestos.length} presupuestos)</span>
-                            </div>
-                            <div class="toggle-icon">▼</div>
-                        </div>
-                        <div id="cli-${cliente.id}" class="cliente-content" style="display: block;">
-                            ${presupuestosHtml}
-                        </div>
+                container.innerHTML = html || `
+                    <div class="mensaje-vacio">
+                        <span>✅</span>
+                        <p>No hay pedidos en esta sección</p>
                     </div>
                 `;
-            }).join('');
-            
-            container.innerHTML = html || `
-                <div class="mensaje-vacio">
-                    <span>✅</span>
-                    <p>No hay pendientes en esta sección</p>
-                </div>
-            `;
+
+            } catch (error) {
+                console.error(error);
+                container.innerHTML = '<p class="mensaje-error">Error cargando datos</p>';
+            }
         }
 
         function togglePresupuesto(presupuestoId) {
@@ -616,21 +760,18 @@
             }
         }
 
-        // Imprimir pendiente - CORREGIDO para usar el mismo sistema que el flujo principal
+        // Imprimir pendiente
         async function imprimirPendiente(idPresupuestoLocal, idPresupuestoExt, clienteId) {
             if (!confirm(`¿Imprimir pendiente del presupuesto ${idPresupuestoExt}?\n\nEsto marcará el presupuesto como "En Espera" y pasará al segundo acordeón.`)) {
                 return;
             }
-           try {
+            try {
                 console.log(`📄 [IMPRIMIR-PENDIENTE] Iniciando impresión...`);
-                console.log(`📄 [IMPRIMIR-PENDIENTE] Cliente: ${clienteId}, Presupuesto Local: ${idPresupuestoLocal}, Ext: ${idPresupuestoExt}`);
 
- // 1. Marcar como impreso ANTES de imprimir (cambia secuencia a "Armar_Pedido")
-                console.log(`📄 [IMPRIMIR-PENDIENTE] Marcando presupuesto como impreso...`);
+                // 1. Marcar como impreso
                 const marcarResponse = await fetch(`/api/produccion/compras/pendientes/presupuesto/${idPresupuestoLocal}/marcar-impreso`, {
                     method: 'PATCH'
                 });
-
                 const marcarResult = await marcarResponse.json();
 
                 if (!marcarResult.success) {
@@ -638,35 +779,20 @@
                     return;
                 }
 
-                console.log(`✅ [IMPRIMIR-PENDIENTE] Presupuesto marcado como impreso (secuencia → Armar_Pedido)`);
-
-                // 2. Abrir ventana de impresión usando el MISMO ENDPOINT que el flujo principal
-                // Endpoint: /api/produccion/impresion-presupuesto (formato Remito R)
-                console.log(`📄 [IMPRIMIR-PENDIENTE] Abriendo impresión con formato Remito R del flujo principal...`);
-
-                // Intentar PDF primero, fallback a HTML
-                // IMPORTANTE: Agregar parámetro pendiente_compra=true para que el backend marque artículos en falta
+                // 2. Abrir ventana de impresión
                 const urlPdf = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=pdf&pendiente_compra=true`;
                 const urlHtml = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=html&pendiente_compra=true`;
 
-                console.log(`📄 [IMPRIMIR-PENDIENTE] URL PDF: ${urlPdf}`);
-                console.log(`📄 [IMPRIMIR-PENDIENTE] URL HTML (fallback): ${urlHtml}`);
-
                 const win = window.open(urlPdf, '_blank');
 
-                // Fallback a HTML si PDF falla
                 setTimeout(() => {
                     if (!win || win.closed || typeof win.closed == 'undefined') {
-                        console.log(`📄 [IMPRIMIR-PENDIENTE] PDF bloqueado, usando HTML...`);
                         window.open(urlHtml, '_blank');
                     }
                 }, 2000);
 
-                // 3. Recargar acordeones después de 1 segundo
-                setTimeout(() => {
-                    console.log(`🔄 [IMPRIMIR-PENDIENTE] Recargando acordeones...`);
-                    cargarPendientesAgrupados();
-                }, 1000);
+                // 3. Recargar
+                setTimeout(cargarPendientesAgrupados, 1000);
 
             } catch (error) {
                 console.error('❌ [IMPRIMIR-PENDIENTE] Error:', error);
@@ -701,16 +827,120 @@
 
         // Mostrar error
         function mostrarError(mensaje) {
-            document.getElementById('contenido-imprimir').innerHTML = `
+            const errorHtml = `
                 <div class="mensaje-error">
                     <strong>Error:</strong> ${mensaje}
                 </div>
             `;
-            document.getElementById('contenido-espera').innerHTML = `
-                <div class="mensaje-error">
-                    <strong>Error:</strong> ${mensaje}
-                </div>
-            `;
+            document.getElementById('contenido-imprimir').innerHTML = errorHtml;
+            document.getElementById('contenido-espera').innerHTML = errorHtml;
+        }
+
+        // Lógica de División de Presupuesto
+        let currentPresupuestoDivision = null;
+
+        function cerrarModalDivision() {
+            document.getElementById('modal-division').style.display = 'none';
+        }
+
+        async function abrirModalFaltantes(idLocal, idExt, clienteId) {
+            currentPresupuestoDivision = { idLocal, idExt, clienteId };
+            document.getElementById('modal-division').style.display = 'block';
+            document.getElementById('modal-division-info').innerText = `Presupuesto: ${idExt}`;
+            document.getElementById('tbody-division').innerHTML = '<tr><td colspan="6" style="text-align:center;">Cargando...</td></tr>';
+
+            try {
+                const response = await fetch(`/api/produccion/pedidos-por-cliente?ids=${idLocal}`);
+                const data = await response.json();
+
+                if (!data.success || data.data.length === 0) {
+                    alert('Error cargando detalles');
+                    return;
+                }
+
+                // Mapeamos los datos
+                const items = data.data[0].articulos.filter(a => a.id_presupuesto_local === idLocal);
+                renderTablaDivision(items);
+
+            } catch (e) {
+                console.error(e);
+                document.getElementById('tbody-division').innerHTML = '<tr><td colspan="6" style="text-align:center;">Error de conexión</td></tr>';
+            }
+        }
+
+        function renderTablaDivision(items) {
+            const tbody = document.getElementById('tbody-division');
+            tbody.innerHTML = items.map(a => {
+                const esFaltante = a.faltante > 0;
+                return `
+                    <tr>
+                        <td style="text-align: center;"><input type="checkbox" class="check-div" value="${a.articulo_numero}" data-faltante="${a.faltante}"></td>
+                        <td>${a.articulo_numero}</td>
+                        <td>${a.descripcion || ''}</td>
+                        <td style="text-align: right;">${a.pedido_total}</td>
+                        <td style="text-align: right; color: ${esFaltante ? 'red' : 'green'}">${a.faltante}</td>
+                        <td>${esFaltante ? '<span class="badge badge-warning">En Espera</span>' : '<span class="badge badge-success">Disponible</span>'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function seleccionarDisponibles() {
+            document.querySelectorAll('.check-div').forEach(chk => {
+                const faltante = parseFloat(chk.getAttribute('data-faltante'));
+                chk.checked = faltante <= 0;
+            });
+        }
+
+        function toggleAllDivision(source) {
+            document.querySelectorAll('.check-div').forEach(chk => chk.checked = source.checked);
+        }
+
+        async function confirmarDivision() {
+            const seleccionados = Array.from(document.querySelectorAll('.check-div:checked')).map(c => c.value);
+
+            if (seleccionados.length === 0) {
+                alert('Debes seleccionar al menos un artículo para entregar.');
+                return;
+            }
+
+            const totalItems = document.querySelectorAll('.check-div').length;
+            if (seleccionados.length === totalItems) {
+                if (!confirm('Estás seleccionando TODOS los artículos. Esto moverá el presupuesto completo a "Imprimir". ¿Deseas continuar?')) return;
+            } else {
+                if (!confirm(`¿Generar entrega parcial con ${seleccionados.length} artículos?`)) return;
+            }
+
+            try {
+                const res = await fetch('/api/produccion/compras/dividir-presupuesto', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id_presupuesto_origen: currentPresupuestoDivision.idLocal,
+                        articulos_seleccionados: seleccionados,
+                        id_cliente: currentPresupuestoDivision.clienteId
+                    })
+                });
+
+                const result = await res.json();
+                if (result.success) {
+                    alert('✅ División exitosa.\nNuevo Presupuesto: ' + result.new_ext_id);
+                    cerrarModalDivision();
+                    cargarPendientesAgrupados(); // Recargar interfaz
+                } else {
+                    alert('❌ Error: ' + result.error);
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error al procesar la solicitud.');
+            }
+        }
+
+        // Cierre de modal clicks fuera
+        window.onclick = function (event) {
+            if (event.target == document.getElementById('modal-division')) {
+                cerrarModalDivision();
+            }
         }
 
         // Inicializar al cargar

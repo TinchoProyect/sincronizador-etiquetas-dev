@@ -2894,6 +2894,26 @@ router.post('/validar-presupuestos', async (req, res) => {
     }
 });
 
+/**
+ * Dividir presupuesto para entrega parcial
+ * POST /api/produccion/compras/dividir-presupuesto
+ */
+router.post('/compras/dividir-presupuesto', async (req, res) => {
+    try {
+        console.log('✂️ [COMPRAS] Ruta POST /compras/dividir-presupuesto');
+        const { dividirPresupuesto } = require('../controllers/comprasPendientes');
+        await dividirPresupuesto(req, res);
+    } catch (error) {
+        console.error('❌ [COMPRAS] Error en ruta /compras/dividir-presupuesto:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en ruta de división',
+            message: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
 // ==========================================
 // RUTAS PARA SUSTITUCIÓN DE INGREDIENTES
 // ==========================================

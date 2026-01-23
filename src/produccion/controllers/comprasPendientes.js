@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { pushToSheetsFireAndForget } = require('../../presupuestos/controllers/presupuestosWrite');
 
 /**
  * Crear un nuevo pendiente de compra
@@ -362,7 +363,7 @@ const validarPresupuestos = async (req, res) => {
 
         const presupuestosEncontrados = result.rows;
         const idsEncontrados = new Set(presupuestosEncontrados.map(p => p.id));
-        
+
         // Clasificar presupuestos
         const presupuestosValidos = presupuestosEncontrados.filter(p => p.activo === true);
         const presupuestosInvalidos = [
@@ -395,6 +396,108 @@ const validarPresupuestos = async (req, res) => {
     }
 };
 
+
+/**
+ * Dividir presupuesto para entrega parcial
+ * POST /dividir-presupuesto
+ */
+const dividirPresupuesto = async (req, res) => {
+    const client = await pool.connect();
+    const requestId = `REQ-DIV-${Date.now()}`;
+
+    try {
+        const { id_presupuesto_origen, articulos_seleccionados, id_cliente } = req.body;
+
+        if (!id_presupuesto_origen || !articulos_seleccionados || !Array.isArray(articulos_seleccionados) || articulos_seleccionados.length === 0) {
+            return res.status(400).json({ error: 'Datos incompletos para división' });
+        }
+
+        console.log(`✂️ [DIVIDIR] ${requestId} - Iniciando división presupuesto ${id_presupuesto_origen} con ${articulos_seleccionados.length} items.`);
+
+        await client.query('BEGIN');
+
+        // 1. Obtener datos origen
+        const origenQuery = 'SELECT * FROM presupuestos WHERE id = $1';
+        const origenResult = await client.query(origenQuery, [id_presupuesto_origen]);
+
+        if (origenResult.rows.length === 0) {
+            throw new Error('Presupuesto origen no encontrado');
+        }
+        const origen = origenResult.rows[0];
+        const newExtId = `${origen.id_presupuesto_ext}-P`;
+
+        console.log(`✂️ [DIVIDIR] Generando nuevo header: ${newExtId}`);
+
+        // 2. Clonar Header
+        const insertHeader = `
+            INSERT INTO presupuestos (
+                id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante,
+                cliente_nuevo_id, punto_entrega, descuento, formato_impresion,
+                id_ruta, id_domicilio_entrega, orden_entrega,
+                secuencia, estado_logistico, nota, activo, fecha_actualizacion,
+                bloqueo_entrega, estado
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, $10,
+                $11, $12, $13,
+                'Imprimir', 'PENDIENTE', $14, true, NOW(),
+                false, $15
+            ) RETURNING id
+        `;
+
+        const newHeaderRes = await client.query(insertHeader, [
+            newExtId, origen.id_cliente, origen.fecha, origen.fecha_entrega, origen.agente, origen.tipo_comprobante,
+            origen.cliente_nuevo_id, origen.punto_entrega, origen.descuento, origen.formato_impresion,
+            origen.id_ruta, origen.id_domicilio_entrega, origen.orden_entrega,
+            (origen.nota || '') + ' | ENTREGA PARCIAL', origen.estado
+        ]);
+
+        const newId = newHeaderRes.rows[0].id;
+        console.log(`✂️ [DIVIDIR] Nuevo presupuesto creado ID numérico: ${newId}`);
+
+        // 3. Mover Detalles (UPDATE)
+        // Usamos UPDATE para preservar precios exáctos (sin insert/delete)
+        const updateDetalles = `
+            UPDATE presupuestos_detalles
+            SET id_presupuesto = $1,
+                id_presupuesto_ext = $2,
+                fecha_actualizacion = NOW()
+            WHERE id_presupuesto = $3
+              AND articulo = ANY($4)
+        `;
+
+        const updateRes = await client.query(updateDetalles, [newId, newExtId, id_presupuesto_origen, articulos_seleccionados]);
+        console.log(`✂️ [DIVIDIR] Detalles movidos: ${updateRes.rowCount}`);
+
+        // 4. Limpiar Pendientes
+        const deletePendientes = `
+            DELETE FROM faltantes_pendientes_compra
+            WHERE id_presupuesto_local = $1
+              AND articulo_numero = ANY($2)
+        `;
+        const deleteRes = await client.query(deletePendientes, [id_presupuesto_origen, articulos_seleccionados]);
+        console.log(`✂️ [DIVIDIR] Pendientes eliminados: ${deleteRes.rowCount}`);
+
+        await client.query('COMMIT');
+        console.log(`✂️ [DIVIDIR] Transacción OK.`);
+
+        // 5. Sync Fire And Forget
+        // Usamos pool porque client ya se libera, y queremos async background
+        setImmediate(() => {
+            pushToSheetsFireAndForget(newExtId, articulos_seleccionados.length, requestId, pool);
+        });
+
+        res.json({ success: true, new_id: newId, new_ext_id: newExtId });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('❌ [DIVIDIR] Error:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     crearPendienteCompra,
     obtenerPendientesCompra,
@@ -402,5 +505,6 @@ module.exports = {
     marcarPendienteImpreso,
     revertirPendienteCompra,
     marcarPendienteObsoleto,
-    validarPresupuestos
+    validarPresupuestos,
+    dividirPresupuesto
 };
