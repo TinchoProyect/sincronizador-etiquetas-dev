@@ -4,6 +4,7 @@ let btnImprimirTodas = null;
 let btnGuardarAjustes = null;
 let carroIdGlobal = null;
 let usuarioIdGlobal = null;
+let tipoCarroGlobal = null; // Nuevo: para controlar lógica condicional
 let ingredientes = [];
 
 export async function abrirModalGuardadoIngredientes(carroId, usuarioId) {
@@ -128,7 +129,6 @@ function inicializarModal() {
               <tr style="background-color: #f8f9fa;">
                 <th style="padding: 10px; border: 1px solid #ddd;">Sector</th>
                 <th style="padding: 10px; border: 1px solid #ddd;">Ingrediente</th>
-                <th style="padding: 10px; border: 1px solid #ddd;">Cantidad Necesaria (kg)</th>
                 <th style="padding: 10px; border: 1px solid #ddd;">Stock Actual (kg)</th>
                 <th style="padding: 10px; border: 1px solid #ddd;">Ajuste Manual (kg)</th>
                 <th style="padding: 10px; border: 1px solid #ddd;">Acciones</th>
@@ -181,8 +181,10 @@ async function cargarIngredientes() {
 
     const data = await response.json();
     ingredientes = data;
+    tipoCarroGlobal = data.tipo_carro; // Guardar tipo de carro
 
     console.log(`✅ [GUARDADO] Ingredientes cargados: ${data.total_ingredientes}`);
+    console.log(`info [GUARDADO] Tipo de carro: ${tipoCarroGlobal}`);
     renderizarTabla();
   } catch (error) {
     console.error('❌ [GUARDADO] Error al cargar ingredientes:', error);
@@ -205,16 +207,34 @@ function renderizarTabla() {
     tr.style.borderBottom = '1px solid #ddd';
 
     const sectorNombre = ing.sector_nombre || 'Sin sector';
+    // Mostrar letra del sector si existe: "G - Frutos Secos"
+    const sectorDisplay = ing.sector_letra
+      ? `<strong style="color: #2c3e50; font-size: 1.1em;">${ing.sector_letra}</strong> - ${sectorNombre}`
+      : sectorNombre;
+
     const origenBadge = ing.origen === 'receta' ? '📋' : ing.origen === 'ingreso_manual' ? '✋' : '📋✋';
 
+    // Lógica de Renderizado y Stock
+    let stockMostrar = ing.stock_proyectado || ing.stock_actual; // Prioridad al proyectado
+    let stockTooltip = 'Stock proyectado (Stock DB - Necesario)';
+    let stockStyle = '';
+
+    // Si backend no envía stock_proyectado (fallback), usar stock_actual
+    if (ing.stock_proyectado !== undefined && ing.stock_proyectado !== null) {
+      stockMostrar = ing.stock_proyectado;
+      if (ing.stock_proyectado < 0) {
+        stockStyle = 'color: #dc3545; font-weight: bold;'; // Rojo si es negativo
+        stockTooltip += ' - ¡Stock Negativo!';
+      }
+    }
+
     tr.innerHTML = `
-      <td style="padding: 8px; border: 1px solid #ddd;">${sectorNombre}</td>
+      <td style="padding: 8px; border: 1px solid #ddd;">${sectorDisplay}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">
         ${origenBadge} ${ing.nombre}
         <small style="display: block; color: #666;">${ing.unidad_medida}</small>
       </td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${ing.cantidad_necesaria.toFixed(3)}</td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${ing.stock_actual.toFixed(3)}</td>
+      <td style="padding: 8px; border: 1px solid #ddd; text-align: right; ${stockStyle}" title="${stockTooltip}">${stockMostrar.toFixed(3)}</td>
       <td style="padding: 8px; border: 1px solid #ddd;">
         <div class="ajuste-container" style="display: flex; align-items: center; gap: 8px;">
           <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px;">
@@ -225,12 +245,13 @@ function renderizarTabla() {
             Ajustar
           </label>
           <input type="number" min="0" step="0.001" 
-                 placeholder="${ing.stock_actual.toFixed(3)}"
+                 placeholder="${stockMostrar.toFixed(3)}"
+                 value="${stockMostrar.toFixed(3)}"
                  data-id="${ing.id}" 
                  class="input-ajuste" 
                  style="width: 100px; padding: 4px; background-color: #f5f5f5;"
                  disabled
-                 title="Marque 'Ajustar' para habilitar este campo">
+                 title="Valor sugerido: ${stockMostrar.toFixed(3)} (Stock Proyectado)">
         </div>
       </td>
       <td style="padding: 8px; border: 1px solid #ddd;">

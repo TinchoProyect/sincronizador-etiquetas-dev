@@ -436,14 +436,14 @@
 
             <!-- Acordeón 1: Imprimir Pendiente -->
             <section class="acordeon-pendientes">
-                <button class="acordeon-toggle" onclick="toggleAcordeon('acordeon-imprimir')" aria-expanded="true">
+                <button class="acordeon-toggle" onclick="toggleAcordeon('acordeon-imprimir')" aria-expanded="false">
                     <h2>
                         <span class="toggle-icon-acordeon">▶</span>
                         📄 Imprimir Pendiente
                         <span id="contador-imprimir" class="contador-acordeon">0</span>
                     </h2>
                 </button>
-                <div id="acordeon-imprimir" class="acordeon-content show">
+                <div id="acordeon-imprimir" class="acordeon-content">
                     <div id="contenido-imprimir">
                         <p style="text-align: center; padding: 40px; color: #6c757d;">Cargando...</p>
                     </div>
@@ -636,11 +636,11 @@
                                             📄 Imprimir
                                         </button>
                                     ` : ''}
-                                    ${tipo === 'espera' ? `
-                                        <button class="btn-dividir" onclick="event.stopPropagation(); abrirModalFaltantes(${presupuesto.id_local}, '${presupuesto.id_ext}', ${presupuesto.cliente_id})">
-                                            ✂️ Dividir
-                                        </button>
-                                    ` : ''}
+                                    
+                                    <button class="btn-dividir" onclick="event.stopPropagation(); abrirModalFaltantes(${presupuesto.id_local}, '${presupuesto.id_ext}', ${presupuesto.cliente_id})">
+                                        ✂️ Dividir
+                                    </button>
+                                    
                                     <span class="toggle-icon" style="font-size: 1.2em;">▼</span>
                                 </div>
                             </div>
@@ -707,7 +707,7 @@
                                 </div>
                                 <div class="toggle-icon">▼</div>
                             </div>
-                            <div id="cli-${cliente.cliente_id}" class="cliente-content" style="display: block;">
+                            <div id="cli-${cliente.cliente_id}" class="cliente-content" style="display: none;">
                                 ${presupuestosHtml}
                             </div>
                         </div>

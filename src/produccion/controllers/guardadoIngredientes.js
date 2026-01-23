@@ -3,6 +3,30 @@ const { validarPropiedadCarro } = require('./carro');
 const { obtenerIngredientesBaseCarro, obtenerMixesCarro } = require('./carroIngredientes');
 
 /**
+ * Extrae la letra del sector desde la descripción (ej: 'Sector "G"' -> 'G')
+ * @param {string} descripcion - Descripción del sector
+ * @param {string} nombre - Nombre del sector (fallback)
+ * @returns {string|null} Letra del sector o null
+ */
+function extraerLetraSector(descripcion, nombre) {
+    // 1. Intentar extraer contenido entre comillas en la descripción
+    if (descripcion) {
+        const match = descripcion.match(/["']([^"']+)["']/);
+        if (match && match[1]) return match[1].toUpperCase();
+    }
+
+    // 2. Fallback: buscar en el nombre si tiene formato "Sector X"
+    if (nombre) {
+        const matchNombre = nombre.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
+        if (matchNombre && matchNombre[1]) {
+            return matchNombre[1].toUpperCase();
+        }
+    }
+
+    return null;
+}
+
+/**
  * Obtiene todos los ingredientes consolidados de un carro (recetas + ingresos manuales)
  * ordenados por sector para el modal de guardado de ingredientes
  * @param {Object} req - Request object
@@ -135,6 +159,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     unidad_medida: ing.unidad_medida,
                     cantidad_necesaria: 0,
                     stock_actual: Number(parseFloat(ing.stock_actual).toFixed(3)),
+                    stock_proyectado: 0, // Se calculará al final
                     codigo: ing.codigo,
                     sector_id: ing.sector_id,
                     sector_nombre: ing.sector_nombre,
@@ -177,13 +202,32 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
             });
         }
 
-        // PASO 5: Convertir a array y ordenar por sector
+        // PASO 5: Convertir a array, enriquecer y ordenar
         const ingredientesFinales = Array.from(ingredientesConsolidados.values())
+            .map(ing => {
+                // Calcular stock proyectado: Stock DB - Necesario
+                // (El stock DB ya incluye los ingresos manuales hechos en pasos previos)
+                const stockDb = ing.stock_actual || 0;
+                const necesario = ing.cantidad_necesaria || 0;
+                const proyectado = stockDb - necesario;
+
+                return {
+                    ...ing,
+                    stock_proyectado: Number(proyectado.toFixed(3)),
+                    sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre)
+                };
+            })
             .sort((a, b) => {
                 // Primero por sector (sin sector al final)
                 if (a.sector_nombre && !b.sector_nombre) return -1;
                 if (!a.sector_nombre && b.sector_nombre) return 1;
                 if (a.sector_nombre && b.sector_nombre) {
+                    // Si ambos tienen letra, ordenar por letra
+                    if (a.sector_letra && b.sector_letra) {
+                        const letraCompare = a.sector_letra.localeCompare(b.sector_letra);
+                        if (letraCompare !== 0) return letraCompare;
+                    }
+                    // Si no, por nombre de sector
                     const sectorCompare = a.sector_nombre.localeCompare(b.sector_nombre);
                     if (sectorCompare !== 0) return sectorCompare;
                 }
@@ -206,7 +250,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
 
         console.log(`\n📋 Ingredientes por sector:`);
         const ingredientesPorSector = ingredientesFinales.reduce((acc, ing) => {
-            const sector = ing.sector_nombre || 'Sin sector';
+            const sector = ing.sector_letra ? `${ing.sector_letra} - ${ing.sector_nombre}` : (ing.sector_nombre || 'Sin sector');
             if (!acc[sector]) acc[sector] = [];
             acc[sector].push(ing.nombre);
             return acc;
@@ -224,6 +268,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
         res.json({
             success: true,
             carro_id: parseInt(carroId),
+            tipo_carro: carro.tipo_carro,
             total_ingredientes: ingredientesFinales.length,
             ingredientes: ingredientesFinales
         });
