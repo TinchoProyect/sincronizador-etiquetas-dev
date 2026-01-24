@@ -10,15 +10,15 @@ console.log('🔍 [PRESUPUESTOS-JS] Inicializando módulo frontend completo...')
 // Autocarga inicial de la grilla al abrir la pantalla
 const AUTOLOAD_ON_START = true;
 function autoCargarAlAbrir() {
-  if (window.__presupuestosAutocargados) return;
-  window.__presupuestosAutocargados = true;
-  console.log('[PRESUPUESTOS-JS] Autocarga inicial → cargando datos con filtros restaurados');
-  // Pequeño defer para asegurar que los listeners ya están bindeados
-  // Si hay filtros guardados, cargar con maintainFilters=true para aplicarlos
-  const hayFiltrosGuardados = sessionStorage.getItem('presupuestos_filtros_activos');
-  setTimeout(() => {
-    handleCargarDatos(1, hayFiltrosGuardados ? true : false);
-  }, 100);
+    if (window.__presupuestosAutocargados) return;
+    window.__presupuestosAutocargados = true;
+    console.log('[PRESUPUESTOS-JS] Autocarga inicial → cargando datos con filtros restaurados');
+    // Pequeño defer para asegurar que los listeners ya están bindeados
+    // Si hay filtros guardados, cargar con maintainFilters=true para aplicarlos
+    const hayFiltrosGuardados = sessionStorage.getItem('presupuestos_filtros_activos');
+    setTimeout(() => {
+        handleCargarDatos(1, hayFiltrosGuardados ? true : false);
+    }, 100);
 }
 
 // Configuración global
@@ -33,30 +33,30 @@ const CONFIG = {
 try { window.CONFIG = window.CONFIG || {}; } catch (_) { /* ignore en no-browser */ }
 
 const API_BASE = (
-  (typeof window !== 'undefined' &&
-   window.CONFIG &&
-   typeof window.CONFIG.API_BASE_URL === 'string' &&
-   window.CONFIG.API_BASE_URL.trim())
-    ? window.CONFIG.API_BASE_URL
-    : (typeof CONFIG !== 'undefined' &&
-       typeof CONFIG.API_BASE_URL === 'string' &&
-       CONFIG.API_BASE_URL.trim()
-          ? CONFIG.API_BASE_URL
-          : '/api/presupuestos')
+    (typeof window !== 'undefined' &&
+        window.CONFIG &&
+        typeof window.CONFIG.API_BASE_URL === 'string' &&
+        window.CONFIG.API_BASE_URL.trim())
+        ? window.CONFIG.API_BASE_URL
+        : (typeof CONFIG !== 'undefined' &&
+            typeof CONFIG.API_BASE_URL === 'string' &&
+            CONFIG.API_BASE_URL.trim()
+            ? CONFIG.API_BASE_URL
+            : '/api/presupuestos')
 ).replace(/\/+$/, '');
 
 const URLS = {
-  HEALTH: API_BASE + '/health',
-  AUTH_STATUS: API_BASE + '/sync/auth/status',
-  ESTADISTICAS: API_BASE + '/estadisticas',
-  ESTADOS: API_BASE + '/estados',
-  CORREGIR_FECHAS: API_BASE + '/sync/corregir-fechas',
-  PUSH_ALTAS: API_BASE + '/sync/push-altas',
-  SYNC_BIDIRECCIONAL: API_BASE + '/sync/bidireccional-safe',  // NUEVO: endpoint tolerante a cuotas
-  LIST: (qs) => API_BASE + '/?' + (qs || ''),
-  DETALLES: (id) => API_BASE + '/' + id + '/detalles',
-  PRESUPUESTO: (id) => API_BASE + '/' + id,
-  CLIENTES_SUG: (q) => API_BASE + '/clientes/sugerencias?q=' + encodeURIComponent(q || '')
+    HEALTH: API_BASE + '/health',
+    AUTH_STATUS: API_BASE + '/sync/auth/status',
+    ESTADISTICAS: API_BASE + '/estadisticas',
+    ESTADOS: API_BASE + '/estados',
+    CORREGIR_FECHAS: API_BASE + '/sync/corregir-fechas',
+    PUSH_ALTAS: API_BASE + '/sync/push-altas',
+    SYNC_BIDIRECCIONAL: API_BASE + '/sync/bidireccional-safe',  // NUEVO: endpoint tolerante a cuotas
+    LIST: (qs) => API_BASE + '/?' + (qs || ''),
+    DETALLES: (id) => API_BASE + '/' + id + '/detalles',
+    PRESUPUESTO: (id) => API_BASE + '/' + id,
+    CLIENTES_SUG: (q) => API_BASE + '/clientes/sugerencias?q=' + encodeURIComponent(q || '')
 };
 
 console.log('[PRESUPUESTOS-JS] API_BASE →', API_BASE);
@@ -107,9 +107,9 @@ let appState = {
 /**
  * Inicialización de la aplicación
  */
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 [PRESUPUESTOS-JS] DOM cargado, inicializando aplicación...');
-    
+
     initializeApp();
     setupEventListeners();
     checkModuleHealth();
@@ -122,16 +122,16 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 function initializeApp() {
     console.log('🔍 [PRESUPUESTOS-JS] Configurando aplicación...');
-    
+
     // Actualizar indicador de estado
     updateStatusIndicator('loading', 'Inicializando módulo...');
-    
+
     // Restaurar filtros guardados si existen
     restoreFiltersFromStorage();
-    
+
     // Cargar estadísticas iniciales
     loadEstadisticas();
-    
+
     console.log('✅ [PRESUPUESTOS-JS] Aplicación inicializada');
 }
 
@@ -140,34 +140,34 @@ function initializeApp() {
  */
 function setupEventListeners() {
     console.log('🔍 [PRESUPUESTOS-JS] Configurando event listeners...');
-    
+
     // Botones principales
     const btnCargarDatos = document.getElementById('btn-cargar-datos');
     const btnSincronizar = document.getElementById('btn-sincronizar');
     const btnConfiguracion = document.getElementById('btn-configuracion');
     const btnNuevoPresupuesto = document.getElementById('btn-nuevo-presupuesto');
-    
+
     if (btnCargarDatos) {
         btnCargarDatos.addEventListener('click', () => handleCargarDatos(1));
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: btn-cargar-datos');
     }
-    
+
     if (btnSincronizar) {
         btnSincronizar.addEventListener('click', handleSincronizar);
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: btn-sincronizar');
     }
-    
+
     if (btnNuevoPresupuesto) {
         btnNuevoPresupuesto.addEventListener('click', handleNuevoPresupuesto);
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: btn-nuevo-presupuesto');
     }
-    
+
     // Configuración: usar el modal de sync_config_modal.js
     if (btnConfiguracion) {
         // El event listener se bindea en bindSyncConfigUI() del modal
         console.log('✅ [PRESUPUESTOS-JS] Botón configuración encontrado - será bindeado por sync_config_modal.js');
     }
-    
+
     // Bindear eventos del modal de configuración
     if (typeof bindSyncConfigUI === 'function') {
         bindSyncConfigUI();
@@ -175,24 +175,24 @@ function setupEventListeners() {
     } else {
         console.log('⚠️ [PRESUPUESTOS-JS] bindSyncConfigUI no disponible - modal no bindeado');
     }
-    
+
     // Filtros
     const filtroCategoria = document.getElementById('filtro-categoria');
     const buscarCliente = document.getElementById('buscar-cliente');
-    
+
     if (filtroCategoria) {
         filtroCategoria.addEventListener('change', handleFiltroCategoria);
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-categoria');
     }
-    
+
     if (buscarCliente) {
         buscarCliente.addEventListener('input', debounce(handleBuscarCliente, 300));
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-cliente');
     }
-    
+
     // Los botones de estado se crean dinámicamente en updateEstadosFilter()
     console.log('✅ [PRESUPUESTOS-JS] Botones de estado se configurarán dinámicamente');
-    
+
     console.log('✅ [PRESUPUESTOS-JS] Event listeners configurados');
     if (AUTOLOAD_ON_START) autoCargarAlAbrir();
 }
@@ -202,11 +202,11 @@ function setupEventListeners() {
  */
 async function checkModuleHealth() {
     console.log('🔍 [PRESUPUESTOS-JS] Verificando salud del módulo...');
-    
+
     try {
         const response = await fetch(URLS.HEALTH);
         const data = await response.json();
-        
+
         if (data.success) {
             console.log('✅ [PRESUPUESTOS-JS] Módulo funcionando correctamente');
             updateStatusIndicator('active', 'Módulo activo y funcionando');
@@ -225,14 +225,14 @@ async function checkModuleHealth() {
  */
 async function checkAuthStatus() {
     console.log('🔍 [PRESUPUESTOS-JS] Verificando estado de autenticación...');
-    
+
     try {
         const response = await fetch(URLS.AUTH_STATUS);
         const data = await response.json();
-        
+
         appState.authStatus = data;
         updateSyncButtonState(data);
-        
+
         console.log('✅ [PRESUPUESTOS-JS] Estado de autenticación verificado:', data);
     } catch (error) {
         console.error('❌ [PRESUPUESTOS-JS] Error al verificar autenticación:', error);
@@ -246,7 +246,7 @@ async function checkAuthStatus() {
 function updateSyncButtonState(authStatus) {
     const btnSincronizar = document.getElementById('btn-sincronizar');
     if (!btnSincronizar) return;
-    
+
     if (authStatus.error) {
         btnSincronizar.textContent = '❌ Error de conexión';
         btnSincronizar.disabled = true;
@@ -267,11 +267,11 @@ function updateSyncButtonState(authStatus) {
  */
 async function loadEstadisticas() {
     console.log('🔍 [PRESUPUESTOS-JS] Cargando estadísticas...');
-    
+
     try {
         const response = await fetchWithRetry(URLS.ESTADISTICAS);
         const data = await response.json();
-        
+
         if (data.success) {
             appState.estadisticas = data.estadisticas;
             updateStatsDisplay(data.estadisticas);
@@ -290,11 +290,11 @@ async function loadEstadisticas() {
  */
 async function loadEstados() {
     console.log('🔍 [PRESUPUESTOS-JS] Cargando estados distintos...');
-    
+
     try {
         const response = await fetchWithRetry(URLS.ESTADOS);
         const data = await response.json();
-        
+
         if (data.success) {
             appState.estados = data.estados || [];
             updateEstadosFilter(appState.estados);
@@ -317,14 +317,14 @@ async function loadEstados() {
 function updateStatsDisplay(stats) {
     console.log('🔍 [PRESUPUESTOS-JS] Actualizando display de estadísticas...');
     console.log('[PRESUP/KPIS] stats=', stats);
-    
+
     // Solo actualizar los dos valores que se muestran en la línea compacta
     const elements = {
         'total-registros': stats.total_registros || 0,
-        'ultima-sync': stats.ultima_sincronizacion ? 
+        'ultima-sync': stats.ultima_sincronizacion ?
             formatDate(stats.ultima_sincronizacion) : 'Nunca'
     };
-    
+
     Object.entries(elements).forEach(([id, value]) => {
         const element = document.getElementById(id);
         if (element) {
@@ -332,7 +332,7 @@ function updateStatsDisplay(stats) {
             element.classList.add('fade-in');
         }
     });
-    
+
     console.log('✅ [PRESUPUESTOS-JS] Display de estadísticas actualizado (línea compacta)');
 }
 
@@ -341,17 +341,17 @@ function updateStatsDisplay(stats) {
  */
 async function handleCargarDatos(page = 1, maintainFilters = false) {
     console.log(`🔍 [PRESUPUESTOS-JS] Iniciando carga de datos - Página: ${page}...`);
-    
+
     // Si vino por autocarga, permitimos que el usuario vuelva a recargar manualmente
     window.__presupuestosAutocargados = false;
-    
+
     if (appState.loading) {
         console.log('⚠️ [PRESUPUESTOS-JS] Ya hay una operación en curso');
         return;
     }
-    
+
     setLoading(true);
-    
+
     try {
         // Construir parámetros de consulta con paginación y ordenamiento
         const queryParams = new URLSearchParams({
@@ -360,7 +360,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
             sortBy: appState.sorting.sortBy,
             order: appState.sorting.order
         });
-        
+
         // Agregar filtros si están activos y se deben mantener
         if (maintainFilters || page > 1) {
             if (appState.filtros.categoria) {
@@ -381,47 +381,47 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 console.log(`🔍 [PRESUPUESTOS-JS] Aplicando filtros: { estado: [${appState.filtros.estado.join(', ')}] }`);
             }
         }
-        
+
         // AUDITORÍA DE FECHAS - Activar logs si está habilitado
-        const auditoriaDeFechas = localStorage.getItem('DEBUG_FECHAS') === 'true' || 
-                                 new URLSearchParams(window.location.search).get('debug_fechas') === 'true';
-        
+        const auditoriaDeFechas = localStorage.getItem('DEBUG_FECHAS') === 'true' ||
+            new URLSearchParams(window.location.search).get('debug_fechas') === 'true';
+
         if (auditoriaDeFechas) {
             queryParams.append('debug_fechas', 'true');
         }
-        
+
         const response = await fetchWithRetry(URLS.LIST(queryParams.toString()));
         const data = await response.json();
-        
+
         // AUDITORÍA DE FECHAS - PASO 4: Recepción en el frontend
         if (auditoriaDeFechas && data.success && data.data && data.data.length > 0) {
             const requestId = data.auditRequestId || 'NO-ID';
             console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 4: RECEPCIÓN EN FRONTEND (${requestId}) =====`);
-            
+
             // Analizar fechas recibidas desde la API (muestra máximo 10 registros)
             const fechasRecibidas = data.data.filter(item => item.fecha_registro);
             const muestraRecepcion = fechasRecibidas.slice(0, 10);
-            
+
             if (fechasRecibidas.length > 0) {
                 const fechasOrdenadas = fechasRecibidas
                     .map(item => ({ ...item, fechaObj: new Date(item.fecha_registro) }))
                     .sort((a, b) => a.fechaObj - b.fechaObj);
-                
+
                 const fechaMinima = fechasOrdenadas[0];
                 const fechaMaxima = fechasOrdenadas[fechasOrdenadas.length - 1];
-                
+
                 // Detectar tipos y formatos recibidos en el navegador
                 const tiposRecibidos = new Set();
                 const formatosRecibidos = new Set();
                 const fechasFuturasRecibidas = [];
                 const ahora = new Date();
                 const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
-                
+
                 fechasRecibidas.forEach(item => {
                     const fechaValue = item.fecha_registro;
                     const tipoDetectado = typeof fechaValue;
                     tiposRecibidos.add(tipoDetectado);
-                    
+
                     // Detectar formato específico en recepción
                     if (fechaValue instanceof Date) {
                         formatosRecibidos.add('Date object');
@@ -440,14 +440,14 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                     } else if (typeof fechaValue === 'number') {
                         formatosRecibidos.add('Timestamp numérico');
                     }
-                    
+
                     // Detectar fechas futuras en recepción
                     const fechaObj = new Date(fechaValue);
                     if (fechaObj > unAñoFuturo) {
                         fechasFuturasRecibidas.push({ id: item.id, fecha: fechaValue, fechaObj });
                     }
                 });
-                
+
                 // PASO 4: RESUMEN DE RECEPCIÓN EN FRONTEND
                 console.log(`[AUDITORÍA-FECHAS] 📥 RESUMEN PASO 4 - RECEPCIÓN FRONTEND (${requestId}):`);
                 console.log(`[AUDITORÍA-FECHAS] - Total registros recibidos: ${data.data.length}`);
@@ -456,7 +456,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 console.log(`[AUDITORÍA-FECHAS] - Tipos recibidos en navegador: ${Array.from(tiposRecibidos).join(', ')}`);
                 console.log(`[AUDITORÍA-FECHAS] - Formatos recibidos en navegador: ${Array.from(formatosRecibidos).join(', ')}`);
                 console.log(`[AUDITORÍA-FECHAS] - Fechas futuras recibidas: ${fechasFuturasRecibidas.length}`);
-                
+
                 // Ejemplos de fechas futuras recibidas (máximo 5)
                 if (fechasFuturasRecibidas.length > 0) {
                     console.log(`[AUDITORÍA-FECHAS] ⚠️ EJEMPLOS DE FECHAS FUTURAS RECIBIDAS (hasta 5):`);
@@ -464,19 +464,18 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                         console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, fecha_futura_recibida="${item.fecha}", año=${item.fechaObj.getFullYear()}`);
                     });
                 }
-                
+
                 // Ejemplos de lo que se recibió (máximo 10)
                 console.log(`[AUDITORÍA-FECHAS] 📥 EJEMPLOS PASO 4 - VALORES RECIBIDOS (hasta 10):`);
                 muestraRecepcion.forEach((item, idx) => {
                     const fechaValue = item.fecha_registro;
-                    console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, valor_recibido="${fechaValue}", tipo=${typeof fechaValue}, formato_detectado=${
-                        fechaValue instanceof Date ? 'Date object' :
+                    console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, valor_recibido="${fechaValue}", tipo=${typeof fechaValue}, formato_detectado=${fechaValue instanceof Date ? 'Date object' :
                         typeof fechaValue === 'string' && fechaValue.includes('T') ? 'ISO con hora' :
-                        typeof fechaValue === 'string' && fechaValue.match(/^\d{4}-\d{2}-\d{2}$/) ? 'YYYY-MM-DD' :
-                        'Otro'
-                    }`);
+                            typeof fechaValue === 'string' && fechaValue.match(/^\d{4}-\d{2}-\d{2}$/) ? 'YYYY-MM-DD' :
+                                'Otro'
+                        }`);
                 });
-                
+
                 // Guardar datos para análisis de pasos posteriores
                 window.auditFechasData = {
                     requestId,
@@ -493,24 +492,24 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 };
             }
         }
-        
+
         if (data.success) {
             appState.presupuestos = data.data || data.items || [];
             appState.categorias = data.categorias || [];
-            
+
             // Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
             // Diagnóstico estricto - loguear primeros 5 items del frontend
             if (appState.presupuestos.length > 0) {
                 console.log('[DEBUG-FECHA-FE] Diagnóstico de fechas en primeros 5 registros del frontend:');
                 appState.presupuestos.slice(0, 5).forEach(item => {
-                    console.log('[DEBUG-FECHA-FE]', { 
-                        id: item.id, 
-                        fechaRaw: item.fecha_registro, 
-                        typeof: typeof item.fecha_registro 
+                    console.log('[DEBUG-FECHA-FE]', {
+                        id: item.id,
+                        fechaRaw: item.fecha_registro,
+                        typeof: typeof item.fecha_registro
                     });
                 });
             }
-            
+
             // Actualizar estado de paginación - Orden por fecha DESC + paginación – 2024-12-19
             appState.pagination = {
                 currentPage: data.page || page,
@@ -520,12 +519,12 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 hasNext: data.pagination?.hasNext || false,
                 hasPrev: data.pagination?.hasPrev || false
             };
-            
+
             // AUDITORÍA DE FECHAS - PASO 5: Transformaciones en frontend (si las hay)
             if (auditoriaDeFechas && appState.presupuestos.length > 0) {
                 const requestId = window.auditFechasData?.requestId || 'NO-ID';
                 console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 5: TRANSFORMACIONES EN FRONTEND (${requestId}) =====`);
-                
+
                 // En este punto, verificamos si hay transformaciones entre la recepción y el procesamiento
                 // Como estamos usando los datos tal como llegan del backend sin transformaciones adicionales,
                 // documentamos que no hay transformaciones en el frontend
@@ -535,7 +534,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 console.log(`[AUDITORÍA-FECHAS] - Parseo: Sin parseo adicional de fechas aplicado`);
                 console.log(`[AUDITORÍA-FECHAS] - Conversión: Sin conversión de zona horaria`);
                 console.log(`[AUDITORÍA-FECHAS] ✅ No se detectaron transformaciones en el procesamiento frontend`);
-                
+
                 // Actualizar datos de auditoría
                 if (window.auditFechasData) {
                     window.auditFechasData.paso5 = {
@@ -547,38 +546,38 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                     };
                 }
             }
-            
+
             // AUDITORÍA DE FECHAS - PASO 6: Ordenamiento en frontend (si ordena)
             if (auditoriaDeFechas && appState.presupuestos.length > 0) {
                 const requestId = window.auditFechasData?.requestId || 'NO-ID';
                 console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== PASO 6: ORDENAMIENTO EN FRONTEND (${requestId}) =====`);
-                
+
                 // Analizar el ordenamiento aplicado
                 const sortBy = appState.sorting.sortBy;
                 const order = appState.sorting.order;
-                
+
                 console.log(`[AUDITORÍA-FECHAS] 📋 ANÁLISIS PASO 6 - ORDENAMIENTO FRONTEND (${requestId}):`);
                 console.log(`[AUDITORÍA-FECHAS] - Campo de ordenamiento: ${sortBy}`);
                 console.log(`[AUDITORÍA-FECHAS] - Dirección de ordenamiento: ${order}`);
                 console.log(`[AUDITORÍA-FECHAS] - Método de ordenamiento: Realizado en el servidor (ORDER BY en SQL)`);
                 console.log(`[AUDITORÍA-FECHAS] - Comparación en frontend: No se realiza - datos ya ordenados por el servidor`);
                 console.log(`[AUDITORÍA-FECHAS] - Criterio de comparación: ${sortBy === 'fecha' ? 'Fecha como DATE en PostgreSQL' : 'Otro campo'}`);
-                
+
                 if (sortBy === 'fecha' || sortBy === 'fecha_registro') {
                     // Verificar que los datos estén efectivamente ordenados
                     const fechasConDatos = appState.presupuestos.filter(item => item.fecha_registro);
                     if (fechasConDatos.length > 1) {
                         const primeraFecha = new Date(fechasConDatos[0].fecha_registro);
                         const ultimaFecha = new Date(fechasConDatos[fechasConDatos.length - 1].fecha_registro);
-                        
-                        const ordenCorrecto = order === 'desc' ? 
-                            primeraFecha >= ultimaFecha : 
+
+                        const ordenCorrecto = order === 'desc' ?
+                            primeraFecha >= ultimaFecha :
                             primeraFecha <= ultimaFecha;
-                        
+
                         console.log(`[AUDITORÍA-FECHAS] - Verificación de orden: ${ordenCorrecto ? '✅ Correcto' : '❌ Incorrecto'}`);
                         console.log(`[AUDITORÍA-FECHAS] - Primera fecha mostrada: ${fechasConDatos[0].fecha_registro} (ID: ${fechasConDatos[0].id})`);
                         console.log(`[AUDITORÍA-FECHAS] - Última fecha mostrada: ${fechasConDatos[fechasConDatos.length - 1].fecha_registro} (ID: ${fechasConDatos[fechasConDatos.length - 1].id})`);
-                        
+
                         // Actualizar datos de auditoría
                         if (window.auditFechasData) {
                             window.auditFechasData.paso6 = {
@@ -596,7 +595,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                     console.log(`[AUDITORÍA-FECHAS] ✅ Ordenamiento no afecta las fechas directamente`);
                 }
             }
-            
+
             // AUDITORÍA DE FECHAS - PASO 7: Previo a renderizar en la grilla
             if (auditoriaDeFechas && appState.presupuestos.length > 0) {
                 const requestId = window.auditFechasData?.requestId || 'NO-ID';
@@ -605,27 +604,27 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 // Analizar fechas que se van a mostrar (muestra máximo 10 registros)
                 const fechasParaMostrar = appState.presupuestos.filter(item => item.fecha_registro);
                 const muestraRender = fechasParaMostrar.slice(0, 10);
-                
+
                 if (fechasParaMostrar.length > 0) {
                     const fechasOrdenadas = fechasParaMostrar
                         .map(item => ({ ...item, fechaObj: new Date(item.fecha_registro) }))
                         .sort((a, b) => a.fechaObj - b.fechaObj);
-                    
+
                     const fechaMinima = fechasOrdenadas[0];
                     const fechaMaxima = fechasOrdenadas[fechasOrdenadas.length - 1];
-                    
+
                     // Detectar tipos y formatos previo al render
                     const tiposParaMostrar = new Set();
                     const formatosParaMostrar = new Set();
                     const fechasFuturasParaMostrar = [];
                     const ahora = new Date();
                     const unAñoFuturo = new Date(ahora.getFullYear() + 1, ahora.getMonth(), ahora.getDate());
-                    
+
                     fechasParaMostrar.forEach(item => {
                         const fechaValue = item.fecha_registro;
                         const tipoDetectado = typeof fechaValue;
                         tiposParaMostrar.add(tipoDetectado);
-                        
+
                         // Detectar formato específico previo al render
                         if (fechaValue instanceof Date) {
                             formatosParaMostrar.add('Date object');
@@ -644,14 +643,14 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                         } else if (typeof fechaValue === 'number') {
                             formatosParaMostrar.add('Timestamp numérico');
                         }
-                        
+
                         // Detectar fechas futuras previo al render
                         const fechaObj = new Date(fechaValue);
                         if (fechaObj > unAñoFuturo) {
                             fechasFuturasParaMostrar.push({ id: item.id, fecha: fechaValue, fechaObj });
                         }
                     });
-                    
+
                     // PASO 7: RESUMEN PREVIO AL RENDER
                     console.log(`[AUDITORÍA-FECHAS] 🎨 RESUMEN PASO 7 - PREVIO AL RENDER (${requestId}):`);
                     console.log(`[AUDITORÍA-FECHAS] - Total registros a mostrar: ${appState.presupuestos.length}`);
@@ -660,7 +659,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                     console.log(`[AUDITORÍA-FECHAS] - Tipos previo al render: ${Array.from(tiposParaMostrar).join(', ')}`);
                     console.log(`[AUDITORÍA-FECHAS] - Formatos previo al render: ${Array.from(formatosParaMostrar).join(', ')}`);
                     console.log(`[AUDITORÍA-FECHAS] - Fechas futuras previo al render: ${fechasFuturasParaMostrar.length}`);
-                    
+
                     // Ejemplos de fechas futuras previo al render (máximo 5)
                     if (fechasFuturasParaMostrar.length > 0) {
                         console.log(`[AUDITORÍA-FECHAS] ⚠️ EJEMPLOS DE FECHAS FUTURAS PREVIO AL RENDER (hasta 5):`);
@@ -668,17 +667,16 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                             console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, fecha_futura_render="${item.fecha}", año=${item.fechaObj.getFullYear()}`);
                         });
                     }
-                    
+
                     // Ejemplos de lo que se va a mostrar con formateo (máximo 10)
                     console.log(`[AUDITORÍA-FECHAS] 🎨 EJEMPLOS PASO 7 - VALORES FINALES A MOSTRAR (hasta 10):`);
                     muestraRender.forEach((item, idx) => {
                         const fechaOriginal = item.fecha_registro;
                         const fechaFormateada = formatDateDDMMYYYY(fechaOriginal);
-                        console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, valor_original="${fechaOriginal}", valor_final_mostrado="${fechaFormateada}", transformacion=${
-                            fechaOriginal === fechaFormateada ? 'Sin cambios' : 'Formateado para UI'
-                        }`);
+                        console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${item.id}, valor_original="${fechaOriginal}", valor_final_mostrado="${fechaFormateada}", transformacion=${fechaOriginal === fechaFormateada ? 'Sin cambios' : 'Formateado para UI'
+                            }`);
                     });
-                    
+
                     // Comparar con pasos anteriores para detectar transformaciones
                     const datosRecepcion = window.auditFechasData?.paso4;
                     if (datosRecepcion) {
@@ -687,7 +685,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                             formatosParaMostrar.size !== datosRecepcion.formatosRecibidos.length ||
                             fechasFuturasParaMostrar.length !== datosRecepcion.fechasFuturasRecibidas
                         );
-                        
+
                         if (transformacionDetectada) {
                             console.log(`[AUDITORÍA-FECHAS] ⚠️ TRANSFORMACIÓN DETECTADA ENTRE PASO 4 Y PASO 7:`);
                             console.log(`[AUDITORÍA-FECHAS] - Cambio en tipos: ${datosRecepcion.tiposRecibidos.join(', ')} → ${Array.from(tiposParaMostrar).join(', ')}`);
@@ -697,7 +695,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                             console.log(`[AUDITORÍA-FECHAS] ✅ No se detectaron transformaciones entre Paso 4 y Paso 7`);
                         }
                     }
-                    
+
                     // Actualizar datos de auditoría para el paso 7
                     if (window.auditFechasData) {
                         window.auditFechasData.paso7 = {
@@ -711,7 +709,7 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                             muestraFinal: muestraRender.slice(0, 10)
                         };
                     }
-                    
+
                     // RESUMEN FINAL DE TODA LA AUDITORÍA
                     console.log(`\n🔍 [AUDITORÍA-FECHAS] ===== RESUMEN FINAL DE AUDITORÍA (${requestId}) =====`);
                     console.log(`[AUDITORÍA-FECHAS] 📊 RESUMEN COMPLETO DE TRAZABILIDAD:`);
@@ -725,16 +723,16 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                     console.log(`[AUDITORÍA-FECHAS] ✅ Auditoría completa de extremo a extremo finalizada`);
                 }
             }
-            
+
             updatePresupuestosTable(appState.presupuestos);
             updateCategoriasFilter(appState.categorias);
             updatePaginationControls(); // Nueva función para controles de paginación
             updateStandByAccordion(); // Actualizar acordeón de presupuestos sin confirmar
-            
+
             if (page === 1) {
                 loadEstadisticas(); // Solo actualizar estadísticas en la primera página
             }
-            
+
             showMessage(`Datos cargados: ${appState.presupuestos.length} de ${appState.pagination.totalRecords} registros (Página ${appState.pagination.currentPage} de ${appState.pagination.totalPages})`, 'success');
             console.log(`✅ [PRESUPUESTOS-JS] Datos cargados: ${appState.presupuestos.length} registros - Página ${appState.pagination.currentPage}/${appState.pagination.totalPages}`);
         } else {
@@ -753,12 +751,12 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
  */
 async function handleSincronizar() {
     console.log('🔍 [PRESUPUESTOS-JS] Iniciando proceso de sincronización...');
-    
+
     if (appState.syncInProgress) {
         console.log('⚠️ [PRESUPUESTOS-JS] Sincronización ya en progreso');
         return;
     }
-    
+
     // El sistema usa Service Account por defecto - ejecutar sincronización directamente
     console.log('🔍 [PRESUPUESTOS-JS] Sistema configurado con Service Account - ejecutando sincronización directamente');
     await executeSyncronization();
@@ -767,7 +765,7 @@ async function handleSincronizar() {
 
 async function executeSyncronization() {
     console.log('[SYNC-BIDI] Ejecutando sincronización bidireccional...');
-    
+
     try {
         setSyncLoading(true, 'Sincronizando con Google Sheets (push + pull)...');
         console.log(`[SYNC-BIDI][FRONT] endpoint=${URLS.SYNC_BIDIRECCIONAL}`);
@@ -782,10 +780,10 @@ async function executeSyncronization() {
         console.log('[SYNC-BIDI][FRONT][RESP]', data);
 
         if (response.ok && data.success) {
-            const pushEnviados    = data.push?.enviados ?? 0;
-            const pullRecibidos   = data.pull?.recibidos ?? 0;
-            const pullActualizados= data.pull?.actualizados ?? 0;
-            const pullOmitidos    = data.pull?.omitidos ?? 0;
+            const pushEnviados = data.push?.enviados ?? 0;
+            const pullRecibidos = data.pull?.recibidos ?? 0;
+            const pullActualizados = data.pull?.actualizados ?? 0;
+            const pullOmitidos = data.pull?.omitidos ?? 0;
 
             console.log('[SYNC-BIDI] ✅ Sincronización bidireccional completada:', data);
             console.log(`[SYNC-BIDI] 📤 Push: ${pushEnviados} enviados`);
@@ -830,7 +828,7 @@ async function executeSyncronization() {
  */
 function setSyncLoading(loading, message = '') {
     appState.syncInProgress = loading;
-    
+
     const btnSincronizar = document.getElementById('btn-sincronizar');
     if (btnSincronizar) {
         btnSincronizar.disabled = loading;
@@ -841,7 +839,7 @@ function setSyncLoading(loading, message = '') {
             updateSyncButtonState(appState.authStatus);
         }
     }
-    
+
     console.log(`🔍 [PRESUPUESTOS-JS] Sync loading state: ${loading} - ${message}`);
 }
 
@@ -850,7 +848,7 @@ function setSyncLoading(loading, message = '') {
  */
 function handleConfiguracion() {
     console.log('🔍 [PRESUPUESTOS-JS] Abriendo configuración...');
-    
+
     showMessage('Panel de configuración en desarrollo', 'info');
 }
 
@@ -860,7 +858,7 @@ function handleConfiguracion() {
 function handleFiltroCategoria(event) {
     const categoria = event.target.value;
     console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por categoría: ${categoria || 'todas'}`);
-    
+
     appState.filtros.categoria = categoria;
     saveFiltersToStorage();
     applyFilters();
@@ -873,19 +871,19 @@ function handleFiltroCategoria(event) {
 function handleBuscarCliente(event) {
     const query = event.target.value;
     console.log(`🔍 [PRESUPUESTOS-JS] Buscando cliente: ${query}`);
-    
+
     // Limpiar filtros de cliente anteriores
     appState.filtros.clienteId = '';
     appState.filtros.clienteName = '';
     appState.filtros.concepto = '';
-    
+
     if (query.trim() === '') {
         hideSugerenciasClientes();
         saveFiltersToStorage();
         applyFilters();
         return;
     }
-    
+
     // Si el texto cumple /^\d{1,3}$/ → filtrar por cliente_id exacto
     if (/^\d{1,3}$/.test(query.trim())) {
         appState.filtros.clienteId = query.trim();
@@ -909,11 +907,11 @@ async function showSugerenciasClientes(query) {
         hideSugerenciasClientes();
         return;
     }
-    
+
     try {
         const response = await fetchWithRetry(URLS.CLIENTES_SUG(query));
         const data = await response.json();
-        
+
         if (data.success && data.data.length > 0) {
             renderSugerenciasClientes(data.data);
         } else {
@@ -930,18 +928,18 @@ async function showSugerenciasClientes(query) {
  */
 function renderSugerenciasClientes(sugerencias) {
     let container = document.getElementById('sugerencias-clientes');
-    
+
     if (!container) {
         container = document.createElement('div');
         container.id = 'sugerencias-clientes';
         container.className = 'sugerencias-container';
-        
+
         const input = document.getElementById('buscar-cliente');
         if (input && input.parentNode) {
             input.parentNode.appendChild(container);
         }
     }
-    
+
     container.innerHTML = sugerencias.map(cliente => `
         <div class="sugerencia-item" data-cliente-id="${cliente.id}" data-cliente-text="${escapeHtml(cliente.text)}">
             <span class="cliente-id">${cliente.id.toString().padStart(3, '0')}</span>
@@ -949,25 +947,25 @@ function renderSugerenciasClientes(sugerencias) {
             <span class="cliente-presupuestos">${cliente.total_presupuestos} presupuestos</span>
         </div>
     `).join('');
-    
+
     container.style.display = 'block';
-    
+
     // Agregar event listeners
     container.querySelectorAll('.sugerencia-item').forEach(item => {
         item.addEventListener('click', () => {
             const clienteId = item.dataset.clienteId;
             const clienteText = item.dataset.clienteText;
-            
+
             // Actualizar input y filtros
             const input = document.getElementById('buscar-cliente');
             if (input) {
                 input.value = clienteText;
             }
-            
+
             appState.filtros.clienteId = clienteId;
             appState.filtros.clienteName = '';
             appState.filtros.concepto = '';
-            
+
             hideSugerenciasClientes();
             applyFilters();
         });
@@ -990,7 +988,7 @@ function hideSugerenciasClientes() {
 function handleBuscarConcepto(event) {
     const concepto = event.target.value;
     console.log(`🔍 [PRESUPUESTOS-JS] Buscando concepto: ${concepto}`);
-    
+
     // Limpiar filtros de cliente
     appState.filtros.clienteId = '';
     appState.filtros.clienteName = '';
@@ -1003,13 +1001,13 @@ function handleBuscarConcepto(event) {
  */
 function applyFilters() {
     console.log('🔍 [PRESUPUESTOS-JS] Aplicando filtros:', appState.filtros);
-    
+
     // Resetear a la primera página cuando se aplican filtros
     appState.pagination.currentPage = 1;
-    
+
     // Recargar datos con filtros desde el servidor
     handleCargarDatos(1, true);
-    
+
     console.log(`✅ [PRESUPUESTOS-JS] Filtros aplicados - recargando desde servidor`);
 }
 
@@ -1018,13 +1016,13 @@ function applyFilters() {
  */
 function updatePresupuestosTable(data) {
     console.log(`🔍 [PRESUPUESTOS-JS] Actualizando tabla con ${data.length} registros...`);
-    
+
     const tbody = document.getElementById('tbody-presupuestos');
     if (!tbody) {
         console.error('❌ [PRESUPUESTOS-JS] No se encontró tbody-presupuestos');
         return;
     }
-    
+
     if (data.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -1035,7 +1033,7 @@ function updatePresupuestosTable(data) {
         `;
         return;
     }
-    
+
     tbody.innerHTML = data.map(item => `
         <tr class="slide-up" data-presupuesto-id="${item.id}">
             <td class="text-center">
@@ -1069,7 +1067,7 @@ function updatePresupuestosTable(data) {
             </td>
         </tr>
     `).join('');
-    
+
     console.log('✅ [PRESUPUESTOS-JS] Tabla actualizada con botones de expansión');
 }
 
@@ -1082,20 +1080,20 @@ function updateCategoriasFilter(categorias) {
         console.log('⚠️ [PRESUPUESTOS-JS] Categorías no es un array válido:', categorias);
         categorias = []; // Usar array vacío como fallback
     }
-    
+
     console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de categorías: ${categorias.length} categorías`);
-    
+
     const select = document.getElementById('filtro-categoria');
     if (!select) {
         console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento filtro-categoria');
         return;
     }
-    
+
     // Limpiar opciones existentes (excepto la primera)
     while (select.children.length > 1) {
         select.removeChild(select.lastChild);
     }
-    
+
     // Agregar nuevas opciones
     categorias.forEach(categoria => {
         if (categoria) {
@@ -1105,12 +1103,12 @@ function updateCategoriasFilter(categorias) {
             select.appendChild(option);
         }
     });
-    
+
     // Restaurar valor seleccionado si existe en filtros
     if (appState.filtros.categoria) {
         select.value = appState.filtros.categoria;
     }
-    
+
     console.log('✅ [PRESUPUESTOS-JS] Filtro de categorías actualizado');
 }
 
@@ -1123,24 +1121,24 @@ function updateEstadosFilter(estados) {
         console.log('⚠️ [PRESUPUESTOS-JS] Estados no es un array válido:', estados);
         estados = []; // Usar array vacío como fallback
     }
-    
+
     console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados con botones: ${estados.length} estados`);
-    
+
     const container = document.getElementById('botones-estado');
     if (!container) {
         console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento botones-estado');
         return;
     }
-    
+
     // Limpiar contenido existente
     container.innerHTML = '';
-    
+
     // Si no hay estados, mostrar mensaje
     if (estados.length === 0) {
         container.innerHTML = '<span class="estado-loading">(Sin estados disponibles)</span>';
         return;
     }
-    
+
     // Crear botones para cada estado
     estados.forEach(estado => {
         if (estado) {
@@ -1149,21 +1147,21 @@ function updateEstadosFilter(estados) {
             button.textContent = estado;
             button.dataset.estado = estado;
             button.type = 'button';
-            
+
             // Marcar como activo si está en los filtros guardados
             if (appState.filtros.estado.includes(estado)) {
                 button.classList.add('active');
             }
-            
+
             // Event listener para toggle del estado
-            button.addEventListener('click', function() {
+            button.addEventListener('click', function () {
                 toggleEstadoButton(this);
             });
-            
+
             container.appendChild(button);
         }
     });
-    
+
     console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado con botones');
 }
 
@@ -1173,7 +1171,7 @@ function updateEstadosFilter(estados) {
 function toggleEstadoButton(button) {
     const estado = button.dataset.estado;
     const isActive = button.classList.contains('active');
-    
+
     if (isActive) {
         // Desactivar
         button.classList.remove('active');
@@ -1189,12 +1187,12 @@ function toggleEstadoButton(button) {
         }
         console.log(`🔍 [PRESUPUESTOS-JS] Estado activado: ${estado}`);
     }
-    
+
     console.log(`🔍 [PRESUPUESTOS-JS] Estados seleccionados: [${appState.filtros.estado.join(', ')}]`);
-    
+
     // Guardar filtros
     saveFiltersToStorage();
-    
+
     // Aplicar filtros
     applyFilters();
 }
@@ -1204,11 +1202,11 @@ function toggleEstadoButton(button) {
  */
 function updateStatusIndicator(status, message) {
     const indicatorDot = document.getElementById('status-indicator-dot');
-    
+
     if (indicatorDot) {
         // Remover clases anteriores
         indicatorDot.className = 'status-indicator-dot';
-        
+
         // Agregar clase según estado
         if (status === 'active') {
             indicatorDot.classList.add('active');
@@ -1216,7 +1214,7 @@ function updateStatusIndicator(status, message) {
             indicatorDot.classList.add('error');
         }
         // Si es 'loading', usa el estado por defecto (amarillo con pulse)
-        
+
         console.log(`🔍 [PRESUPUESTOS-JS] Estado actualizado: ${status} - ${message}`);
     }
 }
@@ -1226,19 +1224,19 @@ function updateStatusIndicator(status, message) {
  */
 function setLoading(loading) {
     appState.loading = loading;
-    
+
     const loadingIndicator = document.getElementById('loading-indicator');
     const btnCargarDatos = document.getElementById('btn-cargar-datos');
-    
+
     if (loadingIndicator) {
         loadingIndicator.style.display = loading ? 'flex' : 'none';
     }
-    
+
     if (btnCargarDatos) {
         btnCargarDatos.disabled = loading;
         btnCargarDatos.textContent = loading ? '⏳ Cargando...' : '📊 Cargar Presupuestos';
     }
-    
+
     console.log(`🔍 [PRESUPUESTOS-JS] Loading state: ${loading}`);
 }
 
@@ -1248,16 +1246,16 @@ function setLoading(loading) {
 function showMessage(message, type = 'info') {
     // Mantener console.log para depuración
     console.log(`🔍 [PRESUPUESTOS-JS] ${type.toUpperCase()}: ${message}`);
-    
+
     const container = document.getElementById('message-container');
     if (!container) return;
-    
+
     // Crear solo el círculo de color, sin texto
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
-    
+
     container.appendChild(messageDiv);
-    
+
     // Auto-remove después de 3 segundos
     setTimeout(() => {
         if (messageDiv.parentElement) {
@@ -1271,14 +1269,14 @@ function showMessage(message, type = 'info') {
  */
 async function fetchWithRetry(url, options = {}, attempts = CONFIG.RETRY_ATTEMPTS) {
     console.log(`🔍 [PRESUPUESTOS-JS] Fetch: ${url} (intentos restantes: ${attempts})`);
-    
+
     try {
         const response = await fetch(url, options);
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         return response;
     } catch (error) {
         if (attempts > 1) {
@@ -1334,20 +1332,20 @@ function fmt(iso) {
 // Formatear fechas en formato dd/mm/yyyy (sin hora) - Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
 function formatDateDDMMYYYY(dateString) {
     if (!dateString) return 'N/A';
-    
+
     // Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
     // Usar función fmt segura para fechas YYYY-MM-DD
     if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         return fmt(dateString);
     }
-    
+
     // Fallback para otros formatos (mantener compatibilidad)
     try {
         const date = new Date(dateString);
         const day = String(date.getDate()).padStart(2, '0');
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const year = date.getFullYear();
-        
+
         return `${day}/${month}/${year}`;
     } catch (error) {
         console.error('❌ [PRESUPUESTOS-JS] Error al formatear fecha:', error);
@@ -1358,7 +1356,7 @@ function formatDateDDMMYYYY(dateString) {
 // Formatear fechas (función original mantenida para compatibilidad)
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
-    
+
     try {
         const date = new Date(dateString);
         return new Intl.DateTimeFormat('es-AR', {
@@ -1377,13 +1375,13 @@ function formatDate(dateString) {
 // Formatear fechas en formato dd/mm/yyyy hh:mm según requerimientos
 function formatDateDDMMYYYYWithTime(dateString) {
     if (!dateString) return 'N/A';
-    
+
     // Para fechas YYYY-MM-DD (solo fecha), agregar hora por defecto
     if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         const [y, m, d] = dateString.split('-');
         return `${d}/${m}/${y} 00:00`;
     }
-    
+
     // Para fechas con hora
     try {
         const date = new Date(dateString);
@@ -1392,7 +1390,7 @@ function formatDateDDMMYYYYWithTime(dateString) {
         const year = date.getFullYear();
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
-        
+
         return `${day}/${month}/${year} ${hours}:${minutes}`;
     } catch (error) {
         console.error('❌ [PRESUPUESTOS-JS] Error al formatear fecha con hora:', error);
@@ -1405,16 +1403,16 @@ function formatDateDDMMYYYYWithTime(dateString) {
  */
 async function toggleDetalles(presupuestoId) {
     console.log(`🔍 [PRESUPUESTOS-JS] Expandiendo detalles para presupuesto ID: ${presupuestoId}`);
-    
+
     const detallesRow = document.getElementById(`detalles-${presupuestoId}`);
     const expandButton = document.querySelector(`[onclick="toggleDetalles(${presupuestoId})"]`);
     const expandIcon = expandButton?.querySelector('.expand-icon');
-    
+
     if (!detallesRow) {
         console.error('❌ [PRESUPUESTOS-JS] No se encontró la fila de detalles');
         return;
     }
-    
+
     // Si ya está visible, ocultarlo
     if (detallesRow.style.display !== 'none') {
         detallesRow.style.display = 'none';
@@ -1422,11 +1420,11 @@ async function toggleDetalles(presupuestoId) {
         console.log('✅ [PRESUPUESTOS-JS] Detalles ocultados');
         return;
     }
-    
+
     // Mostrar la fila y cargar detalles
     detallesRow.style.display = 'table-row';
     if (expandIcon) expandIcon.textContent = '-';
-    
+
     try {
         // Verificar si ya se cargaron los detalles
         const container = detallesRow.querySelector('.detalles-container');
@@ -1434,27 +1432,27 @@ async function toggleDetalles(presupuestoId) {
             console.log('✅ [PRESUPUESTOS-JS] Detalles ya cargados, mostrando');
             return;
         }
-        
+
         // Mostrar loading
         container.innerHTML = '<div class="loading-detalles">🔄 Cargando detalles de artículos...</div>';
-        
+
         // Hacer petición AJAX
         const response = await fetchWithRetry(URLS.DETALLES(presupuestoId));
         const data = await response.json();
-        
+
         if (data.success) {
             console.log(`✅ [PRESUPUESTOS-JS] Detalles cargados: ${data.data.total_articulos} artículos`);
-            
+
             // Renderizar detalles
             container.innerHTML = renderDetallesArticulos(data.data);
             container.dataset.loaded = 'true';
         } else {
             throw new Error(data.message || 'Error al cargar detalles');
         }
-        
+
     } catch (error) {
         console.error('❌ [PRESUPUESTOS-JS] Error al cargar detalles:', error);
-        
+
         const container = detallesRow.querySelector('.detalles-container');
         container.innerHTML = `
             <div class="error-detalles">
@@ -1462,7 +1460,7 @@ async function toggleDetalles(presupuestoId) {
                 <button onclick="toggleDetalles(${presupuestoId})" class="btn-retry">Reintentar</button>
             </div>
         `;
-        
+
         showMessage('Error al cargar detalles del presupuesto', 'error');
     }
 }
@@ -1472,9 +1470,9 @@ async function toggleDetalles(presupuestoId) {
  */
 function renderDetallesArticulos(data) {
     console.log('🔍 [PRESUPUESTOS-JS] Renderizando detalles de artículos...');
-    
+
     const { presupuesto, detalles, totales, total_articulos } = data;
-    
+
     // DEBUG: Ver qué datos llegan
     if (detalles && detalles.length > 0) {
         console.log('[DEBUG-DETALLES] Primer artículo recibido:', {
@@ -1484,12 +1482,12 @@ function renderDetallesArticulos(data) {
             detalle: detalles[0].detalle
         });
     }
-    
+
     // Log de control por presupuesto según especificación
     if (totales) {
         console.log("[DETALLE]", "sumNeto=", totales.neto_total.toFixed(2), "sumIVA=", totales.iva_total.toFixed(2), "sumTotal=", totales.total_general.toFixed(2));
     }
-    
+
     if (!detalles || detalles.length === 0) {
         return `
             <div class="detalles-content">
@@ -1503,7 +1501,7 @@ function renderDetallesArticulos(data) {
             </div>
         `;
     }
-    
+
     return `
         <div class="detalles-content">
             <div class="detalles-header">
@@ -1530,8 +1528,8 @@ function renderDetallesArticulos(data) {
                             <tr>
                                 <td class="articulo-cell">
                                     <span class="articulo-descripcion">${escapeHtml(item.descripcion_articulo || item.articulo || 'N/A')}</span>
-                                    ${item.articulo && item.descripcion_articulo !== item.articulo ? 
-                                        `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
+                                    ${item.articulo && item.descripcion_articulo !== item.articulo ?
+            `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
                                 </td>
                                 <td class="text-center">${formatNumber(item.cantidad || 0)}</td>
                                 <td class="text-right">$${formatNumber(item.neto || 0)}</td>
@@ -1567,7 +1565,7 @@ function escapeHtml(text) {
  */
 function updatePaginationControls() {
     console.log('🔍 [PRESUPUESTOS-JS] Actualizando controles de paginación...');
-    
+
     // Buscar o crear contenedor de paginación
     let paginationContainer = document.getElementById('pagination-controls');
     if (!paginationContainer) {
@@ -1575,21 +1573,21 @@ function updatePaginationControls() {
         paginationContainer = document.createElement('div');
         paginationContainer.id = 'pagination-controls';
         paginationContainer.className = 'pagination-controls';
-        
+
         // Insertar después de la tabla
         const tableContainer = document.querySelector('.table-container');
         if (tableContainer) {
             tableContainer.parentNode.insertBefore(paginationContainer, tableContainer.nextSibling);
         }
     }
-    
+
     const { currentPage, totalPages, totalRecords, pageSize, hasNext, hasPrev } = appState.pagination;
-    
+
     if (totalRecords === 0) {
         paginationContainer.innerHTML = '';
         return;
     }
-    
+
     paginationContainer.innerHTML = `
         <div class="pagination-info">
             <span class="records-info">
@@ -1628,7 +1626,7 @@ function updatePaginationControls() {
             </button>
         </div>
     `;
-    
+
     console.log(`✅ [PRESUPUESTOS-JS] Controles de paginación actualizados - Página ${currentPage}/${totalPages}`);
 }
 
@@ -1637,18 +1635,18 @@ function updatePaginationControls() {
  */
 function goToPage(page) {
     const pageNum = parseInt(page);
-    
+
     if (isNaN(pageNum) || pageNum < 1 || pageNum > appState.pagination.totalPages) {
         console.log(`⚠️ [PRESUPUESTOS-JS] Página inválida: ${page}`);
         showMessage('Número de página inválido', 'warning');
         return;
     }
-    
+
     if (pageNum === appState.pagination.currentPage) {
         console.log(`⚠️ [PRESUPUESTOS-JS] Ya estás en la página ${pageNum}`);
         return;
     }
-    
+
     console.log(`🔍 [PRESUPUESTOS-JS] Navegando a página: ${pageNum}`);
     handleCargarDatos(pageNum, true);
 }
@@ -1658,18 +1656,18 @@ function goToPage(page) {
  */
 function changePageSize(newSize) {
     const size = parseInt(newSize);
-    
+
     if (isNaN(size) || size < 1) {
         console.log(`⚠️ [PRESUPUESTOS-JS] Tamaño de página inválido: ${newSize}`);
         return;
     }
-    
+
     console.log(`🔍 [PRESUPUESTOS-JS] Cambiando tamaño de página a: ${size}`);
-    
+
     // Actualizar estado
     appState.pagination.pageSize = size;
     appState.pagination.currentPage = 1; // Resetear a primera página
-    
+
     // Recargar datos
     handleCargarDatos(1, true);
 }
@@ -1689,7 +1687,7 @@ function handlePageInputKeypress(event) {
  */
 function handleNuevoPresupuesto() {
     console.log('🔍 [PRESUPUESTOS-JS] Navegando a crear nuevo presupuesto...');
-    
+
     // Redirigir a la página de crear presupuesto
     window.location.href = '/pages/crear-presupuesto.html';
 }
@@ -1699,7 +1697,7 @@ function handleNuevoPresupuesto() {
  */
 function imprimirPresupuestoDesdeTabla(presupuestoId) {
     console.log(`🖨️ [PRESUPUESTOS-JS] Navegando a imprimir presupuesto ID: ${presupuestoId}`);
-    
+
     // Redirigir a la página de impresión con el ID
     window.location.href = `/pages/imprimir-presupuesto.html?id=${presupuestoId}`;
 }
@@ -1709,9 +1707,18 @@ function imprimirPresupuestoDesdeTabla(presupuestoId) {
  */
 function editarPresupuesto(presupuestoId) {
     console.log(`🔍 [PRESUPUESTOS-JS] Navegando a editar presupuesto ID: ${presupuestoId}`);
-    
-    // Redirigir a la página de editar presupuesto con el ID
-    window.location.href = `/pages/editar-presupuesto.html?id=${presupuestoId}`;
+
+    // Ruteo Inteligente: Detectar si es Orden de Retiro
+    let url = `/pages/editar-presupuesto.html?id=${presupuestoId}`;
+
+    const presupuesto = appState.presupuestos.find(p => p.id === presupuestoId);
+    if (presupuesto && (presupuesto.estado === 'Orden de Retiro' || presupuesto.estado_logistico === 'PENDIENTE_ASIGNAR')) {
+        console.log('📦 [RUTEO] Detectado contexto de Retiro -> Activando modo retiro');
+        url += '&modo=retiro';
+    }
+
+    // Redirigir
+    window.location.href = url;
 }
 
 /**
@@ -1876,28 +1883,28 @@ async function anularPresupuesto(presupuestoId) {
  */
 async function startAutoUpdatePolling() {
     console.log('[AUTO-UPDATE] Iniciando polling de actualizaciones...');
-    
+
     // Si ya está activo, no hacer nada
     if (appState.autoUpdatePolling.isActive) {
         console.log('[AUTO-UPDATE] Polling ya está activo');
         return;
     }
-    
+
     // Verificar si autosync está habilitado
     const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
     if (!isAutoSyncEnabled) {
         console.log('[AUTO-UPDATE] Autosync deshabilitado, no se iniciará polling');
         return;
     }
-    
+
     // Marcar como activo
     appState.autoUpdatePolling.isActive = true;
-    
+
     // Configurar intervalo
     appState.autoUpdatePolling.intervalId = setInterval(async () => {
         await pollForUpdates();
     }, appState.autoUpdatePolling.pollIntervalSeconds * 1000);
-    
+
     console.log(`[AUTO-UPDATE] ✅ Polling iniciado (cada ${appState.autoUpdatePolling.pollIntervalSeconds} segundos)`);
 }
 
@@ -1906,12 +1913,12 @@ async function startAutoUpdatePolling() {
  */
 function stopAutoUpdatePolling() {
     console.log('[AUTO-UPDATE] Deteniendo polling de actualizaciones...');
-    
+
     if (appState.autoUpdatePolling.intervalId) {
         clearInterval(appState.autoUpdatePolling.intervalId);
         appState.autoUpdatePolling.intervalId = null;
     }
-    
+
     appState.autoUpdatePolling.isActive = false;
     console.log('[AUTO-UPDATE] ✅ Polling detenido');
 }
@@ -1924,22 +1931,22 @@ async function pollForUpdates() {
         // Obtener última sincronización de la BD sin mostrar errores
         const response = await fetch(URLS.ESTADISTICAS);
         const data = await response.json();
-        
+
         if (data.success && data.estadisticas && data.estadisticas.ultima_sincronizacion) {
             const nuevaFechaSinc = data.estadisticas.ultima_sincronizacion;
-            
+
             // Si es la primera vez o si cambió, actualizar
-            if (!appState.autoUpdatePolling.lastSyncTimestamp || 
+            if (!appState.autoUpdatePolling.lastSyncTimestamp ||
                 appState.autoUpdatePolling.lastSyncTimestamp !== nuevaFechaSinc) {
-                
+
                 console.log('[AUTO-UPDATE] 🔄 Nueva sincronización detectada:', nuevaFechaSinc);
-                
+
                 // Actualizar timestamp guardado
                 appState.autoUpdatePolling.lastSyncTimestamp = nuevaFechaSinc;
-                
+
                 // Actualizar estadísticas silenciosamente (sin mensaje al usuario)
                 await loadEstadisticas();
-                
+
                 console.log('[AUTO-UPDATE] ✅ Estadísticas actualizadas automáticamente');
             }
         }
@@ -1956,12 +1963,12 @@ async function checkIfAutoSyncIsEnabled() {
     try {
         const response = await fetch(`${CONFIG.API_BASE_URL}/sync/config`);
         const data = await response.json();
-        
+
         if (data && data.auto_sync_enabled) {
             console.log('[AUTO-UPDATE] Autosync está HABILITADO');
             return true;
         }
-        
+
         console.log('[AUTO-UPDATE] Autosync está DESHABILITADO');
         return false;
     } catch (error) {
@@ -1974,15 +1981,15 @@ async function checkIfAutoSyncIsEnabled() {
  * Reiniciar polling según estado actual de autosync
  * Se llama desde el modal al cerrar o al cambiar configuración
  */
-window.refreshAutoUpdatePolling = async function() {
+window.refreshAutoUpdatePolling = async function () {
     console.log('[AUTO-UPDATE] Refrescando estado de polling...');
-    
+
     // Detener polling actual
     stopAutoUpdatePolling();
-    
+
     // Verificar si debe iniciarse nuevamente
     const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
-    
+
     if (isAutoSyncEnabled) {
         console.log('[AUTO-UPDATE] Reiniciando polling porque autosync está activo');
         await startAutoUpdatePolling();
@@ -1992,12 +1999,12 @@ window.refreshAutoUpdatePolling = async function() {
 };
 
 // Iniciar polling automáticamente si autosync está habilitado al cargar la página
-document.addEventListener('DOMContentLoaded', async function() {
+document.addEventListener('DOMContentLoaded', async function () {
     // Esperar un momento para que la aplicación se inicialice completamente
     setTimeout(async () => {
         console.log('[AUTO-UPDATE] Verificando si debe iniciar polling al cargar página...');
         const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
-        
+
         if (isAutoSyncEnabled) {
             console.log('[AUTO-UPDATE] Autosync habilitado, iniciando polling automático');
             await startAutoUpdatePolling();
@@ -2027,7 +2034,7 @@ function saveFiltersToStorage() {
             // Guardar también el texto del input de búsqueda
             buscarClienteText: document.getElementById('buscar-cliente')?.value || ''
         };
-        
+
         sessionStorage.setItem(STORAGE_KEY_FILTERS, JSON.stringify(filtrosParaGuardar));
         console.log('💾 [FILTROS-PERSIST] Filtros guardados en sessionStorage:', filtrosParaGuardar);
     } catch (error) {
@@ -2041,36 +2048,36 @@ function saveFiltersToStorage() {
 function restoreFiltersFromStorage() {
     try {
         const filtrosGuardados = sessionStorage.getItem(STORAGE_KEY_FILTERS);
-        
+
         if (!filtrosGuardados) {
             console.log('📭 [FILTROS-PERSIST] No hay filtros guardados');
             return;
         }
-        
+
         const filtros = JSON.parse(filtrosGuardados);
         console.log('📥 [FILTROS-PERSIST] Restaurando filtros desde sessionStorage:', filtros);
-        
+
         // Restaurar en appState
         appState.filtros.categoria = filtros.categoria || '';
         appState.filtros.clienteId = filtros.clienteId || '';
         appState.filtros.clienteName = filtros.clienteName || '';
         appState.filtros.concepto = filtros.concepto || '';
         appState.filtros.estado = filtros.estado || [];
-        
+
         // Restaurar valores visuales en los controles
         restoreFilterControls(filtros);
-        
+
         // Si hay filtros activos, aplicarlos automáticamente
-        const hayFiltrosActivos = filtros.categoria || 
-                                 filtros.clienteId || 
-                                 filtros.clienteName || 
-                                 filtros.concepto || 
-                                 (filtros.estado && filtros.estado.length > 0);
-        
+        const hayFiltrosActivos = filtros.categoria ||
+            filtros.clienteId ||
+            filtros.clienteName ||
+            filtros.concepto ||
+            (filtros.estado && filtros.estado.length > 0);
+
         if (hayFiltrosActivos) {
             console.log('✅ [FILTROS-PERSIST] Filtros activos detectados - se aplicarán automáticamente');
         }
-        
+
     } catch (error) {
         console.error('❌ [FILTROS-PERSIST] Error al restaurar filtros:', error);
     }
@@ -2081,7 +2088,7 @@ function restoreFiltersFromStorage() {
  */
 function restoreFilterControls(filtros) {
     console.log('🔍 [FILTROS-PERSIST] Restaurando valores visuales en controles...');
-    
+
     // Restaurar select de categoría
     const selectCategoria = document.getElementById('filtro-categoria');
     if (selectCategoria && filtros.categoria) {
@@ -2091,14 +2098,14 @@ function restoreFilterControls(filtros) {
             console.log(`✅ [FILTROS-PERSIST] Categoría restaurada: ${filtros.categoria}`);
         }, 100);
     }
-    
+
     // Restaurar input de búsqueda de cliente
     const inputBuscarCliente = document.getElementById('buscar-cliente');
     if (inputBuscarCliente && filtros.buscarClienteText) {
         inputBuscarCliente.value = filtros.buscarClienteText;
         console.log(`✅ [FILTROS-PERSIST] Texto de búsqueda restaurado: ${filtros.buscarClienteText}`);
     }
-    
+
     // Restaurar botones de estado (se hace en updateEstadosFilter cuando se cargan los estados)
     if (filtros.estado && filtros.estado.length > 0) {
         console.log(`✅ [FILTROS-PERSIST] Estados a restaurar: [${filtros.estado.join(', ')}]`);
@@ -2131,16 +2138,16 @@ window.clearSavedFilters = clearSavedFilters;
  */
 function toggleAccordion(accordionId) {
     console.log(`🔍 [ACCORDION] Toggling acordeón: ${accordionId}`);
-    
+
     const accordion = document.getElementById(accordionId);
     if (!accordion) {
         console.error(`❌ [ACCORDION] No se encontró el acordeón con ID: ${accordionId}`);
         return;
     }
-    
+
     // Toggle clase expanded
     accordion.classList.toggle('expanded');
-    
+
     const isExpanded = accordion.classList.contains('expanded');
     console.log(`✅ [ACCORDION] Acordeón ${isExpanded ? 'expandido' : 'colapsado'}`);
 }
@@ -2151,27 +2158,27 @@ function toggleAccordion(accordionId) {
  */
 function updateStandByAccordion() {
     console.log('🔍 [ACCORDION] Actualizando acordeón de presupuestos sin confirmar...');
-    
+
     // Filtrar presupuestos con estado exactamente "Muestra de Fraccionados"
-    const standByPresupuestos = appState.presupuestos.filter(item => 
+    const standByPresupuestos = appState.presupuestos.filter(item =>
         item.estado === 'Muestra de Fraccionados'
     );
-    
+
     console.log(`✅ [ACCORDION] Encontrados ${standByPresupuestos.length} presupuestos sin confirmar`);
-    
+
     // Actualizar contador en el header del acordeón
     const countElement = document.getElementById('standby-count');
     if (countElement) {
         countElement.textContent = standByPresupuestos.length;
     }
-    
+
     // Actualizar tabla dentro del acordeón
     const tbody = document.getElementById('tbody-standby');
     if (!tbody) {
         console.error('❌ [ACCORDION] No se encontró tbody-standby');
         return;
     }
-    
+
     // Si no hay presupuestos, mostrar mensaje
     if (standByPresupuestos.length === 0) {
         tbody.innerHTML = `
@@ -2183,7 +2190,7 @@ function updateStandByAccordion() {
         `;
         return;
     }
-    
+
     // Renderizar filas reutilizando la misma lógica que la tabla principal
     tbody.innerHTML = standByPresupuestos.map(item => `
         <tr class="slide-up" data-presupuesto-id="${item.id}">
@@ -2218,7 +2225,7 @@ function updateStandByAccordion() {
             </td>
         </tr>
     `).join('');
-    
+
     console.log('✅ [ACCORDION] Acordeón actualizado con presupuestos sin confirmar');
 }
 

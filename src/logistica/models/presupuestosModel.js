@@ -10,7 +10,7 @@
 async function autoAsignarDomicilios(pool) {
     try {
         console.log('[AUTO-HEALING] Iniciando auto-asignación de domicilios...');
-        
+
         // Query para auto-asignar domicilios predeterminados
         const query = `
             WITH presupuestos_huerfanos AS (
@@ -22,7 +22,7 @@ async function autoAsignarDomicilios(pool) {
                 INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
                 WHERE 
                     p.secuencia = 'Pedido_Listo'
-                    AND p.estado = 'Presupuesto/Orden'
+                    AND p.estado IN ('Presupuesto/Orden', 'Orden de Retiro')
                     AND p.activo = true
                     AND p.id_domicilio_entrega IS NULL
             ),
@@ -46,9 +46,9 @@ async function autoAsignarDomicilios(pool) {
             WHERE p.id = dc.presupuesto_id
             RETURNING p.id, p.id_cliente, dc.domicilio_id, dc.alias
         `;
-        
+
         const result = await pool.query(query);
-        
+
         if (result.rowCount > 0) {
             console.log(`[AUTO-HEALING] ✅ ${result.rowCount} presupuesto(s) auto-asignado(s):`);
             result.rows.forEach(row => {
@@ -57,9 +57,9 @@ async function autoAsignarDomicilios(pool) {
         } else {
             console.log('[AUTO-HEALING] ℹ️ No hay presupuestos huérfanos para auto-asignar');
         }
-        
+
         return result.rowCount;
-        
+
     } catch (error) {
         console.error('[AUTO-HEALING] ❌ Error en auto-asignación:', error);
         // No lanzar error, solo loguear (es un proceso auxiliar)
@@ -80,7 +80,7 @@ async function autoAsignarDomicilios(pool) {
 async function obtenerPresupuestosDisponibles(pool) {
     // PASO 1: Auto-asignar domicilios a presupuestos huérfanos
     await autoAsignarDomicilios(pool);
-    
+
     // PASO 2: Obtener presupuestos disponibles
     const query = `
         SELECT 
@@ -131,8 +131,8 @@ async function obtenerPresupuestosDisponibles(pool) {
             -- Filtro 1: Secuencia exacta (valor real en BD)
             p.secuencia = 'Pedido_Listo'
             
-            -- Filtro 2: Estado exacto (valor real en BD)
-            AND p.estado = 'Presupuesto/Orden'
+            -- Filtro 2: Estado exacto (Whitelisting de estados válidos para reparto)
+            AND p.estado IN ('Presupuesto/Orden', 'Orden de Retiro')
             
             -- Filtro 3: Solo activos
             AND p.activo = true
@@ -144,7 +144,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             p.fecha DESC,
             p.id DESC
     `;
-    
+
     const result = await pool.query(query);
     return result.rows;
 }
@@ -188,7 +188,7 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             p.orden_entrega ASC NULLS LAST,
             p.id ASC
     `;
-    
+
     const result = await pool.query(query, [rutaId]);
     return result.rows;
 }
@@ -205,7 +205,7 @@ async function contarPresupuestosDisponibles(pool) {
             AND (p.estado_logistico IS NULL OR p.estado_logistico = 'PENDIENTE_ASIGNAR')
             AND p.id_domicilio_entrega IS NOT NULL
     `;
-    
+
     const result = await pool.query(query);
     return parseInt(result.rows[0].total);
 }

@@ -154,22 +154,41 @@ function renderizarPedidos() {
         return;
     }
 
-    container.innerHTML = state.pedidos.map(pedido => {
+    // ORDENAMIENTO: Retiros primero, luego por fecha/id (implícito)
+    const pedidosOrdenados = [...state.pedidos].sort((a, b) => {
+        const aEsRetiro = a.estado === 'Orden de Retiro';
+        const bEsRetiro = b.estado === 'Orden de Retiro';
+        if (aEsRetiro && !bEsRetiro) return -1;
+        if (!aEsRetiro && bEsRetiro) return 1;
+        return 0;
+    });
+
+    container.innerHTML = pedidosOrdenados.map(pedido => {
         const tieneDomicilio = pedido.id_domicilio_entrega && pedido.domicilio_direccion;
         const pedidoJson = JSON.stringify(pedido).replace(/'/g, "\\'");
+        const esRetiro = pedido.estado === 'Orden de Retiro';
+
+        // Estilos específicos para Retiro
+        const estiloCard = esRetiro
+            ? 'border-left: 5px solid #d35400; background-color: #fdf2e9;'
+            : '';
+
+        const iconoCliente = esRetiro ? '🔙' : '👤'; // Icono distintivo
 
         // Fallbacks para edge cases (QA requirement)
         const clienteId = pedido.cliente_id || 'S/N';
         const clienteNombre = pedido.cliente_nombre || 'Cliente Desconocido';
 
         return `
-            <div class="pedido-card" 
+            <div class="pedido-card ${esRetiro ? 'tipo-retiro' : ''}" 
                  draggable="true" 
                  data-id="${pedido.id}"
+                 data-tipo="${esRetiro ? 'retiro' : 'venta'}"
                  data-pedido='${pedidoJson}'
                  ondragstart="handleDragStart(event)" 
                  ondragend="handleDragEnd(event)"
-                 oncontextmenu="mostrarMenuContextual(event, ${pedido.id})">
+                 oncontextmenu="mostrarMenuContextual(event, ${pedido.id})"
+                 style="${estiloCard}">
                 
                 <!-- Indicador visual de domicilio -->
                 <div class="pedido-domicilio-indicator ${tieneDomicilio ? 'tiene-domicilio' : ''}" 
@@ -178,18 +197,21 @@ function renderizarPedidos() {
                 
                 <!-- NUEVA JERARQUÍA: Cliente primero -->
                 <div class="pedido-header">
-                    <span class="pedido-cliente-id" style="font-size: 1.1rem; font-weight: 600; color: #1e40af;">
-                        👤 Cliente #${clienteId}
+                    <span class="pedido-cliente-id" style="font-size: 1.1rem; font-weight: 600; color: ${esRetiro ? '#d35400' : '#1e40af'};">
+                        ${iconoCliente} ${esRetiro ? 'RETIRO' : 'Cliente'} #${clienteId}
                     </span>
                     <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
                         ${pedido.estado_logistico || 'PENDIENTE'}
                     </span>
                 </div>
+
+                ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 ORDEN DE RETIRO</div>` : ''}
+
                 <div class="pedido-cliente-nombre" style="font-weight: 600; margin-top: 0.25rem; color: #1e293b;">
                     ${clienteNombre}
                 </div>
                 <div class="pedido-numero-secundario" style="font-size: 0.875rem; color: #64748b; margin-top: 0.25rem;">
-                    Pedido #${pedido.id}
+                    Pedido #${pedido.id} ${esRetiro ? '(Retiro)' : ''}
                 </div>
                 <div class="pedido-direccion">
                     📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}

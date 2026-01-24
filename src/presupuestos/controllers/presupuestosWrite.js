@@ -167,15 +167,28 @@ const crearPresupuesto = async (req, res) => {
             punto_entrega,
             descuento = 0,
             secuencia,
-            detalles = []
+            detalles = [],
+            estado_logistico, // NUEVO: Para integración logística
+            informe_generado // NUEVO: Para respetar panel de debug
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos:`, {
-            id_cliente, fecha, tipo_comprobante, detalles_count: detalles.length, idempotencyKey
+            id_cliente, fecha, tipo_comprobante, detalles_count: detalles.length, idempotencyKey, estado_logistico
         });
 
         // Validaciones básicas rápidas
         if (!id_cliente) {
+            // ... (skip identical lines until INSERT)
+            // We need to target the INSERT query block specifically.
+            // Since I can't use "..." effectively for large skips in replace_file_content with a single chunk if I want to edit multiple places, I will do it in chunks or separate calls.
+            // Actually, I should use separate calls for transparency and safety.
+            // Call 1: Update Create destructuring.
+            // Call 2: Update Create INSERT.
+            // Call 3: Update Edit destructuring.
+            // Call 4: Update Edit UPDATE logic.
+            // This is safer.
+            // So I will cancel this chunk and do granular replacements.
+
             console.log(`❌ [PRESUPUESTOS-WRITE] ${requestId} - ID cliente requerido`);
             return res.status(400).json({
                 success: false,
@@ -231,11 +244,12 @@ const crearPresupuesto = async (req, res) => {
             }
 
             // Insertar encabezado en BD como PENDIENTE
+            // Insertar encabezado en BD
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9, $10, $11, true, 'Presupuestos', $12, $13)
+                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15)
                 RETURNING *
             `;
 
@@ -248,16 +262,18 @@ const crearPresupuesto = async (req, res) => {
                 tipo_comprobante || 'Factura',
                 nota || '',
                 estadoNormalizado,
+                informe_generado || 'Pendiente', // Respetar payload o default
                 punto_entrega || '',
                 descuentoNormalizado,
-                'Imprimir', // SIEMPRE forzar "Imprimir" al crear
+                (secuencia && secuencia.trim()) ? secuencia.trim() : 'Imprimir',
                 configHojaUrl,
-                1 // usuario_id = 1 por defecto
+                1, // usuario_id
+                estado_logistico || null // NUEVO: Se guarda lo que viene del front
             ]);
 
             const presupuestoBD = headerResult.rows[0];
-            console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Encabezado registrado: ID=${presupuestoBD.id}`);
-            console.log(`✅ [PRESUPUESTO] Creando presupuesto nuevo, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuestoId}`);
+            console.log(`✅[PRESUPUESTOS - WRITE] ${requestId} - Encabezado registrado: ID = ${presupuestoBD.id} `);
+            console.log(`✅[PRESUPUESTO] Creando presupuesto nuevo, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuestoId} `);
 
             // Helpers numéricos locales para cálculos
 
@@ -269,7 +285,7 @@ const crearPresupuesto = async (req, res) => {
         SELECT pa.costo
         FROM articulos a
         JOIN precios_articulos pa ON pa.articulo = a.numero
-        WHERE TRIM(a.codigo_barras)::text = $1
+        WHERE TRIM(a.codigo_barras):: text = $1
         LIMIT 1
     `;
                 try {
@@ -314,7 +330,7 @@ const crearPresupuesto = async (req, res) => {
                 const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
 
                 // LOG ANTES - Mapeo actual detectado
-                console.log(`🔍 [CAMP-MAPPING-ANTES] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal`);
+                console.log(`🔍[CAMP - MAPPING - ANTES] ${requestId} - CAMP2 <= brutoUnit, CAMP3 <= alicDec, CAMP4 <= netoTotal, CAMP5 <= brutoTotal, CAMP6 <= ivaTotal`);
 
                 detallesNormalizados.push({
                     id: generateDetalleId(),
@@ -334,18 +350,18 @@ const crearPresupuesto = async (req, res) => {
                 });
 
                 // LOG DESPUÉS - Mapeo efectivo aplicado
-                console.log(`✅ [CAMP-MAPPING-DESPUES] ${requestId} - CAMP2<=alicDec, CAMP3<=netoTotal, CAMP4<=brutoTotal, CAMP5<=ivaTotal, CAMP6<=null`);
+                console.log(`✅[CAMP - MAPPING - DESPUES] ${requestId} - CAMP2 <= alicDec, CAMP3 <= netoTotal, CAMP4 <= brutoTotal, CAMP5 <= ivaTotal, CAMP6 <= null`);
             }
 
             const insertDetalleQuery = `
                 INSERT INTO presupuestos_detalles
                 (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
-                 diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
-            `;
+                    diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+                `;
             let detallesInsertados = 0;
             for (const detalle of detallesNormalizados) {
-                console.log(`[PUT-DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
+                console.log(`[PUT - DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
                 await client.query(insertDetalleQuery, [
                     presupuestoBD.id,
                     detalle.id_presupuesto_ext,
@@ -479,7 +495,9 @@ const editarPresupuesto = async (req, res) => {
             estado,
             id_cliente,
             fecha,
-            secuencia
+            secuencia,
+            estado_logistico, // NUEVO
+            informe_generado  // NUEVO
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
@@ -633,11 +651,35 @@ const editarPresupuesto = async (req, res) => {
                 params.push(fecha ? normalizeDate(fecha) : null);
             }
 
-            // FORZAR secuencia = 'Imprimir' SIEMPRE (ignorar valor del frontend)
-            paramCount++;
-            updates.push(`secuencia = $${paramCount}`);
-            params.push('Imprimir');
-            console.log(`[PRESUPUESTO] Forzando secuencia = 'Imprimir' para presupuesto ID: ${id}`);
+            // NUEVOS CAMPOS SOPORTADOS EN EDICIÓN
+            if (estado_logistico !== undefined) {
+                paramCount++;
+                updates.push(`estado_logistico = $${paramCount}`);
+                params.push(estado_logistico);
+            }
+
+            if (informe_generado !== undefined) {
+                paramCount++;
+                updates.push(`informe_generado = $${paramCount}`);
+                params.push(informe_generado);
+            }
+
+            // CORRECCIÓN: Respetar secuencia si viene en el payload (no forzar Imprimir ciegamente)
+            if (secuencia !== undefined) {
+                paramCount++;
+                updates.push(`secuencia = $${paramCount}`);
+                params.push(secuencia);
+                console.log(`[PRESUPUESTO] Actualizando secuencia a: '${secuencia}' para ID: ${id}`);
+            } else {
+                // COMPORTAMIENTO LEGACY (Solo si no viene secuencia): Forzar Imprimir al editar para reactivar
+                // Pero solo si NO es una Orden de Retiro (protección adicional)
+                if (presupuesto.estado !== 'Orden de Retiro') {
+                    paramCount++;
+                    updates.push(`secuencia = $${paramCount}`);
+                    params.push('Imprimir');
+                    console.log(`[PRESUPUESTO] Default legacy: Forzando secuencia='Imprimir' para ID: ${id}`);
+                }
+            }
 
             // Actualizar cabecera si hay campos
             let presupuestoActualizado = presupuesto;

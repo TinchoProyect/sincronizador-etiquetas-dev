@@ -634,21 +634,50 @@ async function handleSubmit(event) {
 
 
         // ---- payload final ----
+        // ---- payload final ----
         const data = {
             id_cliente: idCliente,
             fecha: fechaForm,
             fecha_entrega: fechaEntregaValor,
             agente: agenteValor,
-            tipo_comprobante: tipoComprobanteValor,
-            estado: MODO_RETIRO ? 'Presupuesto/Orden' : estadoValorRaw, // Forzar neutro
-            estado_logistico: MODO_RETIRO ? 'RETIRO_PENDIENTE' : null, // NUEVO CAMPO
-            informe_generado: informeGeneradoValor,
+            // BLINDAJE DEBUG: Leer del panel si es retiro, sino usar lógica estándar
+            tipo_comprobante: MODO_RETIRO ? 'Remito-Efectivo' : tipoComprobanteValor,
+
+            estado: MODO_RETIRO
+                ? (document.getElementById('debug_estado')?.value || 'Orden de Retiro')
+                : estadoValorRaw,
+
+            estado_logistico: MODO_RETIRO
+                ? (document.getElementById('debug_estado_logistico')?.value || 'PENDIENTE_ASIGNAR')
+                : null,
+
+            informe_generado: MODO_RETIRO
+                ? (document.getElementById('debug_informe')?.value || 'Pendiente')
+                : informeGeneradoValor,
+
             nota: (formData.get('nota') || '').toString(),
             punto_entrega: puntoEntregaValor,
-            descuento: descuentoValor, // proporción 0..1
-            secuencia: secuenciaValor, // automático si modo código, manual si modo descripción
+
+            descuento: MODO_RETIRO
+                ? parseFloat(document.getElementById('debug_descuento')?.value || 0)
+                : descuentoValor,
+
+            secuencia: MODO_RETIRO
+                ? (document.getElementById('debug_secuencia')?.value || 'Pedido_Listo')
+                : secuenciaValor,
+
             detalles: []
         };
+
+        // Log de Debug
+        if (MODO_RETIRO) {
+            console.log('📦 [DEBUG-SUBMIT] Valores leídos del panel de configuración:', {
+                estado: data.estado,
+                logistica: data.estado_logistico,
+                secuencia: data.secuencia,
+                descuento: data.descuento
+            });
+        }
         // Recopilar detalles
         const tbody = document.getElementById('detalles-tbody');
         if (!tbody) throw new Error('No se encontró la tabla de detalles');
@@ -2299,6 +2328,21 @@ function activarModoRetiro() {
         historyPanel.style.display = 'none';
         historyPanel.classList.add('hidden-force'); // CSS helper si necesario
     }
+
+    // 3. Mostrar Panel de Debug (Configuración Interna)
+    const debugPanel = document.getElementById('debug-panel-container');
+    if (debugPanel) debugPanel.style.display = 'block';
+
+    // 3.1 Asegurar defaults en los inputs de debug (por si acaso el HTML no cargó bien)
+    const setDebugVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+    };
+    setDebugVal('debug_estado', 'Orden de Retiro');
+    setDebugVal('debug_estado_logistico', 'PENDIENTE_ASIGNAR');
+    setDebugVal('debug_secuencia', 'Pedido_Listo');
+    setDebugVal('debug_informe', 'Pendiente');
+    setDebugVal('debug_descuento', '0');
 }
 
 // Hook para mostrar botón de vincular al seleccionar cliente
