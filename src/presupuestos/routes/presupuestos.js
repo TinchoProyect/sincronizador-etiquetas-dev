@@ -117,7 +117,7 @@ router.get('/', validatePermissions('presupuestos.read'), sanitizarDatos, valida
  */
 router.post('/sync/bidireccional', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('[SYNC-BIDI] Iniciando sincronización bidireccional con filtros cutoff_at...');
-    
+
     try {
         await ejecutarSincronizacionBidireccional(req, res);
     } catch (error) {
@@ -139,7 +139,7 @@ router.post('/sync/bidireccional', validatePermissions('presupuestos.sync'), asy
  */
 router.post('/sync/bidireccional-safe', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('[SYNC-BIDI-SAFE] Iniciando sincronización bidireccional tolerante a cuotas...');
-    
+
     try {
         await ejecutarSincronizacionBidireccionalSafe(req, res);
     } catch (error) {
@@ -162,7 +162,7 @@ router.post('/sync/bidireccional-safe', validatePermissions('presupuestos.sync')
 router.get('/estado/:estado', validatePermissions('presupuestos.read'), async (req, res) => {
     const { estado } = req.params;
     console.log(`🔍 [PRESUPUESTOS] Ruta GET /estado/${estado} - Obteniendo presupuestos por estado`);
-    
+
     try {
         req.query.estado = estado;
         await obtenerPresupuestos(req, res);
@@ -183,7 +183,7 @@ router.get('/estado/:estado', validatePermissions('presupuestos.read'), async (r
  */
 router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/sugerencias - Obteniendo sugerencias de clientes');
-    
+
     try {
         await obtenerSugerenciasClientes(req, res);
     } catch (error) {
@@ -203,7 +203,7 @@ router.get('/clientes/sugerencias', validatePermissions('presupuestos.read'), as
  */
 router.get('/clientes/:id_cliente', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente - Obteniendo datos del cliente');
-    
+
     try {
         await obtenerDatosCliente(req, res);
     } catch (error) {
@@ -223,7 +223,7 @@ router.get('/clientes/:id_cliente', validatePermissions('presupuestos.read'), as
  */
 router.get('/clientes/:id_cliente/historial-entregas', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente/historial-entregas - Obteniendo historial de entregas');
-    
+
     try {
         await obtenerHistorialEntregasCliente(req, res);
     } catch (error) {
@@ -243,13 +243,13 @@ router.get('/clientes/:id_cliente/historial-entregas', validatePermissions('pres
  */
 router.get('/clientes/:id_cliente/lista-precios-pdf', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('📄 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente/lista-precios-pdf - Generando PDF de lista de precios');
-    
+
     try {
         const { generarListaPreciosPDF } = require('../controllers/pdfListaPrecios');
         await generarListaPreciosPDF(req, res);
     } catch (error) {
         console.error('❌ [PRESUPUESTOS] Error en ruta GET /clientes/:id_cliente/lista-precios-pdf:', error);
-        
+
         // Si ya se enviaron headers (PDF iniciado), no podemos enviar JSON
         if (!res.headersSent) {
             res.status(500).json({
@@ -268,7 +268,7 @@ router.get('/clientes/:id_cliente/lista-precios-pdf', validatePermissions('presu
  */
 router.get('/clientes/:id_cliente/articulos-excluidos', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /clientes/:id_cliente/articulos-excluidos - Obteniendo artículos excluidos');
-    
+
     try {
         await obtenerArticulosExcluidos(req, res);
     } catch (error) {
@@ -288,7 +288,7 @@ router.get('/clientes/:id_cliente/articulos-excluidos', validatePermissions('pre
  */
 router.post('/clientes/:id_cliente/articulos-excluidos', validatePermissions('presupuestos.update'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /clientes/:id_cliente/articulos-excluidos - Excluyendo artículo');
-    
+
     try {
         await excluirArticulo(req, res);
     } catch (error) {
@@ -308,7 +308,7 @@ router.post('/clientes/:id_cliente/articulos-excluidos', validatePermissions('pr
  */
 router.delete('/clientes/:id_cliente/articulos-excluidos/:articulo_numero', validatePermissions('presupuestos.update'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta DELETE /clientes/:id_cliente/articulos-excluidos/:articulo_numero - Re-incluyendo artículo');
-    
+
     try {
         await reincluirArticulo(req, res);
     } catch (error) {
@@ -329,7 +329,7 @@ router.delete('/clientes/:id_cliente/articulos-excluidos/:articulo_numero', vali
  */
 router.get('/catalogo-general', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /catalogo-general - Obteniendo catálogo general');
-    
+
     try {
         await obtenerCatalogoGeneral(req, res);
     } catch (error) {
@@ -351,7 +351,7 @@ router.get('/articulos/sugerencias', validatePermissions('presupuestos.read'), a
 
 
     console.log('🔍 [PRESUPUESTOS] Ruta GET /articulos/sugerencias - Obteniendo sugerencias de artículos');
-    
+
     try {
         await obtenerSugerenciasArticulos(req, res);
     } catch (error) {
@@ -364,24 +364,41 @@ router.get('/articulos/sugerencias', validatePermissions('presupuestos.read'), a
     }
 });
 
-    /**
- * @route GET /api/presupuestos/precios
- * @desc Devolver valor (neto) e IVA del artículo según lista del cliente
- * @query cliente_id, codigo_barras (opcional), descripcion (opcional)
+/**
+* @route GET /api/presupuestos/precios
+* @desc Devolver valor (neto) e IVA del artículo según lista del cliente
+* @query cliente_id, codigo_barras (opcional), descripcion (opcional)
+* @access Privado
+*/
+router.get('/precios', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /precios - Buscando precio/IVA');
+    try {
+        await obtenerPrecioArticuloCliente(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /precios:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener precio/IVA',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/historial-articulo
+ * @desc Obtener historial de compras de un artículo específico por cliente
+ * @query cliente_id, articulo_codigo, descripcion
  * @access Privado
  */
-router.get('/precios', validatePermissions('presupuestos.read'), async (req, res) => {
-  console.log('🔍 [PRESUPUESTOS] Ruta GET /precios - Buscando precio/IVA');
-  try {
-    await obtenerPrecioArticuloCliente(req, res);
-  } catch (error) {
-    console.error('❌ [PRESUPUESTOS] Error en ruta GET /precios:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Error interno al obtener precio/IVA',
-      message: error.message
-    });
-  }
+router.get('/historial-articulo', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta GET /historial-articulo');
+    try {
+        const { obtenerHistorialArticuloCliente } = require('../controllers/presupuestos');
+        await obtenerHistorialArticuloCliente(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 /**
@@ -391,7 +408,7 @@ router.get('/precios', validatePermissions('presupuestos.read'), async (req, res
  */
 router.get('/estados', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /estados - Obteniendo estados distintos');
-    
+
     try {
         await obtenerEstados(req, res);
     } catch (error) {
@@ -411,7 +428,7 @@ router.get('/estados', validatePermissions('presupuestos.read'), async (req, res
  */
 router.get('/estadisticas', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /estadisticas - Calculando estadísticas');
-    
+
     try {
         await obtenerEstadisticas(req, res);
     } catch (error) {
@@ -431,7 +448,7 @@ router.get('/estadisticas', validatePermissions('presupuestos.read'), async (req
  */
 router.get('/configuracion', validatePermissions('presupuestos.config'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /configuracion - Obteniendo configuración');
-    
+
     try {
         await obtenerConfiguracion(req, res);
     } catch (error) {
@@ -451,7 +468,7 @@ router.get('/configuracion', validatePermissions('presupuestos.config'), async (
  */
 router.get('/resumen', validatePermissions('presupuestos.read'), sanitizarDatos, validarResumen, async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /resumen - Generando resumen');
-    
+
     try {
         await obtenerResumen(req, res);
     } catch (error) {
@@ -471,7 +488,7 @@ router.get('/resumen', validatePermissions('presupuestos.read'), sanitizarDatos,
  */
 router.get('/health', (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /health - Health check');
-    
+
     res.json({
         success: true,
         module: 'presupuestos',
@@ -494,7 +511,7 @@ router.get('/health', (req, res) => {
 router.get('/:id/detalles', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
     const { id } = req.params;
     console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id/detalles - Obteniendo detalles de presupuesto ID: ${id}`);
-    
+
     try {
         await obtenerDetallesPresupuesto(req, res);
     } catch (error) {
@@ -553,7 +570,7 @@ router.get('/:id', validatePermissions('presupuestos.read'), validarIdPresupuest
 router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdPresupuesto, sanitizarDatos, async (req, res) => {
     const { id } = req.params;
     console.log(`🔍 [PRESUPUESTOS] Ruta PUT /:id/estado - Actualizando estado de presupuesto ID: ${id}`);
-    
+
     try {
         await actualizarEstadoPresupuesto(req, res);
     } catch (error) {
@@ -574,7 +591,7 @@ router.put('/:id/estado', validatePermissions('presupuestos.update'), validarIdP
 router.patch('/:id/formato-impresion', validatePermissions('presupuestos.update'), validarIdPresupuesto, sanitizarDatos, async (req, res) => {
     const { id } = req.params;
     console.log(`🔍 [PRESUPUESTOS] Ruta PATCH /:id/formato-impresion - Actualizando formato de impresión ID: ${id}`);
-    
+
     try {
         await actualizarFormatoImpresion(req, res);
     } catch (error) {
@@ -638,7 +655,7 @@ router.put('/:id',
     async (req, res) => {
         const { id } = req.params;
         console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta PUT /:id - Editando presupuesto ID: ${id}`);
-        
+
         try {
             await editarPresupuestoWrite(req, res);
         } catch (error) {
@@ -663,7 +680,7 @@ router.delete('/:id',
     async (req, res) => {
         const { id } = req.params;
         console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta DELETE /:id - Eliminando presupuesto ID: ${id}`);
-        
+
         try {
             await eliminarPresupuestoWrite(req, res);
         } catch (error) {
@@ -689,7 +706,7 @@ router.post('/:id/retry',
     async (req, res) => {
         const { id } = req.params;
         console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta POST /:id/retry - Reintentando presupuesto ID: ${id}`);
-        
+
         try {
             await reintentarPresupuesto(req, res);
         } catch (error) {
@@ -714,7 +731,7 @@ router.get('/:id/status',
     async (req, res) => {
         const { id } = req.params;
         console.log(`🔍 [PRESUPUESTOS-WRITE] Ruta GET /:id/status - Obteniendo estado de presupuesto ID: ${id}`);
-        
+
         try {
             await obtenerEstadoPresupuesto(req, res);
         } catch (error) {
@@ -735,7 +752,7 @@ router.get('/:id/status',
  */
 router.get('/sync/auth/status', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/auth/status - Verificando autenticación Google');
-    
+
     try {
         await verificarAutenticacion(req, res);
     } catch (error) {
@@ -755,7 +772,7 @@ router.get('/sync/auth/status', validatePermissions('presupuestos.sync'), async 
  */
 router.post('/sync/auth/iniciar', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/auth/iniciar - Iniciando autenticación Google');
-    
+
     try {
         await iniciarAutenticacion(req, res);
     } catch (error) {
@@ -775,7 +792,7 @@ router.post('/sync/auth/iniciar', validatePermissions('presupuestos.sync'), asyn
  */
 router.post('/sync/auth/completar', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/auth/completar - Completando autenticación Google');
-    
+
     try {
         await completarAutenticacion(req, res);
     } catch (error) {
@@ -795,7 +812,7 @@ router.post('/sync/auth/completar', validatePermissions('presupuestos.sync'), as
  */
 router.post('/sync/validar-hoja', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/validar-hoja - Validando hoja Google Sheets');
-    
+
     try {
         await validarHoja(req, res);
     } catch (error) {
@@ -815,7 +832,7 @@ router.post('/sync/validar-hoja', validatePermissions('presupuestos.sync'), asyn
  */
 router.post('/sync/configurar', validatePermissions('presupuestos.config'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/configurar - Configurando hoja Google Sheets');
-    
+
     try {
         await configurarHoja(req, res);
     } catch (error) {
@@ -835,7 +852,7 @@ router.post('/sync/configurar', validatePermissions('presupuestos.config'), asyn
  */
 router.post('/sync/ejecutar', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/ejecutar - Ejecutando sincronización');
-    
+
     try {
         await ejecutarSincronizacion(req, res);
     } catch (error) {
@@ -855,7 +872,7 @@ router.post('/sync/ejecutar', validatePermissions('presupuestos.sync'), async (r
  */
 router.get('/sync/historial', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/historial - Obteniendo historial');
-    
+
     try {
         await obtenerHistorial(req, res);
     } catch (error) {
@@ -875,7 +892,7 @@ router.get('/sync/historial', validatePermissions('presupuestos.read'), async (r
  */
 router.get('/sync/estado', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/estado - Obteniendo estado de sincronización');
-    
+
     try {
         await obtenerEstadoSync(req, res);
     } catch (error) {
@@ -897,7 +914,7 @@ router.get('/sync/estado', validatePermissions('presupuestos.read'), async (req,
  */
 router.post('/sync/full-refresh', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/full-refresh - Ejecutando Full Refresh');
-    
+
     try {
         await executeFullRefresh(req, res);
     } catch (error) {
@@ -917,7 +934,7 @@ router.post('/sync/full-refresh', validatePermissions('presupuestos.sync'), asyn
  */
 router.get('/sync/status', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/status - Obteniendo estado Full Refresh');
-    
+
     try {
         await getSyncStatus(req, res);
     } catch (error) {
@@ -937,7 +954,7 @@ router.get('/sync/status', validatePermissions('presupuestos.read'), async (req,
  */
 router.post('/sync/dry-run', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/dry-run - Ejecutando Dry Run');
-    
+
     try {
         await executeDryRun(req, res);
     } catch (error) {
@@ -957,7 +974,7 @@ router.post('/sync/dry-run', validatePermissions('presupuestos.sync'), async (re
  */
 router.get('/sync/history', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/history - Obteniendo historial Full Refresh');
-    
+
     try {
         await getSyncHistory(req, res);
     } catch (error) {
@@ -977,7 +994,7 @@ router.get('/sync/history', validatePermissions('presupuestos.read'), async (req
  */
 router.get('/sync/stats', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/stats - Obteniendo estadísticas BD');
-    
+
     try {
         await getDatabaseStats(req, res);
     } catch (error) {
@@ -999,7 +1016,7 @@ router.get('/sync/stats', validatePermissions('presupuestos.read'), async (req, 
  */
 router.post('/sync/corregir-fechas', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/corregir-fechas - Ejecutando corrección de fechas');
-    
+
     try {
         await ejecutarCorreccion(req, res);
     } catch (error) {
@@ -1019,7 +1036,7 @@ router.post('/sync/corregir-fechas', validatePermissions('presupuestos.sync'), a
  */
 router.get('/sync/estadisticas-fechas', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/estadisticas-fechas - Obteniendo estadísticas de fechas');
-    
+
     try {
         await obtenerEstadisticasFechas(req, res);
     } catch (error) {
@@ -1039,7 +1056,7 @@ router.get('/sync/estadisticas-fechas', validatePermissions('presupuestos.read')
  */
 router.get('/sync/historial-correcciones', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta GET /sync/historial-correcciones - Obteniendo historial de correcciones');
-    
+
     try {
         await obtenerHistorialCorrecciones(req, res);
     } catch (error) {
@@ -1059,7 +1076,7 @@ router.get('/sync/historial-correcciones', validatePermissions('presupuestos.rea
  */
 router.post('/sync/validar-configuracion', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/validar-configuracion - Validando configuración');
-    
+
     try {
         await validarConfiguracion(req, res);
     } catch (error) {
@@ -1079,7 +1096,7 @@ router.post('/sync/validar-configuracion', validatePermissions('presupuestos.syn
  */
 router.post('/sync/push-altas', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/push-altas - Ejecutando push de ALTAS locales');
-    
+
     try {
         await ejecutarPushAltas(req, res);
     } catch (error) {
@@ -1099,7 +1116,7 @@ router.post('/sync/push-altas', validatePermissions('presupuestos.sync'), async 
  */
 router.post('/sync/bidireccional', validatePermissions('presupuestos.sync'), async (req, res) => {
     console.log('🔍 [PRESUPUESTOS] Ruta POST /sync/bidireccional - Ejecutando sincronización bidireccional');
-    
+
     try {
         await ejecutarSincronizacionBidireccional(req, res);
     } catch (error) {
@@ -1121,7 +1138,7 @@ router.post('/sync/bidireccional', validatePermissions('presupuestos.sync'), asy
  */
 router.get('/sync/config', validatePermissions('presupuestos.config'), async (req, res) => {
     console.log('[SYNC_CONFIG] Ruta GET /sync/config - Obteniendo configuración de autosync');
-    
+
     try {
         await obtenerConfiguracionSync(req, res);
     } catch (error) {
@@ -1141,7 +1158,7 @@ router.get('/sync/config', validatePermissions('presupuestos.config'), async (re
  */
 router.patch('/sync/config', validatePermissions('presupuestos.config'), async (req, res) => {
     console.log('[SYNC_CONFIG] Ruta PATCH /sync/config - Actualizando configuración de autosync');
-    
+
     try {
         await actualizarConfiguracionSync(req, res);
     } catch (error) {
@@ -1161,7 +1178,7 @@ router.patch('/sync/config', validatePermissions('presupuestos.config'), async (
  */
 router.get('/sync/health', validatePermissions('presupuestos.read'), async (req, res) => {
     console.log('[SYNC_CONFIG] Ruta GET /sync/health - Obteniendo estado de salud del autosync');
-    
+
     try {
         await obtenerEstadoSalud(req, res);
     } catch (error) {
@@ -1177,7 +1194,7 @@ router.get('/sync/health', validatePermissions('presupuestos.read'), async (req,
 // Middleware para rutas no encontradas específico del módulo
 router.use('*', (req, res) => {
     console.log(`⚠️ [PRESUPUESTOS] Ruta no encontrada: ${req.method} ${req.originalUrl}`);
-    
+
     res.status(404).json({
         success: false,
         error: 'Ruta no encontrada en el módulo de presupuestos',

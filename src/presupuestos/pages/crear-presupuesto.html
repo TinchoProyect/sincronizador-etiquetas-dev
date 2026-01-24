@@ -878,7 +878,7 @@
                             </button>
                         </div>
 
-                        <table class="detalles-table">
+                        <table id="tabla-detalles" class="detalles-table">
                             <thead>
                                 <tr>
                                     <th width="200">Artículo *</th>
@@ -1020,6 +1020,31 @@
                 </button>
                 <button type="button" class="btn btn-primary" onclick="confirmarConfigImpresion()">
                     📄 Generar PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Selección de Origen (Modo Retiro) -->
+    <div id="modal-seleccion-origen" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header" style="background: #d4edda; border-bottom: 1px solid #c3e6cb;">
+                <h3 style="color: #155724;">📦 Seleccionar Origen del Artículo</h3>
+                <button type="button" class="modal-close" onclick="window.cerrarModalOrigen()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; color: #666;">
+                    Este cliente ya compró <strong><span id="modal-origen-articulo-nombre"></span></strong>
+                    anteriormente.
+                    Seleccione de qué entrega proviene este retiro:
+                </p>
+                <div id="lista-origenes-articulos" style="max-height: 300px; overflow-y: auto;">
+                    <!-- Se llena dinámicamente -->
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="window.cerrarModalOrigen()">
+                    Cancelar (Cargar Manualmente)
                 </button>
             </div>
         </div>

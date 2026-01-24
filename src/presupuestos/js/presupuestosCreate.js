@@ -1954,6 +1954,7 @@ function seleccionarArticuloPorClick(element, event) {
  * Cargar historial de entregas del cliente
  */
 async function cargarHistorialEntregas(clienteId) {
+    if (MODO_RETIRO) return;
     console.log(`📦 [HISTORIAL] Cargando historial de entregas para cliente: ${clienteId}`);
 
     const section = document.getElementById('historial-entregas-section');
@@ -2118,6 +2119,21 @@ function seleccionarArticulo(input, element) {
     const description = (element.dataset.description || '').toString();
     const stock = parseFloat(element.dataset.stock || 0);
 
+
+
+    // === FASE 2.3: INTERCEPCIÓN MODO RETIRO ===
+    // Si estamos en modo retiro y NO venimos de una validación previa (propiedad custom)
+    if (MODO_RETIRO && !element.dataset.origenValidado) {
+        console.log('🛑 [MODO RETIRO] Interceptando selección para verificar historial...');
+        verificarHistorialParaRetiro(input, element, {
+            codigoBarras,
+            articuloNumero,
+            description,
+            stock
+        });
+        return; // Detener flujo normal hasta que el usuario elija origen
+    }
+
     // mostrar al usuario + guardar códigos reales para el submit
     input.value = description;
     input.dataset.codigoBarras = codigoBarras;
@@ -2224,6 +2240,21 @@ function activarModoRetiro() {
             if (section) section.style.display = 'none';
         }
     });
+
+    // 2. Ajustes UI específicos FASE 2.3
+    // Cambiar título de tabla
+    const tableHeader = document.querySelector('#tabla-detalles thead th:first-child');
+    if (tableHeader) {
+        tableHeader.textContent = '📦 Artículos a Retirar';
+        tableHeader.style.textTransform = 'none';
+    }
+
+    // Ocultar panel lateral de historial (ya que usaremos vinculacion inteligente)
+    const historyPanel = document.getElementById('historial-entregas-section');
+    if (historyPanel) {
+        historyPanel.style.display = 'none';
+        historyPanel.classList.add('hidden-force'); // CSS helper si necesario
+    }
 }
 
 // Hook para mostrar botón de vincular al seleccionar cliente
@@ -2357,3 +2388,175 @@ async function confirmarImportacion(idPresupuesto) {
         agregarDetalle();
     }
 }
+
+// ============================================
+// FASE 2.3: LÓGICA DE VINCULACIÓN INTELIGENTE
+// ============================================
+
+const modalOrigen = {
+    el: () => document.getElementById('modal-seleccion-origen'),
+    list: () => document.getElementById('lista-origenes-articulos'),
+    title: () => document.getElementById('modal-origen-articulo-nombre'),
+
+    show: () => {
+        const m = modalOrigen.el();
+        if (m) m.style.display = 'flex';
+    },
+    hide: () => {
+        const m = modalOrigen.el();
+        if (m) m.style.display = 'none';
+    }
+};
+
+let currentSelectionContext = null; // Guardar contexto para retomar tras modal
+
+/**
+ * Verificar si el artículo tiene historial de compras para este cliente
+ */
+async function verificarHistorialParaRetiro(inputElement, suggestionElement, itemData) {
+    const clienteId = getClienteIdActivo();
+    if (!clienteId || clienteId === '0') {
+        // Sin cliente, pasar directo (o advertir) -> Pasamos directo asumiendo "Sin Referencia"
+        console.log('⚠️ [MODO RETIRO] Sin cliente seleccionado, saltando verificación de historial.');
+        resumeSeleccionArticulo(inputElement, suggestionElement);
+        return;
+    }
+
+    try {
+        mostrarLoadingArticulo(inputElement); // Reutilizar spinner visual si es posible o texto
+
+        const params = new URLSearchParams({
+            cliente_id: clienteId,
+            articulo_codigo: itemData.codigoBarras || '',
+            descripcion: itemData.description || ''
+        });
+
+        const res = await fetch(`/api/presupuestos/historial-articulo?${params}`);
+        if (!res.ok) throw new Error('Error API Historial');
+
+        const json = await res.json();
+        const historial = json.data || [];
+
+        if (historial.length > 0) {
+            console.log(`📦 [MODO RETIRO] Encontrados ${historial.length} antecedentes.`);
+
+            // Guardar contexto
+            currentSelectionContext = { inputElement, suggestionElement, itemData };
+
+            // Mostrar Modal
+            presentarOpcionesDeOrigen(historial, itemData);
+        } else {
+            console.log('📦 [MODO RETIRO] Sin antecedentes. Carga directa.');
+            resumeSeleccionArticulo(inputElement, suggestionElement);
+        }
+
+    } catch (error) {
+        console.error('❌ Error verificando historial:', error);
+        // Fallback: permitir carga manual en caso de error
+        resumeSeleccionArticulo(inputElement, suggestionElement);
+    }
+}
+
+/**
+ * Retomar la selección normal del artículo
+ */
+function resumeSeleccionArticulo(input, element, precioOverride = null) {
+    // Marcar como validado para saltar la intercepción esta vez
+    element.dataset.origenValidado = 'true';
+
+    // Ejecutar selección normal
+    seleccionarArticulo(input, element);
+
+    // Si hubo override de precio (desde historial), aplicarlo POST selección
+    if (precioOverride !== null) {
+        setTimeout(() => {
+            const row = input.closest('tr');
+            const valorInput = row.querySelector('input[name*="[valor1]"]');
+            if (valorInput) {
+                valorInput.value = precioOverride; // Precio histórico o 0
+                valorInput.classList.add('precio-vinculado'); // Efecto visual opcional
+                dispatchRecalc(valorInput); // Recalcular con el nuevo precio
+
+                // Visual feedback
+                valorInput.style.backgroundColor = '#d4edda'; // Verde suave
+            }
+        }, 100); // Pequeño delay para asegurar que el fetch de precios normal haya terminado (race condition fix simple)
+    }
+}
+
+/**
+ * Renderizar opciones en el modal
+ */
+function presentarOpcionesDeOrigen(historial, itemData) {
+    const list = modalOrigen.list();
+    const title = modalOrigen.title();
+
+    if (title) title.textContent = itemData.description;
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    historial.forEach((h, index) => {
+        const div = document.createElement('div');
+        div.className = 'origen-option-item';
+        div.style.cssText = `
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        `;
+        div.onmouseover = () => div.style.background = '#f8f9fa';
+        div.onmouseout = () => div.style.background = 'transparent';
+
+        const fecha = new Date(h.fecha).toLocaleDateString();
+        const precio = parseFloat(h.precio_unitario_historico || 0).toFixed(2);
+
+        div.innerHTML = `
+            <div>
+                <div style="font-weight: bold; color: #2c3e50;">Presupuesto #${h.id_presupuesto}</div>
+                <div style="font-size: 0.9em; color: #7f8c8d;">📅 ${fecha} — Cantidad comprada: ${h.cantidad}</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #27ae60;">$${precio}</div>
+                <div style="font-size: 0.8em; color: #95a5a6;">(Precio Original)</div>
+            </div>
+        `;
+
+        div.onclick = () => seleccionarOrigenConfirmed(h.precio_unitario_historico);
+        list.appendChild(div);
+    });
+
+    modalOrigen.show();
+}
+
+/**
+ * Callback al seleccionar una opción del modal
+ */
+function seleccionarOrigenConfirmed(precioHistorico) {
+    modalOrigen.hide();
+    if (currentSelectionContext) {
+        const { inputElement, suggestionElement } = currentSelectionContext;
+        resumeSeleccionArticulo(inputElement, suggestionElement, precioHistorico);
+        currentSelectionContext = null;
+    }
+}
+
+/**
+ * Callback al cancelar o cerrar modal (Opción "Sin Referencia")
+ * Expuesto globalmente para el botón del HTML
+ */
+window.cerrarModalOrigen = function (usarManual = false) {
+    modalOrigen.hide();
+    if (currentSelectionContext) {
+        const { inputElement, suggestionElement } = currentSelectionContext;
+        // Si cancela, carga con precio 0 o lo que la logica standard diga (flujo normal)
+        // Si "Sin Referencia", forzar precio 0? O dejar que cargue precio actual?
+        // Prompt dice: "Agregar el artículo directamente (Precio $0 o manual, indicando 'Sin referencia')"
+        const precio = usarManual ? 0 : null; // null = usa precio lista actual
+        resumeSeleccionArticulo(inputElement, suggestionElement, precio);
+        currentSelectionContext = null;
+    }
+};

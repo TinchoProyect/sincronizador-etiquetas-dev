@@ -326,9 +326,9 @@ const obtenerPresupuestos = async (req, res) => {
                 muestraFechas.slice(0, 10).forEach((row, idx) => {
                     const fechaValue = row.fecha_registro;
                     console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${row.id}, valor_crudo="${fechaValue}", tipo=${typeof fechaValue}, formato_detectado=${fechaValue instanceof Date ? 'Date object' :
-                            typeof fechaValue === 'string' && fechaValue.includes('T') ? 'ISO con hora' :
-                                typeof fechaValue === 'string' && fechaValue.match(/^\d{4}-\d{2}-\d{2}$/) ? 'YYYY-MM-DD' :
-                                    'Otro'
+                        typeof fechaValue === 'string' && fechaValue.includes('T') ? 'ISO con hora' :
+                            typeof fechaValue === 'string' && fechaValue.match(/^\d{4}-\d{2}-\d{2}$/) ? 'YYYY-MM-DD' :
+                                'Otro'
                         }`);
                 });
 
@@ -543,9 +543,9 @@ const obtenerPresupuestos = async (req, res) => {
                 muestraEnvio.forEach((row, idx) => {
                     const fechaValue = row.fecha_registro;
                     console.log(`[AUDITORÍA-FECHAS] ${idx + 1}. ID=${row.id}, valor_a_enviar="${fechaValue}", tipo=${typeof fechaValue}, será_serializado_como=${fechaValue instanceof Date ? 'ISO string por JSON.stringify' :
-                            typeof fechaValue === 'string' ? 'string (sin cambios)' :
-                                typeof fechaValue === 'number' ? 'number (sin cambios)' :
-                                    'unknown'
+                        typeof fechaValue === 'string' ? 'string (sin cambios)' :
+                            typeof fechaValue === 'number' ? 'number (sin cambios)' :
+                                'unknown'
                         }`);
                 });
 
@@ -2883,7 +2883,91 @@ const reincluirArticulo = async (req, res) => {
 
 console.log('✅ [PRESUPUESTOS] Controlador de presupuestos configurado con CRUD completo');
 
+/**
+ * Obtener historial específico de un artículo para un cliente (Vinculación Retiro)
+ */
+const obtenerHistorialArticuloCliente = async (req, res) => {
+    try {
+        const { cliente_id, articulo_codigo, descripcion } = req.query;
+
+        if (!cliente_id || (!articulo_codigo && !descripcion)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Faltan parámetros requeridos (cliente_id y articulo_codigo/descripcion)'
+            });
+        }
+
+        console.log(`🔍 [PRESUPUESTOS] Buscando historial artículo: Cliente=${cliente_id}, Codigo=${articulo_codigo}`);
+
+        // Buscar en detalles de presupuestos entregados/finalizados
+        // Asumiendo que 'estado_logistico' = 'RETIRADO' o 'ENTREGADO' o el presupuesto 'estado' = 'Entregado'
+        const query = `
+            SELECT 
+                p.id as id_presupuesto,
+                p.fecha,
+                d.cantidad,
+                d.precio_unitario, -- Asegurarse si es precio_unitario o precio1/valor1 según tabla real
+                d.articulo_codigo,
+                d.articulo_nombre as descripcion
+            FROM presupuestos p
+            JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
+            WHERE p.id_cliente = $1::text 
+              AND (d.articulo_codigo = $2 OR d.articulo_nombre ILIKE $3)
+              AND (p.estado_logistico IN ('RETIRADO', 'ENTREGADO') OR p.estado = 'Entregado')
+            ORDER BY p.fecha DESC
+            LIMIT 10
+        `;
+
+        // Nota: Ajustar nombres de columnas según inspección real si difieren (confirmado: id_presupuesto, articulo_codigo en detalles?)
+        // En inspection vi: id_presupuesto, articulo_codigo... Valor1?
+        // Voy a usar un query más genérico o ajustado si falla, pero por ahora esto es el diseño.
+        // Si precio_unitario no existe, usar valor1 * (1 + iva/100) si aplica, o simplemente mostrar el valor guardado.
+
+        // CORRECCIÓN QUERY SEGÚN INSPECCIÓN PREVIA (Step 486: id_presupuesto existe)
+        // Asumimos 'valor1' como precio neto o 'precio1' como precio final guardado?
+        // En crearPresupuestos.js se guarda 'precio1' (con iva) y 'valor1'.
+        // Usaremos 'precio1' para mostrar el total histórico.
+
+        const queryReal = `
+            SELECT 
+                p.id as id_presupuesto,
+                p.fecha,
+                d.cantidad,
+                d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
+                -- Usamos 'articulo' que contiene la descripción completa (o código en algunos casos)
+                d.articulo as descripcion 
+            FROM presupuestos p
+            JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
+            WHERE p.id_cliente = $1::text 
+              AND (d.articulo ILIKE $2 OR d.articulo ILIKE $3)
+              -- Filtro de estado laxo para desarrollo, ajustar a estricto en prod
+              AND (p.estado_logistico IN ('RETIRADO', 'ENTREGADO') OR p.estado IN ('Entregado', 'Confirmado'))
+            ORDER BY p.fecha DESC
+            LIMIT 10
+        `;
+
+        // Usamos wildcards para ILIKE en ambos parámetros para maximizar probabilidad de match
+        const result = await req.db.query(queryReal, [
+            cliente_id,
+            `%${articulo_codigo || ''}%`,
+            `%${descripcion || ''}%`
+        ]);
+
+        res.json({
+            success: true,
+            data: result.rows,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error historial articulo:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 module.exports = {
+    obtenerHistorialArticuloCliente, // Nuevo
+
     obtenerPresupuestos,
     obtenerSugerenciasClientes,
     obtenerSugerenciasArticulos,
