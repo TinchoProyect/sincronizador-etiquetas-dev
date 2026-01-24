@@ -580,6 +580,16 @@ function renderizarTarjetaRuta(ruta) {
             const clienteId = primerPedido.id_cliente || primerPedido.cliente_id || 'S/N';
             const clienteNombre = primerPedido.cliente_nombre || 'Cliente Desconocido';
 
+            // DETECTAR SI ES RETIRO (O SI EL GRUPO CONTIENE UN RETIRO)
+            // Asumimos que si agrupa por parada, todos son del mismo tipo o al menos mostramos estilo si el primero lo es.
+            const esRetiro = primerPedido.estado === 'Orden de Retiro';
+
+            // Estilos Austeros para Retiro en Ruta
+            const estiloItem = esRetiro
+                ? 'background-color: #fdf2e9; border-left: 4px solid #d35400;'
+                : 'background-color: white;';
+            const iconoCliente = esRetiro ? '🔙' : '👤';
+
             // Totales agrupados
             const totalMonto = parada.presupuestos.reduce((sum, p) => sum + parseFloat(p.total || 0), 0);
             const cantidadPedidos = parada.presupuestos.length;
@@ -588,15 +598,16 @@ function renderizarTarjetaRuta(ruta) {
             const listaIds = parada.presupuestos.map(p => `#${p.id}`).join(', ');
 
             return `
-                    <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''}" 
+                    <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''} ${esRetiro ? 'item-retiro' : ''}" 
                          data-presupuesto-ids='${idsPresupuestos}'
                          data-cliente-id="${clienteId}"
+                         data-tipo="${esRetiro ? 'retiro' : 'venta'}"
                          draggable="${esArmando}"
                          ondragstart="${esArmando ? 'handlePedidoDragStart(event)' : ''}"
                          ondragover="${esArmando ? 'handlePedidoDragOver(event)' : ''}"
                          ondrop="${esArmando ? 'handlePedidoDrop(event, ' + rutaId + ')' : ''}"
                          ondragend="${esArmando ? 'handlePedidoDragEnd(event)' : ''}"
-                         style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem; border-bottom: 1px solid #e2e8f0; ${esArmando ? 'cursor: move;' : ''} background-color: white;">
+                         style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem; border-bottom: 1px solid #e2e8f0; ${esArmando ? 'cursor: move;' : ''} ${estiloItem}">
                         
                         ${esArmando ? '<div style="color: #94a3b8; cursor: move; margin-top: 0.25rem;">⋮⋮</div>' : ''}
                         
@@ -607,21 +618,23 @@ function renderizarTarjetaRuta(ruta) {
                         <div style="flex: 1; min-width: 0;">
                             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                                 <div style="font-weight: 700; color: #0f172a; font-size: 0.85rem;">
-                                    👤 ${clienteNombre}
+                                    ${iconoCliente} ${clienteNombre}
                                 </div>
-                                <div style="font-weight: 600; color: #1e40af; font-size: 0.8rem; background: #dbeafe; padding: 0 0.25rem; border-radius: 0.25rem;">
+                                <div style="font-weight: 600; color: ${esRetiro ? '#d35400' : '#1e40af'}; font-size: 0.8rem; background: ${esRetiro ? '#fae5d3' : '#dbeafe'}; padding: 0 0.25rem; border-radius: 0.25rem;">
                                     Cli #${clienteId}
                                 </div>
                             </div>
                             
+                            ${esRetiro ? '<div style="font-size: 0.7rem; font-weight: bold; color: #d35400; margin-top: 0.1rem;">🔙 RETIRO</div>' : ''}
+
                             <div style="color: #475569; font-size: 0.75rem; margin-top: 0.1rem;">
                                 📍 ${primerPedido.domicilio_direccion || 'Sin dirección'}
                             </div>
                             
                             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; align-items: center;">
                                 <div style="color: #64748b; font-weight: 500;">
-                                    📦 ${cantidadPedidos > 1 ? 'Pedidos:' : 'Pedido:'} 
-                                    <span style="color: #334155;">${listaIds}</span>
+                                    ${esRetiro ? '↩️' : '📦'} ${cantidadPedidos > 1 ? 'Pedidos:' : 'Pedido:'} 
+                                    <span style="color: #334155; font-weight: 600;">${listaIds} ${esRetiro ? '(Retiro)' : ''}</span>
                                 </div>
                                 ${totalMonto > 0 ? `
                                     <div style="color: #059669; font-weight: 600; font-size: 0.7rem;">
@@ -1419,15 +1432,19 @@ async function detenerRuta(rutaId) {
 // ===== DRAG & DROP PEDIDOS A RUTAS =====
 
 let draggedPedidoId = null;
+let draggedPedidoTipo = null; // 'venta' | 'retiro'
 
 function handleDragStart(event) {
     draggedPedidoId = event.target.dataset.id;
+    draggedPedidoTipo = event.target.dataset.tipo || 'venta'; // Capturar tipo
     event.target.classList.add('dragging');
     event.dataTransfer.effectAllowed = 'move';
 }
 
 function handleDragEnd(event) {
     event.target.classList.remove('dragging');
+    draggedPedidoId = null;
+    draggedPedidoTipo = null;
 }
 
 function handleDragOver(event) {
@@ -1440,6 +1457,9 @@ async function handleDrop(event, rutaId) {
 
     if (!draggedPedidoId) return;
 
+    // CAPTURA INMEDIATA (Local) para evitar race condition con handleDragEnd
+    const tipoPedidoActual = draggedPedidoTipo;
+
     try {
         const response = await fetch(`/api/logistica/rutas/${rutaId}/asignar`, {
             method: 'PUT',
@@ -1450,7 +1470,12 @@ async function handleDrop(event, rutaId) {
         const result = await response.json();
 
         if (result.success) {
-            mostrarExito('Pedido asignado exitosamente');
+            // Feedback contextual según el tipo (usando variable local segura)
+            const mensaje = tipoPedidoActual === 'retiro'
+                ? '✅ Orden de Retiro asignada exitosamente'
+                : 'Pedido asignado exitosamente';
+
+            mostrarExito(mensaje);
             await Promise.all([cargarPedidos(), cargarRutas()]);
         } else {
             throw new Error(result.error || 'Error al asignar pedido');
@@ -1460,6 +1485,7 @@ async function handleDrop(event, rutaId) {
         mostrarError('Error al asignar pedido: ' + error.message);
     } finally {
         draggedPedidoId = null;
+        draggedPedidoTipo = null;
     }
 }
 

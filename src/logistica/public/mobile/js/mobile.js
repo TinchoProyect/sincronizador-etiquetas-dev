@@ -267,15 +267,23 @@ function renderizarEntregas() {
     }
 
     // AGRUPAR POR CLIENTE Y DOMICILIO
+    // AGRUPAR POR CLIENTE Y DOMICILIO
     const paradas = agruparEntregasEnParadas(state.entregas);
 
     container.innerHTML = paradas.map((parada, index) => {
-        const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO');
+        const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO');
         const primerEntrega = parada.entregas[0];
 
+        // Detectar si es una parada de Retiro (basado en el primer ítem)
+        const esRetiro = primerEntrega.estado === 'Orden de Retiro';
+
         const claseCard = esCompletadaTotal ? 'entrega-card completada' : 'entrega-card';
-        // Badge general de la parada (si todos entregados -> Completada, sino -> X pendientes)
-        const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO').length;
+        // Badge general de la parada
+        const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO' && e.estado_logistico !== 'RETIRADO').length;
+
+        // Estilos específicos para Retiro
+        const estiloBorde = esRetiro && !esCompletadaTotal ? 'border-left: 5px solid #d35400;' : '';
+        const iconoTipo = esRetiro ? '🔙' : '#';
 
         let headerBadgeHTML = '';
         if (esCompletadaTotal) {
@@ -284,21 +292,39 @@ function renderizarEntregas() {
             headerBadgeHTML = `<div class="entrega-badge badge-pendiente">${pendientes} Pendiente${pendientes !== 1 ? 's' : ''}</div>`;
         }
 
+        // Badge adicional de Retiro
+        const labelRetiroHTML = esRetiro ? '<div style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">RETIRAR</div>' : '';
+
         // Renderizar lista de pedidos dentro de la parada
         const pedidosListHTML = parada.entregas.map(entrega => {
-            const entregado = entrega.estado_logistico === 'ENTREGADO';
+            const esItemRetiro = entrega.estado === 'Orden de Retiro';
+            const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
+
+            // Textos y colores dinámicos
+            const textoBoton = completado
+                ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado')
+                : (esItemRetiro ? 'Retirar' : 'Entregar');
+
+            const backgroundBoton = completado
+                ? '#dcfce7' // Verde claro (completado)
+                : (esItemRetiro ? '#e67e22' : '#2563eb'); // Naranja (Retiro) vs Azul (Entrega)
+
+            const colorTextoBoton = completado
+                ? '#166534'
+                : 'white';
+
             return `
                 <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9;">
                     <div style="flex: 1;">
-                        <div style="font-weight: 600; color: #475569;">Pedido #${entrega.id_presupuesto}</div>
+                        <div style="font-weight: 600; color: #475569;">${esItemRetiro ? '↩️' : ''} Pedido #${entrega.id_presupuesto}</div>
                         ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
                     </div>
                     <div>
                         <button class="btn-confirmar-sm" 
-                                onclick="confirmarEntrega(${entrega.id_presupuesto})" 
-                                ${entregado ? 'disabled' : ''}
-                                style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; ${entregado ? 'background: #dcfce7; color: #166534; border: none;' : 'background: #2563eb; color: white; border: none;'}">
-                            ${entregado ? '✓ Entregado' : 'Entregar'}
+                                onclick="confirmarEntrega(${entrega.id_presupuesto}, '${esItemRetiro ? 'retiro' : 'entrega'}')" 
+                                ${completado ? 'disabled' : ''}
+                                style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; background: ${backgroundBoton}; color: ${colorTextoBoton}; border: none;">
+                            ${textoBoton}
                         </button>
                     </div>
                 </div>
@@ -306,10 +332,14 @@ function renderizarEntregas() {
         }).join('');
 
         return `
-            <div class="${claseCard}" data-parada-key="${parada.key}">
+            <div class="${claseCard}" data-parada-key="${parada.key}" style="${estiloBorde}">
                 <div class="entrega-header">
-                    <div class="entrega-numero" style="background: #1e3a8a;">${index + 1}</div>
-                    ${headerBadgeHTML}
+                    <div class="entrega-numero" style="background: ${esRetiro ? '#d35400' : '#1e3a8a'};">
+                        ${esRetiro ? '↩️' : index + 1}
+                    </div>
+                    <div>
+                        ${headerBadgeHTML}
+                    </div>
                 </div>
                 
                 <!-- CLIENTE DESTACADO -->
@@ -320,6 +350,7 @@ function renderizarEntregas() {
                     <div style="font-size: 1.1rem; font-weight: 600; color: #1e293b;">
                         ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
                     </div>
+                    ${labelRetiroHTML}
                 </div>
                 
                 <div class="entrega-direccion" style="margin-top: 0.5rem; padding-bottom: 0.5rem; border-bottom: 2px dashed #e2e8f0;">
@@ -403,12 +434,12 @@ function navegarAEntrega(latitud, longitud, direccion) {
  * Confirmar entrega
  * Delega a módulo de confirmación
  */
-function confirmarEntrega(presupuestoId) {
-    console.log('[ENTREGA] Confirmar entrega de presupuesto:', presupuestoId);
+function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
+    console.log(`[ENTREGA] Confirmar ${tipoPedido} de presupuesto:`, presupuestoId);
 
     // Importar dinámicamente el módulo de confirmación
     import('./modules/confirmacion.js').then(module => {
-        module.mostrarModalOpciones(presupuestoId);
+        module.mostrarModalOpciones(presupuestoId, tipoPedido);
     }).catch(error => {
         console.error('[ENTREGA] Error al cargar módulo:', error);
         alert('Error al cargar módulo de confirmación');

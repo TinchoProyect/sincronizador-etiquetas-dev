@@ -9,6 +9,7 @@ import { obtenerDetallesPedido, confirmarEntrega } from './api.js';
 let estadoConfirmacion = {
     presupuestoId: null,
     tipo: null, // 'rapida' o 'detallada'
+    tipoPedido: 'entrega', // 'entrega' o 'retiro'
     detalles: [],
     fotos: {
         remito: null,
@@ -25,16 +26,19 @@ let estadoConfirmacion = {
 /**
  * Mostrar modal de opciones de confirmación
  */
-export function mostrarModalOpciones(presupuestoId) {
+export function mostrarModalOpciones(presupuestoId, tipoPedido = 'entrega') {
     estadoConfirmacion.presupuestoId = presupuestoId;
-    
+    estadoConfirmacion.tipoPedido = tipoPedido;
+
+    const esRetiro = tipoPedido === 'retiro';
+
     const modal = document.createElement('div');
     modal.id = 'modal-opciones-confirmacion';
     modal.className = 'modal-overlay';
     modal.innerHTML = `
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">
-                <h2>Confirmar Entrega</h2>
+                <h2>${esRetiro ? 'Confirmar Retiro' : 'Confirmar Entrega'}</h2>
                 <button class="btn-close" onclick="window.cerrarModalOpciones()">×</button>
             </div>
             
@@ -46,22 +50,22 @@ export function mostrarModalOpciones(presupuestoId) {
                 <button class="btn-opcion-confirmacion btn-rapida" onclick="window.iniciarConfirmacionRapida()">
                     <div class="icono">⚡</div>
                     <div class="texto">
-                        <strong>Confirmación Rápida</strong>
-                        <small>Solo marcar como entregado</small>
+                        <strong>${esRetiro ? 'Retiro Rápido' : 'Confirmación Rápida'}</strong>
+                        <small>${esRetiro ? 'Marcar como retirado (en camión)' : 'Solo marcar como entregado'}</small>
                     </div>
                 </button>
                 
                 <button class="btn-opcion-confirmacion btn-detallada" onclick="window.iniciarConfirmacionDetallada()">
                     <div class="icono">📋</div>
                     <div class="texto">
-                        <strong>Confirmación Detallada</strong>
+                        <strong>${esRetiro ? 'Retiro Detallado' : 'Confirmación Detallada'}</strong>
                         <small>Con checklist, fotos y firma</small>
                     </div>
                 </button>
             </div>
         </div>
     `;
-    
+
     document.body.appendChild(modal);
     agregarEstilosModal();
 }
@@ -81,26 +85,30 @@ export function cerrarModalOpciones() {
  */
 export async function iniciarConfirmacionRapida() {
     cerrarModalOpciones();
-    
-    if (!confirm('¿Confirmar que el pedido fue entregado?')) {
+
+    const esRetiro = estadoConfirmacion.tipoPedido === 'retiro';
+    const accion = esRetiro ? 'retirado' : 'entregado';
+
+    if (!confirm(`¿Confirmar que el pedido fue ${accion}?`)) {
         return;
     }
-    
+
     try {
         // Obtener coordenadas actuales
         const coords = await obtenerCoordenadas();
-        
+
         // Enviar confirmación
         const resultado = await confirmarEntrega({
             id_presupuesto: estadoConfirmacion.presupuestoId,
             tipo_confirmacion: 'rapida',
+            nuevo_estado: esRetiro ? 'RETIRADO' : 'ENTREGADO', // ESTADO DINÁMICO
             latitud: coords?.latitude || null,
             longitud: coords?.longitude || null
         });
-        
+
         if (resultado.success) {
-            alert('✅ Entrega confirmada correctamente');
-            
+            alert(esRetiro ? '✅ Retiro confirmado correctamente' : '✅ Entrega confirmada correctamente');
+
             // Recargar ruta
             if (window.cargarRutaActiva) {
                 window.cargarRutaActiva();
@@ -108,10 +116,10 @@ export async function iniciarConfirmacionRapida() {
         } else {
             throw new Error(resultado.error || 'Error al confirmar');
         }
-        
+
     } catch (error) {
         console.error('[CONFIRMACION] Error:', error);
-        alert('❌ Error al confirmar entrega: ' + error.message);
+        alert('❌ Error al confirmar: ' + error.message);
     }
 }
 
@@ -120,21 +128,21 @@ export async function iniciarConfirmacionRapida() {
  */
 export async function iniciarConfirmacionDetallada() {
     cerrarModalOpciones();
-    
+
     try {
         // Obtener detalles del pedido
         const resultado = await obtenerDetallesPedido(estadoConfirmacion.presupuestoId);
-        
+
         if (resultado.success && resultado.data) {
             estadoConfirmacion.detalles = resultado.data;
             estadoConfirmacion.tipo = 'detallada';
-            
+
             // Mostrar modal detallado
             mostrarModalDetallado();
         } else {
             throw new Error('No se pudieron obtener los detalles del pedido');
         }
-        
+
     } catch (error) {
         console.error('[CONFIRMACION] Error:', error);
         alert('❌ Error: ' + error.message);
@@ -216,9 +224,9 @@ function mostrarModalDetallado() {
             </div>
         </div>
     `;
-    
+
     document.body.appendChild(modal);
-    
+
     // Inicializar canvas de firma
     setTimeout(() => inicializarCanvasFirma(), 100);
 }
@@ -231,7 +239,7 @@ export function cerrarModalDetallado() {
     if (modal) {
         modal.remove();
     }
-    
+
     // Limpiar estado
     estadoConfirmacion.fotos = { remito: null, bulto: null };
     estadoConfirmacion.firma = null;
@@ -243,21 +251,21 @@ export function cerrarModalDetallado() {
  */
 export function previsualizarFoto(input, previewId) {
     const preview = document.getElementById(previewId);
-    
+
     if (input.files && input.files[0]) {
         const reader = new FileReader();
-        
-        reader.onload = function(e) {
+
+        reader.onload = function (e) {
             preview.innerHTML = `
                 <img src="${e.target.result}" style="max-width: 100%; border-radius: 0.5rem;">
                 <button class="btn-eliminar-foto" onclick="window.eliminarFoto('${input.id}', '${previewId}')">🗑️</button>
             `;
-            
+
             // Guardar en estado
             const tipo = input.id.includes('remito') ? 'remito' : 'bulto';
             estadoConfirmacion.fotos[tipo] = e.target.result;
         };
-        
+
         reader.readAsDataURL(input.files[0]);
     }
 }
@@ -268,10 +276,10 @@ export function previsualizarFoto(input, previewId) {
 export function eliminarFoto(inputId, previewId) {
     const input = document.getElementById(inputId);
     const preview = document.getElementById(previewId);
-    
+
     if (input) input.value = '';
     if (preview) preview.innerHTML = '';
-    
+
     // Limpiar del estado
     const tipo = inputId.includes('remito') ? 'remito' : 'bulto';
     estadoConfirmacion.fotos[tipo] = null;
@@ -283,17 +291,17 @@ export function eliminarFoto(inputId, previewId) {
 function inicializarCanvasFirma() {
     const canvas = document.getElementById('canvas-firma');
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     let dibujando = false;
     let ultimoX = 0;
     let ultimoY = 0;
-    
+
     // Configurar canvas
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
-    
+
     // Eventos táctiles
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -303,31 +311,31 @@ function inicializarCanvasFirma() {
         ultimoX = touch.clientX - rect.left;
         ultimoY = touch.clientY - rect.top;
     });
-    
+
     canvas.addEventListener('touchmove', (e) => {
         e.preventDefault();
         if (!dibujando) return;
-        
+
         const touch = e.touches[0];
         const rect = canvas.getBoundingClientRect();
         const x = touch.clientX - rect.left;
         const y = touch.clientY - rect.top;
-        
+
         ctx.beginPath();
         ctx.moveTo(ultimoX, ultimoY);
         ctx.lineTo(x, y);
         ctx.stroke();
-        
+
         ultimoX = x;
         ultimoY = y;
     });
-    
+
     canvas.addEventListener('touchend', () => {
         dibujando = false;
         // Guardar firma en estado
         estadoConfirmacion.firma = canvas.toDataURL();
     });
-    
+
     // Eventos de mouse (para testing en desktop)
     canvas.addEventListener('mousedown', (e) => {
         dibujando = true;
@@ -335,28 +343,28 @@ function inicializarCanvasFirma() {
         ultimoX = e.clientX - rect.left;
         ultimoY = e.clientY - rect.top;
     });
-    
+
     canvas.addEventListener('mousemove', (e) => {
         if (!dibujando) return;
-        
+
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        
+
         ctx.beginPath();
         ctx.moveTo(ultimoX, ultimoY);
         ctx.lineTo(x, y);
         ctx.stroke();
-        
+
         ultimoX = x;
         ultimoY = y;
     });
-    
+
     canvas.addEventListener('mouseup', () => {
         dibujando = false;
         estadoConfirmacion.firma = canvas.toDataURL();
     });
-    
+
     canvas.addEventListener('mouseleave', () => {
         dibujando = false;
     });
@@ -381,19 +389,22 @@ export async function enviarConfirmacionDetallada() {
     try {
         // Validar datos mínimos
         const receptorNombre = document.getElementById('receptor-nombre')?.value.trim();
-        
+
         if (!receptorNombre) {
             alert('⚠️ Por favor ingrese el nombre de quien recibe');
             return;
         }
-        
+
         // Obtener coordenadas
         const coords = await obtenerCoordenadas();
-        
+
         // Preparar datos
+        const esRetiro = estadoConfirmacion.tipoPedido === 'retiro';
+
         const datos = {
             id_presupuesto: estadoConfirmacion.presupuestoId,
             tipo_confirmacion: 'detallada',
+            nuevo_estado: esRetiro ? 'RETIRADO' : 'ENTREGADO',
             receptor_nombre: receptorNombre,
             receptor_dni: document.getElementById('receptor-dni')?.value.trim() || null,
             foto_remito_url: estadoConfirmacion.fotos.remito,
@@ -402,16 +413,16 @@ export async function enviarConfirmacionDetallada() {
             latitud: coords?.latitude || null,
             longitud: coords?.longitude || null
         };
-        
+
         console.log('[CONFIRMACION] Enviando confirmación detallada...');
-        
+
         // Enviar al servidor
         const resultado = await confirmarEntrega(datos);
-        
+
         if (resultado.success) {
             cerrarModalDetallado();
-            alert('✅ Entrega confirmada correctamente');
-            
+            alert(esRetiro ? '✅ Retiro confirmado correctamente' : '✅ Entrega confirmada correctamente');
+
             // Recargar ruta
             if (window.cargarRutaActiva) {
                 window.cargarRutaActiva();
@@ -419,7 +430,7 @@ export async function enviarConfirmacionDetallada() {
         } else {
             throw new Error(resultado.error || 'Error al confirmar');
         }
-        
+
     } catch (error) {
         console.error('[CONFIRMACION] Error:', error);
         alert('❌ Error al confirmar entrega: ' + error.message);
@@ -436,7 +447,7 @@ function obtenerCoordenadas() {
             resolve(null);
             return;
         }
-        
+
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 console.log('[GPS] Coordenadas obtenidas:', position.coords);
@@ -460,7 +471,7 @@ function obtenerCoordenadas() {
  */
 function agregarEstilosModal() {
     if (document.getElementById('estilos-modal-confirmacion')) return;
-    
+
     const style = document.createElement('style');
     style.id = 'estilos-modal-confirmacion';
     style.textContent = `
@@ -714,7 +725,7 @@ function agregarEstilosModal() {
             background: #cbd5e1;
         }
     `;
-    
+
     document.head.appendChild(style);
 }
 
