@@ -325,8 +325,8 @@ function agregarDetalle() {
 
                 <td>
                     <button type="button" class="btn-remove-detalle"
-                            onclick="removerDetalle(${detalleCounter})"
-                            ${tbody.children.length === 0 ? 'disabled' : ''}>
+                            onclick="removerDetalle(this)"
+                            title="Eliminar línea">
                     🗑️
                     </button>
                 </td>
@@ -345,29 +345,67 @@ function agregarDetalle() {
 }
 
 /**
- * Remover fila de detalle
+ * Remover fila de detalle (Refactorizado para QA Phase 2.4)
+ * - Acepta ID o Elemento (this)
+ * - Si es la última fila, limpia los inputs en lugar de bloquear
  */
-function removerDetalle(id) {
-    console.log(`🗑️ [PRESUPUESTOS-CREATE] Removiendo detalle ${id}...`);
+function removerDetalle(arg) {
+    let row;
+    if (typeof arg === 'object' && arg.tagName) {
+        // Es un elemento HTML (botón)
+        row = arg.closest('tr');
+    } else {
+        // Es un ID numérico (Legacy)
+        row = document.getElementById(`detalle-${arg}`);
+    }
 
-    const row = document.getElementById(`detalle-${id}`);
     const tbody = document.getElementById('detalles-tbody');
 
-    if (!tbody) {
-        console.error('❌ [PRESUPUESTOS-CREATE] #detalles-tbody no existe');
+    if (!tbody || !row) {
+        console.error('❌ [PRESUPUESTOS-CREATE] No se pudo identificar la fila a eliminar');
         return;
     }
 
-    // No permitir eliminar si es la única fila
+    console.log(`🗑️ [PRESUPUESTOS-CREATE] Intentando remover fila... Filas restantes: ${tbody.children.length}`);
+
+    // Si es la última fila, limpiar en vez de borrar
     if (tbody.children.length <= 1) {
-        mostrarMensaje('Debe mantener al menos un artículo en el presupuesto', 'error');
+        console.log('⚠️ Última fila detectada: Limpiando inputs en lugar de eliminar.');
+
+        // Limpiar inputs
+        const inputs = row.querySelectorAll('input');
+        inputs.forEach(input => {
+            if (input.type === 'number' || input.type === 'text' || input.type === 'hidden') {
+                if (input.name && input.name.includes('[iva1]')) {
+                    input.value = '21.00'; // Reset IVA default
+                } else if (input.name && input.name.includes('[cantidad]')) {
+                    input.value = '1'; // Reset cantidad default
+                } else {
+                    input.value = '';
+                }
+                // Limpiar dataset custom
+                delete input.dataset.codigoBarras;
+                delete input.dataset.articuloNumero;
+                delete input.dataset.origenValidado;
+            }
+        });
+
+        // Reset visuales de precio
+        const displays = row.querySelectorAll('.precio-calculado, .subtotal-display');
+        displays.forEach(d => d.value = '$ 0,00');
+
+        // Foco
+        const firstInput = row.querySelector('input[type="text"]');
+        if (firstInput) firstInput.focus();
+
+        mostrarMensaje('Fila limpiada (Se requiere al menos un artículo)', 'success');
         return;
     }
 
-    if (row) {
-        row.remove();
-        console.log(`✅ [PRESUPUESTOS-CREATE] Detalle ${id} removido`);
-    }
+    // Eliminación normal
+    row.remove();
+    recalcTotales(); // Asegurar recalculo global
+    console.log(`✅ [PRESUPUESTOS-CREATE] Fila removida exitosamente.`);
 }
 
 /**
@@ -2225,7 +2263,7 @@ function activarModoRetiro() {
     // Cambiar botón guardar
     const btnGuardar = document.getElementById('btn-guardar');
     if (btnGuardar) {
-        btnGuardar.innerHTML = '📦 Confirmar Retiro';
+        btnGuardar.innerHTML = 'Confirmar Orden de Retiro';
         btnGuardar.classList.remove('btn-primary');
         btnGuardar.classList.add('btn-warning');
         btnGuardar.style.backgroundColor = '#f39c12';
@@ -2242,10 +2280,16 @@ function activarModoRetiro() {
     });
 
     // 2. Ajustes UI específicos FASE 2.3
+    // Cambiar título de sección
+    const sectionTitle = document.getElementById('titulo-seccion-articulos');
+    if (sectionTitle) {
+        sectionTitle.textContent = '📦 Artículos de la Orden de Retiro';
+    }
+
     // Cambiar título de tabla
     const tableHeader = document.querySelector('#tabla-detalles thead th:first-child');
     if (tableHeader) {
-        tableHeader.textContent = '📦 Artículos a Retirar';
+        tableHeader.textContent = 'Artículos de la orden de retiro';
         tableHeader.style.textTransform = 'none';
     }
 
@@ -2413,6 +2457,10 @@ let currentSelectionContext = null; // Guardar contexto para retomar tras modal
 /**
  * Verificar si el artículo tiene historial de compras para este cliente
  */
+/**
+ * Verificar si el artículo tiene historial de compras para este cliente
+ * REFACTOR FASE 2.4: Fetch de precio actual + UI avanzada
+ */
 async function verificarHistorialParaRetiro(inputElement, suggestionElement, itemData) {
     const clienteId = getClienteIdActivo();
     if (!clienteId || clienteId === '0') {
@@ -2431,20 +2479,32 @@ async function verificarHistorialParaRetiro(inputElement, suggestionElement, ite
             descripcion: itemData.description || ''
         });
 
-        const res = await fetch(`/api/presupuestos/historial-articulo?${params}`);
-        if (!res.ok) throw new Error('Error API Historial');
+        // 1. Fetch Historial y Precio Actual en Paralelo
+        const [resHistorial, resPrecios] = await Promise.all([
+            fetch(`/api/presupuestos/historial-articulo?${params}`),
+            fetch(`/api/presupuestos/precios?${params}`) // Reutilizamos endpoint de precios
+        ]);
 
-        const json = await res.json();
-        const historial = json.data || [];
+        if (!resHistorial.ok) throw new Error('Error API Historial');
+
+        const jsonHistorial = await resHistorial.json();
+        const historial = jsonHistorial.data || [];
+
+        // Procesar precio actual
+        let precioActual = 0;
+        if (resPrecios.ok) {
+            const jsonPrecios = await resPrecios.json();
+            precioActual = Number(jsonPrecios.data?.valor1) || 0;
+        }
 
         if (historial.length > 0) {
-            console.log(`📦 [MODO RETIRO] Encontrados ${historial.length} antecedentes.`);
+            console.log(`📦 [MODO RETIRO] Encontrados ${historial.length} antecedentes. Precio Actual: $${precioActual}`);
 
             // Guardar contexto
             currentSelectionContext = { inputElement, suggestionElement, itemData };
 
-            // Mostrar Modal
-            presentarOpcionesDeOrigen(historial, itemData);
+            // Mostrar Modal con Smart Pricing
+            presentarOpcionesDeOrigen(historial, itemData, precioActual);
         } else {
             console.log('📦 [MODO RETIRO] Sin antecedentes. Carga directa.');
             resumeSeleccionArticulo(inputElement, suggestionElement);
@@ -2487,49 +2547,176 @@ function resumeSeleccionArticulo(input, element, precioOverride = null) {
 /**
  * Renderizar opciones en el modal
  */
-function presentarOpcionesDeOrigen(historial, itemData) {
+/**
+ * Renderizar opciones en el modal con Acordeones y Smart Pricing
+ */
+function presentarOpcionesDeOrigen(historial, itemData, precioActual) {
     const list = modalOrigen.list();
-    const title = modalOrigen.title();
+    const title = modalOrigen.title(); // Elemento del DOM, no funcion
 
-    if (title) title.textContent = itemData.description;
+    const titleEl = document.getElementById('modal-origen-articulo-nombre');
+    if (titleEl) titleEl.textContent = itemData.description;
+
     if (!list) return;
-
     list.innerHTML = '';
 
-    historial.forEach((h, index) => {
-        const div = document.createElement('div');
-        div.className = 'origen-option-item';
-        div.style.cssText = `
-            padding: 12px;
-            border-bottom: 1px solid #eee;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: background 0.2s;
-        `;
-        div.onmouseover = () => div.style.background = '#f8f9fa';
-        div.onmouseout = () => div.style.background = 'transparent';
+    // Agrupar por Año > Mes
+    const grupos = agruparHistorialPorFecha(historial);
 
-        const fecha = new Date(h.fecha).toLocaleDateString();
-        const precio = parseFloat(h.precio_unitario_historico || 0).toFixed(2);
+    grupos.forEach(anioGroup => {
+        // Nivel 1: Año
+        const anioDiv = document.createElement('div');
+        anioDiv.style.cssText = 'margin-bottom: 10px; border: 1px solid #e0e0e0; border-radius: 6px; overflow: hidden;';
 
-        div.innerHTML = `
-            <div>
-                <div style="font-weight: bold; color: #2c3e50;">Presupuesto #${h.id_presupuesto}</div>
-                <div style="font-size: 0.9em; color: #7f8c8d;">📅 ${fecha} — Cantidad comprada: ${h.cantidad}</div>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-weight: bold; color: #27ae60;">$${precio}</div>
-                <div style="font-size: 0.8em; color: #95a5a6;">(Precio Original)</div>
-            </div>
-        `;
+        const anioHeader = document.createElement('div');
+        anioHeader.style.cssText = 'background: #f1f3f5; padding: 10px 15px; font-weight: bold; color: #495057; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;';
+        anioHeader.innerHTML = `<span>📅 ${anioGroup.anio}</span> <span style="font-size: 0.9em; font-weight: normal; background: #dee2e6; padding: 2px 8px; border-radius: 10px;">${anioGroup.totalItems} entregas</span>`;
 
-        div.onclick = () => seleccionarOrigenConfirmed(h.precio_unitario_historico);
-        list.appendChild(div);
+        const anioContent = document.createElement('div');
+        anioContent.style.display = 'block'; // Default expandido
+
+        // Toggle logic
+        anioHeader.onclick = () => {
+            const isHidden = anioContent.style.display === 'none';
+            anioContent.style.display = isHidden ? 'block' : 'none';
+            anioHeader.style.background = isHidden ? '#f1f3f5' : '#e9ecef';
+        };
+
+        anioGroup.meses.forEach(mesGroup => {
+            // Nivel 2: Mes
+            const mesDiv = document.createElement('div');
+            mesDiv.style.cssText = 'border-top: 1px solid #e0e0e0;';
+
+            const mesHeader = document.createElement('div');
+            mesHeader.style.cssText = 'padding: 8px 15px; background: #f8f9fa; color: #666; font-size: 0.9em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;';
+            mesHeader.textContent = mesGroup.mesNombre;
+
+            mesDiv.appendChild(mesHeader);
+
+            // Items del mes
+            mesGroup.items.forEach(h => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'origen-option-item';
+                itemDiv.style.cssText = 'padding: 12px 15px; border-top: 1px solid #eee; transition: background 0.2s;';
+
+                const fecha = new Date(h.fecha).toLocaleDateString();
+                const precioHist = parseFloat(h.precio_neto_historico || 0);
+                const precioAct = parseFloat(precioActual || 0);
+                const tiempoRel = tiempoRelativo(h.fecha);
+
+                // Smart Pricing Logic
+                let pricingHTML = '';
+                const diff = precioAct - precioHist;
+                const diffPercent = precioHist > 0 ? ((diff / precioHist) * 100).toFixed(1) : 0;
+
+                let badgeDiff = '';
+                if (Math.abs(diff) < 0.01) {
+                    badgeDiff = `<span style="background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">⚖️ Mismo Precio</span>`;
+                } else if (diff > 0) {
+                    badgeDiff = `<span style="background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Subió ${diffPercent}% (+$${diff.toFixed(2)})</span>`;
+                } else {
+                    badgeDiff = `<span style="background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Bajó ${Math.abs(diffPercent)}% (-$${Math.abs(diff).toFixed(2)})</span>`;
+                }
+
+                itemDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <div>
+                            <div style="font-weight: bold; color: #2c3e50;">Presupuesto #${h.id_presupuesto} <span style="font-weight: normal; color: #888; font-size: 0.9em;">(${fecha})</span></div>
+                            <div style="font-size: 0.85em; color: #28a745; margin-top: 2px;">🕒 ${tiempoRel}</div>
+                        </div>
+                        <div style="text-align: right;">
+                             <div style="font-size: 0.9em; color: #666;">Cant: <strong>${h.cantidad}</strong></div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: #fafafa; padding: 10px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                        <div style="font-size: 0.9em;">
+                            <div style="margin-bottom: 4px;">Histórico: <strong>$${precioHist.toFixed(2)}</strong></div>
+                            <div style="color: #666;">Actual: <strong>$${precioAct.toFixed(2)}</strong></div>
+                            <div style="margin-top: 4px;">${badgeDiff}</div>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn-smart-action btn-historico" style="background: #2c3e50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">
+                                ↩️ Retomar Histórico ($${precioHist.toFixed(0)})
+                            </button>
+                            ${Math.abs(diff) > 0.01 ? `
+                            <button class="btn-smart-action btn-actual" style="background: white; color: #2c3e50; border: 1px solid #2c3e50; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">
+                                🆕 Usar Actual ($${precioAct.toFixed(0)})
+                            </button>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                // Event Listeners para los botones
+                const btnHist = itemDiv.querySelector('.btn-historico');
+                btnHist.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(precioHist); };
+
+                const btnAct = itemDiv.querySelector('.btn-actual');
+                if (btnAct) btnAct.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(null); }; // Null = Recalcula con precio actual
+
+                mesDiv.appendChild(itemDiv);
+            });
+
+            anioContent.appendChild(mesDiv);
+        });
+
+        anioDiv.appendChild(anioHeader);
+        anioDiv.appendChild(anioContent);
+        list.appendChild(anioDiv);
     });
 
     modalOrigen.show();
+}
+
+/**
+ * Helper: Agrupar historial por Año -> Mes
+ */
+function agruparHistorialPorFecha(historial) {
+    const grupos = {};
+
+    historial.forEach(item => {
+        const d = new Date(item.fecha);
+        const anio = d.getFullYear();
+        const mesIndex = d.getMonth();
+        const mesNombre = d.toLocaleString('es-ES', { month: 'long' });
+
+        if (!grupos[anio]) grupos[anio] = { anio, meses: {}, totalItems: 0 };
+
+        if (!grupos[anio].meses[mesIndex]) {
+            grupos[anio].meses[mesIndex] = { mesNombre, items: [] };
+        }
+
+        grupos[anio].meses[mesIndex].items.push(item);
+        grupos[anio].totalItems++;
+    });
+
+    // Convertir a arrays ordenados
+    return Object.values(grupos).sort((a, b) => b.anio - a.anio).map(g => {
+        g.meses = Object.values(g.meses).sort((a, b) => {
+            // Ordenar meses desc (no tengo índice aquí fácil, pero puedo usar items[0])
+            // Hack simple: orden natural de inserción suele ser desc si el query es desc.
+            // Pero mejor si el backend manda ordenado. Backend ordena por fecha DESC.
+            // Asi que el primer mes que encuentro es el más reciente.
+            return 0;
+        });
+        return g;
+    });
+}
+
+/**
+ * Helper: Tiempo Relativo
+ */
+function tiempoRelativo(fechaISO) {
+    const rtf = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+    const d = new Date(fechaISO);
+    const now = new Date();
+    const diffDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Hoy';
+    if (diffDays === -1) return 'Ayer';
+    if (diffDays > -30) return rtf.format(diffDays, 'day');
+    if (diffDays > -365) return rtf.format(Math.ceil(diffDays / 30), 'month');
+    return rtf.format(Math.ceil(diffDays / 365), 'year');
 }
 
 /**

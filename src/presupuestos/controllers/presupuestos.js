@@ -2934,6 +2934,7 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                 p.fecha,
                 d.cantidad,
                 d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
+                d.valor1 as precio_neto_historico,      -- Precio NETO guardado (para comparativas)
                 -- Usamos 'articulo' que contiene la descripción completa (o código en algunos casos)
                 d.articulo as descripcion 
             FROM presupuestos p
