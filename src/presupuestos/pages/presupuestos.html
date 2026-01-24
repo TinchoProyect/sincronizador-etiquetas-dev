@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +9,7 @@
     <link rel="stylesheet" href="../css/action-buttons.css">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -26,9 +28,13 @@
                 </div>
                 <a href="http://localhost:3000" class="back-button">← Volver al inicio</a>
             </div>
-            
+
             <div class="header-secondary-bar">
                 <div class="secondary-actions">
+                    <button id="btn-nueva-orden-retiro" class="btn-secondary"
+                        onclick="window.location.href='crear-presupuesto.html?modo=retiro'" style="margin-right: 10px;">
+                        📦 Nueva Orden de Retiro
+                    </button>
                     <button id="btn-sincronizar" class="btn-warning btn-sync" disabled>
                         🔄 SINCRONIZAR CON SHEET
                     </button>
@@ -160,7 +166,8 @@
                     <button type="button" class="btn btn-secondary" onclick="closeDeleteConfirmModal()">
                         Cancelar
                     </button>
-                    <button type="button" id="btn-confirm-delete" class="btn btn-danger" onclick="confirmDeletePresupuesto()">
+                    <button type="button" id="btn-confirm-delete" class="btn btn-danger"
+                        onclick="confirmDeletePresupuesto()">
                         🗑️ Eliminar Presupuesto
                     </button>
                 </div>
@@ -174,7 +181,7 @@
                     <h3>⚙️ Configuración de Sincronización Automática</h3>
                     <button class="modal-close" onclick="closeSyncConfigModal()">&times;</button>
                 </div>
-                
+
                 <div class="modal-body">
                     <form id="sync-config-form">
                         <!-- Habilitar Sincronización Automática -->
@@ -184,15 +191,16 @@
                                 <span class="checkbox-custom"></span>
                                 Habilitar sincronización automática
                             </label>
-                            <small class="form-help">Ejecuta sincronización automáticamente según el intervalo configurado</small>
+                            <small class="form-help">Ejecuta sincronización automáticamente según el intervalo
+                                configurado</small>
                             <div class="field-error" id="error-auto_sync_enabled"></div>
                         </div>
 
                         <!-- Intervalo de Sincronización -->
                         <div class="form-group">
                             <label for="sync_interval_minutes">Intervalo de sincronización (minutos):</label>
-                            <input type="number" id="sync_interval_minutes" name="sync_interval_minutes" 
-                                   min="1" step="1" placeholder="1" required>
+                            <input type="number" id="sync_interval_minutes" name="sync_interval_minutes" min="1"
+                                step="1" placeholder="1" required>
                             <small class="form-help">Tiempo entre sincronizaciones automáticas (mínimo 1 minuto)</small>
                             <div class="field-error" id="error-sync_interval_minutes"></div>
                         </div>
@@ -201,7 +209,8 @@
                         <div class="form-group">
                             <label for="active_hours_start">Horario de inicio:</label>
                             <input type="time" id="active_hours_start" name="active_hours_start" required>
-                            <small class="form-help">Hora de inicio de la ventana de sincronización (formato 24h)</small>
+                            <small class="form-help">Hora de inicio de la ventana de sincronización (formato
+                                24h)</small>
                             <div class="field-error" id="error-active_hours_start"></div>
                         </div>
 
@@ -256,7 +265,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeSyncConfigModal()">
                         Cancelar
@@ -279,4 +288,5 @@
     <!-- Panel nuevo de Google Sheets deshabilitado por defecto -->
     <!-- <script src="/js/gsheets-sync-panel.js"></script> -->
 </body>
+
 </html>

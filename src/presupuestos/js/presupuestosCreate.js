@@ -21,13 +21,13 @@ window.toggleModoBusqueda = toggleModoBusqueda;
 function toggleModoBusqueda() {
     const btn = document.getElementById('btn-toggle-busqueda');
     if (!btn) return;
-    
+
     if (modoBusqueda === 'descripcion') {
         modoBusqueda = 'codigo';
         btn.textContent = '📟 Modo: Código de Barras';
         btn.classList.add('modo-codigo');
         console.log('[MODO-BUSQUEDA] Cambiado a: Código de Barras');
-        
+
         // AUTO-FOCUS: Poner foco en el campo de código de barras
         setTimeout(() => {
             enfocarCampoCodigoBarras();
@@ -50,13 +50,13 @@ function enfocarCampoCodigoBarras() {
         console.warn('[MODO-CODIGO] No se encontró tbody para enfocar');
         return;
     }
-    
+
     const inputs = tbody.querySelectorAll('input[name*="[articulo]"]');
     if (inputs.length === 0) {
         console.warn('[MODO-CODIGO] No hay inputs de artículo disponibles');
         return;
     }
-    
+
     // Buscar primer input vacío
     let inputToFocus = null;
     for (let input of inputs) {
@@ -65,12 +65,12 @@ function enfocarCampoCodigoBarras() {
             break;
         }
     }
-    
+
     // Si todos tienen valor, usar el último
     if (!inputToFocus) {
         inputToFocus = inputs[inputs.length - 1];
     }
-    
+
     if (inputToFocus) {
         inputToFocus.focus();
         inputToFocus.select();
@@ -79,45 +79,54 @@ function enfocarCampoCodigoBarras() {
 }
 
 function getClienteIdActivo() {
-  if (clienteSeleccionado && clienteSeleccionado.cliente_id) {
-    return String(clienteSeleccionado.cliente_id);
-  }
-  const raw = (document.getElementById('id_cliente')?.value || '').trim();
-  const m = raw.match(/^\d+/);
-  return m ? m[0] : '0';
+    if (clienteSeleccionado && clienteSeleccionado.cliente_id) {
+        return String(clienteSeleccionado.cliente_id);
+    }
+    const raw = (document.getElementById('id_cliente')?.value || '').trim();
+    const m = raw.match(/^\d+/);
+    return m ? m[0] : '0';
 }
 
 // === Modo IVA según tipo de comprobante ===
 function isRemitoActivo() {
-  const sel = document.getElementById('tipo_comprobante');
-  return !!sel && sel.value === 'Remito-Efectivo';
+    const sel = document.getElementById('tipo_comprobante');
+    return !!sel && sel.value === 'Remito-Efectivo';
 }
 function ivaObjetivoDesdeBase(baseIva) {
-  const b = Number(baseIva) || 0;
-  return isRemitoActivo() ? (b / 2) : b;
+    const b = Number(baseIva) || 0;
+    return isRemitoActivo() ? (b / 2) : b;
 }
 function applyIvaModeToRow(row) {
-  if (!row) return;
-  const ivaInput = row.querySelector('input[name*="[iva1]"]');
-  if (!ivaInput) return;
+    if (!row) return;
+    const ivaInput = row.querySelector('input[name*="[iva1]"]');
+    if (!ivaInput) return;
 
-  // Si no hay base guardada, uso el valor actual como base
-  const base = Number(ivaInput.dataset.ivaBase ?? ivaInput.value ?? 0);
-  const target = ivaObjetivoDesdeBase(base);
+    // Si no hay base guardada, uso el valor actual como base
+    const base = Number(ivaInput.dataset.ivaBase ?? ivaInput.value ?? 0);
+    const target = ivaObjetivoDesdeBase(base);
 
-  setNumeric(ivaInput, target, 2, target);
+    setNumeric(ivaInput, target, 2, target);
 
-  const cantOrIva = row.querySelector('input[name*="[cantidad]"]') || ivaInput;
-  const detalleId = getDetalleIdFromInput(cantOrIva);
-  if (detalleId != null) calcularPrecio(detalleId);
+    const cantOrIva = row.querySelector('input[name*="[cantidad]"]') || ivaInput;
+    const detalleId = getDetalleIdFromInput(cantOrIva);
+    if (detalleId != null) calcularPrecio(detalleId);
 }
+// Detección de Modo Retiro
+const urlParams = new URLSearchParams(window.location.search);
+const MODO_RETIRO = urlParams.get('modo') === 'retiro';
+
 function applyIvaModeToAllRows() {
-  document.querySelectorAll('#detalles-tbody tr').forEach(applyIvaModeToRow);
-  recalcTotales();
+    document.querySelectorAll('#detalles-tbody tr').forEach(applyIvaModeToRow);
+    recalcTotales();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     console.log('📋 [PRESUPUESTOS-CREATE] Inicializando página de creación...');
+
+    if (MODO_RETIRO) {
+        console.log('📦 [MODO RETIRO] Activado');
+        activarModoRetiro();
+    }
 
     // --- FECHA base primero (evita TDZ) ---
     const fechaInput = document.getElementById('fecha');
@@ -393,116 +402,116 @@ function calcularPrecio(detalleId) {
 
 // === Formateo moneda ARS ===
 const fmtARS = new Intl.NumberFormat('es-AR', {
-  style: 'currency',
-  currency: 'ARS',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
 });
 function formatARS(n) {
-  const x = Number(n);
-  return Number.isFinite(x) ? fmtARS.format(x) : '$ 0,00';
+    const x = Number(n);
+    return Number.isFinite(x) ? fmtARS.format(x) : '$ 0,00';
 }
 
 // Actualiza el input de display (el visible) para un detalle dado
 function updatePrecioDisplay(detalleId, precioUnitario) {
-  const display = document.querySelector(`input[data-precio-display="${detalleId}"]`);
-  if (display) {
-    display.value = formatARS(precioUnitario);
-  }
+    const display = document.querySelector(`input[data-precio-display="${detalleId}"]`);
+    if (display) {
+        display.value = formatARS(precioUnitario);
+    }
 }
 
 function updateSubtotalDisplay(detalleId, subtotal) {
-  const display = document.querySelector(`input[data-subtotal-display="${detalleId}"]`);
-  if (display) {
-    display.value = formatARS(subtotal);
-  }
+    const display = document.querySelector(`input[data-subtotal-display="${detalleId}"]`);
+    if (display) {
+        display.value = formatARS(subtotal);
+    }
 }
 
 function dispatchRecalc(el) {
-  try {
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  } catch (_) {}
+    try {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (_) { }
 }
 
 function setNumeric(el, val, dec = 2, fallback = 0) {
-  const n = Number(val);
-  el.value = Number.isFinite(n) ? n.toFixed(dec) : Number(fallback).toFixed(dec);
-  dispatchRecalc(el);
+    const n = Number(val);
+    el.value = Number.isFinite(n) ? n.toFixed(dec) : Number(fallback).toFixed(dec);
+    dispatchRecalc(el);
 }
 
 function setCantidad(el, val) {
-  setNumeric(el, val, 2, 1);
+    setNumeric(el, val, 2, 1);
 }
 
 function getDetalleIdFromInput(input) {
-  const m = (input.name || '').match(/\[(\d+)\]\[/);
-  return m ? parseInt(m[1], 10) : null;
+    const m = (input.name || '').match(/\[(\d+)\]\[/);
+    return m ? parseInt(m[1], 10) : null;
 }
 
 /* === 1.4 Totales en vivo (subtotal, descuento, total) === */
 function setTextInto(selectors, text) {
-  let wrote = false;
-  (selectors || []).forEach(sel => {
-    document.querySelectorAll(sel).forEach(el => {
-      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-        el.value = text;
-      } else {
-        el.textContent = text;
-      }
-      wrote = true;
+    let wrote = false;
+    (selectors || []).forEach(sel => {
+        document.querySelectorAll(sel).forEach(el => {
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                el.value = text;
+            } else {
+                el.textContent = text;
+            }
+            wrote = true;
+        });
     });
-  });
-  return wrote;
+    return wrote;
 }
 
 function getDescuentoPorcentaje() {
-  const el = document.getElementById('descuento');
-  const raw = el ? parseFloat(el.value) : 0;
-  const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
-  return [pct, el];
+    const el = document.getElementById('descuento');
+    const raw = el ? parseFloat(el.value) : 0;
+    const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+    return [pct, el];
 }
 
 function recalcTotales() {
-  const tbody = document.getElementById('detalles-tbody');
-  if (!tbody) return;
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) return;
 
-  let subtotalBruto = 0;
-  tbody.querySelectorAll('tr').forEach(row => {
-    const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
-    const pvu  = parseFloat(row.querySelector('input[name*="[precio1]"]')?.value) || 0; // precio unit. con IVA
-    subtotalBruto += cant * pvu;
-  });
+    let subtotalBruto = 0;
+    tbody.querySelectorAll('tr').forEach(row => {
+        const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
+        const pvu = parseFloat(row.querySelector('input[name*="[precio1]"]')?.value) || 0; // precio unit. con IVA
+        subtotalBruto += cant * pvu;
+    });
 
-  const [pct] = getDescuentoPorcentaje();
-  const montoDesc = subtotalBruto * (pct / 100);
-  const totalFinal = subtotalBruto - montoDesc;
+    const [pct] = getDescuentoPorcentaje();
+    const montoDesc = subtotalBruto * (pct / 100);
+    const totalFinal = subtotalBruto - montoDesc;
 
-  // Actualiza displays (tolerante: IDs o data-attrs)
-  setTextInto(['#total-bruto', '[data-total="bruto"]'], formatARS(subtotalBruto));
-  setTextInto(['#total-descuento', '[data-total="descuento"]'], formatARS(montoDesc));
-  setTextInto(['#total-final', '[data-total="final"]'], formatARS(totalFinal));
+    // Actualiza displays (tolerante: IDs o data-attrs)
+    setTextInto(['#total-bruto', '[data-total="bruto"]'], formatARS(subtotalBruto));
+    setTextInto(['#total-descuento', '[data-total="descuento"]'], formatARS(montoDesc));
+    setTextInto(['#total-final', '[data-total="final"]'], formatARS(totalFinal));
 }
 
 // Listener de inputs de detalle + descuento
 document.addEventListener('input', (e) => {
-  const name = e.target?.name || '';
-  if (/\[(cantidad|valor1|iva1)\]/.test(name)) {
-    const id = getDetalleIdFromInput(e.target);
-    if (id != null) calcularPrecio(id);
-    recalcTotales();
-    return;
-  }
-  if (e.target?.id === 'descuento') {
-    recalcTotales();
-  }
+    const name = e.target?.name || '';
+    if (/\[(cantidad|valor1|iva1)\]/.test(name)) {
+        const id = getDetalleIdFromInput(e.target);
+        if (id != null) calcularPrecio(id);
+        recalcTotales();
+        return;
+    }
+    if (e.target?.id === 'descuento') {
+        recalcTotales();
+    }
 });
 
 // Observa altas/bajas de filas para mantener totales
 (() => {
-  const tbody = document.getElementById('detalles-tbody');
-  if (!tbody) return;
-  new MutationObserver(() => recalcTotales()).observe(tbody, { childList: true });
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) return;
+    new MutationObserver(() => recalcTotales()).observe(tbody, { childList: true });
 })();
 
 // Recalc inicial
@@ -513,7 +522,7 @@ document.addEventListener('DOMContentLoaded', recalcTotales);
  * Generar UUID v4 para Idempotency-Key
  */
 function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         const r = Math.random() * 16 | 0;
         const v = c == 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
@@ -575,10 +584,10 @@ async function handleSubmit(event) {
         descuentoPct = Number.isFinite(descuentoPct) ? Math.min(Math.max(descuentoPct, 0), 100) : 0;
         const descuentoValor = parseFloat((descuentoPct / 100).toFixed(2)); // ej 5 -> 0.05
         const informeGeneradoValor = (document.getElementById('informe_generado')?.value || 'Pendiente').toString();
-        
+
         // Secuencia (nuevo campo)
         let secuenciaValor = (formData.get('secuencia') || '').toString().trim();
-        
+
         // AUTOMÁTICO: Si se usó modo código de barras, establecer secuencia = "Pedido_Listo"
         if (modoBusqueda === 'codigo') {
             secuenciaValor = 'Pedido_Listo';
@@ -588,18 +597,19 @@ async function handleSubmit(event) {
 
         // ---- payload final ----
         const data = {
-        id_cliente: idCliente,
-        fecha: fechaForm,
-        fecha_entrega: fechaEntregaValor,
-        agente: agenteValor,
-        tipo_comprobante: tipoComprobanteValor,
-        estado: estadoValorRaw,
-        informe_generado: informeGeneradoValor,
-        nota: (formData.get('nota') || '').toString(),
-        punto_entrega: puntoEntregaValor,
-        descuento: descuentoValor, // proporción 0..1
-        secuencia: secuenciaValor, // automático si modo código, manual si modo descripción
-        detalles: []
+            id_cliente: idCliente,
+            fecha: fechaForm,
+            fecha_entrega: fechaEntregaValor,
+            agente: agenteValor,
+            tipo_comprobante: tipoComprobanteValor,
+            estado: MODO_RETIRO ? 'Presupuesto/Orden' : estadoValorRaw, // Forzar neutro
+            estado_logistico: MODO_RETIRO ? 'RETIRO_PENDIENTE' : null, // NUEVO CAMPO
+            informe_generado: informeGeneradoValor,
+            nota: (formData.get('nota') || '').toString(),
+            punto_entrega: puntoEntregaValor,
+            descuento: descuentoValor, // proporción 0..1
+            secuencia: secuenciaValor, // automático si modo código, manual si modo descripción
+            detalles: []
         };
         // Recopilar detalles
         const tbody = document.getElementById('detalles-tbody');
@@ -607,7 +617,7 @@ async function handleSubmit(event) {
 
         const rows = tbody.querySelectorAll('tr');
         console.log(`📋 [PRESUPUESTOS-CREATE] Total de filas encontradas: ${rows.length}`);
-        
+
         let detallesEncontrados = 0;
         let detallesValidos = 0;
         let detallesDescartados = 0;
@@ -966,11 +976,11 @@ function handleClienteKeydown(event) {
 
         case 'Enter':
             event.preventDefault(); // ✅ Evitar submit del formulario
-            
+
             // Si hay un índice seleccionado (navegación con flechas), usar ese
             if (selectedIndex >= 0 && items[selectedIndex]) {
                 seleccionarCliente(items[selectedIndex]);
-            } 
+            }
             // Si no hay índice seleccionado pero hay resultados, auto-seleccionar el primero
             else if (items.length > 0) {
                 console.log('🔍 [NuevoPresupuesto] Auto-seleccionando primer resultado al presionar Enter');
@@ -1112,6 +1122,11 @@ function seleccionarCliente(element) {
         cuit: cuit
     };
 
+    // Hook para Modo Retiro (Fase 2)
+    if (typeof hookSeleccionCliente === 'function') {
+        hookSeleccionCliente(clienteSeleccionado);
+    }
+
     // Actualizar input con número formateado
     const input = document.getElementById('id_cliente');
     if (input) input.value = numeroFormateado;
@@ -1129,7 +1144,7 @@ function seleccionarCliente(element) {
 
     // Ocultar sugerencias
     ocultarSugerencias();
-    
+
     // ✅ NUEVO: Cargar historial de entregas del cliente
     cargarHistorialEntregas(clienteId);
 }
@@ -1180,9 +1195,9 @@ window.__articulosCache = window.__articulosCache || [];
 window.__articulosCacheLoaded = window.__articulosCacheLoaded || false;
 
 async function precargarArticulosAll() {
-  // Precarga global deshabilitada: la API de sugerencias requiere ?q=
-  // Devolvemos vacío para no generar errores ni peticiones innecesarias.
-  return [];
+    // Precarga global deshabilitada: la API de sugerencias requiere ?q=
+    // Devolvemos vacío para no generar errores ni peticiones innecesarias.
+    return [];
 }
 
 /**
@@ -1195,84 +1210,84 @@ async function precargarArticulosAll() {
  * - "Nuez Cas/36+ x 5" SÍ coincide porque contiene ambos tokens exactos
  */
 function filtrarArticulosLocal(query, items) {
-  // Tokenizar: dividir por espacios, preservando caracteres especiales dentro de cada token
-  const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
+    // Tokenizar: dividir por espacios, preservando caracteres especiales dentro de cada token
+    const terms = normalizarTexto(query).split(/\s+/).filter(Boolean);
 
-  console.log('[ARTICULOS-FILTER] Iniciando filtrado ESTRICTO...', { 
-    modo: modoBusqueda,
-    query_original: query,
-    query_normalizado: normalizarTexto(query),
-    tokens_generados: terms, 
-    items_recibidos: items.length 
-  });
+    console.log('[ARTICULOS-FILTER] Iniciando filtrado ESTRICTO...', {
+        modo: modoBusqueda,
+        query_original: query,
+        query_normalizado: normalizarTexto(query),
+        tokens_generados: terms,
+        items_recibidos: items.length
+    });
 
-  const out = (items || []).filter(a => {
-    let cumple = false;
-    
-    if (modoBusqueda === 'codigo') {
-      // MODO CÓDIGO DE BARRAS: Búsqueda exacta en código de barras
-      const codigoBarras = (a.codigo_barras || '').toString().toLowerCase();
-      const queryLower = query.toLowerCase();
-      cumple = codigoBarras.includes(queryLower);
-      
-      // Log detallado para los primeros 3 artículos (debug)
-      if (items.indexOf(a) < 3) {
-        console.log('[ARTICULOS-FILTER] [MODO-CODIGO] Evaluando artículo:', {
-          descripcion: a.description ?? a.descripcion,
-          codigo_barras: a.codigo_barras,
-          query_buscado: queryLower,
-          cumple: cumple
-        });
-      }
-    } else {
-      // MODO DESCRIPCIÓN: Búsqueda ESTRICTA por tokens exactos
-      const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
-      
-      // ✅ LÓGICA ESTRICTA: TODOS los tokens deben estar presentes como SUBCADENAS EXACTAS
-      // Esto significa que "cas/36+" debe aparecer literalmente en la descripción
-      // NO coincidirá con "cas/34-36" porque los caracteres no son idénticos
-      cumple = terms.every(token => descripcionNormalizada.includes(token));
-      
-      // Log detallado para los primeros 3 artículos (debug)
-      if (items.indexOf(a) < 3) {
-        console.log('[ARTICULOS-FILTER] [MODO-DESCRIPCION-ESTRICTO] Evaluando artículo:', {
-          descripcion_original: a.description ?? a.descripcion,
-          descripcion_normalizada: descripcionNormalizada,
-          tokens_buscados: terms,
-          cumple_todos: cumple,
-          detalles_coincidencia: terms.map(token => ({ 
-            token: token, 
-            encontrado: descripcionNormalizada.includes(token),
-            posicion: descripcionNormalizada.indexOf(token)
-          }))
-        });
-      }
-    }
-    
-    return cumple;
-  });
+    const out = (items || []).filter(a => {
+        let cumple = false;
 
-  // Orden: stock>0 primero, luego descripción
-  out.sort((A, B) => {
-    const pa = Number(A.stock_consolidado || 0) > 0 ? 0 : 1;
-    const pb = Number(B.stock_consolidado || 0) > 0 ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    const la = (A.description ?? A.descripcion ?? '').toString();
-    const lb = (B.description ?? B.descripcion ?? '').toString();
-    return la.localeCompare(lb);
-  });
+        if (modoBusqueda === 'codigo') {
+            // MODO CÓDIGO DE BARRAS: Búsqueda exacta en código de barras
+            const codigoBarras = (a.codigo_barras || '').toString().toLowerCase();
+            const queryLower = query.toLowerCase();
+            cumple = codigoBarras.includes(queryLower);
 
-  // Log de depuración final
-  console.log('[ARTICULOS-FILTER] Filtrado ESTRICTO completado:', { 
-    modo: modoBusqueda,
-    query_original: query, 
-    tokens: terms, 
-    items_recibidos: items.length,
-    resultados_filtrados: out.length 
-  });
+            // Log detallado para los primeros 3 artículos (debug)
+            if (items.indexOf(a) < 3) {
+                console.log('[ARTICULOS-FILTER] [MODO-CODIGO] Evaluando artículo:', {
+                    descripcion: a.description ?? a.descripcion,
+                    codigo_barras: a.codigo_barras,
+                    query_buscado: queryLower,
+                    cumple: cumple
+                });
+            }
+        } else {
+            // MODO DESCRIPCIÓN: Búsqueda ESTRICTA por tokens exactos
+            const descripcionNormalizada = normalizarTexto(a.description ?? a.descripcion ?? '');
 
-  // Limite visual
-  return out.slice(0, 50);
+            // ✅ LÓGICA ESTRICTA: TODOS los tokens deben estar presentes como SUBCADENAS EXACTAS
+            // Esto significa que "cas/36+" debe aparecer literalmente en la descripción
+            // NO coincidirá con "cas/34-36" porque los caracteres no son idénticos
+            cumple = terms.every(token => descripcionNormalizada.includes(token));
+
+            // Log detallado para los primeros 3 artículos (debug)
+            if (items.indexOf(a) < 3) {
+                console.log('[ARTICULOS-FILTER] [MODO-DESCRIPCION-ESTRICTO] Evaluando artículo:', {
+                    descripcion_original: a.description ?? a.descripcion,
+                    descripcion_normalizada: descripcionNormalizada,
+                    tokens_buscados: terms,
+                    cumple_todos: cumple,
+                    detalles_coincidencia: terms.map(token => ({
+                        token: token,
+                        encontrado: descripcionNormalizada.includes(token),
+                        posicion: descripcionNormalizada.indexOf(token)
+                    }))
+                });
+            }
+        }
+
+        return cumple;
+    });
+
+    // Orden: stock>0 primero, luego descripción
+    out.sort((A, B) => {
+        const pa = Number(A.stock_consolidado || 0) > 0 ? 0 : 1;
+        const pb = Number(B.stock_consolidado || 0) > 0 ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        const la = (A.description ?? A.descripcion ?? '').toString();
+        const lb = (B.description ?? B.descripcion ?? '').toString();
+        return la.localeCompare(lb);
+    });
+
+    // Log de depuración final
+    console.log('[ARTICULOS-FILTER] Filtrado ESTRICTO completado:', {
+        modo: modoBusqueda,
+        query_original: query,
+        tokens: terms,
+        items_recibidos: items.length,
+        resultados_filtrados: out.length
+    });
+
+    // Limite visual
+    return out.slice(0, 50);
 }
 // ===== FUNCIONES DE AUTOCOMPLETAR DE ARTÍCULOS =====
 
@@ -1283,7 +1298,7 @@ function setupArticuloAutocomplete() {
     console.log('🔧 [PRESUPUESTOS-CREATE] Configurando autocompletar de artículos...');
 
     // Usar delegación de eventos para manejar inputs dinámicos
-    document.addEventListener('input', function(event) {
+    document.addEventListener('input', function (event) {
         // Verificar si el input es de artículo
         if (event.target.name && event.target.name.includes('[articulo]')) {
             handleArticuloInput(event);
@@ -1291,14 +1306,14 @@ function setupArticuloAutocomplete() {
     });
 
     // Manejar teclas especiales para navegación
-    document.addEventListener('keydown', function(event) {
+    document.addEventListener('keydown', function (event) {
         if (event.target.name && event.target.name.includes('[articulo]')) {
             handleArticuloKeydown(event);
         }
     });
 
     // Cerrar sugerencias al hacer click fuera
-    document.addEventListener('click', function(event) {
+    document.addEventListener('click', function (event) {
         const sugerenciasContainer = document.querySelector('.articulo-sugerencias');
         if (sugerenciasContainer && !event.target.closest('.articulo-input-container')) {
             ocultarSugerenciasArticulo();
@@ -1311,61 +1326,61 @@ function setupArticuloAutocomplete() {
 /**
  * Manejar input de artículo con debounce
  */
-const handleArticuloInput = debounce(async function(event) {
-  const input = event.target;
-  const query = (input.value || '').trim();
+const handleArticuloInput = debounce(async function (event) {
+    const input = event.target;
+    const query = (input.value || '').trim();
 
-  console.log(`[ARTICULOS] Búsqueda de artículo: "${query}"`);
+    console.log(`[ARTICULOS] Búsqueda de artículo: "${query}"`);
 
-  if (query.length < 1) {
-    ocultarSugerenciasArticulo();
-    return;
-  }
-
-  // EN MODO CÓDIGO: No mostrar sugerencias, solo esperar Enter
-  if (modoBusqueda === 'codigo') {
-    console.log('[MODO-CODIGO] Input detectado, esperando Enter para procesar');
-    return;
-  }
-
-  try {
-    mostrarLoadingArticulo(input);
-
-    let items = [];
-    // 1) Si hay cache completa, filtrar localmente (trae TODAS las coincidencias)
-    if (window.__articulosCacheLoaded && Array.isArray(window.__articulosCache) && window.__articulosCache.length) {
-      items = filtrarArticulosLocal(query, window.__articulosCache);
-    } else {
-      // 2) Fallback: pedir al endpoint existente por query
-      const isFileProtocol = window.location.protocol === 'file:';
-      if (isFileProtocol) {
-        const sim = await simularBusquedaArticulos(query);
-        items = filtrarArticulosLocal(query, sim.data || []);
-      } else {
-        // CORRECCIÓN: Usar solo el primer término para el servidor (más amplio)
-        // y luego filtrar localmente con AND estricto
-        const primerTermino = query.split(/\s+/)[0] || query;
-        const queryParaServidor = primerTermino;
-        
-        console.log(`[ARTICULOS] Query para servidor: "${queryParaServidor}" (filtrado local aplicará AND completo)`);
-        
-        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`);
-        if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
-        const body = await response.json();
-        const arr = Array.isArray(body) ? body : (body.data || body.items || []);
-        
-        // Aplicar filtro local con TODOS los términos del query original
-        items = filtrarArticulosLocal(query, arr);
-      }
+    if (query.length < 1) {
+        ocultarSugerenciasArticulo();
+        return;
     }
 
-    console.log(`[ARTICULOS] Sugerencias preparadas: ${items.length} artículos`);
-    mostrarSugerenciasArticulo(input, items);
+    // EN MODO CÓDIGO: No mostrar sugerencias, solo esperar Enter
+    if (modoBusqueda === 'codigo') {
+        console.log('[MODO-CODIGO] Input detectado, esperando Enter para procesar');
+        return;
+    }
 
-  } catch (error) {
-    console.error('Error al buscar artículos:', error);
-    mostrarErrorArticulo(input, 'Error al buscar artículos');
-  }
+    try {
+        mostrarLoadingArticulo(input);
+
+        let items = [];
+        // 1) Si hay cache completa, filtrar localmente (trae TODAS las coincidencias)
+        if (window.__articulosCacheLoaded && Array.isArray(window.__articulosCache) && window.__articulosCache.length) {
+            items = filtrarArticulosLocal(query, window.__articulosCache);
+        } else {
+            // 2) Fallback: pedir al endpoint existente por query
+            const isFileProtocol = window.location.protocol === 'file:';
+            if (isFileProtocol) {
+                const sim = await simularBusquedaArticulos(query);
+                items = filtrarArticulosLocal(query, sim.data || []);
+            } else {
+                // CORRECCIÓN: Usar solo el primer término para el servidor (más amplio)
+                // y luego filtrar localmente con AND estricto
+                const primerTermino = query.split(/\s+/)[0] || query;
+                const queryParaServidor = primerTermino;
+
+                console.log(`[ARTICULOS] Query para servidor: "${queryParaServidor}" (filtrado local aplicará AND completo)`);
+
+                const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`);
+                if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+                const body = await response.json();
+                const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+
+                // Aplicar filtro local con TODOS los términos del query original
+                items = filtrarArticulosLocal(query, arr);
+            }
+        }
+
+        console.log(`[ARTICULOS] Sugerencias preparadas: ${items.length} artículos`);
+        mostrarSugerenciasArticulo(input, items);
+
+    } catch (error) {
+        console.error('Error al buscar artículos:', error);
+        mostrarErrorArticulo(input, 'Error al buscar artículos');
+    }
 }, 300);
 
 /**
@@ -1446,14 +1461,14 @@ function handleArticuloKeydown(event) {
         event.preventDefault();
         const input = event.target;
         const query = (input.value || '').trim();
-        
+
         if (query.length > 0) {
             console.log('[MODO-CODIGO] Enter detectado, procesando código:', query);
             handleCodigoBarrasEnter(input, query);
         }
         return;
     }
-    
+
     // MODO DESCRIPCIÓN: Comportamiento normal con sugerencias
     const sugerenciasContainer = document.querySelector('.articulo-sugerencias');
     if (!sugerenciasContainer || sugerenciasContainer.style.display === 'none') return;
@@ -1496,29 +1511,29 @@ function handleArticuloKeydown(event) {
  */
 async function handleCodigoBarrasEnter(input, codigoBarras) {
     console.log('[MODO-CODIGO] Procesando código de barras:', codigoBarras);
-    
+
     try {
         // Ocultar sugerencias si están visibles
         ocultarSugerenciasArticulo();
-        
+
         // Buscar artículo por código exacto
         const articulo = await buscarArticuloPorCodigoExacto(codigoBarras);
-        
+
         if (!articulo) {
             console.warn('[MODO-CODIGO] No se encontró artículo con código:', codigoBarras);
             mostrarMensaje(`No se encontró artículo con código: ${codigoBarras}`, 'error');
-            
+
             // Limpiar campo y mantener foco
             input.value = '';
             input.focus();
             return;
         }
-        
+
         console.log('[MODO-CODIGO] Artículo encontrado:', articulo);
-        
+
         // Verificar si el artículo ya existe en el detalle
         const filaExistente = buscarArticuloEnDetalle(articulo.codigo_barras);
-        
+
         if (filaExistente) {
             // Artículo ya existe: sumar 1 a la cantidad
             console.log('[MODO-CODIGO] Artículo ya existe en detalle, sumando cantidad');
@@ -1528,17 +1543,17 @@ async function handleCodigoBarrasEnter(input, codigoBarras) {
             console.log('[MODO-CODIGO] Artículo nuevo, agregando al detalle');
             await agregarArticuloAlDetalle(articulo, input);
         }
-        
+
         // Limpiar campo y mantener foco para siguiente escaneo
         input.value = '';
         input.focus();
-        
+
         console.log('[MODO-CODIGO] Código procesado exitosamente, listo para siguiente escaneo');
-        
+
     } catch (error) {
         console.error('[MODO-CODIGO] Error al procesar código de barras:', error);
         mostrarMensaje(`Error al procesar código: ${error.message}`, 'error');
-        
+
         // Limpiar campo y mantener foco
         input.value = '';
         input.focus();
@@ -1550,46 +1565,46 @@ async function handleCodigoBarrasEnter(input, codigoBarras) {
  */
 async function buscarArticuloPorCodigoExacto(codigoBarras) {
     console.log('[MODO-CODIGO] Buscando artículo por código exacto:', codigoBarras);
-    
+
     try {
         const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=100`);
-        
+
         if (!response.ok) {
             throw new Error(`Error HTTP ${response.status}`);
         }
-        
+
         const body = await response.json();
         const articulos = Array.isArray(body) ? body : (body.data || body.items || []);
-        
+
         // Buscar coincidencia exacta en código de barras
         const articuloExacto = articulos.find(a => {
             const codigo = (a.codigo_barras || '').toString().toLowerCase();
             return codigo === codigoBarras.toLowerCase();
         });
-        
+
         if (articuloExacto) {
             console.log('[MODO-CODIGO] Coincidencia exacta encontrada:', articuloExacto);
             return articuloExacto;
         }
-        
+
         // Si no hay coincidencia exacta, buscar que contenga el código
         const articuloContiene = articulos.find(a => {
             const codigo = (a.codigo_barras || '').toString().toLowerCase();
             return codigo.includes(codigoBarras.toLowerCase());
         });
-        
+
         if (articuloContiene) {
             console.log('[MODO-CODIGO] Coincidencia parcial encontrada:', articuloContiene);
             return articuloContiene;
         }
-        
-        console.log('[MODO-CODIGO] No se encontró artículo con código:', codigoBarras);
-        return null;
-        
-    } catch (error) {
-        console.error('[MODO-CODIGO] Error en búsqueda de artículo:', error);
-        throw error;
+    } catch (e) {
+        console.error(e);
+        mostrarMensaje('Error al importar: ' + e.message, 'error');
+        agregarDetalle();
     }
+
+    console.log('[MODO-CODIGO] No se encontró artículo con código:', codigoBarras);
+    return null;
 }
 
 /**
@@ -1599,23 +1614,23 @@ async function buscarArticuloPorCodigoExacto(codigoBarras) {
 function buscarArticuloEnDetalle(codigoBarras) {
     const tbody = document.getElementById('detalles-tbody');
     if (!tbody) return null;
-    
+
     const rows = tbody.querySelectorAll('tr');
-    
+
     for (let row of rows) {
         const articuloInput = row.querySelector('input[name*="[articulo]"]');
         if (!articuloInput) continue;
-        
+
         // Verificar por código de barras guardado en dataset
         const codigoGuardado = (articuloInput.dataset.codigoBarras || '').toString().toLowerCase();
         const codigoBuscado = (codigoBarras || '').toString().toLowerCase();
-        
+
         if (codigoGuardado && codigoGuardado === codigoBuscado) {
             console.log('[MODO-CODIGO] Artículo encontrado en detalle:', row.id);
             return row;
         }
     }
-    
+
     console.log('[MODO-CODIGO] Artículo no existe en detalle');
     return null;
 }
@@ -1629,20 +1644,20 @@ function incrementarCantidadArticulo(row) {
         console.error('[MODO-CODIGO] No se encontró input de cantidad en la fila');
         return;
     }
-    
+
     const cantidadActual = parseFloat(cantidadInput.value) || 0;
     const nuevaCantidad = cantidadActual + 1;
-    
+
     console.log(`[MODO-CODIGO] Incrementando cantidad: ${cantidadActual} -> ${nuevaCantidad}`);
-    
+
     setCantidad(cantidadInput, nuevaCantidad);
-    
+
     // Recalcular precio
     const detalleId = getDetalleIdFromInput(cantidadInput);
     if (detalleId != null) {
         calcularPrecio(detalleId);
     }
-    
+
     // Efecto visual: resaltar fila brevemente
     row.style.backgroundColor = '#d4edda';
     setTimeout(() => {
@@ -1655,17 +1670,17 @@ function incrementarCantidadArticulo(row) {
  */
 async function agregarArticuloAlDetalle(articulo, inputOriginal) {
     console.log('[MODO-CODIGO] Agregando artículo al detalle:', articulo);
-    
+
     // Buscar la fila del input original
     const filaActual = inputOriginal.closest('tr');
     const articuloInputActual = filaActual?.querySelector('input[name*="[articulo]"]');
-    
+
     // Si la fila actual está vacía, usarla; si no, crear nueva
     const usarFilaActual = articuloInputActual && (!articuloInputActual.value || articuloInputActual.value.trim() === '');
-    
+
     let targetRow;
     let targetInput;
-    
+
     if (usarFilaActual) {
         console.log('[MODO-CODIGO] Usando fila actual (vacía)');
         targetRow = filaActual;
@@ -1673,71 +1688,71 @@ async function agregarArticuloAlDetalle(articulo, inputOriginal) {
     } else {
         console.log('[MODO-CODIGO] Creando nueva fila');
         agregarDetalle();
-        
+
         // Obtener la última fila agregada
         const tbody = document.getElementById('detalles-tbody');
         const rows = tbody.querySelectorAll('tr');
         targetRow = rows[rows.length - 1];
         targetInput = targetRow.querySelector('input[name*="[articulo]"]');
     }
-    
+
     if (!targetInput) {
         console.error('[MODO-CODIGO] No se pudo obtener input de artículo');
         return;
     }
-    
+
     // Llenar datos del artículo
     const description = (articulo.description || articulo.descripcion || '').toString();
     const codigoBarras = (articulo.codigo_barras || '').toString();
     const articuloNumero = (articulo.articulo_numero || '').toString();
-    
+
     targetInput.value = description;
     targetInput.dataset.codigoBarras = codigoBarras;
     targetInput.dataset.articuloNumero = articuloNumero;
-    
+
     // Establecer cantidad = 1
     const cantidadInput = targetRow.querySelector('input[name*="[cantidad]"]');
     if (cantidadInput) {
         setCantidad(cantidadInput, 1);
     }
-    
+
     // Establecer IVA por defecto
     const iva1Input = targetRow.querySelector('input[name*="[iva1]"]');
     if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) {
         setNumeric(iva1Input, 21, 2, 21);
     }
-    
+
     // Obtener precios del backend
     const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
     const detalleId = getDetalleIdFromInput(cantidadInput || targetInput);
-    
+
     try {
         const params = new URLSearchParams();
         params.set('cliente_id', String(clienteId));
         if (codigoBarras) params.set('codigo_barras', codigoBarras);
-        
+
         const url = `/api/presupuestos/precios?${params.toString()}`;
         console.log('[MODO-CODIGO] Obteniendo precios:', url);
-        
+
         const response = await fetch(url);
         if (response.ok) {
             const body = await response.json();
             const valor = Number(body?.data?.valor1);
             const iva = Number(body?.data?.iva);
-            
+
             const valor1Input = targetRow.querySelector('input[name*="[valor1]"]');
-            
+
             if (Number.isFinite(valor) && valor1Input) {
                 setNumeric(valor1Input, valor, 2, 0);
             }
-            
+
             if (Number.isFinite(iva) && iva1Input) {
                 iva1Input.dataset.ivaBase = String(iva);
                 const tipoSel = document.getElementById('tipo_comprobante');
                 const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
                 setNumeric(iva1Input, visibleIva, 2, 21);
             }
-            
+
             if (detalleId != null) {
                 calcularPrecio(detalleId);
             }
@@ -1745,13 +1760,13 @@ async function agregarArticuloAlDetalle(articulo, inputOriginal) {
     } catch (error) {
         console.warn('[MODO-CODIGO] Error al obtener precios:', error);
     }
-    
+
     // Efecto visual: resaltar fila brevemente
     targetRow.style.backgroundColor = '#d1ecf1';
     setTimeout(() => {
         targetRow.style.backgroundColor = '';
     }, 500);
-    
+
     console.log('[MODO-CODIGO] Artículo agregado exitosamente');
 }
 
@@ -1760,47 +1775,50 @@ async function agregarArticuloAlDetalle(articulo, inputOriginal) {
  */
 function mostrarLoadingArticulo(input) {
     const container = getOrCreateSugerenciasContainer();
-    container.innerHTML = '<div class="articulo-loading">🔍 Buscando artículos...</div>';
-    container.style.display = 'block';
-    posicionarSugerenciasArticulo(input, container);
-}
-
-/**
- * Mostrar sugerencias de artículos
- */
-function mostrarSugerenciasArticulo(input, articulos) {
-  const container = getOrCreateSugerenciasContainer();
-
-  if (!Array.isArray(articulos) || articulos.length === 0) {
-    container.innerHTML = '<div class="articulo-sin-resultados">No se encontraron artículos</div>';
-    container.style.display = 'block';
     posicionarSugerenciasArticulo(input, container);
     return;
-  }
+}
 
-  // Re-asegurar orden por si vinieron sin ordenar
-  articulos.sort((A, B) => {
-    const pa = Number(A.stock_consolidado || 0) > 0 ? 0 : 1;
-    const pb = Number(B.stock_consolidado || 0) > 0 ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    const la = (A.description ?? A.descripcion ?? '').toString();
-    const lb = (B.description ?? B.descripcion ?? '').toString();
-    return la.localeCompare(lb);
-  });
 
-  // Mostrar más de 8 (50 máx) para no cortar resultados
-  const articulosLimitados = articulos.slice(0, 50);
+function mostrarSugerenciasArticulo(input, articulos) {
+    const container = getOrCreateSugerenciasContainer();
 
-  const html = articulosLimitados.map((articulo) => {
-    const stockClass = (articulo.stock_consolidado ?? 0) <= 0 ? 'sin-stock' : 'con-stock';
-    const label = (articulo.description ?? articulo.descripcion ?? '').toString();
-    const safeLabel = label.replace(/"/g, '&quot;');
+    if (!Array.isArray(articulos) || articulos.length === 0) {
+        container.innerHTML = '<div class="articulo-sin-resultados">No se encontraron artículos</div>';
+        container.style.display = 'block';
+        posicionarSugerenciasArticulo(input, container);
+        return;
+    }
 
-    const etiquetas = (articulo.etiquetas && articulo.etiquetas.length > 0)
-      ? `<span class="articulo-etiquetas">${articulo.etiquetas.join(' ')}</span>`
-      : '';
+    // Re-asegurar orden por si vinieron sin ordenar
+    articulos.sort((A, B) => {
+        const pa = Number(A.stock_consolidado || 0) > 0 ? 0 : 1;
+        const pb = Number(B.stock_consolidado || 0) > 0 ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        const la = (A.description ?? A.descripcion ?? '').toString();
+        const lb = (B.description ?? B.descripcion ?? '').toString();
+        return la.localeCompare(lb);
+    });
 
-    return `
+    // Mostrar más de 8 (50 máx) para no cortar resultados
+    const articulosLimitados = articulos.slice(0, 50);
+
+    const html = articulosLimitados.map((articulo, index) => {
+        const label = (articulo.description ?? articulo.descripcion ?? '').toString();
+        // const selectedClass = index === selectedIndex ? 'selected' : ''; // selectedIndex no está definido aquí
+
+        let stockClass = 'con-stock';
+        if ((articulo.stock_consolidado ?? 0) <= 0) stockClass = 'sin-stock';
+        // else if (articulo.stock_consolidado < 10) stockClass = 'stock-low'; // No existe en el original
+
+        const safeLabel = label.replace(/"/g, '&quot;');
+
+        let etiquetas = '';
+        if (articulo.etiquetas && Array.isArray(articulo.etiquetas) && articulo.etiquetas.length > 0) {
+            etiquetas = `<span class="articulo-etiquetas">${articulo.etiquetas.join(' ')}</span>`;
+        }
+
+        return `
       <div class="articulo-sugerencia-item"
            data-codigo-barras="${articulo.codigo_barras || ''}"
            data-articulo-numero="${articulo.articulo_numero || ''}"
@@ -1815,12 +1833,12 @@ function mostrarSugerenciasArticulo(input, articulos) {
         </div>
       </div>
     `;
-  }).join('');
+    }).join('');
 
-  container.innerHTML = html;
-  container.style.display = 'block';
-  container.dataset.selectedIndex = '-1';
-  posicionarSugerenciasArticulo(input, container);
+    container.innerHTML = html;
+    container.style.display = 'block';
+    container.dataset.selectedIndex = '-1';
+    posicionarSugerenciasArticulo(input, container);
 }
 
 function mostrarErrorArticulo(input, mensaje) {
@@ -1937,33 +1955,33 @@ function seleccionarArticuloPorClick(element, event) {
  */
 async function cargarHistorialEntregas(clienteId) {
     console.log(`📦 [HISTORIAL] Cargando historial de entregas para cliente: ${clienteId}`);
-    
+
     const section = document.getElementById('historial-entregas-section');
     const content = document.getElementById('historial-entregas-content');
-    
+
     if (!section || !content) {
         console.warn('⚠️ [HISTORIAL] Elementos del historial no encontrados');
         return;
     }
-    
+
     // Mostrar sección y estado de carga
     section.style.display = 'block';
     content.innerHTML = '<div class="historial-loading"><p>🔍 Cargando historial de entregas...</p></div>';
-    
+
     try {
         const response = await fetch(`/api/presupuestos/clientes/${clienteId}/historial-entregas`);
-        
+
         if (!response.ok) {
             throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const result = await response.json();
-        
+
         console.log(`✅ [HISTORIAL] Historial recibido:`, result.data);
-        
+
         // Renderizar historial
         renderizarHistorialEntregas(result.data);
-        
+
     } catch (error) {
         console.error('❌ [HISTORIAL] Error al cargar historial:', error);
         content.innerHTML = `
@@ -1982,12 +2000,12 @@ async function cargarHistorialEntregas(clienteId) {
 function renderizarHistorialEntregas(data) {
     const content = document.getElementById('historial-entregas-content');
     const btnPDF = document.getElementById('btn-imprimir-lista-precios');
-    
+
     if (!content) return;
-    
+
     // ✅ CAMBIO: Botón SIEMPRE visible cuando hay cliente seleccionado
     if (btnPDF) btnPDF.style.display = 'inline-flex';
-    
+
     // Si no hay historial
     if (data.sin_historial || !data.grupos || data.grupos.length === 0) {
         content.innerHTML = `
@@ -1998,13 +2016,13 @@ function renderizarHistorialEntregas(data) {
                 </p>
             </div>
         `;
-        
+
         return;
     }
-    
+
     // Construir HTML para cada grupo de mes
     let html = '';
-    
+
     data.grupos.forEach(grupo => {
         html += `
             <div class="historial-grupo">
@@ -2014,11 +2032,11 @@ function renderizarHistorialEntregas(data) {
                 </div>
                 <ul class="historial-productos-list">
         `;
-        
+
         grupo.productos.forEach(producto => {
             const fechaFormateada = formatearFechaHistorial(producto.fecha_entrega);
             const precioActual = producto.precio_actual || 0;
-            
+
             // ✅ VERSIÓN MEJORADA: Descripción, cantidad, PRECIO ACTUAL y fecha
             html += `
                 <li class="historial-producto-item">
@@ -2035,15 +2053,15 @@ function renderizarHistorialEntregas(data) {
                 </li>
             `;
         });
-        
+
         html += `
                 </ul>
             </div>
         `;
     });
-    
+
     content.innerHTML = html;
-    
+
     console.log(`✅ [HISTORIAL] Historial renderizado: ${data.total_productos_unicos} productos únicos en ${data.grupos.length} grupos`);
 }
 
@@ -2053,16 +2071,16 @@ function renderizarHistorialEntregas(data) {
  */
 async function imprimirListaPreciosPersonalizada() {
     console.log('[HISTORIAL-PREVIEW] Abriendo página de previsualización...');
-    
+
     if (!clienteSeleccionado || !clienteSeleccionado.cliente_id) {
         mostrarMensaje('Debe seleccionar un cliente primero', 'error');
         return;
     }
-    
+
     // Abrir página de previsualización en nueva ventana
     const previewUrl = `/pages/imprimir-historial.html?cliente_id=${clienteSeleccionado.cliente_id}`;
     window.open(previewUrl, '_blank');
-    
+
     console.log('[HISTORIAL-PREVIEW] Página de previsualización abierta');
 }
 
@@ -2074,11 +2092,11 @@ window.imprimirListaPreciosPersonalizada = imprimirListaPreciosPersonalizada;
  */
 function formatearFechaHistorial(fecha) {
     if (!fecha) return '-';
-    
+
     try {
         const date = new Date(fecha);
         if (isNaN(date.getTime())) return fecha;
-        
+
         return date.toLocaleDateString('es-ES', {
             day: '2-digit',
             month: '2-digit',
@@ -2095,85 +2113,247 @@ function formatearFechaHistorial(fecha) {
  * Seleccionar artículo
  */
 function seleccionarArticulo(input, element) {
-  const codigoBarras   = (element.dataset.codigoBarras   || '').toString();
-  const articuloNumero = (element.dataset.articuloNumero || '').toString(); // lo guardo, pero no lo uso en la query
-  const description    = (element.dataset.description    || '').toString();
-  const stock          = parseFloat(element.dataset.stock || 0);
+    const codigoBarras = (element.dataset.codigoBarras || '').toString();
+    const articuloNumero = (element.dataset.articuloNumero || '').toString(); // lo guardo, pero no lo uso en la query
+    const description = (element.dataset.description || '').toString();
+    const stock = parseFloat(element.dataset.stock || 0);
 
-  // mostrar al usuario + guardar códigos reales para el submit
-  input.value = description;
-  input.dataset.codigoBarras = codigoBarras;
-  input.dataset.articuloNumero = articuloNumero;
+    // mostrar al usuario + guardar códigos reales para el submit
+    input.value = description;
+    input.dataset.codigoBarras = codigoBarras;
+    input.dataset.articuloNumero = articuloNumero;
 
-  console.log(`[ARTICULOS] Seleccionado: ${description} [${articuloNumero}] (Stock: ${stock})`);
-  ocultarSugerenciasArticulo();
+    console.log(`[ARTICULOS] Seleccionado: ${description} [${articuloNumero}] (Stock: ${stock})`);
+    ocultarSugerenciasArticulo();
 
-  // ubicar fila/inputs
-  const row           = input.closest('tr');
-  const cantidadInput = row?.querySelector('input[name*="[cantidad]"]');
-  const valor1Input   = row?.querySelector('input[name*="[valor1]"]');
-  const iva1Input     = row?.querySelector('input[name*="[iva1]"]');
-  const detalleId     = getDetalleIdFromInput(cantidadInput || input);
+    // ubicar fila/inputs
+    const row = input.closest('tr');
+    const cantidadInput = row?.querySelector('input[name*="[cantidad]"]');
+    const valor1Input = row?.querySelector('input[name*="[valor1]"]');
+    const iva1Input = row?.querySelector('input[name*="[iva1]"]');
+    const detalleId = getDetalleIdFromInput(cantidadInput || input);
 
-  // defaults
-  if (cantidadInput && (!cantidadInput.value || parseFloat(cantidadInput.value) <= 0)) setCantidad(cantidadInput, 1);
-  if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value))))   setNumeric(iva1Input, 21, 2, 21);
-  if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) setNumeric(valor1Input, 0, 2, 0);
-
-  if (detalleId != null) calcularPrecio(detalleId);
-
-  // --- pedir precios ---
-  const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
-
-  const fetchPrecios = async (params) => {
-    const url = `/api/presupuestos/precios?${params.toString()}`;
-    console.log('[ARTICULOS] GET precios ->', url);
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  };
-
-  (async () => {
-    let valor, iva;
-
-    // 1) por código de barras
-    try {
-      const p = new URLSearchParams();
-      p.set('cliente_id', String(clienteId));
-      if (codigoBarras) p.set('codigo_barras', codigoBarras);
-      let body = await fetchPrecios(p);
-      valor = Number(body?.data?.valor1);
-      iva   = Number(body?.data?.iva);
-    } catch (e1) {
-      console.warn('⚠️ [ARTICULOS] No respondió por código de barras. Probando por descripción…', e1);
-    }
-
-    // 2) fallback por descripción (si aún no tengo datos válidos)
-    if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
-      try {
-        const p2 = new URLSearchParams();
-        p2.set('cliente_id', String(clienteId));
-        if (description) p2.set('descripcion', description);
-        const body2 = await fetchPrecios(p2);
-        valor = Number(body2?.data?.valor1);
-        iva   = Number(body2?.data?.iva);
-      } catch (e2) {
-        console.warn('⚠️ [ARTICULOS] Tampoco por descripción:', e2);
-      }
-    }
-
-    // setear si hay datos
-    if (Number.isFinite(valor) && valor1Input) setNumeric(valor1Input, valor, 2, 0);
-    if (Number.isFinite(iva) && iva1Input) {
-        // guardar la base real del IVA que vino del backend
-        iva1Input.dataset.ivaBase = String(iva);
-        // mostrar mitad si el tipo es Remito-Efectivo
-        const tipoSel = document.getElementById('tipo_comprobante');
-        const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
-        setNumeric(iva1Input, visibleIva, 2, 21);
-        }
+    // defaults
+    if (cantidadInput && (!cantidadInput.value || parseFloat(cantidadInput.value) <= 0)) setCantidad(cantidadInput, 1);
+    if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) setNumeric(iva1Input, 21, 2, 21);
+    if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) setNumeric(valor1Input, 0, 2, 0);
 
     if (detalleId != null) calcularPrecio(detalleId);
-    setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
-  })();
+
+    // --- pedir precios ---
+    const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+
+    const fetchPrecios = async (params) => {
+        const url = `/api/presupuestos/precios?${params.toString()}`;
+        console.log('[ARTICULOS] GET precios ->', url);
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    };
+
+    (async () => {
+        let valor, iva;
+
+        // 1) por código de barras
+        try {
+            const p = new URLSearchParams();
+            p.set('cliente_id', String(clienteId));
+            if (codigoBarras) p.set('codigo_barras', codigoBarras);
+            let body = await fetchPrecios(p);
+            valor = Number(body?.data?.valor1);
+            iva = Number(body?.data?.iva);
+        } catch (e1) {
+            console.warn('⚠️ [ARTICULOS] No respondió por código de barras. Probando por descripción…', e1);
+        }
+
+        // 2) fallback por descripción (si aún no tengo datos válidos)
+        if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
+            try {
+                const p2 = new URLSearchParams();
+                p2.set('cliente_id', String(clienteId));
+                if (description) p2.set('descripcion', description);
+                const body2 = await fetchPrecios(p2);
+                valor = Number(body2?.data?.valor1);
+                iva = Number(body2?.data?.iva);
+            } catch (e2) {
+                console.warn('⚠️ [ARTICULOS] Tampoco por descripción:', e2);
+            }
+        }
+
+        // setear si hay datos
+        if (Number.isFinite(valor) && valor1Input) setNumeric(valor1Input, valor, 2, 0);
+        if (Number.isFinite(iva) && iva1Input) {
+            // guardar la base real del IVA que vino del backend
+            iva1Input.dataset.ivaBase = String(iva);
+            // mostrar mitad si el tipo es Remito-Efectivo
+            const tipoSel = document.getElementById('tipo_comprobante');
+            const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+            setNumeric(iva1Input, visibleIva, 2, 21);
+        }
+
+        if (detalleId != null) calcularPrecio(detalleId);
+        setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
+    })();
+}
+
+// ============================================
+// LÓGICA DE MODO RETIRO (FASE 2)
+// ============================================
+
+function activarModoRetiro() {
+    // 1. Cambio Visual
+    const header = document.querySelector('header h1');
+    if (header) header.innerHTML = '📦 Generar Orden de Retiro';
+    document.title = 'Nueva Orden de Retiro';
+
+    // Cambiar botón guardar
+    const btnGuardar = document.getElementById('btn-guardar');
+    if (btnGuardar) {
+        btnGuardar.innerHTML = '📦 Confirmar Retiro';
+        btnGuardar.classList.remove('btn-primary');
+        btnGuardar.classList.add('btn-warning');
+        btnGuardar.style.backgroundColor = '#f39c12';
+        btnGuardar.style.color = '#fff';
+    }
+
+    // Ocultar opciones irrelevantes
+    const headers = document.querySelectorAll('.accordion-header h3');
+    headers.forEach(h3 => {
+        if (h3.textContent.includes('Opciones Avanzadas')) {
+            const section = h3.closest('.accordion-section');
+            if (section) section.style.display = 'none';
+        }
+    });
+}
+
+// Hook para mostrar botón de vincular al seleccionar cliente
+function hookSeleccionCliente(cliente) {
+    if (!MODO_RETIRO) return;
+
+    const container = document.querySelector('.cliente-section');
+    if (document.getElementById('btn-vincular-retiro')) return;
+
+    const btnVincular = document.createElement('button');
+    btnVincular.id = 'btn-vincular-retiro';
+    btnVincular.type = 'button';
+    btnVincular.className = 'btn';
+    btnVincular.style.cssText = 'background: #fff3cd; color: #856404; border: 1px solid #ffeeba; margin-top: 10px; width: 100%; justify-content: center;';
+    btnVincular.innerHTML = '🔗 Vincular con Entrega Anterior';
+
+    btnVincular.onclick = () => abrirModalVinculacion(cliente.cliente_id);
+
+    container.appendChild(btnVincular);
+}
+
+async function abrirModalVinculacion(clienteId) {
+    const modal = document.getElementById('modal-paginator-presupuestos');
+    const container = document.getElementById('lista-presupuestos-vinculables');
+
+    if (modal) modal.style.display = 'flex';
+    if (container) container.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ Buscando entregas anteriores...</div>';
+
+    try {
+        const res = await fetch(`/api/presupuestos?cliente_id=${clienteId}&limit=20`);
+        if (!res.ok) throw new Error('Error al buscar historial');
+
+        const data = await res.json();
+        const presupuestos = data.data || [];
+
+        if (presupuestos.length === 0) {
+            if (container) container.innerHTML = '<div style="text-align: center; padding: 20px;">No se encontraron entregas recientes.</div>';
+            return;
+        }
+
+        if (container) container.innerHTML = '';
+        const list = document.createElement('div');
+
+        presupuestos.forEach(p => {
+            const item = document.createElement('div');
+            item.style.cssText = `
+                padding: 10px; 
+                border-bottom: 1px solid #eee; 
+                cursor: pointer; 
+                display: flex; 
+                justify-content: space-between;
+                align-items: center;
+            `;
+            item.onmouseover = () => item.style.background = '#f9f9f9';
+            item.onmouseout = () => item.style.background = 'transparent';
+
+            const totalFmt = (typeof formatARS === 'function') ? formatARS(p.total || 0) : `$ ${p.total}`;
+
+            item.innerHTML = `
+                <div>
+                    <strong>#${p.id}</strong> - ${new Date(p.fecha).toLocaleDateString()}
+                    <br>
+                    <span style="font-size: 0.85em; color: #666;">${p.estado}</span>
+                </div>
+                <div style="text-align: right;">
+                    <strong>${totalFmt}</strong>
+                    <button class="btn btn-sm btn-primary" style="margin-left: 10px; padding: 4px 8px; font-size: 0.8em;">Importar</button>
+                </div>
+            `;
+
+            item.onclick = () => confirmarImportacion(p.id);
+            list.appendChild(item);
+        });
+
+        if (container) container.appendChild(list);
+
+    } catch (e) {
+        console.error(e);
+        if (container) container.innerHTML = `<div class="message error">Error: ${e.message}</div>`;
+    }
+}
+
+async function confirmarImportacion(idPresupuesto) {
+    if (!confirm('¿Importar artículos de este presupuesto? Se reemplazarán las filas actuales.')) return;
+
+    const modal = document.getElementById('modal-paginator-presupuestos');
+    if (modal) modal.style.display = 'none';
+
+    const tbody = document.getElementById('detalles-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Importando datos...</td></tr>';
+
+    try {
+        const res = await fetch(`/api/presupuestos/${idPresupuesto}`);
+        if (!res.ok) throw new Error('Error al cargar detalle');
+
+        const data = await res.json();
+        const detalles = data.detalles || [];
+
+        if (tbody) tbody.innerHTML = '';
+        detalleCounter = 0;
+
+        detalles.forEach(d => {
+            agregarDetalle();
+            const id = detalleCounter;
+            const row = document.getElementById(`detalle-${id}`);
+
+            const inpArt = row.querySelector(`input[name*="[articulo]"]`);
+            const inpCant = row.querySelector(`input[name*="[cantidad]"]`);
+            const inpVal = row.querySelector(`input[name*="[valor1]"]`);
+            const inpIva = row.querySelector(`input[name*="[iva1]"]`);
+
+            if (inpArt) {
+                // Priorizar nombre guardado, sino codigo
+                inpArt.value = d.articulo_nombre || d.descripcion || d.articulo_codigo;
+                inpArt.dataset.codigoBarras = d.articulo_codigo;
+            }
+
+            if (inpCant) inpCant.value = d.cantidad;
+            if (inpVal) inpVal.value = 0;
+            if (inpIva) inpIva.value = d.alicuota_iva || 21;
+
+            calcularPrecio(id);
+        });
+
+        if (typeof recalcTotales === 'function') recalcTotales();
+        if (typeof mostrarMensaje === 'function') mostrarMensaje('✅ Artículos importados correctamente', 'success');
+
+    } catch (e) {
+        console.error(e);
+        if (typeof mostrarMensaje === 'function') mostrarMensaje('Error al importar: ' + e.message, 'error');
+        agregarDetalle();
+    }
 }
