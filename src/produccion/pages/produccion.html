@@ -1553,6 +1553,12 @@
                     <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
 
                     <div class="admin-buttons">
+                        <div style="margin-bottom: 10px; text-align: right; padding-right: 15px;">
+                            <button id="btn-abrir-caja-global" class="admin-button"
+                                style="background-color: transparent; color: #6c757d; border: 1px solid #6c757d; font-size: 0.9em; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
+                                🔓 Abrir Caja Manual
+                            </button>
+                        </div>
                         <a href="ingredientes.html" class="admin-button">
                             Gestionar Ingredientes
                         </a>
@@ -2027,66 +2033,101 @@
                     aria-label="Cerrar">&times;</button>
             </div>
             <div class="modal-body">
-                <div
-                    style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
-                    <div style="font-size: 18px; font-weight: 700; color: #1565c0;" id="unidad-descripcion-caja">-</div>
-                    <div style="font-size: 13px; color: #424242; margin-top: 5px;">
-                        Código: <span id="unidad-codigo-caja" style="font-family: monospace; font-weight: 600;">-</span>
+                <!-- PASO 1: SELECCIÓN DE UNIDAD (Solo visible en modo manual) -->
+                <div id="paso-seleccion-unidad" style="display: none; margin-bottom: 20px;">
+                    <div
+                        style="background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 13px;">
+                        <i class="fas fa-info-circle"></i> Busque el artículo (unidad) que desea producir.
                     </div>
-                    <div style="font-size: 13px; color: #424242;">
-                        Stock actual: <span id="unidad-stock-caja" style="font-weight: 700; color: #2196f3;">-</span>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Usuario: <span
-                            style="color: #d32f2f;">*</span></label>
-                    <select id="abrir-caja-usuario" class="form-control" required>
-                        <option value="">-- Seleccionar usuario --</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Cantidad de unidades por caja: <span
-                            style="color: #d32f2f;">*</span></label>
-                    <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1"
-                        placeholder="Ej: 12" required>
-                    <small style="color: #757575;">¿Cuántas unidades trae la caja?</small>
-                </div>
-                <div id="sugerencias-container-caja" style="margin: 20px 0; display: none;">
-                    <label style="font-weight: 600; color: #388e3c;">💡 Sugerencias (basadas en historial):</label>
-                    <div id="sugerencias-lista-caja"
-                        style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;"></div>
-                </div>
-                <div class="buscador-manual">
-                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔍 Buscar Caja:</label>
-                    <div class="search-mode-tabs">
-                        <button type="button" id="btn-codigo-caja" class="search-tab active">Código de Barras</button>
-                        <button type="button" id="btn-descripcion-caja" class="search-tab">Descripción</button>
-                    </div>
-                    <div id="container-codigo-caja" style="position: relative;">
-                        <input type="text" id="input-codigo-caja" class="form-control" placeholder="Escanear código..."
-                            autocomplete="off">
-                    </div>
-                    <div id="container-descripcion-caja" style="position: relative; display: none;">
-                        <input type="text" id="input-descripcion-caja" class="form-control"
-                            placeholder="Buscar por descripción..." autocomplete="off">
-                        <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe múltiples palabras
-                            separadas por espacio</small>
-                    </div>
-                    <div id="resultados-caja"
-                        style="display: none; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+
+                    <div class="buscador-unidad">
+                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔍 Buscar Artículo
+                            (Contenido):</label>
+                        <div style="position: relative;">
+                            <input type="text" id="input-busqueda-unidad" class="form-control"
+                                placeholder="Escriba nombre o código del artículo..." autocomplete="off">
+                            <small style="color: #757575; display: block; margin-top: 5px;">
+                                💡 Busque por descripción, código o código de barras
+                            </small>
+                        </div>
+                        <div id="resultados-unidad"
+                            style="display: none; max-height: 250px; overflow-y: auto; background: white; border: 2px solid #ffc107; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                        </div>
                     </div>
                 </div>
-                <div id="caja-seleccionada-display"
-                    style="display: none; margin: 20px 0; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
-                    <div style="font-weight: 600; color: #2e7d32; font-size: 16px;" id="caja-nombre">-</div>
-                    <div style="font-size: 13px; color: #424242; margin-top: 5px;">
-                        Código: <span id="caja-codigo" style="font-family: monospace; font-weight: 600;">-</span>
+
+                <!-- PASO 2: SELECCIÓN DE CAJA Y DATOS (Contenedor principal) -->
+                <div id="paso-seleccion-caja">
+                    <div id="unidad-info-container"
+                        style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3; position: relative;">
+                        <button id="btn-cambiar-unidad"
+                            style="position: absolute; right: 10px; top: 10px; background: none; border: 1px solid #2196f3; color: #2196f3; border-radius: 4px; cursor: pointer; font-size: 11px; padding: 2px 6px; display: none;">
+                            🔄 Cambiar
+                        </button>
+                        <div style="font-size: 18px; font-weight: 700; color: #1565c0;" id="unidad-descripcion-caja">-
+                        </div>
+                        <div style="font-size: 13px; color: #424242; margin-top: 5px;">
+                            Código: <span id="unidad-codigo-caja"
+                                style="font-family: monospace; font-weight: 600;">-</span>
+                        </div>
+                        <div style="font-size: 13px; color: #424242;">
+                            Stock actual: <span id="unidad-stock-caja"
+                                style="font-weight: 700; color: #2196f3;">-</span>
+                        </div>
                     </div>
-                    <div style="font-size: 13px; color: #424242;">
-                        Stock: <span id="caja-stock" style="font-weight: 700; color: #4caf50;">-</span>
+                    <div class="form-group">
+                        <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Usuario: <span
+                                style="color: #d32f2f;">*</span></label>
+                        <select id="abrir-caja-usuario" class="form-control" required>
+                            <option value="">-- Seleccionar usuario --</option>
+                        </select>
                     </div>
-                </div>
-                <div id="mensaje-abrir-caja" style="display: none; margin-top: 15px;"></div>
+                    <div class="form-group">
+                        <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Cantidad de unidades por caja:
+                            <span style="color: #d32f2f;">*</span></label>
+                        <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1"
+                            placeholder="Ej: 12" required>
+                        <small style="color: #757575;">¿Cuántas unidades trae la caja?</small>
+                    </div>
+                    <div id="sugerencias-container-caja" style="margin: 20px 0; display: none;">
+                        <label style="font-weight: 600; color: #388e3c;">💡 Sugerencias (basadas en historial):</label>
+                        <div id="sugerencias-lista-caja"
+                            style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;"></div>
+                    </div>
+                    <div class="buscador-manual">
+                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔍 Buscar Caja:</label>
+                        <div class="search-mode-tabs">
+                            <button type="button" id="btn-codigo-caja" class="search-tab active">Código de
+                                Barras</button>
+                            <button type="button" id="btn-descripcion-caja" class="search-tab">Descripción</button>
+                        </div>
+                        <div id="container-codigo-caja" style="position: relative;">
+                            <input type="text" id="input-codigo-caja" class="form-control"
+                                placeholder="Escanear código..." autocomplete="off">
+                        </div>
+                        <div id="container-descripcion-caja" style="position: relative; display: none;">
+                            <input type="text" id="input-descripcion-caja" class="form-control"
+                                placeholder="Buscar por descripción..." autocomplete="off">
+                            <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe múltiples
+                                palabras
+                                separadas por espacio</small>
+                        </div>
+                        <div id="resultados-caja"
+                            style="display: none; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                        </div>
+                    </div>
+                    <div id="caja-seleccionada-display"
+                        style="display: none; margin: 20px 0; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
+                        <div style="font-weight: 600; color: #2e7d32; font-size: 16px;" id="caja-nombre">-</div>
+                        <div style="font-size: 13px; color: #424242; margin-top: 5px;">
+                            Código: <span id="caja-codigo" style="font-family: monospace; font-weight: 600;">-</span>
+                        </div>
+                        <div style="font-size: 13px; color: #424242;">
+                            Stock: <span id="caja-stock" style="font-weight: 700; color: #4caf50;">-</span>
+                        </div>
+                    </div>
+                    <div id="mensaje-abrir-caja" style="display: none; margin-top: 15px;"></div>
+                </div> <!-- Fin de paso-seleccion-caja -->
             </div>
             <div class="modal-footer">
                 <button id="btn-imprimir-caja" class="btn btn-info" disabled>🏷️ Imprimir Etiquetas</button>

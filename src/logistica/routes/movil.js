@@ -572,37 +572,128 @@ router.post('/rutas/finalizar', async (req, res) => {
 
         const ruta = rutaResult.rows[0];
 
-        // Verificar pedidos pendientes
-        const pendientesQuery = `
-            SELECT COUNT(*) as pendientes
-            FROM presupuestos
-            WHERE id_ruta = $1
-              AND estado_logistico != 'ENTREGADO'
-        `;
+        const client = await req.db.connect();
 
-        const pendientesResult = await req.db.query(pendientesQuery, [ruta.id]);
-        const pendientes = parseInt(pendientesResult.rows[0].pendientes);
+        try {
+            await client.query('BEGIN');
 
-        // Actualizar estado de ruta
-        await req.db.query(
-            `UPDATE rutas 
-             SET estado = 'FINALIZADA',
-                 fecha_finalizacion = NOW()
-             WHERE id = $1`,
-            [ruta.id]
-        );
+            // 1. Verificar pedidos pendientes
+            const pendientesQuery = `
+                SELECT COUNT(*) as pendientes
+                FROM presupuestos
+                WHERE id_ruta = $1
+                  AND estado_logistico != 'ENTREGADO'
+                  AND estado_logistico != 'RETIRADO'
+            `;
 
-        console.log('[MOVIL] ✅ Ruta finalizada:', ruta.nombre_ruta);
+            const pendientesResult = await client.query(pendientesQuery, [ruta.id]);
+            const pendientes = parseInt(pendientesResult.rows[0].pendientes);
 
-        res.json({
-            success: true,
-            message: 'Ruta finalizada correctamente',
-            data: {
-                ruta_id: ruta.id,
-                nombre_ruta: ruta.nombre_ruta,
-                pedidos_pendientes: pendientes
+            // 2. PROCESAR RETIROS: Impactar Stock de Mantenimiento
+            console.log(`[MOVIL] Procesando retiros para ruta ${ruta.id}...`);
+
+            // Obtener todos los pedidos marcados como RETIRADO en esta ruta
+            const retirosQuery = `
+                SELECT p.id, p.id_presupuesto_ext
+                FROM presupuestos p
+                WHERE p.id_ruta = $1
+                  AND p.estado_logistico = 'RETIRADO'
+            `;
+            const retirosResult = await client.query(retirosQuery, [ruta.id]);
+
+            console.log(`[MOVIL] Encontradas ${retirosResult.rows.length} órdenes de retiro para procesar.`);
+
+            for (const retiro of retirosResult.rows) {
+                // Obtener detalles (ítems) del retiro con su número de artículo asociado
+                const itemsQuery = `
+                    SELECT 
+                        pd.articulo as codigo_barras, 
+                        pd.cantidad, 
+                        a.numero as articulo_numero, 
+                        a.nombre
+                    FROM presupuestos_detalles pd
+                    LEFT JOIN articulos a ON a.codigo_barras = pd.articulo
+                    WHERE pd.id_presupuesto_ext = $1
+                `;
+                const itemsResult = await client.query(itemsQuery, [retiro.id_presupuesto_ext]);
+
+                for (const item of itemsResult.rows) {
+                    const articuloNumero = item.articulo_numero;
+                    // Si no tiene número de artículo (no mapeado), usamos el código de barras o 'UNKNOWN'
+                    const artAudit = articuloNumero || item.codigo_barras || 'UNKNOWN';
+
+                    // A. Insertar en Auditoría de Mantenimiento
+                    await client.query(`
+                        INSERT INTO mantenimiento_movimientos
+                        (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
+                        VALUES ($1, $2, $3, $4, 'INGRESO', 'FINALIZADO', $5)
+                    `, [
+                        artAudit,
+                        item.cantidad,
+                        retiro.id,
+                        `Chofer ID: ${choferId}`,
+                        `Ingreso por Retiro Ruta #${ruta.id}`
+                    ]);
+
+                    // B. Actualizar Stock Consolidado (Columna Específica de Mantenimiento)
+                    if (articuloNumero) {
+                        // Verificar si existe registro en stock_real_consolidado
+                        const stockCheck = await client.query(
+                            'SELECT 1 FROM stock_real_consolidado WHERE articulo_numero = $1',
+                            [articuloNumero]
+                        );
+
+                        if (stockCheck.rowCount > 0) {
+                            await client.query(`
+                                UPDATE stock_real_consolidado
+                                SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1,
+                                    ultima_actualizacion = NOW()
+                                WHERE articulo_numero = $2
+                            `, [item.cantidad, articuloNumero]);
+                        } else {
+                            // Si no existe, lo creamos (Edge case raro si sync funciona bien)
+                            console.warn(`[MOVIL] ⚠️ Artículo ${articuloNumero} no existe en stock_consolidado. Creando...`);
+                            await client.query(`
+                                INSERT INTO stock_real_consolidado 
+                                (articulo_numero, descripcion, codigo_barras, stock_consolidado, stock_mantenimiento, ultima_actualizacion, no_producido_por_lambda, solo_produccion_externa)
+                                VALUES ($1, $2, $3, 0, $4, NOW(), false, false)
+                            `, [articuloNumero, item.nombre, item.codigo_barras, item.cantidad]);
+                        }
+                    } else {
+                        console.warn(`[MOVIL] ⚠️ No se pudo impactar stock para el artículo ${item.codigo_barras} (No se encontró número interno)`);
+                    }
+                }
             }
-        });
+
+            // 3. Actualizar estado de ruta
+            await client.query(
+                `UPDATE rutas 
+                 SET estado = 'FINALIZADA',
+                     fecha_finalizacion = NOW()
+                 WHERE id = $1`,
+                [ruta.id]
+            );
+
+            await client.query('COMMIT');
+
+            console.log('[MOVIL] ✅ Ruta finalizada y retiros procesados exitosamente:', ruta.nombre_ruta);
+
+            res.json({
+                success: true,
+                message: 'Ruta finalizada correctamente',
+                data: {
+                    ruta_id: ruta.id,
+                    nombre_ruta: ruta.nombre_ruta,
+                    pedidos_pendientes: pendientes
+                }
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
 
     } catch (error) {
         console.error('❌ [MOVIL] Error al finalizar ruta:', error);
