@@ -12,15 +12,30 @@ async function getStockMantenimiento(req, res) {
         // Usamos articulo_numero como identificador principal
         const query = `
             SELECT 
-                articulo_numero,
-                stock_mantenimiento,
-                stock_lomasoft,
-                stock_movimientos,
-                stock_ajustes,
-                ultima_actualizacion
-            FROM public.stock_real_consolidado
-            WHERE stock_mantenimiento > 0
-            ORDER BY articulo_numero ASC
+                s.articulo_numero,
+                s.stock_mantenimiento,
+                s.stock_lomasoft,
+                s.stock_movimientos,
+                s.stock_ajustes,
+                s.ultima_actualizacion,
+                -- Datos de Trazabilidad (Cliente Origen)
+                origin.cliente_id,
+                origin.cliente_nombre
+            FROM public.stock_real_consolidado s
+            LEFT JOIN LATERAL (
+                SELECT 
+                    c.cliente_id,
+                    COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre
+                FROM public.mantenimiento_movimientos mm
+                JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
+                WHERE mm.articulo_numero = s.articulo_numero
+                  AND mm.tipo_movimiento = 'INGRESO'
+                ORDER BY mm.fecha_movimiento DESC
+                LIMIT 1
+            ) origin ON true
+            WHERE s.stock_mantenimiento > 0
+            ORDER BY s.articulo_numero ASC
         `;
 
         const result = await pool.query(query);

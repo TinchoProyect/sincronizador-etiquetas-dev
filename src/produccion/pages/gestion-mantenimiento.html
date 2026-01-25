@@ -145,6 +145,7 @@
                                 <thead>
                                     <tr>
                                         <th>Artículo (ID)</th>
+                                        <th>Origen (Cliente)</th>
                                         <th>Stock Cuarentena</th>
                                         <th>Estado</th>
                                         <th>Última Act.</th>
@@ -152,7 +153,7 @@
                                 </thead>
                                 <tbody id="tbody-stock">
                                     <tr>
-                                        <td colspan="4" class="text-center">Cargando...</td>
+                                        <td colspan="5" class="text-center">Cargando...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -236,7 +237,8 @@
 
         async function cargarStock() {
             const tbody = document.getElementById('tbody-stock');
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center">⏳ Cargando datos...</td></tr>';
+            // Actualizar colspan a 5
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">⏳ Cargando datos...</td></tr>';
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/stock');
@@ -245,14 +247,25 @@
 
                 tbody.innerHTML = '';
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center">✅ No hay artículos en cuarentena.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">✅ No hay artículos en cuarentena.</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
+                    // Formatear cliente
+                    let clienteHtml = '<span style="color: #999; font-style: italic;">Sin Origen</span>';
+                    if (item.cliente_id) {
+                        clienteHtml = `<span title="${item.cliente_nombre || ''}">
+                            <strong>#${item.cliente_id}</strong>
+                            <br>
+                            <small>${item.cliente_nombre || ''}</small>
+                        </span>`;
+                    }
+
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td><strong>${item.articulo_numero}</strong></td>
+                        <td>${clienteHtml}</td>
                         <td style="font-size: 1.1em; color: #856404;">
                             ${parseFloat(item.stock_mantenimiento).toFixed(3)}
                         </td>
@@ -264,7 +277,7 @@
 
             } catch (error) {
                 console.error(error);
-                tbody.innerHTML = `<tr><td colspan="4" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
             }
         }
 
