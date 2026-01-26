@@ -10,6 +10,8 @@ router.use((req, res, next) => {
 
 // Rutas GET (Visualización)
 router.get('/stock', mantenimientoCtrl.getStockMantenimiento);
+router.post('/conciliar/confirmar', mantenimientoCtrl.confirmarConciliacion);
+router.post('/liberar', mantenimientoCtrl.liberarStock);
 router.get('/historial', mantenimientoCtrl.getHistorialMantenimiento);
 router.get('/conciliar', mantenimientoCtrl.conciliarDevolucion);
 

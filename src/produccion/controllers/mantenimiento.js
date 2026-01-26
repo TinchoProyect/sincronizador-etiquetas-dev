@@ -17,11 +17,13 @@ async function getStockMantenimiento(req, res) {
                 s.stock_ajustes,
                 s.ultima_actualizacion,
                 origin.cliente_id,
+                origin.estado,
                 origin.cliente_nombre
             FROM public.stock_real_consolidado s
             LEFT JOIN LATERAL (
                 SELECT 
                     c.cliente_id,
+                    mm.estado, -- Necesario para saber si ya esta conciliado
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre
                 FROM public.mantenimiento_movimientos mm
                 JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
@@ -169,8 +171,146 @@ async function conciliarDevolucion(req, res) {
     }
 }
 
+/**
+ * Confirmar y Guardar Conciliación
+ * ACCIÓN ATÓMICA:
+ * 1. Insertar Cabecera en mantenimiento_conciliaciones
+ * 2. Insertar Detalle en mantenimiento_conciliacion_items
+ * 3. Actualizar movimiento de origen a estado 'CONCILIADO'
+ */
+async function confirmarConciliacion(req, res) {
+    const client = await pool.connect();
+
+    try {
+        const {
+            articulo,
+            cliente_id,
+            cantidad,
+            comprobante
+        } = req.body;
+
+        console.log(`💾 [MANTENIMIENTO] Iniciando Transacción de Conciliación (V2 - Strong Link) para Art: ${articulo}`);
+
+        await client.query('BEGIN');
+
+        // 1. Identificar Movimiento Pendiente (Lock Row)
+        // Lo buscamos ANTES de insertar para obtener su ID y asegurar consistencia
+        const findMovSql = `
+            SELECT mm.id 
+            FROM public.mantenimiento_movimientos mm
+            JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+            WHERE mm.articulo_numero = $1
+              AND p.id_cliente = $2
+              AND mm.tipo_movimiento = 'INGRESO'
+              AND mm.estado != 'CONCILIADO'
+            ORDER BY mm.fecha_movimiento DESC
+            LIMIT 1
+            FOR UPDATE
+        `;
+        const resMov = await client.query(findMovSql, [articulo, cliente_id]);
+
+        if (resMov.rowCount === 0) {
+            throw new Error('No se encontró movimiento pendiente para conciliar (o ya fue conciliado por otro usuario).');
+        }
+
+        const idMovimiento = resMov.rows[0].id;
+
+        // 2. Insertar Cabecera de Conciliación
+        const insertCabecera = `
+            INSERT INTO public.mantenimiento_conciliaciones
+            (id_cliente, nro_comprobante_externo, tipo_comprobante, fecha_comprobante, importe_neto, importe_iva, importe_total, usuario_consolidacion)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+        `;
+
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+        const neto = parseFloat(comprobante.imp_neto || 0);
+        const iva = neto * 0.21;
+        const total = neto + iva;
+
+        const resCabecera = await client.query(insertCabecera, [
+            cliente_id,
+            `${comprobante.pto_vta}-${comprobante.numero_comprobante}`,
+            comprobante.tipo_comprobante,
+            comprobante.fecha_emision,
+            neto,
+            iva,
+            total,
+            usuario
+        ]);
+
+        const idConciliacion = resCabecera.rows[0].id;
+
+        // 3. Insertar Item de Conciliación con Vínculo Fuerte (FK)
+        const insertItem = `
+            INSERT INTO public.mantenimiento_conciliacion_items
+            (id_conciliacion, articulo_numero, cantidad_conciliada, id_movimiento_origen)
+            VALUES ($1, $2, $3, $4)
+        `;
+        await client.query(insertItem, [idConciliacion, articulo, cantidad, idMovimiento]);
+
+        // 4. Actualizar Estado del Movimiento
+        const updateMov = `
+            UPDATE public.mantenimiento_movimientos
+            SET estado = 'CONCILIADO', 
+                observaciones = observaciones || ' [Conciliado con NC ' || $1 || ']'
+            WHERE id = $2
+        `;
+
+        await client.query(updateMov, [
+            `${comprobante.pto_vta}-${comprobante.numero_comprobante}`,
+            idMovimiento
+        ]);
+
+        await client.query('COMMIT');
+        console.log(`✅ [MANTENIMIENTO] Conciliación Exitosa. Link V2: Conciliacion #${idConciliacion} <-> Movimiento #${idMovimiento}`);
+
+        res.json({ success: true, id_conciliacion: idConciliacion });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error en transacción:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Liberar Stock de Mantenimiento a Ventas
+ * Ejecuta la función SQL de infraestructura que mueve el stock y audita.
+ */
+async function liberarStock(req, res) {
+    try {
+        const { articulo, cantidad, observaciones } = req.body;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        console.log(`📦 [MANTENIMIENTO] Liberando stock para Art: ${articulo}, Cant: ${cantidad}`);
+
+        const query = `SELECT public.liberar_stock_mantenimiento($1, $2, $3, $4) as resultado`;
+        const values = [articulo, cantidad || 1, usuario, observaciones || 'Reintegro a Ventas tras Conciliación'];
+
+        const result = await pool.query(query, values);
+        const data = result.rows[0].resultado;
+
+        if (data.success) {
+            console.log(`✅ Stock liberado exitosamente: ${articulo}`);
+            res.json(data);
+        } else {
+            console.warn(`⚠️ Falló liberación de stock: ${data.error}`);
+            res.status(400).json(data);
+        }
+
+    } catch (error) {
+        console.error('❌ [MANTENIMIENTO] Error al liberar stock:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     getHistorialMantenimiento,
-    conciliarDevolucion
+    conciliarDevolucion,
+    confirmarConciliacion,
+    liberarStock
 };
