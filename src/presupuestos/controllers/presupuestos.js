@@ -108,7 +108,9 @@ const obtenerPresupuestos = async (req, res) => {
             limit,
             offset,
             order_by,
-            order_dir
+            order_dir,
+            // Nuevo parámetro para excluir estados
+            estado_exclude
         } = req.query;
 
         // Convertir parámetros de paginación nueva a formato interno
@@ -221,6 +223,25 @@ const obtenerPresupuestos = async (req, res) => {
                 params.push(...estadosArray);
 
                 console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Filtro estado: [${estadosArray.join(', ')}]`);
+            }
+        }
+
+        // Nuevo: Excluir estados específicos (para separar Ventas de Retiros)
+        if (estado_exclude) {
+            let estadosExcludeArray = [];
+            if (Array.isArray(estado_exclude)) {
+                estadosExcludeArray = estado_exclude;
+            } else if (typeof estado_exclude === 'string') {
+                estadosExcludeArray = estado_exclude.split(',').map(e => e.trim()).filter(e => e.length > 0);
+            }
+
+            if (estadosExcludeArray.length > 0) {
+                const excludePlaceholders = estadosExcludeArray.map((_, index) => `$${paramCount + index + 1}`).join(', ');
+                paramCount += estadosExcludeArray.length;
+                query += ` AND p.estado NOT IN (${excludePlaceholders})`;
+                params.push(...estadosExcludeArray);
+
+                console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Excluyendo estados: [${estadosExcludeArray.join(', ')}]`);
             }
         }
 
@@ -426,6 +447,23 @@ const obtenerPresupuestos = async (req, res) => {
                 countParamCount += estadosArray.length;
                 countQuery += ` AND p.estado IN (${estadosPlaceholders})`;
                 countParams.push(...estadosArray);
+            }
+        }
+
+        // Aplicar exclusión de estados para el conteo
+        if (estado_exclude) {
+            let estadosExcludeArray = [];
+            if (Array.isArray(estado_exclude)) {
+                estadosExcludeArray = estado_exclude;
+            } else if (typeof estado_exclude === 'string') {
+                estadosExcludeArray = estado_exclude.split(',').map(e => e.trim()).filter(e => e.length > 0);
+            }
+
+            if (estadosExcludeArray.length > 0) {
+                const excludePlaceholders = estadosExcludeArray.map((_, index) => `$${countParamCount + index + 1}`).join(', ');
+                countParamCount += estadosExcludeArray.length;
+                countQuery += ` AND p.estado NOT IN (${excludePlaceholders})`;
+                countParams.push(...estadosExcludeArray);
             }
         }
 

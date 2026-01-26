@@ -828,6 +828,12 @@ async function handleSubmit(event) {
             console.log(`✅ [PRESUPUESTOS-CREATE] Presupuesto creado: ${result.data?.id_presupuesto || 'N/A'} - Estado: ${result.data?.estado || 'N/A'}`);
 
             setTimeout(() => {
+                // UX: Pre-seleccionar la solapa correcta basada en el modo
+                if (typeof MODO_RETIRO !== 'undefined' && MODO_RETIRO) {
+                    sessionStorage.setItem('active_tab_presupuestos', 'retiros');
+                } else {
+                    sessionStorage.setItem('active_tab_presupuestos', 'ventas');
+                }
                 window.location.href = '/pages/presupuestos.html';
             }, 1200);
 

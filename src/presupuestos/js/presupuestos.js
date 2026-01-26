@@ -65,21 +65,37 @@ console.log('[PRESUPUESTOS-JS] URL corregir-fechas →', URLS.CORREGIR_FECHAS);
 
 
 // Estado global de la aplicación - Orden por fecha DESC + paginación + Estado – 2024-12-19
+// Estado global de la aplicación
+const PRESET_FILTROS_EMPTY = {
+    categoria: '',
+    concepto: '',
+    clienteId: '',
+    clienteName: '',
+    estado: []
+};
+
 let appState = {
     presupuestos: [],
     categorias: [],
-    estados: [], // Nuevo: lista de estados distintos - Filtro por Estado – 2024-12-19
+    estados: [],
     estadisticas: null,
-    filtros: {
-        categoria: '',
-        concepto: '',
-        // Nuevos filtros de cliente - Filtro cliente + Typeahead + Fechas – 2024-12-19
-        clienteId: '',
-        clienteName: '',
-        // Nuevo filtro por estado - Filtro por Estado – 2024-12-19
-        estado: []
+
+    // Estado de Tabs
+    activeTab: 'ventas', // 'ventas' | 'retiros'
+
+    // Filtros activos (se sobrescriben al cambiar de tab)
+    filtros: { ...PRESET_FILTROS_EMPTY },
+
+    // Persistencia de filtros por tab
+    tabStates: {
+        ventas: {
+            filtros: { ...PRESET_FILTROS_EMPTY }
+        },
+        retiros: {
+            filtros: { ...PRESET_FILTROS_EMPTY }
+        }
     },
-    // Nuevos parámetros de paginación
+
     pagination: {
         currentPage: 1,
         pageSize: 100,
@@ -95,18 +111,20 @@ let appState = {
     loading: false,
     syncInProgress: false,
     authStatus: null,
-    // NUEVO: Estado para polling de actualizaciones automáticas
     autoUpdatePolling: {
         intervalId: null,
         isActive: false,
         lastSyncTimestamp: null,
-        pollIntervalSeconds: 30 // Revisar cada 30 segundos
+        pollIntervalSeconds: 30
     }
 };
 
 /**
  * Inicialización de la aplicación
  */
+// Exponer función switchTab globalmente
+window.switchTab = switchTab;
+
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 [PRESUPUESTOS-JS] DOM cargado, inicializando aplicación...');
 
@@ -114,14 +132,68 @@ document.addEventListener('DOMContentLoaded', function () {
     setupEventListeners();
     checkModuleHealth();
     checkAuthStatus();
-    loadEstados(); // Cargar estados al inicializar - Filtro por Estado – 2024-12-19
+    loadEstados();
 });
+
+/**
+ * Cambiar de solapa (Ventas <-> Retiros)
+ */
+function switchTab(tabName) {
+    if (appState.activeTab === tabName) return;
+
+    console.log(`🔄 [TABS] Cambiando a solapa: ${tabName}`);
+
+    // 1. Guardar estado actual
+    appState.tabStates[appState.activeTab].filtros = { ...appState.filtros };
+
+    // 2. Cambiar tab activo
+    appState.activeTab = tabName;
+
+    // 3. Restaurar estado del nuevo tab
+    appState.filtros = { ...appState.tabStates[tabName].filtros };
+
+    // 4. Actualizar UI de tabs
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.id === `tab-${tabName}`) {
+            btn.classList.add('active');
+        }
+    });
+
+    // 5. Actualizar UI de filtros (restaurar inputs visuales)
+    // Nota: Esto requiere refactorizar restoreFilterControls para que use appState.filtros
+    restoreFilterControls({ ...appState.filtros, buscarClienteText: appState.filtros.clienteName }); // Helper rápido
+
+    // Regenerar botones de estado según contexto
+    updateEstadosFilter(appState.estados);
+
+    // 6. Recargar datos
+    handleCargarDatos(1);
+
+    // 7. Guardar preferencia en sessionStorage (opcional, para persistir tab)
+    sessionStorage.setItem('active_tab_presupuestos', tabName);
+}
 
 /**
  * Inicializar la aplicación
  */
 function initializeApp() {
     console.log('🔍 [PRESUPUESTOS-JS] Configurando aplicación...');
+
+    // Restaurar tab activo
+    const savedTab = sessionStorage.getItem('active_tab_presupuestos');
+    if (savedTab && ['ventas', 'retiros'].includes(savedTab)) {
+        appState.activeTab = savedTab;
+        console.log(`📑 [TABS] Tab restaurado: ${savedTab}`);
+    }
+
+    // Actualizar UI de tabs inicial
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.id === `tab-${appState.activeTab}`) {
+            btn.classList.add('active');
+        }
+    });
 
     // Actualizar indicador de estado
     updateStatusIndicator('loading', 'Inicializando módulo...');
@@ -380,6 +452,23 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 });
                 console.log(`🔍 [PRESUPUESTOS-JS] Aplicando filtros: { estado: [${appState.filtros.estado.join(', ')}] }`);
             }
+        }
+
+        // --- LÓGICA DE SOLAPAS (TABS) ---
+        if (appState.activeTab === 'ventas') {
+            // En Ventas, EXCLUIMOS TODOS los estados de retiro
+            ESTADOS_RETIRO.forEach(estadoRetiro => {
+                queryParams.append('estado_exclude', estadoRetiro);
+            });
+        } else if (appState.activeTab === 'retiros') {
+            // En Retiros, si el usuario NO filtró nada, traemos todos los estados de retiro
+            if (!appState.filtros.estado || appState.filtros.estado.length === 0) {
+                ESTADOS_RETIRO.forEach(estadoRetiro => {
+                    queryParams.append('estado', estadoRetiro);
+                });
+            }
+            // Si el usuario SÍ filtró, ya se agregaron arriba (y como la UI solo muestra botones de retiro,
+            // el filtro del usuario ya es un subconjunto válido).
         }
 
         // AUDITORÍA DE FECHAS - Activar logs si está habilitado
@@ -1015,6 +1104,16 @@ function applyFilters() {
  * Actualizar tabla de presupuestos
  */
 function updatePresupuestosTable(data) {
+    // FILTRO DE SEGURIDAD CLIENT-SIDE (HARD FILTER)
+    // Asegura que no se muestren registros cruzados incluso si el backend los enviara
+    if (appState.activeTab === 'ventas') {
+        // En ventas, NO mostrar nada que sea de retiro
+        data = data.filter(item => !ESTADOS_RETIRO.includes(item.estado));
+    } else if (appState.activeTab === 'retiros') {
+        // En retiros, SOLO mostrar lo que sea de retiro
+        data = data.filter(item => ESTADOS_RETIRO.includes(item.estado));
+    }
+
     console.log(`🔍 [PRESUPUESTOS-JS] Actualizando tabla con ${data.length} registros...`);
 
     const tbody = document.getElementById('tbody-presupuestos');
@@ -1115,6 +1214,23 @@ function updateCategoriasFilter(categorias) {
 /**
  * Actualizar filtro de estados con botones - Filtro por Estado con Botones – 2024-12-19
  */
+// Constantes de Estados
+const ESTADOS_RETIRO = [
+    'Orden de Retiro',
+    'Retirado',
+    'Pendiente de Retiro',
+    'Recibido',
+    'En Auditoría',
+    'Conciliado',
+    'Anulado' // Compartido, pero relevante
+];
+
+// Estados de venta (si se quisiera whitelisting, por ahora usamos exclusión)
+// const ESTADOS_VENTA = []; 
+
+/**
+ * Actualizar filtro de estados con botones - Filtro por Estado con Botones – 2024-12-19
+ */
 function updateEstadosFilter(estados) {
     // Validar que estados sea un array
     if (!Array.isArray(estados)) {
@@ -1122,7 +1238,19 @@ function updateEstadosFilter(estados) {
         estados = []; // Usar array vacío como fallback
     }
 
-    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados con botones: ${estados.length} estados`);
+    // FILTRADO CONTEXTUAL POR SOLAPA
+    let estadosFiltrados = estados;
+
+    if (appState.activeTab === 'retiros') {
+        // En Retiros, solo mostrar estados de retiro
+        estadosFiltrados = estados.filter(e => ESTADOS_RETIRO.includes(e));
+    } else {
+        // En Ventas, excluir estados exclusivos de retiro (excepto los compartidos como Anulado si se desea)
+        // Estrategia: Mostrar todo lo que NO sea exclusivo de retiro
+        estadosFiltrados = estados.filter(e => !ESTADOS_RETIRO.includes(e) || e === 'Anulado');
+    }
+
+    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados (${appState.activeTab}): ${estadosFiltrados.length} estados (de ${estados.length} totales)`);
 
     const container = document.getElementById('botones-estado');
     if (!container) {
@@ -1134,13 +1262,13 @@ function updateEstadosFilter(estados) {
     container.innerHTML = '';
 
     // Si no hay estados, mostrar mensaje
-    if (estados.length === 0) {
-        container.innerHTML = '<span class="estado-loading">(Sin estados disponibles)</span>';
+    if (estadosFiltrados.length === 0) {
+        container.innerHTML = '<span class="estado-loading">(Sin estados relevantes)</span>';
         return;
     }
 
     // Crear botones para cada estado
-    estados.forEach(estado => {
+    estadosFiltrados.forEach(estado => {
         if (estado) {
             const button = document.createElement('button');
             button.className = 'btn-estado';
