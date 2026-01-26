@@ -11,5 +11,6 @@ router.use((req, res, next) => {
 // Rutas GET (Visualización)
 router.get('/stock', mantenimientoCtrl.getStockMantenimiento);
 router.get('/historial', mantenimientoCtrl.getHistorialMantenimiento);
+router.get('/conciliar', mantenimientoCtrl.conciliarDevolucion);
 
 module.exports = router;

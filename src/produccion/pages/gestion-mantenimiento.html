@@ -9,95 +9,75 @@
     <link rel="stylesheet" href="/css/ingredientes-panel.css">
     <!-- Reutilizamos estilos del panel de ingredientes para consistencia -->
     <style>
-        /* Estilos específicos para Mantenimiento */
-        .status-cuarentena {
-            background-color: #fff3cd;
-            color: #856404;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
-
-        .badge-ingreso {
-            background-color: #d4edda;
-            color: #155724;
-        }
-
-        .badge-liberacion {
-            background-color: #cce5ff;
-            color: #004085;
-        }
-
-        .badge-ajuste {
-            background-color: #e2e3e5;
-            color: #383d41;
-        }
-
-        .table-container {
-            margin-top: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            overflow: hidden;
-        }
-
-        .section-title {
-            color: var(--primary-color);
-            border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .refresh-btn {
-            background: none;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+        /* ... estilos existentes ... */
+        .btn-conciliar {
+            background-color: #007bff;
+            color: white;
+            border: none;
             padding: 5px 10px;
+            border-radius: 4px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: background-color 0.2s;
+            font-size: 0.9em;
         }
 
-        .refresh-btn:hover {
-            background-color: #f8f9fa;
+        .btn-conciliar:hover {
+            background-color: #0056b3;
         }
 
-        /* Resizer styles */
-        .panel-config {
-            position: relative;
-            min-width: 200px;
-            max-width: 500px;
+        .btn-conciliar:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
         }
 
-        .panel-resizer {
-            width: 5px;
-            height: 100%;
-            background: transparent;
-            position: absolute;
-            right: 0;
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
             top: 0;
-            cursor: col-resize;
-            z-index: 10;
-            transition: background 0.2s;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
         }
 
-        .panel-resizer:hover,
-        .panel-resizer.resizing {
-            background: var(--primary-color);
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .result-item {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
         }
     </style>
+
 </head>
 
 <body>
@@ -147,13 +127,14 @@
                                         <th>Artículo (ID)</th>
                                         <th>Origen (Cliente)</th>
                                         <th>Stock Cuarentena</th>
+                                        <th>Conciliación</th>
                                         <th>Estado</th>
                                         <th>Última Act.</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-stock">
                                     <tr>
-                                        <td colspan="5" class="text-center">Cargando...</td>
+                                        <td colspan="6" class="text-center">Cargando...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -191,6 +172,17 @@
                 </div>
             </div>
         </main>
+
+        <!-- Modal de Conciliación -->
+        <div id="modal-conciliacion" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="cerrarModal()">&times;</span>
+                <h2>🧾 Resultado de Conciliación</h2>
+                <div id="modal-body">
+                    <!-- Contenido dinámico -->
+                </div>
+            </div>
+        </div>
 
         <footer>
             <p>&copy; 2026 Gestiones Lamda - Módulo de Mantenimiento</p>
@@ -237,8 +229,7 @@
 
         async function cargarStock() {
             const tbody = document.getElementById('tbody-stock');
-            // Actualizar colspan a 5
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center">⏳ Cargando datos...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">⏳ Cargando datos...</td></tr>';
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/stock');
@@ -247,27 +238,43 @@
 
                 tbody.innerHTML = '';
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">✅ No hay artículos en cuarentena.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">✅ No hay artículos en cuarentena.</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     // Formatear cliente
                     let clienteHtml = '<span style="color: #999; font-style: italic;">Sin Origen</span>';
+                    let btnDisabled = 'disabled';
+                    let btnTitle = 'Requiere origen para conciliar';
+
                     if (item.cliente_id) {
                         clienteHtml = `<span title="${item.cliente_nombre || ''}">
                             <strong>#${item.cliente_id}</strong>
                             <br>
                             <small>${item.cliente_nombre || ''}</small>
                         </span>`;
+                        btnDisabled = '';
+                        btnTitle = 'Buscar Nota de Crédito';
                     }
 
                     const row = document.createElement('tr');
+                    // IMPORTANTE: Aseguramos que ultima_actualizacion sea una fecha válida para la consulta
+                    // Si no hay fecha, usamos hoy (aunque no debería pasar)
+                    const fechaRef = item.ultima_actualizacion ? new Date(item.ultima_actualizacion).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
                     row.innerHTML = `
                         <td><strong>${item.articulo_numero}</strong></td>
                         <td>${clienteHtml}</td>
                         <td style="font-size: 1.1em; color: #856404;">
                             ${parseFloat(item.stock_mantenimiento).toFixed(3)}
+                        </td>
+                        <td>
+                            <button class="btn-conciliar" 
+                                onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')"
+                                ${btnDisabled} title="${btnTitle}">
+                                🔍 Conciliar
+                            </button>
                         </td>
                         <td><span class="status-cuarentena">🔒 En Custodia</span></td>
                         <td>${new Date(item.ultima_actualizacion).toLocaleString()}</td>
@@ -277,9 +284,122 @@
 
             } catch (error) {
                 console.error(error);
-                tbody.innerHTML = `<tr><td colspan="5" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
             }
         }
+
+        async function conciliar(clienteId, articulo, cantidad, fecha) {
+            const modalBody = document.getElementById('modal-body');
+            const modal = document.getElementById('modal-conciliacion');
+
+            modal.style.display = "block";
+            modalBody.innerHTML = '<p class="text-center">⏳ Analizando conciliación...</p><p class="text-center" style="font-size: 0.8em; color: #666;">Conectando con Facturación...</p>';
+
+            try {
+                // Llamada al backend propio, que hará de proxy
+                const params = new URLSearchParams({
+                    cliente: clienteId,
+                    articulo: articulo,
+                    cantidad: cantidad,
+                    fecha: fecha
+                });
+
+                const res = await fetch(`/api/produccion/mantenimiento/conciliar?${params}`);
+                // Si la respuesta no es OK pero devuelve JSON, intentamos leerlo
+                const response = await res.json();
+
+                // --- ADAPTACIÓN V2 ---
+                // El backend ahora devuelve { success: true, data: [...], debug: {...} }
+                // O podría devolver error { success: false, error: ... }
+                const data = response.success && Array.isArray(response.data) ? response.data : [];
+                const debugInfo = response.debug || null;
+                const errorInfo = !response.success ? response.error : null;
+
+                let html = '';
+
+                // CASO 1: ENCONTRADO
+                if (data.length > 0) {
+                    html += '<p>✅ Se encontraron los siguientes comprobantes:</p>';
+                    data.forEach(nc => {
+                        html += `
+                            <div class="result-item">
+                                <strong>${nc.tipo_comprobante || 'NC'}</strong> - Nro: ${nc.pto_vta || nc.punto_venta}-${nc.numero_comprobante}<br>
+                                <span style="color: green; font-weight: bold;">$${nc.imp_neto || nc.importe_neto}</span><br>
+                                <small>Fecha: ${nc.fecha_emision ? new Date(nc.fecha_emision).toLocaleDateString() : 'N/A'}</small><br>
+                                <small style="color: #666;">Item: ${nc.item_descripcion || nc.articulo} (${nc.item_cantidad || nc.cantidad})</small>
+                            </div>
+                        `;
+                    });
+                }
+                // CASO 2: NO ENCONTRADO
+                else if (!errorInfo) {
+                    html += `
+                        <div style="text-align: center; color: #d9534f; margin-bottom: 20px;">
+                            <p style="font-size: 3em; margin: 0;">📭</p>
+                            <p><strong>No se encontró Nota de Crédito.</strong></p>
+                            <p style="font-size: 0.9em; color: #666;">Se revisaron comprobantes del último mes.</p>
+                        </div>
+                    `;
+                }
+                // CASO 3: ERROR DE BACKEND
+                else {
+                    html += `
+                        <div class="mensaje-error">
+                            <p>❌ Error de Servicio:</p>
+                            <p>${errorInfo}</p>
+                            <small>${response.message || ''}</small>
+                        </div>
+                    `;
+                }
+
+                // --- SECCIÓN DE DIAGNÓSTICO (Siempre disponible) ---
+                if (debugInfo && debugInfo.log) {
+                    html += `
+                        <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                            <details ${data.length === 0 ? 'open' : ''}>
+                                <summary style="cursor: pointer; color: #007bff; font-weight: bold;">🔍 Ver Diagnóstico Técnico</summary>
+                                <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.85em; margin-top: 5px; max-height: 200px; overflow-y: auto;">
+                                    <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+                                        ${debugInfo.log.map(line => {
+                        let color = '#333';
+                        if (line.includes('✅')) color = 'green';
+                        if (line.includes('⚠️')) color = '#856404';
+                        if (line.includes('❌')) color = 'red';
+                        return `<li style="color: ${color}; margin-bottom: 4px;">${line}</li>`;
+                    }).join('')}
+                                    </ul>
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                }
+
+                modalBody.innerHTML = html;
+
+            } catch (error) {
+                console.error(error);
+                modalBody.innerHTML = `
+                    <div class="mensaje-error">
+                        <p>❌ Error crítico al procesar solicitud:</p>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function cerrarModal() {
+            document.getElementById('modal-conciliacion').style.display = "none";
+        }
+
+        // Close details on outside click
+        window.onclick = function (event) {
+            const modal = document.getElementById('modal-conciliacion');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        // ... cargarHistorial ...
 
         async function cargarHistorial() {
             const tbody = document.getElementById('tbody-historial');

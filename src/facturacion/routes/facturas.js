@@ -113,6 +113,13 @@ router.get('/afip/numeracion', afipController.obtenerNumeracion);
  */
 router.post('/afip/homo/ta/refresh', afipController.renovarTAHomo);
 
+/**
+ * @route GET /facturacion/devoluciones
+ * @desc Buscar Notas de Crédito para conciliación
+ * @access Privado
+ */
+router.get('/devoluciones', facturasController.buscarDevoluciones);
+
 // ===== RUTA DE HEALTH CHECK =====
 
 /**
@@ -122,7 +129,7 @@ router.post('/afip/homo/ta/refresh', afipController.renovarTAHomo);
  */
 router.get('/health', (req, res) => {
     console.log('🔍 [FACTURACION-ROUTES] GET /health - Health check');
-    
+
     res.json({
         success: true,
         module: 'facturacion',
