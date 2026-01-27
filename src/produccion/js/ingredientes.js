@@ -1192,7 +1192,8 @@ async function imprimirEtiqueta(ingrediente) {
             },
             body: JSON.stringify({
                 nombre: ingrediente.nombre,
-                codigo: ingrediente.codigo
+                codigo: ingrediente.codigo,
+                sector: ingrediente.sector // Enviar la letra del sector procesada
             })
         });
 
@@ -1226,9 +1227,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnImprimir.addEventListener('click', () => {
             const codigo = document.getElementById('codigo').value;
             const nombre = document.getElementById('nombre').value;
+            const sectorId = document.getElementById('sector').value;
+
+            // Lógica de extracción de letra (replicada de mantenimiento.js y guardadoIngredientes.js)
+            let sectorLetra = '';
+
+            if (sectorId && sectoresDisponibles.length > 0) {
+                const sectorObj = sectoresDisponibles.find(s => s.id == sectorId);
+                if (sectorObj) {
+                    // 1. Intentar extrar de descripción ("Sector K") o comillas
+                    const extraerLetra = (desc, nombre) => {
+                        if (desc) {
+                            const match = desc.match(/["']([^"']+)["']/);
+                            if (match && match[1]) return match[1].toUpperCase();
+                        }
+                        if (nombre) {
+                            const matchNombre = nombre.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
+                            if (matchNombre && matchNombre[1]) return matchNombre[1].toUpperCase();
+                        }
+                        return null;
+                    };
+
+                    sectorLetra = extraerLetra(sectorObj.descripcion, sectorObj.nombre) || sectorObj.nombre;
+                }
+            }
 
             if (codigo && nombre) {
-                imprimirEtiqueta({ codigo, nombre });
+                imprimirEtiqueta({ codigo, nombre, sector: sectorLetra });
             }
         });
     }

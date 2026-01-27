@@ -11,11 +11,13 @@ async function getStockMantenimiento(req, res) {
         const query = `
             SELECT 
                 s.articulo_numero,
+                s.descripcion, -- Agregado para frontend
                 s.stock_mantenimiento,
                 s.stock_lomasoft,
                 s.stock_movimientos,
                 s.stock_ajustes,
                 s.ultima_actualizacion,
+                s.kilos_unidad, 
                 origin.cliente_id,
                 origin.estado,
                 origin.cliente_nombre
@@ -49,26 +51,107 @@ async function getStockMantenimiento(req, res) {
 /**
  * Obtener historial de movimientos de mantenimiento
  */
+/**
+ * Obtener historial de movimientos de mantenimiento
+ */
 async function getHistorialMantenimiento(req, res) {
     try {
         const limit = req.query.limit || 50;
-        const query = `
+        const ocultarAnulados = req.query.ocultar_anulados === 'true';
+
+        // 1. Obtener historial base (Sin Joins complejos que fallen)
+        let query = `
             SELECT 
-                id,
-                articulo_numero,
-                cantidad,
-                usuario,
-                tipo_movimiento,
-                observaciones,
-                fecha_movimiento,
-                estado
-            FROM public.mantenimiento_movimientos
-            ORDER BY fecha_movimiento DESC
-            LIMIT $1
+                mm.id,
+                mm.articulo_numero,
+                mm.cantidad,
+                mm.usuario,
+                mm.tipo_movimiento,
+                mm.observaciones,
+                mm.fecha_movimiento,
+                mm.estado
+            FROM public.mantenimiento_movimientos mm
         `;
 
+        if (ocultarAnulados) {
+            query += " WHERE mm.estado != 'REVERTIDO' ";
+        }
+
+        query += ` ORDER BY mm.fecha_movimiento DESC LIMIT $1`;
+
         const result = await pool.query(query, [limit]);
-        res.json(result.rows);
+        const rows = result.rows;
+
+        // 2. Enriquecimiento manual en JS (Mucho más seguro que SQL Regex)
+        // Extraemos IDs de ingredientes de las observaciones
+        const ingredientIds = new Set();
+        const rowsToEnrich = [];
+
+        rows.forEach(row => {
+            if (row.tipo_movimiento === 'TRANSF_INGREDIENTE' && row.observaciones) {
+                const match = row.observaciones.match(/ID: (\d+)/);
+                if (match && match[1]) {
+                    const id = parseInt(match[1]);
+                    ingredientIds.add(id);
+                    // Guardamos referencia temp para luego asignar
+                    row._tempIngId = id;
+                }
+            }
+        });
+
+        // 3. Consultar Ingredientes si hay alguno
+        let ingredientesMap = {};
+        if (ingredientIds.size > 0) {
+            const idsArray = Array.from(ingredientIds);
+            const ingQuery = `
+                SELECT 
+                    i.id, 
+                    i.nombre, 
+                    i.codigo, 
+                    s.nombre as sector_nombre,
+                    s.descripcion as sector_descripcion
+                FROM public.ingredientes i
+                LEFT JOIN public.sectores_ingredientes s ON i.sector_id = s.id
+                WHERE i.id = ANY($1::int[])
+            `;
+            const ingResult = await pool.query(ingQuery, [idsArray]);
+
+            // Función auxiliar inline para extraer letra (replicada de guardadoIngredientes.js)
+            const extraerLetra = (desc, nombre) => {
+                if (desc) {
+                    const match = desc.match(/["']([^"']+)["']/);
+                    if (match && match[1]) return match[1].toUpperCase();
+                }
+                if (nombre) {
+                    const matchNombre = nombre.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
+                    if (matchNombre && matchNombre[1]) return matchNombre[1].toUpperCase();
+                }
+                return null;
+            };
+
+            ingResult.rows.forEach(ing => {
+                // Procesamos el sector para dejar solo la letra (o el nombre si falla)
+                ing.sector_letra = extraerLetra(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre;
+                ingredientesMap[ing.id] = ing;
+            });
+        }
+
+        // 4. Mezclar resultados
+        const finalRows = rows.map(row => {
+            if (row._tempIngId && ingredientesMap[row._tempIngId]) {
+                const ing = ingredientesMap[row._tempIngId];
+                return {
+                    ...row,
+                    ingrediente_id: ing.id,
+                    ingrediente_nombre: ing.nombre,
+                    ingrediente_codigo: ing.codigo,
+                    ingrediente_sector: ing.sector_letra // Enviamos la letra procesada
+                };
+            }
+            return row;
+        });
+
+        res.json(finalRows);
 
     } catch (error) {
         console.error('❌ [MANTENIMIENTO] Error al obtener historial:', error.message);
@@ -307,10 +390,206 @@ async function liberarStock(req, res) {
     }
 }
 
+/**
+ * Transferir Stock de Mantenimiento a Ingredientes
+ * 1. Da de baja en mantenimiento (stock_real_consolidado) por el TOTAL del peso original.
+ * 2. Da de alta en ingredientes por la CANTIDAD REAL ingresada.
+ * 3. Registra la merma/diferencia en el movimiento de salida.
+ */
+async function transferirAIngredientes(req, res) {
+    const client = await pool.connect();
+
+    try {
+        const { articulo, ingrediente_id, cantidad_real, observaciones } = req.body;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        if (!articulo || !ingrediente_id || !cantidad_real) {
+            return res.status(400).json({ success: false, error: 'Faltan datos obligatorios.' });
+        }
+
+        console.log(`🧪 [MANTENIMIENTO -> INGREDIENTES] Iniciando transferencia. Art: ${articulo} -> Ing: ${ingrediente_id}`);
+
+        await client.query('BEGIN');
+
+        // 1. Obtener Stock Actual en Mantenimiento (Peso Original)
+        // Bloqueamos la fila para evitar concurrencia
+        const stockQuery = `
+            SELECT stock_mantenimiento 
+            FROM public.stock_real_consolidado 
+            WHERE articulo_numero = $1
+            FOR UPDATE
+        `;
+        const resStock = await client.query(stockQuery, [articulo]);
+
+        if (resStock.rows.length === 0) {
+            throw new Error(`Artículo ${articulo} no encontrado en stock consolidado.`);
+        }
+
+        const pesoOriginal = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
+        const pesoIngreso = parseFloat(cantidad_real);
+
+        if (pesoOriginal <= 0) {
+            throw new Error(`El artículo ${articulo} no tiene stock en mantenimiento.`);
+        }
+
+        // Calculamos la MERMA (Diferencia de peso)
+        // Merma = Peso teòrico (sistema) - Peso real (balanza)
+        const merma = pesoOriginal - pesoIngreso;
+
+        console.log(`📊 Cálculo: Original=${pesoOriginal}, Real=${pesoIngreso}, Merma=${merma}`);
+
+        // 2. DAR DE BAJA EN MANTENIMIENTO (Todo el stock)
+        // Usamos la lógica de actualización directa para no depender de la función PL/SQL si queremos atomicidad controlada aquí
+        // O podríamos llamar a la función, pero aquí es una operación compuesta compleja. Haremos update manual.
+
+        const updateMantenimiento = `
+            UPDATE public.stock_real_consolidado
+            SET 
+                stock_mantenimiento = 0, -- Se vacía
+                -- Ajustamos el consolidado restando lo que estaba en mantenimiento
+                stock_consolidado = stock_consolidado - $1, 
+                ultima_actualizacion = NOW()
+            WHERE articulo_numero = $2
+        `;
+        await client.query(updateMantenimiento, [pesoOriginal, articulo]);
+
+        // 3. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA)
+        // Registramos que salieron X kilos, y en observaciones detallamos la merma
+        const obsFinal = `${observaciones || ''} | Transferencia a Ingredientes (ID: ${ingrediente_id}). Peso Orig: ${pesoOriginal}, Real: ${pesoIngreso}, Merma: ${merma.toFixed(3)}`;
+
+        const insertMov = `
+            INSERT INTO public.mantenimiento_movimientos (
+                articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento
+            ) VALUES (
+                $1, $2, $3, 'TRANSF_INGREDIENTE', $4, NOW()
+            )
+        `;
+        await client.query(insertMov, [articulo, pesoOriginal, usuario, obsFinal]);
+
+        // 4. DAR DE ALTA EN INGREDIENTES
+        // Incrementamos stock_actual
+        const updateIngrediente = `
+            UPDATE ingredientes
+            SET stock_actual = stock_actual + $1
+            WHERE id = $2
+            RETURNING nombre
+        `;
+        const resIng = await client.query(updateIngrediente, [pesoIngreso, ingrediente_id]);
+
+        if (resIng.rowCount === 0) {
+            throw new Error(`Ingrediente destino ${ingrediente_id} no encontrado.`);
+        }
+
+        // Opcional: Registrar en historial de ingredientes si existe tabla. 
+        // Por ahora asumimos que el update es suficiente, o el usuario lo pedirá si falta.
+        // Pero intentaremos registrar en 'ingredientes_stock_usuarios' como 'Produccion' si se usa ese modelo
+        // Para no romper nada, nos limitamos al update simple que es lo solicitado.
+
+        await client.query('COMMIT');
+
+        console.log('✅ Transferencia completada exitosamente.');
+        res.json({
+            success: true,
+            mensaje: 'Transferencia realizada',
+            merma: merma.toFixed(3),
+            ingrediente: resIng.rows[0].nombre
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error en transferencia:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Revertir Movimiento (Undo)
+ * Principalmente para "Enviar a Ventas" (LIBERACION) realizado por error.
+ */
+async function revertirMovimiento(req, res) {
+    const client = await pool.connect();
+    try {
+        const { id_movimiento } = req.body;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        if (!id_movimiento) {
+            return res.status(400).json({ success: false, error: 'ID de movimiento requerido' });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Obtener el movimiento original
+        const movQuery = `
+            SELECT * FROM public.mantenimiento_movimientos 
+            WHERE id = $1 FOR UPDATE
+        `;
+        const resMov = await client.query(movQuery, [id_movimiento]);
+
+        if (resMov.rows.length === 0) throw new Error('Movimiento no encontrado');
+        const mov = resMov.rows[0];
+
+        if (mov.estado === 'REVERTIDO') throw new Error('Este movimiento ya fue revertido anteriormente.');
+
+        // Solo permitimos revertir LIBERACION por ahora (lo solicitado)
+        if (mov.tipo_movimiento !== 'LIBERACION') {
+            throw new Error('Solo se pueden revertir envíos a Ventas (LIBERACION) por el momento.');
+        }
+
+        const cantidad = parseFloat(mov.cantidad);
+        const articulo = mov.articulo_numero;
+
+        console.log(`↩️ [MANTENIMIENTO] Revirtiendo cambio ${mov.tipo_movimiento} ID: ${id_movimiento} Art: ${articulo}`);
+
+        // 2. Revertir cambios en Stock
+        // Si fue LIBERACION: Restó de mantenimiento y sumó a ajustes/consolidado.
+        // Hacemos lo opuesto: Sumar a mantenimiento, Restar de ajustes.
+
+        const updateStock = `
+            UPDATE public.stock_real_consolidado
+            SET 
+                stock_mantenimiento = stock_mantenimiento + $1,
+                stock_ajustes = stock_ajustes - $1,
+                stock_consolidado = stock_consolidado - $1,
+                ultima_actualizacion = NOW()
+            WHERE articulo_numero = $2
+        `;
+        await client.query(updateStock, [cantidad, articulo]);
+
+        // 3. Marcar movimiento como REVERTIDO
+        await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'REVERTIDO', observaciones = observaciones || ' [REVERTIDO]' WHERE id = $1`, [id_movimiento]);
+
+        // 4. Registrar movimiento de Contra-asiento (Opcional, pero bueno para auditoría clara)
+        // Lo registramos como un INGRESO por corrección
+        const insertReversion = `
+            INSERT INTO public.mantenimiento_movimientos (
+                articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento, estado
+            ) VALUES (
+                $1, $2, $3, 'REVERSION', $4, NOW(), 'AUTOMATICO'
+            )
+        `;
+        await client.query(insertReversion, [articulo, cantidad, usuario, `Reversión de mov #${id_movimiento}`]);
+
+        await client.query('COMMIT');
+
+        res.json({ success: true, message: 'Operación revertida exitosamente.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error revirtiendo movimiento:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     getHistorialMantenimiento,
     conciliarDevolucion,
     confirmarConciliacion,
-    liberarStock
+    liberarStock,
+    transferirAIngredientes,
+    revertirMovimiento
 };

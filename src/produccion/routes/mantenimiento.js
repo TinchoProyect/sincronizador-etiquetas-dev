@@ -14,5 +14,7 @@ router.post('/conciliar/confirmar', mantenimientoCtrl.confirmarConciliacion);
 router.post('/liberar', mantenimientoCtrl.liberarStock);
 router.get('/historial', mantenimientoCtrl.getHistorialMantenimiento);
 router.get('/conciliar', mantenimientoCtrl.conciliarDevolucion);
+router.post('/transferir-ingrediente', mantenimientoCtrl.transferirAIngredientes);
+router.post('/revertir', mantenimientoCtrl.revertirMovimiento);
 
 module.exports = router;

@@ -10,6 +10,35 @@
     <!-- Reutilizamos estilos del panel de ingredientes para consistencia -->
     <style>
         /* ... estilos existentes ... */
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge-ingreso {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .badge-liberacion {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+
+        .badge-ajuste {
+            background-color: #f8f9fa;
+            color: #6c757d;
+        }
+
+        .badge-transferencia {
+            background-color: #e2e3f5;
+            color: #383d41;
+            border: 1px solid #d6d8db;
+        }
+
         .btn-conciliar {
             background-color: #007bff;
             color: white;
@@ -76,6 +105,112 @@
             margin-bottom: 10px;
             border-radius: 4px;
         }
+
+        /* ESTILOS DROPDOWN ACCIONES */
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: #f9f9f9;
+            min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+            z-index: 1;
+            border-radius: 4px;
+            right: 0;
+            /* Align right */
+        }
+
+        .dropdown-content button {
+            color: black;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            width: 100%;
+            text-align: left;
+            border: none;
+            background: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.9em;
+        }
+
+        .dropdown-content button:hover {
+            background-color: #f1f1f1;
+        }
+
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+
+        .btn-accion {
+            background-color: #007bff;
+            color: white;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* Modal Transferencia Styles */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .info-merma {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #dee2e6;
+        }
+
+        /* Buscador Inteligente Styles */
+        .search-results {
+            border: 1px solid #ccc;
+            border-top: none;
+            max-height: 200px;
+            overflow-y: auto;
+            position: absolute;
+            width: 100%;
+            background: white;
+            z-index: 1001;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 0 0 4px 4px;
+            display: none;
+        }
+
+        .search-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+
+        .search-item:hover {
+            background-color: #f1f1f1;
+        }
+
+        .search-item strong {
+            color: #007bff;
+        }
     </style>
 
 </head>
@@ -103,7 +238,10 @@
                         <div class="accordion-content" style="display:block; padding:10px;">
                             <label><input type="checkbox" checked disabled> Stock en Cuarentena</label>
                             <br>
-                            <label><input type="checkbox" checked disabled> Historial Reciente</label>
+                            <label title="Oculta movimientos revertidos o anulados">
+                                <input type="checkbox" id="chk-ocultar-anulados" checked onchange="cargarHistorial()">
+                                Ocultar Anulados
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -176,10 +314,76 @@
         <!-- Modal de Conciliación -->
         <div id="modal-conciliacion" class="modal">
             <div class="modal-content">
-                <span class="close" onclick="cerrarModal()">&times;</span>
+                <span class="close" onclick="cerrarModal('modal-conciliacion')">&times;</span>
                 <h2>🧾 Resultado de Conciliación</h2>
                 <div id="modal-body">
                     <!-- Contenido dinámico -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Transferencia a Ingredientes -->
+        <div id="modal-transferencia" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="cerrarModal('modal-transferencia')">&times;</span>
+                <h2>🧪 Enviar a Ingredientes</h2>
+                <div id="modal-body-transferencia">
+                    <input type="hidden" id="transf-articulo">
+                    <input type="hidden" id="transf-peso-original">
+
+                    <div class="form-group">
+                        <label>Artículo Origen:</label>
+                        <input type="text" id="transf-articulo-display" disabled style="background:#eee;">
+                    </div>
+
+                    <div class="form-group" style="position: relative;">
+                        <label for="transf-ingrediente-search">Ingrediente Destino:</label>
+                        <input type="text" id="transf-ingrediente-search"
+                            placeholder="Escriba para buscar (ej: harina trigo)..." autocomplete="off">
+                        <input type="hidden" id="transf-ingrediente">
+                        <div id="transf-ingrediente-results" class="search-results"></div>
+                        <div id="transf-ingrediente-seleccionado"
+                            style="display:none; margin-top:5px; padding:5px; background:#d4edda; border:1px solid #c3e6cb; border-radius:4px;">
+                            ✅ <span id="ingrediente-nombre-sel" style="font-weight:bold;"></span>
+                            <button onclick="limpiarSeleccionIngrediente()"
+                                style="float:right; border:none; background:none; cursor:pointer;">❌</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="transf-cantidad">Cantidad Real Ingresada (Kg):</label>
+                        <input type="number" id="transf-cantidad" step="0.001" placeholder="Ej: 9.500"
+                            oninput="calcularMerma()">
+                    </div>
+
+                    <div class="info-merma" id="merma-container" style="display:none;">
+                        <strong>Análisis de Merma:</strong>
+                        <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                            <span>Peso Original:</span>
+                            <span id="merma-peso-orig">0.000</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Peso Real:</span>
+                            <span id="merma-peso-real">0.000</span>
+                        </div>
+                        <hr style="margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; font-weight: bold; color: #d9534f;">
+                            <span>Merma/Pérdida:</span>
+                            <span id="merma-valor">0.000</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="transf-obs">Observaciones:</label>
+                        <input type="text" id="transf-obs" placeholder="Opcional">
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                        <button class="btn-conciliar" onclick="cerrarModal('modal-transferencia')"
+                            style="background-color: #6c757d;">Cancelar</button>
+                        <button class="btn-conciliar" onclick="confirmarTransferencia()"
+                            style="background-color: #28a745;">✅ Confirmar Transferencia</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -256,7 +460,6 @@
                         </span>`;
 
                         if (item.estado === 'CONCILIADO') {
-                            // Cambiamos el botón por un badge verde + Botón de Liberación
                             btnDisabled = 'disabled';
                             btnTitle = 'Ya conciliado';
                         } else {
@@ -268,16 +471,29 @@
                     const row = document.createElement('tr');
                     const fechaRef = item.ultima_actualizacion ? new Date(item.ultima_actualizacion).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
 
+                    // Cálculo de peso y formato CORRECTO
+                    const cantidad = parseFloat(item.stock_mantenimiento);
+                    const kilosUnidad = parseFloat(item.kilos_unidad) || 1;
+                    const pesoTotal = cantidad * kilosUnidad;
+
                     // Determinar contenido de la celda de acción
                     let actionCell = '';
                     if (item.estado === 'CONCILIADO') {
+                        // Dropdown de Acciones para items conciliados
                         actionCell = `
-                        <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;">
+                        <div class="dropdown">
+                            <button class="btn-accion">⚡ Acciones ▼</button>
+                            <div class="dropdown-content">
+                                <button onclick="liberarStock('${item.articulo_numero}', 1, 'Reintegro a Ventas tras Conciliacion')">
+                                    📦 Enviar a Ventas
+                                </button>
+                                <button onclick="abrirModalTransferencia('${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
+                                    🧪 Enviar a Ingredientes
+                                </button>
+                            </div>
+                        </div>
+                        <div style="margin-top: 5px;">
                             <span style="color: green; font-weight: bold; font-size: 0.8em; border: 1px solid green; padding: 2px 5px; border-radius: 4px;">✅ Consolidado</span>
-                            <button class="btn-conciliar" style="background-color: #6f42c1; font-size: 0.8em;" 
-                                onclick="liberarStock('${item.articulo_numero}', 1, 'Reintegro a Ventas tras Conciliacion')">
-                                📦 Enviar a Ventas
-                            </button>
                         </div>
                     `;
                     } else {
@@ -291,10 +507,14 @@
                     }
 
                     row.innerHTML = `
-                    <td><strong>${item.articulo_numero}</strong></td>
+                    <td>
+                        <strong>${item.articulo_numero}</strong>
+                        <br><small style="color:#666;">${item.descripcion || ''}</small>
+                    </td>
                     <td>${clienteHtml}</td>
                     <td style="font-size: 1.1em; color: #856404;">
-                        ${parseFloat(item.stock_mantenimiento).toFixed(3)}
+                        ${cantidad.toFixed(3)} u.
+                        <br><small>(${pesoTotal.toFixed(2)} kg)</small>
                     </td>
                     <td>
                         ${actionCell}
@@ -482,24 +702,227 @@
             }
         }
 
-        function cerrarModal() {
-            document.getElementById('modal-conciliacion').style.display = "none";
-        }
+        // ==========================================
+        // Lógica de Ingredientes y Búsqueda Inteligente
+        // ==========================================
+        let ingredientesCache = [];
 
-        // Close details on outside click
-        window.onclick = function (event) {
-            const modal = document.getElementById('modal-conciliacion');
-            if (event.target == modal) {
-                modal.style.display = "none";
+        async function cargarIngredientes() {
+            try {
+                // Endpoint existente
+                const res = await fetch('/api/produccion/ingredientes');
+                if (res.ok) {
+                    const data = await res.json();
+
+                    // Asegurar array de datos
+                    if (Array.isArray(data)) {
+                        ingredientesCache = data;
+                    } else if (data.data && Array.isArray(data.data)) {
+                        ingredientesCache = data.data;
+                    } else {
+                        console.error('Formato de ingredientes no reconocido', data);
+                        return;
+                    }
+                    console.log(`✅ ${ingredientesCache.length} ingredientes cargados para búsqueda.`);
+                }
+            } catch (error) {
+                console.error('Error cargando ingredientes:', error);
             }
         }
 
-        // ... cargarHistorial ...
+        // ELEMENTOS DOM BÚSQUEDA
+        const inputSearch = document.getElementById('transf-ingrediente-search');
+        const resultsDiv = document.getElementById('transf-ingrediente-results');
+        const hiddenInput = document.getElementById('transf-ingrediente');
+
+        // EVENTO INPUT
+        if (inputSearch) {
+            inputSearch.addEventListener('input', function () {
+                const termino = this.value;
+                if (!termino || termino.length < 2) {
+                    resultsDiv.style.display = 'none';
+                    return;
+                }
+
+                // Normalizar término de búsqueda: Minúsculas, sin acentos
+                const terminos = termino.toLowerCase()
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                    .split(/\s+/)
+                    .filter(t => t.length > 0);
+
+                // FILTRADO
+                const filtrados = ingredientesCache.filter(ing => {
+                    // Normalizar nombre y código del ingrediente
+                    const nombreNorm = (ing.nombre + ' ' + ing.codigo).toLowerCase()
+                        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+                    // Verificar que CADA término esté presente
+                    return terminos.every(t => nombreNorm.includes(t));
+                }).slice(0, 15); // Top 15 resultados
+
+                mostrarResultados(filtrados);
+            });
+        }
+
+        function mostrarResultados(lista) {
+            resultsDiv.innerHTML = '';
+            if (lista.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding:10px; color:#999; font-style:italic;">No hay coincidencias</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+
+            lista.forEach(ing => {
+                const div = document.createElement('div');
+                div.className = 'search-item';
+                div.innerHTML = `
+                    <strong>${ing.codigo}</strong> - ${ing.nombre} 
+                    <br><small style="color:gray;">Stock Actual: ${ing.stock_actual}</small>
+                `;
+                div.onclick = () => seleccionarIngrediente(ing);
+                resultsDiv.appendChild(div);
+            });
+            resultsDiv.style.display = 'block';
+        }
+
+        function seleccionarIngrediente(ing) {
+            hiddenInput.value = ing.id;
+            document.getElementById('ingrediente-nombre-sel').textContent = `${ing.codigo} - ${ing.nombre}`;
+            document.getElementById('transf-ingrediente-seleccionado').style.display = 'block';
+            inputSearch.value = '';
+            resultsDiv.style.display = 'none';
+        }
+
+        function limpiarSeleccionIngrediente() {
+            hiddenInput.value = '';
+            document.getElementById('transf-ingrediente-seleccionado').style.display = 'none';
+            if (inputSearch) {
+                inputSearch.value = '';
+                inputSearch.focus();
+            }
+        }
+
+        // Cargar ingredientes al inicio
+        cargarIngredientes();
+
+        // Cerrar resultados si hago click afuera
+        document.addEventListener('click', function (e) {
+            if (inputSearch && resultsDiv && e.target !== inputSearch && e.target !== resultsDiv && !resultsDiv.contains(e.target)) {
+                resultsDiv.style.display = 'none';
+            }
+        });
+
+        // ==========================================
+        // Modal Transferencia
+        // ==========================================
+        function abrirModalTransferencia(articulo, unidades, kilosPorUnidad) {
+            // Asegurar tipos numéricos
+            const cantUnidades = parseFloat(unidades) || 0;
+            const factorKilos = parseFloat(kilosPorUnidad) || 1;
+
+            const pesoTotal = cantUnidades * factorKilos;
+
+            document.getElementById('transf-articulo').value = articulo;
+            document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3);
+
+            document.getElementById('transf-articulo-display').value =
+                `${articulo} (${cantUnidades} u. × ${factorKilos} kg = ${pesoTotal.toFixed(3)} kg)`;
+
+            document.getElementById('transf-cantidad').value = '';
+            document.getElementById('transf-obs').value = '';
+
+            // Reset UI Buscador
+            limpiarSeleccionIngrediente();
+            document.getElementById('merma-container').style.display = 'none';
+
+            document.getElementById('modal-transferencia').style.display = 'block';
+
+            // Auto-focus al buscador
+            setTimeout(() => {
+                if (inputSearch) inputSearch.focus();
+            }, 150);
+        }
+
+        function calcularMerma() {
+            const pesoOrig = parseFloat(document.getElementById('transf-peso-original').value) || 0;
+            const pesoReal = parseFloat(document.getElementById('transf-cantidad').value) || 0;
+            const merma = pesoOrig - pesoReal;
+
+            document.getElementById('merma-peso-orig').textContent = pesoOrig.toFixed(3);
+            document.getElementById('merma-peso-real').textContent = pesoReal.toFixed(3);
+            document.getElementById('merma-valor').textContent = merma.toFixed(3);
+
+            // Si hay merma significativa, mostrar en rojo o advertencia
+            const container = document.getElementById('merma-container');
+            container.style.display = 'block';
+
+            if (merma < 0) {
+                document.getElementById('merma-valor').style.color = 'blue'; // Ganancia? Raro pero posible
+                document.getElementById('merma-valor').textContent += ' (Ganancia stock)';
+            } else {
+                document.getElementById('merma-valor').style.color = '#d9534f';
+            }
+        }
+
+        async function confirmarTransferencia() {
+            const articulo = document.getElementById('transf-articulo').value;
+            const ingredienteId = document.getElementById('transf-ingrediente').value;
+            const cantidadReal = document.getElementById('transf-cantidad').value;
+            const obs = document.getElementById('transf-obs').value;
+
+            if (!ingredienteId || !cantidadReal) {
+                alert('⚠️ Por favor seleccione un ingrediente y la cantidad ingresada.');
+                return;
+            }
+
+            if (!confirm('¿Confirma la transferencia a ingredientes? Esta acción vaciará el stock de mantenimiento.')) return;
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/transferir-ingrediente', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        articulo,
+                        ingrediente_id: ingredienteId,
+                        cantidad_real: cantidadReal,
+                        observaciones: obs
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert(`✅ Transferencia Exitosa.\nMerma registrada: ${data.merma}`);
+                    cerrarModal('modal-transferencia');
+                    cargarStock();
+                    cargarHistorial();
+                } else {
+                    throw new Error(data.error || 'Error desconocido');
+                }
+
+            } catch (error) {
+                console.error(error);
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        function cerrarModal(id) {
+            document.getElementById(id || 'modal-conciliacion').style.display = "none";
+        }
+
+        // Close details on outside click (Genérico)
+        window.onclick = function (event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = "none";
+            }
+        }
 
         async function cargarHistorial() {
             const tbody = document.getElementById('tbody-historial');
+            const ocultarAnulados = document.getElementById('chk-ocultar-anulados').checked;
+
             try {
-                const res = await fetch('/api/produccion/mantenimiento/historial');
+                const res = await fetch(`/api/produccion/mantenimiento/historial?limit=50&ocultar_anulados=${ocultarAnulados}`);
                 if (!res.ok) throw new Error('Error al cargar historial');
                 const data = await res.json();
 
@@ -513,6 +936,46 @@
                     let badgeClass = 'badge-ajuste';
                     if (mov.tipo_movimiento === 'INGRESO') badgeClass = 'badge-ingreso';
                     if (mov.tipo_movimiento === 'LIBERACION') badgeClass = 'badge-liberacion';
+                    if (mov.tipo_movimiento === 'TRANSF_INGREDIENTE') badgeClass = 'badge-transferencia';
+                    if (mov.tipo_movimiento === 'REVERSION') badgeClass = 'badge-ajuste'; // Color neutro
+
+                    // Lógica para acciones (Revertir / Imprimir)
+                    let accionCell = '<div style="display:flex; justify-content:flex-end; gap:5px;">';
+
+                    // Botón Revertir (Solo Liberaciones no revertidas)
+                    if (mov.tipo_movimiento === 'LIBERACION' && mov.estado !== 'REVERTIDO') {
+                        accionCell += `
+                            <button class="btn-conciliar" style="padding: 2px 6px; font-size: 0.75em; background-color: #ffc107; color: #000;" 
+                                onclick="revertirAccion('${mov.id}', '${mov.articulo_numero}')" title="Deshacer Movimiento">
+                                ↩️
+                            </button>
+                         `;
+                    }
+
+                    // Botón Imprimir Etiqueta (Solo Transferencias con datos de ingrediente)
+                    if (mov.tipo_movimiento === 'TRANSF_INGREDIENTE' && mov.ingrediente_id) {
+                        // Encodeamos el objeto ingrediente para pasarlo a la función
+                        const ingData = encodeURIComponent(JSON.stringify({
+                            id: mov.ingrediente_id,
+                            nombre: mov.ingrediente_nombre,
+                            codigo: mov.ingrediente_codigo,
+                            sector: mov.ingrediente_sector,
+                            cantidad: mov.cantidad // Usamos la cantidad del movimiento
+                        }));
+
+                        accionCell += `
+                            <button class="btn-conciliar" style="padding: 2px 6px; font-size: 0.75em; background-color: #17a2b8; color: #fff;" 
+                                onclick="imprimirEtiquetaHistorial('${ingData}')" title="Imprimir Etiqueta Ingrediente">
+                                🖨️
+                            </button>
+                         `;
+                    }
+
+                    if (mov.estado === 'REVERTIDO') {
+                        accionCell += '<span style="font-size: 0.8em; color: #999;">🚫 Anulado</span>';
+                    }
+
+                    accionCell += '</div>';
 
                     const row = document.createElement('tr');
                     row.innerHTML = `
@@ -521,7 +984,10 @@
                         <td><span class="status-badge ${badgeClass}">${mov.tipo_movimiento}</span></td>
                         <td><strong>${parseFloat(mov.cantidad).toFixed(3)}</strong></td>
                         <td>${mov.usuario}</td>
-                        <td style="font-style: italic; color: #666;">${mov.observaciones || '-'}</td>
+                        <td style="font-style: italic; color: #666;">
+                            ${mov.observaciones || '-'}
+                            <div style="float: right; margin-left: 10px;">${accionCell}</div>
+                        </td>
                     `;
                     tbody.appendChild(row);
                 });
@@ -529,6 +995,63 @@
             } catch (error) {
                 console.error(error);
                 tbody.innerHTML = `<tr><td colspan="6" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
+
+        async function revertirAccion(idMovimiento, articulo) {
+            if (!confirm(`¿Está seguro de querer REVERTIR este movimiento del artículo ${articulo}?\n\nEl stock volverá a Mantenimiento y se quitará de Ventas.`)) return;
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/revertir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id_movimiento: idMovimiento })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ Acción revertida correctamente.');
+                    cargarStock();
+                    cargarHistorial();
+                } else {
+                    throw new Error(data.error || 'Error desconocido');
+                }
+            } catch (error) {
+                console.error(error);
+                alert('❌ Error al revertir: ' + error.message);
+            }
+        }
+
+        async function imprimirEtiquetaHistorial(ingDataEncoded) {
+            try {
+                const ing = JSON.parse(decodeURIComponent(ingDataEncoded));
+
+                if (!confirm(`¿Imprimir etiqueta para ${ing.nombre} (${ing.cantidad} kg)?`)) return;
+
+                const res = await fetch('/api/produccion/ingredientes/imprimir-etiqueta', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ingredienteId: ing.id,
+                        nombre: ing.nombre,
+                        cantidad: ing.cantidad,
+                        codigo: ing.codigo,
+                        sector: ing.sector
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('🖨️ Orden de impresión enviada.');
+                } else {
+                    throw new Error(data.error || 'Error del servidor de impresión');
+                }
+
+            } catch (error) {
+                console.error(error);
+                alert('❌ Error al imprimir: ' + error.message);
             }
         }
     </script>
