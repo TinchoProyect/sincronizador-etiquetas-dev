@@ -112,3 +112,7 @@ secrets/*.json
 # Archivos backup locales
 *.backup
 *-backup.js
+# Ignorar archivos temporales de impresión en src
+src/app-etiquetas/temp/*.zpl
+src/app-etiquetas/temp/*.json
+src/app-etiquetas/temp/
