@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "nombre": "Nuez/Ma/ExtL/Ch x 5",
-    "numero": "NMELCHx5",
-    "codigo_barras": "2569478523"
-  },
-  "cantidad": 2
+  "numero": "NMAMAF2X5",
+  "nombre": "Nuez/Ma/Amb/Lig 2 x 5",
+  "codigo_barras": "73459885",
+  "cantidad": 8
 }
