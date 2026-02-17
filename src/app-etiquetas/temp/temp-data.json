@@ -1,6 +1,8 @@
 {
-  "numero": "NMAMAF2X5",
-  "nombre": "Nuez/Ma/Amb/Lig 2 x 5",
-  "codigo_barras": "73459885",
-  "cantidad": 8
+  "articulo": {
+    "numero": "PPCXK",
+    "nombre": "Pistacho/Pel/Crudo x 1 K",
+    "codigo_barras": "2563633001"
+  },
+  "cantidad": "2.00"
 }
