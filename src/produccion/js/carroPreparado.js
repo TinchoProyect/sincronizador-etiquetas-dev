@@ -7,7 +7,7 @@ export async function actualizarVisibilidadBotones() {
     const btnImprimirEtiquetas = document.getElementById('imprimir-etiquetas');
     const btnImprimirOrden = document.getElementById('imprimir-orden-produccion');
     const btnGuardadoIngredientes = document.getElementById('guardado-ingredientes');
-    
+
     if (!carroId) {
         // No hay carro activo - ocultar todos los botones de acción
         if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
@@ -21,11 +21,11 @@ export async function actualizarVisibilidadBotones() {
 
     try {
         const response = await fetch(`/api/produccion/carro/${carroId}/estado`);
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
         console.log('Estado del carro:', data);
 
@@ -73,32 +73,39 @@ export async function actualizarVisibilidadBotones() {
                 if (btnGuardadoIngredientes) {
                     btnGuardadoIngredientes.style.display = 'none';
                 }
-                
+
                 // 🚚 CREAR Y MOSTRAR campo de kilos producidos para carros externos
                 if (data.tipo_carro === 'externa') {
                     console.log('🚚 Carro externo en estado preparado - creando campo de kilos producidos...');
-                    
+
                     let kilosProducidosContainer = document.getElementById('kilos-producidos-container');
-                    
+
                     // Si no existe, crearlo dinámicamente
                     if (!kilosProducidosContainer) {
                         kilosProducidosContainer = document.createElement('div');
                         kilosProducidosContainer.id = 'kilos-producidos-container';
                         kilosProducidosContainer.className = 'kilos-producidos-container';
                         kilosProducidosContainer.style.cssText = 'margin: 15px 0;';
-                        
+
+                        // 1. GENERAR HTML (Con soporte para Unidades y Merma)
                         kilosProducidosContainer.innerHTML = `
-                            <div style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                                <label for="kilos-producidos" style="font-weight: bold; margin: 0;">Kilos Producidos:</label>
-                                <input type="number" 
-                                       id="kilos-producidos" 
-                                       min="0.01" 
-                                       step="0.01" 
-                                       placeholder="0.00"
-                                       style="width: 120px; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;"
-                                       required>
-                                <span style="color: #6c757d; font-size: 0.9em;">kg</span>
+                            <div class="inputs-produccion-wrapper" style="display: flex; gap: 15px; align-items: flex-start; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                                <div class="input-group-produccion" style="flex: 1;">
+                                    <label for="kilos-producidos" style="display: block; margin-bottom: 5px; font-weight: bold;">Kilos Producidos:</label>
+                                    <div style="display: flex; align-items: center; gap: 5px;">
+                                        <input type="number" id="kilos-producidos" min="0.01" step="0.01" placeholder="0.00" style="width: 100%; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;" required>
+                                        <span style="color: #6c757d; font-size: 0.9em;">kg</span>
+                                    </div>
+                                </div>
+                                <div id="container-unidades-helper" class="input-group-produccion" style="display: none; flex: 1; border-left: 1px solid #ccc; padding-left: 15px;">
+                                    <label for="unidades-producidas" style="color: #007bff; display: block; margin-bottom: 5px; font-weight: bold;">O Unidades:</label>
+                                    <input type="number" id="unidades-producidas" min="1" step="1" placeholder="Ej: 96" style="width: 100%; padding: 5px; border: 1px solid #007bff; border-radius: 4px;">
+                                    <small class="conversion-badge" id="factor-conversion-texto" style="color: #666; font-size: 0.8em; display:block; margin-top:5px;">
+                                        1 unidad = 0.05 kg
+                                    </small>
+                                </div>
                             </div>
+
                             <div id="calculo-merma" style="display: none; margin-top: 10px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
                                 <h4 style="margin: 0 0 8px 0; color: #856404; font-size: 14px;">📊 Análisis de Reducción por Cocción</h4>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
@@ -124,13 +131,52 @@ export async function actualizarVisibilidadBotones() {
                                 </p>
                             </div>
                         `;
-                        
+
+                        // 2. ACTIVAR LÓGICA DE BARRITAS (Calculadora de Unidades)
+                        setTimeout(() => {
+                            const descripcionElement = document.querySelector('.articulo-descripcion');
+                            // Verificamos si hay algún artículo que sea "Barra Flor"
+                            if (descripcionElement && descripcionElement.textContent.toLowerCase().includes('barra flor')) {
+                                const containerUnidades = document.getElementById('container-unidades-helper');
+                                const inputUnidades = document.getElementById('unidades-producidas');
+                                const inputKilos = document.getElementById('kilos-producidos');
+                                const factor = 0.05; // 4.8kg / 96u
+
+                                if (containerUnidades && inputUnidades && inputKilos) {
+                                    console.log('⚖️ Activando calculadora de unidades para Barra Flor en Carro Preparado');
+                                    containerUnidades.style.display = 'block';
+
+                                    // A. Escribe Unidades -> Calcula Kilos
+                                    inputUnidades.addEventListener('input', function () {
+                                        const u = parseFloat(this.value);
+                                        if (!isNaN(u)) {
+                                            inputKilos.value = (u * factor).toFixed(2);
+                                            // Disparar evento para que se actualice la merma también
+                                            inputKilos.dispatchEvent(new Event('input'));
+                                        } else {
+                                            inputKilos.value = '';
+                                        }
+                                    });
+
+                                    // B. Escribe Kilos -> Calcula Unidades
+                                    inputKilos.addEventListener('input', function () {
+                                        const k = parseFloat(this.value);
+                                        if (!isNaN(k)) {
+                                            inputUnidades.value = Math.round(k / factor);
+                                        } else {
+                                            inputUnidades.value = '';
+                                        }
+                                    });
+                                }
+                            }
+                        }, 500); // Pequeño delay para asegurar que el DOM cargó
+
                         // Insertar después del botón de finalizar producción
                         if (btnFinalizarProduccion && btnFinalizarProduccion.parentElement) {
                             btnFinalizarProduccion.parentElement.insertBefore(kilosProducidosContainer, btnFinalizarProduccion.nextSibling);
                             console.log('✅ Campo de kilos producidos creado e insertado en el DOM');
                         }
-                        
+
                         // 🎯 AGREGAR EVENT LISTENER para cálculo dinámico de merma
                         const inputKilos = document.getElementById('kilos-producidos');
                         if (inputKilos) {
@@ -148,7 +194,7 @@ export async function actualizarVisibilidadBotones() {
                         // Si ya existe, solo mostrarlo
                         kilosProducidosContainer.style.display = 'block';
                         console.log('✅ Campo de kilos producidos mostrado (ya existía)');
-                        
+
                         // ⚠️ NO CLONAR - Solo verificar que el panel exista
                         const panelMerma = document.getElementById('calculo-merma');
                         if (!panelMerma) {
@@ -168,7 +214,7 @@ export async function actualizarVisibilidadBotones() {
                         kilosProducidosContainer.style.display = 'none';
                     }
                 }
-                
+
                 // ✅ NUEVA FUNCIONALIDAD: Activar transición visual para carros externos
                 if (data.tipo_carro === 'externa' && data.fase_actual === 'articulos_secundarios') {
                     console.log('🔄 Activando modo artículos secundarios para carro externo');
@@ -182,7 +228,7 @@ export async function actualizarVisibilidadBotones() {
                 if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
                 if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
                 if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
-                
+
                 // 🏭 Botón "Imprimir Etiquetas" SOLO para carros internos
                 if (btnImprimirEtiquetas) {
                     if (data.tipo_carro === 'interna') {
@@ -193,7 +239,7 @@ export async function actualizarVisibilidadBotones() {
                         console.log('🚚 Botón "Imprimir Etiquetas" ocultado para carro externo');
                     }
                 }
-                
+
                 // 📦 Mostrar botón de guardado de ingredientes solo para carros internos
                 if (btnGuardadoIngredientes) {
                     if (data.tipo_carro === 'interna') {
@@ -233,36 +279,36 @@ export async function actualizarVisibilidadBotones() {
 async function activarModoArticulosSecundarios() {
     try {
         console.log('🔄 Iniciando transición a modo artículos secundarios');
-        
+
         // 1. Atenuar artículos padres visualmente
         const articulosPadres = document.querySelectorAll('.articulo-container');
         articulosPadres.forEach(articulo => {
             articulo.classList.add('segundo-plano');
         });
         console.log(`✅ ${articulosPadres.length} artículos padres atenuados`);
-        
+
         // 2. Minimizar informes de ingredientes padres
         const resumenIngredientes = document.getElementById('resumen-ingredientes');
         const resumenMixes = document.getElementById('resumen-mixes');
-        
+
         if (resumenIngredientes) {
             resumenIngredientes.classList.add('minimizado');
             console.log('✅ Resumen de ingredientes minimizado');
         }
-        
+
         if (resumenMixes) {
             resumenMixes.classList.add('minimizado');
             console.log('✅ Resumen de mixes minimizado');
         }
-        
+
         // 3. Activar sección de artículos secundarios
         await mostrarArticulosSecundariosEditables();
-        
+
         // 4. Mostrar informes de ingredientes vinculados
         await mostrarInformesIngredientesVinculados();
-        
+
         console.log('✅ Transición a modo artículos secundarios completada');
-        
+
     } catch (error) {
         console.error('❌ Error en transición a modo artículos secundarios:', error);
     }
@@ -275,44 +321,44 @@ async function mostrarArticulosSecundariosEditables() {
     try {
         const carroId = localStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
-        
+
         if (!carroId || !colaboradorData) {
             console.warn('⚠️ No hay carro activo o colaborador para mostrar artículos secundarios');
             return;
         }
-        
+
         const colaborador = JSON.parse(colaboradorData);
-        
+
         // Obtener artículos vinculados del carro
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
-        
+
         if (!response.ok) {
             console.warn('⚠️ No se pudieron obtener artículos vinculados');
             return;
         }
-        
+
         const articulosVinculados = await response.json();
         console.log(`🔗 Artículos vinculados encontrados: ${articulosVinculados.length}`);
-        
+
         if (articulosVinculados.length === 0) {
             console.log('ℹ️ No hay artículos vinculados para mostrar');
             return;
         }
-        
+
         // Crear o actualizar sección de artículos secundarios
         let seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
         if (!seccionSecundarios) {
             seccionSecundarios = document.createElement('div');
             seccionSecundarios.id = 'seccion-articulos-secundarios';
             seccionSecundarios.className = 'seccion-articulos-secundarios';
-            
+
             // Insertar después de la sección de artículos principales
             const listaArticulos = document.getElementById('lista-articulos');
             if (listaArticulos && listaArticulos.parentNode) {
                 listaArticulos.parentNode.insertBefore(seccionSecundarios, listaArticulos.nextSibling);
             }
         }
-        
+
         // Generar HTML para artículos secundarios editables
         let html = `
             <div class="header-articulos-secundarios">
@@ -321,11 +367,11 @@ async function mostrarArticulosSecundariosEditables() {
             </div>
             <div class="lista-articulos-secundarios">
         `;
-        
+
         articulosVinculados.forEach(vinculo => {
             const multiplicador = vinculo.multiplicador_ingredientes || 1;
             const multiplicadorTexto = multiplicador === 1 ? '' : ` (×${multiplicador})`;
-            
+
             html += `
                 <div class="articulo-secundario-editable" data-relacion-id="${vinculo.id}">
                     <div class="articulo-info">
@@ -350,15 +396,15 @@ async function mostrarArticulosSecundariosEditables() {
                 </div>
             `;
         });
-        
+
         html += `</div>`;
-        
+
         seccionSecundarios.innerHTML = html;
         seccionSecundarios.style.display = 'block';
         seccionSecundarios.classList.add('activa');
-        
+
         console.log('✅ Sección de artículos secundarios activada');
-        
+
     } catch (error) {
         console.error('❌ Error al mostrar artículos secundarios:', error);
     }
@@ -371,39 +417,39 @@ async function mostrarInformesIngredientesVinculados() {
     try {
         const carroId = localStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
-        
+
         if (!carroId || !colaboradorData) {
             console.warn('⚠️ No hay carro activo o colaborador para mostrar informes vinculados');
             return;
         }
-        
+
         const colaborador = JSON.parse(colaboradorData);
-        
+
         // Obtener ingredientes de artículos vinculados
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${colaborador.id}`);
-        
+
         if (!response.ok) {
             console.warn('⚠️ No se pudieron obtener ingredientes vinculados');
             return;
         }
-        
+
         const ingredientesVinculados = await response.json();
         console.log(`🔗 Ingredientes vinculados encontrados: ${ingredientesVinculados.length}`);
-        
+
         // Crear o actualizar sección de informes vinculados
         let seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
         if (!seccionInformesVinculados) {
             seccionInformesVinculados = document.createElement('div');
             seccionInformesVinculados.id = 'resumen-ingredientes-vinculados';
             seccionInformesVinculados.className = 'seccion-resumen';
-            
+
             // Insertar en el área derecha después de los informes principales
             const workspaceRight = document.querySelector('.workspace-right');
             if (workspaceRight) {
                 workspaceRight.appendChild(seccionInformesVinculados);
             }
         }
-        
+
         // Generar HTML para el informe
         let html = `
             <h3>🔗 Ingredientes de Artículos Vinculados</h3>
@@ -411,7 +457,7 @@ async function mostrarInformesIngredientesVinculados() {
                 <p>Estos ingredientes corresponden a los artículos vinculados y se obtienen del stock general de producción.</p>
             </div>
         `;
-        
+
         if (ingredientesVinculados.length === 0) {
             html += '<p>No hay ingredientes vinculados para mostrar</p>';
         } else {
@@ -428,37 +474,37 @@ async function mostrarInformesIngredientesVinculados() {
                     </thead>
                     <tbody>
             `;
-            
+
             ingredientesVinculados.forEach(ing => {
                 // Validación robusta para evitar errores con .toFixed()
                 const stockActualRaw = ing.stock_actual;
                 const cantidadNecesariaRaw = ing.cantidad;
-                
+
                 // Convertir a números de forma segura
                 let stockActual = 0;
                 let cantidadNecesaria = 0;
-                
+
                 if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
                     const stockParsed = parseFloat(stockActualRaw);
                     stockActual = isNaN(stockParsed) ? 0 : stockParsed;
                 }
-                
+
                 if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
                     const cantidadParsed = parseFloat(cantidadNecesariaRaw);
                     cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
                 }
-                
+
                 const diferencia = stockActual - cantidadNecesaria;
                 const tieneStock = diferencia >= -0.01;
                 const faltante = tieneStock ? 0 : Math.abs(diferencia);
-                
+
                 let indicadorEstado = '';
                 if (tieneStock) {
                     indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
                 } else {
                     indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
                 }
-                
+
                 html += `
                     <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'} ingrediente-vinculado">
                         <td>${ing.nombre || 'Sin nombre'}</td>
@@ -469,19 +515,19 @@ async function mostrarInformesIngredientesVinculados() {
                     </tr>
                 `;
             });
-            
+
             html += `
                     </tbody>
                 </table>
             `;
         }
-        
+
         seccionInformesVinculados.innerHTML = html;
         seccionInformesVinculados.style.display = 'block';
         seccionInformesVinculados.classList.add('activa');
-        
+
         console.log('✅ Informes de ingredientes vinculados activados');
-        
+
     } catch (error) {
         console.error('❌ Error al mostrar informes vinculados:', error);
     }
@@ -490,7 +536,7 @@ async function mostrarInformesIngredientesVinculados() {
 // Función para marcar un carro como preparado
 export async function marcarCarroPreparado(carroId) {
 
-    
+
     if (!carroId) {
         console.error('No hay carro seleccionado');
         return;
@@ -507,11 +553,11 @@ export async function marcarCarroPreparado(carroId) {
 
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
-        
+
         if (!colaborador || !colaborador.id) {
             throw new Error('No se encontró información del colaborador activo');
         }
-        
+
         const response = await fetch(`/api/produccion/carro/${carroId}/preparado`, {
             method: 'POST',
             headers: {
@@ -529,13 +575,13 @@ export async function marcarCarroPreparado(carroId) {
 
         // Mostrar notificación de éxito
         mostrarNotificacion('Carro marcado como preparado exitosamente');
-        
+
         console.log('🔄 [PREPARADO] Iniciando actualización completa de la UI...');
-        
+
         // 1. Actualizar la visibilidad de los botones (esto crea el campo de kilos)
         await actualizarVisibilidadBotones();
         console.log('✅ [PREPARADO] Botones actualizados');
-        
+
         // 2. Actualizar el estado del carro en la lista
         if (window.actualizarEstadoCarro) {
             await window.actualizarEstadoCarro();
@@ -544,21 +590,21 @@ export async function marcarCarroPreparado(carroId) {
 
         // 3. 🔄 FORZAR RECARGA COMPLETA del panel derecho
         console.log('🔄 [PREPARADO] Forzando recarga completa del panel derecho...');
-        
+
         // Obtener y mostrar ingredientes
         if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
             const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await window.mostrarResumenIngredientes(ingredientes);
             console.log('✅ [PREPARADO] Resumen de ingredientes actualizado');
         }
-        
+
         // Obtener y mostrar mixes
         if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
             const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
             window.mostrarResumenMixes(mixes);
             console.log('✅ [PREPARADO] Resumen de mixes actualizado');
         }
-        
+
         // Obtener y mostrar artículos externos (si aplica)
         if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
             const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
@@ -571,7 +617,7 @@ export async function marcarCarroPreparado(carroId) {
                 console.log('✅ [PREPARADO] Resumen de artículos externos actualizado');
             }
         }
-        
+
         console.log('✅ [PREPARADO] Actualización completa de UI finalizada');
 
     } catch (error) {
@@ -585,7 +631,7 @@ export async function marcarCarroPreparado(carroId) {
 
 // Función para finalizar la producción de un carro
 export async function finalizarProduccion(carroId) {
-    
+
     if (!carroId) {
         console.error('No hay carro seleccionado');
         return;
@@ -610,31 +656,31 @@ export async function finalizarProduccion(carroId) {
         // 🔍 OBTENER TIPO DE CARRO ANTES DE VALIDAR KILOS PRODUCIDOS
         console.log('🔍 Obteniendo tipo de carro antes de validar kilos producidos...');
         const estadoResponse = await fetch(`/api/produccion/carro/${carroId}/estado`);
-        
+
         if (!estadoResponse.ok) {
             throw new Error('No se pudo obtener el estado del carro');
         }
-        
+
         const estadoCarro = await estadoResponse.json();
         const tipoCarro = estadoCarro.tipo_carro || 'interna';
-        
+
         console.log(`🔍 Tipo de carro detectado: ${tipoCarro}`);
 
         // Obtener kilos producidos del input (SOLO para carros externos)
         let kilosProducidos = null;
         const kilosProducidosInput = document.getElementById('kilos-producidos');
-        
+
         console.log('🔍 Estado del input kilos-producidos:', {
             existe: !!kilosProducidosInput,
             display: kilosProducidosInput?.style.display,
             valor: kilosProducidosInput?.value,
             tipoCarro: tipoCarro
         });
-        
+
         // ✅ VALIDACIÓN CORREGIDA: Solo validar si es carro externo
         if (tipoCarro === 'externa') {
             console.log('🚚 Carro externo: validando kilos producidos...');
-            
+
             if (kilosProducidosInput && kilosProducidosInput.style.display !== 'none') {
                 const kilosProducidosStr = kilosProducidosInput.value;
                 kilosProducidos = parseFloat(kilosProducidosStr);
@@ -642,7 +688,7 @@ export async function finalizarProduccion(carroId) {
                 if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
                     throw new Error('Debe ingresar un valor numérico válido para kilos producidos mayor a cero.');
                 }
-                
+
                 console.log(`✅ Kilos producidos validados: ${kilosProducidos}`);
             } else {
                 throw new Error('Para carros de producción externa es obligatorio ingresar los kilos producidos.');
@@ -674,7 +720,7 @@ export async function finalizarProduccion(carroId) {
         mostrarNotificacion('Producción finalizada exitosamente');
 
         console.log('🔄 [FINALIZADO] Iniciando actualización completa de la UI...');
-        
+
         // 1. Actualizar la visibilidad de los botones
         await actualizarVisibilidadBotones();
         console.log('✅ [FINALIZADO] Botones actualizados');
@@ -687,21 +733,21 @@ export async function finalizarProduccion(carroId) {
 
         // 3. 🔄 FORZAR RECARGA COMPLETA del panel derecho
         console.log('🔄 [FINALIZADO] Forzando recarga completa del panel derecho...');
-        
+
         // Obtener y mostrar ingredientes
         if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
             const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await window.mostrarResumenIngredientes(ingredientes);
             console.log('✅ [FINALIZADO] Resumen de ingredientes actualizado');
         }
-        
+
         // Obtener y mostrar mixes
         if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
             const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
             window.mostrarResumenMixes(mixes);
             console.log('✅ [FINALIZADO] Resumen de mixes actualizado');
         }
-        
+
         // Obtener y mostrar artículos externos (si aplica)
         if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
             const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
@@ -714,7 +760,7 @@ export async function finalizarProduccion(carroId) {
                 console.log('✅ [FINALIZADO] Resumen de artículos externos actualizado');
             }
         }
-        
+
         console.log('✅ [FINALIZADO] Actualización completa de UI finalizada');
 
     } catch (error) {
@@ -761,7 +807,7 @@ export async function imprimirEtiquetasCarro(carroId) {
 
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
-        
+
         if (!colaborador || !colaborador.id) {
             throw new Error('No se encontró información del colaborador activo');
         }
@@ -836,48 +882,48 @@ async function calcularMermaProduccion(carroId) {
     console.log('🚀 [MERMA] FUNCIÓN calcularMermaProduccion INICIADA');
     console.log('🚀 [MERMA] Carro ID:', carroId);
     console.log('🚀 [MERMA] ========================================');
-    
+
     try {
         // PASO 1: Verificar elementos del DOM
         console.log('🔍 [MERMA-PASO-1] Buscando elementos del DOM...');
         const inputKilos = document.getElementById('kilos-producidos');
         const calculoMerma = document.getElementById('calculo-merma');
-        
+
         console.log('🔍 [MERMA-PASO-1] Input encontrado:', !!inputKilos);
         console.log('🔍 [MERMA-PASO-1] Panel encontrado:', !!calculoMerma);
-        
+
         if (!inputKilos || !calculoMerma) {
             console.error('❌ [MERMA-PASO-1] FALLO: Elementos del DOM no encontrados');
             return;
         }
-        
+
         // PASO 2: Obtener valor del input
         console.log('🔍 [MERMA-PASO-2] Obteniendo valor del input...');
         const valorInput = inputKilos.value;
         console.log('🔍 [MERMA-PASO-2] Valor raw del input:', valorInput);
-        
+
         const kilosProducidos = parseFloat(valorInput);
         console.log('🔍 [MERMA-PASO-2] Valor parseado:', kilosProducidos);
         console.log('🔍 [MERMA-PASO-2] Es NaN?:', isNaN(kilosProducidos));
         console.log('🔍 [MERMA-PASO-2] Es <= 0?:', kilosProducidos <= 0);
-        
+
         // Si no hay valor válido, ocultar el cálculo
         if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
             console.log('⚠️ [MERMA-PASO-2] Valor inválido, ocultando panel');
             calculoMerma.style.display = 'none';
             return;
         }
-        
+
         console.log('✅ [MERMA-PASO-2] Valor válido, continuando...');
-        
+
         // PASO 3: Obtener colaborador
         console.log('🔍 [MERMA-PASO-3] Obteniendo colaborador...');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         console.log('🔍 [MERMA-PASO-3] Colaborador data:', colaboradorData);
-        
+
         const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
         console.log('🔍 [MERMA-PASO-3] Colaborador parseado:', colaborador);
-        
+
         if (!colaborador) {
             console.error('❌ [MERMA-PASO-3] FALLO: No hay colaborador activo');
             // ⚠️ MOSTRAR PANEL AUNQUE FALLE
@@ -888,45 +934,45 @@ async function calcularMermaProduccion(carroId) {
             document.getElementById('porcentaje-reduccion').textContent = 'N/A';
             return;
         }
-        
+
         console.log('✅ [MERMA-PASO-3] Colaborador OK, ID:', colaborador.id);
-        
+
         // PASO 4: Obtener peso del artículo base (INSUMOS A RETIRAR)
         console.log('🔍 [MERMA-PASO-4] Obteniendo peso artículo base (insumos a retirar)...');
         let pesoArticuloBase = 0;
-        
+
         try {
             // 🎯 ESTRATEGIA: Consultar stock_real_consolidado.kilos_unidad directamente
             console.log('🔍 [MERMA-PASO-4] Consultando kilos_unidad desde stock_real_consolidado...');
-            
+
             // Primero obtener los códigos de artículos del carro
             const tablaArticulos = document.querySelector('#resumen-articulos table tbody');
-            
+
             if (tablaArticulos) {
                 const filas = tablaArticulos.querySelectorAll('tr');
                 console.log('🔍 [MERMA-PASO-4] Artículos en tabla:', filas.length);
-                
+
                 for (const fila of filas) {
                     const celdas = fila.querySelectorAll('td');
                     if (celdas.length >= 1) {
                         const codigo = celdas[0]?.textContent.trim();
                         console.log(`🔍 [MERMA-PASO-4] Consultando kilos_unidad para: ${codigo}`);
-                        
+
                         // 🔧 CODIFICAR URL para manejar caracteres especiales como /
                         const codigoCodificado = encodeURIComponent(codigo);
                         const stockResponse = await fetch(`http://localhost:3002/api/produccion/stock/${codigoCodificado}`);
-                        
+
                         console.log(`🔍 [MERMA-PASO-4] URL: http://localhost:3002/api/produccion/stock/${codigoCodificado}`);
                         console.log(`🔍 [MERMA-PASO-4] Response status: ${stockResponse.status}`);
-                        
+
                         if (stockResponse.ok) {
                             const stockData = await stockResponse.json();
                             const kilosUnidad = parseFloat(stockData.kilos_unidad || 0);
-                            
+
                             console.log(`✅ [MERMA-PASO-4] ${codigo}:`);
                             console.log(`   - kilos_unidad: ${kilosUnidad} kg`);
                             console.log(`   - stock_consolidado: ${stockData.stock_consolidado} kg`);
-                            
+
                             pesoArticuloBase += kilosUnidad;
                         } else {
                             console.warn(`⚠️ [MERMA-PASO-4] Error ${stockResponse.status} para ${codigo}`);
@@ -940,57 +986,57 @@ async function calcularMermaProduccion(carroId) {
                         }
                     }
                 }
-                
+
                 console.log(`✅ [MERMA-PASO-4] Peso total desde stock_real_consolidado: ${pesoArticuloBase} kg`);
             } else {
                 console.warn('⚠️ [MERMA-PASO-4] No se encontró tabla de artículos externos');
             }
-            
+
             console.log(`✅ [MERMA-PASO-4] Peso total artículos base: ${pesoArticuloBase} kg`);
-            
+
         } catch (error) {
             console.error('❌ [MERMA-PASO-4] ERROR:', error);
             console.error('❌ [MERMA-PASO-4] Stack:', error.stack);
             // Continuar con peso 0
         }
-        
+
         // PASO 5: Obtener peso de ingredientes
         console.log('🔍 [MERMA-PASO-5] Obteniendo ingredientes personales...');
         let pesoIngredientes = 0;
-        
+
         try {
             const urlIngredientes = `http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}`;
             console.log('🔍 [MERMA-PASO-5] URL ingredientes:', urlIngredientes);
-            
+
             const ingredientesResponse = await fetch(urlIngredientes);
             console.log('🔍 [MERMA-PASO-5] Response status:', ingredientesResponse.status);
-            
+
             if (ingredientesResponse.ok) {
                 const ingredientes = await ingredientesResponse.json();
                 console.log('🔍 [MERMA-PASO-5] Total ingredientes:', ingredientes.length);
-                
+
                 const ingredientesPersonales = ingredientes.filter(ing => !ing.es_de_articulo_vinculado);
                 console.log('🔍 [MERMA-PASO-5] Ingredientes personales:', ingredientesPersonales.length);
-                
+
                 pesoIngredientes = ingredientesPersonales.reduce((sum, ing) => {
                     const peso = parseFloat(ing.cantidad || 0);
                     console.log(`   - ${ing.nombre}: ${peso} kg`);
                     return sum + peso;
                 }, 0);
-                
+
                 console.log(`✅ [MERMA-PASO-5] Peso total ingredientes: ${pesoIngredientes} kg`);
             }
         } catch (error) {
             console.error('❌ [MERMA-PASO-5] ERROR:', error);
             // Continuar con peso 0
         }
-        
+
         // PASO 6: Calcular totales
         console.log('🔍 [MERMA-PASO-6] Calculando totales...');
         const totalCrudo = pesoArticuloBase + pesoIngredientes;
         const diferenciaPeso = kilosProducidos - totalCrudo;
         const porcentajeReduccion = totalCrudo > 0 ? (Math.abs(diferenciaPeso) / totalCrudo) * 100 : 0;
-        
+
         console.log('📊 [MERMA-PASO-6] RESULTADOS:');
         console.log(`   - Peso artículos base: ${pesoArticuloBase} kg`);
         console.log(`   - Peso ingredientes: ${pesoIngredientes} kg`);
@@ -998,33 +1044,33 @@ async function calcularMermaProduccion(carroId) {
         console.log(`   - Kilos producidos: ${kilosProducidos} kg`);
         console.log(`   - Diferencia: ${diferenciaPeso} kg`);
         console.log(`   - % Reducción: ${porcentajeReduccion}%`);
-        
+
         // PASO 7: Actualizar UI (SIEMPRE)
         console.log('🔍 [MERMA-PASO-7] Actualizando UI...');
-        
+
         document.getElementById('total-crudo').textContent = `${totalCrudo.toFixed(2)} kg`;
         document.getElementById('kilos-final').textContent = `${kilosProducidos.toFixed(2)} kg`;
-        
+
         const spanDiferencia = document.getElementById('diferencia-peso');
         spanDiferencia.textContent = `${diferenciaPeso.toFixed(2)} kg`;
         spanDiferencia.style.color = diferenciaPeso < 0 ? '#dc3545' : '#28a745';
-        
+
         const spanPorcentaje = document.getElementById('porcentaje-reduccion');
         spanPorcentaje.textContent = `${porcentajeReduccion.toFixed(2)}%`;
         spanPorcentaje.style.color = porcentajeReduccion > 15 ? '#dc3545' : porcentajeReduccion > 10 ? '#ffc107' : '#28a745';
-        
+
         // ⚠️ FORZAR VISUALIZACIÓN DEL PANEL
         calculoMerma.style.display = 'block';
         console.log('✅ [MERMA-PASO-7] Panel mostrado con display: block');
-        
+
         console.log('🎉 [MERMA] ========================================');
         console.log('🎉 [MERMA] CÁLCULO COMPLETADO EXITOSAMENTE');
         console.log('🎉 [MERMA] ========================================');
-        
+
     } catch (error) {
         console.error('💥 [MERMA] ERROR CRÍTICO EN FUNCIÓN:', error);
         console.error('💥 [MERMA] Stack trace:', error.stack);
-        
+
         // ⚠️ INCLUSO EN ERROR, MOSTRAR ALGO
         try {
             const calculoMerma = document.getElementById('calculo-merma');

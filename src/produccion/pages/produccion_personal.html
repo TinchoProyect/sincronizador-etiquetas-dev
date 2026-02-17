@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -184,6 +185,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <!-- Nueva Topbar Minimalista -->
@@ -204,7 +206,7 @@
         <main>
             <div class="workspace-content" id="workspace-container">
                 <div class="workspace-left">
-                    
+
                     <!-- Sección de artículos del carro activo -->
                     <div id="lista-articulos" class="seccion-articulos">
                         <p>No hay carro activo</p>
@@ -213,36 +215,73 @@
                     <!-- Sección de carros disponibles -->
                     <div class="seccion-carros">
                         <div class="workspace-actions">
-                            <button id="carro-preparado" class="btn btn-success" style="display: none;" onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">
+                            <button id="carro-preparado" class="btn btn-success" style="display: none;"
+                                onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">
                                 Carro listo para producir
                             </button>
-                            
-                            <button id="imprimir-orden-produccion" class="btn btn-info" style="display: none;" onclick="imprimirOrdenProduccion()">📄 Imprimir orden de producción</button>
-                            
+
+                            <button id="imprimir-orden-produccion" class="btn btn-info" style="display: none;"
+                                onclick="imprimirOrdenProduccion()">📄 Imprimir orden de producción</button>
+
                             <!-- Campo para kilos producidos (solo para carros de producción externa) -->
-                            <div id="kilos-producidos-container" class="kilos-producidos-section" style="display: none;">
-                                <label for="kilos-producidos">Kilos producidos:</label>
-                                <input type="number" id="kilos-producidos" min="0.01" step="0.01" placeholder="Ingrese kilos producidos" required>
-                                <small class="help-text">Ingrese la cantidad real de kilos producidos</small>
+                            <div id="kilos-producidos-container" class="kilos-producidos-section"
+                                style="display: none;">
+
+                                <div class="inputs-produccion-wrapper"
+                                    style="display: flex; gap: 15px; align-items: flex-start;">
+
+                                    <div class="input-group-produccion" style="flex: 1;">
+                                        <label for="kilos-producidos"
+                                            style="display: block; margin-bottom: 5px; font-weight: 500;">Kilos
+                                            producidos:</label>
+                                        <input type="number" id="kilos-producidos" min="0.01" step="0.01"
+                                            placeholder="Ej: 4.8" required
+                                            style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                                    </div>
+
+                                    <div id="container-unidades-helper" class="input-group-produccion"
+                                        style="display: none; flex: 1; border-left: 1px solid #ccc; padding-left: 15px;">
+                                        <label for="unidades-producidas"
+                                            style="color: #007bff; display: block; margin-bottom: 5px; font-weight: 500;">O
+                                            cantidad de unidades:</label>
+                                        <input type="number" id="unidades-producidas" min="1" step="1"
+                                            placeholder="Ej: 96"
+                                            style="width: 100%; padding: 8px; border: 1px solid #007bff; border-radius: 4px;">
+                                        <small class="conversion-badge" id="factor-conversion-texto"
+                                            style="color: #666; font-size: 0.8em; display:block; margin-top:5px;">
+                                            1 unidad = 0.05 kg
+                                        </small>
+                                    </div>
+
+                                </div>
+
+                                <small class="help-text"
+                                    style="display: block; margin-top: 5px; color: #6c757d;">Ingrese la cantidad real
+                                    producida. El sistema convertirá automáticamente.</small>
                             </div>
-                            
-                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;" onclick="asentarProduccion(localStorage.getItem('carroActivo'))">
+
+                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;"
+                                onclick="asentarProduccion(localStorage.getItem('carroActivo'))">
                                 Asentar producción
                             </button>
-                            
-                            <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;" onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir etiquetas</button>
-                            
-                            <button id="guardado-ingredientes" class="btn btn-success" style="display: none;" onclick="abrirModalGuardadoIngredientes(localStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦 Guardado de ingredientes</button>
+
+                            <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;"
+                                onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir
+                                etiquetas</button>
+
+                            <button id="guardado-ingredientes" class="btn btn-success" style="display: none;"
+                                onclick="abrirModalGuardadoIngredientes(localStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦
+                                Guardado de ingredientes</button>
                         </div>
                         <div id="carro-actual" class="carro-info">
                             <p>No hay carro activo</p>
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Divisor Vertical Ajustable -->
                 <div id="resizer" class="resizer"></div>
-                
+
                 <div class="workspace-right">
                     <!-- Sección de resumen de ingredientes (Acordeón - Desplegado por defecto) -->
                     <div id="resumen-ingredientes" class="seccion-resumen">
@@ -287,24 +326,22 @@
         <div class="modal-content">
             <span class="close-modal">&times;</span>
             <h2>Seleccionar artículos producción interna</h2>
-            
+
             <!-- Toolbar Compacto -->
             <div class="modal-toolbar">
                 <!-- Fila principal de controles -->
                 <div class="toolbar-row">
                     <!-- Búsqueda Inteligente (elemento principal) -->
                     <div class="toolbar-search-main">
-                        <input type="text" id="busqueda-inteligente" 
-                               placeholder="🔍 Buscar artículo (ej: mix fruto seco)..." 
-                               autocomplete="off">
+                        <input type="text" id="busqueda-inteligente"
+                            placeholder="🔍 Buscar artículo (ej: mix fruto seco)..." autocomplete="off">
                     </div>
-                    
+
                     <!-- Código de Barras -->
                     <div class="toolbar-barcode">
-                        <input type="text" id="codigo-barras" 
-                               placeholder="📷 Código de barras">
+                        <input type="text" id="codigo-barras" placeholder="📷 Código de barras">
                     </div>
-                    
+
                     <!-- Checkbox de filtro -->
                     <div class="toolbar-checkbox">
                         <label for="filtroProduccionSwitch">
@@ -312,13 +349,11 @@
                             <span>Solo producción</span>
                         </label>
                     </div>
-                    
+
                     <!-- Botón de acción -->
                     <div class="toolbar-action">
-                        <button id="btn-agregar-multiples" 
-                                class="btn-agregar-toolbar modal-articulos-interna-multiple" 
-                                style="display: none;" 
-                                onclick="agregarMultiplesAlCarroInterno()">
+                        <button id="btn-agregar-multiples" class="btn-agregar-toolbar modal-articulos-interna-multiple"
+                            style="display: none;" onclick="agregarMultiplesAlCarroInterno()">
                             ➕ Agregar al carro
                         </button>
                     </div>
@@ -358,7 +393,8 @@
                 </div>
                 <div class="form-group">
                     <label for="descripcion_receta">Descripción de la Receta:</label>
-                    <textarea id="descripcion_receta" rows="4" placeholder="Ingrese una descripción opcional..."></textarea>
+                    <textarea id="descripcion_receta" rows="4"
+                        placeholder="Ingrese una descripción opcional..."></textarea>
                 </div>
                 <!-- Sección de Ingredientes -->
                 <div class="form-group ingredientes-container">
@@ -376,7 +412,8 @@
                         </div>
                         <div id="cantidad-container" class="cantidad-wrapper" style="display: none;">
                             <label for="input-cantidad-ingrediente">Cantidad:</label>
-                            <input type="number" id="input-cantidad-ingrediente" min="0.0000000001" step="0.0000000001" required>
+                            <input type="number" id="input-cantidad-ingrediente" min="0.0000000001" step="0.0000000001"
+                                required>
                         </div>
                     </div>
                 </div>
@@ -385,7 +422,7 @@
                         Agregar Ingrediente
                     </button>
                 </div>
-                
+
                 <div id="contenedor-ingredientes">
                     <table id="tabla-ingredientes">
                         <thead>
@@ -421,7 +458,7 @@
                         Agregar Artículo
                     </button>
                 </div>
-                
+
                 <div id="contenedor-articulos" style="display: none;">
                     <table id="tabla-articulos-receta">
                         <thead>
@@ -464,7 +501,8 @@
                 </div>
                 <div class="form-group">
                     <label for="categoria-ingrediente">Categoría:</label>
-                    <input type="text" id="categoria-ingrediente" placeholder="Ej: semillas, harinas, frutos secos..." required>
+                    <input type="text" id="categoria-ingrediente" placeholder="Ej: semillas, harinas, frutos secos..."
+                        required>
                 </div>
                 <div class="form-group">
                     <label for="stock-ingrediente">Stock actual:</label>
@@ -472,56 +510,59 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="btn-cancelar-ingrediente">Cancelar</button>
-                    <button type="button" class="btn btn-success" id="btn-guardar-ingrediente">Guardar ingrediente</button>
+                    <button type="button" class="btn btn-success" id="btn-guardar-ingrediente">Guardar
+                        ingrediente</button>
                 </div>
             </form>
         </div>
     </div>
     <!-- Modal para ingreso manual de stock -->
-<div id="modalIngresoManual" class="modal">
-  <div class="modal-content">
-    <!-- Header -->
-    <div class="modal-header">
-      <h2 class="modal-title">Ingreso Manual de Ingredientes</h2>
-      <button class="close-modal" aria-label="Cerrar" title="Cerrar modal">&times;</button>
-    </div>
+    <div id="modalIngresoManual" class="modal">
+        <div class="modal-content">
+            <!-- Header -->
+            <div class="modal-header">
+                <h2 class="modal-title">Ingreso Manual de Ingredientes</h2>
+                <button class="close-modal" aria-label="Cerrar" title="Cerrar modal">&times;</button>
+            </div>
 
-    <!-- Body -->
-    <div class="modal-body">
-      <p class="nombre-ingrediente"></p>
-      <div class="tipo-ingrediente-info"></div>
+            <!-- Body -->
+            <div class="modal-body">
+                <p class="nombre-ingrediente"></p>
+                <div class="tipo-ingrediente-info"></div>
 
-      <!-- 🆕 Panel de Artículos Sugeridos -->
-      <div class="articulos-sugeridos-container" id="articulos-sugeridos-container" style="display: none;">
-        <p class="articulos-sugeridos-titulo">⚡ Selección Rápida</p>
-        <div class="articulos-sugeridos-grid" id="articulos-sugeridos-grid">
-          <!-- Los artículos sugeridos se cargarán dinámicamente aquí -->
+                <!-- 🆕 Panel de Artículos Sugeridos -->
+                <div class="articulos-sugeridos-container" id="articulos-sugeridos-container" style="display: none;">
+                    <p class="articulos-sugeridos-titulo">⚡ Selección Rápida</p>
+                    <div class="articulos-sugeridos-grid" id="articulos-sugeridos-grid">
+                        <!-- Los artículos sugeridos se cargarán dinámicamente aquí -->
+                    </div>
+                </div>
+
+                <div class="busqueda-container">
+                    <input type="text" id="busquedaArticulo" placeholder="Escanear código de barras..."
+                        autocomplete="off" />
+                    <button id="btnToggleBusqueda" class="btn-toggle-busqueda">🔍 Buscar por Nombre</button>
+                </div>
+
+                <ul id="listaArticulos" class="lista-articulos"></ul>
+
+                <label for="inputKilos">Kilos:</label>
+                <input type="number" id="inputKilos" min="0.01" step="0.01" placeholder="Cantidad en kilos" />
+
+                <label for="inputCantidad">Cantidad de artículos:</label>
+                <input type="number" id="inputCantidad" min="1" step="0.1" value="1"
+                    placeholder="Cantidad de unidades" />
+            </div>
+
+            <!-- Footer -->
+            <div class="modal-footer">
+                <div class="botones-modal">
+                    <button id="btnConfirmarIngreso" class="btn btn-success">Confirmar</button>
+                    <button id="btnCancelarIngreso" class="btn btn-secondary close-modal">Cancelar</button>
+                </div>
+            </div>
         </div>
-      </div>
-
-      <div class="busqueda-container">
-        <input type="text" id="busquedaArticulo" placeholder="Escanear código de barras..." autocomplete="off" />
-        <button id="btnToggleBusqueda" class="btn-toggle-busqueda">🔍 Buscar por Nombre</button>
-      </div>
-
-      <ul id="listaArticulos" class="lista-articulos"></ul>
-
-      <label for="inputKilos">Kilos:</label>
-      <input type="number" id="inputKilos" min="0.01" step="0.01" placeholder="Cantidad en kilos" />
-
-      <label for="inputCantidad">Cantidad de artículos:</label>
-      <input type="number" id="inputCantidad" min="1" step="0.1" value="1" placeholder="Cantidad de unidades" />
     </div>
-
-    <!-- Footer -->
-    <div class="modal-footer">
-      <div class="botones-modal">
-        <button id="btnConfirmarIngreso" class="btn btn-success">Confirmar</button>
-        <button id="btnCancelarIngreso" class="btn btn-secondary close-modal">Cancelar</button>
-      </div>
-    </div>
-  </div>
-</div>
 
     <!-- Modal para editar composición de mix -->
     <div id="modal-mix" class="modal">
@@ -530,28 +571,18 @@
                 <h5 id="modal-mix-titulo">Composición del Mix</h5>
                 <span class="close-modal">&times;</span>
             </div>
-            
+
             <!-- Sección de agregar ingrediente (compacta en una línea) -->
             <div class="agregar-ingrediente-row">
                 <div class="input-ingrediente-wrapper">
-                    <input 
-                        type="text" 
-                        id="buscar-ingrediente-mix" 
-                        placeholder="Buscar ingrediente..."
-                        autocomplete="off"
-                    >
+                    <input type="text" id="buscar-ingrediente-mix" placeholder="Buscar ingrediente..."
+                        autocomplete="off">
                     <ul id="lista-resultados-mix" class="lista-resultados-mix"></ul>
                 </div>
-                <input 
-                    type="number" 
-                    id="cantidad-ingrediente-mix" 
-                    placeholder="Kg"
-                    step="0.001" 
-                    min="0.001"
-                >
+                <input type="number" id="cantidad-ingrediente-mix" placeholder="Kg" step="0.001" min="0.001">
                 <button id="btn-agregar-a-mix" class="btn-agregar-inline" title="Agregar ingrediente">+</button>
             </div>
-            
+
             <!-- Tabla de composición actual -->
             <div class="tabla-mix-container">
                 <table class="tabla-mix-ingredientes">
@@ -605,7 +636,8 @@
                     <h3>Seleccionar Artículo por Kilo</h3>
                     <div class="form-group">
                         <label for="buscar-articulo-vinculo">Buscar artículo:</label>
-                        <input type="text" id="buscar-articulo-vinculo" placeholder="Escriba para buscar..." autocomplete="off">
+                        <input type="text" id="buscar-articulo-vinculo" placeholder="Escriba para buscar..."
+                            autocomplete="off">
                     </div>
                     <div class="form-group">
                         <label for="selector-articulo-vinculo">Artículo por kilo:</label>
@@ -619,9 +651,8 @@
                     <h3>🔢 Multiplicador de Ingredientes</h3>
                     <div class="form-group">
                         <label for="multiplicador-ingredientes">Multiplicador:</label>
-                        <input type="number" id="multiplicador-ingredientes" 
-                               min="0.01" step="0.01" value="1" 
-                               placeholder="Ej: 96 para 96 unidades por producción">
+                        <input type="number" id="multiplicador-ingredientes" min="0.01" step="0.01" value="1"
+                            placeholder="Ej: 96 para 96 unidades por producción">
                         <small class="help-text">
                             💡 Cantidad de unidades que se producen por cada artículo padre.<br>
                             Ejemplo: Si 1 producción genera 96 unidades, ingrese 96.
@@ -649,7 +680,7 @@
                     <p><strong>Carro:</strong> <span id="info-carro-numero"></span></p>
                     <p><strong>Estado:</strong> <span class="badge-confirmado">Producción Finalizada</span></p>
                 </div>
-                
+
                 <div class="filtros-sector">
                     <label for="filtro-sector">Filtrar por sector:</label>
                     <select id="filtro-sector">
@@ -676,7 +707,8 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button id="btn-imprimir-todas-etiquetas" class="btn btn-primary">🏷️ Imprimir todas las etiquetas</button>
+                    <button id="btn-imprimir-todas-etiquetas" class="btn btn-primary">🏷️ Imprimir todas las
+                        etiquetas</button>
                     <button class="btn btn-secondary close-modal">Cerrar</button>
                 </div>
             </div>
@@ -708,7 +740,8 @@
 
                 <div class="form-group">
                     <label for="motivo-ajuste">Motivo del ajuste:</label>
-                    <textarea id="motivo-ajuste" rows="3" placeholder="Describa el motivo del ajuste (opcional)"></textarea>
+                    <textarea id="motivo-ajuste" rows="3"
+                        placeholder="Describa el motivo del ajuste (opcional)"></textarea>
                 </div>
 
                 <div class="modal-actions">
@@ -742,12 +775,8 @@
                 <!-- Búsqueda de ingrediente origen -->
                 <div class="busqueda-ingrediente-origen">
                     <label for="sustitucion-buscar-origen">Buscar ingrediente con stock disponible:</label>
-                    <input 
-                        type="text" 
-                        id="sustitucion-buscar-origen" 
-                        placeholder="Escriba para filtrar ingredientes..."
-                        autocomplete="off"
-                    >
+                    <input type="text" id="sustitucion-buscar-origen" placeholder="Escriba para filtrar ingredientes..."
+                        autocomplete="off">
                 </div>
 
                 <!-- Lista de ingredientes disponibles -->
@@ -759,20 +788,15 @@
                 <div class="cantidad-sustituir-container" id="sustitucion-cantidad-container" style="display: none;">
                     <label for="sustitucion-cantidad-input">Cantidad a sustituir:</label>
                     <div class="cantidad-sustituir-input-wrapper">
-                        <input 
-                            type="number" 
-                            id="sustitucion-cantidad-input" 
-                            min="0.01" 
-                            step="0.01" 
-                            placeholder="0.00"
-                        >
+                        <input type="number" id="sustitucion-cantidad-input" min="0.01" step="0.01" placeholder="0.00">
                         <span class="unidad-medida" id="sustitucion-unidad-input">kg</span>
-                        <button type="button" class="btn-usar-maximo" onclick="usarMaximo()" title="Usar todo el stock disponible">
+                        <button type="button" class="btn-usar-maximo" onclick="usarMaximo()"
+                            title="Usar todo el stock disponible">
                             Usar máximo
                         </button>
                     </div>
                     <p class="cantidad-max-disponible">
-                        Máximo disponible: <strong id="sustitucion-max-disponible">0.00</strong> 
+                        Máximo disponible: <strong id="sustitucion-max-disponible">0.00</strong>
                         <span id="sustitucion-unidad-max">kg</span>
                     </p>
                     <!-- Feedback visual de faltante restante -->
@@ -802,10 +826,10 @@
         </div>
     </div>
 
- 
- 
- 
- 
+
+
+
+
     <script type="module" src="/js/produccion_personal.js"></script>
     <script type="module" src="/js/carroPreparado.js"></script>
     <script type="module" src="/js/sustitucionIngredientes.js"></script>
@@ -815,4 +839,5 @@
 
 
 </body>
+
 </html>

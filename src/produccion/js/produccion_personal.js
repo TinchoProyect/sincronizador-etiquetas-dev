@@ -1,7 +1,7 @@
 import { cargarDatosColaborador } from './utils.js';
-import { 
-    actualizarEstadoCarro, 
-    crearNuevoCarro, 
+import {
+    actualizarEstadoCarro,
+    crearNuevoCarro,
     mostrarArticulosDelCarro,
     validarCarroActivo,
     seleccionarCarro,
@@ -54,38 +54,117 @@ import { cerrarModalEditarVinculo, procesarGuardadoVinculo } from './carro.js';
 window.cerrarModalEditarVinculo = cerrarModalEditarVinculo;
 window.procesarGuardadoVinculo = procesarGuardadoVinculo;
 
+// CONFIGURACIÓN: Artículos que permiten ingreso por unidades
+// Key: Parte del nombre o ID del artículo (minúsculas)
+// Value: Peso por unidad en KG
+const CONVERSION_ARTICULOS = {
+    'barra flor': 0.05,       // Barritas (4.8kg / 96u = 0.05kg)
+    'alfajor': 0.06        // Ejemplo futuro
+};
+
+/**
+ * Configura la entrada dual (Kilos <-> Unidades) si el artículo lo permite.
+ * @param {string} nombreArticulo - Descripción del artículo principal del carro
+ */
+function configurarInputDual(nombreArticulo) {
+    const containerUnidades = document.getElementById('container-unidades-helper');
+    const inputKilos = document.getElementById('kilos-producidos');
+    const inputUnidades = document.getElementById('unidades-producidas');
+    const labelFactor = document.getElementById('factor-conversion-texto');
+
+    if (!nombreArticulo || !containerUnidades || !inputKilos || !inputUnidades) return;
+
+    // 1. Buscar si el artículo coincide con alguna configuración
+    const nombreNormalizado = nombreArticulo.toLowerCase();
+    let factorConversion = null;
+
+    for (const [clave, factor] of Object.entries(CONVERSION_ARTICULOS)) {
+        if (nombreNormalizado.includes(clave)) {
+            factorConversion = factor;
+            break;
+        }
+    }
+
+    // 2. Si no hay configuración, ocultar el helper y salir
+    if (!factorConversion) {
+        containerUnidades.style.display = 'none';
+        // Limpiamos listeners previos clonando el nodo
+        const newKilos = inputKilos.cloneNode(true);
+        inputKilos.parentNode.replaceChild(newKilos, inputKilos);
+        return;
+    }
+
+    // 3. Activar modo dual
+    console.log(`⚖️ Activando modo unidades para: ${nombreArticulo} (Factor: ${factorConversion})`);
+    containerUnidades.style.display = 'block';
+    labelFactor.textContent = `1 unidad ≈ ${factorConversion} kg`;
+
+    // Limpiar input de unidades
+    inputUnidades.value = '';
+
+    // Si ya hay kilos cargados, calcular las unidades iniciales
+    if (inputKilos.value) {
+        inputUnidades.value = Math.round(parseFloat(inputKilos.value) / factorConversion);
+    }
+
+    // --- EVENT LISTENERS (Bidireccionales) ---
+
+    // A. Si Matías escribe Unidades -> Calculamos Kilos
+    inputUnidades.oninput = function () {
+        const unidades = parseFloat(this.value);
+        if (!isNaN(unidades)) {
+            const kilos = (unidades * factorConversion).toFixed(2);
+            inputKilos.value = kilos;
+        } else {
+            inputKilos.value = '';
+        }
+    };
+
+    // B. Si Matías escribe Kilos -> Calculamos Unidades
+    // Reemplazamos el nodo de kilos primero para asegurar un listener limpio (ya hecho arriba si no aplica, pero aqui lo asignamos directo)
+    inputKilos.oninput = function () {
+        const kilos = parseFloat(this.value);
+        if (!isNaN(kilos)) {
+            const unidades = Math.round(kilos / factorConversion);
+            inputUnidades.value = unidades;
+        } else {
+            inputUnidades.value = '';
+        }
+    };
+}
+
 // Función asíncrona para inicializar el espacio de trabajo
 async function inicializarEspacioTrabajo() {
     try {
         actualizarTituloPagina();
-        
+
         // Cargar datos del colaborador y esperar la validación del carro
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         if (!colaboradorData) {
             window.location.href = '/pages/produccion.html';
             return;
         }
-        
+
         const colaborador = JSON.parse(colaboradorData);
-        
+
         // Los permisos se verifican automáticamente en actualizarEstadoCarro()
-        
+
         await cargarDatosColaborador(async () => {
             await validarCarroActivo(colaborador.id);
         });
-        
+
         // Solo después de validar el carro, mostrar los artículos
         await mostrarArticulosDelCarro();
-        
+
         window.carroIdGlobal = localStorage.getItem('carroActivo');
         // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
-        
+
         // Inicializar el informe de ingresos manuales
         if (typeof window.actualizarInformeIngresosManuales === 'function') {
             await window.actualizarInformeIngresosManuales();
         }
-        
+
     } catch (error) {
         console.error('Error al inicializar espacio de trabajo:', error);
     }
@@ -137,13 +216,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // después de que se muestre en mostrarArticulosDelCarro()
 
     // Observar cambios en el DOM para agregar el event listener al botón cuando aparezca
+    // Y detectar si hay artículos especiales (Barritas) para habilitar el input dual
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             if (mutation.addedNodes.length) {
+                // 1. Configurar botón de agregar (Lógica original)
                 const btnAgregarArticulo = document.getElementById('agregar-articulo');
                 if (btnAgregarArticulo && !btnAgregarArticulo.hasEventListener) {
                     btnAgregarArticulo.addEventListener('click', abrirModalArticulos);
                     btnAgregarArticulo.hasEventListener = true;
+                }
+
+                // 2. NUEVO: Detectar artículo para conversión de unidades (Barritas)
+                // Buscamos si se renderizó la descripción del artículo en el carro
+                const descripcionElement = document.querySelector('.articulo-descripcion');
+                if (descripcionElement) {
+                    configurarInputDual(descripcionElement.textContent);
                 }
             }
         });
@@ -173,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (filtroProduccionSwitch) {
         filtroProduccionSwitch.addEventListener('change', () => aplicarFiltros(0));
     }
-    
+
     // Agregar evento al input de código de barras
     document.getElementById('codigo-barras').addEventListener('change', (e) => {
         buscarPorCodigoBarras(e.target.value);
@@ -183,12 +271,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // El modal de artículos ahora es PERSISTENTE (backdrop estático)
     // Solo se cierra con el botón X o botón Cerrar
     // La funcionalidad de arrastre está manejada por modal-draggable.js
-    
+
     // Mantener cierre para modal de receta (comportamiento original)
     window.addEventListener('click', (e) => {
         const modalReceta = document.getElementById('modal-receta');
         const modalEditarVinculo = document.getElementById('modal-editar-vinculo');
-        
+
         if (e.target === modalReceta) {
             cerrarModalReceta();
         } else if (e.target === modalEditarVinculo) {
@@ -202,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.closest('#modal-editar-vinculo .close-modal')) {
             window.cerrarModalEditarVinculo();
         }
-        
+
         // Botón guardar vínculo
         if (e.target.id === 'btn-guardar-vinculo') {
             window.procesarGuardadoVinculo();
@@ -222,7 +310,7 @@ async function cargarResumenIngredientes() {
             if (contenedor) {
                 contenedor.innerHTML = '<p>No hay carro activo</p>';
             }
-            
+
             // También limpiar la sección de mixes
             const contenedorMixes = document.getElementById('tabla-resumen-mixes');
             if (contenedorMixes) {
@@ -250,13 +338,13 @@ async function cargarResumenIngredientes() {
         }
 
         const colaborador = JSON.parse(colaboradorData);
-        
+
         // Obtener el resumen consolidado de ingredientes
         const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-        
+
         // Mostrar el resumen en la UI
         mostrarResumenIngredientes(ingredientes);
-        
+
         // Obtener y mostrar el resumen de mixes
         const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
         mostrarResumenMixes(mixes);
@@ -275,17 +363,17 @@ async function cargarResumenIngredientes() {
                 seccionArticulos.style.display = 'none';
             }
         }
-        
+
         // Actualizar visibilidad de los botones después de cargar ingredientes
         await actualizarVisibilidadBotones();
-        
+
     } catch (error) {
         console.error('Error al cargar resumen de ingredientes:', error);
         const contenedor = document.getElementById('tabla-resumen-ingredientes');
         if (contenedor) {
             contenedor.innerHTML = '<p>Error al cargar el resumen de ingredientes</p>';
         }
-        
+
         const contenedorMixes = document.getElementById('tabla-resumen-mixes');
         if (contenedorMixes) {
             contenedorMixes.innerHTML = '<p>Error al cargar el resumen de mixes</p>';
