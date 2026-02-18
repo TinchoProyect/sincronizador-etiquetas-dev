@@ -1341,13 +1341,26 @@ router.post('/ingredientes-ajustes/batch', async (req, res) => {
 
                     // 🧮 CALCULAR DIFERENCIA PARA TRIGGER
                     const stockAnterior = parseFloat(ingrediente.stock_actual) || 0;
-                    const nuevoStockDeseado = parseFloat(kilos) || 0;
-                    const diferencia = nuevoStockDeseado - stockAnterior;
+
+                    // 🛠️ CORRECCIÓN MAGISTRAL: El frontend YA envía la diferencia calculada en la variable 'kilos'.
+                    // Al tratar 'kilos' como si fuera el stock final absoluto, el backend hacía una "Doble Resta".
+                    let valorRecibido = kilos !== undefined && kilos !== null ? kilos : cantidad;
+                    if (typeof valorRecibido === 'string') {
+                        valorRecibido = valorRecibido.replace(',', '.'); // Prevención de comas
+                    }
+
+                    let diferencia = parseFloat(valorRecibido) || 0;
+                    // Redondeamos para limpiar basura de decimales de JavaScript
+                    diferencia = Math.round(diferencia * 1000) / 1000;
+
+                    // Calculamos el stock que va a quedar, solo para guardarlo impecable en la tabla de auditoría
+                    let nuevoStockDeseado = stockAnterior + diferencia;
+                    nuevoStockDeseado = Math.round(nuevoStockDeseado * 1000) / 1000;
 
                     console.log(`🧮 [CÁLCULO] ===== CALCULANDO AJUSTE PARA TRIGGER =====`);
                     console.log(`🧮 [CÁLCULO] Stock anterior: ${stockAnterior}`);
-                    console.log(`🧮 [CÁLCULO] Nuevo stock deseado: ${nuevoStockDeseado}`);
-                    console.log(`🧮 [CÁLCULO] Diferencia calculada: ${diferencia}`);
+                    console.log(`🧮 [CÁLCULO] Diferencia recibida del front: ${diferencia}`);
+                    console.log(`🧮 [CÁLCULO] Nuevo stock que quedará: ${nuevoStockDeseado}`);
                     console.log(`🔧 [CORRECCIÓN] Usando trigger actualizar_stock_ingrediente`);
 
                     // Si la diferencia es 0, no hacer nada

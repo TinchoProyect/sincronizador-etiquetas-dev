@@ -156,7 +156,6 @@ function validarAjuste() {
  */
 async function confirmarAjuste() {
   try {
-
     const inputNuevosKilos = document.getElementById('nuevos-kilos');
     const motivoTextarea = document.getElementById('motivo-ajuste');
     const btnConfirmar = document.getElementById('btn-confirmar-ajuste');
@@ -165,18 +164,29 @@ async function confirmarAjuste() {
       throw new Error('No se encontró el input de nuevos kilos');
     }
 
-    const stockReal = parseFloat(inputNuevosKilos.value);
+    // ------------------------------------------------------------------
+    // 🛠️ CORRECCIÓN 1: Evitar el error de la coma en los decimales
+    // Reemplazamos la coma por un punto antes de hacer el parseFloat
+    // ------------------------------------------------------------------
+    const valorLimpio = inputNuevosKilos.value.trim().replace(',', '.');
+    const stockReal = parseFloat(valorLimpio);
 
     if (isNaN(stockReal) || stockReal < 0) {
       alert('❌ Ingrese un valor válido para el stock real');
       return;
     }
 
-    // Calcular diferencia
-    const diferencia = stockReal - stockSistemaActual;
+    // ------------------------------------------------------------------
+    // 🛠️ CORRECCIÓN 2: Solucionar el problema de decimales de JS
+    // Redondeamos la diferencia a 3 decimales exactos (gramos)
+    // ------------------------------------------------------------------
+    let diferencia = stockReal - stockSistemaActual;
+    diferencia = Math.round(diferencia * 1000) / 1000;
 
-    // Si no hay diferencia, no hacer nada
-    if (Math.abs(diferencia) < 0.01) {
+    // ------------------------------------------------------------------
+    // 🛠️ CORRECCIÓN 3: Mejorar la sensibilidad a 1 gramo (0.001)
+    // ------------------------------------------------------------------
+    if (Math.abs(diferencia) < 0.001) {
       alert('ℹ️ El stock real coincide con el stock del sistema. No se requiere ajuste.');
       cerrarModalAjuste();
       return;
@@ -219,14 +229,13 @@ async function confirmarAjuste() {
     }
 
     // OPCIÓN 3: Detectar si estamos en un carro externo (solo si no se detectó usuario antes)
-    if (!esStockUsuario && carroIdActual) {
+    if (!esStockUsuario && typeof carroIdActual !== 'undefined' && carroIdActual) {
       try {
         const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdActual}/estado`);
         if (carroResponse.ok) {
           const carroData = await carroResponse.json();
           const tipoCarro = carroData.tipo_carro || 'interna';
           esStockUsuario = (tipoCarro === 'externa');
-
           if (esStockUsuario) {
             // Obtener usuario_id del carro
             const colaboradorData = localStorage.getItem('colaboradorActivo');
@@ -252,18 +261,16 @@ async function confirmarAjuste() {
       ? `Ajuste rápido - Stock real: ${stockReal} kg - Motivo: ${motivoUsuario}`
       : `Ajuste rápido - Stock real: ${stockReal} kg`;
 
-
-    // 🎯 PAYLOAD CONTEXTUAL: Incluir información de contexto
+    // 3. Preparación de la petición al backend (Payload)
     const payload = {
-      ingrediente_id: ingredienteIdActual,
+      ingrediente_id: typeof ingredienteIdActual !== 'undefined' ? ingredienteIdActual : null,
       stock_real: stockReal,
-      carro_id: carroIdActual || null,    // 🆕 Puede ser null si es desde vista de usuario
+      carro_id: (typeof carroIdActual !== 'undefined' && carroIdActual) ? carroIdActual : null,
       observaciones: observaciones,
-      es_stock_usuario: esStockUsuario,   // 🆕 Indicador de contexto
-      usuario_id: usuarioId,              // 🆕 ID del usuario
-      origen_contexto: origenContexto     // 🆕 Para auditoría
+      es_stock_usuario: esStockUsuario,
+      usuario_id: usuarioId,
+      origen_contexto: origenContexto
     };
-
 
     // Registrar movimiento en el backend
     const response = await fetch('http://localhost:3002/api/produccion/ingredientes/ajuste-rapido', {
@@ -281,7 +288,6 @@ async function confirmarAjuste() {
 
     const resultado = await response.json();
 
-
     // Mostrar confirmación contextual
     let contextoMensaje = '';
     if (esStockUsuario) {
@@ -292,17 +298,20 @@ async function confirmarAjuste() {
       contextoMensaje = ' (Stock General)';
     }
 
+    // ------------------------------------------------------------------
+    // 🛠️ CORRECCIÓN 4: Mostrar los números con 3 decimales (gramos) en la alerta
+    // ------------------------------------------------------------------
     const mensaje = diferencia > 0
-      ? `✅ Stock ajustado${contextoMensaje}: +${kilosMovimiento.toFixed(2)} kg agregados\nNuevo stock: ${stockReal.toFixed(2)} kg`
-      : `✅ Stock ajustado${contextoMensaje}: -${kilosMovimiento.toFixed(2)} kg descontados\nNuevo stock: ${stockReal.toFixed(2)} kg`;
-
+      ? `✅ Stock ajustado${contextoMensaje}: +${kilosMovimiento.toFixed(3)} kg agregados\nNuevo stock: ${stockReal.toFixed(3)} kg`
+      : `✅ Stock ajustado${contextoMensaje}: -${kilosMovimiento.toFixed(3)} kg descontados\nNuevo stock: ${stockReal.toFixed(3)} kg`;
     alert(mensaje);
 
     // Cerrar modal
-    cerrarModalAjuste();
+    if (typeof cerrarModalAjuste === 'function') {
+      cerrarModalAjuste();
+    }
 
     // 🔄 ACTUALIZAR TABLA: Recargar datos después del ajuste
-
     if (typeof window.actualizarResumenIngredientes === 'function') {
       await window.actualizarResumenIngredientes();
     }
@@ -319,7 +328,6 @@ async function confirmarAjuste() {
   } catch (error) {
     console.error('❌ [AJUSTE] Error al procesar ajuste:', error);
     alert(`❌ Error al procesar el ajuste: ${error.message}`);
-
     // Restaurar botón
     const btnConfirmar = document.getElementById('btn-confirmar-ajuste');
     if (btnConfirmar) {
