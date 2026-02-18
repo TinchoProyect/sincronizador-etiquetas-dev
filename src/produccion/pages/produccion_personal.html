@@ -183,6 +183,37 @@
             max-height: 0;
             opacity: 0;
         }
+
+        /* Buscador Inteligente - Modal Receta */
+        .lista-resultados-busqueda {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            border: 1px solid #ccc;
+            display: none;
+            position: absolute;
+            background-color: white;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1050;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            top: 100%;
+            left: 0;
+            border-radius: 0 0 4px 4px;
+        }
+
+        .lista-resultados-busqueda li {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        .lista-resultados-busqueda li:hover {
+            background-color: #007bff;
+            color: white;
+        }
     </style>
 </head>
 
@@ -400,12 +431,17 @@
                 <div class="form-group ingredientes-container">
                     <div class="selector-container">
                         <div class="selector-wrapper">
-                            <label for="selector-ingrediente">Seleccionar Ingrediente:</label>
-                            <div class="selector-with-button">
-                                <select id="selector-ingrediente" required>
-                                    <option value="">Seleccione un ingrediente...</option>
-                                </select>
-                                <button type="button" class="btn btn-secondary" id="btn-nuevo-ingrediente">
+                            <label for="buscar-ingrediente-receta">Seleccionar Ingrediente:</label>
+                            <div class="selector-with-button" style="align-items: flex-start;">
+                                <div style="position: relative; flex: 1;">
+                                    <input type="text" id="buscar-ingrediente-receta"
+                                        placeholder="Escribí para buscar (ej: alm tos)..." autocomplete="off"
+                                        style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                                    <input type="hidden" id="selector-ingrediente" required>
+                                    <ul id="lista-resultados-ingrediente-receta" class="lista-resultados-busqueda"></ul>
+                                </div>
+                                <button type="button" class="btn btn-secondary" id="btn-nuevo-ingrediente"
+                                    style="margin-left: 10px; height: 35px;">
                                     ➕ Nuevo
                                 </button>
                             </div>
@@ -442,10 +478,14 @@
                 <div id="seccion-articulos-receta" class="form-group articulos-container" style="display: none;">
                     <div class="selector-container">
                         <div class="selector-wrapper">
-                            <label for="selector-articulo">Seleccionar Artículo de Producción Externa:</label>
-                            <select id="selector-articulo">
-                                <option value="">Seleccione un artículo...</option>
-                            </select>
+                            <label for="buscar-articulo-receta">Seleccionar Artículo de Producción Externa:</label>
+                            <div style="position: relative; width: 100%;">
+                                <input type="text" id="buscar-articulo-receta"
+                                    placeholder="Escribí para buscar (ej: mix fr)..." autocomplete="off"
+                                    style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                                <input type="hidden" id="selector-articulo">
+                                <ul id="lista-resultados-articulo-receta" class="lista-resultados-busqueda"></ul>
+                            </div>
                         </div>
                         <div id="cantidad-articulo-container" class="cantidad-wrapper" style="display: none;">
                             <label for="input-cantidad-articulo">Cantidad:</label>

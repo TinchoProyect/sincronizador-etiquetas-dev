@@ -28,14 +28,14 @@ function formatearStock(valor) {
     if (valor === null || valor === undefined || isNaN(valor)) {
         return '0';
     }
-    
+
     const numero = Number(valor);
-    
+
     // Si el valor es prácticamente cero (debido a precisión de punto flotante)
     if (Math.abs(numero) < 0.001) {
         return '0';
     }
-    
+
     // Redondear a 2 decimales y eliminar ceros innecesarios
     return numero.toFixed(2).replace(/\.?0+$/, '');
 }
@@ -69,7 +69,7 @@ export async function abrirModalArticulos() {
 
         let tipoCarro = 'interna';
         const carroId = localStorage.getItem('carroActivo');
-        
+
         if (carroId) {
             try {
                 const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
@@ -84,12 +84,12 @@ export async function abrirModalArticulos() {
 
         const cacheKey = `articulos_${tipoCarro}`;
         if (!state[cacheKey] || state[cacheKey].length === 0) {
-            const url = tipoCarro === 'externa' 
+            const url = tipoCarro === 'externa'
                 ? 'http://localhost:3002/api/produccion/articulos?tipo_carro=externa'
                 : 'http://localhost:3002/api/produccion/articulos';
-                
+
             const response = await fetch(url);
-            
+
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Error al obtener artículos');
@@ -98,9 +98,9 @@ export async function abrirModalArticulos() {
             const responseData = await response.json();
             // ✅ CORRECCIÓN: Manejar nuevo formato de respuesta { success, data, total }
             const articulos = responseData.data || responseData;
-            
+
             if (articulos.length === 0) {
-                const mensaje = tipoCarro === 'externa' 
+                const mensaje = tipoCarro === 'externa'
                     ? 'No se encontraron artículos de producción externa disponibles'
                     : 'No se encontraron artículos disponibles';
                 mostrarError(mensaje);
@@ -131,12 +131,12 @@ export async function abrirModalArticulos() {
                     const articulosOriginales = responseData.data || responseData;
                     articulosDisponibles = await filtrarArticulosYaAgregados(articulosOriginales, carroId);
                     console.log(`🔍 [FASE 1] Filtro aplicado (caché) - Artículos totales: ${articulosOriginales.length}, Disponibles: ${articulosDisponibles.length}`);
-                    
+
                     // Actualizar caché con artículos filtrados
                     state[cacheKey] = articulosDisponibles;
                 }
             }
-            
+
             state.todosLosArticulos = articulosDisponibles;
             state.articulosFiltrados = [...articulosDisponibles];
             aplicarFiltros(0);
@@ -148,7 +148,7 @@ export async function abrirModalArticulos() {
             const icono = tipoCarro === 'externa' ? '' : '🏭 '; // Sin icono para externos
             modalTitle.textContent = `${icono}Seleccionar Artículo - ${tipoTexto}`;
         }
-        
+
         // 🎯 AJUSTE UI: Ocultar botón "Agregar al carro" para Producción Externa
         // En carros externos, los artículos se seleccionan desde las tarjetas individuales
         const btnAgregarMultiples = document.getElementById('btn-agregar-multiples');
@@ -161,7 +161,7 @@ export async function abrirModalArticulos() {
                 console.log('🎨 [UI-LIMPIA] Botón "Agregar al carro" disponible para Producción Interna');
             }
         }
-        
+
     } catch (error) {
         console.error('Error al abrir modal de artículos:', error);
         mostrarError(error.message);
@@ -186,10 +186,10 @@ async function filtrarArticulosYaAgregados(articulos, carroId) {
         }
 
         const colaborador = JSON.parse(colaboradorData);
-        
+
         // Obtener artículos ya agregados al carro
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
-        
+
         if (!response.ok) {
             console.warn('🔍 [FASE 1] Error al obtener artículos del carro, no se aplicará filtro');
             return articulos;
@@ -197,14 +197,14 @@ async function filtrarArticulosYaAgregados(articulos, carroId) {
 
         const articulosEnCarro = await response.json();
         const numerosEnCarro = articulosEnCarro.map(art => art.numero);
-        
+
         console.log(`🔍 [FASE 1] Artículos en carro: ${numerosEnCarro.length} (${numerosEnCarro.slice(0, 3).join(', ')}${numerosEnCarro.length > 3 ? '...' : ''})`);
-        
+
         // Filtrar artículos que no están en el carro
         const articulosFiltrados = articulos.filter(art => !numerosEnCarro.includes(art.numero));
-        
+
         return articulosFiltrados;
-        
+
     } catch (error) {
         console.error('🔍 [FASE 1] Error al filtrar artículos ya agregados:', error);
         return articulos; // En caso de error, devolver todos los artículos
@@ -218,19 +218,19 @@ export function cerrarModalArticulos() {
     setTimeout(() => {
         modal.style.display = 'none';
     }, 300);
-    
+
     // Limpiar campo de búsqueda inteligente
     const busquedaInteligente = document.getElementById('busqueda-inteligente');
     if (busquedaInteligente) {
         busquedaInteligente.value = '';
     }
-    
+
     // Limpiar código de barras
     const codigoBarras = document.getElementById('codigo-barras');
     if (codigoBarras) {
         codigoBarras.value = '';
     }
-    
+
     // Mejora solicitada por Martín - limpiar selecciones persistentes al cerrar modal
     state.selectedArticles.clear();
     actualizarResumenSeleccionados();
@@ -251,7 +251,7 @@ export async function actualizarTablaArticulos(articulos) {
         // 🔍 [FASE 2] Detectar tipo de carro para habilitar selección múltiple
         let tipoCarro = 'interna';
         const carroId = localStorage.getItem('carroActivo');
-        
+
         if (carroId) {
             try {
                 const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
@@ -267,7 +267,7 @@ export async function actualizarTablaArticulos(articulos) {
         console.log('🔍 [FASE 2] Renderizando tabla para tipo de carro:', tipoCarro);
 
         const articulosNumeros = articulos.map(art => art.numero);
-        
+
         const [estadoResponse, integridadResponse] = await Promise.all([
             fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
                 method: 'POST',
@@ -296,7 +296,7 @@ export async function actualizarTablaArticulos(articulos) {
 
         // 🔍 [FASE 2] Actualizar encabezado de tabla según tipo de carro
         const tableHeader = document.getElementById('tabla-articulos-header');
-        
+
         // 🎨 REDISEÑO UX: Para carros externos, usar vista de tarjetas en lugar de tabla
         if (tipoCarro === 'externa') {
             // Ocultar tabla y mostrar contenedor de tarjetas
@@ -304,7 +304,7 @@ export async function actualizarTablaArticulos(articulos) {
             if (tablaArticulos) {
                 tablaArticulos.style.display = 'none';
             }
-            
+
             // Crear o mostrar contenedor de tarjetas
             let contenedorTarjetas = document.getElementById('contenedor-tarjetas-articulos');
             if (!contenedorTarjetas) {
@@ -315,10 +315,10 @@ export async function actualizarTablaArticulos(articulos) {
             }
             contenedorTarjetas.style.display = 'grid';
             contenedorTarjetas.innerHTML = ''; // Limpiar contenido previo
-            
+
             // Renderizar tarjetas para producción externa
             await renderizarTarjetasProduccionExterna(produccion, contenedorTarjetas, estadoRecetas, integridadRecetas);
-            
+
             return; // Salir temprano para carros externos
         } else {
             // Para carros internos, ocultar tarjetas y mostrar tabla
@@ -331,7 +331,7 @@ export async function actualizarTablaArticulos(articulos) {
                 tablaArticulos.style.display = 'table';
             }
         }
-        
+
         if (tableHeader) {
             if (tipoCarro === 'interna') {
                 tableHeader.innerHTML = `
@@ -366,7 +366,7 @@ export async function actualizarTablaArticulos(articulos) {
                 const tr = document.createElement('tr');
                 const tieneReceta = estadoRecetas[articulo.numero];
                 const esIntegra = integridadRecetas[articulo.numero];
-                
+
                 tr.setAttribute('data-numero', articulo.numero);
                 if (articulo.numero === state.ultimoArticuloEditado) {
                     tr.classList.add('resaltado-articulo');
@@ -375,7 +375,7 @@ export async function actualizarTablaArticulos(articulos) {
                 let btnAgregarEstilo = '';
                 let btnAgregarTitulo = 'Agregar al carro';
                 let btnAgregarClase = 'btn-agregar icon-cart';
-                
+
                 if (tieneReceta && !esIntegra) {
                     btnAgregarEstilo = 'background-color: #dc3545; color: white; border: 1px solid #dc3545;';
                     btnAgregarTitulo = 'Advertencia: Esta receta tiene ingredientes que ya no existen en el sistema';
@@ -533,7 +533,7 @@ function normalizarTexto(texto) {
 export function aplicarFiltros(filtroIndex) {
     // Mejora solicitada por Martín - preservar selecciones antes de filtrar
     preservarSeleccionesActuales();
-    
+
     // Obtener valor del campo de búsqueda inteligente
     const busquedaInteligente = document.getElementById('busqueda-inteligente');
     const textoBusqueda = busquedaInteligente ? busquedaInteligente.value.trim() : '';
@@ -547,25 +547,25 @@ export function aplicarFiltros(filtroIndex) {
     if (textoBusqueda) {
         // Normalizar el texto de búsqueda
         const textoNormalizado = normalizarTexto(textoBusqueda);
-        
+
         // Dividir por espacios para obtener términos individuales
         const terminos = textoNormalizado.split(/\s+/).filter(t => t.length > 0);
-        
+
         console.log(`🔍 [BÚSQUEDA INTELIGENTE] Buscando con ${terminos.length} término(s):`, terminos);
-        
+
         if (terminos.length > 0) {
             // Filtrar artículos que contengan TODOS los términos
             resultados = resultados.filter(art => {
                 const nombreNormalizado = normalizarTexto(art.nombre);
-                
+
                 // Verificar que el nombre contenga TODOS los términos
-                const contieneTodasLasPalabras = terminos.every(termino => 
+                const contieneTodasLasPalabras = terminos.every(termino =>
                     nombreNormalizado.includes(termino)
                 );
-                
+
                 return contieneTodasLasPalabras;
             });
-            
+
             console.log(`🔍 [BÚSQUEDA INTELIGENTE] Resultados encontrados: ${resultados.length}`);
         }
     }
@@ -577,10 +577,10 @@ export function aplicarFiltros(filtroIndex) {
 
     // Mejora solicitada por Martín - incluir artículos seleccionados aunque no coincidan con filtro
     const articulosSeleccionados = Array.from(state.selectedArticles.keys());
-    const articulosSeleccionadosData = state.todosLosArticulos.filter(art => 
+    const articulosSeleccionadosData = state.todosLosArticulos.filter(art =>
         articulosSeleccionados.includes(art.numero) && !resultados.some(r => r.numero === art.numero)
     );
-    
+
     if (articulosSeleccionadosData.length > 0) {
         console.log(`🔍 [SELECCIÓN PERSISTENTE] Agregando ${articulosSeleccionadosData.length} artículos seleccionados que no coinciden con filtro`);
         resultados = [...articulosSeleccionadosData, ...resultados];
@@ -610,6 +610,15 @@ export function buscarPorCodigoBarras(codigo) {
 // Función para cerrar el modal de receta
 export function cerrarModalReceta() {
     const modal = document.getElementById('modal-receta');
+    const buscarIng = document.getElementById('buscar-ingrediente-receta');
+    if (buscarIng) buscarIng.value = '';
+    const cntContainer = document.getElementById('cantidad-container');
+    if (cntContainer) cntContainer.style.display = 'none';
+
+    const buscarArt = document.getElementById('buscar-articulo-receta');
+    if (buscarArt) buscarArt.value = '';
+    const cntArtContainer = document.getElementById('cantidad-articulo-container');
+    if (cntArtContainer) cntArtContainer.style.display = 'none';
     if (modal) {
         modal.classList.remove('show');
         setTimeout(() => {
@@ -619,7 +628,7 @@ export function cerrarModalReceta() {
             document.getElementById('descripcion_receta').value = '';
             document.getElementById('selector-ingrediente').value = '';
             document.getElementById('input-cantidad-ingrediente').value = '';
-            
+
             const selectorArticulo = document.getElementById('selector-articulo');
             if (selectorArticulo) {
                 selectorArticulo.value = '';
@@ -628,30 +637,30 @@ export function cerrarModalReceta() {
             if (inputCantidadArticulo) {
                 inputCantidadArticulo.value = '';
             }
-            
+
             state.ingredientesCargados = [];
             state.articulosReceta = [];
-            
+
             const tbody = document.querySelector('#tabla-ingredientes tbody');
             if (tbody) {
                 tbody.innerHTML = '';
             }
-            
+
             const tbodyArticulos = document.querySelector('#tabla-articulos-receta tbody');
             if (tbodyArticulos) {
                 tbodyArticulos.innerHTML = '';
             }
-            
+
             const seccionArticulos = document.getElementById('seccion-articulos-receta');
             if (seccionArticulos) {
                 seccionArticulos.style.display = 'none';
             }
-            
+
             const contenedorArticulos = document.getElementById('contenedor-articulos');
             if (contenedorArticulos) {
                 contenedorArticulos.style.display = 'none';
             }
-            
+
             const formActionsArticulos = document.getElementById('form-actions-articulos');
             if (formActionsArticulos) {
                 formActionsArticulos.style.display = 'none';
@@ -674,7 +683,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             `Esto puede causar errores en el cálculo de ingredientes necesarios.\n\n` +
             `¿Desea continuar agregando este artículo al carro?`
         );
-        
+
         if (!confirmar) {
             return;
         }
@@ -694,7 +703,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         const colaborador = JSON.parse(colaboradorData);
         const cantidadInput = btnElement.previousElementSibling;
         const cantidad = parseFloat(cantidadInput.value);
-        
+
         if (isNaN(cantidad) || cantidad <= 0) {
             throw new Error('La cantidad debe ser un número positivo');
         }
@@ -717,7 +726,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         if (!response.ok) {
             const errorData = await response.json();
-            
+
             // Verificar si es el error específico de artículo duplicado
             if (errorData.error === 'Este artículo ya fue agregado al carro') {
                 // Mostrar mensaje específico con estilo de alerta
@@ -738,16 +747,16 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
                     animation: slideIn 0.3s ease-out;
                 `;
                 document.body.appendChild(alertDiv);
-                
+
                 setTimeout(() => {
                     alertDiv.remove();
                 }, 4000);
-                
+
                 btnElement.disabled = false;
                 btnElement.textContent = 'Ag. carro';
                 return;
             }
-            
+
             throw new Error(errorData.error || 'Error al agregar el artículo al carro');
         }
 
@@ -756,7 +765,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
 
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';
-        
+
         if (!esIntegra) {
             successDiv.textContent = 'Artículo agregado con advertencias de integridad';
             successDiv.style.backgroundColor = '#ffc107';
@@ -766,7 +775,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             successDiv.style.backgroundColor = '#28a745';
             successDiv.style.color = 'white';
         }
-        
+
         successDiv.style.cssText += `
             position: fixed;
             top: 20px;
@@ -777,7 +786,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             animation: slideIn 0.3s ease-out;
         `;
         document.body.appendChild(successDiv);
-        
+
         setTimeout(() => {
             successDiv.remove();
         }, 3000);
@@ -787,30 +796,30 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
         // 🔄 ACTUALIZAR RESUMEN AUTOMÁTICAMENTE DESPUÉS DE AGREGAR ARTÍCULO
         try {
             console.log('🔄 [AGREGAR] Iniciando actualización completa del resumen...');
-            
+
             // 🎯 DELAY ESTRATÉGICO: Esperar a que el backend procese completamente
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             // 1. Actualizar lista de artículos del carro
             await mostrarArticulosDelCarro();
             console.log('✅ [AGREGAR] Lista de artículos actualizada');
-            
+
             // 2. FORZAR recarga de ingredientes
             const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await mostrarResumenIngredientes(ingredientes);
             console.log('✅ [AGREGAR] Resumen de ingredientes actualizado');
-            
+
             // 3. FORZAR recarga de mixes
             const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
             mostrarResumenMixes(mixes);
             console.log('✅ [AGREGAR] Resumen de mixes actualizado');
-            
+
             // 4. 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
             const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
             const seccionArticulos = document.getElementById('resumen-articulos');
-            
+
             console.log(`🔍 [AGREGAR-ARTÍCULOS] Artículos obtenidos: ${articulos?.length || 0}`);
-            
+
             if (articulos && articulos.length > 0) {
                 // FORZAR visualización de la sección
                 if (seccionArticulos) {
@@ -819,7 +828,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
                     seccionArticulos.offsetHeight;
                     console.log('✅ [AGREGAR-ARTÍCULOS] Sección mostrada y forzado reflow');
                 }
-                
+
                 // FORZAR actualización de la tabla
                 mostrarResumenArticulos(articulos);
                 console.log('✅ [AGREGAR-ARTÍCULOS] Tabla actualizada con datos');
@@ -830,7 +839,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
                     console.log('ℹ️ [AGREGAR-ARTÍCULOS] No hay artículos, sección oculta');
                 }
             }
-            
+
             console.log('✅ [AGREGAR] Resumen completo actualizado correctamente');
         } catch (updateError) {
             console.error('⚠️ [AGREGAR] Error al actualizar resumen:', updateError);
@@ -866,12 +875,10 @@ export async function cargarArticulosDisponibles() {
 }
 
 export function actualizarSelectorArticulos() {
-    const selector = document.getElementById('selector-articulo');
-    if (!selector) return;
-    selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
-    state.articulosDisponibles.forEach(art => {
-        selector.innerHTML += `<option value="${art.numero}">${art.nombre}</option>`;
-    });
+    const inputBuscar = document.getElementById('buscar-articulo-receta');
+    const inputOculto = document.getElementById('selector-articulo');
+    if (inputBuscar) inputBuscar.value = '';
+    if (inputOculto) inputOculto.value = '';
 }
 
 export function toggleCantidadArticuloField() {
@@ -894,7 +901,7 @@ export function agregarArticuloATabla(articulo, index) {
 
     // Buscar la información completa del artículo en state.articulosDisponibles
     const articuloCompleto = state.articulosDisponibles.find(art => art.numero === articulo.articulo_numero);
-    
+
     // Obtener descripción y código de barras
     const descripcion = articuloCompleto ? articuloCompleto.nombre : 'Descripción no disponible';
     const codigoBarras = articuloCompleto ? (articuloCompleto.codigo_barras || 'Sin código') : 'Sin código';
@@ -918,7 +925,10 @@ export function agregarArticuloDesdeSelector() {
     try {
         const selector = document.getElementById('selector-articulo');
         const cantidadInput = document.getElementById('input-cantidad-articulo');
-
+        const buscarArt = document.getElementById('buscar-articulo-receta');
+        if (buscarArt) buscarArt.value = '';
+        const cntArtContainer = document.getElementById('cantidad-articulo-container');
+        if (cntArtContainer) cntArtContainer.style.display = 'none';
         const articuloNumero = selector.value;
         const cantidad = Number(cantidadInput.value.replace(',', '.'));
 
@@ -973,11 +983,11 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
 
             document.getElementById('articulo_numero').value = articulo_numero;
             document.getElementById('articulo_descripcion').value = articulo_nombre;
-            
+
             // Detectar tipo de carro para mostrar/ocultar sección de artículos
             const carroId = localStorage.getItem('carroActivo');
             let tipoCarro = 'interna';
-            
+
             if (carroId) {
                 try {
                     const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
@@ -994,12 +1004,12 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
             const seccionArticulos = document.getElementById('seccion-articulos-receta');
             const contenedorArticulos = document.getElementById('contenedor-articulos');
             const formActionsArticulos = document.getElementById('form-actions-articulos');
-            
+
             if (tipoCarro === 'externa') {
                 if (seccionArticulos) seccionArticulos.style.display = 'block';
                 if (contenedorArticulos) contenedorArticulos.style.display = 'block';
                 if (formActionsArticulos) formActionsArticulos.style.display = 'block';
-                
+
                 // Cargar artículos disponibles
                 await cargarArticulosDisponibles();
             } else {
@@ -1007,15 +1017,15 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
                 if (contenedorArticulos) contenedorArticulos.style.display = 'none';
                 if (formActionsArticulos) formActionsArticulos.style.display = 'none';
             }
-            
+
             // Cargar ingredientes disponibles
             await cargarIngredientesDisponibles();
-            
+
             // Intentar obtener la receta existente
             if (modo !== 'crear') {
                 try {
                     const response = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`);
-                    
+
                     if (response.ok) {
                         const receta = await response.json();
                         document.getElementById('descripcion_receta').value = receta.descripcion || '';
@@ -1086,16 +1096,10 @@ async function cargarIngredientesDisponibles() {
 }
 
 function actualizarSelectorIngredientes() {
-    const selector = document.getElementById('selector-ingrediente');
-    selector.innerHTML = '<option value="">Seleccione un ingrediente...</option>';
-    
-    ingredientesDisponibles.forEach(ing => {
-        selector.innerHTML += `
-            <option value="${ing.id}" 
-                    data-unidad="${ing.unidad_medida}">
-                ${ing.nombre}
-            </option>`;
-    });
+    const inputBuscar = document.getElementById('buscar-ingrediente-receta');
+    const inputOculto = document.getElementById('selector-ingrediente');
+    if (inputBuscar) inputBuscar.value = '';
+    if (inputOculto) inputOculto.value = '';
 }
 
 function agregarIngredienteATabla(ingrediente, index) {
@@ -1118,8 +1122,133 @@ function agregarIngredienteATabla(ingrediente, index) {
     tbody.appendChild(tr);
 }
 
+// --- LÓGICA DE BÚSQUEDA INTELIGENTE PARA MODAL RECETA ---
+function manejarBusquedaIngredienteReceta(e) {
+    const input = e.target;
+    const listaResultados = document.getElementById('lista-resultados-ingrediente-receta');
+    const hiddenInput = document.getElementById('selector-ingrediente');
+    const query = input.value.trim();
+
+    if (query === '') {
+        hiddenInput.value = '';
+        listaResultados.style.display = 'none';
+        const cantidadContainer = document.getElementById('cantidad-container');
+        if (cantidadContainer) cantidadContainer.style.display = 'none';
+        return;
+    }
+
+    const tokens = normalizarTexto(query).split(/\s+/).filter(t => t.length > 0);
+
+    const resultados = ingredientesDisponibles.filter(ing => {
+        const nombreNormalizado = normalizarTexto(ing.nombre);
+        return tokens.every(token => nombreNormalizado.includes(token)); // Lógica AND
+    });
+
+    listaResultados.innerHTML = '';
+    if (resultados.length > 0) {
+        resultados.slice(0, 50).forEach(ing => {
+            const li = document.createElement('li');
+            li.textContent = `${ing.nombre} (${ing.unidad_medida})`;
+
+            li.addEventListener('click', () => {
+                hiddenInput.value = ing.id;
+                input.value = ing.nombre;
+                listaResultados.innerHTML = '';
+                listaResultados.style.display = 'none';
+
+                // Mostrar campo de cantidad y hacerle focus
+                const cantidadContainer = document.getElementById('cantidad-container');
+                if (cantidadContainer) {
+                    cantidadContainer.style.display = 'block';
+                    document.getElementById('input-cantidad-ingrediente').focus();
+                }
+            });
+            listaResultados.appendChild(li);
+        });
+        listaResultados.style.display = 'block';
+    } else {
+        listaResultados.innerHTML = '<li style="padding: 8px 12px; color: #dc3545; cursor: default;">No se encontraron ingredientes</li>';
+        listaResultados.style.display = 'block';
+    }
+}
+
+function manejarBusquedaArticuloReceta(e) {
+    const input = e.target;
+    const listaResultados = document.getElementById('lista-resultados-articulo-receta');
+    const hiddenInput = document.getElementById('selector-articulo');
+    const query = input.value.trim();
+
+    if (query === '') {
+        hiddenInput.value = '';
+        listaResultados.style.display = 'none';
+        const cantidadContainer = document.getElementById('cantidad-articulo-container');
+        if (cantidadContainer) cantidadContainer.style.display = 'none';
+        return;
+    }
+
+    const tokens = normalizarTexto(query).split(/\s+/).filter(t => t.length > 0);
+
+    const resultados = (state.articulosDisponibles || []).filter(art => {
+        const nombreNormalizado = normalizarTexto(art.nombre);
+        const numeroNormalizado = normalizarTexto(art.numero ? art.numero.toString() : '');
+        return tokens.every(token => nombreNormalizado.includes(token) || numeroNormalizado.includes(token));
+    });
+
+    listaResultados.innerHTML = '';
+    if (resultados.length > 0) {
+        resultados.slice(0, 50).forEach(art => {
+            const li = document.createElement('li');
+            li.textContent = `${art.numero} - ${art.nombre}`;
+
+            li.addEventListener('click', () => {
+                hiddenInput.value = art.numero;
+                input.value = art.nombre;
+                listaResultados.innerHTML = '';
+                listaResultados.style.display = 'none';
+
+                // Mostrar campo de cantidad y hacerle focus
+                const cantidadContainer = document.getElementById('cantidad-articulo-container');
+                if (cantidadContainer) {
+                    cantidadContainer.style.display = 'block';
+                    document.getElementById('input-cantidad-articulo').focus();
+                }
+            });
+            listaResultados.appendChild(li);
+        });
+        listaResultados.style.display = 'block';
+    } else {
+        listaResultados.innerHTML = '<li style="padding: 8px 12px; color: #dc3545; cursor: default;">No se encontraron artículos</li>';
+        listaResultados.style.display = 'block';
+    }
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Activar buscadores inteligentes de la receta
+    const inputBuscarIngrediente = document.getElementById('buscar-ingrediente-receta');
+    if (inputBuscarIngrediente) {
+        inputBuscarIngrediente.addEventListener('input', manejarBusquedaIngredienteReceta);
+        inputBuscarIngrediente.addEventListener('focus', manejarBusquedaIngredienteReceta);
+    }
+
+    const inputBuscarArticulo = document.getElementById('buscar-articulo-receta');
+    if (inputBuscarArticulo) {
+        inputBuscarArticulo.addEventListener('input', manejarBusquedaArticuloReceta);
+        inputBuscarArticulo.addEventListener('focus', manejarBusquedaArticuloReceta);
+    }
+
+    // Ocultar listas al hacer clic fuera
+    document.addEventListener('click', (e) => {
+        if (inputBuscarIngrediente && e.target !== inputBuscarIngrediente) {
+            const listaIng = document.getElementById('lista-resultados-ingrediente-receta');
+            if (listaIng && !listaIng.contains(e.target)) listaIng.style.display = 'none';
+        }
+        if (inputBuscarArticulo && e.target !== inputBuscarArticulo) {
+            const listaArt = document.getElementById('lista-resultados-articulo-receta');
+            if (listaArt && !listaArt.contains(e.target)) listaArt.style.display = 'none';
+        }
+    });
+
     // Event listeners para el modal de receta
     const btnGuardarReceta = document.getElementById('btn-guardar-receta');
     if (btnGuardarReceta) {
@@ -1139,7 +1268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Detectar si es un carro de producción externa para permitir recetas sin ingredientes
                 const carroId = localStorage.getItem('carroActivo');
                 let esProduccionExternaConArticuloPrincipal = false;
-                
+
                 if (carroId) {
                     try {
                         const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
@@ -1151,8 +1280,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             // 2. Tiene artículos en la receta (artículo principal)
                             // 3. No tiene ingredientes (solo el artículo principal)
                             esProduccionExternaConArticuloPrincipal = (
-                                tipoCarro === 'externa' && 
-                                state.articulosReceta.length > 0 && 
+                                tipoCarro === 'externa' &&
+                                state.articulosReceta.length > 0 &&
                                 state.ingredientesCargados.length === 0
                             );
                         }
@@ -1196,13 +1325,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 state.ultimoArticuloEditado = articulo_numero;
-                
+
                 // 🔄 EMITIR EVENTO DE ACTUALIZACIÓN para sincronizar modales
                 console.log('🔔 [EVENTO] Emitiendo evento recetaActualizada...');
                 document.dispatchEvent(new CustomEvent('recetaActualizada', {
                     detail: { articulo_numero }
                 }));
-                
+
                 await actualizarTablaArticulos(state.articulosFiltrados);
                 cerrarModalReceta();
 
@@ -1238,33 +1367,36 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const selector = document.getElementById('selector-ingrediente');
                 const cantidadInput = document.getElementById('input-cantidad-ingrediente');
-                
+
                 const ingredienteId = selector.value;
                 const cantidad = Number(cantidadInput.value.replace(',', '.'));
-                
+                const buscarIng = document.getElementById('buscar-ingrediente-receta');
+                if (buscarIng) buscarIng.value = '';
+                const cntContainer = document.getElementById('cantidad-container');
+                if (cntContainer) cntContainer.style.display = 'none';
                 if (!ingredienteId) {
                     throw new Error('Debe seleccionar un ingrediente');
                 }
-                
+
                 if (isNaN(cantidad) || cantidad <= 0) {
                     throw new Error('La cantidad debe ser un número mayor a 0');
                 }
-                
+
                 const ingredienteSeleccionado = ingredientesDisponibles.find(i => i.id === parseInt(ingredienteId));
-                
+
                 const ingrediente = {
                     ingrediente_id: ingredienteSeleccionado.id,
                     nombre_ingrediente: ingredienteSeleccionado.nombre,
                     unidad_medida: ingredienteSeleccionado.unidad_medida,
                     cantidad: cantidad
                 };
-                
+
                 state.ingredientesCargados.push(ingrediente);
                 agregarIngredienteATabla(ingrediente);
-                
+
                 selector.value = '';
                 cantidadInput.value = '';
-                
+
             } catch (error) {
                 mostrarError(error.message);
             }
@@ -1280,12 +1412,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event listeners para selectores
     const selectorIngrediente = document.getElementById('selector-ingrediente');
     if (selectorIngrediente) {
-        selectorIngrediente.addEventListener('change', () => {
-            const cantidadContainer = document.getElementById('cantidad-container');
-            if (cantidadContainer) {
-                cantidadContainer.style.display = selectorIngrediente.value ? 'block' : 'none';
-            }
-        });
+
     }
 
     const selectorArticulo = document.getElementById('selector-articulo');
@@ -1365,32 +1492,32 @@ document.addEventListener('DOMContentLoaded', () => {
             const numeroArticulo = checkbox.dataset.numero;
             const nombreArticulo = checkbox.dataset.nombre;
             const esIntegra = checkbox.dataset.integra === 'true';
-            
+
             // Buscar input de cantidad correspondiente
             const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
             const cantidad = inputCantidad ? parseFloat(inputCantidad.value) || 1 : 1;
-            
+
             if (checkbox.checked) {
                 // Agregar a selección persistente
                 actualizarSeleccionEnTiempoReal(numeroArticulo, nombreArticulo, esIntegra, cantidad);
-                
+
                 // Agregar clase visual
                 const fila = checkbox.closest('tr');
                 if (fila) {
                     fila.classList.add('selected-row');
                 }
-                
+
                 console.log(`🔍 [CHECKBOX] Seleccionado: ${nombreArticulo} (${cantidad})`);
             } else {
                 // Remover de selección persistente
                 removerSeleccionEnTiempoReal(numeroArticulo);
-                
+
                 // Remover clase visual
                 const fila = checkbox.closest('tr');
                 if (fila) {
                     fila.classList.remove('selected-row');
                 }
-                
+
                 console.log(`🔍 [CHECKBOX] Deseleccionado: ${nombreArticulo}`);
             }
         }
@@ -1429,7 +1556,7 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             z-index: 10000;
         `;
         document.body.appendChild(successDiv);
-        
+
         setTimeout(() => {
             successDiv.remove();
         }, 3000);
@@ -1452,7 +1579,7 @@ export function actualizarVisibilidadBotonMultiple() {
 
     // Detectar si hay checkboxes de selección múltiple en la tabla
     const checkboxes = document.querySelectorAll('.seleccionar-articulo');
-    
+
     if (checkboxes.length > 0) {
         btnAgregarMultiples.style.display = 'inline-block';
         console.log('🔍 [FASE 2] Botón múltiple habilitado - checkboxes encontrados:', checkboxes.length);
@@ -1493,7 +1620,7 @@ export async function agregarMultiplesAlCarroInterno() {
 
         // Obtener artículos seleccionados
         const checkboxesSeleccionados = document.querySelectorAll('.seleccionar-articulo:checked');
-        
+
         if (checkboxesSeleccionados.length === 0) {
             throw new Error('Debe seleccionar al menos un artículo');
         }
@@ -1509,10 +1636,10 @@ export async function agregarMultiplesAlCarroInterno() {
             const numeroArticulo = checkbox.dataset.numero;
             const nombreArticulo = checkbox.dataset.nombre;
             const esIntegra = checkbox.dataset.integra === 'true';
-            
+
             // Buscar el input de cantidad correspondiente
             const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
-            
+
             if (!inputCantidad) {
                 console.error(`No se encontró input de cantidad para artículo ${numeroArticulo}`);
                 hayErrores = true;
@@ -1520,7 +1647,7 @@ export async function agregarMultiplesAlCarroInterno() {
             }
 
             const cantidad = parseFloat(inputCantidad.value);
-            
+
             if (isNaN(cantidad) || cantidad <= 0) {
                 console.error(`Cantidad inválida para artículo ${numeroArticulo}: ${inputCantidad.value}`);
                 hayErrores = true;
@@ -1547,10 +1674,10 @@ export async function agregarMultiplesAlCarroInterno() {
         // Mostrar advertencia si hay artículos con problemas de integridad
         if (articulosConAdvertencias.length > 0) {
             const mensaje = `ADVERTENCIA: Los siguientes artículos tienen recetas con ingredientes que ya no existen:\n\n` +
-                          `${articulosConAdvertencias.join('\n')}\n\n` +
-                          `Esto puede causar errores en el cálculo de ingredientes necesarios.\n\n` +
-                          `¿Desea continuar agregando estos artículos al carro?`;
-            
+                `${articulosConAdvertencias.join('\n')}\n\n` +
+                `Esto puede causar errores en el cálculo de ingredientes necesarios.\n\n` +
+                `¿Desea continuar agregando estos artículos al carro?`;
+
             if (!confirm(mensaje)) {
                 return;
             }
@@ -1593,7 +1720,7 @@ export async function agregarMultiplesAlCarroInterno() {
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    
+
                     // Si el artículo ya existe, no es un error crítico
                     if (errorData.error === 'Este artículo ya fue agregado al carro') {
                         console.warn(`🔍 [FASE 2] Artículo ya existe: ${articulo.nombre}`);
@@ -1623,7 +1750,7 @@ export async function agregarMultiplesAlCarroInterno() {
         if (articulosAgregados > 0) {
             mensaje += `✅ ${articulosAgregados} artículo${articulosAgregados > 1 ? 's' : ''} agregado${articulosAgregados > 1 ? 's' : ''} correctamente`;
         }
-        
+
         if (articulosConError.length > 0) {
             if (mensaje) mensaje += '\n\n';
             mensaje += `⚠️ Problemas con ${articulosConError.length} artículo${articulosConError.length > 1 ? 's' : ''}:\n${articulosConError.join('\n')}`;
@@ -1660,15 +1787,15 @@ export async function agregarMultiplesAlCarroInterno() {
             // Actualizar resumen automáticamente
             try {
                 console.log('🔍 [FASE 2] Actualizando resumen después de agregado múltiple...');
-                
+
                 await mostrarArticulosDelCarro();
-                
+
                 const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
                 mostrarResumenIngredientes(ingredientes);
-                
+
                 const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
                 mostrarResumenMixes(mixes);
-                
+
                 const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
                 if (articulos && articulos.length > 0) {
                     mostrarResumenArticulos(articulos);
@@ -1677,7 +1804,7 @@ export async function agregarMultiplesAlCarroInterno() {
                         seccionArticulos.style.display = 'block';
                     }
                 }
-                
+
                 console.log('🔍 [FASE 2] ✅ Resumen actualizado correctamente');
             } catch (updateError) {
                 console.error('🔍 [FASE 2] ⚠️ Error al actualizar resumen:', updateError);
@@ -1687,7 +1814,7 @@ export async function agregarMultiplesAlCarroInterno() {
     } catch (error) {
         console.error('🔍 [FASE 2] Error en agregado múltiple:', error);
         mostrarError(error.message);
-        
+
         // Restaurar botón en caso de error
         const btnAgregarMultiples = document.getElementById('btn-agregar-multiples');
         if (btnAgregarMultiples) {
@@ -1704,17 +1831,17 @@ export async function agregarMultiplesAlCarroInterno() {
 function agregarEventListenersAutoSeleccion() {
     // Obtener todos los inputs de cantidad múltiple
     const inputsCantidad = document.querySelectorAll('.cantidad-multiple.modal-articulos-interna-multiple');
-    
+
     inputsCantidad.forEach(input => {
         // Remover listeners previos para evitar duplicados
         input.removeEventListener('input', manejarCambioEnCantidad);
         input.removeEventListener('change', manejarCambioEnCantidad);
-        
+
         // Agregar nuevos listeners
         input.addEventListener('input', manejarCambioEnCantidad);
         input.addEventListener('change', manejarCambioEnCantidad);
     });
-    
+
     console.log(`🔍 [OPTIMIZACIÓN] Event listeners agregados a ${inputsCantidad.length} inputs de cantidad`);
 }
 
@@ -1725,52 +1852,52 @@ function agregarEventListenersAutoSeleccion() {
 function manejarCambioEnCantidad(event) {
     const input = event.target;
     const numeroArticulo = input.dataset.numero;
-    
+
     if (!numeroArticulo) {
         console.warn('🔍 [OPTIMIZACIÓN] Input sin data-numero:', input);
         return;
     }
-    
+
     // Buscar el checkbox correspondiente
     const checkbox = document.querySelector(`.seleccionar-articulo[data-numero="${numeroArticulo}"]`);
-    
+
     if (!checkbox) {
         console.warn(`🔍 [OPTIMIZACIÓN] No se encontró checkbox para artículo ${numeroArticulo}`);
         return;
     }
-    
+
     // Verificar si el valor es válido (mayor a 0)
     const cantidad = parseFloat(input.value);
-    
+
     if (!isNaN(cantidad) && cantidad > 0) {
         // Solo marcar si no está ya marcado (evitar loops)
         if (!checkbox.checked) {
             checkbox.checked = true;
             console.log(`🔍 [OPTIMIZACIÓN] Auto-seleccionado artículo ${numeroArticulo} (cantidad: ${cantidad})`);
-            
+
             // Agregar clase visual para indicar selección automática
             const fila = checkbox.closest('tr');
             if (fila) {
                 fila.classList.add('selected-row');
             }
         }
-        
+
         // Mejora solicitada por Martín - actualizar resumen en tiempo real
         actualizarSeleccionEnTiempoReal(numeroArticulo, checkbox.dataset.nombre, checkbox.dataset.integra === 'true', cantidad);
-        
+
     } else if (cantidad === 0 || input.value === '') {
         // Si la cantidad es 0 o está vacía, desmarcar el checkbox
         if (checkbox.checked) {
             checkbox.checked = false;
             console.log(`🔍 [OPTIMIZACIÓN] Auto-desmarcado artículo ${numeroArticulo} (cantidad vacía/cero)`);
-            
+
             // Remover clase visual
             const fila = checkbox.closest('tr');
             if (fila) {
                 fila.classList.remove('selected-row');
             }
         }
-        
+
         // Mejora solicitada por Martín - remover del resumen en tiempo real
         removerSeleccionEnTiempoReal(numeroArticulo);
     }
@@ -1790,31 +1917,31 @@ function preservarSeleccionesActuales() {
 
         // Obtener todos los checkboxes seleccionados
         const checkboxesSeleccionados = document.querySelectorAll('.seleccionar-articulo:checked');
-        
+
         checkboxesSeleccionados.forEach(checkbox => {
             const numeroArticulo = checkbox.dataset.numero;
             const nombreArticulo = checkbox.dataset.nombre;
             const esIntegra = checkbox.dataset.integra === 'true';
-            
+
             // Buscar la cantidad correspondiente
             const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
             const cantidad = inputCantidad ? parseFloat(inputCantidad.value) || 1 : 1;
-            
+
             // Guardar en el Map persistente
             state.selectedArticles.set(numeroArticulo, {
                 nombre: nombreArticulo,
                 cantidad: cantidad,
                 esIntegra: esIntegra
             });
-            
+
             console.log(`🔍 [SELECCIÓN PERSISTENTE] Preservado: ${nombreArticulo} (${cantidad})`);
         });
-        
+
         // Actualizar resumen visual
         actualizarResumenSeleccionados();
-        
+
         console.log(`🔍 [SELECCIÓN PERSISTENTE] Total preservado: ${state.selectedArticles.size} artículos`);
-        
+
     } catch (error) {
         console.error('🔍 [SELECCIÓN PERSISTENTE] Error al preservar selecciones:', error);
     }
@@ -1827,31 +1954,31 @@ function preservarSeleccionesActuales() {
 function restaurarSeleccionesPreservadas() {
     try {
         if (state.selectedArticles.size === 0) return;
-        
+
         console.log(`🔍 [SELECCIÓN PERSISTENTE] Restaurando ${state.selectedArticles.size} selecciones...`);
-        
+
         state.selectedArticles.forEach((datos, numeroArticulo) => {
             // Buscar checkbox correspondiente
             const checkbox = document.querySelector(`.seleccionar-articulo[data-numero="${numeroArticulo}"]`);
             if (checkbox) {
                 checkbox.checked = true;
-                
+
                 // Agregar clase visual
                 const fila = checkbox.closest('tr');
                 if (fila) {
                     fila.classList.add('selected-row');
                 }
             }
-            
+
             // Buscar input de cantidad correspondiente
             const inputCantidad = document.querySelector(`.cantidad-multiple[data-numero="${numeroArticulo}"]`);
             if (inputCantidad) {
                 inputCantidad.value = datos.cantidad;
             }
-            
+
             console.log(`🔍 [SELECCIÓN PERSISTENTE] Restaurado: ${datos.nombre} (${datos.cantidad})`);
         });
-        
+
     } catch (error) {
         console.error('🔍 [SELECCIÓN PERSISTENTE] Error al restaurar selecciones:', error);
     }
@@ -1869,7 +1996,7 @@ function actualizarResumenSeleccionados() {
             contenedorResumen = document.createElement('div');
             contenedorResumen.id = 'resumen-seleccionados';
             contenedorResumen.className = 'resumen-seleccionados-container';
-            
+
             // Insertar después del título del modal
             const modalContent = document.querySelector('#modal-articulos .modal-content');
             const titulo = modalContent.querySelector('h2');
@@ -1877,18 +2004,18 @@ function actualizarResumenSeleccionados() {
                 titulo.insertAdjacentElement('afterend', contenedorResumen);
             }
         }
-        
+
         // Limpiar contenido anterior
         contenedorResumen.innerHTML = '';
-        
+
         if (state.selectedArticles.size === 0) {
             contenedorResumen.style.display = 'none';
             return;
         }
-        
+
         // Mostrar resumen
         contenedorResumen.style.display = 'block';
-        
+
         const titulo = document.createElement('h4');
         titulo.textContent = `📋 Artículos Seleccionados (${state.selectedArticles.size})`;
         titulo.style.cssText = `
@@ -1898,7 +2025,7 @@ function actualizarResumenSeleccionados() {
             font-weight: bold;
         `;
         contenedorResumen.appendChild(titulo);
-        
+
         const lista = document.createElement('div');
         lista.className = 'lista-seleccionados';
         lista.style.cssText = `
@@ -1910,7 +2037,7 @@ function actualizarResumenSeleccionados() {
             padding: 8px;
             margin-bottom: 10px;
         `;
-        
+
         state.selectedArticles.forEach((datos, numeroArticulo) => {
             const item = document.createElement('div');
             item.className = 'item-seleccionado';
@@ -1925,7 +2052,7 @@ function actualizarResumenSeleccionados() {
                 border-left: 3px solid ${datos.esIntegra ? '#28a745' : '#ffc107'};
                 font-size: 12px;
             `;
-            
+
             const info = document.createElement('span');
             info.textContent = `${datos.nombre}`;
             info.style.cssText = `
@@ -1935,7 +2062,7 @@ function actualizarResumenSeleccionados() {
                 text-overflow: ellipsis;
                 white-space: nowrap;
             `;
-            
+
             const cantidad = document.createElement('span');
             cantidad.textContent = `Cant: ${datos.cantidad}`;
             cantidad.style.cssText = `
@@ -1943,7 +2070,7 @@ function actualizarResumenSeleccionados() {
                 color: #007bff;
                 margin-right: 8px;
             `;
-            
+
             const btnEliminar = document.createElement('button');
             btnEliminar.textContent = '✕';
             btnEliminar.style.cssText = `
@@ -1961,17 +2088,17 @@ function actualizarResumenSeleccionados() {
             `;
             btnEliminar.title = 'Quitar de selección';
             btnEliminar.onclick = () => eliminarSeleccion(numeroArticulo);
-            
+
             item.appendChild(info);
             item.appendChild(cantidad);
             item.appendChild(btnEliminar);
             lista.appendChild(item);
         });
-        
+
         contenedorResumen.appendChild(lista);
-        
+
         console.log(`🔍 [SELECCIÓN PERSISTENTE] Resumen actualizado: ${state.selectedArticles.size} artículos`);
-        
+
     } catch (error) {
         console.error('🔍 [SELECCIÓN PERSISTENTE] Error al actualizar resumen:', error);
     }
@@ -1986,7 +2113,7 @@ function eliminarSeleccion(numeroArticulo) {
         if (datos) {
             state.selectedArticles.delete(numeroArticulo);
             console.log(`🔍 [SELECCIÓN PERSISTENTE] Eliminado: ${datos.nombre}`);
-            
+
             // Desmarcar checkbox si está visible
             const checkbox = document.querySelector(`.seleccionar-articulo[data-numero="${numeroArticulo}"]`);
             if (checkbox) {
@@ -1996,7 +2123,7 @@ function eliminarSeleccion(numeroArticulo) {
                     fila.classList.remove('selected-row');
                 }
             }
-            
+
             // Actualizar resumen
             actualizarResumenSeleccionados();
         }
@@ -2022,12 +2149,12 @@ function actualizarSeleccionEnTiempoReal(numeroArticulo, nombreArticulo, esInteg
             cantidad: cantidad,
             esIntegra: esIntegra
         });
-        
+
         // Actualizar resumen visual inmediatamente
         actualizarResumenSeleccionados();
-        
+
         console.log(`🔍 [TIEMPO REAL] Actualizado: ${nombreArticulo} (${cantidad})`);
-        
+
     } catch (error) {
         console.error('🔍 [TIEMPO REAL] Error al actualizar selección:', error);
     }
@@ -2042,13 +2169,13 @@ function removerSeleccionEnTiempoReal(numeroArticulo) {
         const datos = state.selectedArticles.get(numeroArticulo);
         if (datos) {
             state.selectedArticles.delete(numeroArticulo);
-            
+
             // Actualizar resumen visual inmediatamente
             actualizarResumenSeleccionados();
-            
+
             console.log(`🔍 [TIEMPO REAL] Removido: ${datos.nombre}`);
         }
-        
+
     } catch (error) {
         console.error('🔍 [TIEMPO REAL] Error al remover selección:', error);
     }
@@ -2066,16 +2193,16 @@ function removerSeleccionEnTiempoReal(numeroArticulo) {
 async function renderizarTarjetasProduccionExterna(articulos, contenedor, estadoRecetas, integridadRecetas) {
     try {
         console.log('🎨 [TARJETAS] Renderizando tarjetas para producción externa...');
-        
+
         if (!articulos || articulos.length === 0) {
             contenedor.innerHTML = '<p class="no-articulos-mensaje">No hay artículos de producción externa disponibles</p>';
             return;
         }
-        
+
         // Obtener recetas de todos los artículos de una vez
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
-        
+
         // Obtener recetas completas para mostrar insumos base
         let recetasPorArticulo = {};
         for (const articulo of articulos) {
@@ -2089,17 +2216,17 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                 console.warn(`⚠️ No se pudo obtener receta para ${articulo.numero}`);
             }
         }
-        
+
         for (const articulo of articulos) {
             const tieneReceta = estadoRecetas[articulo.numero];
             const esIntegra = integridadRecetas[articulo.numero];
             const receta = recetasPorArticulo[articulo.numero] || null;
-            
+
             // Crear tarjeta
             const tarjeta = document.createElement('div');
             tarjeta.className = 'tarjeta-articulo-externo';
             tarjeta.dataset.numero = articulo.numero;
-            
+
             // Cabecera de la tarjeta
             const cabecera = `
                 <div class="tarjeta-cabecera">
@@ -2107,17 +2234,17 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                     <span class="tarjeta-codigo">${articulo.numero}</span>
                 </div>
             `;
-            
+
             // Información del ARTÍCULO BASE (insumo que compone la UP)
             // 🔧 CORRECCIÓN: Usar datos reales del backend en lugar de buscar en state
             let infoInsumoBase = '';
-            
+
             if (articulo.articulo_base_codigo) {
                 // Hay artículo base configurado - usar datos del backend
                 const stockInsumo = articulo.articulo_base_stock || 0;
                 const colorStock = stockInsumo > 0 ? '#28a745' : '#dc3545';
                 const nombreBase = articulo.articulo_base_nombre || articulo.articulo_base_codigo;
-                
+
                 infoInsumoBase = `
                     <div class="tarjeta-info-item">
                         <span class="info-icono">📦</span>
@@ -2141,7 +2268,7 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                     </div>
                 `;
             }
-            
+
             // Información de ingredientes adicionales (miel, aceite, etc.)
             let infoIngredientesHTML = '';
             if (receta && receta.ingredientes && receta.ingredientes.length > 0) {
@@ -2162,12 +2289,12 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                     </div>
                 `;
             }
-            
+
             // Texto de ayuda
             const textoAyuda = articulo.articulo_base_codigo
                 ? `Esta UP consume <strong>${articulo.articulo_base_codigo} - ${articulo.articulo_base_nombre || articulo.articulo_base_codigo}</strong> como artículo base y lo transforma en <strong>${articulo.nombre}</strong>`
                 : 'Configure la receta para definir el artículo base y los ingredientes necesarios';
-            
+
             // Botones de acción
             let botonesHTML = '';
             if (tieneReceta) {
@@ -2195,7 +2322,7 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                     </button>
                 `;
             }
-            
+
             // Ensamblar tarjeta completa
             tarjeta.innerHTML = `
                 ${cabecera}
@@ -2211,23 +2338,23 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                     ${botonesHTML}
                 </div>
             `;
-            
+
             contenedor.appendChild(tarjeta);
         }
-        
+
         // Agregar event listeners para botones de selección
         contenedor.querySelectorAll('.btn-seleccionar-tarjeta').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const numero = btn.dataset.numero;
                 const nombre = btn.dataset.nombre;
                 const esIntegra = btn.dataset.integra === 'true';
-                
+
                 await agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btn);
             });
         });
-        
+
         console.log(`🎨 [TARJETAS] ${articulos.length} tarjetas renderizadas`);
-        
+
     } catch (error) {
         console.error('🎨 [TARJETAS] Error al renderizar tarjetas:', error);
         contenedor.innerHTML = '<p class="error-mensaje">Error al cargar artículos</p>';
@@ -2254,7 +2381,7 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
         }
 
         const colaborador = JSON.parse(colaboradorData);
-        
+
         // Para producción externa, cantidad por defecto es 1
         const cantidad = 1;
 
@@ -2297,7 +2424,7 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
             animation: slideIn 0.3s ease-out;
         `;
         document.body.appendChild(successDiv);
-        
+
         setTimeout(() => {
             successDiv.remove();
         }, 3000);
@@ -2307,30 +2434,30 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
         // 🔄 ACTUALIZAR RESUMEN AUTOMÁTICAMENTE (PRODUCCIÓN EXTERNA)
         try {
             console.log('🔄 [EXTERNO] Iniciando actualización completa del resumen...');
-            
+
             // 🎯 DELAY ESTRATÉGICO: Esperar a que el backend procese completamente
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             // 1. Actualizar lista de artículos del carro
             await mostrarArticulosDelCarro();
             console.log('✅ [EXTERNO] Lista de artículos actualizada');
-            
+
             // 2. FORZAR recarga de ingredientes
             const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
             await mostrarResumenIngredientes(ingredientes);
             console.log('✅ [EXTERNO] Resumen de ingredientes actualizado');
-            
+
             // 3. FORZAR recarga de mixes
             const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
             mostrarResumenMixes(mixes);
             console.log('✅ [EXTERNO] Resumen de mixes actualizado');
-            
+
             // 4. 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
             const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
             const seccionArticulos = document.getElementById('resumen-articulos');
-            
+
             console.log(`🔍 [EXTERNO-ARTÍCULOS] Artículos obtenidos: ${articulos?.length || 0}`);
-            
+
             if (articulos && articulos.length > 0) {
                 // FORZAR visualización de la sección
                 if (seccionArticulos) {
@@ -2339,7 +2466,7 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
                     seccionArticulos.offsetHeight;
                     console.log('✅ [EXTERNO-ARTÍCULOS] Sección mostrada y forzado reflow');
                 }
-                
+
                 // FORZAR actualización de la tabla
                 mostrarResumenArticulos(articulos);
                 console.log('✅ [EXTERNO-ARTÍCULOS] Tabla actualizada con datos');
@@ -2349,7 +2476,7 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
                     console.log('ℹ️ [EXTERNO-ARTÍCULOS] No hay artículos, sección oculta');
                 }
             }
-            
+
             console.log('✅ [EXTERNO] Resumen completo actualizado correctamente');
         } catch (updateError) {
             console.error('⚠️ [EXTERNO] Error al actualizar resumen:', updateError);
@@ -2367,21 +2494,21 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
 document.addEventListener('recetaActualizada', async (event) => {
     try {
         console.log('🔔 [AUTO-REFRESH] Evento recetaActualizada recibido:', event.detail);
-        
+
         // Verificar si el modal de artículos está abierto
         const modalArticulos = document.getElementById('modal-articulos');
         if (!modalArticulos || modalArticulos.style.display === 'none') {
             console.log('🔔 [AUTO-REFRESH] Modal de artículos no está abierto, omitiendo actualización');
             return;
         }
-        
+
         // Verificar si es un carro externo
         const carroId = localStorage.getItem('carroActivo');
         if (!carroId) {
             console.log('🔔 [AUTO-REFRESH] No hay carro activo, omitiendo actualización');
             return;
         }
-        
+
         let tipoCarro = 'interna';
         try {
             const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
@@ -2392,47 +2519,47 @@ document.addEventListener('recetaActualizada', async (event) => {
         } catch (error) {
             console.warn('🔔 [AUTO-REFRESH] Error al obtener tipo de carro:', error);
         }
-        
+
         if (tipoCarro !== 'externa') {
             console.log('🔔 [AUTO-REFRESH] No es carro externo, omitiendo actualización de tarjetas');
             return;
         }
-        
+
         console.log('🔄 [AUTO-REFRESH] Esperando 500ms para que el backend procese los cambios...');
-        
+
         // 🎯 RETRASO ESTRATÉGICO: Esperar a que el backend termine de procesar
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         console.log('🔄 [AUTO-REFRESH] Recargando artículos con cache-busting...');
-        
+
         // Limpiar caché para forzar recarga desde backend
         const cacheKey = `articulos_${tipoCarro}`;
         delete state[cacheKey];
-        
+
         // 🎯 CACHE-BUSTING: Agregar timestamp para forzar datos frescos
         const timestamp = Date.now();
         const url = `http://localhost:3002/api/produccion/articulos?tipo_carro=externa&_t=${timestamp}`;
         const response = await fetch(url);
-        
+
         if (!response.ok) {
             throw new Error('Error al recargar artículos');
         }
-        
+
         const responseData = await response.json();
         const articulos = responseData.data || responseData;
-        
+
         console.log(`🔄 [AUTO-REFRESH] Artículos recibidos del backend: ${articulos.length}`);
-        
+
         // Actualizar state
         state[cacheKey] = articulos;
         state.todosLosArticulos = articulos;
         state.articulosFiltrados = [...articulos];
-        
+
         // Aplicar filtros actuales para regenerar las tarjetas
         aplicarFiltros(0);
-        
+
         console.log('✅ [AUTO-REFRESH] Tarjetas actualizadas con datos frescos del backend');
-        
+
         // Efecto visual de actualización
         const contenedorTarjetas = document.getElementById('contenedor-tarjetas-articulos');
         if (contenedorTarjetas) {
@@ -2442,7 +2569,7 @@ document.addEventListener('recetaActualizada', async (event) => {
                 contenedorTarjetas.style.transition = 'opacity 0.3s ease';
             }, 100);
         }
-        
+
     } catch (error) {
         console.error('🔔 [AUTO-REFRESH] Error al actualizar tarjetas:', error);
     }
