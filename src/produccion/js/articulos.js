@@ -1198,7 +1198,13 @@ function manejarBusquedaArticuloReceta(e) {
     if (resultados.length > 0) {
         resultados.slice(0, 50).forEach(art => {
             const li = document.createElement('li');
-            li.textContent = `${art.numero} - ${art.nombre}`;
+            const stockFormateado = formatearStock(art.stock_consolidado);
+            li.innerHTML = `
+                <div style="display: flex; justify-content: space-between; width: 100%;">
+                    <span>${art.numero} - ${art.nombre}</span>
+                    <span style="color: #6c757d; font-size: 0.9em; font-weight: bold;">(Stock: ${stockFormateado})</span>
+                </div>
+            `;
 
             li.addEventListener('click', () => {
                 hiddenInput.value = art.numero;
