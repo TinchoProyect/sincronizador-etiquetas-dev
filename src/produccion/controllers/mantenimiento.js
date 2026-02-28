@@ -160,81 +160,138 @@ async function getHistorialMantenimiento(req, res) {
 }
 
 /**
- * Conciliar devolución con API Externa (Tunnel)
- * Endpoint: https://api.lamdaser.com/devoluciones
+ * Motor de Diagnóstico "Vigía Auditor"
+ * Busca comprobantes candidatos y genera un diagnóstico detallado comparativo.
  */
-async function conciliarDevolucion(req, res) {
+async function diagnosticoVigiaAuditor(req, res) {
     const debugLog = [];
 
     try {
         const { cliente, articulo, cantidad, fecha } = req.query;
-        // Normalizar fecha
         const fechaRef = fecha || new Date().toISOString().split('T')[0];
+        const cantidadLocal = parseFloat(cantidad || 0);
 
-        // LOG
-        console.log(`🔍 [MANTENIMIENTO] Conciliando devolución (Tunnel): Cliente=${cliente}, Art=${articulo}`);
-        debugLog.push(`Inicio: ${new Date().toISOString()}`);
-        debugLog.push(`Input: Cliente=${cliente}, Art=${articulo}, Cant=${cantidad}, Fecha=${fechaRef}`);
+        console.log(`👁️ [VIGIA AUDITOR] Analizando candidato: Cliente=${cliente}, Art=${articulo}, Cant=${cantidadLocal}, Fecha=${fechaRef}`);
+        debugLog.push(`Inicio Vigía: ${new Date().toISOString()}`);
 
         if (!cliente || !articulo) {
-            debugLog.push('❌ Error: Faltan parámetros requeridos');
-            return res.status(400).json({
-                error: 'Faltan parámetros requeridos',
-                debug: { log: debugLog }
-            });
+            return res.status(400).json({ error: 'Faltan parámetros requeridos', debug: { log: debugLog } });
         }
 
-        // --- URL DEL TÚNEL (CORRECTA) ---
         const baseUrl = 'https://api.lamdaser.com/devoluciones';
-
         const url = new URL(baseUrl);
         url.searchParams.append('cliente', cliente);
         url.searchParams.append('articulo', articulo);
-        url.searchParams.append('cantidad', cantidad || 0);
-        url.searchParams.append('fecha', fechaRef);
-
-        debugLog.push(`Target API: ${baseUrl}`);
-        debugLog.push(`Params: ${decodeURIComponent(url.search)}`);
+        // NOTA: Se omiten intencionalmente 'cantidad' y 'fecha'
+        // Dejamos que Lomasoft devuelva todo el historial del artículo para este cliente.
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
-
-        debugLog.push('📤 Enviando petición HTTP...');
 
         const response = await fetch(url.toString(), {
             signal: controller.signal,
             headers: { 'Accept': 'application/json' }
         });
-
         clearTimeout(timeout);
 
-        debugLog.push(`📥 Respuesta HTTP: ${response.status} ${response.statusText}`);
-
         if (!response.ok) {
-            const errText = await response.text();
-            debugLog.push(`❌ Body Error: ${errText.substring(0, 150)}`);
             throw new Error(`Tunnel respondió ${response.status}: ${response.statusText}`);
         }
 
         const data = await response.json();
         const resultados = Array.isArray(data) ? data : (data.data || []);
 
-        debugLog.push(`✅ Registros recibidos: ${resultados.length}`);
+        // Mapa de candidatos con diagnóstico individual
+        const candidatosBrutos = resultados.map(r => {
+            const candidatoCantidad = Math.abs(parseFloat(r.cantidad || r.item_cantidad || 0)); // Absoluto porque la NC puede venir negativa
+            const candidatoFecha = r.fecha || r.fecha_emision;
 
-        // MAPPING
-        const mappedData = resultados.map(r => ({
-            tipo_comprobante: r.tipo_comprobante || 'N/C',
-            pto_vta: r.punto_venta || 0,
-            numero_comprobante: r.numero_comprobante || 0,
-            imp_neto: r.importe_neto || r.imp_neto || 0,
-            fecha_emision: r.fecha || r.fecha_emision,
-            item_descripcion: r.articulo || r.item_descripcion,
-            item_cantidad: r.cantidad || r.item_cantidad
-        }));
+            // 1. Análisis de Diferencia de Monto/Cantidad
+            let alertaCantidad = null;
+            let diferenciaCantidad = 0;
+            if (candidatoCantidad !== cantidadLocal) {
+                // Cálculo simple aritmético
+                diferenciaCantidad = candidatoCantidad - cantidadLocal;
+                alertaCantidad = diferenciaCantidad > 0
+                    ? `Sobra en NC: +${Math.abs(diferenciaCantidad).toFixed(3)} u.`
+                    : `Falta en NC: -${Math.abs(diferenciaCantidad).toFixed(3)} u.`;
+            }
+
+            // 2. Análisis de Lag de Fechas
+            let alertaFecha = null;
+            let difDias = 0;
+            if (candidatoFecha && fechaRef) {
+                const f1 = new Date(fechaRef);
+                const f2 = new Date(candidatoFecha);
+                difDias = Math.round((f2 - f1) / (1000 * 60 * 60 * 24));
+                if (difDias !== 0) {
+                    alertaFecha = difDias > 0 ? `Emitida ${difDias} días después` : `Emitida ${Math.abs(difDias)} días antes`;
+                }
+            }
+
+            // 3. Match de Artículo
+            const nombreArticuloCandidato = (r.articulo || r.item_descripcion || '').toUpperCase();
+            let alertaArticulo = null;
+            if (articulo && !nombreArticuloCandidato.includes(articulo.toUpperCase()) && nombreArticuloCandidato) {
+                alertaArticulo = `Código de artículo difiere (${nombreArticuloCandidato})`;
+            }
+
+            // Determinar color/estado general del diagnóstico
+            let nivelRiesgo = 'verde';
+            if (Math.abs(diferenciaCantidad) > 0 || Math.abs(difDias) > 0 || alertaArticulo) {
+                if (Math.abs(diferenciaCantidad) >= 5 || Math.abs(difDias) > 10) {
+                    nivelRiesgo = 'rojo'; // Muy lejos temporalmente o en monto
+                } else {
+                    nivelRiesgo = 'amarillo'; // Diferencia tolerable
+                }
+            }
+
+            return {
+                comprobante: {
+                    tipo_comprobante: r.tipo_comprobante || 'N/C',
+                    pto_vta: r.punto_venta || 0,
+                    numero_comprobante: r.numero_comprobante || 0,
+                    imp_neto: r.importe_neto || r.imp_neto || 0,
+                    fecha_emision: candidatoFecha,
+                    item_descripcion: r.articulo || r.item_descripcion,
+                    item_cantidad: candidatoCantidad // Guardamos siempre en positivo para UI
+                },
+                diagnostico: {
+                    riesgo: nivelRiesgo,
+                    alertas: [alertaCantidad, alertaFecha, alertaArticulo].filter(Boolean),
+                    _score_diferencia: Math.abs(diferenciaCantidad),
+                    _score_dias: Math.abs(difDias)
+                }
+            };
+        });
+
+        // FILTRADO DE SEGURIDAD (Ignorar devoluciones con más de 45 días de antigüedad respecto al retiro)
+        const candidatosConDiagnostico = candidatosBrutos
+            .filter(c => c.diagnostico._score_dias <= 45)
+            // ORDENAR: Los matches más cercanos en cantidad primero, luego en fecha
+            .sort((a, b) => {
+                if (a.diagnostico._score_diferencia !== b.diagnostico._score_diferencia) {
+                    return a.diagnostico._score_diferencia - b.diagnostico._score_diferencia;
+                }
+                return a.diagnostico._score_dias - b.diagnostico._score_dias;
+            });
+
+        debugLog.push(`Candidatos post-filtro (<45 días): ${candidatosConDiagnostico.length}`);
+
+        // Diagnóstico global
+        let diagnosticoGlobal = 'Comprobante Físico Encontrado';
+        if (candidatosConDiagnostico.length === 0) {
+            diagnosticoGlobal = 'No se encontraron coincidencias válidas';
+        } else if (candidatosConDiagnostico.some(c => c.diagnostico.riesgo === 'rojo')) {
+            diagnosticoGlobal = 'Coincidencias con alto riesgo de discrepancia';
+        } else if (candidatosConDiagnostico.some(c => c.diagnostico.riesgo === 'amarillo')) {
+            diagnosticoGlobal = 'Coincidencias con posibles discrepancias menores';
+        }
 
         res.json({
             success: true,
-            data: mappedData,
+            candidatos: candidatosConDiagnostico,
+            diagnostico_global: diagnosticoGlobal,
             debug: {
                 log: debugLog,
                 source: baseUrl
@@ -587,7 +644,7 @@ async function revertirMovimiento(req, res) {
 module.exports = {
     getStockMantenimiento,
     getHistorialMantenimiento,
-    conciliarDevolucion,
+    diagnosticoVigiaAuditor,
     confirmarConciliacion,
     liberarStock,
     transferirAIngredientes,

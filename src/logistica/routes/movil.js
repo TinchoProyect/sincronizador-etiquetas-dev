@@ -626,13 +626,13 @@ router.post('/rutas/finalizar', async (req, res) => {
                     await client.query(`
                         INSERT INTO mantenimiento_movimientos
                         (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
-                        VALUES ($1, $2, $3, $4, 'INGRESO', 'FINALIZADO', $5)
+                        VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
                     `, [
                         artAudit,
                         item.cantidad,
                         retiro.id,
                         `Chofer ID: ${choferId}`,
-                        `Ingreso por Retiro Ruta #${ruta.id}`
+                        `Ingreso por Retiro Ruta #${ruta.id} - Pendiente de Conciliación`
                     ]);
 
                     // B. Actualizar Stock Consolidado (Columna Específica de Mantenimiento)

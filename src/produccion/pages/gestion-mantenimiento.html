@@ -602,7 +602,7 @@
             modalBody.innerHTML = '<p class="text-center">⏳ Analizando conciliación...</p><p class="text-center" style="font-size: 0.8em; color: #666;">Conectando con Facturación...</p>';
 
             try {
-                // Llamada al backend propio, que hará de proxy
+                // Llamada al backend de Vigía Auditor
                 const params = new URLSearchParams({
                     cliente: clienteId,
                     articulo: articulo,
@@ -610,49 +610,86 @@
                     fecha: fecha
                 });
 
-                const res = await fetch(`/api/produccion/mantenimiento/conciliar?${params}`);
-                // Si la respuesta no es OK pero devuelve JSON, intentamos leerlo
+                const res = await fetch(`/api/produccion/mantenimiento/vigia-auditor?${params}`);
                 const response = await res.json();
 
-                // --- ADAPTACIÓN V2 ---
-                // El backend ahora devuelve { success: true, data: [...], debug: {...} }
-                // O podría devolver error { success: false, error: ... }
-                const data = response.success && Array.isArray(response.data) ? response.data : [];
+                const candidatos = response.success && Array.isArray(response.candidatos) ? response.candidatos : [];
                 const debugInfo = response.debug || null;
                 const errorInfo = !response.success ? response.error : null;
+                const diagGlobal = response.diagnostico_global || '';
 
                 let html = '';
 
+                if (diagGlobal) {
+                    html += `<p style="text-align: center; font-style: italic; margin-bottom: 15px;">${diagGlobal}</p>`;
+                }
+
                 // CASO 1: ENCONTRADO
-                if (data.length > 0) {
-                    html += '<p>✅ Se encontraron los siguientes comprobantes:</p>';
-                    data.forEach(nc => {
+                if (candidatos.length > 0) {
+                    html += '<p>✅ Candidatos detectados. Por favor, <strong>revisá el diagnóstico</strong> antes de confirmar:</p>';
+                    candidatos.forEach(c => {
+                        const nc = c.comprobante;
+                        const diag = c.diagnostico;
+                        
+                        // Determinar color de borde/fondo según riesgo
+                        let borderColor = '#28a745'; // verde
+                        let bgColor = '#f8fff8';
+                        let icono = '✅';
+                        
+                        if (diag.riesgo === 'rojo') {
+                            borderColor = '#dc3545';
+                            bgColor = '#fff8f8';
+                            icono = '❌';
+                        } else if (diag.riesgo === 'amarillo') {
+                            borderColor = '#ffc107';
+                            bgColor = '#fffdf8';
+                            icono = '⚠️';
+                        }
+
                         // Encode data for passing to confirm function
                         const ncString = encodeURIComponent(JSON.stringify(nc));
+                        
+                        let alertasHtml = '';
+                        if (diag.alertas && diag.alertas.length > 0) {
+                            alertasHtml = '<ul style="margin: 5px 0 0 0; padding-left: 20px; font-size: 0.85em; color: ' + (diag.riesgo === 'rojo' ? '#dc3545' : '#856404') + ';">';
+                            diag.alertas.forEach(a => alertasHtml += `<li>${a}</li>`);
+                            alertasHtml += '</ul>';
+                        } else {
+                            alertasHtml = '<p style="margin: 5px 0 0 0; font-size: 0.85em; color: #28a745;">Match perfecto detectado.</p>';
+                        }
+
                         html += `
-                            <div class="result-item" style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <strong>${nc.tipo_comprobante || 'NC'}</strong> - Nro: ${nc.pto_vta || nc.punto_venta}-${nc.numero_comprobante}<br>
-                                    <span style="color: green; font-weight: bold;">$${nc.imp_neto || nc.importe_neto}</span><br>
-                                    <small>Fecha: ${nc.fecha_emision ? new Date(nc.fecha_emision).toLocaleDateString() : 'N/A'}</small><br>
-                                    <small style="color: #666;">Item: ${nc.item_descripcion || nc.articulo} (${nc.item_cantidad || nc.cantidad})</small>
+                            <div class="result-item" style="border-left: 5px solid ${borderColor}; background-color: ${bgColor}; padding: 10px; margin-bottom: 15px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                    <div>
+                                        <strong>${icono} ${nc.tipo_comprobante || 'NC'}</strong> - Nro: ${nc.pto_vta || nc.punto_venta}-${nc.numero_comprobante}<br>
+                                        <span style="color: #333; font-weight: bold;">Monto: $${nc.imp_neto || nc.importe_neto}</span><br>
+                                        <small>F. Emisión: ${nc.fecha_emision ? new Date(nc.fecha_emision).toLocaleDateString() : 'N/A'}</small><br>
+                                        <small style="color: #666;">Art: ${nc.item_descripcion || nc.articulo} (${nc.item_cantidad || nc.cantidad} u.)</small>
+                                        <div style="margin-top: 8px; border-top: 1px dashed #ccc; padding-top: 5px;">
+                                            <strong>Diagnóstico Vigía:</strong>
+                                            ${alertasHtml}
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                                        <button class="btn-conciliar" style="background-color: #007bff; color: white; padding: 5px 10px; font-size: 0.9em;" 
+                                            onclick="confirmarConciliacion('${articulo}', '${clienteId}', '${cantidad}', '${ncString}')">
+                                            📥 Asignar Manualmente
+                                        </button>
+                                    </div>
                                 </div>
-                                <button class="btn-conciliar" style="background-color: #28a745; margin-left:10px;" 
-                                     onclick="confirmarConciliacion('${articulo}', '${clienteId}', '${cantidad}', '${ncString}')">
-                                    ✍️ Confirmar
-                                </button>
                             </div>
                         `;
                     });
-                    html += '<p style="font-size: 0.85em; color: #666; margin-top: 10px;">⚠️ Al confirmar, el stock quedará conciliado y no podrá modificarse.</p>';
+                    html += '<p style="font-size: 0.85em; color: #666; margin-top: 10px; text-align: center;">⚠️ Al confirmar, el stock quedará conciliado y el vínculo será inamovible.</p>';
                 }
                 // CASO 2: NO ENCONTRADO
                 else if (!errorInfo) {
                     html += `
                         <div style="text-align: center; color: #d9534f; margin-bottom: 20px;">
                             <p style="font-size: 3em; margin: 0;">📭</p>
-                            <p><strong>No se encontró Nota de Crédito.</strong></p>
-                            <p style="font-size: 0.9em; color: #666;">Se revisaron comprobantes del último mes.</p>
+                            <p><strong>El Vigía no encontró comprobantes candidatos.</strong></p>
+                            <p style="font-size: 0.9em; color: #666;">Contactá a facturación para verificar la carga en Lomasoft.</p>
                         </div>
                     `;
                 }
@@ -667,12 +704,12 @@
                     `;
                 }
 
-                // --- SECCIÓN DE DIAGNÓSTICO (Siempre disponible) ---
+                // --- SECCIÓN DE DEBUG LGS ---
                 if (debugInfo && debugInfo.log) {
                     html += `
                         <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
-                            <details ${data.length === 0 ? 'open' : ''}>
-                                <summary style="cursor: pointer; color: #007bff; font-weight: bold;">🔍 Ver Diagnóstico Técnico</summary>
+                            <details ${candidatos.length === 0 ? 'open' : ''}>
+                                <summary style="cursor: pointer; color: #007bff; font-weight: bold;">🔍 Ver Bitácora del Vigía</summary>
                                 <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.85em; margin-top: 5px; max-height: 200px; overflow-y: auto;">
                                     <ul style="list-style-type: none; padding-left: 0; margin: 0;">
                                         ${debugInfo.log.map(line => {
