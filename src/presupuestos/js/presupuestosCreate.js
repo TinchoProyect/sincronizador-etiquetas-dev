@@ -2562,7 +2562,8 @@ async function toggleDetallesPresupuesto(idPresupuesto, containerEl, btnEl) {
         let subtotalGlobal = 0;
 
         detalles.forEach(d => {
-            const artNombre = d.articulo_nombre || d.descripcion || d.articulo_codigo || 'Art. Desconocido';
+            const artCodigo = d.codigo_barras || d.articulo_numero || d.articulo_codigo || d.articulo || '';
+            const artNombre = d.articulo_nombre || d.descripcion_articulo || d.descripcion || d.detalle || 'Art. Desconocido';
             const cantidad = Number(d.cantidad) || 0;
             const precioUnitario = Number(d.precio_unitario) || Number(d.valor_unitario) || Number(d.valor1) || Number(d.neto) || 0;
             const subtotal = Number(d.total) || (Number(d.precio1) * cantidad) || (cantidad * precioUnitario);
@@ -2574,7 +2575,7 @@ async function toggleDetallesPresupuesto(idPresupuesto, containerEl, btnEl) {
 
             html += `
                 <tr style="border-bottom: 1px solid #e9ecef;">
-                    <td style="padding: 6px; color: #34495e;"><strong>${d.articulo_codigo || ''}</strong> - ${artNombre}</td>
+                    <td style="padding: 6px; color: #34495e;"><strong>${artCodigo}</strong> - ${artNombre}</td>
                     <td style="padding: 6px; text-align: right; font-weight: bold; color: #27ae60;">${cantidad}</td>
                     <td style="padding: 6px; text-align: right; color: #7f8c8d;">${precioFmt}</td>
                     <td style="padding: 6px; text-align: right; font-weight: bold;">${subtotalFmt}</td>
@@ -2648,11 +2649,12 @@ async function confirmarImportacion(idPresupuesto) {
             const inpVal = row.querySelector(`input[name="detalles[${id}][valor1]"]`) || row.querySelector(`input[name*="[valor1]"]`);
             const inpIva = row.querySelector(`input[name="detalles[${id}][iva1]"]`) || row.querySelector(`input[name*="[iva1]"]`);
 
-            const artNombre = d.articulo_nombre || d.descripcion || d.articulo_codigo;
+            const artCodigo = d.codigo_barras || d.articulo_numero || d.articulo_codigo || d.articulo || '';
+            const artNombre = d.articulo_nombre || d.descripcion_articulo || d.descripcion || d.detalle || artCodigo;
 
             if (inpArt) {
                 inpArt.value = artNombre;
-                if (d.articulo_codigo) inpArt.dataset.codigoBarras = d.articulo_codigo;
+                if (artCodigo) inpArt.dataset.codigoBarras = artCodigo;
                 // Marcar como validado para que no salte de nuevo la intercepción al clonar
                 inpArt.dataset.origenValidado = 'true';
             }
