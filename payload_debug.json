@@ -1,0 +1,71 @@
+{
+  "success": true,
+  "data": {
+    "presupuesto": {
+      "id": 8232654,
+      "id_presupuesto": "mm7wuomc-jnfeh",
+      "tipo_comprobante": "Factura"
+    },
+    "detalles": [
+      {
+        "id": 25015304,
+        "codigo_barras": "6131804000119",
+        "articulo": "6131804000119",
+        "articulo_numero": "6131804000119",
+        "descripcion_articulo": "Datil/Algerian x 5 kg",
+        "detalle": "Datil/Algerian x 5 kg",
+        "descripcion": "Datil/Algerian x 5 kg",
+        "cantidad": 1,
+        "valor1": 36722,
+        "precio1": 44433.62,
+        "iva1": 7711.62,
+        "camp2": 0.21,
+        "neto": 36722,
+        "iva": 7711.62,
+        "total": 44433.62
+      },
+      {
+        "id": 25015305,
+        "codigo_barras": "7616716793",
+        "articulo": "7616716793",
+        "articulo_numero": "7616716793",
+        "descripcion_articulo": "Mix/F/Secas/Premium 10 x 300",
+        "detalle": "Mix/F/Secas/Premium 10 x 300",
+        "descripcion": "Mix/F/Secas/Premium 10 x 300",
+        "cantidad": 1,
+        "valor1": 67100,
+        "precio1": 81191,
+        "iva1": 14091,
+        "camp2": 0.21,
+        "neto": 67100,
+        "iva": 14091,
+        "total": 81191
+      },
+      {
+        "id": 25015306,
+        "codigo_barras": "2569478523",
+        "articulo": "2569478523",
+        "articulo_numero": "2569478523",
+        "descripcion_articulo": "Nuez/Ma/ExtL/Ch x 5",
+        "detalle": "Nuez/Ma/ExtL/Ch x 5",
+        "descripcion": "Nuez/Ma/ExtL/Ch x 5",
+        "cantidad": 1,
+        "valor1": 99979,
+        "precio1": 120974.59,
+        "iva1": 20995.59,
+        "camp2": 0.21,
+        "neto": 99979,
+        "iva": 20995.59,
+        "total": 120974.59
+      }
+    ],
+    "totales": {
+      "cantidad_total": 3,
+      "neto_total": 203801,
+      "iva_total": 42798.21,
+      "total_general": 246599.21
+    },
+    "total_articulos": 3
+  },
+  "timestamp": "2026-03-01T16:42:41.613Z"
+}

@@ -2378,7 +2378,7 @@ async function abrirModalVinculacion(clienteId) {
     if (container) container.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ Buscando entregas anteriores...</div>';
 
     try {
-        const res = await fetch(`/api/presupuestos?cliente_id=${clienteId}&limit=20`);
+        const res = await fetch(`/api/presupuestos?cliente_id=${clienteId}&limit=50`);
         if (!res.ok) throw new Error('Error al buscar historial');
 
         const data = await res.json();
@@ -2391,36 +2391,106 @@ async function abrirModalVinculacion(clienteId) {
 
         if (container) container.innerHTML = '';
         const list = document.createElement('div');
+        list.style.cssText = 'display: flex; flex-direction: column; gap: 15px;';
+
+        // Agrupar por Mes y Año
+        const grupos = {};
 
         presupuestos.forEach(p => {
-            const item = document.createElement('div');
-            item.style.cssText = `
-                padding: 10px; 
-                border-bottom: 1px solid #eee; 
-                cursor: pointer; 
-                display: flex; 
-                justify-content: space-between;
-                align-items: center;
-            `;
-            item.onmouseover = () => item.style.background = '#f9f9f9';
-            item.onmouseout = () => item.style.background = 'transparent';
+            // Arreglo del "Invalid Date" usando fecha_registro que viene del backend
+            const validDate = p.fecha_registro ? new Date(p.fecha_registro) : new Date();
+            const anio = validDate.getFullYear();
+            const mesNombre = validDate.toLocaleString('es-ES', { month: 'long' });
+            const mesCapitalizado = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1);
+            const grupoKey = `${mesCapitalizado} ${anio}`;
 
-            const totalFmt = (typeof formatARS === 'function') ? formatARS(p.total || 0) : `$ ${p.total}`;
+            if (!grupos[grupoKey]) {
+                grupos[grupoKey] = [];
+            }
+            // Agregamos la fecha formateada al objeto para facilidad de render
+            p.fechaFormateada = validDate.toLocaleDateString('es-ES');
+            grupos[grupoKey].push(p);
+        });
 
-            item.innerHTML = `
-                <div>
-                    <strong>#${p.id}</strong> - ${new Date(p.fecha).toLocaleDateString()}
-                    <br>
-                    <span style="font-size: 0.85em; color: #666;">${p.estado}</span>
-                </div>
-                <div style="text-align: right;">
-                    <strong>${totalFmt}</strong>
-                    <button class="btn btn-sm btn-primary" style="margin-left: 10px; padding: 4px 8px; font-size: 0.8em;">Importar</button>
-                </div>
-            `;
+        // Renderizar por grupo
+        Object.keys(grupos).forEach(grupoKey => {
+            const grupoDiv = document.createElement('div');
+            grupoDiv.style.cssText = 'border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; background: #fff;';
 
-            item.onclick = () => confirmarImportacion(p.id);
-            list.appendChild(item);
+            const grupoHeader = document.createElement('div');
+            grupoHeader.style.cssText = 'background: #f8f9fa; padding: 10px 15px; font-weight: bold; color: #2c3e50; border-bottom: 2px solid #3498db;';
+            grupoHeader.innerHTML = `📅 ${grupoKey} <span style="float:right; font-weight:normal; font-size: 0.9em; background: #e9ecef; padding: 2px 8px; border-radius: 12px;">${grupos[grupoKey].length} entregas</span>`;
+
+            grupoDiv.appendChild(grupoHeader);
+
+            const itemsContainer = document.createElement('div');
+
+            grupos[grupoKey].forEach(p => {
+                const itemWrapper = document.createElement('div');
+                itemWrapper.style.cssText = 'border-bottom: 1px solid #eee; display: flex; flex-direction: column;';
+
+                const item = document.createElement('div');
+                item.style.cssText = `
+                    padding: 12px 15px; 
+                    cursor: pointer; 
+                    display: flex; 
+                    justify-content: space-between;
+                    align-items: center;
+                    transition: background 0.2s;
+                `;
+                item.onmouseover = () => item.style.background = '#f1f8ff';
+                item.onmouseout = () => item.style.background = 'transparent';
+
+                const totalFmt = (typeof formatARS === 'function') ? formatARS(p.total || 0) : `$ ${p.total || 0}`;
+
+                item.innerHTML = `
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <strong style="color: #2c3e50; font-size: 1.1em;">#${p.id}</strong> 
+                            <span style="color: #7f8c8d; font-size: 0.9em;">${p.fechaFormateada}</span>
+                            <span style="background: #e1f5fe; color: #0288d1; font-size: 0.75em; padding: 2px 6px; border-radius: 4px;">${p.estado}</span>
+                        </div>
+                    </div>
+                    <div style="text-align: right; display: flex; gap: 10px; align-items: center;">
+                        <button class="btn btn-sm btn-secondary btn-ver-detalles" style="padding: 4px 10px; font-size: 0.8em; background: #95a5a6; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                            👁️ Ver Ítems
+                        </button>
+                        <button class="btn btn-sm btn-primary btn-importar-total" style="padding: 6px 14px; font-size: 0.85em; font-weight: bold; background: #27ae60; border: none; color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                            📋 Clonar Todo
+                        </button>
+                    </div>
+                `;
+
+                // Contenedor expandible para los detalles
+                const detallesContainer = document.createElement('div');
+                detallesContainer.id = `detalles-preview-${p.id}`;
+                detallesContainer.style.cssText = 'display: none; padding: 15px; background: #fdfdfd; border-top: 1px dashed #ccc;';
+
+                // Eventos de botones
+                const btnVer = item.querySelector('.btn-ver-detalles');
+                btnVer.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleDetallesPresupuesto(p.id, detallesContainer, btnVer);
+                };
+
+                const btnImportar = item.querySelector('.btn-importar-total');
+                btnImportar.onclick = (e) => {
+                    e.stopPropagation();
+                    confirmarImportacion(p.id);
+                };
+
+                // Clic en la fila también expande
+                item.onclick = () => {
+                    toggleDetallesPresupuesto(p.id, detallesContainer, btnVer);
+                };
+
+                itemWrapper.appendChild(item);
+                itemWrapper.appendChild(detallesContainer);
+                itemsContainer.appendChild(itemWrapper);
+            });
+
+            grupoDiv.appendChild(itemsContainer);
+            list.appendChild(grupoDiv);
         });
 
         if (container) container.appendChild(list);
@@ -2431,55 +2501,203 @@ async function abrirModalVinculacion(clienteId) {
     }
 }
 
+// Nueva función para toggle y carga asíncrona de detalles
+async function toggleDetallesPresupuesto(idPresupuesto, containerEl, btnEl) {
+    const isVisible = containerEl.style.display === 'block';
+
+    // Toggle UI state
+    if (isVisible) {
+        containerEl.style.display = 'none';
+        btnEl.innerHTML = '👁️ Ver Ítems';
+        btnEl.style.background = '#95a5a6';
+        return;
+    }
+
+    containerEl.style.display = 'block';
+    btnEl.innerHTML = '🔼 Ocultar';
+    btnEl.style.background = '#7f8c8d';
+
+    // Si ya están cargados, no volver a hacer fetch
+    if (containerEl.dataset.loaded === 'true') return;
+
+    containerEl.innerHTML = '<div style="text-align: center; color: #666; font-size: 0.9em; padding: 10px;">⏳ Cargando artículos...</div>';
+
+    try {
+        const res = await fetch(`/api/presupuestos/${idPresupuesto}/detalles`);
+        if (!res.ok) throw new Error('Error al cargar detalle');
+
+        const data = await res.json();
+
+        let detalles = [];
+        if (data.data && Array.isArray(data.data.detalles)) {
+            detalles = data.data.detalles;
+        } else if (Array.isArray(data.data)) {
+            detalles = data.data;
+        } else if (Array.isArray(data.detalles)) {
+            detalles = data.detalles;
+        } else if (Array.isArray(data)) {
+            detalles = data;
+        }
+
+        if (detalles.length === 0) {
+            containerEl.innerHTML = '<div style="color: #e74c3c; font-size: 0.9em;">⚠️ Este presupuesto no tiene artículos.</div>';
+            containerEl.dataset.loaded = 'true';
+            return;
+        }
+
+        // Construir tabla de preview compacta
+        let html = `
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                <thead style="background: #f1f3f5; color: #495057;">
+                    <tr>
+                        <th style="padding: 6px; text-align: left; border-bottom: 2px solid #dee2e6;">Artículo</th>
+                        <th style="padding: 6px; text-align: right; border-bottom: 2px solid #dee2e6; width: 60px;">Cant</th>
+                        <th style="padding: 6px; text-align: right; border-bottom: 2px solid #dee2e6; width: 80px;">P.Unitario</th>
+                        <th style="padding: 6px; text-align: right; border-bottom: 2px solid #dee2e6; width: 80px;">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        let subtotalGlobal = 0;
+
+        detalles.forEach(d => {
+            const artNombre = d.articulo_nombre || d.descripcion || d.articulo_codigo || 'Art. Desconocido';
+            const cantidad = Number(d.cantidad) || 0;
+            const precioUnitario = Number(d.precio_unitario) || Number(d.valor_unitario) || Number(d.valor1) || Number(d.neto) || 0;
+            const subtotal = Number(d.total) || (Number(d.precio1) * cantidad) || (cantidad * precioUnitario);
+
+            subtotalGlobal += subtotal;
+
+            const precioFmt = (typeof formatARS === 'function') ? formatARS(precioUnitario) : `$${precioUnitario.toFixed(2)}`;
+            const subtotalFmt = (typeof formatARS === 'function') ? formatARS(subtotal) : `$${subtotal.toFixed(2)}`;
+
+            html += `
+                <tr style="border-bottom: 1px solid #e9ecef;">
+                    <td style="padding: 6px; color: #34495e;"><strong>${d.articulo_codigo || ''}</strong> - ${artNombre}</td>
+                    <td style="padding: 6px; text-align: right; font-weight: bold; color: #27ae60;">${cantidad}</td>
+                    <td style="padding: 6px; text-align: right; color: #7f8c8d;">${precioFmt}</td>
+                    <td style="padding: 6px; text-align: right; font-weight: bold;">${subtotalFmt}</td>
+                </tr>
+            `;
+        });
+
+        // Fila total
+        const totalGlobalFmt = (typeof formatARS === 'function') ? formatARS(subtotalGlobal) : `$${subtotalGlobal.toFixed(2)}`;
+        html += `
+                <tr style="background: #f8f9fa;">
+                    <td colspan="3" style="padding: 8px; text-align: right; font-weight: bold;">TOTAL:</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold; color: #2c3e50; font-size: 1.1em;">${totalGlobalFmt}</td>
+                </tr>
+                </tbody>
+            </table>
+        `;
+
+        containerEl.innerHTML = html;
+        containerEl.dataset.loaded = 'true';
+
+    } catch (e) {
+        console.error(e);
+        containerEl.innerHTML = `<div style="color: #e74c3c; font-size: 0.9em;">Error: ${e.message}</div>`;
+    }
+}
+
 async function confirmarImportacion(idPresupuesto) {
-    if (!confirm('¿Importar artículos de este presupuesto? Se reemplazarán las filas actuales.')) return;
+    if (!confirm('¿Importar todos los artículos de este presupuesto? Se reemplazarán las filas actuales de la orden de retiro.')) return;
 
     const modal = document.getElementById('modal-paginator-presupuestos');
     if (modal) modal.style.display = 'none';
 
     const tbody = document.getElementById('detalles-tbody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Importando datos...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">⏳ Clonando artículos...</td></tr>';
 
     try {
-        const res = await fetch(`/api/presupuestos/${idPresupuesto}`);
+        const res = await fetch(`/api/presupuestos/${idPresupuesto}/detalles`);
         if (!res.ok) throw new Error('Error al cargar detalle');
 
         const data = await res.json();
-        const detalles = data.detalles || [];
+
+        let detalles = [];
+        if (data.data && Array.isArray(data.data.detalles)) {
+            detalles = data.data.detalles;
+        } else if (Array.isArray(data.data)) {
+            detalles = data.data;
+        } else if (Array.isArray(data.detalles)) {
+            detalles = data.detalles;
+        } else if (Array.isArray(data)) {
+            detalles = data;
+        }
 
         if (tbody) tbody.innerHTML = '';
         detalleCounter = 0;
+
+        if (detalles.length === 0) {
+            agregarDetalle();
+            if (typeof mostrarMensaje === 'function') mostrarMensaje('⚠️ El presupuesto original no tenía artículos.', 'error');
+            return;
+        }
 
         detalles.forEach(d => {
             agregarDetalle();
             const id = detalleCounter;
             const row = document.getElementById(`detalle-${id}`);
+            if (!row) return;
 
-            const inpArt = row.querySelector(`input[name*="[articulo]"]`);
-            const inpCant = row.querySelector(`input[name*="[cantidad]"]`);
-            const inpVal = row.querySelector(`input[name*="[valor1]"]`);
-            const inpIva = row.querySelector(`input[name*="[iva1]"]`);
+            const inpArt = row.querySelector(`input[name="detalles[${id}][articulo]"]`) || row.querySelector(`input[name*="[articulo]"]`);
+            const inpCant = row.querySelector(`input[name="detalles[${id}][cantidad]"]`) || row.querySelector(`input[name*="[cantidad]"]`);
+            const inpVal = row.querySelector(`input[name="detalles[${id}][valor1]"]`) || row.querySelector(`input[name*="[valor1]"]`);
+            const inpIva = row.querySelector(`input[name="detalles[${id}][iva1]"]`) || row.querySelector(`input[name*="[iva1]"]`);
+
+            const artNombre = d.articulo_nombre || d.descripcion || d.articulo_codigo;
 
             if (inpArt) {
-                // Priorizar nombre guardado, sino codigo
-                inpArt.value = d.articulo_nombre || d.descripcion || d.articulo_codigo;
-                inpArt.dataset.codigoBarras = d.articulo_codigo;
+                inpArt.value = artNombre;
+                if (d.articulo_codigo) inpArt.dataset.codigoBarras = d.articulo_codigo;
+                // Marcar como validado para que no salte de nuevo la intercepción al clonar
+                inpArt.dataset.origenValidado = 'true';
             }
 
-            if (inpCant) inpCant.value = d.cantidad;
-            if (inpVal) inpVal.value = 0;
-            if (inpIva) inpIva.value = d.alicuota_iva || 21;
+            if (inpCant) {
+                // Forzamos el input value y llamamos a setCantidad si existe
+                inpCant.value = d.cantidad || 1;
+                if (typeof setCantidad === 'function') setCantidad(inpCant, d.cantidad || 1);
+            }
 
-            calcularPrecio(id);
+            // Valor y Precio
+            const precioUnitario = Number(d.precio_unitario) || Number(d.valor_unitario) || Number(d.valor1) || Number(d.neto) || 0;
+            if (inpVal) {
+                inpVal.value = precioUnitario;
+                if (typeof setNumeric === 'function') setNumeric(inpVal, precioUnitario, 2, 0);
+            }
+
+            // IVA
+            let alicuotaIva = Number(d.alicuota_iva);
+            if (!alicuotaIva && d.camp2) {
+                alicuotaIva = Number(d.camp2) * 100;
+            }
+            if (!alicuotaIva) alicuotaIva = 21;
+
+            if (inpIva) {
+                inpIva.value = alicuotaIva;
+                if (typeof setNumeric === 'function') setNumeric(inpIva, alicuotaIva, 2, 21);
+            }
+
+            if (typeof calcularPrecio === 'function') calcularPrecio(id);
         });
 
-        if (typeof recalcTotales === 'function') recalcTotales();
-        if (typeof mostrarMensaje === 'function') mostrarMensaje('✅ Artículos importados correctamente', 'success');
+        // Aplicar Iva Global mode por si acaso (para remitos)
+        if (typeof applyIvaModeToAllRows === 'function') applyIvaModeToAllRows();
+
+        // Disparar total final
+        if (typeof recalcTotales === 'function') setTimeout(recalcTotales, 200);
+
+        if (typeof mostrarMensaje === 'function') mostrarMensaje(`✅ ${detalles.length} artículos clonados correctamente. Verifique la orden antes de confirmar.`, 'success');
 
     } catch (e) {
         console.error(e);
-        if (typeof mostrarMensaje === 'function') mostrarMensaje('Error al importar: ' + e.message, 'error');
-        agregarDetalle();
+        if (typeof mostrarMensaje === 'function') mostrarMensaje('Error al importar artículos: ' + e.message, 'error');
+        // Si falló, al menos dejar una fila vacía para seguir iterando
+        if (tbody && tbody.children.length === 0) agregarDetalle();
     }
 }
 
