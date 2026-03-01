@@ -484,7 +484,7 @@
                         <div class="dropdown">
                             <button class="btn-accion">⚡ Acciones ▼</button>
                             <div class="dropdown-content">
-                                <button onclick="liberarStock('${item.articulo_numero}', 1, 'Reintegro a Ventas tras Conciliacion')">
+                                <button onclick="liberarStock('${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Conciliacion')">
                                     📦 Enviar a Ventas
                                 </button>
                                 <button onclick="abrirModalTransferencia('${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
@@ -630,12 +630,12 @@
                     candidatos.forEach(c => {
                         const nc = c.comprobante;
                         const diag = c.diagnostico;
-                        
+
                         // Determinar color de borde/fondo según riesgo
                         let borderColor = '#28a745'; // verde
                         let bgColor = '#f8fff8';
                         let icono = '✅';
-                        
+
                         if (diag.riesgo === 'rojo') {
                             borderColor = '#dc3545';
                             bgColor = '#fff8f8';
@@ -648,7 +648,7 @@
 
                         // Encode data for passing to confirm function
                         const ncString = encodeURIComponent(JSON.stringify(nc));
-                        
+
                         let alertasHtml = '';
                         if (diag.alertas && diag.alertas.length > 0) {
                             alertasHtml = '<ul style="margin: 5px 0 0 0; padding-left: 20px; font-size: 0.85em; color: ' + (diag.riesgo === 'rojo' ? '#dc3545' : '#856404') + ';">';

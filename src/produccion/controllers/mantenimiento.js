@@ -199,7 +199,35 @@ async function diagnosticoVigiaAuditor(req, res) {
         }
 
         const data = await response.json();
-        const resultados = Array.isArray(data) ? data : (data.data || []);
+        let resultados = Array.isArray(data) ? data : (data.data || []);
+
+        debugLog.push(`Resultados crudos de Lomasoft: ${resultados.length}`);
+
+        // O.T. 1 - FILTRO DE NCs "LIBRES"
+        // Buscar Notas de Crédito que ya hemos conciliado para ignorarlas en los resultados
+        let ncsYaConciliadas = new Set();
+        try {
+            const resultConciliadas = await pool.query(
+                `SELECT nro_comprobante_externo FROM public.mantenimiento_conciliaciones 
+                 WHERE id_cliente = $1`,
+                [cliente]
+            );
+            resultConciliadas.rows.forEach(row => {
+                ncsYaConciliadas.add(row.nro_comprobante_externo);
+            });
+            debugLog.push(`Encontradas ${ncsYaConciliadas.size} NCs previas para este cliente en BD local.`);
+        } catch (e) {
+            console.error('⚠️ [VIGIA AUDITOR] No se pudo consultar historial de conciliaciones', e);
+            debugLog.push(`⚠️ Error leyendo NCs locales: ${e.message}`);
+        }
+
+        // Remover comprobantes ocupados de los resultados
+        resultados = resultados.filter(r => {
+            const numeroCompleto = `${r.punto_venta || 0}-${r.numero_comprobante || 0}`;
+            return !ncsYaConciliadas.has(numeroCompleto);
+        });
+
+        debugLog.push(`Resultados tras remover NCs "Ocupadas": ${resultados.length}`);
 
         // Mapa de candidatos con diagnóstico individual
         const candidatosBrutos = resultados.map(r => {
@@ -421,29 +449,44 @@ async function confirmarConciliacion(req, res) {
  * Ejecuta la función SQL de infraestructura que mueve el stock y audita.
  */
 async function liberarStock(req, res) {
+    const client = await pool.connect();
     try {
         const { articulo, cantidad, observaciones } = req.body;
         const usuario = req.user ? req.user.username : 'SISTEMA';
 
         console.log(`📦 [MANTENIMIENTO] Liberando stock para Art: ${articulo}, Cant: ${cantidad}`);
 
-        const query = `SELECT public.liberar_stock_mantenimiento($1, $2, $3, $4) as resultado`;
-        const values = [articulo, cantidad || 1, usuario, observaciones || 'Reintegro a Ventas tras Conciliación'];
+        await client.query('BEGIN');
 
-        const result = await pool.query(query, values);
+        const query = `SELECT public.liberar_stock_mantenimiento($1, $2, $3, $4) as resultado`;
+        const values = [articulo, cantidad, usuario, observaciones || 'Reintegro a Ventas tras Conciliacion'];
+
+        const result = await client.query(query, values);
         const data = result.rows[0].resultado;
 
-        if (data.success) {
-            console.log(`✅ Stock liberado exitosamente: ${articulo}`);
-            res.json(data);
-        } else {
-            console.warn(`⚠️ Falló liberación de stock: ${data.error}`);
-            res.status(400).json(data);
+        if (!data.success) {
+            throw new Error(data.error);
         }
 
+        // Actualizar el estado del movimiento de ingreso original para que no vuelva a aparecer como CONCILIADO trabado
+        const updateMov = `
+            UPDATE public.mantenimiento_movimientos
+            SET estado = 'FINALIZADO',
+                observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
+            WHERE articulo_numero = $1 AND tipo_movimiento = 'INGRESO' AND estado = 'CONCILIADO'
+        `;
+        await client.query(updateMov, [articulo]);
+
+        await client.query('COMMIT');
+        console.log(`✅ Stock liberado exitosamente y estado actualizado: ${articulo}`);
+        res.json(data);
+
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('❌ [MANTENIMIENTO] Error al liberar stock:', error.message);
         res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
     }
 }
 
