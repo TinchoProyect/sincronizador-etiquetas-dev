@@ -113,6 +113,10 @@ router.use('/', historialInventariosRouter); // ← Montar rutas para historial 
 const mantenimientoRouter = require('./mantenimiento'); // ← Router de Mantenimiento
 router.use('/mantenimiento', mantenimientoRouter); // ← /api/produccion/mantenimiento
 
+// Rutas para el Salvavidas de Producción
+const salvavidasController = require('../controllers/salvavidas');
+router.post('/salvavidas/ajuste-fantasma', salvavidasController.registrarAjusteFantasma);
+
 // Ruta para imprimir etiqueta de ingrediente
 router.post('/ingredientes/imprimir-etiqueta', imprimirEtiquetaIngrediente);
 

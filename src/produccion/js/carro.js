@@ -1279,6 +1279,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
                         <th>Requerido</th>
                         <th style="background: #f5f5f5;">Nuevo Stock</th>
                         <th>Unidad</th>
+                        <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1342,6 +1343,13 @@ export async function mostrarResumenIngredientes(ingredientes) {
 
             const colorStockAnterior = stockAnterior < 0 ? '#dc3545' : '#28a745';
 
+            let btnSalvavidas = '';
+            if (estadoCarro === 'preparado') {
+                btnSalvavidas = `<button onclick="window.abrirModalSalvavidas(${ing.id}, '${(ing.nombre || '').replace(/'/g, "\\'")}', window.carroIdGlobal, '${ing.unidad_medida || ''}')" class="btn-salvavidas" title="Declarar stock fantasma y reponer" style="background-color: #dc3545; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">🛟 Salvavidas</button>`;
+            } else {
+                btnSalvavidas = `<span style="color: #6c757d; font-size: 0.9em;">-</span>`;
+            }
+
             html += `
                 <tr>
                     <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
@@ -1356,6 +1364,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
                         ${stockNuevo.toFixed(2)}
                     </td>
                     <td style="text-align: center;">${ing.unidad_medida || ''}</td>
+                    <td style="text-align: center;">${btnSalvavidas}</td>
                 </tr>
              `;
 

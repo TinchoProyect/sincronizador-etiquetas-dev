@@ -28,6 +28,7 @@ import { abrirModalIngresoManual } from './ingresoManual.js';
 import { actualizarVisibilidadBotones } from './carroPreparado.js';
 import { imprimirOrdenProduccion } from './ordenProduccion.js';
 import { abrirModalGuardadoIngredientes } from './guardadoIngredientes.js';
+import { abrirModalSalvavidas } from './salvavidasProduccion.js';
 
 window.carroIdGlobal = null;
 
@@ -45,6 +46,7 @@ window.imprimirOrdenProduccion = imprimirOrdenProduccion;
 console.log('🔍 [DIAGNÓSTICO] Función abrirModalGuardadoIngredientes disponible globalmente:', typeof window.abrirModalGuardadoIngredientes);
 
 window.abrirModalGuardadoIngredientes = abrirModalGuardadoIngredientes;
+window.abrirModalSalvavidas = abrirModalSalvavidas;
 
 // 🚀 [DIAGNÓSTICO] Verificar después de asignar
 console.log('🔍 [DIAGNÓSTICO] Función asignada correctamente:', typeof window.abrirModalGuardadoIngredientes);
