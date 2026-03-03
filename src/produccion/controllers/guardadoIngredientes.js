@@ -130,6 +130,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     unidad_medida: ing.unidad_medida,
                     cantidad_necesaria: Number(parseFloat(ing.cantidad).toFixed(3)),
                     stock_actual: Number(parseFloat(ing.stock_actual).toFixed(3)),
+                    stock_live: ing.stock_live !== undefined ? Number(parseFloat(ing.stock_live).toFixed(3)) : undefined, // 🛠️ CORRECCIÓN: Pasar stock_live al Map
                     codigo: null, // Se obtendrá en el siguiente paso
                     sector_id: null, // Se obtendrá en el siguiente paso
                     sector_nombre: null,
@@ -159,6 +160,7 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                     unidad_medida: ing.unidad_medida,
                     cantidad_necesaria: 0,
                     stock_actual: Number(parseFloat(ing.stock_actual).toFixed(3)),
+                    stock_live: Number(parseFloat(ing.stock_actual).toFixed(3)), // 🛠️ CORRECCIÓN: Para ingresos manuales, stock_actual de la query YA ES el stock_live
                     stock_proyectado: 0, // Se calculará al final
                     codigo: ing.codigo,
                     sector_id: ing.sector_id,
@@ -212,7 +214,10 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
                 // usamos stock_actual que ya es el stock consultado.
                 const stockDb = ing.stock_live !== undefined ? ing.stock_live : (ing.stock_actual || 0);
                 const necesario = ing.cantidad_necesaria || 0;
-                const proyectado = stockDb - necesario;
+
+                // 🛠️ CORRECCIÓN DOBLE DESCUENTO: Si usamos stock_live, ya está descontado en BD.
+                // No debemos restarlo matemáticamente o causaremos un descuento doble (-11.5 y -11.5).
+                const proyectado = ing.stock_live !== undefined ? stockDb : (stockDb - necesario);
 
                 return {
                     ...ing,
