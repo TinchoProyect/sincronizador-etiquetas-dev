@@ -433,19 +433,35 @@ async function guardarAjustes() {
     const fila = checkbox.closest('tr');
     const inputAjuste = fila.querySelector('.input-ajuste');
     const ingredienteId = checkbox.getAttribute('data-ingrediente-id');
-    const cantidad = parseFloat(inputAjuste.value);
+    const cantidadFinalDeseada = parseFloat(inputAjuste.value);
 
-    if (!isNaN(cantidad) && cantidad >= 0) {
+    // 1. Buscar el ingrediente original en la caché para obtener su stock REAL a este instante
+    const ingredienteData = ingredientes.ingredientes?.find(ing => ing.id.toString() === ingredienteId.toString());
+
+    if (!ingredienteData) {
+      console.error(`❌ [GUARDADO] No se encontró la base de stock para el ingrediente ${ingredienteId}`);
+      return;
+    }
+
+    // 2. Extraer el stock_actual proveido por el backend (que tras la corrección ahora es el stock VIVO)
+    const stockBase = ingredienteData.stock_actual || 0;
+
+    if (!isNaN(cantidadFinalDeseada) && cantidadFinalDeseada >= 0) {
+
+      // 3. CALCULAR EL DELTA (DIFERENCIA REAL)
+      // Ejemplo: Stock Vivo = 10. Deseamos = 8. Delta = 8 - 10 = -2 (Kilos)
+      const diferenciaKilos = cantidadFinalDeseada - stockBase;
+
       ajustes.push({
         articulo_numero: ingredienteId,
         usuario_id: usuarioIdGlobal,
         carro_id: carroIdGlobal, // 🔧 CORRECCIÓN: Incluir carro_id en el payload
         tipo: 'ajuste puntual',
-        kilos: cantidad,
-        cantidad: Math.abs(cantidad), // Para compatibilidad con el endpoint
-        observacion: `Ajuste manual selectivo desde guardado de ingredientes - Carro #${carroIdGlobal}`
+        kilos: diferenciaKilos, // 🛠️ CORRECCIÓN AUDITORÍA: Enviar el DELTA, no la cantidad absoluta
+        cantidad: Math.abs(diferenciaKilos), // Compatibilidad legacy (algunos endpoints lo esperan absoluto)
+        observacion: `Ajuste manual selectivo desde guardado de ingredientes - Carro #${carroIdGlobal} - Delta ${diferenciaKilos.toFixed(3)}kg`
       });
-      console.log(`📝 [GUARDADO] Agregado ajuste: Ingrediente ${ingredienteId} → ${cantidad}kg - Carro: ${carroIdGlobal}`);
+      console.log(`📝 [GUARDADO] Agregado ajuste: Ingrediente ${ingredienteId} (${stockBase} -> ${cantidadFinalDeseada}) = Delta ${diferenciaKilos.toFixed(3)}kg`);
     } else {
       console.warn(`⚠️ [GUARDADO] Valor inválido para ingrediente ${ingredienteId}: ${inputAjuste.value}`);
     }

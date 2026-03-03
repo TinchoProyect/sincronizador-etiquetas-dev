@@ -207,12 +207,16 @@ async function obtenerIngredientesConsolidadosCarro(req, res) {
             .map(ing => {
                 // Calcular stock proyectado: Stock DB - Necesario
                 // (El stock DB ya incluye los ingresos manuales hechos en pasos previos)
-                const stockDb = ing.stock_actual || 0;
+                // 🛠️ CORRECCIÓN AUDITORÍA: Usar stock_live provisto por obtenerIngredientesHistoricos
+                // Si stock_live existe, es el stock real actual. Si no (ej: ingrediente no histórico),
+                // usamos stock_actual que ya es el stock consultado.
+                const stockDb = ing.stock_live !== undefined ? ing.stock_live : (ing.stock_actual || 0);
                 const necesario = ing.cantidad_necesaria || 0;
                 const proyectado = stockDb - necesario;
 
                 return {
                     ...ing,
+                    stock_actual: stockDb, // 🛠️ Reemplazamos el stock_actual del payload por el real vivo
                     stock_proyectado: Number(proyectado.toFixed(3)),
                     sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre)
                 };
