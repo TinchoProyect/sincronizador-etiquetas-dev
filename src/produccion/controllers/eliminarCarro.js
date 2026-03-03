@@ -30,12 +30,12 @@ async function contarRegistrosRelacionados(carroId) {
         `;
 
         // Query condicional según tipo de carro
-        const countMovimientosQuery = tipoCarro === 'externa' 
+        const countMovimientosQuery = tipoCarro === 'externa'
             ? `SELECT COUNT(*) as count FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1`
             : `SELECT COUNT(*) as count FROM ingredientes_movimientos WHERE carro_id = $1`;
 
         // Query para historial de producción externa
-        const countHistorialQuery = tipoCarro === 'externa' 
+        const countHistorialQuery = tipoCarro === 'externa'
             ? `SELECT COUNT(*) as count FROM produccion_externa_historial WHERE carro_id = $1`
             : `SELECT 0 as count`;
 
@@ -44,7 +44,7 @@ async function contarRegistrosRelacionados(carroId) {
             pool.query(countMovimientosQuery, [carroId]),
             pool.query(countStockQuery, [carroId]),
             pool.query(countArticulosQuery, [carroId]),
-            tipoCarro === 'externa' 
+            tipoCarro === 'externa'
                 ? pool.query(countHistorialQuery, [carroId])  // ✅ CON parámetro para externos
                 : pool.query(countHistorialQuery)             // ✅ SIN parámetro para internos
         ]);
@@ -94,77 +94,31 @@ async function eliminarRegistrosRelacionados(carroId) {
         const conteos = await contarRegistrosRelacionados(carroId);
 
         // Eliminar en el orden correcto para mantener integridad referencial
-        
+
         // 1. Eliminar movimientos de ingredientes según tipo de carro
         if (conteos.tipoCarro === 'externa') {
             // EXCEPCIÓN AL SISTEMA INMUTABLE: Solo para eliminación completa de carros
             await pool.query('DELETE FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1', [carroId]);
             console.log(`Eliminados ${conteos.ingredientes} movimientos de stock de usuarios`);
         }
-        
-        // 🔧 CORRECCIÓN CRÍTICA: REVERTIR movimientos de ingredientes_movimientos antes de eliminar
-        // NOTA: Los ingredientes vinculados ahora se descontarán en finalizarProduccion.js
-        // Por lo tanto, solo necesitamos revertir si el carro fue asentado (tiene fecha_confirmacion)
-        
+
+        // 🔧 CORRECCIÓN CRÍTICA: La eliminación de registros dispara el trigger nativo "actualizar_stock_ingrediente" en BD.
+        // Ese trigger se encarga de reestructurar y devolver el stock matemático correcto automáticamente para cualquier movimiento
+        // (tanto recetas comunes, como sustituciones positivas y negativas).
+        // No se debe insertar manualmente un movimiento inverso aquí, ya que causaba un "Rollback Doble".
+
         // Verificar si el carro fue asentado
         const carroQuery = `SELECT fecha_confirmacion FROM carros_produccion WHERE id = $1`;
         const carroResult = await pool.query(carroQuery, [carroId]);
         const carroAsentado = carroResult.rows[0]?.fecha_confirmacion !== null;
-        
+
         console.log(`🔍 ESTADO DEL CARRO: ${carroAsentado ? 'ASENTADO' : 'SOLO PREPARADO'}`);
-        
-        if (carroAsentado) {
-            // Solo revertir movimientos si el carro fue asentado
-            const ingredientesMovimientosQuery = `
-                SELECT id, ingrediente_id, kilos, tipo, observaciones
-                FROM ingredientes_movimientos 
-                WHERE carro_id = $1
-            `;
-            const ingredientesMovimientosResult = await pool.query(ingredientesMovimientosQuery, [carroId]);
-            const movimientosIngredientes = ingredientesMovimientosResult.rows;
-            
-            console.log(`🔍 MOVIMIENTOS DE INGREDIENTES A REVERTIR: ${movimientosIngredientes.length}`);
-            
-            if (movimientosIngredientes.length > 0) {
-                // Importar función para registrar movimientos
-                const { registrarMovimientoIngrediente } = require('./ingredientesMovimientos');
-                
-                for (const mov of movimientosIngredientes) {
-                    console.log(`\n🔄 REVIRTIENDO MOVIMIENTO DE INGREDIENTE:`);
-                    console.log(`- Ingrediente ID: ${mov.ingrediente_id}`);
-                    console.log(`- Movimiento original: ${mov.tipo} de ${mov.kilos}kg`);
-                    console.log(`- Observaciones originales: ${mov.observaciones}`);
-                    
-                    // Calcular movimiento inverso
-                    const tipoInverso = mov.tipo === 'egreso' ? 'ingreso' : 'egreso';
-                    const cantidadInversa = -parseFloat(mov.kilos); // ✅ INVERTIR el signo
-                    
-                    console.log(`- Movimiento inverso: ${tipoInverso} de ${Math.abs(cantidadInversa)}kg`);
-                    
-                    // Registrar movimiento inverso
-                    const movimientoInverso = {
-                        ingrediente_id: mov.ingrediente_id,
-                        kilos: cantidadInversa, // Cantidad con signo invertido
-                        tipo: tipoInverso,
-                        carro_id: parseInt(carroId),
-                        observaciones: `REVERSIÓN: ${mov.observaciones} (eliminación carro #${carroId})`
-                    };
-                    
-                    console.log(`📝 REGISTRANDO MOVIMIENTO INVERSO:`, JSON.stringify(movimientoInverso, null, 2));
-                    await registrarMovimientoIngrediente(movimientoInverso, pool);
-                    console.log(`✅ Movimiento inverso registrado para ingrediente ${mov.ingrediente_id}`);
-                }
-                
-                // Ahora sí eliminar los movimientos originales
-                await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
-                console.log(`✅ Eliminados ${movimientosIngredientes.length} movimientos originales de ingredientes después de revertir`);
-            }
-        } else {
-            console.log(`ℹ️ Carro solo preparado - eliminando movimientos sin reversión (ingredientes vinculados no fueron descontados)`);
-            // Para carros solo preparados, eliminar directamente sin reversión
-            await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
-        }
-        
+
+        console.log(`ℹ️ Eliminando movimientos de ingredientes ligados al carro. El trigger nativo restaurará el stock correctamente.`);
+        // Al hacer esto, si es preparado revierte sustituciones, y si es asentado revierte recetas y vinculados simultáneamente.
+        const resEliminarMovimientos = await pool.query('DELETE FROM ingredientes_movimientos WHERE carro_id = $1', [carroId]);
+        console.log(`✅ Eliminados ${resEliminarMovimientos.rowCount} movimientos originales de ingredientes (Rollback triggereado)`);
+
         // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos
         let movimientosQuery;
         if (conteos.tipoCarro === 'externa') {
@@ -182,14 +136,14 @@ async function eliminarRegistrosRelacionados(carroId) {
                 WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas')
             `;
         }
-        
+
         const movimientosResult = await pool.query(movimientosQuery, [carroId]);
-        
+
         const { recalcularStockConsolidado } = require('../utils/recalcularStock');
-        
+
         // Actualizar stock_movimientos para cada movimiento según su tipo
         const articulosAfectados = [];
-        
+
         for (const mov of movimientosResult.rows) {
             if (mov.tipo === 'ingreso a producción') {
                 // Para ingreso a producción eliminado: SUMAR de vuelta la cantidad a stock_movimientos
@@ -232,13 +186,13 @@ async function eliminarRegistrosRelacionados(carroId) {
                 `, [Math.abs(mov.cantidad), mov.articulo_numero]);
                 console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: +${Math.abs(mov.cantidad)} (revertir egreso por receta externa)`);
             }
-            
+
             // Agregar artículo a la lista para recalcular
             if (!articulosAfectados.includes(mov.articulo_numero)) {
                 articulosAfectados.push(mov.articulo_numero);
             }
         }
-        
+
         // Recalcular stock_consolidado para todos los artículos afectados
         if (articulosAfectados.length > 0) {
             await recalcularStockConsolidado(pool, articulosAfectados);
@@ -248,17 +202,17 @@ async function eliminarRegistrosRelacionados(carroId) {
         // Eliminar los movimientos
         await pool.query('DELETE FROM stock_ventas_movimientos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.stockVentas} movimientos de stock de ventas`);
-        
+
         // 3. Eliminar registros de historial de producción externa (solo para carros externos)
         if (conteos.tipoCarro === 'externa' && conteos.historial > 0) {
             await pool.query('DELETE FROM produccion_externa_historial WHERE carro_id = $1', [carroId]);
             console.log(`Eliminados ${conteos.historial} registros de historial de producción externa`);
         }
-        
+
         // 4. Eliminar artículos del carro
         await pool.query('DELETE FROM carros_articulos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.articulos} artículos del carro`);
-        
+
         // 5. Finalmente eliminar el carro
         await pool.query('DELETE FROM carros_produccion WHERE id = $1', [carroId]);
         console.log(`Carro ${carroId} eliminado de carros_produccion`);
@@ -303,10 +257,10 @@ async function eliminarCarroCompleto(carroId, usuarioId) {
             let mensaje = `Carro ${carroId} (${conteos.tipoCarro}) eliminado exitosamente`;
             if (tieneRegistrosRelacionados) {
                 mensaje += `\nRegistros eliminados:\n` +
-                          `- ${conteosEliminados.ingredientes} ${conteos.tipoCarro === 'externa' ? 'movimientos de stock de usuarios' : 'movimientos de ingredientes'}\n` +
-                          `- ${conteosEliminados.stockVentas} movimientos de stock de ventas\n` +
-                          `- ${conteosEliminados.articulos} artículos`;
-                
+                    `- ${conteosEliminados.ingredientes} ${conteos.tipoCarro === 'externa' ? 'movimientos de stock de usuarios' : 'movimientos de ingredientes'}\n` +
+                    `- ${conteosEliminados.stockVentas} movimientos de stock de ventas\n` +
+                    `- ${conteosEliminados.articulos} artículos`;
+
                 if (conteos.tipoCarro === 'externa' && conteosEliminados.historial > 0) {
                     mensaje += `\n- ${conteosEliminados.historial} registros de historial de producción externa`;
                 }
@@ -351,16 +305,16 @@ async function obtenerInformacionEliminacion(carroId, usuarioId) {
 
         // Preparar mensaje informativo
         const tieneRegistros = conteos.ingredientes > 0 || conteos.stockVentas > 0 || conteos.articulos > 0 || conteos.historial > 0;
-        
+
         let mensaje = `Información sobre el carro ${carroId} (${conteos.tipoCarro}):\n`;
         mensaje += `- ${conteos.articulos} artículos\n`;
         mensaje += `- ${conteos.ingredientes} ${conteos.tipoCarro === 'externa' ? 'movimientos de stock de usuarios' : 'movimientos de ingredientes'}\n`;
         mensaje += `- ${conteos.stockVentas} movimientos de stock de ventas\n`;
-        
+
         if (conteos.tipoCarro === 'externa' && conteos.historial > 0) {
             mensaje += `- ${conteos.historial} registros de historial de producción externa\n`;
         }
-        
+
         if (tieneRegistros) {
             mensaje += `\n⚠️ ATENCIÓN: Todos estos registros serán eliminados permanentemente.`;
         }

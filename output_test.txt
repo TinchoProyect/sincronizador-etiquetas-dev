@@ -1,0 +1,20 @@
+[
+  {
+    "event_object_table": "ingredientes_movimientos",
+    "trigger_name": "trigger_actualizar_stock",
+    "event_manipulation": "INSERT",
+    "action_statement": "EXECUTE FUNCTION actualizar_stock_ingrediente()"
+  },
+  {
+    "event_object_table": "ingredientes_movimientos",
+    "trigger_name": "trigger_actualizar_stock",
+    "event_manipulation": "DELETE",
+    "action_statement": "EXECUTE FUNCTION actualizar_stock_ingrediente()"
+  },
+  {
+    "event_object_table": "ingredientes_movimientos",
+    "trigger_name": "trigger_actualizar_stock",
+    "event_manipulation": "UPDATE",
+    "action_statement": "EXECUTE FUNCTION actualizar_stock_ingrediente()"
+  }
+]
