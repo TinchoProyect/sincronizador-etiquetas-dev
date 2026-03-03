@@ -20,10 +20,14 @@ async function getStockMantenimiento(req, res) {
                 s.kilos_unidad, 
                 origin.cliente_id,
                 origin.estado,
-                origin.cliente_nombre
+                origin.cliente_nombre,
+                nc.nro_comprobante_externo as nc_nro,
+                nc.tipo_comprobante as nc_tipo,
+                nc.fecha_comprobante as nc_fecha
             FROM public.stock_real_consolidado s
             LEFT JOIN LATERAL (
                 SELECT 
+                    mm.id as id_movimiento,
                     c.cliente_id,
                     mm.estado, -- Necesario para saber si ya esta conciliado
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre
@@ -35,6 +39,16 @@ async function getStockMantenimiento(req, res) {
                 ORDER BY mm.fecha_movimiento DESC
                 LIMIT 1
             ) origin ON true
+            LEFT JOIN LATERAL (
+                SELECT 
+                    mc.nro_comprobante_externo,
+                    mc.tipo_comprobante,
+                    mc.fecha_comprobante
+                FROM public.mantenimiento_conciliacion_items mci
+                JOIN public.mantenimiento_conciliaciones mc ON mci.id_conciliacion = mc.id
+                WHERE mci.id_movimiento_origen = origin.id_movimiento
+                LIMIT 1
+            ) nc ON origin.estado = 'CONCILIADO'
             WHERE s.stock_mantenimiento > 0
             ORDER BY s.articulo_numero ASC
         `;
@@ -205,17 +219,24 @@ async function diagnosticoVigiaAuditor(req, res) {
 
         // O.T. 1 - FILTRO DE NCs "LIBRES"
         // Buscar Notas de Crédito que ya hemos conciliado para ignorarlas en los resultados
-        let ncsYaConciliadas = new Set();
+        // REGLA: Una nota de crédito puede tener varios artículos devueltos. 
+        // Solo ignoramos la clave compuesta (Comprobante + Articulo)
+        let itemsYaConciliados = new Set();
         try {
-            const resultConciliadas = await pool.query(
-                `SELECT nro_comprobante_externo FROM public.mantenimiento_conciliaciones 
-                 WHERE id_cliente = $1`,
-                [cliente]
-            );
+            const queryConciliadas = `
+                SELECT mc.nro_comprobante_externo, mci.articulo_numero 
+                FROM public.mantenimiento_conciliaciones mc
+                JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
+                WHERE mc.id_cliente = $1
+            `;
+            const resultConciliadas = await pool.query(queryConciliadas, [cliente]);
             resultConciliadas.rows.forEach(row => {
-                ncsYaConciliadas.add(row.nro_comprobante_externo);
+                // Creamos una firma única combinando Nro Comprobante y Código Original Articulo
+                // Ojo: En afip/lomasoft r.articulo es la descripcion, pero r.item_descripcion es tambien la descripción.
+                // Necesitamos chequear el item de Lomasoft frente a nuestro artículo.
+                itemsYaConciliados.add(`${row.nro_comprobante_externo}|${row.articulo_numero.toUpperCase()}`);
             });
-            debugLog.push(`Encontradas ${ncsYaConciliadas.size} NCs previas para este cliente en BD local.`);
+            debugLog.push(`Encontrados ${itemsYaConciliados.size} items-comprobante ya conciliados para este cliente.`);
         } catch (e) {
             console.error('⚠️ [VIGIA AUDITOR] No se pudo consultar historial de conciliaciones', e);
             debugLog.push(`⚠️ Error leyendo NCs locales: ${e.message}`);
@@ -224,7 +245,13 @@ async function diagnosticoVigiaAuditor(req, res) {
         // Remover comprobantes ocupados de los resultados
         resultados = resultados.filter(r => {
             const numeroCompleto = `${r.punto_venta || 0}-${r.numero_comprobante || 0}`;
-            return !ncsYaConciliadas.has(numeroCompleto);
+
+            // Verificamos si la firma (Comprobante|ArticuloLocalQueBuscamos) ya está en set
+            // NOTA: Como lomasoft devuelve TODO el historial, y nosotros filtramos sobre la marcha contra
+            // el articulo de este endpoint, comparamos directamente contra el parametro `articulo`
+            const firmaSearch = `${numeroCompleto}|${articulo.toUpperCase()}`;
+
+            return !itemsYaConciliados.has(firmaSearch);
         });
 
         debugLog.push(`Resultados tras remover NCs "Ocupadas": ${resultados.length}`);
@@ -370,7 +397,7 @@ async function confirmarConciliacion(req, res) {
             WHERE mm.articulo_numero = $1
               AND p.id_cliente = $2
               AND mm.tipo_movimiento = 'INGRESO'
-              AND mm.estado != 'CONCILIADO'
+              AND (mm.estado IS NULL OR mm.estado != 'CONCILIADO')
             ORDER BY mm.fecha_movimiento DESC
             LIMIT 1
             FOR UPDATE
@@ -684,6 +711,105 @@ async function revertirMovimiento(req, res) {
     }
 }
 
+/**
+ * Deshacer / Anular Conciliación
+ * 1. Recupera el movimiento origen ('INGRESO') desde el artículo.
+ * 2. Borra el item de conciliación de mantenimiento_conciliacion_items.
+ * 3. Limpia la cabecera en mantenimiento_conciliaciones si queda huérfana.
+ * 4. Pone el estado del movimiento en null o original y limpia observaciones.
+ */
+async function deshacerConciliacion(req, res) {
+    const client = await pool.connect();
+    try {
+        const { articulo } = req.body;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        if (!articulo) {
+            return res.status(400).json({ success: false, error: 'Se requiere el artículo para deshacer la conciliación.' });
+        }
+
+        console.log(`🔗 [MANTENIMIENTO] Deshaciendo conciliacion de Art: ${articulo}`);
+
+        await client.query('BEGIN');
+
+        // Buscar el movimiento de ingreso más reciente CONCILIADO
+        const findMovSql = `
+            SELECT mm.id, mm.observaciones 
+            FROM public.mantenimiento_movimientos mm
+            WHERE mm.articulo_numero = $1
+              AND mm.tipo_movimiento = 'INGRESO'
+              AND mm.estado = 'CONCILIADO'
+            ORDER BY mm.fecha_movimiento DESC
+            LIMIT 1
+            FOR UPDATE
+        `;
+        const resMov = await client.query(findMovSql, [articulo]);
+
+        if (resMov.rowCount === 0) {
+            throw new Error('No se encontró movimiento conciliado para revertir.');
+        }
+
+        const idMovimiento = resMov.rows[0].id;
+        const obsActual = resMov.rows[0].observaciones || '';
+
+        // Buscar items de conciliación vinculados a este movimiento
+        const findItemSql = `
+            SELECT id_conciliacion 
+            FROM public.mantenimiento_conciliacion_items
+            WHERE id_movimiento_origen = $1
+        `;
+        const resItem = await client.query(findItemSql, [idMovimiento]);
+
+        let idConciliacion = null;
+        if (resItem.rowCount > 0) {
+            idConciliacion = resItem.rows[0].id_conciliacion;
+
+            // Borrar item vinculante
+            await client.query(`DELETE FROM public.mantenimiento_conciliacion_items WHERE id_movimiento_origen = $1`, [idMovimiento]);
+
+            // Si la conciliación quedó huérfana (sin otros items), borrar cabecera
+            const checkHuerfana = await client.query(`SELECT count(1) as cant FROM public.mantenimiento_conciliacion_items WHERE id_conciliacion = $1`, [idConciliacion]);
+            if (parseInt(checkHuerfana.rows[0].cant) === 0) {
+                await client.query(`DELETE FROM public.mantenimiento_conciliaciones WHERE id = $1`, [idConciliacion]);
+            }
+        }
+
+        // Limpiar etiqueta de nota en observaciones ` [Conciliado con NC ...]`
+        const obsLimpia = obsActual.replace(/ \[Conciliado con NC [^\]]+\]/g, '').trim();
+
+        // Actualizar el estado del movimiento a vacío (null) que equivale a estado original (pendiente de conciliar en stock)
+        const updateMov = `
+            UPDATE public.mantenimiento_movimientos
+            SET estado = NULL, 
+                observaciones = $1
+            WHERE id = $2
+        `;
+        await client.query(updateMov, [obsLimpia, idMovimiento]);
+
+        // Registrar acción en bitácora (opcional, dejamos rastro suave usando log en REVERSION)
+        const insertReversion = `
+            INSERT INTO public.mantenimiento_movimientos (
+                articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento, estado
+            ) VALUES (
+                $1, 0, $2, 'REVERSION', $3, NOW(), 'AUTOMATICO'
+            )
+        `;
+        await client.query(insertReversion, [articulo, usuario, `Desvinculación manual de NC`]);
+
+        await client.query('COMMIT');
+        console.log(`✅ [MANTENIMIENTO] Conciliación revertida. Link roto para el movimiento #${idMovimiento}`);
+
+        res.json({ success: true, message: 'Conciliación desvinculada exitosamente.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error al deshacer conciliación:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     getHistorialMantenimiento,
@@ -691,5 +817,6 @@ module.exports = {
     confirmarConciliacion,
     liberarStock,
     transferirAIngredientes,
-    revertirMovimiento
+    revertirMovimiento,
+    deshacerConciliacion
 };

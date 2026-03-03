@@ -479,6 +479,13 @@
                     // Determinar contenido de la celda de acción
                     let actionCell = '';
                     if (item.estado === 'CONCILIADO') {
+                        // Mostrar info del comprobante
+                        let comprobanteInfo = '';
+                        if (item.nc_nro) {
+                            const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
+                            comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>${item.nc_tipo || 'NC'}</b> ${item.nc_nro} (${fechaNC})</span>`;
+                        }
+
                         // Dropdown de Acciones para items conciliados
                         actionCell = `
                         <div class="dropdown">
@@ -490,10 +497,13 @@
                                 <button onclick="abrirModalTransferencia('${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
                                     🧪 Enviar a Ingredientes
                                 </button>
+                                <button onclick="deshacerConciliacion('${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
+                                    🔗 Deshacer Vínculo
+                                </button>
                             </div>
                         </div>
                         <div style="margin-top: 5px;">
-                            <span style="color: green; font-weight: bold; font-size: 0.8em; border: 1px solid green; padding: 2px 5px; border-radius: 4px;">✅ Consolidado</span>
+                            <span style="color: green; font-weight: bold; font-size: 0.8em; border: 1px solid green; padding: 2px 5px; border-radius: 4px;">✅ Consolidado</span>${comprobanteInfo}
                         </div>
                     `;
                     } else {
@@ -591,6 +601,30 @@
                 console.error(error);
                 alert('Error al confirmar: ' + error.message);
                 cerrarModal();
+            }
+        }
+
+        async function deshacerConciliacion(articulo) {
+            if (!confirm(`¿Estás completamente seguro de deshacer la conciliación manual del artículo ${articulo}?\n\nEl comprobante quedará libre para otra conciliación y el artículo volverá a estado Pendiente.`)) return;
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/conciliar/deshacer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ articulo })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ Vínculo de conciliación deshecho exitosamente.');
+                    location.reload();
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                console.error(error);
+                alert('⏳ Error al intentar deshacer la conciliación: ' + error.message);
             }
         }
 

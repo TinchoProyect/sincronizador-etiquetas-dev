@@ -16,5 +16,6 @@ router.get('/historial', mantenimientoCtrl.getHistorialMantenimiento);
 router.get('/vigia-auditor', mantenimientoCtrl.diagnosticoVigiaAuditor);
 router.post('/transferir-ingrediente', mantenimientoCtrl.transferirAIngredientes);
 router.post('/revertir', mantenimientoCtrl.revertirMovimiento);
+router.post('/conciliar/deshacer', mantenimientoCtrl.deshacerConciliacion);
 
 module.exports = router;
