@@ -5,19 +5,19 @@
  */
 function normalizarTexto(texto) {
     if (!texto) return '';
-    
+
     // Pasar a minúsculas y eliminar espacios extra
     let normalizado = texto.toLowerCase().trim().replace(/\s+/g, ' ');
-    
+
     // Eliminar tildes
     normalizado = normalizado.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    
+
     // Unificar plurales comunes en unidades
     if (normalizado === 'kilos') normalizado = 'kilo';
     if (normalizado === 'gramos') normalizado = 'gramo';
     if (normalizado === 'litros') normalizado = 'litro';
     if (normalizado === 'unidades') normalizado = 'unidad';
-    
+
     return normalizado;
 }
 
@@ -68,6 +68,7 @@ function consolidarIngredientes(ingredientes) {
             consolidados[key].es_primario = consolidados[key].es_primario || ing.es_primario || false;
             // Preservar origen_mix_id (priorizar el existente, luego el nuevo)
             consolidados[key].origen_mix_id = consolidados[key].origen_mix_id || ing.origen_mix_id || null;
+            consolidados[key].sector_letra = consolidados[key].sector_letra || ing.sector_letra || null;
             console.log(`➕ SUMANDO cantidades para ID ${key}:`);
             console.log(`   ${anterior} + ${ing.cantidad} = ${consolidados[key].cantidad}`);
             console.log(`   es_primario: ${consolidados[key].es_primario}`);
@@ -81,7 +82,8 @@ function consolidarIngredientes(ingredientes) {
                 unidad_medida: ing.unidad_medida,
                 cantidad: Number(ing.cantidad.toPrecision(10)),
                 es_primario: ing.es_primario || false,
-                origen_mix_id: ing.origen_mix_id || null // Preservar origen_mix_id
+                origen_mix_id: ing.origen_mix_id || null, // Preservar origen_mix_id
+                sector_letra: ing.sector_letra || null // Preservar sector_letra
             };
         }
     });
@@ -97,43 +99,43 @@ function consolidarIngredientes(ingredientes) {
     // LOGS DE DIAGNÓSTICO - Análisis detallado antes del return
     console.log('\n🔍 DIAGNÓSTICO DE CONSOLIDACIÓN:');
     console.log('===============================');
-    
+
     Object.keys(consolidados).forEach(key => {
         const ingrediente = consolidados[key];
         console.log(`📋 Key: "${key}"`);
         console.log(`   - Nombre: "${ingrediente.nombre}" (tipo: ${typeof ingrediente.nombre}, longitud: ${ingrediente.nombre?.length})`);
         console.log(`   - Unidad: "${ingrediente.unidad_medida}" (tipo: ${typeof ingrediente.unidad_medida}, longitud: ${ingrediente.unidad_medida?.length})`);
         console.log(`   - Cantidad total: ${ingrediente.cantidad} (tipo: ${typeof ingrediente.cantidad})`);
-        
+
         // Verificar caracteres especiales en nombre
         if (ingrediente.nombre) {
             const tieneEspaciosExtra = ingrediente.nombre !== ingrediente.nombre.trim();
             const tieneTildes = /[áéíóúÁÉÍÓÚñÑ]/.test(ingrediente.nombre);
             const tieneCaracteresEspeciales = /[^\w\sáéíóúÁÉÍÓÚñÑ]/.test(ingrediente.nombre);
-            
+
             if (tieneEspaciosExtra) console.log(`   ⚠️ ESPACIOS EXTRA detectados en nombre`);
             if (tieneTildes) console.log(`   📝 Contiene tildes/ñ: ${ingrediente.nombre.match(/[áéíóúÁÉÍÓÚñÑ]/g)}`);
             if (tieneCaracteresEspeciales) console.log(`   ⚠️ Caracteres especiales: ${ingrediente.nombre.match(/[^\w\sáéíóúÁÉÍÓÚñÑ]/g)}`);
         }
-        
+
         // Verificar caracteres especiales en unidad
         if (ingrediente.unidad_medida) {
             const tieneEspaciosExtra = ingrediente.unidad_medida !== ingrediente.unidad_medida.trim();
             const tieneTildes = /[áéíóúÁÉÍÓÚñÑ]/.test(ingrediente.unidad_medida);
-            
+
             if (tieneEspaciosExtra) console.log(`   ⚠️ ESPACIOS EXTRA detectados en unidad`);
             if (tieneTildes) console.log(`   📝 Unidad contiene tildes/ñ: ${ingrediente.unidad_medida.match(/[áéíóúÁÉÍÓÚñÑ]/g)}`);
         }
-        
+
         console.log(''); // Línea en blanco para separar
     });
-    
+
     console.log(`📊 Total de keys únicas generadas: ${Object.keys(consolidados).length}`);
     console.log('===============================\n');
 
     const resultado = Object.values(consolidados)
         .sort((a, b) => a.nombre.localeCompare(b.nombre));
-    
+
     console.log(`✅ Consolidación completada. ${resultado.length} ingredientes únicos:`, resultado);
     return resultado;
 }

@@ -5,6 +5,46 @@ const { consolidarIngredientes } = require('../utils/ingredientes/consolidarIngr
 const { validarPropiedadCarro } = require('./carro');
 
 /**
+ * Extrae la letra del sector desde la descripción o nombre.
+ */
+function extraerLetraSector(descripcion, nombre) {
+    let texto = (descripcion || nombre || '').replace(/["']/g, '');
+    if (!texto) return null;
+
+    let letraPura = null;
+
+    // 1. Buscar explícitamente el patrón "Sector X" con un espacio (capturando sólo la letra/número)
+    const matchSector = texto.match(/Sector\s+([A-Z0-9])/i);
+    if (matchSector) {
+        letraPura = matchSector[1].toUpperCase();
+    } else {
+        // 2. Buscar si el texto ES exactamente 1 o 2 letras/números (ej "A", "B1")
+        const textoLimpio = texto.trim();
+        if (textoLimpio.length > 0 && textoLimpio.length <= 2) {
+            letraPura = textoLimpio.toUpperCase();
+        } else {
+            // 3. Fallback: buscar una letra/número suelto en el texto
+            const matchLetraSuelta = textoLimpio.match(/(?:^|\s)([A-Z0-9])(?:\s|$)/i);
+            if (matchLetraSuelta) {
+                letraPura = matchLetraSuelta[1].toUpperCase();
+            }
+        }
+    }
+
+    // Si encontramos la letra y existe un nombre descriptivo, los concatenamos
+    if (letraPura) {
+        const nombreDescriptivo = nombre || '';
+        if (nombreDescriptivo && nombreDescriptivo.toUpperCase() !== letraPura) {
+            return `${letraPura} - ${nombreDescriptivo}`;
+        }
+        return letraPura;
+    }
+
+    // 4. Si falla, devolver nulo para usar el nombre directamente
+    return null;
+}
+
+/**
  * Helper para verificar si un carro ya está preparado
  */
 async function esCarroPreparado(carroId) {
@@ -33,12 +73,15 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
                 i.nombre, 
                 i.unidad_medida,
                 i.stock_actual as current_system_stock, -- Stock REAL actual en sistema
+                (SELECT descripcion FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_descripcion,
+                (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre,
+                i.sector_id,
                 SUM(ABS(im.kilos)) as cantidad,
                 MAX(im.stock_anterior) as stock_snapshot
             FROM ingredientes_movimientos im
             JOIN ingredientes i ON im.ingrediente_id = i.id
             WHERE im.carro_id = $1 AND im.kilos < 0
-            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual
+            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual, i.sector_id
         `;
     } else {
         // Para externa, mirar mezcla de stock_usuarios y movimientos (fallback)
@@ -48,6 +91,9 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
             i.nombre,
             i.unidad_medida,
             i.stock_actual as current_system_stock, --Stock REAL actual en sistema
+            (SELECT descripcion FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_descripcion,
+            (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre,
+            i.sector_id,
         SUM(sub.cantidad) as cantidad,
             MAX(sub.stock_anterior) as stock_snapshot,
             sub.origen_mix_id
@@ -61,7 +107,7 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
                 WHERE carro_id = $1 AND kilos < 0 AND tipo = 'egreso'
         ) sub
             JOIN ingredientes i ON sub.id = i.id
-            GROUP BY sub.id, i.nombre, i.unidad_medida, i.stock_actual, sub.origen_mix_id
+            GROUP BY sub.id, i.nombre, i.unidad_medida, i.stock_actual, sub.origen_mix_id, i.sector_id
             `;
     }
 
@@ -82,12 +128,15 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
             stockAnterior = currentStock + cantidad;
         }
 
+        const sectorLetra = extraerLetraSector(row.sector_descripcion, row.sector_nombre) || row.sector_nombre || row.sector_descripcion || null;
+
         return {
             ...row,
             cantidad: cantidad,
             stock_actual: stockAnterior, // Mantener compatibilidad (Snapshot)
             stock_snapshot: stockAnterior, // Explicito para evitar dudas
-            stock_live: Number(row.current_system_stock || 0) // Stock real actual del sistema
+            stock_live: Number(row.current_system_stock || 0), // Stock real actual del sistema
+            sector_letra: sectorLetra
         };
     });
 }
@@ -355,7 +404,10 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
         ri.ingrediente_id,
             CAST(ri.cantidad AS DECIMAL(20, 10)) as cantidad,
             COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
-            COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
+            COALESCE(i.unidad_medida, 'Kilo') as unidad_medida,
+            i.sector_id,
+            (SELECT descripcion FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_descripcion,
+            (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre
                 FROM recetas r
                 JOIN receta_ingredientes ri ON r.id = ri.receta_id
                 LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id
@@ -393,6 +445,11 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                 }
 
                 let ingredientesExpandidos = [];
+                let sectorLetra = null;
+                if (ing.sector_descripcion || ing.sector_nombre || ing.sector_id) {
+                    sectorLetra = extraerLetraSector(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre || ing.sector_descripcion || null;
+                }
+
                 if (ingredienteIdParaExpandir) {
                     const esMix = await verificarSiEsMix(ingredienteIdParaExpandir);
 
@@ -417,7 +474,8 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                             id: ingredienteIdParaExpandir,
                             nombre: ing.nombre_ingrediente,
                             unidad_medida: ing.unidad_medida,
-                            cantidad: cantidadTotal
+                            cantidad: cantidadTotal,
+                            sector_letra: sectorLetra
                         });
                     }
                 } else {
@@ -427,7 +485,8 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                         id: null,
                         nombre: ing.nombre_ingrediente,
                         unidad_medida: ing.unidad_medida,
-                        cantidad: cantidadTotal
+                        cantidad: cantidadTotal,
+                        sector_letra: sectorLetra
                     });
                 }
             }
@@ -536,14 +595,16 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                         return {
                             ...ingrediente,
                             stock_actual: Number(parseFloat(stockActual).toPrecision(10)),
-                            origen_mix_id: ingrediente.origen_mix_id // Preservar origen_mix_id
+                            origen_mix_id: ingrediente.origen_mix_id, // Preservar origen_mix_id
+                            sector_letra: ingrediente.sector_letra
                         };
                     } catch (error) {
                         console.error(`Error obteniendo stock para ingrediente ${ingrediente.id}: `, error);
                         return {
                             ...ingrediente,
                             stock_actual: 0,
-                            origen_mix_id: ingrediente.origen_mix_id // Preservar origen_mix_id también en caso de error
+                            origen_mix_id: ingrediente.origen_mix_id, // Preservar origen_mix_id también en caso de error
+                            sector_letra: ingrediente.sector_letra
                         };
                     }
                 } else {

@@ -1302,6 +1302,21 @@ export async function mostrarResumenIngredientes(ingredientes) {
         `;
     }
 
+    // 📍 AGRUPACIÓN: Asegurar sector_letra y ordenar
+    ingredientes.forEach(ing => {
+        if (!ing.sector_letra) ing.sector_letra = 'Sin Sector';
+    });
+
+    // Ordenar por sector_letra (Sin Sector al final), luego por nombre
+    ingredientes.sort((a, b) => {
+        if (a.sector_letra === 'Sin Sector' && b.sector_letra !== 'Sin Sector') return 1;
+        if (a.sector_letra !== 'Sin Sector' && b.sector_letra === 'Sin Sector') return -1;
+        if (a.sector_letra !== b.sector_letra) return String(a.sector_letra || '').localeCompare(String(b.sector_letra || ''));
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+    });
+
+    let currentSector = null;
+
     ingredientes.forEach((ing, index) => {
         // Validación robusta
         const stockFinalRaw = ing.stock_actual; // En carro finalizado, esto es el "Stock Final" (post-producción)
@@ -1319,6 +1334,19 @@ export async function mostrarResumenIngredientes(ingredientes) {
         if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
             const cantidadParsed = parseFloat(cantidadNecesariaRaw);
             cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
+        }
+
+        // INYECTAR SEPARADOR DE SECTOR SI CAMBIA
+        if (ing.sector_letra !== currentSector) {
+            currentSector = ing.sector_letra;
+            const colSpan = carroFinalizado ? 7 : 6;
+            html += `
+                <tr class="sector-header" style="background-color: #f8f9fa; border-top: 2px solid #dee2e6; border-bottom: 2px solid #dee2e6;">
+                    <td colspan="${colSpan}" style="padding: 10px; font-weight: bold; color: #495057; font-size: 1.1em; text-align: left;">
+                        📍 Sector: <span style="color: #0056b3;">${currentSector}</span>
+                    </td>
+                </tr>
+            `;
         }
 
         if (carroFinalizado) {

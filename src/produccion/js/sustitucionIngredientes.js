@@ -120,7 +120,7 @@ async function cargarIngredientesDisponibles() {
         const ingredientes = await response.json();
 
         // Filtrar ingredientes con la misma unidad de medida y stock > 0
-        estadoSustitucion.ingredientesDisponibles = ingredientes.filter(ing => 
+        estadoSustitucion.ingredientesDisponibles = ingredientes.filter(ing =>
             ing.id !== estadoSustitucion.ingredienteDestino.id && // No incluir el mismo ingrediente
             ing.unidad_medida === estadoSustitucion.ingredienteDestino.unidad && // Misma unidad
             ing.stock_actual > 0 // Con stock disponible
@@ -157,11 +157,11 @@ function renderizarListaIngredientes(ingredientes) {
     ingredientes.forEach(ing => {
         // Convertir stock_actual a número de forma segura
         const stockActual = parseFloat(ing.stock_actual) || 0;
-        
+
         html += `
             <div class="ingrediente-origen-item" data-ingrediente-id="${ing.id}" onclick="seleccionarIngredienteOrigen(${ing.id})">
                 <div>
-                    <div class="nombre">${ing.nombre}</div>
+                    <div class="nombre">${ing.nombre}${ing.sector_letra ? ` [Sector ${ing.sector_letra}]` : ''}</div>
                 </div>
                 <div>
                     <span class="stock">${stockActual.toFixed(2)}</span>
@@ -178,10 +178,10 @@ function renderizarListaIngredientes(ingredientes) {
  * Selecciona un ingrediente origen para la sustitución
  * @param {number} ingredienteId - ID del ingrediente seleccionado
  */
-window.seleccionarIngredienteOrigen = function(ingredienteId) {
+window.seleccionarIngredienteOrigen = function (ingredienteId) {
     // Buscar el ingrediente en la lista
     const ingrediente = estadoSustitucion.ingredientesDisponibles.find(ing => ing.id === ingredienteId);
-    
+
     if (!ingrediente) {
         console.error('Ingrediente no encontrado:', ingredienteId);
         return;
@@ -293,7 +293,7 @@ function actualizarFaltanteRestante(cantidadAsignada) {
     // Mostrar/ocultar según si hay faltante restante
     if (cantidadAsignada > 0) {
         contenedor.style.display = 'flex';
-        
+
         // Cambiar estilo según si está completo o no
         if (faltanteRestante <= 0.01) {
             contenedor.classList.add('completo');
@@ -400,10 +400,10 @@ async function confirmarSustitucion() {
         }
 
         // 4. Recargar lista de ingredientes (filtra los que quedaron sin stock)
-        estadoSustitucion.ingredientesDisponibles = estadoSustitucion.ingredientesDisponibles.filter(ing => 
+        estadoSustitucion.ingredientesDisponibles = estadoSustitucion.ingredientesDisponibles.filter(ing =>
             parseFloat(ing.stock_actual) > 0
         );
-        
+
         // --- UX MEJORADA: PERSISTENCIA DEL FILTRO ---
         // En lugar de renderizar todo, volvemos a llamar a filtrarIngredientes
         // para que respete lo que el usuario escribió en el buscador.
@@ -414,7 +414,7 @@ async function confirmarSustitucion() {
         document.getElementById('sustitucion-cantidad-container').style.display = 'none';
         document.getElementById('sustitucion-cantidad-input').value = '';
         document.getElementById('sustitucion-faltante-restante').style.display = 'none';
-        
+
         // NO borramos el buscador (document.getElementById('sustitucion-buscar-origen').value = '')
         // para que persista el filtro.
 
@@ -422,17 +422,17 @@ async function confirmarSustitucion() {
 
         // 6. Actualizar resumen de ingredientes en el fondo (sin cerrar modal)
         console.log('🔄 Actualizando resumen de ingredientes en segundo plano...');
-        
+
         // 🔧 CORRECCIÓN: Llamar directamente a las funciones SIN debounce
         const carroId = localStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
-        
+
         if (carroId && colaboradorData) {
             const colaborador = JSON.parse(colaboradorData);
-            
+
             // Llamar directamente a obtenerResumenIngredientesCarro y mostrarResumenIngredientes
             // SIN pasar por actualizarResumenIngredientes (que tiene debounce)
-            if (typeof window.obtenerResumenIngredientesCarro === 'function' && 
+            if (typeof window.obtenerResumenIngredientesCarro === 'function' &&
                 typeof window.mostrarResumenIngredientes === 'function') {
                 console.log('📊 Obteniendo ingredientes actualizados del servidor...');
                 const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
@@ -440,9 +440,9 @@ async function confirmarSustitucion() {
                 window.mostrarResumenIngredientes(ingredientes);
                 console.log('✅ Resumen de ingredientes actualizado DIRECTAMENTE');
             }
-            
+
             // También actualizar resumen de mixes DIRECTAMENTE
-            if (typeof window.obtenerResumenMixesCarro === 'function' && 
+            if (typeof window.obtenerResumenMixesCarro === 'function' &&
                 typeof window.mostrarResumenMixes === 'function') {
                 console.log('🧪 Obteniendo mixes actualizados del servidor...');
                 const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
@@ -607,7 +607,7 @@ function mostrarError(mensaje) {
 function hacerModalDraggable() {
     const modal = document.querySelector('.modal-sustitucion-content');
     const header = document.querySelector('.modal-sustitucion-header');
-    
+
     if (!modal || !header) return;
 
     let isDragging = false;
@@ -639,7 +639,7 @@ function hacerModalDraggable() {
     function drag(e) {
         if (isDragging) {
             e.preventDefault();
-            
+
             currentX = e.clientX - initialX;
             currentY = e.clientY - initialY;
 
@@ -672,10 +672,10 @@ function usarMaximo() {
 
     const stockActual = estadoSustitucion.ingredienteOrigen.stock_actual;
     const input = document.getElementById('sustitucion-cantidad-input');
-    
+
     input.value = stockActual.toFixed(2);
     validarCantidad();
-    
+
     console.log(`✅ Cantidad establecida al máximo: ${stockActual.toFixed(2)}`);
 }
 

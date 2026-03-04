@@ -9,20 +9,39 @@ const { obtenerIngredientesBaseCarro, obtenerMixesCarro } = require('./carroIngr
  * @returns {string|null} Letra del sector o null
  */
 function extraerLetraSector(descripcion, nombre) {
-    // 1. Intentar extraer contenido entre comillas en la descripción
-    if (descripcion) {
-        const match = descripcion.match(/["']([^"']+)["']/);
-        if (match && match[1]) return match[1].toUpperCase();
-    }
+    let texto = (descripcion || nombre || '').replace(/["']/g, '');
+    if (!texto) return null;
 
-    // 2. Fallback: buscar en el nombre si tiene formato "Sector X"
-    if (nombre) {
-        const matchNombre = nombre.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
-        if (matchNombre && matchNombre[1]) {
-            return matchNombre[1].toUpperCase();
+    let letraPura = null;
+
+    // 1. Buscar explícitamente el patrón "Sector X" con un espacio (capturando sólo la letra/número)
+    const matchSector = texto.match(/Sector\s+([A-Z0-9])/i);
+    if (matchSector) {
+        letraPura = matchSector[1].toUpperCase();
+    } else {
+        // 2. Buscar si el texto ES exactamente 1 o 2 letras/números (ej "A", "B1")
+        const textoLimpio = texto.trim();
+        if (textoLimpio.length > 0 && textoLimpio.length <= 2) {
+            letraPura = textoLimpio.toUpperCase();
+        } else {
+            // 3. Fallback: buscar una letra/número suelto en el texto
+            const matchLetraSuelta = textoLimpio.match(/(?:^|\s)([A-Z0-9])(?:\s|$)/i);
+            if (matchLetraSuelta) {
+                letraPura = matchLetraSuelta[1].toUpperCase();
+            }
         }
     }
 
+    // Si encontramos la letra y existe un nombre descriptivo, los concatenamos
+    if (letraPura) {
+        const nombreDescriptivo = nombre || '';
+        if (nombreDescriptivo && nombreDescriptivo.toUpperCase() !== letraPura) {
+            return `${letraPura} - ${nombreDescriptivo}`;
+        }
+        return letraPura;
+    }
+
+    // 4. Si falla, devolver nulo para usar el nombre directamente
     return null;
 }
 

@@ -684,8 +684,9 @@ function manejarBusqueda() {
 
           // 🆕 Mostrar nombre + stock en el resultado
           const stockClass = parseFloat(stockDisplay) > 0 ? 'stock-disponible' : 'stock-cero';
+          const sectorDisplay = art.sector_letra ? ` [Sector ${art.sector_letra}]` : '';
           li.innerHTML = `
-            <span class="articulo-nombre">${art.nombre}</span>
+            <span class="articulo-nombre">${art.nombre}${sectorDisplay}</span>
             <span class="articulo-stock ${stockClass}">Stock: ${stockDisplay} kg</span>
           `;
 

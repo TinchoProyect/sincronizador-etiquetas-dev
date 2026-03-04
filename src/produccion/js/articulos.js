@@ -1148,7 +1148,8 @@ function manejarBusquedaIngredienteReceta(e) {
     if (resultados.length > 0) {
         resultados.slice(0, 50).forEach(ing => {
             const li = document.createElement('li');
-            li.textContent = `${ing.nombre} (${ing.unidad_medida})`;
+            const sectorDisplay = ing.sector_letra ? ` [Sector ${ing.sector_letra}]` : '';
+            li.textContent = `${ing.nombre} (${ing.unidad_medida})${sectorDisplay}`;
 
             li.addEventListener('click', () => {
                 hiddenInput.value = ing.id;
@@ -1199,9 +1200,10 @@ function manejarBusquedaArticuloReceta(e) {
         resultados.slice(0, 50).forEach(art => {
             const li = document.createElement('li');
             const stockFormateado = formatearStock(art.stock_consolidado);
+            const sectorDisplay = art.sector_letra ? ` [Sector ${art.sector_letra}]` : '';
             li.innerHTML = `
                 <div style="display: flex; justify-content: space-between; width: 100%;">
-                    <span>${art.numero} - ${art.nombre}</span>
+                    <span>${art.numero} - ${art.nombre}${sectorDisplay}</span>
                     <span style="color: #6c757d; font-size: 0.9em; font-weight: bold;">(Stock: ${stockFormateado})</span>
                 </div>
             `;

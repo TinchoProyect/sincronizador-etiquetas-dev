@@ -41,11 +41,11 @@ export async function actualizarEstadoMix(ingredienteId) {
 
     const esMixStatus = tr.querySelector('.es-mix-status');
     const btnGestionar = tr.querySelector('.btn-gestionar-composicion');
-    
+
     try {
         const tieneMix = await esMix(ingredienteId);
         const ingrediente = ingredientesLista.find(i => i.id === parseInt(ingredienteId));
-        
+
         if (esMixStatus) esMixStatus.textContent = tieneMix ? 'Sí' : 'No (aún)';
         if (btnGestionar && ingrediente) {
             btnGestionar.style.display = (!ingrediente.padre_id) ? 'inline-block' : 'none';
@@ -83,15 +83,16 @@ function manejarBusquedaMix() {
         resultados.forEach(ing => {
             const li = document.createElement('li');
             const stock = parseFloat(ing.stock_actual || 0).toFixed(2);
-            li.textContent = `${ing.nombre} - Stock: ${stock}`;
-            
+            const sectorDisplay = ing.sector_letra ? ` [Sector ${ing.sector_letra}]` : '';
+            li.textContent = `${ing.nombre} - Stock: ${stock}${sectorDisplay}`;
+
             li.addEventListener('click', () => {
                 ingredienteSeleccionadoId = ing.id;
                 input.value = ing.nombre;
                 listaResultados.innerHTML = '';
                 listaResultados.style.display = 'none';
             });
-            
+
             listaResultados.appendChild(li);
         });
         listaResultados.style.display = 'block';
@@ -110,7 +111,7 @@ function calcularYMostrarTotal() {
 
     let total = 0;
     const filas = tbody.querySelectorAll('tr');
-    
+
     filas.forEach(fila => {
         const celdaCantidad = fila.querySelector('td:nth-child(2)');
         if (celdaCantidad) {
@@ -203,7 +204,7 @@ window.eliminarIngredienteDeMix = async (mixId, ingredienteId) => {
     try {
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${ingredienteId}`, { method: 'DELETE' });
         if (!response.ok) throw new Error('No se pudo eliminar el ingrediente');
-        
+
         const updateResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -258,7 +259,7 @@ async function agregarIngredienteAMix(mixId) {
 async function guardarRecetaMix(mixId) {
     const modal = document.getElementById('modal-mix');
     modal.style.display = 'none';
-    
+
     if (window.actualizarResumenIngredientes) {
         await window.actualizarResumenIngredientes();
     }

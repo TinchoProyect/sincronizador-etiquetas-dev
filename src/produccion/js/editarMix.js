@@ -21,11 +21,11 @@ export async function mostrarModalEditarMix(mixId) {
     try {
         mixActual = mixId;
         ingredienteSeleccionadoId = null; // Resetear selección
-        
+
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`);
         if (!response.ok) throw new Error('No se pudo obtener la composición del mix');
         const data = await response.json();
-        
+
         let modal = document.getElementById('modal-editar-mix');
         if (!modal) {
             modal = document.createElement('div');
@@ -120,16 +120,16 @@ async function cargarYConfigurarBusqueda() {
     try {
         const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
         if (!response.ok) throw new Error('No se pudieron cargar los ingredientes');
-        
+
         const ingredientes = await response.json();
         // Filtrar ingredientes que no son mix para evitar ciclos y guardar en caché
         todosLosIngredientes = ingredientes.filter(ing => ing.categoria !== 'Mix');
-        
+
         const inputBusqueda = document.getElementById('buscar-ingrediente-mix');
-        if(inputBusqueda) {
+        if (inputBusqueda) {
             inputBusqueda.addEventListener('input', manejarBusquedaMix);
         }
-            
+
     } catch (error) {
         console.error('Error al cargar ingredientes:', error);
         mostrarError('No se pudieron cargar los ingredientes disponibles');
@@ -162,16 +162,17 @@ function manejarBusquedaMix() {
         resultados.forEach(ing => {
             const li = document.createElement('li');
             const stock = parseFloat(ing.stock_actual || 0).toFixed(2);
-            li.textContent = `${ing.nombre} - Stock: ${stock}`;
+            const sectorDisplay = ing.sector_letra ? ` [Sector ${ing.sector_letra}]` : '';
+            li.textContent = `${ing.nombre} - Stock: ${stock}${sectorDisplay}`;
             li.dataset.id = ing.id;
-            
+
             li.addEventListener('click', () => {
                 ingredienteSeleccionadoId = ing.id;
                 input.value = ing.nombre;
                 listaResultados.innerHTML = '';
                 listaResultados.style.display = 'none';
             });
-            
+
             listaResultados.appendChild(li);
         });
         listaResultados.style.display = 'block';
@@ -194,7 +195,7 @@ window.editarCantidadIngrediente = async (mixId, ingredienteId, nuevaCantidad) =
         });
 
         if (!response.ok) throw new Error('No se pudo actualizar la cantidad');
-        
+
         if (window.actualizarResumenIngredientes) {
             await window.actualizarResumenIngredientes();
         }
@@ -216,9 +217,9 @@ window.eliminarIngredienteDeMix = async (mixId, ingredienteId) => {
         });
 
         if (!response.ok) throw new Error('No se pudo eliminar el ingrediente');
-        
+
         await mostrarModalEditarMix(mixId);
-        
+
         if (window.actualizarResumenIngredientes) {
             await window.actualizarResumenIngredientes();
         }
@@ -231,7 +232,7 @@ window.eliminarIngredienteDeMix = async (mixId, ingredienteId) => {
 
 window.agregarIngredienteAMix = async (mixId) => {
     const inputCantidad = document.getElementById('cantidad-ingrediente');
-    
+
     const cantidad = parseFloat(inputCantidad.value.replace(',', '.'));
 
     if (!ingredienteSeleccionadoId) {
@@ -257,9 +258,9 @@ window.agregarIngredienteAMix = async (mixId) => {
         });
 
         if (!response.ok) throw new Error('No se pudo agregar el ingrediente');
-        
+
         await mostrarModalEditarMix(mixId);
-        
+
         if (window.actualizarResumenIngredientes) {
             await window.actualizarResumenIngredientes();
         }

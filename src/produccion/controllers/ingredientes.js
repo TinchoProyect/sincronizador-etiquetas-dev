@@ -32,23 +32,41 @@ async function obtenerNuevoCodigo() {
     }
 }
 
-/**
- * Extrae la letra del sector desde la descripción (ej: 'Sector "G"' -> 'G')
- * @param {string} descripcion - Descripción del sector
- * @returns {string|null} Letra del sector o null
- */
-function extraerLetraSector(descripcion) {
-    if (!descripcion) return null;
-    // Intentar extraer contenido entre comillas
-    const match = descripcion.match(/["']([^"']+)["']/);
-    if (match && match[1]) return match[1].toUpperCase();
+function extraerLetraSector(descripcion, nombre) {
+    let texto = (descripcion || nombre || '').replace(/["']/g, '');
+    if (!texto) return null;
 
-    // Fallback: si dice 'Sector G', quitar 'Sector'
-    if (descripcion.includes('Sector')) {
-        return descripcion.replace('Sector', '').trim();
+    let letraPura = null;
+
+    // 1. Buscar explícitamente el patrón "Sector X" con un espacio (capturando sólo la letra/número)
+    const matchSector = texto.match(/Sector\s+([A-Z0-9])/i);
+    if (matchSector) {
+        letraPura = matchSector[1].toUpperCase();
+    } else {
+        // 2. Buscar si el texto ES exactamente 1 o 2 letras/números (ej "A", "B1")
+        const textoLimpio = texto.trim();
+        if (textoLimpio.length > 0 && textoLimpio.length <= 2) {
+            letraPura = textoLimpio.toUpperCase();
+        } else {
+            // 3. Fallback: buscar una letra/número suelto en el texto
+            const matchLetraSuelta = textoLimpio.match(/(?:^|\s)([A-Z0-9])(?:\s|$)/i);
+            if (matchLetraSuelta) {
+                letraPura = matchLetraSuelta[1].toUpperCase();
+            }
+        }
     }
 
-    return descripcion; // Retornar tal cual si no coincide patrones
+    // Si encontramos la letra y existe un nombre descriptivo, los concatenamos
+    if (letraPura) {
+        const nombreDescriptivo = nombre || '';
+        if (nombreDescriptivo && nombreDescriptivo.toUpperCase() !== letraPura) {
+            return `${letraPura} - ${nombreDescriptivo}`;
+        }
+        return letraPura;
+    }
+
+    // 4. Si falla, devolver nulo para usar el nombre directamente
+    return null;
 }
 
 /**
@@ -103,7 +121,7 @@ async function obtenerIngredientes() {
         // Enriquecer con letra de sector
         const ingredientesEnriquecidos = result.rows.map(ing => ({
             ...ing,
-            sector_letra: extraerLetraSector(ing.sector_descripcion) || ing.sector_id
+            sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre || ing.sector_descripcion || null
         }));
 
         return ingredientesEnriquecidos;
@@ -243,7 +261,7 @@ async function obtenerIngrediente(id) {
 
         const ingrediente = result.rows[0];
         // Enriquecer
-        ingrediente.sector_letra = extraerLetraSector(ingrediente.sector_descripcion) || ingrediente.sector_id;
+        ingrediente.sector_letra = extraerLetraSector(ingrediente.sector_descripcion, ingrediente.sector_nombre) || ingrediente.sector_nombre || ingrediente.sector_descripcion || null;
 
         return ingrediente;
     } catch (error) {
@@ -635,7 +653,7 @@ async function buscarIngredientePorCodigo(codigo) {
         }
 
         const ingrediente = result.rows[0];
-        ingrediente.sector_letra = extraerLetraSector(ingrediente.sector_descripcion) || ingrediente.sector_id;
+        ingrediente.sector_letra = extraerLetraSector(ingrediente.sector_descripcion, ingrediente.sector_nombre) || ingrediente.sector_nombre || ingrediente.sector_descripcion || null;
 
         return ingrediente;
     } catch (error) {
@@ -703,7 +721,7 @@ async function obtenerIngredientesPorSectores(sectores) {
         // Enriquecer resultados
         const ingredientesEnriquecidos = result.rows.map(ing => ({
             ...ing,
-            sector_letra: extraerLetraSector(ing.sector_descripcion) || ing.sector_id
+            sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre || ing.sector_descripcion || null
         }));
 
         return ingredientesEnriquecidos;
