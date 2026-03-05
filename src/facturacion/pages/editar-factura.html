@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -268,8 +269,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .spinner {
@@ -290,11 +296,23 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
-        <div class="header">
-            <h1>✏️ Editar Factura</h1>
-            <p>Sistema LAMDA - Módulo de Facturación</p>
+        <div class="header"
+            style="display: flex; justify-content: space-between; align-items: center; text-align: left;">
+            <div>
+                <h1 style="margin-bottom: 5px;">✏️ Editar Factura</h1>
+                <p style="margin: 0;">Sistema LAMDA - Módulo de Facturación</p>
+            </div>
+            <div>
+                <button onclick="window.location.href='/'"
+                    style="background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.1)';"
+                    onmouseout="this.style.background='transparent';">
+                    🏠 Volver a Inicio
+                </button>
+            </div>
         </div>
 
         <div id="loading" class="loading">
@@ -351,7 +369,8 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label>Razón Social / Nombre *</label>
-                            <input type="text" id="razon_social" required placeholder="Nombre del cliente o Consumidor Final">
+                            <input type="text" id="razon_social" required
+                                placeholder="Nombre del cliente o Consumidor Final">
                             <p class="help-text">Nombre completo del receptor de la factura</p>
                         </div>
                         <div class="form-group">
@@ -379,7 +398,8 @@
                                 <option value="2">2 - Responsable no Inscripto</option>
                                 <option value="3">3 - No Responsable</option>
                             </select>
-                            <p class="help-text">⚠️ Obligatorio para AFIP. Se ajusta automáticamente según tipo de documento</p>
+                            <p class="help-text">⚠️ Obligatorio para AFIP. Se ajusta automáticamente según tipo de
+                                documento</p>
                         </div>
                     </div>
                 </div>
@@ -597,7 +617,7 @@
             tbody.innerHTML = items.map((item, index) => {
                 // Normalizar código antiguo (1→5, 2→4)
                 const codigoNormalizado = (item.alic_iva_id === 1 ? 5 : item.alic_iva_id === 2 ? 4 : item.alic_iva_id);
-                
+
                 return `
                 <tr>
                     <td>
@@ -735,4 +755,5 @@
         }
     </script>
 </body>
+
 </html>

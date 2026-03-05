@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -56,7 +57,7 @@
             font-weight: 700;
             margin-bottom: 8px;
             letter-spacing: 1px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .company-tagline {
@@ -119,8 +120,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .error {
@@ -360,14 +366,17 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
-        <div class="header">
-            <div class="header-content">
-                <div class="company-name">LAMDA - Proveedor Comercial</div>
-                <div class="company-tagline">Distribuidora de Frutos Secos</div>
-                <h1>🧾 Factura Electrónica</h1>
-                <p>Sistema de Gestión de Facturación</p>
+        <div class="header" style="display: flex; justify-content: space-between; align-items: center; padding: 30px;">
+            <div class="header-content" style="text-align: left;">
+                <div class="company-name" style="font-size: 20px; font-weight: 700; opacity: 0.9;">LAMDA - Proveedor
+                    Comercial</div>
+                <div class="company-tagline" style="font-size: 14px; opacity: 0.8; margin-bottom: 10px;">Distribuidora
+                    de Frutos Secos</div>
+                <h1 style="margin: 0; font-size: 28px;">🧾 Factura Electrónica</h1>
+                <p style="margin: 5px 0 0 0; opacity: 0.9;">Sistema de Gestión de Facturación</p>
             </div>
         </div>
 
@@ -542,28 +551,28 @@
             // Agrupar IVA por alícuota y calcular subtotales
             const ivasPorAlicuota = {};
             let subtotalAntesDescuento = 0;
-            
+
             // Primero calcular el subtotal antes del descuento
             factura.items.forEach(item => {
                 const qty = parseFloat(item.qty) || 0;
                 const pUnit = parseFloat(item.p_unit) || 0;
                 subtotalAntesDescuento += qty * pUnit;
             });
-            
+
             // Aplicar descuento para obtener neto
             const descuento = parseFloat(factura.descuento) || 0;
             const montoDescuento = subtotalAntesDescuento * descuento;
             const subtotalConDescuento = subtotalAntesDescuento - montoDescuento;
-            
+
             // Ahora calcular gravado/exento y agrupar IVA
             let netoGravado = 0;
             let netoExento = 0;
-            
+
             factura.items.forEach(item => {
                 const codigo = normalizarCodigoIVA(item.alic_iva_id);
                 const baseImp = parseFloat(item.imp_neto) || 0;  // Este ya tiene descuento aplicado
                 const impIva = parseFloat(item.imp_iva) || 0;
-                
+
                 if (codigo === 3) {
                     netoExento += baseImp;
                 } else {
@@ -574,9 +583,9 @@
                     ivasPorAlicuota[codigo] += impIva;
                 }
             });
-            
+
             html += `<div class="totals">`;
-            
+
             // Subtotal y descuento si aplica
             if (descuento > 0) {
                 html += `
@@ -585,7 +594,7 @@
                         <span>${formatMoney(subtotalAntesDescuento)}</span>
                     </div>
                 `;
-                
+
                 const porcentajeDesc = (descuento * 100).toFixed(2).replace('.', ',');
                 html += `
                     <div class="totals-row">
@@ -594,7 +603,7 @@
                     </div>
                 `;
             }
-            
+
             // Neto Gravado (ya con descuento aplicado)
             if (netoGravado > 0) {
                 html += `
@@ -604,7 +613,7 @@
                     </div>
                 `;
             }
-            
+
             // Neto Exento
             if (netoExento > 0) {
                 html += `
@@ -614,15 +623,15 @@
                     </div>
                 `;
             }
-            
+
             // IVA discriminado por tasa
             const codigosOrdenados = Object.keys(ivasPorAlicuota).map(Number).sort((a, b) => a - b);
-            
+
             if (codigosOrdenados.length > 0) {
                 codigosOrdenados.forEach(codigo => {
                     const montoIva = ivasPorAlicuota[codigo];
                     const etiqueta = obtenerAlicuotaIVA(codigo);
-                    
+
                     html += `
                         <div class="totals-row">
                             <span>IVA ${etiqueta}:</span>
@@ -630,7 +639,7 @@
                         </div>
                     `;
                 });
-                
+
                 // Total IVA si hay múltiples alícuotas
                 if (codigosOrdenados.length > 1) {
                     const totalIva = Object.values(ivasPorAlicuota).reduce((sum, val) => sum + val, 0);
@@ -642,7 +651,7 @@
                     `;
                 }
             }
-            
+
             if (factura.imp_trib > 0) {
                 html += `
                     <div class="totals-row">
@@ -651,7 +660,7 @@
                     </div>
                 `;
             }
-            
+
             html += `
                     <div class="totals-row total">
                         <span>TOTAL:</span>
@@ -705,7 +714,7 @@
             `;
 
             document.getElementById('content').innerHTML = html;
-            
+
             // Mostrar botón "Obtener CAE" si:
             // - Estado es BORRADOR o RECHAZADA
             // - Requiere AFIP
@@ -736,34 +745,34 @@
             if (!confirm('¿Emitir esta factura a AFIP para obtener CAE?')) {
                 return;
             }
-            
+
             const btn = document.getElementById('btn-obtener-cae');
             const originalText = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '⏳ Emitiendo a AFIP...';
-            
+
             try {
                 console.log('📤 Emitiendo factura a AFIP, ID:', facturaId);
-                
+
                 const response = await fetch(`http://localhost:3004/facturacion/facturas/${facturaId}/emitir`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     }
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert('✅ CAE obtenido exitosamente: ' + result.data.cae);
                     console.log('✅ CAE obtenido:', result.data);
-                    
+
                     // Recargar la página para mostrar el CAE
                     window.location.reload();
                 } else {
                     throw new Error(result.message || 'Error al obtener CAE');
                 }
-                
+
             } catch (error) {
                 console.error('❌ Error obteniendo CAE:', error);
                 alert('Error al obtener CAE de AFIP:\n\n' + error.message);
@@ -820,10 +829,10 @@
             };
             return normalizacion[id] || id;
         }
-        
+
         function obtenerAlicuotaIVA(id) {
             const codigoNormalizado = normalizarCodigoIVA(id);
-            
+
             // Tabla oficial de códigos AFIP
             const alicuotas = {
                 3: '0%',
@@ -839,15 +848,15 @@
         async function descargarPDF() {
             try {
                 console.log('📄 Descargando PDF de factura ID:', facturaId);
-                
+
                 const response = await fetch(`http://localhost:3004/facturacion/facturas/${facturaId}/pdf`, {
                     method: 'POST'
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`Error ${response.status}: ${response.statusText}`);
                 }
-                
+
                 // Descargar el PDF
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -858,7 +867,7 @@
                 a.click();
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
-                
+
                 console.log('✅ PDF descargado exitosamente');
             } catch (error) {
                 console.error('❌ Error descargando PDF:', error);
@@ -874,4 +883,5 @@
         }
     </script>
 </body>
+
 </html>

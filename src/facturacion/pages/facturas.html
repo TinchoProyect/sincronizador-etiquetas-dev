@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -261,8 +262,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .empty-state {
@@ -318,6 +324,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -325,12 +332,20 @@
                 <h1>🧾 Gestión de Facturas</h1>
                 <p>Sistema LAMDA - Módulo de Facturación Electrónica</p>
             </div>
-            <button onclick="window.location.href='/pages/afip-admin.html'" 
+            <div style="display: flex; gap: 15px;">
+                <button onclick="window.location.href='/index.html'"
+                    style="background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.1)';"
+                    onmouseout="this.style.background='transparent';">
+                    🏠 Volver a Inicio
+                </button>
+                <button onclick="window.location.href='/pages/afip-admin.html'"
                     style="background: rgba(255,255,255,0.2); color: white; border: 2px solid white; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; backdrop-filter: blur(10px);"
                     onmouseover="this.style.background='white'; this.style.color='#667eea';"
                     onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.color='white';">
-                🔐 Administración AFIP
-            </button>
+                    🔐 Administración AFIP
+                </button>
+            </div>
         </div>
     </div>
 
@@ -405,12 +420,21 @@
         <!-- Tabla de facturas -->
         <div id="table-container" class="table-container" style="display: none;">
             <div class="table-header">
-                <h3>📋 Listado de Facturas</h3>
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <h3>📋 Listado de Facturas</h3>
+                    <button id="btn-emitir-lote" class="btn btn-primary"
+                        style="display: none; background: #10b981; border: none; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);"
+                        onclick="emitirLoteAFIP()">
+                        🚀 Obtener CAE de Seleccionadas
+                    </button>
+                </div>
                 <span id="result-count"></span>
             </div>
             <table>
                 <thead>
                     <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="chk-select-all" onclick="toggleSelectAll()">
+                        </th>
                         <th>ID</th>
                         <th>Fecha</th>
                         <th>Tipo</th>
@@ -418,6 +442,7 @@
                         <th>Cliente</th>
                         <th>Total</th>
                         <th>Estado</th>
+                        <th>CAE</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -454,7 +479,7 @@
         async function cargarFacturas(page = 1) {
             try {
                 console.log('🔍 Cargando facturas...');
-                
+
                 mostrarLoading(true);
                 ocultarError();
 
@@ -466,7 +491,7 @@
                 });
 
                 const response = await fetch(`${API_URL}/facturas?${params}`);
-                
+
                 if (!response.ok) {
                     throw new Error(`Error ${response.status}: ${response.statusText}`);
                 }
@@ -492,7 +517,7 @@
 
         function renderizarFacturas(facturas) {
             const tbody = document.getElementById('facturas-tbody');
-            
+
             if (!facturas || facturas.length === 0) {
                 document.getElementById('table-container').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'block';
@@ -504,14 +529,30 @@
             document.getElementById('result-count').textContent = `${facturas.length} facturas`;
 
             tbody.innerHTML = facturas.map(factura => {
-                const fecha = new Date(factura.fecha_emision + 'T00:00:00').toLocaleDateString('es-AR');
+                let fecha = '-';
+                if (factura.fecha_emision) {
+                    try {
+                        // Tratar de parsear fecha de forma segura (asumiendo que viene en YYYY-MM-DD o ISO)
+                        const f = new Date(factura.fecha_emision.includes('T') ? factura.fecha_emision : factura.fecha_emision + 'T00:00:00');
+                        if (!isNaN(f)) {
+                            fecha = f.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        }
+                    } catch (e) {
+                        console.error("Error parseando fecha:", factura.fecha_emision);
+                    }
+                }
+
                 const tipo = obtenerTipoComprobante(factura.tipo_cbte);
                 const numero = `${factura.pto_vta || '-'}-${factura.cbte_nro || factura.nro_interno || '-'}`;
                 const total = formatMoney(factura.imp_total);
                 const estadoClass = factura.estado.toLowerCase().replace('_', '-');
+                const puedeEmitirse = (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') && factura.requiere_afip;
 
                 return `
                     <tr>
+                        <td>
+                            ${puedeEmitirse ? `<input type="checkbox" class="chk-factura" value="${factura.id}" onchange="actualizarBotonLote()">` : ''}
+                        </td>
                         <td><strong>#${factura.id}</strong></td>
                         <td>${fecha}</td>
                         <td>${tipo}</td>
@@ -519,6 +560,7 @@
                         <td>${factura.razon_social || 'Cliente'}</td>
                         <td><strong>${total}</strong></td>
                         <td><span class="badge ${estadoClass}">${factura.estado}</span></td>
+                        <td>${(factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') && factura.cae ? `<strong>${factura.cae}</strong>` : '-'}</td>
                         <td>
                             <div class="actions">
                                 <button class="btn btn-info btn-sm" onclick="verFactura(${factura.id})">
@@ -627,6 +669,86 @@
         function ocultarError() {
             document.getElementById('error').style.display = 'none';
         }
+
+        // --- Lógica de Emisión por Lotes ---
+
+        function toggleSelectAll() {
+            const selectAllVal = document.getElementById('chk-select-all').checked;
+            const checkboxes = document.querySelectorAll('.chk-factura');
+            checkboxes.forEach(chk => {
+                chk.checked = selectAllVal;
+            });
+            actualizarBotonLote();
+        }
+
+        function actualizarBotonLote() {
+            const seleccionadas = document.querySelectorAll('.chk-factura:checked').length;
+            const btn = document.getElementById('btn-emitir-lote');
+
+            if (seleccionadas > 0) {
+                btn.style.display = 'inline-block';
+                btn.innerHTML = `🚀 Obtener CAE de Seleccionadas (${seleccionadas})`;
+            } else {
+                btn.style.display = 'none';
+                document.getElementById('chk-select-all').checked = false;
+            }
+        }
+
+        async function emitirLoteAFIP() {
+            const seleccionadas = Array.from(document.querySelectorAll('.chk-factura:checked')).map(chk => chk.value);
+            if (seleccionadas.length === 0) return;
+
+            if (!confirm(`¿Estás seguro que deseas solicitar el CAE a AFIP para ${seleccionadas.length} facturas? Este proceso puede demorar unos segundos.`)) {
+                return;
+            }
+
+            mostrarLoading(true);
+            ocultarError();
+
+            let exitosas = 0;
+            let fallidas = 0;
+            const logElement = document.getElementById('loading').querySelector('p');
+
+            // CRÍTICO: Procesar SECUENCIALMENTE para evitar colisiones en numeración AFIP
+            for (let i = 0; i < seleccionadas.length; i++) {
+                const facturaId = seleccionadas[i];
+                logElement.innerText = `Procesando factura ${i + 1} de ${seleccionadas.length}... (ID: ${facturaId})`;
+
+                try {
+                    const response = await fetch(`${API_URL}/facturas/${facturaId}/emitir`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        exitosas++;
+                    } else {
+                        console.error(`Error emitiendo factura ${facturaId}:`, result.message);
+                        fallidas++;
+                    }
+                } catch (error) {
+                    console.error(`Excepción emitiendo factura ${facturaId}:`, error);
+                    fallidas++;
+                }
+            }
+
+            mostrarLoading(false);
+
+            // Mostrar resumen
+            if (fallidas === 0) {
+                alert(`✅ Proceso finalizado:\n\n${exitosas} facturas aprobadas exitosamente.`);
+            } else {
+                alert(`⚠️ Proceso finalizado con errores:\n\n- ${exitosas} aprobadas exitosamente\n- ${fallidas} fallaron al emitir\n\nRevisa el detalle de las fallidas (Estado RECHAZADA) para ver el motivo.`);
+            }
+
+            // Recargar tabla formatea checkboxes
+            document.getElementById('chk-select-all').checked = false;
+            document.getElementById('btn-emitir-lote').style.display = 'none';
+            cargarFacturas(currentPage);
+        }
     </script>
 </body>
+
 </html>
