@@ -299,6 +299,15 @@
             background: #059669;
         }
 
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
         .cae-box {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -698,14 +707,23 @@
             document.getElementById('content').innerHTML = html;
             
             // Mostrar botón "Obtener CAE" si:
-            // - Estado es BORRADOR
+            // - Estado es BORRADOR o RECHAZADA
             // - Requiere AFIP
             // - NO tiene CAE todavía
-            if (factura.estado === 'BORRADOR' && factura.requiere_afip && !factura.cae) {
-                document.getElementById('btn-obtener-cae').style.display = 'inline-block';
-                console.log('✅ Botón "Obtener CAE" habilitado (BORRADOR sin CAE)');
+            const btnCae = document.getElementById('btn-obtener-cae');
+            if ((factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') && factura.requiere_afip && !factura.cae) {
+                btnCae.style.display = 'inline-block';
+                if (factura.estado === 'RECHAZADA') {
+                    btnCae.innerHTML = '🔄 Reintentar Emisión AFIP';
+                    btnCae.className = 'btn btn-warning';
+                    console.log('✅ Botón "Obtener CAE" habilitado para Reintento (RECHAZADA)');
+                } else {
+                    btnCae.innerHTML = '📄 Obtener CAE de AFIP';
+                    btnCae.className = 'btn btn-success';
+                    console.log('✅ Botón "Obtener CAE" habilitado (BORRADOR sin CAE)');
+                }
             } else {
-                document.getElementById('btn-obtener-cae').style.display = 'none';
+                btnCae.style.display = 'none';
                 console.log('ℹ️ Botón "Obtener CAE" oculto:', {
                     estado: factura.estado,
                     requiere_afip: factura.requiere_afip,
