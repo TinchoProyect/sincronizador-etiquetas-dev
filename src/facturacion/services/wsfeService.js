@@ -115,7 +115,7 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
 
         const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
-        const payload = {
+        payload = {
             'CantReg': 1,
             'PtoVta': factura.pto_vta,
             'CbteTipo': factura.tipo_cbte,
@@ -136,15 +136,21 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
         };
 
         // RG 5616 - 2024: Condicion Frente al IVA del receptor
-        if (factura.condicion_iva_id) {
-            payload.CondicionIVAReceptorId = factura.condicion_iva_id;
-        } else if (factura.doc_tipo === 80) { // CUIT
-            payload.CondicionIVAReceptorId = 1; // Responsable Inscripto por defecto
-        } else if (factura.doc_tipo === 96) { // DNI
-            payload.CondicionIVAReceptorId = 5; // Consumidor Final por defecto
-        } else {
-            payload.CondicionIVAReceptorId = 5; // Consumidor Final por defecto
+        let condicionIva = factura.condicion_iva_id;
+
+        // REGLA ESTRICTA AFIP: Facturas B (6) y NC B (8) NUNCA pueden ir a un Responsable Inscripto (1).
+        // Si la base de datos dice que es Responsable Inscripto (1), PERO le estamos haciendo Factura B,
+        // debemos forzar a Consumidor Final (5) o Monotributo (6) para que AFIP no rechace (Error 10243).
+        if ((factura.tipo_cbte === 6 || factura.tipo_cbte === 8) && (condicionIva === 1 || !condicionIva)) {
+            // Si tiene CUIT (80), asumimos Monotributo (6), si tiene DNI (96) u otro, Consumidor Final (5)
+            condicionIva = factura.doc_tipo === 80 ? 6 : 5;
+        } else if (!condicionIva) {
+            // Valores por defecto si no viene de la BD
+            if (factura.doc_tipo === 80) condicionIva = 1; // CUIT -> Resp. Inscripto
+            else condicionIva = 5; // Otros -> Consumidor Final
         }
+
+        payload.CondicionIVAReceptorId = condicionIva;
 
         if (factura.imp_iva > 0 && factura.items && factura.items.length > 0) {
             const porAlicuota = {};
@@ -184,7 +190,8 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
 
         return resultadoParseado;
     } catch (error) {
-        console.error('❌ [FACTURACION-WSFE] Error solicitando CAE:', error.message);
+        console.error('🚨 [VIGÍA AFIP] Error al emitir:', error.message);
+        console.error('📦 [VIGÍA AFIP] Payload enviado:', payload ? JSON.stringify(payload, null, 2) : 'No llegó a construirse el payload');
 
         // Log detallado
         if (error.response) {

@@ -235,7 +235,8 @@ const emitirFactura = async (req, res) => {
         res.status(400).json({
             success: false,
             error: 'Error emitiendo factura',
-            message: error.message
+            message: 'Rechazado por AFIP',
+            detalle: error.message
         });
     }
 };

@@ -405,6 +405,9 @@
         const urlParams = new URLSearchParams(window.location.search);
         const facturaId = urlParams.get('id');
 
+        // Constante para la URL base de la API
+        const API_URL = 'http://localhost:3004/facturacion';
+
         if (!facturaId) {
             mostrarError('No se especificó el ID de la factura');
         } else {
@@ -415,16 +418,17 @@
             try {
                 console.log('🔍 Cargando factura ID:', id);
 
-                const response = await fetch(`http://localhost:3004/facturacion/facturas/${id}`);
+                const response = await fetch(`${API_URL}/facturas/${id}`);
+                const result = await response.json().catch(() => null);
 
                 if (!response.ok) {
-                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                    const errorMsg = result ? (result.message || result.error) : response.statusText;
+                    throw new Error(`Error ${response.status}: ${errorMsg}`);
                 }
 
-                const result = await response.json();
                 console.log('✅ Factura cargada:', result);
 
-                if (result.success && result.data) {
+                if (result && result.success && result.data) {
                     renderizarFactura(result.data);
                 } else {
                     throw new Error(result.message || 'Error al cargar la factura');
@@ -467,8 +471,12 @@
 
             let html = `
                 <span class="badge ${badgeClass}">${factura.estado}</span>
+                ${(factura.estado === 'RECHAZADA' && factura.observaciones) ? `
+                <div style="background-color: #fee2e2; border: 1px solid #ef4444; border-left: 5px solid #ef4444; color: #991b1b; padding: 15px; margin-top: 20px; border-radius: 6px; font-weight: 500;">
+                    ⚠️ Rechazada por AFIP: ${factura.observaciones}
+                </div>` : ''}
 
-                <div class="cliente-destacado">
+                <div class="cliente-destacado" style="margin-top: ${(factura.estado === 'RECHAZADA' && factura.observaciones) ? '10px' : '20px'};">
                     <div class="cliente-nombre">${factura.razon_social || 'Cliente'}</div>
                     <div class="cliente-info">Cliente</div>
                 </div>
@@ -754,7 +762,7 @@
             try {
                 console.log('📤 Emitiendo factura a AFIP, ID:', facturaId);
 
-                const response = await fetch(`http://localhost:3004/facturacion/facturas/${facturaId}/emitir`, {
+                const response = await fetch(`${API_URL}/facturas/${facturaId}/emitir`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -770,11 +778,11 @@
                     // Recargar la página para mostrar el CAE
                     window.location.reload();
                 } else {
-                    throw new Error(result.message || 'Error al obtener CAE');
+                    throw new Error(result.detalle || result.message || 'Error al obtener CAE');
                 }
 
             } catch (error) {
-                console.error('❌ Error obteniendo CAE:', error);
+                console.error('🔍 [VIGÍA DEPURADOR] Factura fallida. Motivo AFIP:', error.message);
                 alert('Error al obtener CAE de AFIP:\n\n' + error.message);
                 btn.disabled = false;
                 btn.innerHTML = originalText;
