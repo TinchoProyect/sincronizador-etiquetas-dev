@@ -110,69 +110,180 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
     try {
         const factura = await obtenerFacturaParaCAE(facturaId);
 
+        console.log('\n======================================================');
+        console.log('🔍 [VIGÍA - PASO 1: LECTURA DB]');
+        console.log('======================================================');
+        console.log(JSON.stringify({
+            id: factura.id,
+            condicion_iva_id: factura.condicion_iva_id,
+            condicion_iva_str: factura.condicion_iva,
+            doc_tipo: factura.doc_tipo,
+            doc_nro: factura.doc_nro,
+            tipo_cbte: factura.tipo_cbte,
+            imp_total: factura.imp_total
+        }, null, 2));
+
         const nextVoucher = await afip.ElectronicBilling.getLastVoucher(factura.pto_vta, factura.tipo_cbte) + 1;
         console.log(`   Próximo comprobante: ${nextVoucher}`);
 
         const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+        // --- REGLA 1: DICCIONARIO DE CONDICIÓN DE IVA (CondicionIVAReceptorId) ---
+        let condicionIva = 5; // Fallback Consumidor Final
+        const condicionString = (factura.condicion_iva || '').toLowerCase();
+        const condicionId = factura.condicion_iva_id;
+
+        if (condicionId && !isNaN(condicionId)) {
+            condicionIva = parseInt(condicionId, 10);
+        } else if (condicionString.includes('inscripto')) {
+            condicionIva = 1;
+        } else if (condicionString.includes('exento')) {
+            condicionIva = 4;
+        } else if (condicionString.includes('social')) {
+            condicionIva = 13;
+        } else if (condicionString.includes('monotributo') || condicionString.includes('monotributista')) {
+            condicionIva = 6;
+        } else if (condicionString.includes('consumidor') || condicionString.includes('final')) {
+            condicionIva = 5;
+        }
+
+        const isFacturaB = (factura.tipo_cbte === 6 || factura.tipo_cbte === 8 || factura.tipo_cbte === 11);
+
+        // --- REGLA 3: VALIDACIONES DE NEGOCIO CRUZADAS ---
+        // Si la base dice Resp. Inscripto (1) o Monotributo (6) pero el usuario pidió hacer una Factura B,
+        // FORZAMOS a Consumidor Final (5) para evitar el rechazo de AFIP (Error 10243).
+        if (isFacturaB && (condicionIva === 1 || condicionIva === 6)) {
+            condicionIva = 5;
+        }
+
+        // --- REGLA 2: TIPOS DE DOCUMENTO Y LÍMITES (DocTipo y DocNro) ---
+        let docTipo = factura.doc_tipo ? parseInt(factura.doc_tipo, 10) : 99;
+        let docNro = factura.doc_nro || 0;
+
+        // Limpieza de DocNro para garantizar que sea un número entero puro (sin guiones ni puntos)
+        docNro = parseInt(String(docNro).replace(/\D/g, ''), 10) || 0;
+
+        if (isFacturaB) {
+            if (condicionIva === 5) { // Si es Consumidor Final
+                if (docTipo === 80) { // Si trajo CUIT por error en la BD
+                    docTipo = 99; // Se fuerza a Sin Identificar porque AFIP no permite CUIT para Consumidor Final
+                    docNro = 0;
+                } else if (docNro > 0) {
+                    // Si tiene documento, exigimos que sea 96 (DNI), nunca otro
+                    docTipo = 96;
+                } else {
+                    // Si no tiene, debe ser 99 y DocNro 0
+                    docTipo = 99;
+                    docNro = 0;
+                }
+            }
+
+            // Tope Normativo Anónimo 
+            if (docTipo === 99 && factura.imp_total >= 344000) {
+                throw new Error('AFIP exige DNI o CUIT para ventas a Consumidor Final superiores al límite normativo (344,000 ARS). Por favor edite el presupuesto e ingrese el DNI del cliente.');
+            }
+        }
+
+        // --- REGLA 4: EL DESGLOSE DE IVA ES OBLIGATORIO EN FACTURA B ---
+        // Nos aseguramos que ImpNeto, ImpIVA e ImpTotal cierren matemáticamente
+        let impTotal = parseFloat(factura.imp_total) || 0;
+        let impNeto = parseFloat(factura.imp_neto) || 0;
+        let impIva = parseFloat(factura.imp_iva) || 0;
+        let impTrib = parseFloat(factura.imp_trib) || 0;
+
+        // Recalcular si hay IVA en los ítems para garantizar precisión milimétrica 
+        // y cuadre contra ImpTotal en las Facturas B que ocultan el IVA al cliente
+        if (factura.items && factura.items.length > 0) {
+            let sumIva = 0;
+            let sumNeto = 0;
+            factura.items.forEach(item => {
+                sumIva += parseFloat(item.imp_iva || 0);
+                sumNeto += parseFloat(item.imp_neto || 0);
+            });
+
+            if (sumIva > 0) {
+                impIva = sumIva;
+                impNeto = sumNeto;
+                // Forzamos el total según el cálculo desagregado para no rebotar por diferencias
+                impTotal = impNeto + impIva + impTrib;
+            }
+        }
 
         payload = {
             'CantReg': 1,
             'PtoVta': factura.pto_vta,
             'CbteTipo': factura.tipo_cbte,
             'Concepto': factura.concepto,
-            'DocTipo': factura.doc_tipo || 99,
-            'DocNro': factura.doc_nro || 0,
+            'DocTipo': docTipo,
+            'DocNro': docNro,
             'CbteDesde': nextVoucher,
             'CbteHasta': nextVoucher,
             'CbteFch': parseInt(date.replace(/-/g, '')),
-            'ImpTotal': factura.imp_total,
+            'ImpTotal': Number(impTotal.toFixed(2)),
             'ImpTotConc': 0,
-            'ImpNeto': factura.imp_neto,
+            'ImpNeto': Number(impNeto.toFixed(2)),
             'ImpOpEx': 0,
-            'ImpIVA': factura.imp_iva,
-            'ImpTrib': factura.imp_trib,
+            'ImpIVA': Number(impIva.toFixed(2)),
+            'ImpTrib': Number(impTrib.toFixed(2)),
+            'CondicionIVAReceptorId': condicionIva, // Nuevo campo obligatorio RG 5616/2024
             'MonId': factura.moneda || 'PES',
             'MonCotiz': factura.mon_cotiz || 1,
         };
 
-        // RG 5616 - 2024: Condicion Frente al IVA del receptor
-        let condicionIva = factura.condicion_iva_id;
+        // RG 5616 - AFIP EXIGE el campo CondicionIVAReceptorId en TODO comprobante (Facturas A, B, C, etc).
 
-        // REGLA ESTRICTA AFIP: Facturas B (6) y NC B (8) NUNCA pueden ir a un Responsable Inscripto (1).
-        // Si la base de datos dice que es Responsable Inscripto (1), PERO le estamos haciendo Factura B,
-        // debemos forzar a Consumidor Final (5) o Monotributo (6) para que AFIP no rechace (Error 10243).
-        if ((factura.tipo_cbte === 6 || factura.tipo_cbte === 8) && (condicionIva === 1 || !condicionIva)) {
-            // Si tiene CUIT (80), asumimos Monotributo (6), si tiene DNI (96) u otro, Consumidor Final (5)
-            condicionIva = factura.doc_tipo === 80 ? 6 : 5;
-        } else if (!condicionIva) {
-            // Valores por defecto si no viene de la BD
-            if (factura.doc_tipo === 80) condicionIva = 1; // CUIT -> Resp. Inscripto
-            else condicionIva = 5; // Otros -> Consumidor Final
-        }
-
-        payload.CondicionIVAReceptorId = condicionIva;
-
-        if (factura.imp_iva > 0 && factura.items && factura.items.length > 0) {
+        if (impIva > 0 && factura.items && factura.items.length > 0) {
             const porAlicuota = {};
             factura.items.forEach(item => {
-                const idIva = item.alic_iva_id;
+                const idIva = item.alic_iva_id || 5; // Default 21%
                 if (!porAlicuota[idIva]) {
                     porAlicuota[idIva] = { BaseImp: 0, Importe: 0 };
                 }
-                porAlicuota[idIva].BaseImp += parseFloat(item.imp_neto);
-                porAlicuota[idIva].Importe += parseFloat(item.imp_iva);
+                porAlicuota[idIva].BaseImp += parseFloat(item.imp_neto || 0);
+                porAlicuota[idIva].Importe += parseFloat(item.imp_iva || 0);
             });
 
-            payload.Iva = Object.keys(porAlicuota).map(id => ({
-                'Id': parseInt(id),
-                'BaseImp': Number(porAlicuota[id].BaseImp.toFixed(2)),
-                'Importe': Number(porAlicuota[id].Importe.toFixed(2))
-            }));
+            // Ajuste fino para sub-ítems
+            let totalBaseValidado = 0;
+            let totalIvaValidado = 0;
+
+            payload.Iva = Object.keys(porAlicuota).map(id => {
+                const base = Number(porAlicuota[id].BaseImp.toFixed(2));
+                const imp = Number(porAlicuota[id].Importe.toFixed(2));
+                totalBaseValidado += base;
+                totalIvaValidado += imp;
+
+                return {
+                    'Id': parseInt(id),
+                    'BaseImp': base,
+                    'Importe': imp
+                };
+            });
+
+            // Garantizar la igualdad fundamental ImpNeto + ImpIVA + ImpTrib = ImpTotal
+            payload.ImpNeto = Number(totalBaseValidado.toFixed(2));
+            payload.ImpIVA = Number(totalIvaValidado.toFixed(2));
+            payload.ImpTotal = Number((payload.ImpNeto + payload.ImpIVA + payload.ImpTrib).toFixed(2));
         }
 
-        console.log(`📝 [FACTURACION-WSFE] Enviando payload a AFIP:`, JSON.stringify(payload, null, 2));
+        console.log('\n======================================================');
+        console.log('🔄 [VIGÍA - PASO 2: TRANSFORMACIÓN]');
+        console.log('======================================================');
+        console.log(`Original:  CondIvaBD=${factura.condicion_iva_id || 'null'}, DocTipoBD=${factura.doc_tipo || 'null'}, CbteTipoBD=${factura.tipo_cbte || 'null'}`);
+        console.log(`Mapeado:   CondIvaAFIP=${payload.CondicionIVAReceptorId}, DocTipoAFIP=${payload.DocTipo}, CbteTipoAFIP=${payload.CbteTipo}`);
+        console.log(`Validado:  ImpTotalAFIP=${payload.ImpTotal}, ImpNetoAFIP=${payload.ImpNeto}, ImpIvaAFIP=${payload.ImpIVA}`);
+
+        console.log('\n======================================================');
+        console.log('📤 [VIGÍA - PASO 3: PAYLOAD FINAL AFIP]');
+        console.log('======================================================');
+        console.log(JSON.stringify(payload, null, 2));
 
         const res = await afip.ElectronicBilling.createVoucher(payload);
+
+        console.log('\n======================================================');
+        console.log('📥 [VIGÍA - PASO 4: RESPUESTA CRUDA (ÉXITO)]');
+        console.log('======================================================');
+        console.log(JSON.stringify(res, null, 2));
 
         const cae = res.CAE; // CAE asignado 
         const vto = res.CAEFchVto; // Fecha vencimiento (YYYYMMDD)
@@ -190,15 +301,18 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
 
         return resultadoParseado;
     } catch (error) {
-        console.error('🚨 [VIGÍA AFIP] Error al emitir:', error.message);
-        console.error('📦 [VIGÍA AFIP] Payload enviado:', payload ? JSON.stringify(payload, null, 2) : 'No llegó a construirse el payload');
+        console.log('\n======================================================');
+        console.log('💥 [VIGÍA - PASO 4: RESPUESTA CRUDA (ERROR)]');
+        console.log('======================================================');
+        console.log('Mensaje Principal:', error.message);
 
         // Log detallado
-        if (error.response) {
-            console.error('❌ [FACTURACION-WSFE] Respuesta AFIP:', error.response.data);
+        if (error.response && error.response.data) {
+            console.log('Datos de respuesta AFIP:', JSON.stringify(error.response.data, null, 2));
         } else {
-            console.error(error);
+            console.log('Pila de error:', error.stack || error);
         }
+        console.log('======================================================\n');
 
         await guardarLogWSFE(facturaId, 'createVoucher', { error: 'Request Failed' }, { error: error.message, stack: error.stack }, {
             resultado: 'R',
