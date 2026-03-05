@@ -1,188 +1,31 @@
 /**
  * Servicio WSFE (Web Service de Facturación Electrónica)
- * Gestiona la emisión de comprobantes electrónicos con AFIP
+ * Gestiona la emisión de comprobantes electrónicos con AFIP usando @afipsdk/afip.js
  */
 
+const Afip = require('@afipsdk/afip.js');
 const { pool } = require('../config/database');
-const { obtenerConfiguracion } = require('../config/afip');
-const { formatoAFIP } = require('../config/timezone');
-const { getTA } = require('./wsaaService');
+const { ENTORNO, CUIT } = require('../config/afip');
+const path = require('path');
 
-console.log('🔍 [FACTURACION-WSFE] Cargando servicio WSFE...');
+// Inicializar SDK de AFIP
+const afip = new Afip({
+    CUIT: 23248921749,
+    cert: path.resolve(__dirname, '../certs/certificado_homo.crt'),
+    key: path.resolve(__dirname, '../certs/privada_homo.key'),
+    res_folder: path.resolve(__dirname, '../certs/'),
+    production: false
+});
 
-/**
- * Obtener último comprobante autorizado por AFIP
- * @param {number} ptoVta - Punto de venta
- * @param {number} tipoCbte - Tipo de comprobante
- * @param {string} entorno - 'HOMO' o 'PROD'
- * @returns {Promise<number>} Último número autorizado
- */
-const ultimoAutorizado = async (ptoVta, tipoCbte, entorno = 'HOMO') => {
-    console.log(`🔍 [FACTURACION-WSFE] Consultando último autorizado PV:${ptoVta} Tipo:${tipoCbte}`);
-    
-    try {
-        // STUB: Implementación simplificada
-        console.log(`⚠️ [FACTURACION-WSFE] STUB: Simulando consulta a AFIP`);
-        
-        // 1. Obtener TA
-        const ta = await getTA(entorno);
-        console.log(`✅ [FACTURACION-WSFE] TA obtenido`);
-        
-        // 2. Consultar en BD local primero
-        const ultimoLocal = await obtenerUltimoLocalAfip(ptoVta, tipoCbte);
-        console.log(`📊 [FACTURACION-WSFE] Último local: ${ultimoLocal}`);
-        
-        // STUB: En producción, hacer request SOAP a AFIP
-        // const ultimoAfip = await consultarAfipUltimoAutorizado(ptoVta, tipoCbte, ta);
-        
-        // Por ahora, devolver el último local
-        return ultimoLocal;
-        
-    } catch (error) {
-        console.error('❌ [FACTURACION-WSFE] Error consultando último autorizado:', error.message);
-        throw error;
-    }
-};
+console.log('🔍 [FACTURACION-WSFE] Cargando servicio WSFE con afip.js...');
+console.log(`   Modo Producción: ${afip.options.production}`);
+console.log(`   CUIT: ${afip.options.CUIT}`);
 
 /**
- * Solicitar CAE (Código de Autorización Electrónico)
- * @param {number} facturaId - ID de la factura
- * @param {string} entorno - 'HOMO' o 'PROD'
- * @returns {Promise<Object>} Resultado con CAE
- */
-const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
-    console.log(`📄 [FACTURACION-WSFE] Solicitando CAE para factura ID: ${facturaId}`);
-    
-    try {
-        // STUB: Implementación simplificada
-        console.log(`⚠️ [FACTURACION-WSFE] STUB: Simulando solicitud de CAE`);
-        
-        // 1. Obtener datos de la factura
-        const factura = await obtenerFacturaParaCAE(facturaId);
-        console.log(`✅ [FACTURACION-WSFE] Factura obtenida`);
-        
-        // 2. Obtener TA
-        const ta = await getTA(entorno);
-        console.log(`✅ [FACTURACION-WSFE] TA obtenido`);
-        
-        // 3. Construir request SOAP (STUB)
-        console.log(`📝 [FACTURACION-WSFE] Construyendo request FECAESolicitar...`);
-        
-        // STUB: En producción, hacer request SOAP real a AFIP
-        // const response = await enviarFECAESolicitar(factura, ta);
-        
-        // Simular respuesta exitosa
-        const mockCAE = {
-            cae: `74${Date.now().toString().slice(-10)}`,
-            cae_vto: formatoAFIP(new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)), // +10 días
-            resultado: 'A',
-            observaciones: []
-        };
-        
-        console.log(`✅ [FACTURACION-WSFE] CAE obtenido: ${mockCAE.cae}`);
-        console.log(`📅 [FACTURACION-WSFE] Vencimiento: ${mockCAE.cae_vto}`);
-        
-        // 4. Guardar log en BD
-        await guardarLogWSFE(facturaId, 'FECAESolicitar', null, null, mockCAE);
-        
-        return mockCAE;
-        
-    } catch (error) {
-        console.error('❌ [FACTURACION-WSFE] Error solicitando CAE:', error.message);
-        
-        // Guardar log de error
-        await guardarLogWSFE(facturaId, 'FECAESolicitar', null, null, {
-            resultado: 'R',
-            observaciones: [error.message]
-        });
-        
-        throw error;
-    }
-};
-
-/**
- * Consultar comprobante en AFIP
- * @param {number} ptoVta - Punto de venta
- * @param {number} tipoCbte - Tipo de comprobante
- * @param {number} cbteNro - Número de comprobante
- * @param {string} entorno - 'HOMO' o 'PROD'
- * @returns {Promise<Object>} Datos del comprobante
- */
-const consultarComprobante = async (ptoVta, tipoCbte, cbteNro, entorno = 'HOMO') => {
-    console.log(`🔍 [FACTURACION-WSFE] Consultando comprobante PV:${ptoVta} Tipo:${tipoCbte} Nro:${cbteNro}`);
-    
-    try {
-        // STUB: Implementación simplificada
-        console.log(`⚠️ [FACTURACION-WSFE] STUB: Simulando consulta de comprobante`);
-        
-        // 1. Obtener TA
-        const ta = await getTA(entorno);
-        console.log(`✅ [FACTURACION-WSFE] TA obtenido`);
-        
-        // STUB: En producción, hacer request SOAP a AFIP
-        // const comprobante = await consultarAfipComprobante(ptoVta, tipoCbte, cbteNro, ta);
-        
-        // Simular respuesta
-        const mockComprobante = {
-            encontrado: true,
-            ptoVta,
-            tipoCbte,
-            cbteNro,
-            cae: `74${Date.now().toString().slice(-10)}`,
-            estado: 'APROBADA'
-        };
-        
-        console.log(`✅ [FACTURACION-WSFE] Comprobante consultado`);
-        
-        return mockComprobante;
-        
-    } catch (error) {
-        console.error('❌ [FACTURACION-WSFE] Error consultando comprobante:', error.message);
-        throw error;
-    }
-};
-
-/**
- * Obtener último número local de AFIP
- * @param {number} ptoVta - Punto de venta
- * @param {number} tipoCbte - Tipo de comprobante
- * @returns {Promise<number>} Último número
- */
-const obtenerUltimoLocalAfip = async (ptoVta, tipoCbte) => {
-    console.log(`🔍 [FACTURACION-WSFE] Obteniendo último local AFIP PV:${ptoVta} Tipo:${tipoCbte}`);
-    
-    try {
-        const query = `
-            SELECT ultimo_cbte_afip
-            FROM factura_numeracion_afip
-            WHERE pto_vta = $1 AND tipo_cbte = $2
-        `;
-        
-        const resultado = await pool.query(query, [ptoVta, tipoCbte]);
-        
-        if (resultado.rows.length > 0) {
-            const ultimo = resultado.rows[0].ultimo_cbte_afip;
-            console.log(`✅ [FACTURACION-WSFE] Último local: ${ultimo}`);
-            return ultimo;
-        }
-        
-        console.log(`📝 [FACTURACION-WSFE] No hay registro, iniciando en 0`);
-        return 0;
-        
-    } catch (error) {
-        console.error('❌ [FACTURACION-WSFE] Error obteniendo último local:', error.message);
-        throw error;
-    }
-};
-
-/**
- * Obtener factura para solicitar CAE
- * @param {number} facturaId - ID de la factura
- * @returns {Promise<Object>} Datos de la factura
+ * Obtener factura completa para CAE
  */
 const obtenerFacturaParaCAE = async (facturaId) => {
     console.log(`🔍 [FACTURACION-WSFE] Obteniendo factura ID: ${facturaId}`);
-    
     try {
         const query = `
             SELECT 
@@ -202,16 +45,11 @@ const obtenerFacturaParaCAE = async (facturaId) => {
             WHERE f.id = $1
             GROUP BY f.id
         `;
-        
         const resultado = await pool.query(query, [facturaId]);
-        
         if (resultado.rows.length === 0) {
             throw new Error(`Factura ${facturaId} no encontrada`);
         }
-        
-        console.log(`✅ [FACTURACION-WSFE] Factura obtenida`);
         return resultado.rows[0];
-        
     } catch (error) {
         console.error('❌ [FACTURACION-WSFE] Error obteniendo factura:', error.message);
         throw error;
@@ -219,46 +57,175 @@ const obtenerFacturaParaCAE = async (facturaId) => {
 };
 
 /**
- * Guardar log de operación WSFE
- * @param {number} facturaId - ID de la factura
- * @param {string} metodo - Método WSFE llamado
- * @param {string} requestXml - XML del request
- * @param {string} responseXml - XML de la respuesta
- * @param {Object} resultado - Resultado parseado
- * @returns {Promise<void>}
+ * Obtener último comprobante autorizado por AFIP
  */
-const guardarLogWSFE = async (facturaId, metodo, requestXml, responseXml, resultado) => {
+const ultimoAutorizado = async (ptoVta, tipoCbte, entorno = 'HOMO') => {
+    console.log(`🔍 [FACTURACION-WSFE] Consultando último autorizado PV:${ptoVta} Tipo:${tipoCbte}`);
+    try {
+        const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, tipoCbte);
+        console.log(`✅ [FACTURACION-WSFE] Último autorizado (AFIP SDK): ${lastVoucher}`);
+        return lastVoucher;
+    } catch (error) {
+        console.error('❌ [FACTURACION-WSFE] Error consultando último autorizado:', error.message);
+        throw error;
+    }
+};
+
+/**
+ * Guardar log de operación WSFE
+ */
+const guardarLogWSFE = async (facturaId, metodo, requestData, responseData, resultado) => {
     console.log(`💾 [FACTURACION-WSFE] Guardando log para factura ID: ${facturaId}`);
-    
     try {
         const query = `
             INSERT INTO factura_afip_wsfe_logs 
             (factura_id, metodo, request_xml, response_xml, observaciones, resultado, creado_en)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
         `;
-        
-        const observaciones = resultado.observaciones 
-            ? JSON.stringify(resultado.observaciones) 
+
+        const observaciones = resultado.observaciones
+            ? JSON.stringify(resultado.observaciones)
             : null;
-        
+
         await pool.query(query, [
             facturaId,
             metodo,
-            requestXml,
-            responseXml,
+            JSON.stringify(requestData),
+            JSON.stringify(responseData),
             observaciones,
             resultado.resultado
         ]);
-        
+
         console.log(`✅ [FACTURACION-WSFE] Log guardado`);
-        
     } catch (error) {
         console.error('❌ [FACTURACION-WSFE] Error guardando log:', error.message);
-        // No lanzar error, solo logear
     }
 };
 
-console.log('✅ [FACTURACION-WSFE] Servicio WSFE cargado');
+/**
+ * Solicitar CAE (Código de Autorización Electrónico)
+ */
+const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
+    console.log(`📄 [FACTURACION-WSFE] Solicitando CAE para factura ID: ${facturaId}`);
+    try {
+        const factura = await obtenerFacturaParaCAE(facturaId);
+
+        const nextVoucher = await afip.ElectronicBilling.getLastVoucher(factura.pto_vta, factura.tipo_cbte) + 1;
+        console.log(`   Próximo comprobante: ${nextVoucher}`);
+
+        const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+        const payload = {
+            'CantReg': 1,
+            'PtoVta': factura.pto_vta,
+            'CbteTipo': factura.tipo_cbte,
+            'Concepto': factura.concepto,
+            'DocTipo': factura.doc_tipo || 99,
+            'DocNro': factura.doc_nro || 0,
+            'CbteDesde': nextVoucher,
+            'CbteHasta': nextVoucher,
+            'CbteFch': parseInt(date.replace(/-/g, '')),
+            'ImpTotal': factura.imp_total,
+            'ImpTotConc': 0,
+            'ImpNeto': factura.imp_neto,
+            'ImpOpEx': 0,
+            'ImpIVA': factura.imp_iva,
+            'ImpTrib': factura.imp_trib,
+            'MonId': factura.moneda || 'PES',
+            'MonCotiz': factura.mon_cotiz || 1,
+        };
+
+        // RG 5616 - 2024: Condicion Frente al IVA del receptor
+        if (factura.condicion_iva_id) {
+            payload.CondicionIVAReceptorId = factura.condicion_iva_id;
+        } else if (factura.doc_tipo === 80) { // CUIT
+            payload.CondicionIVAReceptorId = 1; // Responsable Inscripto por defecto
+        } else if (factura.doc_tipo === 96) { // DNI
+            payload.CondicionIVAReceptorId = 5; // Consumidor Final por defecto
+        } else {
+            payload.CondicionIVAReceptorId = 5; // Consumidor Final por defecto
+        }
+
+        if (factura.imp_iva > 0 && factura.items && factura.items.length > 0) {
+            const porAlicuota = {};
+            factura.items.forEach(item => {
+                const idIva = item.alic_iva_id;
+                if (!porAlicuota[idIva]) {
+                    porAlicuota[idIva] = { BaseImp: 0, Importe: 0 };
+                }
+                porAlicuota[idIva].BaseImp += parseFloat(item.imp_neto);
+                porAlicuota[idIva].Importe += parseFloat(item.imp_iva);
+            });
+
+            payload.Iva = Object.keys(porAlicuota).map(id => ({
+                'Id': parseInt(id),
+                'BaseImp': Number(porAlicuota[id].BaseImp.toFixed(2)),
+                'Importe': Number(porAlicuota[id].Importe.toFixed(2))
+            }));
+        }
+
+        console.log(`📝 [FACTURACION-WSFE] Enviando payload a AFIP:`, JSON.stringify(payload, null, 2));
+
+        const res = await afip.ElectronicBilling.createVoucher(payload);
+
+        const cae = res.CAE; // CAE asignado 
+        const vto = res.CAEFchVto; // Fecha vencimiento (YYYYMMDD)
+
+        console.log(`✅ [FACTURACION-WSFE] Respuesta AFIP: CAE=${cae}, Vto=${vto}`);
+
+        const resultadoParseado = {
+            cae: cae,
+            cae_vto: `${vto.substring(0, 4)}-${vto.substring(4, 6)}-${vto.substring(6, 8)}`,
+            resultado: 'A',
+            observaciones: []
+        };
+
+        await guardarLogWSFE(facturaId, 'createVoucher', payload, res, resultadoParseado);
+
+        return resultadoParseado;
+    } catch (error) {
+        console.error('❌ [FACTURACION-WSFE] Error solicitando CAE:', error.message);
+
+        // Log detallado
+        if (error.response) {
+            console.error('❌ [FACTURACION-WSFE] Respuesta AFIP:', error.response.data);
+        } else {
+            console.error(error);
+        }
+
+        await guardarLogWSFE(facturaId, 'createVoucher', { error: 'Request Failed' }, { error: error.message, stack: error.stack }, {
+            resultado: 'R',
+            observaciones: [error.message]
+        });
+        throw error;
+    }
+};
+
+/**
+ * Consultar comprobante en AFIP
+ */
+const consultarComprobante = async (ptoVta, tipoCbte, cbteNro, entorno = 'HOMO') => {
+    console.log(`🔍 [FACTURACION-WSFE] Consultando comprobante PV:${ptoVta} Tipo:${tipoCbte} Nro:${cbteNro}`);
+    try {
+        const voucherInfo = await afip.ElectronicBilling.getVoucherInfo(cbteNro, ptoVta, tipoCbte);
+        if (!voucherInfo) {
+            return { encontrado: false };
+        }
+        return {
+            encontrado: true,
+            ptoVta,
+            tipoCbte,
+            cbteNro,
+            cae: voucherInfo.CodAutorizacion,
+            estado: voucherInfo.Resultado === 'A' ? 'APROBADA' : voucherInfo.Resultado
+        };
+    } catch (error) {
+        console.error('❌ [FACTURACION-WSFE] Error consultando comprobante:', error.message);
+        throw error;
+    }
+};
+
+console.log('✅ [FACTURACION-WSFE] Servicio WSFE cargado con afip.js');
 
 module.exports = {
     ultimoAutorizado,

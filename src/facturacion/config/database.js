@@ -15,7 +15,7 @@ const pool = new Pool({
     // Configuración de pool
     max: 20, // Máximo de conexiones
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 10000,
 });
 
 /**
@@ -62,22 +62,22 @@ const dbMiddleware = (req, res, next) => {
 const ejecutarQuery = async (query, params = [], operacion = 'Query') => {
     const inicio = Date.now();
     console.log(`🔍 [FACTURACION-DB] Ejecutando ${operacion}...`);
-    
+
     try {
         const resultado = await pool.query(query, params);
         const duracion = Date.now() - inicio;
-        
+
         console.log(`✅ [FACTURACION-DB] ${operacion} exitosa (${duracion}ms)`);
         console.log(`📊 [FACTURACION-DB] Filas afectadas: ${resultado.rowCount}`);
-        
+
         return resultado;
     } catch (error) {
         const duracion = Date.now() - inicio;
-        
+
         console.error(`❌ [FACTURACION-DB] Error en ${operacion} (${duracion}ms):`, error.message);
         console.error(`❌ [FACTURACION-DB] Código de error:`, error.code);
         console.error(`❌ [FACTURACION-DB] Detalle:`, error.detail);
-        
+
         throw error;
     }
 };
@@ -89,18 +89,18 @@ const ejecutarQuery = async (query, params = [], operacion = 'Query') => {
  */
 const ejecutarTransaccion = async (callback) => {
     const client = await pool.connect();
-    
+
     console.log('🔄 [FACTURACION-DB] Iniciando transacción...');
-    
+
     try {
         await client.query('BEGIN');
         console.log('✅ [FACTURACION-DB] Transacción iniciada');
-        
+
         const resultado = await callback(client);
-        
+
         await client.query('COMMIT');
         console.log('✅ [FACTURACION-DB] Transacción confirmada (COMMIT)');
-        
+
         return resultado;
     } catch (error) {
         await client.query('ROLLBACK');
@@ -118,7 +118,7 @@ const ejecutarTransaccion = async (callback) => {
  */
 const verificarTablas = async () => {
     console.log('🔍 [FACTURACION-DB] Verificando tablas requeridas...');
-    
+
     const tablasRequeridas = [
         'factura_facturas',
         'factura_factura_items',
@@ -127,12 +127,12 @@ const verificarTablas = async () => {
         'factura_numeracion_afip',
         'factura_numeracion_interna'
     ];
-    
+
     const resultado = {
         todas_existen: true,
         tablas: {}
     };
-    
+
     for (const tabla of tablasRequeridas) {
         try {
             const query = `
@@ -144,9 +144,9 @@ const verificarTablas = async () => {
             `;
             const res = await pool.query(query, [tabla]);
             const existe = res.rows[0].exists;
-            
+
             resultado.tablas[tabla] = existe;
-            
+
             if (existe) {
                 console.log(`✅ [FACTURACION-DB] Tabla ${tabla} existe`);
             } else {
@@ -159,13 +159,13 @@ const verificarTablas = async () => {
             resultado.todas_existen = false;
         }
     }
-    
+
     if (resultado.todas_existen) {
         console.log('✅ [FACTURACION-DB] Todas las tablas requeridas existen');
     } else {
         console.error('❌ [FACTURACION-DB] Faltan tablas requeridas');
     }
-    
+
     return resultado;
 };
 
