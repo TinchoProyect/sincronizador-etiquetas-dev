@@ -381,9 +381,25 @@
                         <option value="11">Factura C</option>
                     </select>
                 </div>
+                <div class="filter-group">
+                    <label for="filtro-cliente">Cliente</label>
+                    <input type="text" id="filtro-cliente" placeholder="Buscar por nombre o DNI/CUIT...">
+                </div>
             </div>
+
+            <!-- TOGGLE PROVISIONAL HOMOLOGACIÓN -->
+            <div
+                style="margin-bottom: 20px; display: flex; align-items: center; background: #fff3cd; padding: 10px 15px; border-radius: 6px; border: 1px solid #ffeeba;">
+                <input type="checkbox" id="toggle-pruebas" onchange="cargarFacturas()"
+                    style="width: 20px; height: 20px; cursor: pointer;">
+                <label for="toggle-pruebas"
+                    style="margin-left: 10px; cursor: pointer; font-weight: bold; color: #856404; font-size: 15px;">
+                    Ver facturas de prueba (Homologación AFIP)
+                </label>
+            </div>
+
             <div class="filter-actions">
-                <button class="btn btn-primary" onclick="aplicarFiltros()">🔍 Buscar</button>
+                <button class="btn btn-primary" onclick="cargarFacturas()">🔍 Filtrar</button>
                 <button class="btn btn-secondary" onclick="limpiarFiltros()">🔄 Limpiar</button>
             </div>
         </div>
@@ -483,14 +499,29 @@
                 mostrarLoading(true);
                 ocultarError();
 
-                // Construir query string
-                const params = new URLSearchParams({
-                    page: page,
-                    limit: 50,
-                    ...currentFilters
-                });
+                const queryParams = new URLSearchParams();
+                queryParams.append('page', page);
+                queryParams.append('limit', 50);
 
-                const response = await fetch(`${API_URL}/facturas?${params}`);
+                const fechaDesde = document.getElementById('fecha-desde').value;
+                const fechaHasta = document.getElementById('fecha-hasta').value;
+                const estado = document.getElementById('estado').value;
+                const tipoCbte = document.getElementById('tipo-cbte').value;
+                const filtroCliente = document.getElementById('filtro-cliente').value;
+                const verPruebas = document.getElementById('toggle-pruebas').checked;
+
+                if (fechaDesde) queryParams.append('fecha_desde', fechaDesde);
+                if (fechaHasta) queryParams.append('fecha_hasta', fechaHasta);
+                if (estado) queryParams.append('estado', estado);
+                if (tipoCbte) queryParams.append('tipo_cbte', tipoCbte);
+                if (filtroCliente) queryParams.append('cliente', filtroCliente);
+                if (verPruebas) queryParams.append('es_prueba', 'true');
+
+                // Store current filters for pagination
+                currentFilters = Object.fromEntries(queryParams.entries());
+                delete currentFilters.page; // Remove page from currentFilters to avoid issues when changing page
+
+                const response = await fetch(`${API_URL}/facturas?${queryParams.toString()}`);
 
                 if (!response.ok) {
                     throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -608,27 +639,16 @@
             }
         }
 
-        function aplicarFiltros() {
-            currentFilters = {};
-
-            const fechaDesde = document.getElementById('fecha-desde').value;
-            const fechaHasta = document.getElementById('fecha-hasta').value;
-            const estado = document.getElementById('estado').value;
-            const tipoCbte = document.getElementById('tipo-cbte').value;
-
-            if (fechaDesde) currentFilters.fecha_desde = fechaDesde;
-            if (fechaHasta) currentFilters.fecha_hasta = fechaHasta;
-            if (estado) currentFilters.estado = estado;
-            if (tipoCbte) currentFilters.tipo_cbte = tipoCbte;
-
-            cargarFacturas(1);
-        }
+        // aplicarFiltros function removed as it's no longer called directly by the button.
+        // cargarFacturas now reads filters directly.
 
         function limpiarFiltros() {
             document.getElementById('fecha-desde').value = '';
             document.getElementById('fecha-hasta').value = '';
             document.getElementById('estado').value = '';
             document.getElementById('tipo-cbte').value = '';
+            document.getElementById('filtro-cliente').value = ''; // Clear new filter
+            document.getElementById('toggle-pruebas').checked = false; // Clear new toggle
             currentFilters = {};
             cargarFacturas(1);
         }

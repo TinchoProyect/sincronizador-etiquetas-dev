@@ -295,6 +295,15 @@ const listarFacturas = async (req, res) => {
         const params = [];
         let paramIndex = 1;
 
+        // --- FILTRO PROVISIONAL ESTRICTO PARA HOMOLOGACIÓN ---
+        // Si no piden ver pruebas, ocultamos todo lo anterior al ID 90 (o el que consideremos "real")
+        // Actualmente tenemos basura hasta el 90 aprox. 
+        if (req.query.es_prueba !== 'true') {
+            // "Ocultar pruebas": solo mostrar facturas con id > 100 
+            // (Ajustar este número al momento de salir a PROD real, ej: id > 150)
+            query += ` AND id > 100`;
+        }
+
         // Filtro por presupuesto_id (para verificar si ya existe factura)
         if (presupuesto_id) {
             query += ` AND presupuesto_id = $${paramIndex}`;
