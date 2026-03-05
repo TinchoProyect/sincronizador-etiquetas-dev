@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Factura - LAMDA Proveedor Comercial</title>
+    <!-- SweetAlert2 para alertas modernas -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
             margin: 0;
@@ -783,7 +785,47 @@
 
             } catch (error) {
                 console.error('🔍 [VIGÍA DEPURADOR] Factura fallida. Motivo AFIP:', error.message);
-                alert('Error al obtener CAE de AFIP:\n\n' + error.message);
+
+                // ARCA 344k ARS limit check
+                if (error.message.includes('AFIP exige DNI') || error.message.includes('344')) {
+                    const { value: dni } = await Swal.fire({
+                        title: 'Ingrese DNI del Cliente',
+                        text: 'AFIP exige un DNI para ventas a Consumidor Final superiores a $344.000 ARS',
+                        input: 'text',
+                        icon: 'warning',
+                        inputPlaceholder: 'Ej: 30123456',
+                        showCancelButton: true,
+                        confirmButtonText: 'Guardar y Reintentar',
+                        cancelButtonText: 'Cancelar',
+                        inputValidator: (value) => {
+                            if (!value) return 'El DNI es obligatorio';
+                            if (!/^\d{7,8}$/.test(value.trim())) return 'Ingrese un DNI válido (7 u 8 números)';
+                        }
+                    });
+
+                    if (dni) {
+                        try {
+                            btn.innerHTML = '⏳ Guardando DNI...';
+                            const putRes = await fetch(`${API_URL}/facturas/${facturaId}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ doc_tipo: 96, doc_nro: dni.trim() })
+                            });
+
+                            if (putRes.ok) {
+                                btn.innerHTML = '🔄 Reintentando Emisión...';
+                                return obtenerCAE(); // Llamada recursiva tras corregir el DNI
+                            } else {
+                                throw new Error('No se pudo guardar el DNI en la base de datos');
+                            }
+                        } catch (putErr) {
+                            alert('Error guardando DNI: ' + putErr.message);
+                        }
+                    }
+                } else {
+                    alert('Error al obtener CAE de AFIP:\n\n' + error.message);
+                }
+
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             }

@@ -112,16 +112,16 @@ const actualizarFactura = async (req, res) => {
         }
 
         const estado = checkResult.rows[0].estado;
-        if (estado !== 'BORRADOR') {
-            console.error(`❌ [FACTURACION-CTRL] Factura no es borrador (estado: ${estado})`);
+        if (estado !== 'BORRADOR' && estado !== 'RECHAZADA') {
+            console.error(`❌ [FACTURACION-CTRL] Factura no es borrador ni rechazada (estado: ${estado})`);
             return res.status(400).json({
                 success: false,
-                error: 'Solo se pueden editar facturas en estado BORRADOR',
+                error: 'Solo se pueden editar facturas en estado BORRADOR o RECHAZADA',
                 estado_actual: estado
             });
         }
 
-        console.log('✅ [FACTURACION-CTRL] Factura es BORRADOR, procediendo a actualizar');
+        console.log('✅ [FACTURACION-CTRL] Factura es BORRADOR o RECHAZADA, procediendo a actualizar');
 
         // Construir query de actualización dinámica
         const camposPermitidos = [
