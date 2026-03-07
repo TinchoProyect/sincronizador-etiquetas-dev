@@ -111,7 +111,9 @@ const obtenerPresupuestos = async (req, res) => {
             order_by,
             order_dir,
             // Nuevo parámetro para excluir estados
-            estado_exclude
+            estado_exclude,
+            // Parámetro específico para ocultar Documentos (Ej: Orden de Retiro)
+            excluir_tipo
         } = req.query;
 
         // Validamos cual parámetro de cliente prevalece
@@ -247,6 +249,25 @@ const obtenerPresupuestos = async (req, res) => {
                 params.push(...estadosExcludeArray);
 
                 console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Excluyendo estados: [${estadosExcludeArray.join(', ')}]`);
+            }
+        }
+
+        // Nuevo: Excluir tipos de comprobante (para ocultar Órdenes de Retiro en vinculaciones directas)
+        if (excluir_tipo) {
+            let tiposExcludeArray = [];
+            if (Array.isArray(excluir_tipo)) {
+                tiposExcludeArray = excluir_tipo;
+            } else if (typeof excluir_tipo === 'string') {
+                tiposExcludeArray = excluir_tipo.split(',').map(e => e.trim()).filter(e => e.length > 0);
+            }
+
+            if (tiposExcludeArray.length > 0) {
+                const excludePlaceholders = tiposExcludeArray.map((_, index) => `$${paramCount + index + 1}`).join(', ');
+                paramCount += tiposExcludeArray.length;
+                query += ` AND p.tipo_comprobante NOT IN (${excludePlaceholders})`;
+                params.push(...tiposExcludeArray);
+
+                console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Excluyendo tipos: [${tiposExcludeArray.join(', ')}]`);
             }
         }
 
@@ -2984,8 +3005,10 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
             JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
             WHERE p.id_cliente = $1::text 
               AND (d.articulo ILIKE $2 OR d.articulo ILIKE $3)
-              -- Filtro de estado laxo para desarrollo, ajustar a estricto en prod
-              AND (p.estado_logistico IN ('RETIRADO', 'ENTREGADO') OR p.estado IN ('Entregado', 'Confirmado'))
+              -- QA Modification: Permitir devoluciones de historial FACTURADO
+              AND (p.estado_logistico IN ('RETIRADO', 'ENTREGADO') OR p.estado IN ('Entregado', 'Confirmado', 'FACTURADO'))
+              -- QA Modification: Excluir explícitamente Órdenes de Retiro
+              AND p.tipo_comprobante != 'Orden de Retiro'
             ORDER BY p.fecha DESC
             LIMIT 10
         `;

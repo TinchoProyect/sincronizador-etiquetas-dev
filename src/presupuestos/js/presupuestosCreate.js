@@ -2390,7 +2390,15 @@ async function abrirModalVinculacion(clienteId) {
     if (container) container.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ Buscando entregas anteriores...</div>';
 
     try {
-        const res = await fetch(`/api/presupuestos?cliente_id=${clienteId}&limit=50`);
+        // QA Modification: Solo traer comprobantes válidos para devolución y excluir explícitamente "Orden de Retiro".
+        const params = new URLSearchParams({
+            cliente_id: clienteId,
+            limit: 50,
+            estado: 'FACTURADO,Entregado,Confirmado',
+            excluir_tipo: 'Orden de Retiro'
+        });
+
+        const res = await fetch(`/api/presupuestos?${params.toString()}`);
         if (!res.ok) throw new Error('Error al buscar historial');
 
         const data = await res.json();
