@@ -546,8 +546,15 @@
                         </p>
                         <input type="hidden" id="nc-hidden-factura-id">
                         <input type="hidden" id="nc-hidden-tipo-cbte">
-                        <input type="hidden" id="nc-hidden-precio">
-                        <input type="hidden" id="nc-hidden-iva">
+
+                        <!-- Lista Dinámica de Artículos -->
+                        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #c7e1e8;">
+                            <strong>Añadir a la Nota de Crédito:</strong>
+                            <div id="nc-items-list"
+                                style="margin-top: 10px; max-height: 200px; overflow-y: auto; background: white; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                                <!-- Checkboxes generados dinámicamente -->
+                            </div>
+                        </div>
                     </div>
 
                     <div id="nc-trazabilidad-error"
@@ -1470,7 +1477,7 @@
 
                 document.getElementById('nc-trazabilidad-loading').style.display = 'none';
 
-                if (result.success && result.factura && result.nota_credito) {
+                if (result.success && result.factura && result.nota_credito && result.items_asociados) {
                     // Populate UI
                     document.getElementById('nc-factura-detectada').textContent = result.factura.factura_nombre;
                     document.getElementById('nc-tipo-detectado').textContent = result.nota_credito.nombre;
@@ -1478,8 +1485,58 @@
                     // Store values internally
                     document.getElementById('nc-hidden-factura-id').value = result.factura.factura_id;
                     document.getElementById('nc-hidden-tipo-cbte').value = result.nota_credito.tipo_cbte;
-                    document.getElementById('nc-hidden-precio').value = result.nota_credito.precio_historico || 0;
-                    document.getElementById('nc-hidden-iva').value = result.nota_credito.alic_iva_id || 5;
+
+                    // Render dynamic item checklist
+                    const listContainer = document.getElementById('nc-items-list');
+                    listContainer.innerHTML = '';
+
+                    let hasTargetItem = false;
+
+                    result.items_asociados.forEach(item => {
+                        const isTarget = item.articulo_numero === articulo;
+                        if (isTarget) hasTargetItem = true;
+
+                        const checkboxId = `chk-item-${item.articulo_numero}`;
+
+                        const div = document.createElement('div');
+                        div.style.marginBottom = '8px';
+                        div.style.display = 'flex';
+                        div.style.alignItems = 'center';
+                        div.style.gap = '10px';
+
+                        // We check the target item by default. We also check others by default to group them easily.
+                        const isChecked = true;
+
+                        div.innerHTML = `
+                            <input type="checkbox" id="${checkboxId}" class="nc-item-checkbox" 
+                                ${isChecked ? 'checked' : ''}
+                                data-articulo="${item.articulo_numero}" 
+                                data-descripcion="${item.descripcion}"
+                                data-qty="${item.cantidad}" 
+                                data-precio="${item.precio_historico}" 
+                                data-iva="${item.alic_iva_id}" 
+                                style="width: 16px; height: 16px;">
+                            <label for="${checkboxId}" style="margin: 0; cursor: pointer; flex-grow: 1;">
+                                <strong>${item.articulo_numero}</strong> - ${item.cantidad} u.
+                                <br>
+                                <small style="color: #666;">Precio Unit: $${item.precio_historico}</small>
+                            </label>
+                        `;
+
+                        // Si el precio histórico no se recuperó correctamente, deshabilitamos el checkbox para evitar fallas
+                        if (!item.precio_historico || item.precio_historico <= 0) {
+                            div.querySelector('input').disabled = true;
+                            div.querySelector('input').checked = false;
+                            div.innerHTML += `<span style="color: red; font-size: 0.8em;">⚠️ Sin precio original</span>`;
+                        }
+
+                        listContainer.appendChild(div);
+                    });
+
+                    // Si por alguna razón el artículo clickeado no estaba en la lista, mostrar advertencia
+                    if (!hasTargetItem) {
+                        alert('Atención: El artículo seleccionado originalmente no figura en el historial de esta factura activa.');
+                    }
 
                     // Show success block and enable button
                     document.getElementById('nc-trazabilidad-result').style.display = 'block';
@@ -1512,22 +1569,40 @@
 
         async function confirmarEmisionNC() {
             const modal = document.getElementById('modal-emision-nc');
-            const articulo = modal.dataset.articulo;
-            const cantidad = modal.dataset.cantidad;
             const clienteId = modal.dataset.clienteId;
 
             const facturaAsociadaId = document.getElementById('nc-hidden-factura-id').value;
             const tipoCbte = parseInt(document.getElementById('nc-hidden-tipo-cbte').value);
-            const precioHistorico = parseFloat(document.getElementById('nc-hidden-precio').value) || 0;
-            const alicIvaId = parseInt(document.getElementById('nc-hidden-iva').value) || 1;
 
             if (!facturaAsociadaId || !tipoCbte) {
                 alert('No hay datos trazados para generar la Nota de Crédito.');
                 return;
             }
 
-            if (precioHistorico <= 0) {
-                alert('⚠️ Riesgo Fiscal: No se pudo extraer el precio histórico de este artículo. Abortando emisión automática.');
+            // Gather all checked items
+            const checkboxes = document.querySelectorAll('.nc-item-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('Debe seleccionar al menos un artículo para la Nota de Crédito.');
+                return;
+            }
+
+            const payloadItems = [];
+            checkboxes.forEach(chk => {
+                const precio = parseFloat(chk.dataset.precio) || 0;
+
+                // Extra security check to never emit a free item by mistake
+                if (precio > 0) {
+                    payloadItems.push({
+                        descripcion: `Devolución: ${chk.dataset.articulo}`,
+                        qty: parseFloat(chk.dataset.qty),
+                        p_unit: precio,
+                        alic_iva_id: parseInt(chk.dataset.iva) || 1
+                    });
+                }
+            });
+
+            if (payloadItems.length === 0) {
+                alert('⚠️ Riesgo Fiscal: Ninguno de los artículos seleccionados tiene un precio histórico válido. Abortando emisión.');
                 return;
             }
 
@@ -1548,14 +1623,7 @@
                     precio_modo: 'FINAL_CON_IVA', // Asumido
                     tipo_cbte: tipoCbte,
                     pto_vta: 4, // Electrónica por defecto o asimilable
-                    items: [
-                        {
-                            descripcion: `Devolución: ${articulo}`, // Generic description
-                            qty: cantidad,
-                            p_unit: precioHistorico, // Extraído de la BDD (Riesgo Mitigado)
-                            alic_iva_id: alicIvaId // Extraído de la BDD (Riesgo Mitigado)
-                        }
-                    ]
+                    items: payloadItems
                 };
 
                 const response = await fetch('http://localhost:3004/facturacion/facturas', {

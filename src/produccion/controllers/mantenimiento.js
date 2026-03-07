@@ -838,6 +838,7 @@ async function trazarFacturaOriginal(req, res) {
         const query = `
             SELECT 
                 f.id as factura_id,
+                f.presupuesto_id,
                 f.tipo_cbte,
                 f.pto_vta,
                 f.cbte_nro,
@@ -871,6 +872,70 @@ async function trazarFacturaOriginal(req, res) {
 
         const factura = result.rows[0];
 
+        // 2. Obtain all articles currently in Quarantine for this same invoice
+        const queryItems = `
+            WITH quarantine_stock AS (
+                SELECT 
+                    mm.articulo_numero,
+                    SUM(CASE 
+                        WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
+                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
+                        ELSE 0 
+                    END) AS stock_actual
+                FROM public.mantenimiento_movimientos mm
+                LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                WHERE p.id_cliente::text = $1::text
+                  AND mm.estado IS DISTINCT FROM 'REVERTIDO' 
+                  AND mm.estado IS DISTINCT FROM 'FINALIZADO'
+                  AND mm.estado IS DISTINCT FROM 'ANULADO'
+                  AND mm.articulo_numero NOT IN (
+                      -- Exclude items already conciliated with an ARCA Credit Note
+                      SELECT mci.articulo_numero 
+                      FROM public.mantenimiento_conciliaciones mc
+                      JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
+                      WHERE mc.id_cliente::text = $1::text
+                  )
+                GROUP BY mm.articulo_numero
+                HAVING SUM(CASE 
+                    WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
+                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
+                    ELSE 0 
+                END) > 0
+            )
+            SELECT 
+                qs.articulo_numero,
+                COALESCE(a.nombre, qs.articulo_numero) AS descripcion,
+                qs.stock_actual as cantidad_devuelta,
+                pd.valor1 as precio_historico,
+                pd.camp2 as iva_alicuota
+            FROM quarantine_stock qs
+            -- Join with original invoice details to get the historical price for EVERY returned item
+            JOIN public.presupuestos_detalles pd 
+              ON pd.id_presupuesto = $2
+              AND (pd.articulo = qs.articulo_numero OR pd.articulo IN (SELECT codigo_barras FROM public.articulos WHERE numero = qs.articulo_numero))
+            LEFT JOIN public.articulos a ON a.numero = qs.articulo_numero
+            ORDER BY qs.articulo_numero ASC
+        `;
+        const resultItems = await pool.query(queryItems, [cliente_id, factura.presupuesto_id]);
+
+        // Map items and their correct backend IVA ID
+        const itemsAsociados = resultItems.rows.map(item => {
+            let afipIvaId = 1; // Default 21% (Internal ID 1)
+            if (item.iva_alicuota !== undefined && item.iva_alicuota !== null) {
+                const alicNum = parseFloat(item.iva_alicuota);
+                if (alicNum === 0.105 || alicNum === 10.5) afipIvaId = 2; // Internal ID 2 = 10.5%
+                else if (alicNum === 0 || item.iva_alicuota.toString().toLowerCase() === 'exento') afipIvaId = 3; // Internal ID 3 = Exento
+                else if (alicNum === 0.21 || alicNum === 21) afipIvaId = 1; // Internal ID 1 = 21%
+            }
+            return {
+                articulo_numero: item.articulo_numero,
+                descripcion: item.descripcion,
+                cantidad: parseFloat(item.cantidad_devuelta),
+                precio_historico: parseFloat(item.precio_historico),
+                alic_iva_id: afipIvaId
+            };
+        });
+
         // Derivar tipo de Nota de Crédito de forma estricta
         // Factura A (1) -> NC A (3)
         // Factura B (6) -> NC B (8)
@@ -897,15 +962,6 @@ async function trazarFacturaOriginal(req, res) {
 
         const tipoLetra = parseInt(factura.tipo_cbte) === 1 ? 'A' : (parseInt(factura.tipo_cbte) === 6 ? 'B' : 'C');
 
-        // Map the historical IVA string to the internal billing module ID (1 = 21%, 2 = 10.5%, 3 = Exento)
-        let afipIvaId = 1; // Default 21% (Internal ID 1)
-        if (factura.iva_alicuota !== undefined && factura.iva_alicuota !== null) {
-            const alicNum = parseFloat(factura.iva_alicuota);
-            if (alicNum === 0.105 || alicNum === 10.5) afipIvaId = 2; // Internal ID 2 = 10.5%
-            else if (alicNum === 0 || factura.iva_alicuota.toString().toLowerCase() === 'exento') afipIvaId = 3; // Internal ID 3 = Exento
-            else if (alicNum === 0.21 || alicNum === 21) afipIvaId = 1; // Internal ID 1 = 21%
-        }
-
         res.json({
             success: true,
             factura: {
@@ -914,10 +970,9 @@ async function trazarFacturaOriginal(req, res) {
             },
             nota_credito: {
                 tipo_cbte: nc_tipo_cbte,
-                nombre: nc_tipo_nombre,
-                precio_historico: factura.precio_unitario,
-                alic_iva_id: afipIvaId
-            }
+                nombre: nc_tipo_nombre
+            },
+            items_asociados: itemsAsociados
         });
 
     } catch (error) {

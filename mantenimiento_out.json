@@ -1,0 +1,56 @@
+[
+  {
+    "id": 8232679,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE_ASIGNAR",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232602,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE_ASIGNAR",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232522,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232521,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232520,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232519,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232518,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232517,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE",
+    "tipo_comprobante": "Remito-Efectivo"
+  },
+  {
+    "id": 8232516,
+    "estado": "Orden de Retiro",
+    "estado_logistico": "PENDIENTE",
+    "tipo_comprobante": "Remito-Efectivo"
+  }
+]
