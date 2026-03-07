@@ -685,13 +685,15 @@
 
                     // NO usar barra invertida \ delante del símbolo dolar.
                     let itemsHtml = retiro.items.map(i => `<li><b>${i.cantidad} u.</b> - ${i.descripcion} (${i.articulo_numero || i.articulo})</li>`).join('');
-                    let badgeEstado = retiro.ruta_estado === 'EN_CAMINO' ? 'background:#17a2b8' : 'background:#ffc107; color:black';
+                    let badgeEstado = 'background:#6c757d; color:white'; // Default gris para Pendientes
+                    if (retiro.ruta_estado === 'EN_CAMINO') badgeEstado = 'background:#17a2b8';
+                    if (retiro.ruta_estado === 'ARMANDO') badgeEstado = 'background:#ffc107; color:black';
 
                     row.innerHTML = `
                         <td>
-                            <strong>${retiro.nombre_ruta}</strong><br>
+                            <strong>${retiro.nombre_ruta || 'Asignación Pendiente'}</strong><br>
                             <span style="font-size:0.8em; padding:2px 5px; border-radius:3px; color:white; ${badgeEstado}">
-                                ${retiro.ruta_estado}
+                                ${retiro.ruta_estado || 'Sin Flota'}
                             </span>
                         </td>
                         <td>${retiro.chofer_nombre || 'Sin chofer'}</td>

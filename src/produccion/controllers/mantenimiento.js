@@ -971,13 +971,16 @@ async function getRetirosRuta(req, res) {
                 u.nombre_completo as chofer_nombre
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
-            INNER JOIN public.rutas r ON p.id_ruta = r.id
+            LEFT JOIN public.rutas r ON p.id_ruta = r.id
             LEFT JOIN public.usuarios u ON r.id_chofer = u.id
             WHERE (p.tipo_comprobante = 'Orden de Retiro' OR p.estado = 'Orden de Retiro')
-              AND p.id_ruta IS NOT NULL 
-              AND r.estado IN ('ARMANDO', 'EN_CAMINO')
               AND p.activo = true
-            ORDER BY r.fecha_salida DESC, p.fecha DESC
+              AND (
+                  (p.id_ruta IS NOT NULL AND r.estado IN ('ARMANDO', 'EN_CAMINO'))
+                  OR 
+                  (p.id_ruta IS NULL AND p.estado_logistico = 'PENDIENTE_ASIGNAR')
+              )
+            ORDER BY r.fecha_salida DESC NULLS LAST, p.fecha DESC
         `;
         const result = await pool.query(query);
 
@@ -1014,7 +1017,7 @@ async function recibirRetiroLocal(req, res) {
         const orderQuery = `
             SELECT id, id_presupuesto_ext, estado_logistico 
             FROM public.presupuestos 
-            WHERE id = $1 AND tipo_comprobante = 'Orden de Retiro'
+            WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro')
             FOR UPDATE
         `;
         const orderResult = await client.query(orderQuery, [id]);
@@ -1024,7 +1027,7 @@ async function recibirRetiroLocal(req, res) {
         }
 
         const orden = orderResult.rows[0];
-        if (orden.estado_logistico !== 'PENDIENTE_ASIGNAR') {
+        if (orden.estado_logistico !== 'ESPERANDO_MOSTRADOR') {
             throw new Error(`La orden no puede recibirse localmente porque su estado es: ${orden.estado_logistico}`);
         }
 
