@@ -1515,6 +1515,7 @@
                                 data-qty="${item.cantidad}" 
                                 data-precio="${item.precio_historico}" 
                                 data-iva="${item.alic_iva_id}" 
+                                data-limite="${item.limite_fisico_facturado || 0}"
                                 style="width: 16px; height: 16px;">
                             <label for="${checkboxId}" style="margin: 0; cursor: pointer; flex-grow: 1;">
                                 <strong>${item.articulo_numero}</strong> - ${item.cantidad} u.
@@ -1587,14 +1588,25 @@
             }
 
             const payloadItems = [];
+            let rissOfOverReturn = false;
+            let overReturnItemsText = "";
+
             checkboxes.forEach(chk => {
                 const precio = parseFloat(chk.dataset.precio) || 0;
+                const devuelto = parseFloat(chk.dataset.qty) || 0;
+                const limiteFacturado = parseFloat(chk.dataset.limite) || 0;
+
+                // Validación Visual Límite Físico (Riesgo #5)
+                if (devuelto > limiteFacturado && limiteFacturado > 0) {
+                    rissOfOverReturn = true;
+                    overReturnItemsText += `<li><strong>${chk.dataset.articulo}</strong>: Devueltos ${devuelto} u. (Originalmente facturados ${limiteFacturado} u.)</li>`;
+                }
 
                 // Extra security check to never emit a free item by mistake
                 if (precio > 0) {
                     payloadItems.push({
                         descripcion: `Devolución: ${chk.dataset.articulo}`,
-                        qty: parseFloat(chk.dataset.qty),
+                        qty: devuelto,
                         p_unit: precio,
                         alic_iva_id: parseInt(chk.dataset.iva) || 1
                     });
@@ -1604,6 +1616,32 @@
             if (payloadItems.length === 0) {
                 alert('⚠️ Riesgo Fiscal: Ninguno de los artículos seleccionados tiene un precio histórico válido. Abortando emisión.');
                 return;
+            }
+
+            // --- ESCENARIO 5: DOBLE ALERTA VISUAL (OVER-RETURN) ---
+            if (rissOfOverReturn) {
+                const confirmed = await Swal.fire({
+                    title: '¡ALERTA DE SOBRE-DEVOLUCIÓN!',
+                    icon: 'warning',
+                    html: `
+                        <p style="color:red; font-weight:bold;">Se detectó una discrepancia física de stock.</p>
+                        <p>Estás intentando generar una Nota de Crédito por sumar/cantidades mayores a las que existen en la factura original:</p>
+                        <ul style="text-align:left; font-size: 0.9em; margin-top:10px; color:#d9534f;">
+                            ${overReturnItemsText}
+                        </ul>
+                        <p style="margin-top:15px; font-size:0.9em;">⚠️ ARCA podría rechazar el lote (CbtesAsoc) o inflarás tu pasivo fiscal devolviendo dinero de más.</p>
+                        <p style="font-weight:bold;">¿Deseas continuar bajo tu responsabilidad?</p>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: 'Sí, asumo el riesgo y emitir',
+                    cancelButtonText: 'Cancelar'
+                });
+
+                if (!confirmed.isConfirmed) {
+                    return; // Abort operation
+                }
             }
 
             const btn = document.getElementById('btn-generar-nc');
@@ -1635,13 +1673,21 @@
                 const result = await response.json();
 
                 if (result.success && result.data && result.data.id) {
-                    alert('✅ Borrador generado exitosamente.\n\nVaya al módulo de Facturación para verificar importes y solicitar el CAE a la ARCA.');
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Borrador Generado',
+                        text: 'Vaya al módulo de Facturación para verificar importes y solicitar el CAE a la ARCA.'
+                    });
                     cerrarModal('modal-emision-nc');
                 } else {
                     throw new Error(result.error || result.message || 'Error al generar borrador');
                 }
             } catch (error) {
-                alert('❌ Error: ' + error.message);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error Interfaz',
+                    text: error.message
+                });
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;

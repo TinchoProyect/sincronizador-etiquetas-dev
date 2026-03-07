@@ -907,12 +907,15 @@ async function trazarFacturaOriginal(req, res) {
                 COALESCE(a.nombre, qs.articulo_numero) AS descripcion,
                 qs.stock_actual as cantidad_devuelta,
                 pd.valor1 as precio_historico,
-                pd.camp2 as iva_alicuota
+                pd.camp2 as iva_alicuota,
+                COALESCE(f.descuento, 0) as descuento_global,
+                pd.cantidad as cantidad_original_facturada -- Trazabilidad de tope físico
             FROM quarantine_stock qs
             -- Join with original invoice details to get the historical price for EVERY returned item
             JOIN public.presupuestos_detalles pd 
               ON pd.id_presupuesto = $2
               AND (pd.articulo = qs.articulo_numero OR pd.articulo IN (SELECT codigo_barras FROM public.articulos WHERE numero = qs.articulo_numero))
+            JOIN public.factura_facturas f ON f.presupuesto_id = pd.id_presupuesto
             LEFT JOIN public.articulos a ON a.numero = qs.articulo_numero
             ORDER BY qs.articulo_numero ASC
         `;
@@ -927,12 +930,22 @@ async function trazarFacturaOriginal(req, res) {
                 else if (alicNum === 0 || item.iva_alicuota.toString().toLowerCase() === 'exento') afipIvaId = 3; // Internal ID 3 = Exento
                 else if (alicNum === 0.21 || alicNum === 21) afipIvaId = 1; // Internal ID 1 = 21%
             }
+
+            // Aplicar descuento prorrateado al precio neto histórico
+            const precioHistoricoPuro = parseFloat(item.precio_historico) || 0;
+            const porcentajeDescuentoGlobal = parseFloat(item.descuento_global) || 0;
+            const factorDescuento = 1 - (porcentajeDescuentoGlobal / 100);
+
+            // Limitamos a 4 decimales para evitar problemas aritméticos de coma flotante en AFIP
+            const precioProrrateado = parseFloat((precioHistoricoPuro * factorDescuento).toFixed(4));
+
             return {
                 articulo_numero: item.articulo_numero,
                 descripcion: item.descripcion,
                 cantidad: parseFloat(item.cantidad_devuelta),
-                precio_historico: parseFloat(item.precio_historico),
-                alic_iva_id: afipIvaId
+                precio_historico: precioProrrateado,
+                alic_iva_id: afipIvaId,
+                limite_fisico_facturado: parseFloat(item.cantidad_original_facturada) // Necesario para la doble alerta frontend
             };
         });
 
