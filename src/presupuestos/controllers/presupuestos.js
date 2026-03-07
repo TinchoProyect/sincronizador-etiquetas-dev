@@ -96,6 +96,7 @@ const obtenerPresupuestos = async (req, res) => {
             sheet_id,
             // Nuevos parámetros de filtro de cliente
             clienteId,
+            cliente_id, // Añadimos compatibilidad con llamadas legacy front-end
             clienteName,
             // Nuevo parámetro de filtro por estado
             estado,
@@ -113,6 +114,9 @@ const obtenerPresupuestos = async (req, res) => {
             estado_exclude
         } = req.query;
 
+        // Validamos cual parámetro de cliente prevalece
+        const finalClienteId = clienteId || cliente_id;
+
         // Convertir parámetros de paginación nueva a formato interno
         const currentPage = parseInt(page);
         const itemsPerPage = parseInt(pageSize);
@@ -126,7 +130,7 @@ const obtenerPresupuestos = async (req, res) => {
         const finalOrder = order || order_dir || 'desc';
 
         console.log('📋 [PRESUPUESTOS] Filtros aplicados:', {
-            categoria, concepto, clienteId, clienteName, estado, fecha_desde, fecha_hasta,
+            categoria, concepto, finalClienteId, clienteName, estado, fecha_desde, fecha_hasta,
             monto_min, monto_max, sheet_id,
             page: currentPage, pageSize: itemsPerPage, sortBy: finalSortBy, order: finalOrder
         });
@@ -159,11 +163,11 @@ const obtenerPresupuestos = async (req, res) => {
         }
 
         // Filtro de cliente mejorado - Filtro cliente + Typeahead + Fechas – 2024-12-19
-        if (clienteId) {
+        if (finalClienteId) {
             // Filtro por ID de cliente exacto (número de 3 cifras)
             paramCount++;
             query += ` AND c.cliente_id = $${paramCount}`;
-            params.push(parseInt(clienteId));
+            params.push(parseInt(finalClienteId));
         } else if (clienteName) {
             // Filtro por nombre/apellido del cliente
             paramCount++;
@@ -389,10 +393,10 @@ const obtenerPresupuestos = async (req, res) => {
         }
 
         // Aplicar mismo filtro de cliente para el conteo - Filtro cliente + Typeahead + Fechas – 2024-12-19
-        if (clienteId) {
+        if (finalClienteId) {
             countParamCount++;
             countQuery += ` AND c.cliente_id = $${countParamCount}`;
-            countParams.push(parseInt(clienteId));
+            countParams.push(parseInt(finalClienteId));
         } else if (clienteName) {
             countParamCount++;
             countQuery += ` AND LOWER(c.nombre || ' ' || COALESCE(c.apellido,'')) LIKE LOWER($${countParamCount})`;

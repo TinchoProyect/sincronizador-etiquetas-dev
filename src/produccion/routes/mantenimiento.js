@@ -19,4 +19,9 @@ router.post('/revertir', mantenimientoCtrl.revertirMovimiento);
 router.post('/conciliar/deshacer', mantenimientoCtrl.deshacerConciliacion);
 router.get('/trazar-factura', mantenimientoCtrl.trazarFacturaOriginal);
 
+// Rutas Logística Inversa
+router.get('/retiros/local', mantenimientoCtrl.getRetirosLocal);
+router.get('/retiros/ruta', mantenimientoCtrl.getRetirosRuta);
+router.post('/retiros/recibir-local/:id', mantenimientoCtrl.recibirRetiroLocal);
+
 module.exports = router;

@@ -211,6 +211,56 @@
         .search-item strong {
             color: #007bff;
         }
+
+        /* Tab Styles */
+        .tabs-header {
+            display: flex;
+            background: #fff;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            background: inherit;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 20px;
+            transition: 0.3s;
+            font-size: 16px;
+            font-weight: bold;
+            color: #555;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab-btn:hover {
+            color: #007bff;
+        }
+
+        .tab-btn.active {
+            color: #007bff;
+            border-bottom: 3px solid #007bff;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeEffect 0.5s;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeEffect {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
     </style>
 
 </head>
@@ -251,59 +301,134 @@
             <div class="panel-main">
                 <div class="panel-main-content">
 
-                    <!-- SECCIÓN 1: STOCK EN CUARENTENA -->
-                    <div class="content-section">
-                        <div class="section-title">
-                            <h2>📦 Stock Actualmente en Mantenimiento</h2>
-                            <button class="refresh-btn" onclick="cargarStock()">🔄 Actualizar</button>
-                        </div>
-
-                        <div class="table-responsive">
-                            <table class="tabla-ingredientes">
-                                <thead>
-                                    <tr>
-                                        <th>Artículo (ID)</th>
-                                        <th>Origen (Cliente)</th>
-                                        <th>Stock Cuarentena</th>
-                                        <th>Conciliación</th>
-                                        <th>Estado</th>
-                                        <th>Última Act.</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tbody-stock">
-                                    <tr>
-                                        <td colspan="6" class="text-center">Cargando...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                    <!-- TABS HEADER -->
+                    <div class="tabs-container">
+                        <div class="tabs-header">
+                            <button class="tab-btn active" onclick="switchTab('taller')">🛠️ Stock Cuarentena
+                                (Mesa)</button>
+                            <button class="tab-btn" onclick="switchTab('mostrador')">🧍‍♂️ Esperando Cliente
+                                (Mostrador)</button>
+                            <button class="tab-btn" onclick="switchTab('reparto')">🚚 Esperando Reparto (Ruta)</button>
                         </div>
                     </div>
 
-                    <!-- SECCIÓN 2: HISTORIAL -->
-                    <div class="content-section" style="margin-top: 30px;">
-                        <div class="section-title">
-                            <h2>📜 Historial de Movimientos (Últimos 50)</h2>
-                            <button class="refresh-btn" onclick="cargarHistorial()">🔄 Actualizar</button>
+                    <!-- TAB TALLER (ACTUAL) -->
+                    <div id="tab-taller" class="tab-content active">
+
+                        <!-- SECCIÓN 1: STOCK EN CUARENTENA -->
+                        <div class="content-section">
+                            <div class="section-title">
+                                <h2>📦 Stock Actualmente en Mantenimiento</h2>
+                                <button class="refresh-btn" onclick="cargarStock()">🔄 Actualizar</button>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="tabla-ingredientes">
+                                    <thead>
+                                        <tr>
+                                            <th>Artículo (ID)</th>
+                                            <th>Origen (Cliente)</th>
+                                            <th>Stock Cuarentena</th>
+                                            <th>Conciliación</th>
+                                            <th>Estado</th>
+                                            <th>Última Act.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-stock">
+                                        <tr>
+                                            <td colspan="6" class="text-center">Cargando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
-                        <div class="table-responsive">
-                            <table class="tabla-ingredientes">
-                                <thead>
-                                    <tr>
-                                        <th>Fecha</th>
-                                        <th>Artículo</th>
-                                        <th>Movimiento</th>
-                                        <th>Cantidad</th>
-                                        <th>Usuario</th>
-                                        <th>Observaciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tbody-historial">
-                                    <tr>
-                                        <td colspan="6" class="text-center">Cargando...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <!-- SECCIÓN 2: HISTORIAL -->
+                        <div class="content-section" style="margin-top: 30px;">
+                            <div class="section-title">
+                                <h2>📜 Historial de Movimientos (Últimos 50)</h2>
+                                <button class="refresh-btn" onclick="cargarHistorial()">🔄 Actualizar</button>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="tabla-ingredientes">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Artículo</th>
+                                            <th>Movimiento</th>
+                                            <th>Cantidad</th>
+                                            <th>Usuario</th>
+                                            <th>Observaciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-historial">
+                                        <tr>
+                                            <td colspan="6" class="text-center">Cargando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div> <!-- CIERRRE TAB TALLER -->
+
+                    <!-- TAB MOSTRADOR -->
+                    <div id="tab-mostrador" class="tab-content">
+                        <div class="content-section">
+                            <div class="section-title">
+                                <h2>🧍‍♂️ Devoluciones Esperando Ingreso por Mostrador</h2>
+                                <button class="refresh-btn" onclick="cargarMostrador()">🔄 Actualizar</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="tabla-ingredientes">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha Reclamo</th>
+                                            <th>Cliente</th>
+                                            <th>Artículos (Cantidades)</th>
+                                            <th>Observaciones</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-mostrador">
+                                        <tr>
+                                            <td colspan="5" class="text-center">Cargando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB REPARTO -->
+                    <div id="tab-reparto" class="tab-content">
+                        <div class="content-section">
+                            <div class="section-title">
+                                <h2>🚚 Devoluciones Esperando del Reparto (Chofer)</h2>
+                                <button class="refresh-btn" onclick="cargarReparto()">🔄 Actualizar</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="tabla-ingredientes">
+                                    <thead>
+                                        <tr>
+                                            <th>Ruta (Estado)</th>
+                                            <th>Chofer Asignado</th>
+                                            <th>Cliente</th>
+                                            <th>Artículos (Cantidades)</th>
+                                            <th>Estado Pedido</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-reparto">
+                                        <tr>
+                                            <td colspan="5" class="text-center">Cargando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p style="margin-top:15px; font-size: 0.9em; color:#666;">ℹ️ Estas devoluciones ingresarán
+                                automáticamente a tu Stock en Cuarentena cuando el chofer finalice su ruta en la
+                                aplicación móvil.</p>
                         </div>
                     </div>
 
@@ -409,41 +534,40 @@
                     </div>
 
                     <div id="nc-trazabilidad-result"
-                        style="display: none; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin-top: 15px;">
-                        <p style="margin: 0 0 10px 0;"><strong>Factura Original Detectada:</strong><br>
-                            <span id="nc-factura-detectada"
-                                style="color: #007bff; font-weight: 500; font-size: 1.1em;">-</span>
+                        style="display: none; padding: 15px; background: #e8f4f8; border-left: 5px solid #17a2b8; margin-top: 15px;">
+                        <p style="margin: 0; font-size: 0.9em;">
+                            ✅ <strong>Factura Original Aprobada Encontrada:</strong><br>
+                            <span id="nc-factura-detectada">Factura A - 00004-xxx</span>
                         </p>
-
-                        <p style="margin: 0;"><strong>Comprobante a Emitir:</strong><br>
-                            <span id="nc-tipo-detectado"
-                                style="color: #28a745; font-weight: 500; font-size: 1.1em;">-</span>
+                        <p style="margin: 10px 0 0 0; font-size: 0.9em;">
+                            ➡️ <strong>Documento a Generar en AFIP:</strong><br>
+                            <span id="nc-tipo-detectado" style="color: #28a745; font-weight: bold;">Nota de Crédito A
+                                (03)</span>
                         </p>
-
-                        <!-- Hidden inputs to store the traced values for the submit payload -->
-                        <input type="hidden" id="nc-hidden-factura-id" value="">
-                        <input type="hidden" id="nc-hidden-tipo-cbte" value="">
+                        <input type="hidden" id="nc-hidden-factura-id">
+                        <input type="hidden" id="nc-hidden-tipo-cbte">
+                        <input type="hidden" id="nc-hidden-precio">
+                        <input type="hidden" id="nc-hidden-iva">
                     </div>
 
                     <div id="nc-trazabilidad-error"
                         style="display: none; background: #fff3f3; color: #dc3545; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin-top: 15px; font-size: 0.9em;">
-                        ❌ No se pudo trazar la Factura original APROBADA para este artículo.<br>Debe existir una factura
-                        vinculada y aprobada para generar la Nota de Crédito automáticamente.
+                        ❌ No se pudo trazar la Factura original APROBADA para este artículo.<br>Debe existir una
+                        factura vinculada y aprobada para generar la Nota de Crédito automáticamente.
                     </div>
-                </div>
 
-                <div class="swal2-actions"
-                    style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
-                    <button onclick="cerrarModal('modal-emision-nc')" class="swal2-cancel swal2-styled"
-                        style="background-color: #6c757d;">Cancelar</button>
-                    <button onclick="confirmarEmisionNC()" class="swal2-confirm swal2-styled" id="btn-generar-nc"
-                        disabled
-                        style="background-color: #007bff; border-left-color: #007bff; border-right-color: #007bff;">🚀
-                        Generar Borrador y Enviar a Facturación</button>
+                    <div class="swal2-actions"
+                        style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button onclick="cerrarModal('modal-emision-nc')" class="swal2-cancel swal2-styled"
+                            style="background-color: #6c757d;">Cancelar</button>
+                        <button onclick="confirmarEmisionNC()" class="swal2-confirm swal2-styled" id="btn-generar-nc"
+                            disabled
+                            style="background-color: #007bff; border-left-color: #007bff; border-right-color: #007bff;">🚀
+                            Generar Borrador y Enviar a Facturación</button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
     </div>
     </div>
 
@@ -458,7 +582,134 @@
             initResizer();
             cargarStock();
             cargarHistorial();
+            cargarMostrador();
+            cargarReparto();
         });
+
+        // ==========================================
+        // Logística Inversa - Navegación de Pestañas
+        // ==========================================
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            document.getElementById('tab-' + tabId).classList.add('active');
+            let btn = document.querySelector(`.tab-btn[onclick="switchTab('${tabId}')"]`);
+            if (btn) btn.classList.add('active');
+
+            if (tabId === 'taller') cargarStock();
+            if (tabId === 'mostrador') cargarMostrador();
+            if (tabId === 'reparto') cargarReparto();
+        }
+
+        // ==========================================
+        // Logística Inversa - Esperando Mostrador
+        // ==========================================
+        async function cargarMostrador() {
+            const tbody = document.getElementById('tbody-mostrador');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">⏳ Cargando devoluciones...</td></tr>';
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/retiros/local');
+                const data = await res.json();
+
+                if (data.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">✅ No hay devoluciones esperando ingreso por mostrador.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                data.data.forEach(retiro => {
+                    const row = document.createElement('tr');
+
+                    // NO usar barra invertida \ delante del símbolo dolar.
+                    let itemsHtml = retiro.items.map(i => `<li><b>${i.cantidad} u.</b> - ${i.descripcion} (${i.articulo_numero || i.articulo})</li>`).join('');
+
+                    row.innerHTML = `
+                        <td>${new Date(retiro.fecha).toLocaleDateString()}</td>
+                        <td><strong>#${retiro.cliente_id}</strong><br><small>${retiro.cliente_nombre || ''} ${retiro.cliente_apellido || ''}</small></td>
+                        <td><ul style="margin:0; padding-left:20px; font-size:0.9em;">${itemsHtml}</ul></td>
+                        <td style="font-style: italic; color: #666; font-size: 0.9em;">${retiro.observaciones || '-'}</td>
+                        <td>
+                            <button class="btn-accion" style="background-color: #28a745; border: none; font-weight: bold;" onclick="recibirLocal(${retiro.id})">
+                                📥 Recibir Mercadería
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="5" style="color:red; text-align:center;">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
+
+        async function recibirLocal(idPresupuesto) {
+            if (!confirm('¿Confirma que la mercadería física ingresó por mostrador y desea pasarla a la Mesa de Mantenimiento?')) return;
+
+            try {
+                // NO usar barra invertida \ delante del símbolo dolar.
+                const res = await fetch(`/api/produccion/mantenimiento/retiros/recibir-local/${idPresupuesto}`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ Mercadería ingresada a Mantenimiento exitosamente.');
+                    cargarMostrador();
+                    cargarStock(); // Refresca el stock de Cuarentena en background
+                } else {
+                    throw new Error(data.error || 'Error desconocido');
+                }
+            } catch (error) {
+                console.error(error);
+                alert('❌ Error al recibir mercadería: ' + error.message);
+            }
+        }
+
+        // ==========================================
+        // Logística Inversa - Esperando Reparto
+        // ==========================================
+        async function cargarReparto() {
+            const tbody = document.getElementById('tbody-reparto');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">⏳ Consultando rutas activas...</td></tr>';
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/retiros/ruta');
+                const data = await res.json();
+
+                if (data.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">✅ No hay devoluciones asignadas a choferes actualmente.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                data.data.forEach(retiro => {
+                    const row = document.createElement('tr');
+
+                    // NO usar barra invertida \ delante del símbolo dolar.
+                    let itemsHtml = retiro.items.map(i => `<li><b>${i.cantidad} u.</b> - ${i.descripcion} (${i.articulo_numero || i.articulo})</li>`).join('');
+                    let badgeEstado = retiro.ruta_estado === 'EN_CAMINO' ? 'background:#17a2b8' : 'background:#ffc107; color:black';
+
+                    row.innerHTML = `
+                        <td>
+                            <strong>${retiro.nombre_ruta}</strong><br>
+                            <span style="font-size:0.8em; padding:2px 5px; border-radius:3px; color:white; ${badgeEstado}">
+                                ${retiro.ruta_estado}
+                            </span>
+                        </td>
+                        <td>${retiro.chofer_nombre || 'Sin chofer'}</td>
+                        <td><strong>#${retiro.cliente_id}</strong><br><small>${retiro.cliente_nombre || ''} ${retiro.cliente_apellido || ''}</small></td>
+                        <td><ul style="margin:0; padding-left:20px; font-size:0.9em;">${itemsHtml}</ul></td>
+                        <td>
+                            <span style="font-size:0.85em; font-weight:bold; color:#6c757d;">
+                                ${retiro.estado_logistico}
+                            </span>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="5" style="color:red; text-align:center;">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
 
         function initResizer() {
             const resizer = document.getElementById('panel-resizer');
@@ -1225,6 +1476,8 @@
                     // Store values internally
                     document.getElementById('nc-hidden-factura-id').value = result.factura.factura_id;
                     document.getElementById('nc-hidden-tipo-cbte').value = result.nota_credito.tipo_cbte;
+                    document.getElementById('nc-hidden-precio').value = result.nota_credito.precio_historico || 0;
+                    document.getElementById('nc-hidden-iva').value = result.nota_credito.alic_iva_id || 5;
 
                     // Show success block and enable button
                     document.getElementById('nc-trazabilidad-result').style.display = 'block';
@@ -1263,9 +1516,16 @@
 
             const facturaAsociadaId = document.getElementById('nc-hidden-factura-id').value;
             const tipoCbte = parseInt(document.getElementById('nc-hidden-tipo-cbte').value);
+            const precioHistorico = parseFloat(document.getElementById('nc-hidden-precio').value) || 0;
+            const alicIvaId = parseInt(document.getElementById('nc-hidden-iva').value) || 5;
 
             if (!facturaAsociadaId || !tipoCbte) {
                 alert('No hay datos trazados para generar la Nota de Crédito.');
+                return;
+            }
+
+            if (precioHistorico <= 0) {
+                alert('⚠️ Riesgo Fiscal: No se pudo extraer el precio histórico de este artículo. Abortando emisión automática.');
                 return;
             }
 
@@ -1290,8 +1550,8 @@
                         {
                             descripcion: `Devolución: ${articulo}`, // Generic description
                             qty: cantidad,
-                            p_unit: 1, // Placeholder price, user must edit in billing
-                            alic_iva_id: 1 // 1 = IVA 21% en el diccionario, no el codigo AFIP directo
+                            p_unit: precioHistorico, // Extraído de la BDD (Riesgo Mitigado)
+                            alic_iva_id: alicIvaId // Extraído de la BDD (Riesgo Mitigado)
                         }
                     ]
                 };

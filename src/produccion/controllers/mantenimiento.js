@@ -830,12 +830,18 @@ async function trazarFacturaOriginal(req, res) {
                 f.cbte_nro,
                 f.imp_total,
                 f.fecha_emision,
-                f.estado
+                f.estado,
+                pd.precio_unitario,
+                pd.iva_alicuota
             FROM public.factura_facturas f
             LEFT JOIN public.mantenimiento_movimientos mm 
               ON f.presupuesto_id = mm.id_presupuesto_origen 
                  AND mm.articulo_numero = $1 
                  AND mm.tipo_movimiento = 'INGRESO'
+            -- JOIN to extract historical pricing for the AFIP NC payload
+            LEFT JOIN public.presupuestos_detalles pd
+              ON f.presupuesto_id = pd.id_presupuesto_ext
+                 AND pd.articulo = $1
             WHERE f.cliente_id::text = $2::text
               AND f.estado = 'APROBADA'
             ORDER BY 
@@ -879,6 +885,16 @@ async function trazarFacturaOriginal(req, res) {
 
         const tipoLetra = parseInt(factura.tipo_cbte) === 1 ? 'A' : (parseInt(factura.tipo_cbte) === 6 ? 'B' : 'C');
 
+        // Map the historical IVA string to the internal AFIP dictionary ID
+        // Note: these mappings should match the application's actual IVA constants list (e.g. 5 = 21%, 4 = 10.5%)
+        let afipIvaId = 5; // Default 21%
+        if (factura.iva_alicuota) {
+            const alicuota = factura.iva_alicuota.toString();
+            if (alicuota.includes('10.5')) afipIvaId = 4;
+            else if (alicuota.includes('27')) afipIvaId = 6;
+            else if (alicuota === '0' || alicuota === '0.00' || alicuota.toLowerCase() === 'exento') afipIvaId = 3;
+        }
+
         res.json({
             success: true,
             factura: {
@@ -887,7 +903,9 @@ async function trazarFacturaOriginal(req, res) {
             },
             nota_credito: {
                 tipo_cbte: nc_tipo_cbte,
-                nombre: nc_tipo_nombre
+                nombre: nc_tipo_nombre,
+                precio_historico: factura.precio_unitario,
+                alic_iva_id: afipIvaId
             }
         });
 
@@ -897,14 +915,192 @@ async function trazarFacturaOriginal(req, res) {
     }
 }
 
+// =========================================================================
+// NUEVOS ENDPOINTS: LÓGICA INVERSA Y DEVOLUCIONES
+// =========================================================================
+
+/**
+ * Escenario A: Obtener retiros que el cliente traerá por mostrador.
+ * Filtro: Orden de Retiro, sin ruta asignada, PENDIENTE_ASIGNAR.
+ */
+async function getRetirosLocal(req, res) {
+    try {
+        const query = `
+            SELECT 
+                p.id, p.id_presupuesto_ext, p.fecha, p.nota as observaciones,
+                c.cliente_id, c.nombre as cliente_nombre, c.apellido as cliente_apellido
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
+            WHERE p.tipo_comprobante = 'Orden de Retiro' 
+              AND p.id_ruta IS NULL 
+              AND p.estado_logistico = 'ESPERANDO_MOSTRADOR'
+              AND p.activo = true
+            ORDER BY p.fecha DESC
+        `;
+        const result = await pool.query(query);
+
+        for (let row of result.rows) {
+            const detQuery = `
+                SELECT pd.articulo, pd.cantidad, COALESCE(a.nombre, pd.articulo) as descripcion, a.numero as articulo_numero
+                FROM public.presupuestos_detalles pd
+                LEFT JOIN public.articulos a ON pd.articulo = a.codigo_barras
+                WHERE pd.id_presupuesto_ext = $1
+            `;
+            const detResult = await pool.query(detQuery, [row.id_presupuesto_ext]);
+            row.items = detResult.rows;
+        }
+
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ Error getRetirosLocal:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Escenario B: Obtener retiros asignados a un chofer que están en la calle.
+ * Filtro: Orden de Retiro, con ruta asignada (ARMANDO o EN_CAMINO). Solo lectura.
+ */
+async function getRetirosRuta(req, res) {
+    try {
+        const query = `
+            SELECT 
+                p.id, p.id_presupuesto_ext, p.fecha, p.estado_logistico,
+                c.cliente_id, c.nombre as cliente_nombre, c.apellido as cliente_apellido,
+                r.id as ruta_id, r.nombre_ruta, r.estado as ruta_estado,
+                u.nombre_completo as chofer_nombre
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
+            INNER JOIN public.rutas r ON p.id_ruta = r.id
+            LEFT JOIN public.usuarios u ON r.id_chofer = u.id
+            WHERE p.tipo_comprobante = 'Orden de Retiro' 
+              AND p.id_ruta IS NOT NULL 
+              AND r.estado IN ('ARMANDO', 'EN_CAMINO')
+              AND p.activo = true
+            ORDER BY r.fecha_salida DESC, p.fecha DESC
+        `;
+        const result = await pool.query(query);
+
+        for (let row of result.rows) {
+            const detQuery = `
+                SELECT pd.articulo, pd.cantidad, COALESCE(a.nombre, pd.articulo) as descripcion, a.numero as articulo_numero
+                FROM public.presupuestos_detalles pd
+                LEFT JOIN public.articulos a ON pd.articulo = a.codigo_barras
+                WHERE pd.id_presupuesto_ext = $1
+            `;
+            const detResult = await pool.query(detQuery, [row.id_presupuesto_ext]);
+            row.items = detResult.rows;
+        }
+
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ Error getRetirosRuta:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Escenario A (Acción): Recepción de mercadería por mostrador.
+ * Transfiere el stock de la Orden de Retiro al stock de Mantenimiento.
+ */
+async function recibirRetiroLocal(req, res) {
+    const client = await pool.connect();
+    try {
+        const { id } = req.params;
+        const usuario = req.user ? req.user.username : 'MOSTRADOR';
+
+        await client.query('BEGIN');
+
+        const orderQuery = `
+            SELECT id, id_presupuesto_ext, estado_logistico 
+            FROM public.presupuestos 
+            WHERE id = $1 AND tipo_comprobante = 'Orden de Retiro'
+            FOR UPDATE
+        `;
+        const orderResult = await client.query(orderQuery, [id]);
+
+        if (orderResult.rows.length === 0) {
+            throw new Error('Orden de Retiro no encontrada.');
+        }
+
+        const orden = orderResult.rows[0];
+        if (orden.estado_logistico !== 'PENDIENTE_ASIGNAR') {
+            throw new Error(`La orden no puede recibirse localmente porque su estado es: ${orden.estado_logistico}`);
+        }
+
+        const itemsQuery = `
+            SELECT pd.articulo as codigo_barras, pd.cantidad, a.numero as articulo_numero, a.nombre
+            FROM public.presupuestos_detalles pd
+            LEFT JOIN public.articulos a ON pd.articulo = a.codigo_barras
+            WHERE pd.id_presupuesto_ext = $1
+        `;
+        const itemsResult = await client.query(itemsQuery, [orden.id_presupuesto_ext]);
+
+        for (let item of itemsResult.rows) {
+            const artAudit = item.articulo_numero || item.codigo_barras || 'UNKNOWN';
+
+            await client.query(`
+                INSERT INTO mantenimiento_movimientos
+                (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
+                VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
+            `, [
+                artAudit,
+                item.cantidad,
+                orden.id,
+                usuario,
+                `Ingreso Local Mostrador - Pendiente de Conciliación`
+            ]);
+
+            if (item.articulo_numero) {
+                const stockCheck = await client.query('SELECT 1 FROM stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
+                if (stockCheck.rowCount > 0) {
+                    await client.query(`
+                        UPDATE stock_real_consolidado
+                        SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1, ultima_actualizacion = NOW()
+                        WHERE articulo_numero = $2
+                    `, [item.cantidad, item.articulo_numero]);
+                } else {
+                    await client.query(`
+                        INSERT INTO stock_real_consolidado 
+                        (articulo_numero, descripcion, codigo_barras, stock_consolidado, stock_mantenimiento, ultima_actualizacion, no_producido_por_lambda, solo_produccion_externa)
+                        VALUES ($1, $2, $3, 0, $4, NOW(), false, false)
+                    `, [item.articulo_numero, item.nombre, item.codigo_barras, item.cantidad]);
+                }
+            }
+        }
+
+        // CERRAR LA VENTA SATISFACTORIAMENTE PARA UNA DEVOLUCION DE MOSTRADOR
+        // ESTADO_LOGISTICO: 'RECIBIDO_MANTENIMIENTO' (Carga a cuarentena en planta)
+        // ESTADO GENERAL: 'ANULADO' (Retorno mitigado)
+        await client.query(`
+            UPDATE public.presupuestos
+            SET estado_logistico = 'RECIBIDO_MANTENIMIENTO', estado = 'ANULADO', fecha_entrega_real = NOW(), fecha_actualizacion = NOW()
+            WHERE id = $1
+        `, [orden.id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Mercadería ingresada exitosamente al Stock de Mantenimiento.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error en recibirRetiroLocal:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
     confirmarConciliacion,
-    liberarStock,
     getHistorialMantenimiento,
+    liberarStock,
     transferirAIngredientes,
     revertirMovimiento,
     deshacerConciliacion,
-    trazarFacturaOriginal
+    trazarFacturaOriginal,
+    getRetirosLocal,
+    getRetirosRuta,
+    recibirRetiroLocal
 };

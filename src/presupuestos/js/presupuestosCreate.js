@@ -632,6 +632,14 @@ async function handleSubmit(event) {
             console.log('📟 [PRESUPUESTOS-CREATE] Modo código de barras detectado → secuencia automática: "Pedido_Listo"');
         }
 
+        // LECTURA DEL MÉTODO DE RETIRO (LOGÍSTICA INVERSA)
+        let overrideLogistico = null;
+        if (MODO_RETIRO) {
+            const radioMostrador = document.querySelector('input[name="metodo_retiro"][value="mostrador"]');
+            if (radioMostrador && radioMostrador.checked) {
+                overrideLogistico = 'ESPERANDO_MOSTRADOR';
+            }
+        }
 
         // ---- payload final ----
         // ---- payload final ----
@@ -647,9 +655,9 @@ async function handleSubmit(event) {
                 ? (document.getElementById('debug_estado')?.value || 'Orden de Retiro')
                 : estadoValorRaw,
 
-            estado_logistico: MODO_RETIRO
+            estado_logistico: overrideLogistico ? overrideLogistico : (MODO_RETIRO
                 ? (document.getElementById('debug_estado_logistico')?.value || 'PENDIENTE_ASIGNAR')
-                : null,
+                : 'SIN_ESTADO'),
 
             informe_generado: MODO_RETIRO
                 ? (document.getElementById('debug_informe')?.value || 'Pendiente')
@@ -2349,6 +2357,10 @@ function activarModoRetiro() {
     setDebugVal('debug_secuencia', 'Pedido_Listo');
     setDebugVal('debug_informe', 'Pendiente');
     setDebugVal('debug_descuento', '0');
+
+    // MODO RETIRO EXCLUSIVO: Mostrar selector "Método de Retiro"
+    const panelMetodo = document.getElementById('seccion-metodo-retiro');
+    if (panelMetodo) panelMetodo.style.display = 'block';
 }
 
 // Hook para mostrar botón de vincular al seleccionar cliente
