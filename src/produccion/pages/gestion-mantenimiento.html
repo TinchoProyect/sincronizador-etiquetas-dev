@@ -388,9 +388,68 @@
             </div>
         </div>
 
-        <footer>
-            <p>&copy; 2026 Gestiones Lamda - Módulo de Mantenimiento</p>
-        </footer>
+        <!-- Modal de Emisión de Nota de Crédito -->
+        <div id="modal-emision-nc" class="modal"
+            style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
+            <div class="swal2-popup"
+                style="background: white; width: 500px; max-width: 90%; padding: 20px; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; font-family: 'Inter', sans-serif;">
+                <button onclick="cerrarModal('modal-emision-nc')"
+                    style="position: absolute; top: 10px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #aaa;">&times;</button>
+
+                <h2 class="swal2-title"
+                    style="margin-top: 5px; font-size: 1.5em; text-align: left; display: flex; align-items: center; gap: 10px;">
+                    🧾 Emitir Nota de Crédito AFIP
+                </h2>
+
+                <div class="swal2-content" style="text-align: left;">
+                    <p>El sistema trazará automáticamente el origen de este artículo devuelto.</p>
+
+                    <div id="nc-trazabilidad-loading" style="margin: 20px 0; text-align: center; color: #666;">
+                        ⏳ Rastreando Factura original...
+                    </div>
+
+                    <div id="nc-trazabilidad-result"
+                        style="display: none; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin-top: 15px;">
+                        <p style="margin: 0 0 10px 0;"><strong>Factura Original Detectada:</strong><br>
+                            <span id="nc-factura-detectada"
+                                style="color: #007bff; font-weight: 500; font-size: 1.1em;">-</span>
+                        </p>
+
+                        <p style="margin: 0;"><strong>Comprobante a Emitir:</strong><br>
+                            <span id="nc-tipo-detectado"
+                                style="color: #28a745; font-weight: 500; font-size: 1.1em;">-</span>
+                        </p>
+
+                        <!-- Hidden inputs to store the traced values for the submit payload -->
+                        <input type="hidden" id="nc-hidden-factura-id" value="">
+                        <input type="hidden" id="nc-hidden-tipo-cbte" value="">
+                    </div>
+
+                    <div id="nc-trazabilidad-error"
+                        style="display: none; background: #fff3f3; color: #dc3545; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin-top: 15px; font-size: 0.9em;">
+                        ❌ No se pudo trazar la Factura original APROBADA para este artículo.<br>Debe existir una factura
+                        vinculada y aprobada para generar la Nota de Crédito automáticamente.
+                    </div>
+                </div>
+
+                <div class="swal2-actions"
+                    style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button onclick="cerrarModal('modal-emision-nc')" class="swal2-cancel swal2-styled"
+                        style="background-color: #6c757d;">Cancelar</button>
+                    <button onclick="confirmarEmisionNC()" class="swal2-confirm swal2-styled" id="btn-generar-nc"
+                        disabled
+                        style="background-color: #007bff; border-left-color: #007bff; border-right-color: #007bff;">🚀
+                        Generar Borrador y Enviar a Facturación</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 Gestiones Lamda - Módulo de Mantenimiento</p>
+    </footer>
     </div>
 
     <!-- SCRIPT DE LÓGICA -->
@@ -508,11 +567,18 @@
                     `;
                     } else {
                         actionCell = `
-                        <button class="btn-conciliar" 
-                            onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')"
-                            ${btnDisabled} title="${btnTitle}">
-                            🔍 Conciliar
-                        </button>
+                        <div style="display: flex; gap: 5px; flex-direction: column;">
+                            <button class="btn-conciliar" 
+                                onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')"
+                                ${btnDisabled} title="${btnTitle}">
+                                🔍 Conciliación Lomasoft
+                            </button>
+                            <button class="btn-accion" style="background-color: #17a2b8; border: none;" 
+                                onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')"
+                                ${btnDisabled} title="Emitir Nota de Crédito vinculada a Factura">
+                                🧾 Emitir NC AFIP
+                            </button>
+                        </div>
                     `;
                     }
 
@@ -1123,6 +1189,132 @@
             } catch (error) {
                 console.error(error);
                 alert('❌ Error al imprimir: ' + error.message);
+            }
+        }
+        // ==========================================
+        // Modal Nota de Crédito AFIP
+        // ==========================================
+        async function abrirModalNC(articulo, cantidad, clienteId) {
+            // Reset modal states
+            document.getElementById('nc-trazabilidad-loading').style.display = 'block';
+            document.getElementById('nc-trazabilidad-result').style.display = 'none';
+            document.getElementById('nc-trazabilidad-error').style.display = 'none';
+            const btnGenerar = document.getElementById('btn-generar-nc');
+            btnGenerar.disabled = true;
+
+            const modal = document.getElementById('modal-emision-nc');
+            modal.style.display = 'flex';
+
+            // Store context
+            modal.dataset.articulo = articulo;
+            modal.dataset.cantidad = cantidad;
+            modal.dataset.clienteId = clienteId;
+
+            try {
+                // Trazar Factura Original
+                const res = await fetch(`/api/produccion/mantenimiento/trazar-factura?articulo=${encodeURIComponent(articulo)}&cliente_id=${clienteId}`);
+                const result = await res.json();
+
+                document.getElementById('nc-trazabilidad-loading').style.display = 'none';
+
+                if (result.success && result.factura && result.nota_credito) {
+                    // Populate UI
+                    document.getElementById('nc-factura-detectada').textContent = result.factura.factura_nombre;
+                    document.getElementById('nc-tipo-detectado').textContent = result.nota_credito.nombre;
+
+                    // Store values internally
+                    document.getElementById('nc-hidden-factura-id').value = result.factura.factura_id;
+                    document.getElementById('nc-hidden-tipo-cbte').value = result.nota_credito.tipo_cbte;
+
+                    // Show success block and enable button
+                    document.getElementById('nc-trazabilidad-result').style.display = 'block';
+                    btnGenerar.disabled = false;
+                } else {
+                    // Show error block (invoice not found or not approved)
+                    document.getElementById('nc-trazabilidad-error').style.display = 'block';
+                    document.getElementById('nc-trazabilidad-error').innerHTML = `❌ ${result.message || 'No se encontró Factura original vinculada.'}`;
+                }
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('nc-trazabilidad-loading').style.display = 'none';
+                document.getElementById('nc-trazabilidad-error').style.display = 'block';
+                document.getElementById('nc-trazabilidad-error').innerHTML = `❌ Error de red al intentar rastrear la factura original.`;
+            }
+        }
+
+        function autoSelectNCType(selectEl) {
+            const selected = selectEl.options[selectEl.selectedIndex];
+            if (!selected || !selected.value) return;
+
+            const tipoFactura = parseInt(selected.dataset.tipo);
+            const selectNC = document.getElementById('nc-tipo-cbte');
+
+            if (tipoFactura === 1) selectNC.value = "3"; // A -> NC A
+            else if (tipoFactura === 6) selectNC.value = "8"; // B -> NC B
+            else if (tipoFactura === 11) selectNC.value = "13"; // C -> NC C
+        }
+
+        async function confirmarEmisionNC() {
+            const modal = document.getElementById('modal-emision-nc');
+            const articulo = modal.dataset.articulo;
+            const cantidad = modal.dataset.cantidad;
+            const clienteId = modal.dataset.clienteId;
+
+            const facturaAsociadaId = document.getElementById('nc-hidden-factura-id').value;
+            const tipoCbte = parseInt(document.getElementById('nc-hidden-tipo-cbte').value);
+
+            if (!facturaAsociadaId || !tipoCbte) {
+                alert('No hay datos trazados para generar la Nota de Crédito.');
+                return;
+            }
+
+            const btn = document.getElementById('btn-generar-nc');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ Generando Borrador...';
+            btn.disabled = true;
+
+            try {
+                // Generar payload
+                const payload = {
+                    es_nota_credito: true,
+                    factura_asociada_id: parseInt(facturaAsociadaId),
+                    cliente: {
+                        cliente_id: parseInt(clienteId)
+                    },
+                    concepto: 1, // 1 = Productos
+                    precio_modo: 'FINAL_CON_IVA', // Asumido
+                    tipo_cbte: tipoCbte,
+                    pto_vta: 4, // Electrónica por defecto o asimilable
+                    items: [
+                        {
+                            descripcion: `Devolución: ${articulo}`, // Generic description
+                            qty: cantidad,
+                            p_unit: 1, // Placeholder price, user must edit in billing
+                            alic_iva_id: 1 // 1 = IVA 21% en el diccionario, no el codigo AFIP directo
+                        }
+                    ]
+                };
+
+                const response = await fetch('http://localhost:3004/facturacion/facturas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.success && result.data && result.data.id) {
+                    alert('✅ Borrador generado exitosamente.\n\nVaya al módulo de Facturación para verificar importes y solicitar el CAE a la AFIP.');
+                    cerrarModal('modal-emision-nc');
+                } else {
+                    throw new Error(result.error || result.message || 'Error al generar borrador');
+                }
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         }
     </script>

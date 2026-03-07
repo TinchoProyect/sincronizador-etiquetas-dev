@@ -87,11 +87,12 @@ const crearBorrador = async (datos) => {
                     moneda, mon_cotiz,
                     imp_neto, imp_iva, imp_trib, imp_total,
                     estado, requiere_afip, serie_interna, presupuesto_id,
+                    factura_asociada_id,
                     emitida_en, created_at, updated_at
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                     $11, $12, $13, $14, $15, $16, $17, $18,
-                    $19, $20, $21
+                    $19, $20, $21, $22
                 )
                 RETURNING *
             `;
@@ -115,9 +116,10 @@ const crearBorrador = async (datos) => {
                 datos.requiere_afip !== false, // Por defecto true
                 datos.serie_interna || null,
                 datos.presupuesto_id || null,
-                paraBD(),
-                paraBD(),
-                paraBD()
+                datos.factura_asociada_id || null, // $19
+                paraBD(), // $20
+                paraBD(), // $21
+                paraBD() // $22
             ]);
 
             const facturaCreada = resultadoCabecera.rows[0];

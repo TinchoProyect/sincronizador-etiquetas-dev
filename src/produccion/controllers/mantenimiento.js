@@ -798,25 +798,113 @@ async function deshacerConciliacion(req, res) {
 
         await client.query('COMMIT');
         console.log(`✅ [MANTENIMIENTO] Conciliación revertida. Link roto para el movimiento #${idMovimiento}`);
-
-        res.json({ success: true, message: 'Conciliación desvinculada exitosamente.' });
-
+        res.json({ success: true, message: 'Vínculo de factura deshecho exitosamente.' });
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('❌ [MANTENIMIENTO] Error al deshacer conciliación:', error.message);
+        console.error('❌ [MANTENIMIENTO] Error al revertir conciliacion:', error.message);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
     }
 }
 
+/**
+ * Trazar Factura Original y Determinar Tipo de Nota de Crédito
+ * Requisito: Automatización de UI
+ */
+async function trazarFacturaOriginal(req, res) {
+    try {
+        const { articulo, cliente_id } = req.query;
+
+        if (!articulo || !cliente_id) {
+            return res.status(400).json({ error: 'Artículo y Cliente requeridos' });
+        }
+
+        console.log(`🔍 [MANTENIMIENTO] Trazando Factura Original para Art: ${articulo}, Cliente: ${cliente_id}`);
+
+        const query = `
+            SELECT 
+                f.id as factura_id,
+                f.tipo_cbte,
+                f.pto_vta,
+                f.cbte_nro,
+                f.imp_total,
+                f.fecha_emision,
+                f.estado
+            FROM public.factura_facturas f
+            LEFT JOIN public.mantenimiento_movimientos mm 
+              ON f.presupuesto_id = mm.id_presupuesto_origen 
+                 AND mm.articulo_numero = $1 
+                 AND mm.tipo_movimiento = 'INGRESO'
+            WHERE f.cliente_id::text = $2::text
+              AND f.estado = 'APROBADA'
+            ORDER BY 
+              -- Prioritize the exact match if trace is successful
+              (CASE WHEN mm.id_presupuesto_origen IS NOT NULL THEN 1 ELSE 0 END) DESC,
+              f.fecha_emision DESC
+            LIMIT 1
+        `;
+
+        const result = await pool.query(query, [articulo, cliente_id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'No se encontró una Factura original APROBADA trazable para este ingreso.' });
+        }
+
+        const factura = result.rows[0];
+
+        // Derivar tipo de Nota de Crédito de forma estricta
+        // Factura A (1) -> NC A (3)
+        // Factura B (6) -> NC B (8)
+        // Factura C (11) -> NC C (13)
+        let nc_tipo_cbte = null;
+        let nc_tipo_nombre = '';
+
+        switch (parseInt(factura.tipo_cbte)) {
+            case 1:
+                nc_tipo_cbte = 3;
+                nc_tipo_nombre = 'Nota de Crédito A (03)';
+                break;
+            case 6:
+                nc_tipo_cbte = 8;
+                nc_tipo_nombre = 'Nota de Crédito B (08)';
+                break;
+            case 11:
+                nc_tipo_cbte = 13;
+                nc_tipo_nombre = 'Nota de Crédito C (13)';
+                break;
+            default:
+                return res.status(400).json({ success: false, message: `Tipo de comprobante original (${factura.tipo_cbte}) no soportado para Notas de Crédito automatizadas.` });
+        }
+
+        const tipoLetra = parseInt(factura.tipo_cbte) === 1 ? 'A' : (parseInt(factura.tipo_cbte) === 6 ? 'B' : 'C');
+
+        res.json({
+            success: true,
+            factura: {
+                ...factura,
+                factura_nombre: `Factura ${tipoLetra} - Nro ${factura.pto_vta}-${factura.cbte_nro}`
+            },
+            nota_credito: {
+                tipo_cbte: nc_tipo_cbte,
+                nombre: nc_tipo_nombre
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [MANTENIMIENTO] Error al trazar factura original:', error.message);
+        res.status(500).json({ success: false, error: 'Error interno al trazar la factura origen.' });
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
-    getHistorialMantenimiento,
     diagnosticoVigiaAuditor,
     confirmarConciliacion,
     liberarStock,
+    getHistorialMantenimiento,
     transferirAIngredientes,
     revertirMovimiento,
-    deshacerConciliacion
+    deshacerConciliacion,
+    trazarFacturaOriginal
 };

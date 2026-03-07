@@ -17,5 +17,6 @@ router.get('/vigia-auditor', mantenimientoCtrl.diagnosticoVigiaAuditor);
 router.post('/transferir-ingrediente', mantenimientoCtrl.transferirAIngredientes);
 router.post('/revertir', mantenimientoCtrl.revertirMovimiento);
 router.post('/conciliar/deshacer', mantenimientoCtrl.deshacerConciliacion);
+router.get('/trazar-factura', mantenimientoCtrl.trazarFacturaOriginal);
 
 module.exports = router;

@@ -26,6 +26,22 @@ const crearFactura = async (req, res) => {
     console.log(`   - items: ${req.body.items?.length || 0}`);
 
     try {
+        if (req.body.es_nota_credito && req.body.factura_asociada_id) {
+            console.log(`📝 [FACTURACION-CTRL] Autocompletando cliente desde factura original ${req.body.factura_asociada_id}`);
+            const checkFacturaOriginal = `SELECT cliente_id, doc_tipo, doc_nro, condicion_iva_id FROM factura_facturas WHERE id = $1`;
+            const resultOriginal = await pool.query(checkFacturaOriginal, [req.body.factura_asociada_id]);
+
+            if (resultOriginal.rows.length > 0) {
+                const fOrig = resultOriginal.rows[0];
+                req.body.cliente = {
+                    cliente_id: fOrig.cliente_id,
+                    doc_tipo: fOrig.doc_tipo,
+                    doc_nro: fOrig.doc_nro,
+                    condicion_iva_id: fOrig.condicion_iva_id
+                };
+            }
+        }
+
         const factura = await facturaService.crearBorrador(req.body);
 
         // Verificar si es respuesta de idempotencia
@@ -132,7 +148,9 @@ const actualizarFactura = async (req, res) => {
             'condicion_iva_id',
             'cliente_id',
             'fecha_emision',
-            'concepto'
+            'concepto',
+            'tipo_cbte',
+            'factura_asociada_id'
         ];
 
         const updates = [];

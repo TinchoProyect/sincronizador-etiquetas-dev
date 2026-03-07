@@ -5,7 +5,7 @@
 
 const Afip = require('@afipsdk/afip.js');
 const { pool } = require('../config/database');
-const { ENTORNO, CUIT } = require('../config/afip');
+const { ENTORNO, CUIT, ALICUOTAS_IVA } = require('../config/afip');
 const path = require('path');
 
 // Inicializar SDK de AFIP
@@ -39,7 +39,8 @@ const obtenerFacturaParaCAE = async (facturaId) => {
                         'imp_neto', i.imp_neto,
                         'imp_iva', i.imp_iva
                     ) ORDER BY i.orden
-                ) as items
+                ) as items,
+                (SELECT row_to_json(fa) FROM factura_facturas fa WHERE fa.id = f.factura_asociada_id) as factura_asociada
             FROM factura_facturas f
             LEFT JOIN factura_factura_items i ON f.id = i.factura_id
             WHERE f.id = $1
@@ -230,6 +231,24 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
             'MonCotiz': factura.mon_cotiz || 1,
         };
 
+        // --- REGLA 5: NOTAS DE CRÉDITO Y COMPROBANTES ASOCIADOS ---
+        const isNotaCredito = (factura.tipo_cbte === 3 || factura.tipo_cbte === 8 || factura.tipo_cbte === 13);
+
+        if (isNotaCredito) {
+            if (!factura.factura_asociada) {
+                throw new Error('AFIP exige un comprobante original asociado (CbtesAsoc) para emitir Notas de Crédito. Falta el vínculo con la factura original de venta.');
+            }
+
+            payload.CbtesAsoc = [
+                {
+                    Tipo: factura.factura_asociada.tipo_cbte,
+                    PtoVta: factura.factura_asociada.pto_vta,
+                    Nro: factura.factura_asociada.cbte_nro
+                }
+            ];
+            console.log(`🔗 [FACTURACION-WSFE] Nota de Crédito: Asociada a Factura Tipo ${factura.factura_asociada.tipo_cbte} PV ${factura.factura_asociada.pto_vta} NRO ${factura.factura_asociada.cbte_nro}`);
+        }
+
         // RG 5616 - AFIP EXIGE el campo CondicionIVAReceptorId en TODO comprobante (Facturas A, B, C, etc).
 
         if (impIva > 0 && factura.items && factura.items.length > 0) {
@@ -253,8 +272,11 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
                 totalBaseValidado += base;
                 totalIvaValidado += imp;
 
+                // Map local ID to AFIP's ID (e.g., 1 -> 5 for 21%)
+                const afipIvaId = ALICUOTAS_IVA[id] ? ALICUOTAS_IVA[id].codigo_afip : parseInt(id);
+
                 return {
-                    'Id': parseInt(id),
+                    'Id': afipIvaId,
                     'BaseImp': base,
                     'Importe': imp
                 };
