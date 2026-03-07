@@ -9,48 +9,61 @@ async function getStockMantenimiento(req, res) {
         console.log('🔍 [MANTENIMIENTO] Consultando stock en cuartena...');
 
         const query = `
+            WITH saldos_clientes AS (
+                SELECT 
+                    mm.articulo_numero,
+                    p.id_cliente AS cliente_id,
+                    COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
+                    SUM(CASE 
+                        WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
+                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
+                        ELSE 0 
+                    END) AS stock_mantenimiento,
+                    MAX(mm.fecha_movimiento) as ultima_actualizacion
+                FROM public.mantenimiento_movimientos mm
+                LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
+                WHERE mm.estado IS DISTINCT FROM 'REVERTIDO' 
+                  AND mm.estado IS DISTINCT FROM 'FINALIZADO'
+                  AND mm.estado IS DISTINCT FROM 'ANULADO'
+                GROUP BY mm.articulo_numero, p.id_cliente, c.nombre, c.apellido, c.otros
+                HAVING SUM(CASE 
+                    WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
+                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
+                    ELSE 0 
+                END) > 0
+            )
             SELECT 
-                s.articulo_numero,
-                s.descripcion, -- Agregado para frontend
-                s.stock_mantenimiento,
+                sc.articulo_numero,
+                COALESCE(a.nombre, sc.articulo_numero) AS descripcion,
+                sc.stock_mantenimiento,
                 s.stock_lomasoft,
                 s.stock_movimientos,
                 s.stock_ajustes,
-                s.ultima_actualizacion,
-                s.kilos_unidad, 
-                origin.cliente_id,
-                origin.estado,
-                origin.cliente_nombre,
+                sc.ultima_actualizacion,
+                COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
+                sc.cliente_id,
+                CASE WHEN nc.nro_comprobante_externo IS NOT NULL THEN 'CONCILIADO' ELSE 'PENDIENTE' END AS estado,
+                sc.cliente_nombre,
                 nc.nro_comprobante_externo as nc_nro,
                 nc.tipo_comprobante as nc_tipo,
                 nc.fecha_comprobante as nc_fecha
-            FROM public.stock_real_consolidado s
-            LEFT JOIN LATERAL (
-                SELECT 
-                    mm.id as id_movimiento,
-                    c.cliente_id,
-                    mm.estado, -- Necesario para saber si ya esta conciliado
-                    COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre
-                FROM public.mantenimiento_movimientos mm
-                JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
-                WHERE mm.articulo_numero = s.articulo_numero
-                  AND mm.tipo_movimiento = 'INGRESO'
-                ORDER BY mm.fecha_movimiento DESC
-                LIMIT 1
-            ) origin ON true
+            FROM saldos_clientes sc
+            LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
+            LEFT JOIN public.stock_real_consolidado s ON sc.articulo_numero = s.articulo_numero
             LEFT JOIN LATERAL (
                 SELECT 
                     mc.nro_comprobante_externo,
                     mc.tipo_comprobante,
                     mc.fecha_comprobante
-                FROM public.mantenimiento_conciliacion_items mci
-                JOIN public.mantenimiento_conciliaciones mc ON mci.id_conciliacion = mc.id
-                WHERE mci.id_movimiento_origen = origin.id_movimiento
+                FROM public.mantenimiento_conciliaciones mc
+                JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
+                WHERE mc.id_cliente::text = sc.cliente_id::text 
+                  AND mci.articulo_numero = sc.articulo_numero
+                ORDER BY mc.fecha_comprobante DESC
                 LIMIT 1
-            ) nc ON origin.estado = 'CONCILIADO'
-            WHERE s.stock_mantenimiento > 0
-            ORDER BY s.articulo_numero ASC
+            ) nc ON true
+            ORDER BY sc.articulo_numero ASC, sc.cliente_nombre ASC
         `;
 
         const result = await pool.query(query);
@@ -831,22 +844,21 @@ async function trazarFacturaOriginal(req, res) {
                 f.imp_total,
                 f.fecha_emision,
                 f.estado,
-                pd.precio_unitario,
-                pd.iva_alicuota
+                pd.valor1 as precio_unitario,
+                pd.camp2 as iva_alicuota
             FROM public.factura_facturas f
-            LEFT JOIN public.mantenimiento_movimientos mm 
-              ON f.presupuesto_id = mm.id_presupuesto_origen 
-                 AND mm.articulo_numero = $1 
-                 AND mm.tipo_movimiento = 'INGRESO'
-            -- JOIN to extract historical pricing for the AFIP NC payload
-            LEFT JOIN public.presupuestos_detalles pd
-              ON f.presupuesto_id = pd.id_presupuesto_ext
-                 AND pd.articulo = $1
+            -- RESTORE STRICT TRACEABILITY: 
+            -- Inner JOIN guarantees the invoice ACTUALLY sold the article being returned.
+            -- This fixes the issue of blindly attaching to "the last invoice".
+            JOIN public.presupuestos_detalles pd
+              ON f.presupuesto_id = pd.id_presupuesto
+                 AND (
+                    pd.articulo = $1 
+                    OR pd.articulo IN (SELECT codigo_barras FROM public.articulos WHERE numero = $1)
+                 )
             WHERE f.cliente_id::text = $2::text
               AND f.estado = 'APROBADA'
             ORDER BY 
-              -- Prioritize the exact match if trace is successful
-              (CASE WHEN mm.id_presupuesto_origen IS NOT NULL THEN 1 ELSE 0 END) DESC,
               f.fecha_emision DESC
             LIMIT 1
         `;
@@ -854,7 +866,7 @@ async function trazarFacturaOriginal(req, res) {
         const result = await pool.query(query, [articulo, cliente_id]);
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'No se encontró una Factura original APROBADA trazable para este ingreso.' });
+            return res.status(404).json({ success: false, message: 'No hay factura original trazable vinculada a este ingreso.' });
         }
 
         const factura = result.rows[0];
@@ -885,14 +897,13 @@ async function trazarFacturaOriginal(req, res) {
 
         const tipoLetra = parseInt(factura.tipo_cbte) === 1 ? 'A' : (parseInt(factura.tipo_cbte) === 6 ? 'B' : 'C');
 
-        // Map the historical IVA string to the internal AFIP dictionary ID
-        // Note: these mappings should match the application's actual IVA constants list (e.g. 5 = 21%, 4 = 10.5%)
-        let afipIvaId = 5; // Default 21%
-        if (factura.iva_alicuota) {
-            const alicuota = factura.iva_alicuota.toString();
-            if (alicuota.includes('10.5')) afipIvaId = 4;
-            else if (alicuota.includes('27')) afipIvaId = 6;
-            else if (alicuota === '0' || alicuota === '0.00' || alicuota.toLowerCase() === 'exento') afipIvaId = 3;
+        // Map the historical IVA string to the internal billing module ID (1 = 21%, 2 = 10.5%, 3 = Exento)
+        let afipIvaId = 1; // Default 21% (Internal ID 1)
+        if (factura.iva_alicuota !== undefined && factura.iva_alicuota !== null) {
+            const alicNum = parseFloat(factura.iva_alicuota);
+            if (alicNum === 0.105 || alicNum === 10.5) afipIvaId = 2; // Internal ID 2 = 10.5%
+            else if (alicNum === 0 || factura.iva_alicuota.toString().toLowerCase() === 'exento') afipIvaId = 3; // Internal ID 3 = Exento
+            else if (alicNum === 0.21 || alicNum === 21) afipIvaId = 1; // Internal ID 1 = 21%
         }
 
         res.json({
@@ -910,8 +921,8 @@ async function trazarFacturaOriginal(req, res) {
         });
 
     } catch (error) {
-        console.error('❌ [MANTENIMIENTO] Error al trazar factura original:', error.message);
-        res.status(500).json({ success: false, error: 'Error interno al trazar la factura origen.' });
+        console.error('❌ [MANTENIMIENTO] Error al trazar factura original:', error.stack);
+        res.status(400).json({ success: false, message: `Falla en Trazabilidad ARCA: ${error.message}` });
     }
 }
 

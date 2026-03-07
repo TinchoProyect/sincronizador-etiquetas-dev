@@ -523,7 +523,7 @@
 
                 <h2 class="swal2-title"
                     style="margin-top: 5px; font-size: 1.5em; text-align: left; display: flex; align-items: center; gap: 10px;">
-                    🧾 Emitir Nota de Crédito AFIP
+                    🧾 Emitir Nota de Crédito ARCA
                 </h2>
 
                 <div class="swal2-content" style="text-align: left;">
@@ -540,7 +540,7 @@
                             <span id="nc-factura-detectada">Factura A - 00004-xxx</span>
                         </p>
                         <p style="margin: 10px 0 0 0; font-size: 0.9em;">
-                            ➡️ <strong>Documento a Generar en AFIP:</strong><br>
+                            ➡️ <strong>Documento a Generar en ARCA:</strong><br>
                             <span id="nc-tipo-detectado" style="color: #28a745; font-weight: bold;">Nota de Crédito A
                                 (03)</span>
                         </p>
@@ -829,7 +829,7 @@
                             <button class="btn-accion" style="background-color: #17a2b8; border: none;" 
                                 onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')"
                                 ${btnDisabled} title="Emitir Nota de Crédito vinculada a Factura">
-                                🧾 Emitir NC AFIP
+                                🧾 Emitir NC ARCA
                             </button>
                         </div>
                     `;
@@ -1445,7 +1445,7 @@
             }
         }
         // ==========================================
-        // Modal Nota de Crédito AFIP
+        // Modal Nota de Crédito ARCA
         // ==========================================
         async function abrirModalNC(articulo, cantidad, clienteId) {
             // Reset modal states
@@ -1519,7 +1519,7 @@
             const facturaAsociadaId = document.getElementById('nc-hidden-factura-id').value;
             const tipoCbte = parseInt(document.getElementById('nc-hidden-tipo-cbte').value);
             const precioHistorico = parseFloat(document.getElementById('nc-hidden-precio').value) || 0;
-            const alicIvaId = parseInt(document.getElementById('nc-hidden-iva').value) || 5;
+            const alicIvaId = parseInt(document.getElementById('nc-hidden-iva').value) || 1;
 
             if (!facturaAsociadaId || !tipoCbte) {
                 alert('No hay datos trazados para generar la Nota de Crédito.');
@@ -1567,7 +1567,7 @@
                 const result = await response.json();
 
                 if (result.success && result.data && result.data.id) {
-                    alert('✅ Borrador generado exitosamente.\n\nVaya al módulo de Facturación para verificar importes y solicitar el CAE a la AFIP.');
+                    alert('✅ Borrador generado exitosamente.\n\nVaya al módulo de Facturación para verificar importes y solicitar el CAE a la ARCA.');
                     cerrarModal('modal-emision-nc');
                 } else {
                     throw new Error(result.error || result.message || 'Error al generar borrador');
