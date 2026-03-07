@@ -931,7 +931,7 @@ async function getRetirosLocal(req, res) {
                 c.cliente_id, c.nombre as cliente_nombre, c.apellido as cliente_apellido
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
-            WHERE p.tipo_comprobante = 'Orden de Retiro' 
+            WHERE (p.tipo_comprobante = 'Orden de Retiro' OR p.estado = 'Orden de Retiro')
               AND p.id_ruta IS NULL 
               AND p.estado_logistico = 'ESPERANDO_MOSTRADOR'
               AND p.activo = true
@@ -973,7 +973,7 @@ async function getRetirosRuta(req, res) {
             LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
             INNER JOIN public.rutas r ON p.id_ruta = r.id
             LEFT JOIN public.usuarios u ON r.id_chofer = u.id
-            WHERE p.tipo_comprobante = 'Orden de Retiro' 
+            WHERE (p.tipo_comprobante = 'Orden de Retiro' OR p.estado = 'Orden de Retiro')
               AND p.id_ruta IS NOT NULL 
               AND r.estado IN ('ARMANDO', 'EN_CAMINO')
               AND p.activo = true

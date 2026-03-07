@@ -1,19 +1,7 @@
-require('dotenv').config({ path: './src/produccion/.env' });
-const { Pool } = require('pg');
-
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL
-});
-
-async function run() {
-    try {
-        const res = await pool.query('SELECT * FROM presupuestos_detalles LIMIT 1');
-        console.log("Columns:", Object.keys(res.rows[0]));
-    } catch (e) {
-        console.error(e);
-    } finally {
-        pool.end();
-    }
-}
-
-run();
+const { Client } = require('pg');
+const client = new Client({ connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/etiquetas_pruebas' });
+client.connect().then(async () => {
+    const res = await client.query("SELECT id, tipo_comprobante, estado, estado_logistico FROM presupuestos ORDER BY id DESC LIMIT 5;");
+    console.table(res.rows);
+    process.exit(0);
+}).catch(console.error);

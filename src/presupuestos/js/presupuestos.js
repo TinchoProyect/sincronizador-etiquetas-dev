@@ -1144,7 +1144,15 @@ function updatePresupuestosTable(data) {
             <td>${escapeHtml(item.concepto || 'Sin cliente')}</td>
             <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
             <td class="text-center">
-                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(item.estado || 'Sin estado')}</span>
+                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">
+                    ${escapeHtml(item.estado || 'Sin estado')}
+                </span>
+                ${item.estado === 'Orden de Retiro'
+            ? `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#6aa84f' : '#f1c232'}">
+                        ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : '🚚 Retira Chofer'}
+                       </span>`
+            : ''
+        }
             </td>
             <td class="text-center">
                 <div class="action-buttons">

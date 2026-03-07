@@ -146,6 +146,7 @@ const obtenerPresupuestos = async (req, res) => {
                 p.fecha as fecha_registro,
                 p.activo,
                 p.estado,
+                p.estado_logistico,
                 p.agente
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)

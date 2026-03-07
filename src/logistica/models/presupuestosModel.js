@@ -137,7 +137,9 @@ async function obtenerPresupuestosDisponibles(pool) {
             -- Filtro 3: Solo activos
             AND p.activo = true
             
-            -- NOTA: Ignoramos estado_logistico para mostrar todos los pedidos listos
+            -- Filtro 4: EXCLUIR mercadería que el cliente traerá directamente al mostrador
+            AND (p.estado_logistico IS NULL OR p.estado_logistico != 'ESPERANDO_MOSTRADOR')
+            
             -- NOTA: Ignoramos id_ruta para mostrar todos (incluso los ya asignados)
             
         ORDER BY 
