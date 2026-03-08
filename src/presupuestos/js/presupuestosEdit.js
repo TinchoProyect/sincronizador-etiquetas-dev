@@ -1090,7 +1090,7 @@
                 throw new Error(result.error || result.message || 'Error al actualizar presupuesto');
             }
 
-            // Restaurar descripciones visibles en los inputs de artÄ‚Â­culos
+            // Restaurar descripciones visibles en los inputs de artÄÂculos
             rows.forEach(row => {
                 const artInput = row.querySelector('input[name*="[articulo]"]');
                 if (artInput && artInput.dataset.descripcionVisible) {
@@ -1098,14 +1098,23 @@
                 }
             });
 
-            // TODO: Actualizar detalles (no implementado en backend segÄ‚ÅŸn lectura previa)
-            // AquÄ‚Â­ se podrÄ‚Â­a implementar llamada para actualizar detalles si la API lo soporta
+            // Manejo de Bloqueo Fiscal Parcial Parcial
+            if (result.fiscalLock) {
+                console.warn('🔒 [PRESUPUESTOS-EDIT] Bloqueo Fiscal Activo');
+                mostrarMensaje(`⚠️ ${result.message}`, 'error'); // Usamos 'error' (rojo) para mayor visibilidad a pesar de ser success true.
+
+                // Redirigir después de 4 segundos para que lean que los detalles no se guardaron
+                setTimeout(() => {
+                    window.location.href = '/pages/presupuestos.html';
+                }, 4000);
+                return;
+            }
 
             mostrarMensaje('Ã¢ÂœÂ… Presupuesto actualizado exitosamente', 'success');
 
             console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Presupuesto actualizado correctamente');
 
-            // Redirigir despuÄ‚Å s de 2 segundos
+            // Redirigir despuÄÅs de 2 segundos
             setTimeout(() => {
                 window.location.href = '/pages/presupuestos.html';
             }, 2000);
