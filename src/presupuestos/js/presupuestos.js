@@ -1147,6 +1147,12 @@ function updatePresupuestosTable(data) {
                 <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">
                     ${escapeHtml(item.estado || 'Sin estado')}
                 </span>
+                ${item.esta_facturado ?
+            `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb;">
+                        🧾 Facturado
+                    </span>`
+            : ''
+        }
                 ${item.estado === 'Orden de Retiro'
             ? `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#6aa84f' : '#f1c232'}">
                         ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : '🚚 Retira Chofer'}

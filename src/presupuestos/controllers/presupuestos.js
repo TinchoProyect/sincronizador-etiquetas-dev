@@ -149,7 +149,8 @@ const obtenerPresupuestos = async (req, res) => {
                 p.activo,
                 p.estado,
                 p.estado_logistico,
-                p.agente
+                p.agente,
+                EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.activo = true
@@ -224,12 +225,28 @@ const obtenerPresupuestos = async (req, res) => {
             }
 
             if (estadosArray.length > 0) {
-                const estadosPlaceholders = estadosArray.map((_, index) => `$${paramCount + index + 1}`).join(', ');
-                paramCount += estadosArray.length;
-                query += ` AND p.estado IN (${estadosPlaceholders})`;
-                params.push(...estadosArray);
+                // QA Bugfix 2: Falso Estado 'FACTURADO'
+                const includesFacturado = estadosArray.includes('FACTURADO');
+                const realStates = estadosArray.filter(e => e !== 'FACTURADO');
 
-                console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Filtro estado: [${estadosArray.join(', ')}]`);
+                let stateConditions = [];
+
+                if (realStates.length > 0) {
+                    const estadosPlaceholders = realStates.map((_, index) => `$${paramCount + index + 1}`).join(', ');
+                    paramCount += realStates.length;
+                    stateConditions.push(`p.estado IN (${estadosPlaceholders})`);
+                    params.push(...realStates);
+                }
+
+                if (includesFacturado) {
+                    stateConditions.push(`EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA')`);
+                }
+
+                if (stateConditions.length > 0) {
+                    query += ` AND (${stateConditions.join(' OR ')})`;
+                }
+
+                console.log(`🔍 [PRESUPUESTOS] Ruta GET / - Filtro estado procesado: [${estadosArray.join(', ')}]`);
             }
         }
 
@@ -3005,8 +3022,12 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
             JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
             WHERE p.id_cliente = $1::text 
               AND (d.articulo ILIKE $2 OR d.articulo ILIKE $3)
-              -- QA Modification: Permitir devoluciones de historial FACTURADO
-              AND (p.estado_logistico IN ('RETIRADO', 'ENTREGADO') OR p.estado IN ('Entregado', 'Confirmado', 'FACTURADO'))
+              -- QA Bugfix 2: Permitir devoluciones de historial FACTURADO (usando comprobación real de tabla facturas)
+              AND (
+                  p.estado_logistico IN ('RETIRADO', 'ENTREGADO') 
+                  OR p.estado IN ('Entregado', 'Confirmado')
+                  OR EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA')
+              )
               -- QA Modification: Excluir explícitamente Órdenes de Retiro
               AND p.tipo_comprobante != 'Orden de Retiro'
             ORDER BY p.fecha DESC

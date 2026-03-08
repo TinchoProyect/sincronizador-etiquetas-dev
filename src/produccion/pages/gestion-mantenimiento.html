@@ -1334,6 +1334,7 @@
                     if (mov.tipo_movimiento === 'INGRESO') badgeClass = 'badge-ingreso';
                     if (mov.tipo_movimiento === 'LIBERACION') badgeClass = 'badge-liberacion';
                     if (mov.tipo_movimiento === 'TRANSF_INGREDIENTE') badgeClass = 'badge-transferencia';
+                    if (mov.tipo_movimiento === 'EMISION_NC') badgeClass = 'badge-transferencia';
                     if (mov.tipo_movimiento === 'REVERSION') badgeClass = 'badge-ajuste'; // Color neutro
 
                     // Lógica para acciones (Revertir / Imprimir)
@@ -1605,6 +1606,7 @@
                 // Extra security check to never emit a free item by mistake
                 if (precio > 0) {
                     payloadItems.push({
+                        articulo: chk.dataset.articulo,
                         descripcion: `Devolución: ${chk.dataset.articulo}`,
                         qty: devuelto,
                         p_unit: precio,
@@ -1620,26 +1622,11 @@
 
             // --- ESCENARIO 5: DOBLE ALERTA VISUAL (OVER-RETURN) ---
             if (rissOfOverReturn) {
-                const confirmed = await Swal.fire({
-                    title: '¡ALERTA DE SOBRE-DEVOLUCIÓN!',
-                    icon: 'warning',
-                    html: `
-                        <p style="color:red; font-weight:bold;">Se detectó una discrepancia física de stock.</p>
-                        <p>Estás intentando generar una Nota de Crédito por sumar/cantidades mayores a las que existen en la factura original:</p>
-                        <ul style="text-align:left; font-size: 0.9em; margin-top:10px; color:#d9534f;">
-                            ${overReturnItemsText}
-                        </ul>
-                        <p style="margin-top:15px; font-size:0.9em;">⚠️ ARCA podría rechazar el lote (CbtesAsoc) o inflarás tu pasivo fiscal devolviendo dinero de más.</p>
-                        <p style="font-weight:bold;">¿Deseas continuar bajo tu responsabilidad?</p>
-                    `,
-                    showCancelButton: true,
-                    confirmButtonColor: '#d33',
-                    cancelButtonColor: '#3085d6',
-                    confirmButtonText: 'Sí, asumo el riesgo y emitir',
-                    cancelButtonText: 'Cancelar'
-                });
+                const mensajeAlerta = `¡ALERTA DE SOBRE-DEVOLUCIÓN!\n\nSe detectó una discrepancia física de stock.\nEstás intentando generar una Nota de Crédito por sumar/cantidades mayores a las que existen en la factura original.\n\n⚠️ ARCA podría rechazar el lote (CbtesAsoc) o inflarás tu pasivo fiscal devolviendo dinero de más.\n\n¿Deseas continuar bajo tu responsabilidad?`;
 
-                if (!confirmed.isConfirmed) {
+                const confirmed = confirm(mensajeAlerta);
+
+                if (!confirmed) {
                     return; // Abort operation
                 }
             }
@@ -1673,21 +1660,39 @@
                 const result = await response.json();
 
                 if (result.success && result.data && result.data.id) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Borrador Generado',
-                        text: 'Vaya al módulo de Facturación para verificar importes y solicitar el CAE a la ARCA.'
-                    });
+
+                    // 1. Notificar a Mantenimiento que descuente el stock en cuarentena
+                    try {
+                        const consumeRes = await fetch('/api/produccion/mantenimiento/marcar-nc-emitida', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                cliente_id: clienteId,
+                                items: payloadItems,
+                                factura_generada_id: result.data.id
+                            })
+                        });
+                        const consumeData = await consumeRes.json();
+                        if (!consumeData.success) {
+                            console.error('Error al descontar stock:', consumeData.error);
+                            alert('⚠️ Borrador generado, pero falló la limpieza del stock de Cuarentena: ' + consumeData.error);
+                        }
+                    } catch (e) {
+                        console.error('Error descontando stock:', e);
+                    }
+
+                    alert('Borrador Generado con éxito.\nVaya al módulo de Facturación para verificar importes y solicitar el CAE a la ARCA.');
                     cerrarModal('modal-emision-nc');
+
+                    // 2. Refrescar las tablas visuales
+                    if (typeof cargarStock === 'function') cargarStock();
+                    if (typeof cargarHistorial === 'function') cargarHistorial();
+
                 } else {
                     throw new Error(result.error || result.message || 'Error al generar borrador');
                 }
             } catch (error) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error Interfaz',
-                    text: error.message
-                });
+                alert(`Error Interfaz:\n${error.message}`);
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;

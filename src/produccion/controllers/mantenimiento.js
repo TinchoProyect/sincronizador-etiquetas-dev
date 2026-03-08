@@ -16,7 +16,7 @@ async function getStockMantenimiento(req, res) {
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
                     SUM(CASE 
                         WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
-                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
+                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE', 'EMISION_NC') THEN -mm.cantidad
                         ELSE 0 
                     END) AS stock_mantenimiento,
                     MAX(mm.fecha_movimiento) as ultima_actualizacion
@@ -29,7 +29,7 @@ async function getStockMantenimiento(req, res) {
                 GROUP BY mm.articulo_numero, p.id_cliente, c.nombre, c.apellido, c.otros
                 HAVING SUM(CASE 
                     WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
-                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
+                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE', 'EMISION_NC') THEN -mm.cantidad
                     ELSE 0 
                 END) > 0
             )
@@ -645,6 +645,94 @@ async function transferirAIngredientes(req, res) {
 }
 
 /**
+ * Deductir Stock tras Emisión Exitosa de Nota de Crédito en ARCA (Evita Doble Gasto)
+ * 1. Da de baja en mantenimiento (stock_real_consolidado) por la cantidad devuelta de AFIP.
+ * 2. Registra el movimiento tipo EMISION_NC para auditoría.
+ */
+async function marcarNCEmitida(req, res) {
+    const client = await pool.connect();
+    try {
+        const { cliente_id, items, factura_generada_id } = req.body;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        if (!cliente_id || !items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, error: 'Faltan datos obligatorios.' });
+        }
+
+        console.log(`🧾 [MANTENIMIENTO -> NC AFIP] Descontando stock cuarentena tras emisión. Cliente: ${cliente_id}`);
+
+        await client.query('BEGIN');
+
+        for (const item of items) {
+            let articulo = item.articulo;
+
+            // Fallback si no viene explícito
+            if (!articulo && item.descripcion) {
+                const match = item.descripcion.match(/Devolución:\s*(.+)/);
+                if (match) articulo = match[1].trim();
+            }
+
+            if (!articulo) {
+                throw new Error("No se pudo extraer el código del artículo en el payload.");
+            }
+
+            const cantidadEmitida = parseFloat(item.qty || 0);
+
+            // 1. Obtener y Bloquear Stock Actual
+            const stockQuery = `
+                SELECT stock_mantenimiento 
+                FROM public.stock_real_consolidado 
+                WHERE articulo_numero = $1
+                FOR UPDATE
+            `;
+            const resStock = await client.query(stockQuery, [articulo]);
+
+            if (resStock.rows.length > 0) {
+                const pesoOriginal = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
+
+                if (pesoOriginal < cantidadEmitida) {
+                    console.warn(`[ALERTA SOBRE-DEVOLUCION] ${articulo} Solo hay ${pesoOriginal} en mantenimiento, se emitió ${cantidadEmitida}. Deduciendo lo posible para no quedar negativo.`);
+                }
+
+                // 2. DAR DE BAJA ESTRICTA EN MANTENIMIENTO
+                const updateMantenimiento = `
+                    UPDATE public.stock_real_consolidado
+                    SET 
+                        stock_mantenimiento = stock_mantenimiento - $1, 
+                        stock_consolidado = stock_consolidado - $1, 
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `;
+                await client.query(updateMantenimiento, [cantidadEmitida, articulo]);
+            }
+
+            // 3. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA)
+            const obsFinal = `[NC Generada ID: ${factura_generada_id || 'SBD'}] Emisión de NC Borrador. Cliente #${cliente_id}`;
+
+            const insertMov = `
+                INSERT INTO public.mantenimiento_movimientos 
+                (articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, estado)
+                VALUES ($1, $2, $3, 'EMISION_NC', $4, 'FINALIZADO')
+                RETURNING id
+            `;
+            await client.query(insertMov, [articulo, cantidadEmitida, usuario, obsFinal]);
+        }
+
+        await client.query('COMMIT');
+
+        console.log(`✅ [MANTENIMIENTO] NC de AFIP registrada. FacturaID: ${factura_generada_id}`);
+        res.json({ success: true, message: 'Stock actualizado tras emisión de NC.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [NC AFIP] Error deductir:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
+/**
  * Revertir Movimiento (Undo)
  * Principalmente para "Enviar a Ventas" (LIBERACION) realizado por error.
  */
@@ -1182,6 +1270,7 @@ module.exports = {
     revertirMovimiento,
     deshacerConciliacion,
     trazarFacturaOriginal,
+    marcarNCEmitida,
     getRetirosLocal,
     getRetirosRuta,
     recibirRetiroLocal
