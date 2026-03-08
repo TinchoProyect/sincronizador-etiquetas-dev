@@ -23,6 +23,6 @@ router.get('/trazar-factura', mantenimientoCtrl.trazarFacturaOriginal);
 router.get('/retiros/local', mantenimientoCtrl.getRetirosLocal);
 router.get('/retiros/ruta', mantenimientoCtrl.getRetirosRuta);
 router.post('/retiros/recibir-local/:id', mantenimientoCtrl.recibirRetiroLocal);
-router.post('/marcar-nc-emitida', mantenimientoCtrl.marcarNCEmitida);
+router.post('/emitir-nc-borrador', mantenimientoCtrl.emitirNotaCreditoBorrador);
 
 module.exports = router;

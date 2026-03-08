@@ -1651,7 +1651,8 @@
                     items: payloadItems
                 };
 
-                const response = await fetch('http://localhost:3004/facturacion/facturas', {
+                // Enviar payload unificado al orquestador del Backend de Mantenimiento
+                const response = await fetch('/api/produccion/mantenimiento/emitir-nc-borrador', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1659,37 +1660,16 @@
 
                 const result = await response.json();
 
-                if (result.success && result.data && result.data.id) {
-
-                    // 1. Notificar a Mantenimiento que descuente el stock en cuarentena
-                    try {
-                        const consumeRes = await fetch('/api/produccion/mantenimiento/marcar-nc-emitida', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                cliente_id: clienteId,
-                                items: payloadItems,
-                                factura_generada_id: result.data.id
-                            })
-                        });
-                        const consumeData = await consumeRes.json();
-                        if (!consumeData.success) {
-                            console.error('Error al descontar stock:', consumeData.error);
-                            alert('⚠️ Borrador generado, pero falló la limpieza del stock de Cuarentena: ' + consumeData.error);
-                        }
-                    } catch (e) {
-                        console.error('Error descontando stock:', e);
-                    }
-
+                if (result.success) {
                     alert('Borrador Generado con éxito.\nVaya al módulo de Facturación para verificar importes y solicitar el CAE a la ARCA.');
                     cerrarModal('modal-emision-nc');
 
-                    // 2. Refrescar las tablas visuales
+                    // Refrescar las tablas visuales
                     if (typeof cargarStock === 'function') cargarStock();
                     if (typeof cargarHistorial === 'function') cargarHistorial();
 
                 } else {
-                    throw new Error(result.error || result.message || 'Error al generar borrador');
+                    throw new Error(result.error || result.message || 'Error en la orquestación de la Nota de Crédito');
                 }
             } catch (error) {
                 alert(`Error Interfaz:\n${error.message}`);

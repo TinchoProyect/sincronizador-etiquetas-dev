@@ -645,25 +645,45 @@ async function transferirAIngredientes(req, res) {
 }
 
 /**
- * Deductir Stock tras Emisión Exitosa de Nota de Crédito en ARCA (Evita Doble Gasto)
- * 1. Da de baja en mantenimiento (stock_real_consolidado) por la cantidad devuelta de AFIP.
- * 2. Registra el movimiento tipo EMISION_NC para auditoría.
+ * Orquestador: Genera Borrador de NC en Facturación y deduce stock local (Evita Doble Gasto)
  */
-async function marcarNCEmitida(req, res) {
+async function emitirNotaCreditoBorrador(req, res) {
     const client = await pool.connect();
     try {
-        const { cliente_id, items, factura_generada_id } = req.body;
+        const payloadFacturacion = req.body;
+        const itemsInfo = payloadFacturacion.items;
+        const cliente_id = payloadFacturacion.cliente?.cliente_id;
         const usuario = req.user ? req.user.username : 'SISTEMA';
 
-        if (!cliente_id || !items || !Array.isArray(items) || items.length === 0) {
+        if (!cliente_id || !itemsInfo || !Array.isArray(itemsInfo) || itemsInfo.length === 0) {
             return res.status(400).json({ success: false, error: 'Faltan datos obligatorios.' });
         }
 
-        console.log(`🧾 [MANTENIMIENTO -> NC AFIP] Descontando stock cuarentena tras emisión. Cliente: ${cliente_id}`);
+        console.log(`🧾 [MANTENIMIENTO_ORQ] Iniciando orquestación de NC. Cliente: ${cliente_id}`);
 
         await client.query('BEGIN');
 
-        for (const item of items) {
+        // 1. Enviar a Facturación PRIMERO (Server-to-Server)
+        console.log(`📡 [MANTENIMIENTO_ORQ] Solicitando Borrador a Facturación...`);
+        let factura_generada_id = null;
+
+        const facturacionUrl = process.env.FACTURACION_API_URL || 'http://localhost:3004';
+        const fetchResponse = await fetch(`${facturacionUrl}/facturacion/facturas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadFacturacion)
+        });
+
+        const resultFacturacion = await fetchResponse.json();
+
+        if (!fetchResponse.ok || !resultFacturacion.success) {
+            throw new Error(resultFacturacion.error || resultFacturacion.message || 'Error del microservicio de Facturación');
+        }
+
+        factura_generada_id = resultFacturacion.data.id;
+        console.log(`✅ [MANTENIMIENTO_ORQ] Facturación respondió con Borrador ID: ${factura_generada_id}`);
+
+        for (const item of itemsInfo) {
             let articulo = item.articulo;
 
             // Fallback si no viene explícito
@@ -720,12 +740,16 @@ async function marcarNCEmitida(req, res) {
 
         await client.query('COMMIT');
 
-        console.log(`✅ [MANTENIMIENTO] NC de AFIP registrada. FacturaID: ${factura_generada_id}`);
-        res.json({ success: true, message: 'Stock actualizado tras emisión de NC.' });
+        console.log(`✅ [MANTENIMIENTO_ORQ] Transacción completada con éxito. Stock deducido y borrador NC creado.`);
+        res.json({
+            success: true,
+            message: 'Borrador generado y stock descontado exitosamente.',
+            factura_id: factura_generada_id
+        });
 
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('❌ [NC AFIP] Error deductir:', error.message);
+        console.error('❌ [MANTENIMIENTO_ORQ] Error en orquestación:', error.message);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
@@ -1270,7 +1294,7 @@ module.exports = {
     revertirMovimiento,
     deshacerConciliacion,
     trazarFacturaOriginal,
-    marcarNCEmitida,
+    emitirNotaCreditoBorrador,
     getRetirosLocal,
     getRetirosRuta,
     recibirRetiroLocal

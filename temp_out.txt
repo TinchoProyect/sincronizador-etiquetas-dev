@@ -1,0 +1,14 @@
+[
+  {
+    "conname": "mantenimiento_movimientos_pkey",
+    "constraint_def": "PRIMARY KEY (id)"
+  },
+  {
+    "conname": "mantenimiento_movimientos_tipo_movimiento_check",
+    "constraint_def": "CHECK (((tipo_movimiento)::text = ANY ((ARRAY['INGRESO'::character varying, 'LIBERACION'::character varying, 'AJUSTE'::character varying, 'DESCARTE'::character varying, 'TRANSF_INGREDIENTE'::character varying, 'REVERSION'::character varying])::text[])))"
+  },
+  {
+    "conname": "mantenimiento_movimientos_estado_check",
+    "constraint_def": "CHECK (((estado)::text = ANY ((ARRAY['PENDIENTE'::character varying, 'FINALIZADO'::character varying, 'CANCELADO'::character varying, 'REVERTIDO'::character varying, 'AUTOMATICO'::character varying, 'CONCILIADO'::character varying])::text[])))"
+  }
+]
