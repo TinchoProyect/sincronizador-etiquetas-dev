@@ -826,6 +826,19 @@
                         </div>
                     `;
                     } else {
+                        let ncActionHtml = '';
+                        if (item.estado_nc === 'COMPLETADO') {
+                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #28a745; color: white; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #1e7e34;">✅ NC Emitida - CAE OK</span>`;
+                        } else if (item.estado_nc === 'BORRADOR') {
+                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador en Facturación</span>`;
+                        } else {
+                            ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none;" 
+                                onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')"
+                                ${btnDisabled} title="Emitir Nota de Crédito vinculada a Factura">
+                                🧾 Emitir NC ARCA
+                            </button>`;
+                        }
+
                         actionCell = `
                         <div style="display: flex; gap: 5px; flex-direction: column;">
                             <button class="btn-conciliar" 
@@ -833,11 +846,7 @@
                                 ${btnDisabled} title="${btnTitle}">
                                 🔍 Conciliación Lomasoft
                             </button>
-                            <button class="btn-accion" style="background-color: #17a2b8; border: none;" 
-                                onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')"
-                                ${btnDisabled} title="Emitir Nota de Crédito vinculada a Factura">
-                                🧾 Emitir NC ARCA
-                            </button>
+                            ${ncActionHtml}
                         </div>
                     `;
                     }

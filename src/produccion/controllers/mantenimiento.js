@@ -16,7 +16,7 @@ async function getStockMantenimiento(req, res) {
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
                     SUM(CASE 
                         WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
-                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE', 'EMISION_NC') THEN -mm.cantidad
+                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
                         ELSE 0 
                     END) AS stock_mantenimiento,
                     MAX(mm.fecha_movimiento) as ultima_actualizacion
@@ -29,7 +29,7 @@ async function getStockMantenimiento(req, res) {
                 GROUP BY mm.articulo_numero, p.id_cliente, c.nombre, c.apellido, c.otros
                 HAVING SUM(CASE 
                     WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
-                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE', 'EMISION_NC') THEN -mm.cantidad
+                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
                     ELSE 0 
                 END) > 0
             )
@@ -47,7 +47,12 @@ async function getStockMantenimiento(req, res) {
                 sc.cliente_nombre,
                 nc.nro_comprobante_externo as nc_nro,
                 nc.tipo_comprobante as nc_tipo,
-                nc.fecha_comprobante as nc_fecha
+                nc.fecha_comprobante as nc_fecha,
+                CASE 
+                    WHEN nc_estado.fact_cae IS NOT NULL AND nc_estado.fact_cae != '' THEN 'COMPLETADO'
+                    WHEN nc_estado.fact_estado IS NOT NULL THEN 'BORRADOR'
+                    ELSE 'DISPONIBLE'
+                END AS estado_nc
             FROM saldos_clientes sc
             LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
             LEFT JOIN public.stock_real_consolidado s ON sc.articulo_numero = s.articulo_numero
@@ -63,6 +68,18 @@ async function getStockMantenimiento(req, res) {
                 ORDER BY mc.fecha_comprobante DESC
                 LIMIT 1
             ) nc ON true
+            LEFT JOIN LATERAL (
+                SELECT 
+                    ff.estado AS fact_estado,
+                    ff.cae AS fact_cae
+                FROM public.mantenimiento_movimientos mm_nc
+                LEFT JOIN public.factura_facturas ff ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
+                WHERE mm_nc.articulo_numero = sc.articulo_numero
+                  AND mm_nc.tipo_movimiento = 'EMISION_NC'
+                  AND mm_nc.observaciones LIKE '%Cliente #' || sc.cliente_id || '%'
+                ORDER BY mm_nc.fecha_movimiento DESC
+                LIMIT 1
+            ) nc_estado ON true
             ORDER BY sc.articulo_numero ASC, sc.cliente_nombre ASC
         `;
 

@@ -1,0 +1,174 @@
+{
+  "facturas": [
+    {
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "column_name": "tipo_cbte",
+      "data_type": "smallint"
+    },
+    {
+      "column_name": "pto_vta",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "cbte_nro",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "concepto",
+      "data_type": "smallint"
+    },
+    {
+      "column_name": "fecha_emision",
+      "data_type": "date"
+    },
+    {
+      "column_name": "cliente_id",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "doc_tipo",
+      "data_type": "smallint"
+    },
+    {
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "column_name": "fch_serv_desde",
+      "data_type": "date"
+    },
+    {
+      "column_name": "fch_serv_hasta",
+      "data_type": "date"
+    },
+    {
+      "column_name": "fch_vto_pago",
+      "data_type": "date"
+    },
+    {
+      "column_name": "descuento",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "factura_asociada_id",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "condicion_iva_id",
+      "data_type": "smallint"
+    },
+    {
+      "column_name": "mon_cotiz",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "imp_neto",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "imp_iva",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "imp_trib",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "imp_total",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "cae_vto",
+      "data_type": "date"
+    },
+    {
+      "column_name": "presupuesto_id",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "requiere_afip",
+      "data_type": "boolean"
+    },
+    {
+      "column_name": "nro_interno",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "emitida_en",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "column_name": "doc_nro",
+      "data_type": "character varying"
+    },
+    {
+      "column_name": "resultado",
+      "data_type": "character"
+    },
+    {
+      "column_name": "moneda",
+      "data_type": "character"
+    },
+    {
+      "column_name": "estado",
+      "data_type": "character varying"
+    },
+    {
+      "column_name": "cae",
+      "data_type": "character varying"
+    },
+    {
+      "column_name": "serie_interna",
+      "data_type": "character varying"
+    }
+  ],
+  "items": [
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "column_name": "factura_id",
+      "data_type": "bigint"
+    },
+    {
+      "column_name": "id",
+      "data_type": "bigint"
+    },
+    {
+      "column_name": "qty",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "p_unit",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "alic_iva_id",
+      "data_type": "smallint"
+    },
+    {
+      "column_name": "imp_neto",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "imp_iva",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "orden",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "descripcion",
+      "data_type": "text"
+    }
+  ]
+}
