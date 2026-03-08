@@ -522,7 +522,7 @@ async function confirmarConciliacion(req, res) {
 async function liberarStock(req, res) {
     const client = await pool.connect();
     try {
-        const { articulo, cantidad, observaciones } = req.body;
+        const { cliente_id, articulo, cantidad, observaciones } = req.body;
         const usuario = req.user ? req.user.username : 'SISTEMA';
 
         console.log(`📦 [MANTENIMIENTO] Liberando stock para Art: ${articulo}, Cant: ${cantidad}`);
@@ -539,14 +539,24 @@ async function liberarStock(req, res) {
             throw new Error(data.error);
         }
 
-        // Actualizar el estado del movimiento de ingreso original para que no vuelva a aparecer como CONCILIADO trabado
-        const updateMov = `
-            UPDATE public.mantenimiento_movimientos
-            SET estado = 'FINALIZADO',
-                observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
-            WHERE articulo_numero = $1 AND tipo_movimiento = 'INGRESO' AND estado = 'CONCILIADO'
-        `;
-        await client.query(updateMov, [articulo]);
+        // HIGIENE DE BASE DE DATOS: Asegurar que los INGRESOS para este cliente_id queden FINALIZADOS
+        if (cliente_id) {
+            const updateMov = `
+                UPDATE public.mantenimiento_movimientos
+                SET estado = 'FINALIZADO',
+                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
+                WHERE articulo_numero = $1 
+                  AND tipo_movimiento = 'INGRESO' 
+                  AND estado IS DISTINCT FROM 'FINALIZADO'
+                  AND id IN (
+                      SELECT mm.id 
+                      FROM public.mantenimiento_movimientos mm
+                      JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                      WHERE mm.articulo_numero = $1 AND p.id_cliente = $2
+                  )
+            `;
+            await client.query(updateMov, [articulo, cliente_id]);
+        }
 
         await client.query('COMMIT');
         console.log(`✅ Stock liberado exitosamente y estado actualizado: ${articulo}`);
@@ -571,7 +581,7 @@ async function transferirAIngredientes(req, res) {
     const client = await pool.connect();
 
     try {
-        const { articulo, ingrediente_id, cantidad_real, observaciones } = req.body;
+        const { cliente_id, articulo, ingrediente_id, cantidad_real, observaciones } = req.body;
         const usuario = req.user ? req.user.username : 'SISTEMA';
 
         if (!articulo || !ingrediente_id || !cantidad_real) {
@@ -649,6 +659,25 @@ async function transferirAIngredientes(req, res) {
 
         if (resIng.rowCount === 0) {
             throw new Error(`Ingrediente destino ${ingrediente_id} no encontrado.`);
+        }
+
+        // 5. HIGIENE DE BASE DE DATOS: Marcar como FINALIZADO el INGRESO original del cliente
+        if (cliente_id) {
+            const updateIngresoOriginal = `
+                UPDATE public.mantenimiento_movimientos
+                SET estado = 'FINALIZADO',
+                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
+                WHERE articulo_numero = $1 
+                  AND tipo_movimiento = 'INGRESO' 
+                  AND estado IS DISTINCT FROM 'FINALIZADO'
+                  AND id IN (
+                      SELECT mm.id 
+                      FROM public.mantenimiento_movimientos mm
+                      JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                      WHERE mm.articulo_numero = $1 AND p.id_cliente = $2
+                  )
+            `;
+            await client.query(updateIngresoOriginal, [articulo, cliente_id]);
         }
 
         // Opcional: Registrar en historial de ingredientes si existe tabla. 
@@ -743,7 +772,7 @@ async function emitirNotaCreditoBorrador(req, res) {
 
             const cantidadEmitida = parseFloat(item.qty || 0);
 
-            // 1. Obtener y Bloquear Stock Actual
+            // 1. Obtener Stock Actual (SIN DEDUCIRLO: Modelo Lomasoft)
             const stockQuery = `
                 SELECT stock_mantenimiento 
                 FROM public.stock_real_consolidado 
@@ -756,22 +785,14 @@ async function emitirNotaCreditoBorrador(req, res) {
                 const pesoOriginal = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
 
                 if (pesoOriginal < cantidadEmitida) {
-                    console.warn(`[ALERTA SOBRE-DEVOLUCION] ${articulo} Solo hay ${pesoOriginal} en mantenimiento, se emitió ${cantidadEmitida}. Deduciendo lo posible para no quedar negativo.`);
+                    console.warn(`[ALERTA SOBRE-DEVOLUCION] ${articulo} Solo hay ${pesoOriginal} en mantenimiento, se emitió un borrador por ${cantidadEmitida}.`);
                 }
-
-                // 2. DAR DE BAJA ESTRICTA EN MANTENIMIENTO
-                const updateMantenimiento = `
-                    UPDATE public.stock_real_consolidado
-                    SET 
-                        stock_mantenimiento = stock_mantenimiento - $1, 
-                        stock_consolidado = stock_consolidado - $1, 
-                        ultima_actualizacion = NOW()
-                    WHERE articulo_numero = $2
-                `;
-                await client.query(updateMantenimiento, [cantidadEmitida, articulo]);
+                // ¡RESTA PREMATURA ELIMINADA!
+                // El stock físico de Mantenimiento queda intacto.
+                // Será deducido por liberarStock o transferirAIngredientes al asignar destino físico post-CAE.
             }
 
-            // 3. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA)
+            // 2. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA LÓGICA / MUTEX)
             const obsFinal = `[NC Generada ID: ${factura_generada_id || 'SBD'}] Emisión de NC Borrador. Cliente #${cliente_id}`;
 
             const insertMov = `

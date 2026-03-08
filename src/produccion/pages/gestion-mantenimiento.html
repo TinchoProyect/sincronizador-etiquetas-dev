@@ -454,6 +454,7 @@
                 <h2>🧪 Enviar a Ingredientes</h2>
                 <div id="modal-body-transferencia">
                     <input type="hidden" id="transf-articulo">
+                    <input type="hidden" id="transf-cliente-id">
                     <input type="hidden" id="transf-peso-original">
 
                     <div class="form-group">
@@ -817,10 +818,10 @@
                         <div class="dropdown">
                             <button class="btn-accion">⚡ Acciones ▼</button>
                             <div class="dropdown-content">
-                                <button onclick="liberarStock('${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa')">
+                                <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa')">
                                     📦 Enviar a Ventas
                                 </button>
-                                <button onclick="abrirModalTransferencia('${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
+                                <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
                                     🧪 Enviar a Ingredientes
                                 </button>
                                 ${esLomasoftOK ? `
@@ -887,14 +888,14 @@
             }
         }
 
-        async function liberarStock(articulo, cantidad, obs) {
+        async function liberarStock(clienteId, articulo, cantidad, obs) {
             if (!confirm(`¿Confirmar envío a Ventas de ${articulo} (Cantidad: ${cantidad})?\n\nEl stock saldrá de mantenimiento y quedará disponible comercialmente.`)) return;
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/liberar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ articulo, cantidad, observaciones: obs })
+                    body: JSON.stringify({ cliente_id: clienteId, articulo, cantidad, observaciones: obs })
                 });
 
                 const data = await res.json();
@@ -1232,13 +1233,14 @@
         // ==========================================
         // Modal Transferencia
         // ==========================================
-        function abrirModalTransferencia(articulo, unidades, kilosPorUnidad) {
+        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad) {
             // Asegurar tipos numéricos
             const cantUnidades = parseFloat(unidades) || 0;
             const factorKilos = parseFloat(kilosPorUnidad) || 1;
 
             const pesoTotal = cantUnidades * factorKilos;
 
+            document.getElementById('transf-cliente-id').value = clienteId;
             document.getElementById('transf-articulo').value = articulo;
             document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3);
 
@@ -1282,6 +1284,7 @@
         }
 
         async function confirmarTransferencia() {
+            const clienteId = document.getElementById('transf-cliente-id').value;
             const articulo = document.getElementById('transf-articulo').value;
             const ingredienteId = document.getElementById('transf-ingrediente').value;
             const cantidadReal = document.getElementById('transf-cantidad').value;
@@ -1299,6 +1302,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        cliente_id: clienteId,
                         articulo,
                         ingrediente_id: ingredienteId,
                         cantidad_real: cantidadReal,
