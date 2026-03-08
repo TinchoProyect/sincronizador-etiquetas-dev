@@ -796,29 +796,37 @@
                     const pesoTotal = cantidad * kilosUnidad;
 
                     // Determinar contenido de la celda de acción
+                    const esLomasoftOK = (item.estado === 'CONCILIADO');
+                    const esArcaOK = (item.estado_nc === 'COMPLETADO');
+                    const esArcaBorrador = (item.estado_nc === 'BORRADOR');
+
                     let actionCell = '';
-                    if (item.estado === 'CONCILIADO') {
+
+                    if (esLomasoftOK || esArcaOK) {
                         // Mostrar info del comprobante
                         let comprobanteInfo = '';
-                        if (item.nc_nro) {
+                        if (esLomasoftOK && item.nc_nro) {
                             const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
                             comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>${item.nc_tipo || 'NC'}</b> ${item.nc_nro} (${fechaNC})</span>`;
+                        } else if (esArcaOK) {
+                            comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>✅ NC ARCA Emitida</b></span>`;
                         }
 
-                        // Dropdown de Acciones para items conciliados
+                        // Dropdown de Acciones para items conciliados o con CAE OK
                         actionCell = `
                         <div class="dropdown">
                             <button class="btn-accion">⚡ Acciones ▼</button>
                             <div class="dropdown-content">
-                                <button onclick="liberarStock('${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Conciliacion')">
+                                <button onclick="liberarStock('${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa')">
                                     📦 Enviar a Ventas
                                 </button>
                                 <button onclick="abrirModalTransferencia('${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
                                     🧪 Enviar a Ingredientes
                                 </button>
+                                ${esLomasoftOK ? `
                                 <button onclick="deshacerConciliacion('${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
-                                    🔗 Deshacer Vínculo
-                                </button>
+                                    🔗 Deshacer Vínculo Lomasoft
+                                </button>` : ''}
                             </div>
                         </div>
                         <div style="margin-top: 5px;">
@@ -827,10 +835,13 @@
                     `;
                     } else {
                         let ncActionHtml = '';
-                        if (item.estado_nc === 'COMPLETADO') {
-                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #28a745; color: white; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #1e7e34;">✅ NC Emitida - CAE OK</span>`;
-                        } else if (item.estado_nc === 'BORRADOR') {
-                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador en Facturación</span>`;
+                        let lomasoftDisabled = btnDisabled;
+                        let lomasoftTitle = btnTitle;
+
+                        if (esArcaBorrador) {
+                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA en Proceso</span>`;
+                            lomasoftDisabled = 'disabled';
+                            lomasoftTitle = 'Devolución bloqueada (Proceso de NC local en curso)';
                         } else {
                             ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none;" 
                                 onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')"
@@ -843,7 +854,7 @@
                         <div style="display: flex; gap: 5px; flex-direction: column;">
                             <button class="btn-conciliar" 
                                 onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')"
-                                ${btnDisabled} title="${btnTitle}">
+                                ${lomasoftDisabled} title="${lomasoftTitle}">
                                 🔍 Conciliación Lomasoft
                             </button>
                             ${ncActionHtml}

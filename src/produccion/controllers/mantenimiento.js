@@ -440,6 +440,20 @@ async function confirmarConciliacion(req, res) {
 
         const idMovimiento = resMov.rows[0].id;
 
+        // 1.5. CHECK EXCLUSIÓN MUTUA: Verificar que ARCA no tenga un borrador en curso
+        const arcaCheck = `
+            SELECT 1 
+            FROM public.mantenimiento_movimientos
+            WHERE articulo_numero = $1
+              AND observaciones LIKE $2
+              AND tipo_movimiento = 'EMISION_NC'
+            LIMIT 1
+        `;
+        const resArcaCheck = await client.query(arcaCheck, [articulo, '%Cliente #' + cliente_id + '%']);
+        if (resArcaCheck.rowCount > 0) {
+            throw new Error('Exclusión Mutua: Este artículo ya se encuentra en proceso de Nota de Crédito por circuito ARCA.');
+        }
+
         // 2. Insertar Cabecera de Conciliación
         const insertCabecera = `
             INSERT INTO public.mantenimiento_conciliaciones
@@ -711,6 +725,20 @@ async function emitirNotaCreditoBorrador(req, res) {
 
             if (!articulo) {
                 throw new Error("No se pudo extraer el código del artículo en el payload.");
+            }
+
+            // 0. CHECK EXCLUSIÓN MUTUA: Verificar que Lomasoft no lo haya conciliado
+            const lomaCheck = `
+                SELECT 1
+                FROM public.mantenimiento_conciliacion_items mci
+                JOIN public.mantenimiento_conciliaciones mc ON mc.id = mci.id_conciliacion
+                WHERE mci.articulo_numero = $1
+                  AND mc.id_cliente::text = $2
+                LIMIT 1
+            `;
+            const resLomaCheck = await client.query(lomaCheck, [articulo, cliente_id.toString()]);
+            if (resLomaCheck.rowCount > 0) {
+                throw new Error(`Exclusión Mutua: El artículo ${articulo} ya ha sido conciliado vía Lomasoft.`);
             }
 
             const cantidadEmitida = parseFloat(item.qty || 0);
