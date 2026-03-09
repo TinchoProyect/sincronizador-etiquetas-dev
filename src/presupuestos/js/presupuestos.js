@@ -1134,13 +1134,39 @@ function updatePresupuestosTable(data) {
         // Smart Sync UI Logic (Phase 2 - Compact)
         let syncButtonHTML = '';
         let editButtonHTML = '';
+        let deleteButtonHTML = '';
 
-        if (!item.esta_facturado) {
+        // BLINDAJE VISUAL: Órdenes de Retiro Procesadas
+        const esRetiro = item.categoria === 'Orden de Retiro';
+        // Se considera bloqueada si ya entró a Mantenimiento (ej: Recibido, En Auditoría, Conciliado) 
+        // o si ya generó una NC (esta_facturado = true)
+        const retiroProcesado = esRetiro && (
+            item.esta_facturado ||
+            (item.estado_logistico && item.estado_logistico !== 'ESPERANDO_MOSTRADOR' && item.estado_logistico !== 'PENDIENTE_ASIGNAR') ||
+            (item.estado && ['Recibido', 'En Auditoría', 'Conciliado'].includes(item.estado))
+        );
+
+        if (retiroProcesado) {
+            // Candado Logístico/Fiscal
+            editButtonHTML = `
+                <button class="btn-action btn-disabled" title="Bloqueado (Ya fue recibido en Mantenimiento o tiene NC)" disabled style="cursor: not-allowed; opacity: 0.5; filter: grayscale(100%);">
+                    🔒
+                </button>
+            `;
+            syncButtonHTML = '';
+            deleteButtonHTML = ''; // Ocultar botón de eliminar
+        } else if (!item.esta_facturado) {
             editButtonHTML = `
                 <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
                     ✏️
                 </button>
             `;
+            deleteButtonHTML = `
+                <button class="btn-action btn-delete" onclick="anularPresupuesto(${item.id})" title="Anular presupuesto">
+                    🗑️
+                </button>
+            `;
+
             if (item.tiene_borrador && item.id_borrador) {
                 // Caso B: Hay un borrador sin CAE
                 const styleExtra = item.borrador_desincronizado
@@ -1156,19 +1182,29 @@ function updatePresupuestosTable(data) {
                 `;
             } else {
                 // Caso A: No hay factura de ningún tipo
-                syncButtonHTML = `
-                    <button class="btn-action btn-sync-create" onclick="crearFacturaBorrador(${item.id})" title="Enviar a Factura" style="background-color: transparent; border: 1px solid #3498db; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
-                        <span style="font-size: 1.2em;">🛒</span>
-                    </button>
-                `;
+                // Prevenir generación directa de facturas para Órdenes de Retiro desde esta grilla (deben pasar por Mantenimiento)
+                if (esRetiro) {
+                    syncButtonHTML = `
+                        <button class="btn-action btn-disabled" title="Las devoluciones deben emitirse desde Gestión de Mantenimiento" disabled style="cursor: not-allowed; opacity: 0.5; filter: grayscale(100%); border: 1px solid #ccc; background: transparent; padding: 4px; min-width: 32px; height: 32px; border-radius: 4px;">
+                            <span style="font-size: 1.2em;">🚚</span>
+                        </button>
+                     `;
+                } else {
+                    syncButtonHTML = `
+                        <button class="btn-action btn-sync-create" onclick="crearFacturaBorrador(${item.id})" title="Enviar a Factura" style="background-color: transparent; border: 1px solid #3498db; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
+                            <span style="font-size: 1.2em;">🛒</span>
+                        </button>
+                    `;
+                }
             }
-        } else {
-            // Tiene CAE (Bloqueo Fiscal)
+        } else if (!retiroProcesado) { // Si ya fue procesado como retiro, este Else if se ignora porque el candado está arriba.
+            // Tiene CAE (Bloqueo Fiscal) para presupuestos normales
             editButtonHTML = `
                 <button class="btn-action btn-disabled" title="Edición Bloqueada (Tiene CAE)" disabled style="cursor: not-allowed; opacity: 0.5; filter: grayscale(100%);">
                     🔒
                 </button>
             `;
+            deleteButtonHTML = ''; // No se puede eliminar algo facturado
             // El botón de sync/facturar desaparece
             syncButtonHTML = '';
         }
@@ -1203,9 +1239,7 @@ function updatePresupuestosTable(data) {
                         🖨️
                     </button>
                     ${editButtonHTML}
-                    <button class="btn-action btn-delete" onclick="anularPresupuesto(${item.id})" title="Anular presupuesto">
-                        🗑️
-                    </button>
+                    ${deleteButtonHTML}
                     ${syncButtonHTML ? `<span class="separator" style="border-left: 1px solid #ccc; height: 20px; margin: 0 2px;"></span>${syncButtonHTML}` : ''}
                 </div>
             </td>
