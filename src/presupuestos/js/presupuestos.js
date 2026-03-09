@@ -1139,31 +1139,40 @@ function updatePresupuestosTable(data) {
             categoriaDisplay += (item.condicion_iva === 'Responsable Inscripto') ? ' A' : ' B';
         }
 
-        // Smart Sync UI Logic (Phase 1)
+        // Smart Sync UI Logic (Phase 2 - Compact)
         let syncButtonHTML = '';
+        let editButtonHTML = '';
+
         if (!item.esta_facturado) {
+            editButtonHTML = `
+                <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
+                    ✏️
+                </button>
+            `;
             if (item.tiene_borrador && item.id_borrador) {
                 // Caso B: Hay un borrador sin CAE
                 syncButtonHTML = `
-                    <button class="btn-action btn-sync-update" onclick="sincronizarBorrador(${item.id}, ${item.id_borrador})" title="Actualizar Borrador (Sincronización Inteligente)" style="background-color: #f39c12; color: window; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
-                        <span style="font-size: 1.2em;">🔄</span> <span style="font-size: 0.9em; font-weight: bold;">Actualizar Borrador</span>
+                    <button class="btn-action btn-sync-update" onclick="sincronizarBorrador(${item.id}, ${item.id_borrador})" title="Actualizar Borrador" style="background-color: transparent; border: 1px solid #f39c12; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
+                        <span style="font-size: 1.2em;">🔄</span>
                     </button>
                 `;
             } else {
                 // Caso A: No hay factura de ningún tipo
                 syncButtonHTML = `
-                    <button class="btn-action btn-sync-create" onclick="crearFacturaBorrador(${item.id})" title="Enviar a Facturación (Crear Borrador)" style="background-color: #3498db; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
-                        <span style="font-size: 1.2em;">🛒</span> <span style="font-size: 0.9em; font-weight: bold;">Enviar a Factura</span>
+                    <button class="btn-action btn-sync-create" onclick="crearFacturaBorrador(${item.id})" title="Enviar a Factura" style="background-color: transparent; border: 1px solid #3498db; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
+                        <span style="font-size: 1.2em;">🛒</span>
                     </button>
                 `;
             }
         } else {
             // Tiene CAE (Bloqueo Fiscal)
-            syncButtonHTML = `
-                <button class="btn-action btn-disabled" title="Fiscalmente Bloqueado (Tiene CAE)" disabled style="background-color: #bdc3c7; color: white; cursor: not-allowed; border: none; padding: 5px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;">
-                    <span style="font-size: 1.2em;">🔒</span> <span style="font-size: 0.9em; font-weight: bold;">Facturado</span>
+            editButtonHTML = `
+                <button class="btn-action btn-disabled" title="Edición Bloqueada (Tiene CAE)" disabled style="cursor: not-allowed; opacity: 0.5; filter: grayscale(100%);">
+                    🔒
                 </button>
-             `;
+            `;
+            // El botón de sync/facturar desaparece
+            syncButtonHTML = '';
         }
 
         return `
@@ -1191,17 +1200,15 @@ function updatePresupuestosTable(data) {
             </span>` : ''}
             </td>
             <td class="text-center">
-                <div class="action-buttons" style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: center;">
-                    ${syncButtonHTML}
+                <div class="action-buttons-compact" style="display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; justify-content: center;">
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
                         🖨️
                     </button>
-                    <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
-                        ✏️
-                    </button>
+                    ${editButtonHTML}
                     <button class="btn-action btn-delete" onclick="anularPresupuesto(${item.id})" title="Anular presupuesto">
                         🗑️
                     </button>
+                    ${syncButtonHTML ? `<span class="separator" style="border-left: 1px solid #ccc; height: 20px; margin: 0 2px;"></span>${syncButtonHTML}` : ''}
                 </div>
             </td>
         </tr>
