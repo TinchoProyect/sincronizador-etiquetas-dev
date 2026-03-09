@@ -1004,21 +1004,39 @@
 
                         <!-- REACTIVIDAD: PANEL DE TOTALES EN VIVO -->
                         <div class="totales-panel">
-                            <div class="panel-header">
+                            <div class="panel-header" style="display: flex; align-items: center;">
                                 <h4 style="margin: 0; color: #f39c12; font-size: 1.1em;">📊 Totales en Vivo</h4>
+                                <span class="tipo-comprobante" id="badge-tipo-factura"
+                                    style="margin-left:auto; background:#e0f2f1; color:#00695c; border:1px solid #80cbc4; padding:2px 8px; border-radius:4px; font-size:0.85em; display:none;">Factura
+                                    B (Iva Incluido)</span>
                             </div>
-                            <div class="panel-body">
+                            <div class="panel-body" id="live-totales-body">
                                 <div class="total-row">
-                                    <span class="label">Subtotal Bruto:</span>
-                                    <span class="value total-bruto" data-total="bruto">$0.00</span>
+                                    <span class="label">Subtotal Neto:</span>
+                                    <span class="value total-neto" data-total="neto">$0.00</span>
                                 </div>
                                 <div class="total-row descuento-row">
-                                    <span class="label">Descuento:</span>
-                                    <span class="value total-descuento" data-total="descuento">-$0.00</span>
+                                    <span class="label" id="label-descuento">Descuento:</span>
+                                    <span class="value total-descuento" data-total="descuento"
+                                        style="color: #e74c3c;">-$0.00</span>
                                 </div>
-                                <div class="total-row final-row">
-                                    <span class="label">Total Final:</span>
-                                    <span class="value total-final" data-total="final">$0.00</span>
+                                <div class="total-row">
+                                    <span class="label">Subtotal c/Desc:</span>
+                                    <span class="value total-base" data-total="base">$0.00</span>
+                                </div>
+                                <div class="total-row iva-row" id="row-iva21" style="display: none;">
+                                    <span class="label">IVA 21.00%:</span>
+                                    <span class="value total-iva" data-total="iva21">$0.00</span>
+                                </div>
+                                <div class="total-row iva-row" id="row-iva105" style="display: none;">
+                                    <span class="label">IVA 10.50%:</span>
+                                    <span class="value total-iva" data-total="iva105">$0.00</span>
+                                </div>
+                                <div class="total-row final-row"
+                                    style="background-color: #e9ecef; border-top: 2px solid #ced4da; margin-top: 10px; padding-top: 10px;">
+                                    <span class="label"><strong style="font-size: 1.1em;">TOTAL FINAL:</strong></span>
+                                    <span class="value total-final" data-total="final"><strong
+                                            style="font-size: 1.1em; color: #2c3e50;">$0.00</strong></span>
                                 </div>
                             </div>
                         </div>

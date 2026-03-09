@@ -514,21 +514,78 @@ function recalcTotales() {
     const tbody = document.getElementById('detalles-tbody');
     if (!tbody) return;
 
-    let subtotalBruto = 0;
+    // Determinar formato IVA según cliente
+    const condicionIva = (typeof clienteSeleccionado !== 'undefined' && clienteSeleccionado && clienteSeleccionado.condicion_iva) || 'Consumidor Final';
+    const formatoActual = (condicionIva === 'Responsable Inscripto') ? 'IVA_DISCRIMINADO' : 'IVA_INCLUIDO';
+
+    // Badge UI
+    const badgeElement = document.getElementById('badge-tipo-factura');
+    if (badgeElement) {
+        badgeElement.style.display = 'inline-block';
+        badgeElement.textContent = formatoActual === 'IVA_DISCRIMINADO' ? 'Factura A (Iva Discriminado)' : 'Factura B (Iva Incluido)';
+    }
+
+    let subtotalGeneralNeto = 0;
+    let iva21Total = 0;
+    let iva105Total = 0;
+
+    // Calcular Subtotal Neto Inicial
     tbody.querySelectorAll('tr').forEach(row => {
         const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
-        const pvu = parseFloat(row.querySelector('input[name*="[precio1]"]')?.value) || 0; // precio unit. con IVA
-        subtotalBruto += cant * pvu;
+        const netoUnitario = parseFloat(row.querySelector('input[name*="[valor1]"]')?.value) || 0;
+        subtotalGeneralNeto += cant * netoUnitario;
     });
 
+    // Descuentos
     const [pct] = getDescuentoPorcentaje();
-    const montoDesc = subtotalBruto * (pct / 100);
-    const totalFinal = subtotalBruto - montoDesc;
+    const descuentoDecimal = pct / 100;
+    const montoDesc = subtotalGeneralNeto * descuentoDecimal;
+    const baseConDescuento = subtotalGeneralNeto - montoDesc;
 
-    // Actualiza displays (tolerante: IDs o data-attrs)
-    setTextInto(['#total-bruto', '[data-total="bruto"]'], formatARS(subtotalBruto));
-    setTextInto(['#total-descuento', '[data-total="descuento"]'], formatARS(montoDesc));
-    setTextInto(['#total-final', '[data-total="final"]'], formatARS(totalFinal));
+    // Calcular IVA sobre base con descuento
+    tbody.querySelectorAll('tr').forEach(row => {
+        const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
+        const netoUnitario = parseFloat(row.querySelector('input[name*="[valor1]"]')?.value) || 0;
+        const ivaPorcentaje = parseFloat(row.querySelector('input[name*="[iva1]"]')?.value) || 0;
+        const ivaDecimal = ivaPorcentaje / 100;
+
+        const subtotalLineaNeto = cant * netoUnitario;
+        const baseLinea = descuentoDecimal > 0 ? subtotalLineaNeto * (1 - descuentoDecimal) : subtotalLineaNeto;
+        const ivaLinea = baseLinea * ivaDecimal;
+
+        if (Math.abs(ivaDecimal - 0.210) < 0.001) iva21Total += ivaLinea;
+        else if (Math.abs(ivaDecimal - 0.105) < 0.001) iva105Total += ivaLinea;
+    });
+
+    const totalFinal = baseConDescuento + iva21Total + iva105Total;
+
+    // Render displays
+    setTextInto(['.total-neto', '[data-total="neto"]'], formatARS(subtotalGeneralNeto));
+
+    const labelDescuento = document.getElementById('label-descuento');
+    if (labelDescuento) labelDescuento.textContent = `Descuento (${pct.toFixed(2)}%):`;
+    setTextInto(['.total-descuento', '[data-total="descuento"]'], `-$${formatARS(montoDesc).replace('$', '')}`);
+
+    setTextInto(['.total-base', '[data-total="base"]'], formatARS(baseConDescuento));
+
+    const rowIva21 = document.getElementById('row-iva21');
+    const rowIva105 = document.getElementById('row-iva105');
+
+    if (iva21Total > 0) {
+        if (rowIva21) rowIva21.style.display = 'flex';
+        setTextInto(['[data-total="iva21"]'], formatARS(iva21Total));
+    } else {
+        if (rowIva21) rowIva21.style.display = 'none';
+    }
+
+    if (iva105Total > 0) {
+        if (rowIva105) rowIva105.style.display = 'flex';
+        setTextInto(['[data-total="iva105"]'], formatARS(iva105Total));
+    } else {
+        if (rowIva105) rowIva105.style.display = 'none';
+    }
+
+    setTextInto(['.total-final', '[data-total="final"]'], formatARS(totalFinal));
 }
 
 // Listener de inputs de detalle + descuento
@@ -1131,6 +1188,7 @@ function mostrarSugerencias(clientes) {
                  data-cliente-numero="${numeroFormateado}"
                  data-cliente-nombre="${nombreCompleto}"
                  data-cliente-cuit="${cliente.cuit || ''}"
+                 data-cliente-condicion-iva="${cliente.condicion_iva || ''}"
                  onclick="seleccionarClientePorClick(this)">
                 <span class="cliente-numero">${numeroFormateado}</span>
                 <span class="cliente-nombre">— ${nombreCompleto}</span>
@@ -1194,13 +1252,15 @@ function seleccionarCliente(element) {
     const numeroFormateado = element.dataset.clienteNumero;
     const nombreCompleto = element.dataset.clienteNombre;
     const cuit = element.dataset.clienteCuit;
+    const condicion_iva = element.dataset.clienteCondicionIva;
 
     // Guardar cliente seleccionado
     clienteSeleccionado = {
         cliente_id: parseInt(clienteId, 10),
         numero_fmt: numeroFormateado,
         nombre: nombreCompleto,
-        cuit: cuit
+        cuit: cuit,
+        condicion_iva: condicion_iva
     };
 
     // Hook para Modo Retiro (Fase 2)

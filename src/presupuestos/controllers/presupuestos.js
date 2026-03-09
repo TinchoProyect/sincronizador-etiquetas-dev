@@ -741,12 +741,13 @@ const obtenerSugerenciasClientes = async (req, res) => {
           c.nombre,
           c.apellido,
           c.otros,
+          c.condicion_iva,
           COUNT(p.id) AS total_presupuestos
         FROM public.clientes c
         LEFT JOIN public.presupuestos p
           ON p.id_cliente = CAST(c.cliente_id AS text) AND p.activo = true
         WHERE c.cliente_id = $1
-        GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros
+        GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros, c.condicion_iva
         ORDER BY total_presupuestos DESC, c.nombre
         LIMIT $2
       `;
@@ -759,6 +760,7 @@ const obtenerSugerenciasClientes = async (req, res) => {
                 nombre: cliente.nombre,
                 apellido: cliente.apellido,
                 otros: cliente.otros,
+                condicion_iva: cliente.condicion_iva,
                 total_presupuestos: parseInt(cliente.total_presupuestos)
             }));
 
@@ -793,12 +795,13 @@ const obtenerSugerenciasClientes = async (req, res) => {
         c.nombre,
         c.apellido,
         c.otros,
+        c.condicion_iva,
         COUNT(pres.id) AS total_presupuestos
       FROM public.clientes c
       LEFT JOIN public.presupuestos pres
         ON pres.id_cliente = CAST(c.cliente_id AS text) AND pres.activo = true
       WHERE ${andConds.join(' AND ')}
-      GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros
+      GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros, c.condicion_iva
       ORDER BY total_presupuestos DESC, c.nombre
       LIMIT $${p}
     `;
@@ -811,6 +814,7 @@ const obtenerSugerenciasClientes = async (req, res) => {
             nombre: cliente.nombre,
             apellido: cliente.apellido,
             otros: cliente.otros,
+            condicion_iva: cliente.condicion_iva,
             total_presupuestos: parseInt(cliente.total_presupuestos)
         }));
 
