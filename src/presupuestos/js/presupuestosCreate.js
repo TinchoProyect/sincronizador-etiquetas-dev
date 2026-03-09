@@ -675,9 +675,11 @@ async function handleSubmit(event) {
         if (!fechaEntregaValor) fechaEntregaValor = fechaForm; // default = misma fecha
 
         // descuento ingresado como % (0..100) -> guardar proporción (0..1)
-        let descuentoPct = parseFloat(formData.get('descuento'));
+        // BUGFIX (Fallo 1): Leer forzosamente el elemento DOM para evadir desgarros de FormData con atributos `value` programáticos
+        let rawDescuento = document.getElementById('descuento')?.value || formData.get('descuento');
+        let descuentoPct = parseFloat(rawDescuento);
         descuentoPct = Number.isFinite(descuentoPct) ? Math.min(Math.max(descuentoPct, 0), 100) : 0;
-        const descuentoValor = parseFloat((descuentoPct / 100).toFixed(2)); // ej 5 -> 0.05
+        const descuentoValor = parseFloat((descuentoPct / 100).toFixed(4)); // ej 2.5 -> 0.0250
         const informeGeneradoValor = (document.getElementById('informe_generado')?.value || 'Pendiente').toString();
 
         // Secuencia (nuevo campo)
@@ -2662,11 +2664,29 @@ async function toggleDetallesPresupuesto(idPresupuesto, containerEl, btnEl) {
             `;
         });
 
+        let fetchedDescuento = 0;
+        if (data.data && data.data.presupuesto && data.data.presupuesto.descuento) {
+            fetchedDescuento = parseFloat(data.data.presupuesto.descuento) * 100;
+        }
+
+        // Fila de descuento (Si existe en la cabecera original)
+        if (fetchedDescuento > 0) {
+            const montoDescuento = subtotalGlobal * (fetchedDescuento / 100);
+            subtotalGlobal -= montoDescuento;
+            const descFmt = (typeof formatARS === 'function') ? formatARS(montoDescuento) : `$${montoDescuento.toFixed(2)}`;
+            html += `
+                <tr style="background: #f8dbdb;">
+                    <td colspan="3" style="padding: 8px; text-align: right; font-weight: bold; color: #d9534f;">🏷️ Descuento Global Original (${fetchedDescuento.toFixed(2)}%):</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold; color: #d9534f; font-size: 1.1em;">-${descFmt}</td>
+                </tr>
+            `;
+        }
+
         // Fila total
         const totalGlobalFmt = (typeof formatARS === 'function') ? formatARS(subtotalGlobal) : `$${subtotalGlobal.toFixed(2)}`;
         html += `
                 <tr style="background: #f8f9fa;">
-                    <td colspan="3" style="padding: 8px; text-align: right; font-weight: bold;">TOTAL:</td>
+                    <td colspan="3" style="padding: 8px; text-align: right; font-weight: bold;">TOTAL FINAL:</td>
                     <td style="padding: 8px; text-align: right; font-weight: bold; color: #2c3e50; font-size: 1.1em;">${totalGlobalFmt}</td>
                 </tr>
                 </tbody>
