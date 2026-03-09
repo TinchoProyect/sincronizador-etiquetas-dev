@@ -705,8 +705,8 @@ async function handleSubmit(event) {
             fecha: fechaForm,
             fecha_entrega: fechaEntregaValor,
             agente: agenteValor,
-            // BLINDAJE DEBUG: Leer del panel si es retiro, sino usar lógica estándar
-            tipo_comprobante: MODO_RETIRO ? 'Remito-Efectivo' : tipoComprobanteValor,
+            // BLINDAJE DEBUG: Garantizar persistencia estructural del TIPO de comprobante para las solapas
+            tipo_comprobante: MODO_RETIRO ? 'Orden de Retiro' : tipoComprobanteValor,
 
             estado: MODO_RETIRO
                 ? (document.getElementById('debug_estado')?.value || 'Orden de Retiro')
@@ -2876,7 +2876,7 @@ async function verificarHistorialParaRetiro(inputElement, suggestionElement, ite
 /**
  * Retomar la selección normal del artículo
  */
-function resumeSeleccionArticulo(input, element, precioOverride = null) {
+function resumeSeleccionArticulo(input, element, precioOverride = null, descuentoOverride = null) {
     // Marcar como validado para saltar la intercepción esta vez
     element.dataset.origenValidado = 'true';
 
@@ -2884,18 +2884,35 @@ function resumeSeleccionArticulo(input, element, precioOverride = null) {
     seleccionarArticulo(input, element);
 
     // Si hubo override de precio (desde historial), aplicarlo POST selección
-    if (precioOverride !== null) {
+    if (precioOverride !== null || descuentoOverride !== null) {
         setTimeout(() => {
             const row = input.closest('tr');
-            const valorInput = row.querySelector('input[name*="[valor1]"]');
-            if (valorInput) {
-                valorInput.value = precioOverride; // Precio histórico o 0
-                valorInput.classList.add('precio-vinculado'); // Efecto visual opcional
-                dispatchRecalc(valorInput); // Recalcular con el nuevo precio
 
-                // Visual feedback
-                valorInput.style.backgroundColor = '#d4edda'; // Verde suave
+            if (precioOverride !== null) {
+                const valorInput = row.querySelector('input[name*="[valor1]"]');
+                if (valorInput) {
+                    valorInput.value = precioOverride; // Precio histórico o 0
+                    valorInput.classList.add('precio-vinculado'); // Efecto visual opcional
+                    // Visual feedback
+                    valorInput.style.backgroundColor = '#d4edda'; // Verde suave
+                }
             }
+
+            if (descuentoOverride !== null && descuentoOverride > 0) {
+                const globalDescuentoInput = document.getElementById('descuento');
+                if (globalDescuentoInput) {
+                    const currentDesc = parseFloat(globalDescuentoInput.value) || 0;
+                    if (descuentoOverride > currentDesc) {
+                        globalDescuentoInput.value = descuentoOverride;
+                        globalDescuentoInput.style.backgroundColor = '#d4edda'; // Verde suave
+                    }
+                }
+            }
+
+            // Recalcular con el nuevo precio y descuento
+            const valorInputForEval = row.querySelector('input[name*="[valor1]"]');
+            if (valorInputForEval) dispatchRecalc(valorInputForEval);
+
         }, 100); // Pequeño delay para asegurar que el fetch de precios normal haya terminado (race condition fix simple)
     }
 }
@@ -3005,10 +3022,10 @@ function presentarOpcionesDeOrigen(historial, itemData, precioActual) {
 
                 // Event Listeners para los botones
                 const btnHist = itemDiv.querySelector('.btn-historico');
-                btnHist.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(precioHist); };
+                btnHist.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(precioHist, h.descuento_porcentaje || 0); };
 
                 const btnAct = itemDiv.querySelector('.btn-actual');
-                if (btnAct) btnAct.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(null); }; // Null = Recalcula con precio actual
+                if (btnAct) btnAct.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(null, 0); }; // Null = Recalcula con precio actual y 0 descuento
 
                 mesDiv.appendChild(itemDiv);
             });
@@ -3049,11 +3066,10 @@ function agruparHistorialPorFecha(historial) {
     // Convertir a arrays ordenados
     return Object.values(grupos).sort((a, b) => b.anio - a.anio).map(g => {
         g.meses = Object.values(g.meses).sort((a, b) => {
-            // Ordenar meses desc (no tengo índice aquí fácil, pero puedo usar items[0])
-            // Hack simple: orden natural de inserción suele ser desc si el query es desc.
-            // Pero mejor si el backend manda ordenado. Backend ordena por fecha DESC.
-            // Asi que el primer mes que encuentro es el más reciente.
-            return 0;
+            // Sort months descending by pulling the timestamp of the first item
+            const dateA = new Date(a.items[0].fecha).getTime();
+            const dateB = new Date(b.items[0].fecha).getTime();
+            return dateB - dateA;
         });
         return g;
     });
@@ -3078,11 +3094,11 @@ function tiempoRelativo(fechaISO) {
 /**
  * Callback al seleccionar una opción del modal
  */
-function seleccionarOrigenConfirmed(precioHistorico) {
+function seleccionarOrigenConfirmed(precioHistorico, descuentoPorcentaje = 0) {
     modalOrigen.hide();
     if (currentSelectionContext) {
         const { inputElement, suggestionElement } = currentSelectionContext;
-        resumeSeleccionArticulo(inputElement, suggestionElement, precioHistorico);
+        resumeSeleccionArticulo(inputElement, suggestionElement, precioHistorico, descuentoPorcentaje);
         currentSelectionContext = null;
     }
 }

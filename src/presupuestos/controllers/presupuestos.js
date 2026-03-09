@@ -110,8 +110,9 @@ const obtenerPresupuestos = async (req, res) => {
             offset,
             order_by,
             order_dir,
-            // Nuevo parámetro para excluir estados
+            // Nuevo parámetro para excluir estados y categorías
             estado_exclude,
+            categoria_exclude,
             // Parámetro específico para ocultar Documentos (Ej: Orden de Retiro)
             excluir_tipo
         } = req.query;
@@ -142,7 +143,11 @@ const obtenerPresupuestos = async (req, res) => {
             SELECT 
                 p.id,
                 p.id_presupuesto_ext,
-                p.tipo_comprobante as categoria,
+                CASE 
+                    WHEN p.tipo_comprobante = 'Orden de Retiro' THEN 'Orden de Retiro'
+                    WHEN p.estado IN ('Orden de Retiro', 'Retirado', 'Pendiente de Retiro', 'Recibido', 'En Auditoría', 'Conciliado') THEN 'Orden de Retiro'
+                    ELSE p.tipo_comprobante 
+                END as categoria,
                 c.condicion_iva,
                 p.id_cliente as cliente_id,
                 COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
@@ -178,9 +183,23 @@ const obtenerPresupuestos = async (req, res) => {
 
         // Aplicar filtros dinámicos
         if (categoria) {
-            paramCount++;
-            query += ` AND LOWER(p.tipo_comprobante) LIKE LOWER($${paramCount})`;
-            params.push(`%${categoria}%`);
+            if (categoria === 'Orden de Retiro') {
+                query += ` AND (p.tipo_comprobante = 'Orden de Retiro' OR p.estado IN ('Orden de Retiro', 'Retirado', 'Pendiente de Retiro', 'Recibido', 'En Auditoría', 'Conciliado'))`;
+            } else {
+                paramCount++;
+                query += ` AND LOWER(p.tipo_comprobante) LIKE LOWER($${paramCount})`;
+                params.push(`%${categoria}%`);
+            }
+        }
+
+        if (categoria_exclude) {
+            if (categoria_exclude === 'Orden de Retiro') {
+                query += ` AND (p.tipo_comprobante != 'Orden de Retiro' AND p.estado NOT IN ('Orden de Retiro', 'Retirado', 'Pendiente de Retiro', 'Recibido', 'En Auditoría', 'Conciliado'))`;
+            } else {
+                paramCount++;
+                query += ` AND LOWER(p.tipo_comprobante) NOT LIKE LOWER($${paramCount})`;
+                params.push(`%${categoria_exclude}%`);
+            }
         }
 
         // Filtro de cliente mejorado - Filtro cliente + Typeahead + Fechas – 2024-12-19
@@ -3046,7 +3065,8 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                 d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
                 d.valor1 as precio_neto_historico,      -- Precio NETO guardado (para comparativas)
                 -- Usamos 'articulo' que contiene la descripción completa (o código en algunos casos)
-                d.articulo as descripcion 
+                d.articulo as descripcion,
+                COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
             FROM presupuestos p
             JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
             WHERE p.id_cliente = $1::text 

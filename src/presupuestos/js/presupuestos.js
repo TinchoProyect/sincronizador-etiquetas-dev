@@ -456,19 +456,11 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
 
         // --- LÓGICA DE SOLAPAS (TABS) ---
         if (appState.activeTab === 'ventas') {
-            // En Ventas, EXCLUIMOS TODOS los estados de retiro
-            ESTADOS_RETIRO.forEach(estadoRetiro => {
-                queryParams.append('estado_exclude', estadoRetiro);
-            });
+            // En Ventas, excluimos la categoría 'Orden de Retiro'
+            queryParams.append('categoria_exclude', 'Orden de Retiro');
         } else if (appState.activeTab === 'retiros') {
-            // En Retiros, si el usuario NO filtró nada, traemos todos los estados de retiro
-            if (!appState.filtros.estado || appState.filtros.estado.length === 0) {
-                ESTADOS_RETIRO.forEach(estadoRetiro => {
-                    queryParams.append('estado', estadoRetiro);
-                });
-            }
-            // Si el usuario SÍ filtró, ya se agregaron arriba (y como la UI solo muestra botones de retiro,
-            // el filtro del usuario ya es un subconjunto válido).
+            // En Retiros, solo pedimos 'Orden de Retiro'
+            queryParams.append('categoria', 'Orden de Retiro');
         }
 
         // AUDITORÍA DE FECHAS - Activar logs si está habilitado
@@ -1107,11 +1099,11 @@ function updatePresupuestosTable(data) {
     // FILTRO DE SEGURIDAD CLIENT-SIDE (HARD FILTER)
     // Asegura que no se muestren registros cruzados incluso si el backend los enviara
     if (appState.activeTab === 'ventas') {
-        // En ventas, NO mostrar nada que sea de retiro
-        data = data.filter(item => !ESTADOS_RETIRO.includes(item.estado));
+        // En ventas, NO mostrar nada que sea de retiro basado estrictamente en el TIPO, no en su estado temporal
+        data = data.filter(item => item.categoria !== 'Orden de Retiro');
     } else if (appState.activeTab === 'retiros') {
-        // En retiros, SOLO mostrar lo que sea de retiro
-        data = data.filter(item => ESTADOS_RETIRO.includes(item.estado));
+        // En retiros, SOLO mostrar lo que sea de retiro (Orden de Retiro original)
+        data = data.filter(item => item.categoria === 'Orden de Retiro');
     }
 
     console.log(`🔍 [PRESUPUESTOS-JS] Actualizando tabla con ${data.length} registros...`);
