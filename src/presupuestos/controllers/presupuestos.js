@@ -151,6 +151,7 @@ const obtenerPresupuestos = async (req, res) => {
                     FROM public.presupuestos_detalles d 
                     WHERE d.id_presupuesto = p.id
                 ), 0) * (1 - COALESCE(p.descuento, 0)) as total_final,
+                COALESCE(p.descuento, 0) * 100 as descuento,
                 0 as monto,
                 p.fecha as fecha_registro,
                 p.activo,

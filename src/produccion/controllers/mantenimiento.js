@@ -1086,7 +1086,7 @@ async function trazarFacturaOriginal(req, res) {
                 qs.stock_actual as cantidad_devuelta,
                 pd.valor1 as precio_historico,
                 pd.camp2 as iva_alicuota,
-                COALESCE(f.descuento, 0) as descuento_global,
+                COALESCE(p.descuento, 0) as descuento_global,
                 pd.cantidad as cantidad_original_facturada -- Trazabilidad de tope físico
             FROM quarantine_stock qs
             -- Join with original invoice details to get the historical price for EVERY returned item
@@ -1094,6 +1094,7 @@ async function trazarFacturaOriginal(req, res) {
               ON pd.id_presupuesto = $2
               AND (pd.articulo = qs.articulo_numero OR pd.articulo IN (SELECT codigo_barras FROM public.articulos WHERE numero = qs.articulo_numero))
             JOIN public.factura_facturas f ON f.presupuesto_id = pd.id_presupuesto
+            JOIN public.presupuestos p ON p.id = f.presupuesto_id
             LEFT JOIN public.articulos a ON a.numero = qs.articulo_numero
             ORDER BY qs.articulo_numero ASC
         `;

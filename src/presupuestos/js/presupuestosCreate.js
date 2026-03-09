@@ -2556,7 +2556,7 @@ async function abrirModalVinculacion(clienteId) {
                 const btnImportar = item.querySelector('.btn-importar-total');
                 btnImportar.onclick = (e) => {
                     e.stopPropagation();
-                    confirmarImportacion(p.id);
+                    confirmarImportacion(p.id, p.descuento || 0);
                 };
 
                 // Clic en la fila también expande
@@ -2683,7 +2683,7 @@ async function toggleDetallesPresupuesto(idPresupuesto, containerEl, btnEl) {
     }
 }
 
-async function confirmarImportacion(idPresupuesto) {
+async function confirmarImportacion(idPresupuesto, descuentoPorcentaje = 0) {
     if (!confirm('¿Importar todos los artículos de este presupuesto? Se reemplazarán las filas actuales de la orden de retiro.')) return;
 
     const modal = document.getElementById('modal-paginator-presupuestos');
@@ -2769,6 +2769,12 @@ async function confirmarImportacion(idPresupuesto) {
 
         // Aplicar Iva Global mode por si acaso (para remitos)
         if (typeof applyIvaModeToAllRows === 'function') applyIvaModeToAllRows();
+
+        // Aplicar descuento heredado
+        const inpDescuento = document.getElementById('descuento');
+        if (inpDescuento && descuentoPorcentaje > 0) {
+            inpDescuento.value = descuentoPorcentaje;
+        }
 
         // Disparar total final
         if (typeof recalcTotales === 'function') setTimeout(recalcTotales, 200);
