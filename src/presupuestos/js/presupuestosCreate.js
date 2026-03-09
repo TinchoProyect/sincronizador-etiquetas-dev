@@ -2698,8 +2698,13 @@ async function confirmarImportacion(idPresupuesto, descuentoPorcentaje = 0) {
         const data = await res.json();
 
         let detalles = [];
+        let fetchedDescuento = 0; // QA Fix: Extraer desde la API
         if (data.data && Array.isArray(data.data.detalles)) {
             detalles = data.data.detalles;
+            if (data.data.presupuesto && data.data.presupuesto.descuento) {
+                // El endpoint /detalles devuelve la fracción original (ej: 0.02)
+                fetchedDescuento = parseFloat(data.data.presupuesto.descuento) * 100;
+            }
         } else if (Array.isArray(data.data)) {
             detalles = data.data;
         } else if (Array.isArray(data.detalles)) {
@@ -2769,10 +2774,14 @@ async function confirmarImportacion(idPresupuesto, descuentoPorcentaje = 0) {
         // Aplicar Iva Global mode por si acaso (para remitos)
         if (typeof applyIvaModeToAllRows === 'function') applyIvaModeToAllRows();
 
-        // Aplicar descuento heredado
+        // Aplicar descuento heredado (Pilar logístico corregido para importaciones masivas)
+        const finalDescuento = fetchedDescuento > 0 ? fetchedDescuento : (parseFloat(descuentoPorcentaje) || 0);
+
         const inpDescuento = document.getElementById('descuento');
-        if (inpDescuento && descuentoPorcentaje > 0) {
-            inpDescuento.value = descuentoPorcentaje;
+        if (inpDescuento && finalDescuento > 0) {
+            inpDescuento.value = finalDescuento.toFixed(2);
+            inpDescuento.style.backgroundColor = '#d4edda'; // Verde suave (Feedback visual)
+            console.log(`[CLONADO] Descuento heredado aplicado: ${finalDescuento}%`);
         }
 
         // Disparar total final
