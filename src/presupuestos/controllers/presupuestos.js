@@ -143,7 +143,14 @@ const obtenerPresupuestos = async (req, res) => {
                 p.id,
                 p.id_presupuesto_ext,
                 p.tipo_comprobante as categoria,
+                c.condicion_iva,
+                p.id_cliente as cliente_id,
                 COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
+                COALESCE((
+                    SELECT SUM(d.cantidad * d.precio1) 
+                    FROM public.presupuestos_detalles d 
+                    WHERE d.id_presupuesto = p.id
+                ), 0) * (1 - COALESCE(p.descuento, 0)) as total_final,
                 0 as monto,
                 p.fecha as fecha_registro,
                 p.activo,
@@ -1787,9 +1794,15 @@ const obtenerDetallesPresupuesto = async (req, res) => {
 
         // Verificar que el presupuesto existe y obtener id_presupuesto_ext
         const presupuestoQuery = `
-            SELECT id, id_presupuesto_ext, tipo_comprobante 
-            FROM public.presupuestos 
-            WHERE id = $1 AND activo = true
+            SELECT 
+                p.id, 
+                p.id_presupuesto_ext, 
+                p.tipo_comprobante,
+                p.descuento,
+                c.condicion_iva
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+            WHERE p.id = $1 AND p.activo = true
         `;
 
         const presupuestoResult = await req.db.query(presupuestoQuery, [parseInt(id)]);
@@ -1897,7 +1910,9 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 presupuesto: {
                     id: presupuesto.id,
                     id_presupuesto: presupuesto.id_presupuesto_ext,
-                    tipo_comprobante: presupuesto.tipo_comprobante
+                    tipo_comprobante: presupuesto.tipo_comprobante,
+                    condicion_iva: presupuesto.condicion_iva,
+                    descuento: parseFloat(presupuesto.descuento || 0)
                 },
                 detalles: detallesConCalculos,
                 totales: totales,

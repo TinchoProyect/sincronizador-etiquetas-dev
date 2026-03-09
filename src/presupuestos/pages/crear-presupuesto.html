@@ -718,6 +718,43 @@
                 font-size: 1.4em;
             }
         }
+
+        /* Panel de Totales en Vivo */
+        .totales-panel {
+            background: linear-gradient(to right, #2c3e50, #34495e);
+            border-radius: 8px;
+            color: white;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .totales-panel .panel-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        .totales-panel .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .totales-panel .descuento-row {
+            color: #e74c3c;
+        }
+
+        .totales-panel .final-row {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px dashed rgba(255, 255, 255, 0.2);
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2ecc71;
+        }
     </style>
 </head>
 
@@ -964,6 +1001,27 @@
                         <button type="button" class="btn-add-detalle" onclick="agregarDetalle()">
                             ➕ Agregar Artículo
                         </button>
+
+                        <!-- REACTIVIDAD: PANEL DE TOTALES EN VIVO -->
+                        <div class="totales-panel">
+                            <div class="panel-header">
+                                <h4 style="margin: 0; color: #f39c12; font-size: 1.1em;">📊 Totales en Vivo</h4>
+                            </div>
+                            <div class="panel-body">
+                                <div class="total-row">
+                                    <span class="label">Subtotal Bruto:</span>
+                                    <span class="value total-bruto" data-total="bruto">$0.00</span>
+                                </div>
+                                <div class="total-row descuento-row">
+                                    <span class="label">Descuento:</span>
+                                    <span class="value total-descuento" data-total="descuento">-$0.00</span>
+                                </div>
+                                <div class="total-row final-row">
+                                    <span class="label">Total Final:</span>
+                                    <span class="value total-final" data-total="final">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- METODO DE RETIRO (NUEVO - SOLO LOGISTICA INVERSA) -->

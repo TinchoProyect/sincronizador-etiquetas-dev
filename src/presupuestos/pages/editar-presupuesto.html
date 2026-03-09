@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,26 +15,26 @@
             margin: 0 auto;
             padding: 20px;
         }
-        
+
         /* Header compacto */
         header {
             background-color: white;
             padding: 15px 20px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
+
         header h1 {
             margin: 0;
             color: #2c3e50;
             font-size: 1.5em;
             font-weight: 600;
         }
-        
+
         .back-button {
             background-color: #3498db;
             color: white;
@@ -44,19 +45,19 @@
             font-size: 0.9em;
             transition: all 0.3s ease;
         }
-        
+
         .back-button:hover {
             background-color: #2980b9;
             transform: translateY(-2px);
         }
-        
+
         .form-container {
             max-width: 1000px;
             margin: 0 auto;
             padding: 25px;
             background: white;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
         .form-section {
@@ -106,7 +107,7 @@
         .form-group select:focus {
             outline: none;
             border-color: #007bff;
-            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
         }
 
         .form-group input:disabled {
@@ -152,7 +153,7 @@
             font-weight: 500;
             transition: all 0.3s ease;
         }
-        
+
         .btn-add-detalle:hover {
             background-color: #219a52;
             transform: translateY(-2px);
@@ -167,7 +168,7 @@
             cursor: pointer;
             font-size: 12px;
         }
-        
+
         .btn-remove-detalle:hover {
             background-color: #c0392b;
         }
@@ -199,7 +200,7 @@
             background-color: #3498db;
             color: white;
         }
-        
+
         .btn-primary:hover:not(:disabled) {
             background-color: #2980b9;
             transform: translateY(-2px);
@@ -209,7 +210,7 @@
             background-color: #95a5a6;
             color: white;
         }
-        
+
         .btn-secondary:hover {
             background-color: #7f8c8d;
             transform: translateY(-2px);
@@ -229,14 +230,19 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
-        
+
         .btn:disabled .loading-spinner {
             display: inline-block;
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .message {
@@ -278,7 +284,7 @@
             border: 1px solid #3498db;
             border-top: none;
             border-radius: 0 0 6px 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             max-height: 300px;
             overflow-y: auto;
             z-index: 1000;
@@ -337,10 +343,24 @@
         }
 
         @keyframes dots {
-            0%, 20% { content: ""; }
-            40% { content: "."; }
-            60% { content: ".."; }
-            80%, 100% { content: "..."; }
+
+            0%,
+            20% {
+                content: "";
+            }
+
+            40% {
+                content: ".";
+            }
+
+            60% {
+                content: "..";
+            }
+
+            80%,
+            100% {
+                content: "...";
+            }
         }
 
         /* Información principal del cliente */
@@ -351,23 +371,23 @@
             margin-bottom: 20px;
             border: 2px solid #3498db;
         }
-        
+
         .info-principal h2 {
             margin: 0 0 10px 0;
             color: #2c3e50;
             font-size: 1.6em;
             font-weight: 700;
         }
-        
+
         .info-principal-detalles {
             color: #666;
             font-size: 0.95em;
         }
-        
+
         .info-principal-detalles strong {
             color: #2c3e50;
         }
-        
+
         /* Acordeón de información del presupuesto */
         .presupuesto-info-accordion {
             margin-bottom: 25px;
@@ -375,7 +395,7 @@
             border-radius: 8px;
             overflow: hidden;
         }
-        
+
         .presupuesto-info-header {
             background: linear-gradient(135deg, #e3f2fd, #bbdefb);
             padding: 12px 20px;
@@ -387,28 +407,28 @@
             user-select: none;
             border-left: 4px solid #3498db;
         }
-        
+
         .presupuesto-info-header:hover {
             background: linear-gradient(135deg, #bbdefb, #90caf9);
         }
-        
+
         .presupuesto-info-header h4 {
             margin: 0;
             color: #1976d2;
             font-size: 0.95em;
             font-weight: 600;
         }
-        
+
         .presupuesto-info-icon {
             font-size: 1em;
             transition: transform 0.3s ease;
             color: #1976d2;
         }
-        
+
         .presupuesto-info-header.active .presupuesto-info-icon {
             transform: rotate(180deg);
         }
-        
+
         .presupuesto-info-content {
             max-height: 0;
             overflow: hidden;
@@ -416,7 +436,7 @@
             padding: 0 20px;
             background: linear-gradient(135deg, #f0f8ff, #e3f2fd);
         }
-        
+
         .presupuesto-info-content.active {
             max-height: 300px;
             padding: 15px 20px;
@@ -443,7 +463,7 @@
             color: #424242;
             font-size: 0.85em;
         }
-        
+
         /* Sección de cliente destacada */
         .cliente-section {
             margin-bottom: 25px;
@@ -452,7 +472,7 @@
             border-radius: 8px;
             border: 2px solid #3498db;
         }
-        
+
         .cliente-nombre-display {
             display: none;
             font-size: 1.8em;
@@ -462,11 +482,11 @@
             padding: 10px 0;
             border-bottom: 3px solid #3498db;
         }
-        
+
         .cliente-nombre-display.visible {
             display: block;
         }
-        
+
         .cliente-info-extra {
             display: none;
             margin-top: 10px;
@@ -476,11 +496,11 @@
             font-size: 0.9em;
             color: #666;
         }
-        
+
         .cliente-info-extra.visible {
             display: block;
         }
-        
+
         /* Acordeón para campos secundarios */
         .accordion-section {
             margin-bottom: 25px;
@@ -488,7 +508,7 @@
             border-radius: 8px;
             overflow: hidden;
         }
-        
+
         .accordion-header {
             background: #f8f9fa;
             padding: 15px 20px;
@@ -499,35 +519,35 @@
             transition: background-color 0.3s ease;
             user-select: none;
         }
-        
+
         .accordion-header:hover {
             background: #e9ecef;
         }
-        
+
         .accordion-header h3 {
             margin: 0;
             color: #495057;
             font-size: 1.1em;
             font-weight: 600;
         }
-        
+
         .accordion-icon {
             font-size: 1.2em;
             transition: transform 0.3s ease;
             color: #6c757d;
         }
-        
+
         .accordion-header.active .accordion-icon {
             transform: rotate(180deg);
         }
-        
+
         .accordion-content {
             max-height: 0;
             overflow: hidden;
             transition: max-height 0.3s ease;
             padding: 0 20px;
         }
-        
+
         .accordion-content.active {
             max-height: 1000px;
             padding: 20px;
@@ -547,7 +567,7 @@
             border: 1px solid #ddd;
             border-top: none;
             border-radius: 0 0 4px 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
             max-height: 300px;
             overflow-y: auto;
             z-index: 1000;
@@ -635,19 +655,78 @@
             font-weight: 500;
             text-align: right;
         }
-        
+
+        /* Panel de Totales en Vivo */
+        .totales-panel {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 25px;
+            float: right;
+            min-width: 300px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .totales-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 1.1em;
+            color: #495057;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .totales-row:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .totales-descuento,
+        .totales-descuento .totales-value {
+            color: #e74c3c;
+        }
+
+        .totales-final {
+            margin-top: 10px;
+            padding-top: 15px !important;
+            border-top: 2px solid #3498db !important;
+        }
+
+        .totales-final span {
+            font-weight: 700;
+            font-size: 1.3em;
+            color: #2c3e50;
+        }
+
+        .totales-value {
+            font-weight: 600;
+        }
+
+        .totales-value-large {
+            font-weight: 800;
+        }
+
+        /* Clearfix para el contenedor si es necesario */
+        .form-section::after {
+            content: "";
+            clear: both;
+            display: table;
+        }
+
         /* Footer */
         footer {
             background-color: white;
             padding: 15px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             text-align: center;
             margin-top: 20px;
             color: #7f8c8d;
             font-size: 0.9em;
         }
-        
+
         /* Responsive */
         @media (max-width: 768px) {
             header {
@@ -655,24 +734,24 @@
                 gap: 10px;
                 align-items: stretch;
             }
-            
+
             header h1 {
                 font-size: 1.3em;
                 text-align: center;
             }
-            
+
             .back-button {
                 text-align: center;
             }
-            
+
             .form-row {
                 flex-direction: column;
             }
-            
+
             .info-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .cliente-nombre-display {
                 font-size: 1.4em;
             }
@@ -685,52 +764,53 @@
             const content = header.nextElementSibling;
             content.classList.toggle('active');
         }
-        
+
         // Función para toggle del acordeón de información del presupuesto
         function togglePresupuestoInfo(header) {
             header.classList.toggle('active');
             const content = header.nextElementSibling;
             content.classList.toggle('active');
         }
-        
+
         // Función para actualizar información principal del cliente
-        window.actualizarInfoPrincipal = function(presupuestoData) {
+        window.actualizarInfoPrincipal = function (presupuestoData) {
             console.log('📋 [INFO-PRINCIPAL] Actualizando información principal:', presupuestoData);
-            
+
             // Actualizar nombre del cliente en la info principal
             const nombrePrincipal = document.getElementById('info-cliente-nombre');
             if (nombrePrincipal && presupuestoData.concepto) {
                 nombrePrincipal.textContent = presupuestoData.concepto;
             }
-            
+
             // Actualizar ID del cliente en la info principal
             const clienteIdDisplay = document.getElementById('info-cliente-id');
             if (clienteIdDisplay && presupuestoData.id_cliente) {
                 clienteIdDisplay.textContent = `ID: ${presupuestoData.id_cliente}`;
             }
-            
+
             // Actualizar campo oculto de id_cliente para el formulario
             const idClienteInput = document.getElementById('id_cliente');
             if (idClienteInput && presupuestoData.id_cliente) {
                 idClienteInput.value = presupuestoData.id_cliente;
             }
-            
+
             // Actualizar datos resumidos
             const idPrincipal = document.getElementById('info-id-principal');
             const fechaPrincipal = document.getElementById('info-fecha-principal');
             const estadoPrincipal = document.getElementById('info-estado-principal');
-            
+
             if (idPrincipal) idPrincipal.textContent = presupuestoData.id_presupuesto_ext || presupuestoData.id || '-';
             if (fechaPrincipal) {
                 const fecha = presupuestoData.fecha ? new Date(presupuestoData.fecha).toLocaleDateString('es-ES') : '-';
                 fechaPrincipal.textContent = fecha;
             }
             if (estadoPrincipal) estadoPrincipal.textContent = presupuestoData.estado || '-';
-            
+
             console.log('✅ [INFO-PRINCIPAL] Información principal actualizada correctamente');
         };
     </script>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -747,15 +827,16 @@
                 <div class="info-principal">
                     <div style="display: flex; align-items: baseline; gap: 15px; margin-bottom: 10px;">
                         <h2 id="info-cliente-nombre" style="margin: 0;">Cargando cliente...</h2>
-                        <span id="info-cliente-id" style="font-size: 1.3em; font-weight: 600; color: #3498db;">ID: -</span>
+                        <span id="info-cliente-id" style="font-size: 1.3em; font-weight: 600; color: #3498db;">ID:
+                            -</span>
                     </div>
                     <div class="info-principal-detalles">
-                        <strong>ID Presupuesto:</strong> <span id="info-id-principal">-</span> | 
-                        <strong>Fecha:</strong> <span id="info-fecha-principal">-</span> | 
+                        <strong>ID Presupuesto:</strong> <span id="info-id-principal">-</span> |
+                        <strong>Fecha:</strong> <span id="info-fecha-principal">-</span> |
                         <strong>Estado:</strong> <span id="info-estado-principal">-</span>
                     </div>
                 </div>
-                
+
                 <!-- Información del Presupuesto (colapsable) -->
                 <div class="presupuesto-info-accordion">
                     <div class="presupuesto-info-header" onclick="togglePresupuestoInfo(this)">
@@ -795,7 +876,7 @@
                 <form id="form-editar-presupuesto">
                     <!-- Campo oculto para ID Cliente (requerido para el formulario) -->
                     <input type="hidden" id="id_cliente" name="id_cliente" required>
-                    
+
                     <!-- Acordeón: Opciones Avanzadas -->
                     <div class="accordion-section">
                         <div class="accordion-header" onclick="toggleAccordion(this)">
@@ -812,8 +893,8 @@
                                 <div class="form-group">
                                     <label for="tipo_comprobante">Tipo de Comprobante</label>
                                     <select id="tipo_comprobante" name="tipo_comprobante">
-                                    <option value="Factura" selected>Factura</option>
-                                    <option value="Remito-Efectivo">Remito-Efectivo</option>
+                                        <option value="Factura" selected>Factura</option>
+                                        <option value="Remito-Efectivo">Remito-Efectivo</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -822,50 +903,53 @@
                                         <option value="Muestra de Fraccionados">Muestra de Fraccionados</option>
                                         <option value="Presupuesto/Orden" selected>Presupuesto/Orden</option>
                                         <option value="Confirmado">Confirmado</option>
-                                        <option value="Lunes - Reparto 001 (Centro/Villa Elvira)">Lunes - Reparto 001 (Centro/Villa Elvira)</option>
-                                        <option value="Martes - Reparto 002 (Los Hornos)">Martes - Reparto 002 (Los Hornos)</option>
-                                        <option value="Miércoles - Reparto 003 (Norte)">Miércoles - Reparto 003 (Norte)</option>
-                                        <option value="Jueves - Reparto 004 (Centro/Berisso-Ensenada)">Jueves - Reparto 004 (Centro/Berisso-Ensenada)</option>
-                                        <option value="Viernes - Reparto 005 (El Retiro)">Viernes - Reparto 005 (El Retiro)</option>
+                                        <option value="Lunes - Reparto 001 (Centro/Villa Elvira)">Lunes - Reparto 001
+                                            (Centro/Villa Elvira)</option>
+                                        <option value="Martes - Reparto 002 (Los Hornos)">Martes - Reparto 002 (Los
+                                            Hornos)</option>
+                                        <option value="Miércoles - Reparto 003 (Norte)">Miércoles - Reparto 003 (Norte)
+                                        </option>
+                                        <option value="Jueves - Reparto 004 (Centro/Berisso-Ensenada)">Jueves - Reparto
+                                            004 (Centro/Berisso-Ensenada)</option>
+                                        <option value="Viernes - Reparto 005 (El Retiro)">Viernes - Reparto 005 (El
+                                            Retiro)</option>
                                         <option value="Retira por Deposito">Retira por Deposito</option>
                                         <option value="Entregado">Entregado</option>
                                         <option value="Consignado">Consignado</option>
                                     </select>
                                 </div>
                             </div>
-                            
+
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="secuencia">Secuencia (automático)</label>
-                                    <input type="text" id="secuencia" name="secuencia" value="Imprimir" 
-                                           disabled readonly
-                                           style="background-color: #f0f0f0; cursor: not-allowed; color: #666;"
-                                           title="Este campo se establece automáticamente en 'Imprimir' al guardar">
+                                    <input type="text" id="secuencia" name="secuencia" value="Imprimir" disabled
+                                        readonly style="background-color: #f0f0f0; cursor: not-allowed; color: #666;"
+                                        title="Este campo se establece automáticamente en 'Imprimir' al guardar">
                                     <small style="display: block; color: #666; font-size: 0.85em; margin-top: 4px;">
                                         ℹ️ Este campo siempre se guarda como "Imprimir" automáticamente
                                     </small>
                                 </div>
-                                
+
                                 <div class="form-group">
                                     <label for="agente">Agente</label>
-                                    <input type="text" id="agente" name="agente"
-                                           placeholder="Nombre del agente">
+                                    <input type="text" id="agente" name="agente" placeholder="Nombre del agente">
                                 </div>
 
                                 <div class="form-group">
                                     <label for="punto_entrega">Punto de Entrega</label>
                                     <input type="text" id="punto_entrega" name="punto_entrega"
-                                           placeholder="Ej: Sucursal Centro">
+                                        placeholder="Ej: Sucursal Centro">
                                 </div>
                             </div>
 
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="descuento">Descuento (%)</label>
-                                    <input type="number" id="descuento" name="descuento"
-                                           min="0" max="100" step="0.01" placeholder="0.00">
+                                    <input type="number" id="descuento" name="descuento" min="0" max="100" step="0.01"
+                                        placeholder="0.00">
                                 </div>
-                                
+
                                 <div class="form-group">
                                     <label for="fecha_entrega">Fecha de Entrega</label>
                                     <input type="date" id="fecha_entrega" name="fecha_entrega">
@@ -873,8 +957,7 @@
 
                                 <div class="form-group">
                                     <label for="nota">Nota</label>
-                                    <input type="text" id="nota" name="nota"
-                                           placeholder="Observaciones adicionales">
+                                    <input type="text" id="nota" name="nota" placeholder="Observaciones adicionales">
                                 </div>
                             </div>
                         </div>
@@ -886,15 +969,15 @@
 
                         <table class="detalles-table">
                             <thead>
-                              <tr>
-                                 <th width="200">Artículo *</th>
-                                 <th width="100">Cantidad *</th>
-                                 <th width="120">Valor Unitario *</th>
-                                 <th width="100">IVA %</th>
-                                 <th width="120">Precio c/IVA</th>
-                                 <th width="140">Subtotal</th>
-                                 <th width="80">Acciones</th>
-                              </tr>
+                                <tr>
+                                    <th width="200">Artículo *</th>
+                                    <th width="100">Cantidad *</th>
+                                    <th width="120">Valor Unitario *</th>
+                                    <th width="100">IVA %</th>
+                                    <th width="120">Precio c/IVA</th>
+                                    <th width="140">Subtotal</th>
+                                    <th width="80">Acciones</th>
+                                </tr>
                             </thead>
                             <tbody id="detalles-tbody">
                                 <!-- Se llenarán dinámicamente -->
@@ -904,6 +987,22 @@
                         <button type="button" class="btn-add-detalle" onclick="agregarDetalle()">
                             ➕ Agregar Artículo
                         </button>
+
+                        <!-- Panel de Totales en Vivo -->
+                        <div class="totales-panel">
+                            <div class="totales-row">
+                                <span>Subtotal:</span>
+                                <span id="total-bruto" class="totales-value">$ 0,00</span>
+                            </div>
+                            <div class="totales-row totales-descuento">
+                                <span>Descuento:</span>
+                                <span id="total-descuento" class="totales-value">-$ 0,00</span>
+                            </div>
+                            <div class="totales-row totales-final">
+                                <span>Total Final:</span>
+                                <span id="total-final" class="totales-value-large">$ 0,00</span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Acciones -->
@@ -914,7 +1013,9 @@
                         <button type="submit" id="btn-guardar" class="btn btn-primary">
                             <span class="loading-spinner"></span>
                             💾 Guardar Presupuesto
-                        </button> <button type="button" id="btn-facturar" class="btn btn-primary" style="margin-left:10px;"> Facturar</button></div>
+                        </button> <button type="button" id="btn-facturar" class="btn btn-primary"
+                            style="margin-left:10px;"> Facturar</button>
+                    </div>
                 </form>
             </div>
         </main>
@@ -928,5 +1029,5 @@
     <script src="/js/detalles-common.js"></script>
     <script src="/js/presupuestosEdit.js"></script>
 </body>
-</html>
 
+</html>

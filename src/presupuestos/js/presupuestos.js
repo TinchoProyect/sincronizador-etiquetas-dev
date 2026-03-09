@@ -1133,32 +1133,34 @@ function updatePresupuestosTable(data) {
         return;
     }
 
-    tbody.innerHTML = data.map(item => `
+    tbody.innerHTML = data.map(item => {
+        let categoriaDisplay = escapeHtml(item.categoria || 'Sin tipo');
+        if (categoriaDisplay.toLowerCase() === 'factura') {
+            categoriaDisplay += (item.condicion_iva === 'Responsable Inscripto') ? ' A' : ' B';
+        }
+        return `
         <tr class="slide-up" data-presupuesto-id="${item.id}">
             <td class="text-center">
                 <button class="btn-expand" onclick="toggleDetalles(${item.id})" title="Ver detalles de artículos">
                     <span class="expand-icon">+</span>
                 </button>
             </td>
-            <td>${escapeHtml(item.categoria || 'Sin tipo')}</td>
-            <td>${escapeHtml(item.concepto || 'Sin cliente')}</td>
+            <td>${categoriaDisplay}</td>
+            <td>${escapeHtml(item.concepto || 'Sin cliente')} ${item.cliente_id ? `- ${item.cliente_id}` : ''}</td>
             <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
+            <td class="text-right"><strong>$${formatNumber(item.total_final !== undefined ? item.total_final : (item.monto || 0))}</strong></td>
             <td class="text-center">
                 <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">
                     ${escapeHtml(item.estado || 'Sin estado')}
                 </span>
                 ${item.esta_facturado ?
-            `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb;">
-                        🧾 Facturado
-                    </span>`
-            : ''
-        }
-                ${item.estado === 'Orden de Retiro'
-            ? `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#6aa84f' : '#f1c232'}">
-                        ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : '🚚 Retira Chofer'}
-                       </span>`
-            : ''
-        }
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb;">
+                🧾 Facturado
+            </span>` : ''}
+                ${item.estado === 'Orden de Retiro' ?
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#6aa84f' : '#f1c232'}">
+                ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : '🚚 Retira Chofer'}
+            </span>` : ''}
             </td>
             <td class="text-center">
                 <div class="action-buttons">
@@ -1175,11 +1177,12 @@ function updatePresupuestosTable(data) {
             </td>
         </tr>
         <tr class="detalles-row" id="detalles-${item.id}" style="display: none;">
-            <td colspan="6" class="detalles-container">
+            <td colspan="7" class="detalles-container">
                 <div class="loading-detalles">Cargando detalles...</div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 
     console.log('✅ [PRESUPUESTOS-JS] Tabla actualizada con botones de expansión');
 }
@@ -1194,7 +1197,7 @@ function updateCategoriasFilter(categorias) {
         categorias = []; // Usar array vacío como fallback
     }
 
-    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de categorías: ${categorias.length} categorías`);
+    console.log(`🔍[PRESUPUESTOS - JS] Actualizando filtro de categorías: ${categorias.length} categorías`);
 
     const select = document.getElementById('filtro-categoria');
     if (!select) {
@@ -1264,7 +1267,7 @@ function updateEstadosFilter(estados) {
         estadosFiltrados = estados.filter(e => !ESTADOS_RETIRO.includes(e) || e === 'Anulado');
     }
 
-    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados (${appState.activeTab}): ${estadosFiltrados.length} estados (de ${estados.length} totales)`);
+    console.log(`🔍[PRESUPUESTOS - JS] Actualizando filtro de estados(${appState.activeTab}): ${estadosFiltrados.length} estados(de ${estados.length} totales)`);
 
     const container = document.getElementById('botones-estado');
     if (!container) {
@@ -1319,7 +1322,7 @@ function toggleEstadoButton(button) {
         button.classList.remove('active');
         // Remover del array de filtros
         appState.filtros.estado = appState.filtros.estado.filter(e => e !== estado);
-        console.log(`🔍 [PRESUPUESTOS-JS] Estado desactivado: ${estado}`);
+        console.log(`🔍[PRESUPUESTOS - JS] Estado desactivado: ${estado} `);
     } else {
         // Activar
         button.classList.add('active');
@@ -1327,10 +1330,10 @@ function toggleEstadoButton(button) {
         if (!appState.filtros.estado.includes(estado)) {
             appState.filtros.estado.push(estado);
         }
-        console.log(`🔍 [PRESUPUESTOS-JS] Estado activado: ${estado}`);
+        console.log(`🔍[PRESUPUESTOS - JS] Estado activado: ${estado} `);
     }
 
-    console.log(`🔍 [PRESUPUESTOS-JS] Estados seleccionados: [${appState.filtros.estado.join(', ')}]`);
+    console.log(`🔍[PRESUPUESTOS - JS] Estados seleccionados: [${appState.filtros.estado.join(', ')}]`);
 
     // Guardar filtros
     saveFiltersToStorage();
@@ -1357,7 +1360,7 @@ function updateStatusIndicator(status, message) {
         }
         // Si es 'loading', usa el estado por defecto (amarillo con pulse)
 
-        console.log(`🔍 [PRESUPUESTOS-JS] Estado actualizado: ${status} - ${message}`);
+        console.log(`🔍[PRESUPUESTOS - JS] Estado actualizado: ${status} - ${message} `);
     }
 }
 
@@ -1379,7 +1382,7 @@ function setLoading(loading) {
         btnCargarDatos.textContent = loading ? '⏳ Cargando...' : '📊 Cargar Presupuestos';
     }
 
-    console.log(`🔍 [PRESUPUESTOS-JS] Loading state: ${loading}`);
+    console.log(`🔍[PRESUPUESTOS - JS] Loading state: ${loading} `);
 }
 
 /**
@@ -1387,14 +1390,14 @@ function setLoading(loading) {
  */
 function showMessage(message, type = 'info') {
     // Mantener console.log para depuración
-    console.log(`🔍 [PRESUPUESTOS-JS] ${type.toUpperCase()}: ${message}`);
+    console.log(`🔍[PRESUPUESTOS - JS] ${type.toUpperCase()}: ${message} `);
 
     const container = document.getElementById('message-container');
     if (!container) return;
 
     // Crear solo el círculo de color, sin texto
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${type}`;
+    messageDiv.className = `message ${type} `;
 
     container.appendChild(messageDiv);
 
@@ -1410,19 +1413,19 @@ function showMessage(message, type = 'info') {
  * Fetch con reintentos
  */
 async function fetchWithRetry(url, options = {}, attempts = CONFIG.RETRY_ATTEMPTS) {
-    console.log(`🔍 [PRESUPUESTOS-JS] Fetch: ${url} (intentos restantes: ${attempts})`);
+    console.log(`🔍[PRESUPUESTOS - JS] Fetch: ${url} (intentos restantes: ${attempts})`);
 
     try {
         const response = await fetch(url, options);
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`HTTP ${response.status}: ${response.statusText} `);
         }
 
         return response;
     } catch (error) {
         if (attempts > 1) {
-            console.log(`⚠️ [PRESUPUESTOS-JS] Reintentando en ${CONFIG.RETRY_DELAY}ms...`);
+            console.log(`⚠️[PRESUPUESTOS - JS] Reintentando en ${CONFIG.RETRY_DELAY}ms...`);
             await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
             return fetchWithRetry(url, options, attempts - 1);
         }
@@ -1468,7 +1471,7 @@ function parseISO(iso) {
 function fmt(iso) {
     if (!iso || iso === '1970-01-01') return '—';
     const [y, m, d] = iso.split('-');
-    return `${d}/${m}/${y}`;
+    return `${d} /${m}/${y} `;
 }
 
 // Formatear fechas en formato dd/mm/yyyy (sin hora) - Fix fechas: diagnóstico + parse seguro + ORDER BY en BD – YYYY-MM-DD
@@ -1488,7 +1491,7 @@ function formatDateDDMMYYYY(dateString) {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const year = date.getFullYear();
 
-        return `${day}/${month}/${year}`;
+        return `${day} /${month}/${year} `;
     } catch (error) {
         console.error('❌ [PRESUPUESTOS-JS] Error al formatear fecha:', error);
         return 'Fecha inválida';
@@ -1521,7 +1524,7 @@ function formatDateDDMMYYYYWithTime(dateString) {
     // Para fechas YYYY-MM-DD (solo fecha), agregar hora por defecto
     if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         const [y, m, d] = dateString.split('-');
-        return `${d}/${m}/${y} 00:00`;
+        return `${d} /${m}/${y} 00:00`;
     }
 
     // Para fechas con hora
@@ -1533,7 +1536,7 @@ function formatDateDDMMYYYYWithTime(dateString) {
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
 
-        return `${day}/${month}/${year} ${hours}:${minutes}`;
+        return `${day} /${month}/${year} ${hours}:${minutes} `;
     } catch (error) {
         console.error('❌ [PRESUPUESTOS-JS] Error al formatear fecha con hora:', error);
         return 'Fecha inválida';
@@ -1583,7 +1586,7 @@ async function toggleDetalles(presupuestoId) {
         const data = await response.json();
 
         if (data.success) {
-            console.log(`✅ [PRESUPUESTOS-JS] Detalles cargados: ${data.data.total_articulos} artículos`);
+            console.log(`✅[PRESUPUESTOS - JS] Detalles cargados: ${data.data.total_articulos} artículos`);
 
             // Renderizar detalles
             container.innerHTML = renderDetallesArticulos(data.data);
@@ -1613,35 +1616,147 @@ async function toggleDetalles(presupuestoId) {
 function renderDetallesArticulos(data) {
     console.log('🔍 [PRESUPUESTOS-JS] Renderizando detalles de artículos...');
 
-    const { presupuesto, detalles, totales, total_articulos } = data;
-
-    // DEBUG: Ver qué datos llegan
-    if (detalles && detalles.length > 0) {
-        console.log('[DEBUG-DETALLES] Primer artículo recibido:', {
-            articulo: detalles[0].articulo,
-            descripcion_articulo: detalles[0].descripcion_articulo,
-            descripcion: detalles[0].descripcion,
-            detalle: detalles[0].detalle
-        });
-    }
-
-    // Log de control por presupuesto según especificación
-    if (totales) {
-        console.log("[DETALLE]", "sumNeto=", totales.neto_total.toFixed(2), "sumIVA=", totales.iva_total.toFixed(2), "sumTotal=", totales.total_general.toFixed(2));
-    }
+    const { presupuesto, detalles, total_articulos } = data;
 
     if (!detalles || detalles.length === 0) {
         return `
-            <div class="detalles-content">
-                <div class="detalles-header">
-                    <h4>📋 Detalles del Presupuesto ${presupuesto.id_presupuesto}</h4>
-                    <span class="tipo-comprobante">${presupuesto.tipo_comprobante}</span>
-                </div>
-                <div class="no-articulos">
-                    <p>📦 No se encontraron artículos para este presupuesto</p>
-                </div>
+        <div class="detalles-content">
+            <div class="detalles-header">
+                <h4>📋 Detalles del Presupuesto ${presupuesto.id_presupuesto}</h4>
+                <span class="tipo-comprobante">${presupuesto.tipo_comprobante}</span>
             </div>
+            <div class="no-articulos">
+                <p>📦 No se encontraron artículos para este presupuesto</p>
+            </div>
+        </div>
         `;
+    }
+
+    const formatoActual = (presupuesto.condicion_iva === 'Responsable Inscripto') ? 'IVA_DISCRIMINADO' : 'IVA_INCLUIDO';
+    const descuentoDecimal = parseFloat(presupuesto.descuento) || 0;
+    const descuentoPorcentaje = descuentoDecimal * 100;
+
+    let tableHeaders = '';
+    let tbodyHTML = '';
+    let footerHTML = '';
+
+    // CALCULO UNIFICADO COMPLETO DEL FOOTER (Subtotal Neto, Descuento, IVA Discriminado y Total)
+    const subtotalGeneral = detalles.reduce((t, i) => t + ((parseFloat(i.cantidad) || 0) * (parseFloat(i.valor1) || 0)), 0);
+    const montoDescuento = subtotalGeneral * descuentoDecimal;
+    const baseConDescuento = subtotalGeneral - montoDescuento;
+
+    let iva21Total = 0;
+    let iva105Total = 0;
+
+    detalles.forEach(item => {
+        const camp2 = parseFloat(item.camp2) || 0;
+        const sl = (parseFloat(item.cantidad) || 0) * (parseFloat(item.valor1) || 0);
+        const baseLinea = descuentoDecimal > 0 ? sl * (1 - descuentoDecimal) : sl;
+        const ivaLinea = baseLinea * camp2;
+        if (Math.abs(camp2 - 0.210) < 0.001) iva21Total += ivaLinea;
+        else if (Math.abs(camp2 - 0.105) < 0.001) iva105Total += ivaLinea;
+    });
+
+    const totalFinal = baseConDescuento + iva21Total + iva105Total;
+
+    footerHTML = `
+        <tr class="totales-row">
+            <td colspan="4" class="text-right"><strong>Subtotal Neto:</strong></td>
+            <td class="text-right">$${formatNumber(subtotalGeneral)}</td>
+        </tr>
+        ${descuentoDecimal > 0 ? `
+        <tr class="totales-row">
+            <td colspan="4" class="text-right"><strong>Descuento (${formatNumber(descuentoPorcentaje)}%):</strong></td>
+            <td class="text-right" style="color: #e74c3c;">-$${formatNumber(montoDescuento)}</td>
+        </tr>
+        <tr class="totales-row">
+            <td colspan="4" class="text-right"><strong>Subtotal c/Desc:</strong></td>
+            <td class="text-right">$${formatNumber(baseConDescuento)}</td>
+        </tr>
+        ` : ''}
+        ${iva21Total > 0 ? `
+        <tr class="totales-row">
+            <td colspan="4" class="text-right"><strong>IVA 21.00%:</strong></td>
+            <td class="text-right">$${formatNumber(iva21Total)}</td>
+        </tr>
+        ` : ''}
+        ${iva105Total > 0 ? `
+        <tr class="totales-row">
+            <td colspan="4" class="text-right"><strong>IVA 10.50%:</strong></td>
+            <td class="text-right">$${formatNumber(iva105Total)}</td>
+        </tr>
+        ` : ''}
+        <tr class="totales-row" style="background-color: #e9ecef;">
+            <td colspan="4" class="text-right"><strong style="font-size: 1.1em;">TOTAL FINAL:</strong></td>
+            <td class="text-right total-cell"><strong style="font-size: 1.1em; color: #2c3e50;">$${formatNumber(totalFinal)}</strong></td>
+        </tr>
+    `;
+
+    if (formatoActual === 'IVA_DISCRIMINADO') {
+        tableHeaders = `
+            <tr>
+                <th>Artículo</th>
+                <th>Cantidad</th>
+                <th>Precio S/Iva</th>
+                <th>IVA %</th>
+                <th>Subtotal</th>
+            </tr>
+        `;
+
+        tbodyHTML = detalles.map(item => {
+            const cantidad = parseFloat(item.cantidad) || 0;
+            const valor1 = parseFloat(item.valor1) || 0;
+            const camp2 = parseFloat(item.camp2) || 0;
+            const ivaPorcentaje = camp2 * 100;
+            const descripcion = item.descripcion_articulo || item.descripcion || item.articulo || 'Sin descripción';
+
+            const precioUnitario = valor1;
+            const subtotalLinea = cantidad * valor1;
+
+            return `
+                <tr>
+                    <td class="articulo-cell">
+                        <span class="articulo-descripcion">${escapeHtml(descripcion)}</span>
+                        ${item.articulo && item.descripcion_articulo !== item.articulo ? `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
+                    </td>
+                    <td class="text-center">${formatNumber(cantidad)}</td>
+                    <td class="text-right">$${formatNumber(precioUnitario)}</td>
+                    <td class="text-center">${formatNumber(ivaPorcentaje)}%</td>
+                    <td class="text-right total-cell">$${formatNumber(subtotalLinea)}</td>
+                </tr>
+            `;
+        }).join('');
+    } else {
+        tableHeaders = `
+            <tr>
+                <th colspan="2">Artículo</th>
+                <th>Cantidad</th>
+                <th>Precio c/Iva</th>
+                <th>Subtotal</th>
+            </tr>
+        `;
+
+        tbodyHTML = detalles.map(item => {
+            const cantidad = parseFloat(item.cantidad) || 0;
+            const valor1 = parseFloat(item.valor1) || 0;
+            const camp2 = parseFloat(item.camp2) || 0;
+            const descripcion = item.descripcion_articulo || item.descripcion || item.articulo || 'Sin descripción';
+
+            const precioUnitario = valor1 * (1 + camp2);
+            const subtotalLinea = cantidad * precioUnitario;
+
+            return `
+                <tr>
+                    <td class="articulo-cell" colspan="2">
+                        <span class="articulo-descripcion">${escapeHtml(descripcion)}</span>
+                        ${item.articulo && item.descripcion_articulo !== item.articulo ? `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
+                    </td>
+                    <td class="text-center">${formatNumber(cantidad)}</td>
+                    <td class="text-right">$${formatNumber(precioUnitario)}</td>
+                    <td class="text-right total-cell">$${formatNumber(subtotalLinea)}</td>
+                </tr>
+            `;
+        }).join('');
     }
 
     return `
@@ -1651,43 +1766,20 @@ function renderDetallesArticulos(data) {
                 <div class="detalles-info">
                     <span class="tipo-comprobante">${presupuesto.tipo_comprobante}</span>
                     <span class="total-articulos">${total_articulos} artículo${total_articulos !== 1 ? 's' : ''}</span>
+                    <span class="tipo-comprobante" style="margin-left:8px; background:#e0f2f1; color:#00695c; border-color:#80cbc4;">${formatoActual === 'IVA_DISCRIMINADO' ? 'Factura A (Iva Discriminado)' : 'Factura B (Iva Incluido)'}</span>
                 </div>
             </div>
             
             <div class="detalles-table-container">
                 <table class="detalles-table">
                     <thead>
-                        <tr>
-                            <th>Artículo</th>
-                            <th>Cantidad</th>
-                            <th>Neto</th>
-                            <th>IVA</th>
-                            <th>Total</th>
-                        </tr>
+                        ${tableHeaders}
                     </thead>
                     <tbody>
-                        ${detalles.map(item => `
-                            <tr>
-                                <td class="articulo-cell">
-                                    <span class="articulo-descripcion">${escapeHtml(item.descripcion_articulo || item.articulo || 'N/A')}</span>
-                                    ${item.articulo && item.descripcion_articulo !== item.articulo ?
-            `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
-                                </td>
-                                <td class="text-center">${formatNumber(item.cantidad || 0)}</td>
-                                <td class="text-right">$${formatNumber(item.neto || 0)}</td>
-                                <td class="text-right">$${formatNumber(item.iva || 0)}</td>
-                                <td class="text-right total-cell">$${formatNumber(item.total || 0)}</td>
-                            </tr>
-                        `).join('')}
+                        ${tbodyHTML}
                     </tbody>
                     <tfoot>
-                        <tr class="totales-row">
-                            <td><strong>TOTALES</strong></td>
-                            <td class="text-center"><strong>${formatNumber(totales.cantidad_total)}</strong></td>
-                            <td class="text-right"><strong>$${formatNumber(totales.neto_total)}</strong></td>
-                            <td class="text-right"><strong>$${formatNumber(totales.iva_total)}</strong></td>
-                            <td class="text-right total-cell"><strong>$${formatNumber(totales.total_general)}</strong></td>
-                        </tr>
+                        ${footerHTML}
                     </tfoot>
                 </table>
             </div>
@@ -1731,7 +1823,7 @@ function updatePaginationControls() {
     }
 
     paginationContainer.innerHTML = `
-        <div class="pagination-info">
+        < div class="pagination-info" >
             <span class="records-info">
                 Mostrando ${((currentPage - 1) * pageSize) + 1} - ${Math.min(currentPage * pageSize, totalRecords)} de ${totalRecords} registros
             </span>
@@ -1743,8 +1835,8 @@ function updatePaginationControls() {
                     <option value="200" ${pageSize === 200 ? 'selected' : ''}>200</option>
                 </select>
             </div>
-        </div>
-        
+        </div >
+
         <div class="pagination-buttons">
             <button class="btn-pagination" onclick="goToPage(1)" ${!hasPrev ? 'disabled' : ''} title="Primera página">
                 ⏮️ Primera
@@ -1752,14 +1844,14 @@ function updatePaginationControls() {
             <button class="btn-pagination" onclick="goToPage(${currentPage - 1})" ${!hasPrev ? 'disabled' : ''} title="Página anterior">
                 ⏪ Anterior
             </button>
-            
+
             <div class="page-info">
                 <span>Página ${currentPage} de ${totalPages}</span>
-                <input type="number" id="page-input" min="1" max="${totalPages}" value="${currentPage}" 
-                       onchange="goToPage(this.value)" onkeypress="handlePageInputKeypress(event)" 
-                       title="Ir a página específica" class="page-input">
+                <input type="number" id="page-input" min="1" max="${totalPages}" value="${currentPage}"
+                    onchange="goToPage(this.value)" onkeypress="handlePageInputKeypress(event)"
+                    title="Ir a página específica" class="page-input">
             </div>
-            
+
             <button class="btn-pagination" onclick="goToPage(${currentPage + 1})" ${!hasNext ? 'disabled' : ''} title="Página siguiente">
                 Siguiente ⏩
             </button>
@@ -1769,7 +1861,7 @@ function updatePaginationControls() {
         </div>
     `;
 
-    console.log(`✅ [PRESUPUESTOS-JS] Controles de paginación actualizados - Página ${currentPage}/${totalPages}`);
+    console.log(`✅[PRESUPUESTOS - JS] Controles de paginación actualizados - Página ${currentPage}/${totalPages}`);
 }
 
 /**
@@ -2334,16 +2426,22 @@ function updateStandByAccordion() {
     }
 
     // Renderizar filas reutilizando la misma lógica que la tabla principal
-    tbody.innerHTML = standByPresupuestos.map(item => `
+    tbody.innerHTML = standByPresupuestos.map(item => {
+        let categoriaDisplay = escapeHtml(item.categoria || 'Sin tipo');
+        if (categoriaDisplay.toLowerCase() === 'factura') {
+            categoriaDisplay += (item.condicion_iva === 'Responsable Inscripto') ? ' A' : ' B';
+        }
+        return `
         <tr class="slide-up" data-presupuesto-id="${item.id}">
             <td class="text-center">
                 <button class="btn-expand" onclick="toggleDetalles(${item.id})" title="Ver detalles de artículos">
                     <span class="expand-icon">+</span>
                 </button>
             </td>
-            <td>${escapeHtml(item.categoria || 'Sin tipo')}</td>
-            <td>${escapeHtml(item.concepto || 'Sin cliente')}</td>
+            <td>${categoriaDisplay}</td>
+            <td>${escapeHtml(item.concepto || 'Sin cliente')} ${item.cliente_id ? `- ${item.cliente_id}` : ''}</td>
             <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
+            <td class="text-right"><strong>$${formatNumber(item.total_final !== undefined ? item.total_final : (item.monto || 0))}</strong></td>
             <td class="text-center">
                 <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(item.estado || 'Sin estado')}</span>
             </td>
@@ -2362,11 +2460,12 @@ function updateStandByAccordion() {
             </td>
         </tr>
         <tr class="detalles-row" id="detalles-${item.id}" style="display: none;">
-            <td colspan="6" class="detalles-container">
+            <td colspan="7" class="detalles-container">
                 <div class="loading-detalles">Cargando detalles...</div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 
     console.log('✅ [ACCORDION] Acordeón actualizado con presupuestos sin confirmar');
 }
