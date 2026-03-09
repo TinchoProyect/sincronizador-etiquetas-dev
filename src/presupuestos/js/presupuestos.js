@@ -1151,8 +1151,14 @@ function updatePresupuestosTable(data) {
             `;
             if (item.tiene_borrador && item.id_borrador) {
                 // Caso B: Hay un borrador sin CAE
+                const styleExtra = item.borrador_desincronizado
+                    ? 'box-shadow: 0 0 8px rgba(243,156,18,0.8); border: 2px solid #f39c12; color: #f39c12;'
+                    : 'border: 1px solid #ccc; color: #777; filter: grayscale(100%); opacity: 0.7;';
+                const titleSync = item.borrador_desincronizado
+                    ? 'Actualizar Borrador (Hay Cambios)'
+                    : 'Borrador Actualizado';
                 syncButtonHTML = `
-                    <button class="btn-action btn-sync-update" onclick="sincronizarBorrador(${item.id}, ${item.id_borrador})" title="Actualizar Borrador" style="background-color: transparent; border: 1px solid #f39c12; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
+                    <button class="btn-action btn-sync-update" onclick="sincronizarBorrador(${item.id}, ${item.id_borrador})" title="${titleSync}" style="background-color: transparent; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px; transition: all 0.3s ease; ${styleExtra}">
                         <span style="font-size: 1.2em;">🔄</span>
                     </button>
                 `;
@@ -2521,6 +2527,81 @@ window.sincronizarBorrador = function (presupuestoId, borradorId) {
 };
 
 window.crearFacturaBorrador = function (presupuestoId) {
-    console.log(`[SMART-SYNC] Preparando creación de borrador para presupuesto ${presupuestoId}...`);
-    alert('Enviar a Facturación:\n\nLa función para crear borradores desde cero se implementará en la Fase 2.');
+    if (!presupuestoId) return;
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: '¿Enviar a Facturación?',
+            text: "Se generará un borrador de factura para este presupuesto.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3498db',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Sí, enviar',
+            cancelButtonText: 'Cancelar'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                ejecutarFacturacionBorrador(presupuestoId);
+            }
+        });
+    } else {
+        if (confirm("¿Enviar a Facturación? Se generará un borrador de factura para este presupuesto.")) {
+            ejecutarFacturacionBorrador(presupuestoId);
+        }
+    }
 };
+
+async function ejecutarFacturacionBorrador(presupuestoId) {
+    try {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Procesando...',
+                text: 'Generando factura borrador.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+        }
+
+        const response = await fetch(`http://localhost:3004/facturacion/presupuestos/${presupuestoId}/facturar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || data.error || `Error HTTP ${response.status}`);
+        }
+
+        if (typeof Swal !== 'undefined') {
+            Swal.fire(
+                '¡Enviado!',
+                'El borrador se generó correctamente.',
+                'success'
+            );
+        } else {
+            alert('¡Enviado! El borrador se generó correctamente.');
+        }
+
+        // Recargar tabla
+        if (typeof cargarPresupuestos === 'function') {
+            cargarPresupuestos();
+        } else {
+            window.location.reload();
+        }
+
+    } catch (error) {
+        console.error('❌ [SMART-SYNC] Error al crear borrador:', error);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire(
+                'Error',
+                error.message || 'Error de comunicación con el servidor',
+                'error'
+            );
+        } else {
+            alert('Error al facturar: ' + (error.message || 'Error de comunicación con el servidor'));
+        }
+    }
+}

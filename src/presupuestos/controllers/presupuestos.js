@@ -159,11 +159,12 @@ const obtenerPresupuestos = async (req, res) => {
                 p.agente,
                 EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado,
                 (draft.last_draft_id IS NOT NULL) as tiene_borrador,
-                draft.last_draft_id as id_borrador
+                draft.last_draft_id as id_borrador,
+                (COALESCE(p.fecha_actualizacion, p.fecha) > draft.draft_date) as borrador_desincronizado
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             LEFT JOIN (
-                SELECT presupuesto_id, MAX(id) as last_draft_id
+                SELECT presupuesto_id, MAX(id) as last_draft_id, MAX(COALESCE(updated_at, created_at)) as draft_date
                 FROM public.factura_facturas
                 WHERE cae IS NULL AND estado = 'BORRADOR'
                 GROUP BY presupuesto_id
