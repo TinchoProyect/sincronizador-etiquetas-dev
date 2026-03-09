@@ -723,9 +723,8 @@ async function handleSubmit(event) {
             nota: (formData.get('nota') || '').toString(),
             punto_entrega: puntoEntregaValor,
 
-            descuento: MODO_RETIRO
-                ? parseFloat(document.getElementById('debug_descuento')?.value || 0)
-                : descuentoValor,
+            // Usamos descuentoValor (0..1) que ya captura el input HTML real, incluyendo la herencia de devoluciones
+            descuento: descuentoValor,
 
             secuencia: MODO_RETIRO
                 ? (document.getElementById('debug_secuencia')?.value || 'Pedido_Listo')
@@ -2991,11 +2990,14 @@ function presentarOpcionesDeOrigen(historial, itemData, precioActual) {
                     badgeDiff = `<span style="background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Bajó ${Math.abs(diffPercent)}% (-$${Math.abs(diff).toFixed(2)})</span>`;
                 }
 
+                const descuentoPct = parseFloat(h.descuento_porcentaje || 0);
+
                 itemDiv.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                         <div>
                             <div style="font-weight: bold; color: #2c3e50;">Presupuesto #${h.id_presupuesto} <span style="font-weight: normal; color: #888; font-size: 0.9em;">(${fecha})</span></div>
                             <div style="font-size: 0.85em; color: #28a745; margin-top: 2px;">🕒 ${tiempoRel}</div>
+                            ${descuentoPct > 0 ? `<div style="font-size: 0.85em; color: #d9534f; margin-top: 4px; font-weight: bold; background: #f8dbdb; display: inline-block; padding: 2px 6px; border-radius: 4px;">🏷️ Tiene ${descuentoPct.toFixed(2)}% de Descuento Global</div>` : ''}
                         </div>
                         <div style="text-align: right;">
                              <div style="font-size: 0.9em; color: #666;">Cant: <strong>${h.cantidad}</strong></div>

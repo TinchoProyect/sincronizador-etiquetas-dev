@@ -723,6 +723,22 @@ async function emitirNotaCreditoBorrador(req, res) {
 
         await client.query('BEGIN');
 
+        // 0.5. RECUPERAR DESCUENTO GLOBAL DE LA FACTURA ORIGINAL (Riesgo Financiero: Pérdida Marginal)
+        if (payloadFacturacion.factura_asociada_id) {
+            console.log(`[MANTENIMIENTO_ORQ] Recuperando descuento de Factura Original ID: ${payloadFacturacion.factura_asociada_id}`);
+            const descQuery = `
+                SELECT COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
+                FROM public.factura_facturas f
+                JOIN public.presupuestos p ON f.presupuesto_id = p.id
+                WHERE f.id = $1
+            `;
+            const resDesc = await client.query(descQuery, [payloadFacturacion.factura_asociada_id]);
+            if (resDesc.rowCount > 0 && resDesc.rows[0].descuento_porcentaje > 0) {
+                payloadFacturacion.descuento = parseFloat(resDesc.rows[0].descuento_porcentaje);
+                console.log(`[MANTENIMIENTO_ORQ] Descuento heredado inyectado al payload: ${payloadFacturacion.descuento}%`);
+            }
+        }
+
         // 1. Enviar a Facturación PRIMERO (Server-to-Server)
         console.log(`📡 [MANTENIMIENTO_ORQ] Solicitando Borrador a Facturación...`);
         let factura_generada_id = null;
