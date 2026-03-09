@@ -70,6 +70,13 @@ router.post('/facturas/:id/pdf', facturasController.generarPDF);
 router.post('/presupuestos/:id/facturar', facturasController.facturarPresupuesto);
 
 /**
+ * @route POST /facturacion/presupuestos/:id/sincronizar
+ * @desc Sincronizar borrador de factura desde presupuesto
+ * @access Privado
+ */
+router.post('/presupuestos/:id/sincronizar', facturasController.sincronizarBorrador);
+
+/**
  * @route GET /facturacion/facturas/:id/validar-afip
  * @desc Validar factura para AFIP (pre-WSFE)
  * @access Privado

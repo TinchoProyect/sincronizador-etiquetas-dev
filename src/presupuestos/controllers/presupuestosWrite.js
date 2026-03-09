@@ -852,78 +852,9 @@ const editarPresupuesto = async (req, res) => {
                 // Log antes del COMMIT
                 console.log(`[TRACE-EDIT-LOCAL] id=${presupuesto.id_presupuesto_ext} detalles_eliminados=${detallesEliminados} detalles_insertados=${detallesNormalizados.length}`);
 
-                // => INYECCIÓN: SMART SYNC HACIA BORRADOR DE FACTURA
-                if (doSmartSync && facturaVinculada) {
-                    console.log(`🔄 [SMART-SYNC] Sincronizando factura borrador ${facturaVinculada.id}`);
-
-                    function getAlicIvaId(alicDec) {
-                        if (alicDec === 0.21) return 5;
-                        if (alicDec === 0.105) return 4;
-                        if (alicDec === 0.27) return 6;
-                        if (alicDec === 0.05) return 8;
-                        if (alicDec === 0.025) return 9;
-                        if (alicDec === 0) return 3;
-                        return 3;
-                    }
-
-                    // 1. Delete existing items
-                    await client.query(`DELETE FROM factura_factura_items WHERE factura_id = $1`, [facturaVinculada.id]);
-
-                    let facturaNeto = 0;
-                    let facturaIva = 0;
-                    let orden = 1;
-
-                    // helper para obtener descripción
-                    async function obtenerDescArticulo(pgClient, codigoBarras) {
-                        const sql = `SELECT nombre FROM articulos WHERE TRIM(codigo_barras)::text = $1 LIMIT 1`;
-                        try {
-                            const r = await pgClient.query(sql, [codigoBarras]);
-                            const a = r.rows?.[0];
-                            if (a && a.nombre) return a.nombre;
-                            return 'Articulo s/n';
-                        } catch (e) {
-                            return 'Articulo s/n';
-                        }
-                    }
-
-                    const insertFacturaItem = `
-                         INSERT INTO factura_factura_items (
-                             factura_id, descripcion, qty, p_unit, alic_iva_id,
-                             imp_neto, imp_iva, orden, created_at
-                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-                    `;
-
-                    for (const detalle of detallesNormalizados) {
-                        facturaNeto += detalle.camp3; // netoTotal
-                        facturaIva += detalle.camp5;  // ivaTotal
-
-                        const desc = await obtenerDescArticulo(client, detalle.articulo);
-                        const alicIvaId = getAlicIvaId(detalle.camp2);
-
-                        await client.query(insertFacturaItem, [
-                            facturaVinculada.id,
-                            desc,
-                            detalle.cantidad,
-                            detalle.valor1,
-                            alicIvaId,
-                            detalle.camp3,
-                            detalle.camp5,
-                            orden++
-                        ]);
-                    }
-
-                    const facturaTotal = round2(facturaNeto + facturaIva);
-                    const nuevoClienteId = id_cliente !== undefined ? id_cliente : facturaVinculada.cliente_id;
-
-                    // update factura header
-                    await client.query(`
-                        UPDATE factura_facturas 
-                        SET imp_neto = $1, imp_iva = $2, imp_total = $3, imp_trib = 0, cliente_id = $4, updated_at = NOW()
-                        WHERE id = $5
-                    `, [facturaNeto, facturaIva, facturaTotal, nuevoClienteId, facturaVinculada.id]);
-
-                    console.log(`✅ [SMART-SYNC] Borrador factura ${facturaVinculada.id} actualizado: Neto ${facturaNeto}, IVA ${facturaIva}, Total ${facturaTotal}`);
-                }
+                // Force update fecha_actualizacion to ensure dirty state is triggered when details change
+                console.log(`🔄 [SMART-SYNC] Forzando actualización de fecha_actualizacion para habilitar Dirty State`);
+                await client.query(`UPDATE presupuestos SET fecha_actualizacion = NOW() WHERE id = $1`, [presupuesto.id]);
 
             } else if (hasFiscalLock) {
                 console.log(`🔒 [FISCAL-LOCK] Se omitió el DELETE e INSERT de presupuestos_detalles para proteger la factura.`);

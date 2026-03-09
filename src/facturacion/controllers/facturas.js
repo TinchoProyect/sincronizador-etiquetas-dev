@@ -622,6 +622,35 @@ const buscarDevoluciones = async (req, res) => {
 
 console.log('✅ [FACTURACION-CTRL] Controlador de facturas cargado');
 
+/**
+ * Sincronizar comprobante (borrador) con su presupuesto actualizado
+ * POST /facturacion/presupuestos/:id/sincronizar
+ */
+const sincronizarBorrador = async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔄 [FACTURACION-CTRL] POST /presupuestos/${id}/sincronizar - Sincronizar borrador`);
+
+    try {
+        const result = await presupuestoFacturaService.sincronizarBorrador(id);
+
+        res.status(200).json({
+            success: true,
+            message: 'Borrador de factura sincronizado exitosamente con el presupuesto',
+            data: result
+        });
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error sincronizando borrador desde presupuesto:', error.message);
+        console.error('❌ [FACTURACION-CTRL] Stack:', error.stack);
+
+        res.status(400).json({
+            success: false,
+            error: 'Error sincronizando factura borrador',
+            message: error.message
+        });
+    }
+};
+
 module.exports = {
     crearFactura,
     actualizarFactura,
@@ -630,6 +659,7 @@ module.exports = {
     listarFacturas,
     generarPDF,
     facturarPresupuesto,
+    sincronizarBorrador,
     validarFacturaAfip,
     buscarDevoluciones
 };

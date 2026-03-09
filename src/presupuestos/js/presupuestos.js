@@ -2522,9 +2522,91 @@ console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con pa
 // ==========================================
 
 window.sincronizarBorrador = function (presupuestoId, borradorId) {
-    console.log(`[SMART-SYNC] Preparando actualización de borrador ${borradorId} para presupuesto ${presupuestoId}...`);
-    alert('Actualizar Borrador:\n\nLa función de sincronización inteligente se implementará en la Fase 2.');
+    if (!presupuestoId) return;
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: '¿Actualizar Borrador?',
+            text: "Se sincronizarán los últimos cambios del presupuesto hacia el borrador en Facturación.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#f39c12',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Sí, sincronizar',
+            cancelButtonText: 'Cancelar'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                ejecutarSincronizacionBorrador(presupuestoId);
+            }
+        });
+    } else {
+        if (confirm("¿Actualizar Borrador? Se sincronizarán los últimos cambios del presupuesto hacia el borrador.")) {
+            ejecutarSincronizacionBorrador(presupuestoId);
+        }
+    }
 };
+
+async function ejecutarSincronizacionBorrador(presupuestoId) {
+    try {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Sincronizando...',
+                text: 'Actualizando factura borrador con los nuevos totales y descuentos.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+        }
+
+        const response = await fetch(`http://localhost:3004/facturacion/presupuestos/${presupuestoId}/sincronizar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        let data;
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            data = await response.json();
+        } else {
+            const textResponse = await response.text();
+            throw new Error(`Respuesta no JSON del servidor: ${textResponse.substring(0, 50)}...`);
+        }
+
+        if (response.ok && data.success) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire(
+                    '¡Sincronizado!',
+                    'El borrador ha sido actualizado exitosamente.',
+                    'success'
+                ).then(() => {
+                    if (typeof window.recargarPresupuestos === 'function') {
+                        window.recargarPresupuestos();
+                    } else {
+                        window.location.reload();
+                    }
+                });
+            } else {
+                alert('Borrador sincronizado exitosamente.');
+                window.location.reload();
+            }
+        } else {
+            throw new Error(data.message || data.error || 'Error desconocido al sincronizar');
+        }
+
+    } catch (error) {
+        console.error('❌ [SMART-SYNC] Error:', error);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire(
+                'Error al sincronizar',
+                error.message || 'Error de comunicación con el servidor',
+                'error'
+            );
+        } else {
+            alert('Error al sincronizar: ' + (error.message || 'Error de comunicación con el servidor'));
+        }
+    }
+}
 
 window.crearFacturaBorrador = function (presupuestoId) {
     if (!presupuestoId) return;
