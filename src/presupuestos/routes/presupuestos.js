@@ -74,6 +74,11 @@ const {
     actualizarFormatoImpresion
 } = require('../controllers/presupuestosWrite');
 
+// Importar controlador de Lomasoft (Conciliación)
+const {
+    buscarCandidatasLomasoft
+} = require('../controllers/presupuestosLomasoft');
+
 // Importar middleware
 const { validateSession, validatePermissions } = require('../middleware/auth');
 const {
@@ -603,6 +608,25 @@ router.patch('/:id/formato-impresion', validatePermissions('presupuestos.update'
         });
     }
 });
+
+// ===== RUTAS DE INTEGRACIÓN LOMASOFT (NUEVAS) =====
+/**
+ * @route POST /api/presupuestos/:id/buscar-candidatas-lomasoft
+ * @desc Comunicarse con Lomasoft (ERP externo) para listar facturas candidatas a conciliar
+ * @access Privado
+ */
+router.post('/:id/buscar-candidatas-lomasoft',
+    validatePermissions('presupuestos.read'),
+    validarIdPresupuesto,
+    async (req, res) => {
+        try {
+            await buscarCandidatasLomasoft(req, res);
+        } catch (error) {
+            console.error('❌ Error buscando candidatas en Lomasoft:', error);
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+);
 
 // ===== RUTAS DE ESCRITURA (NUEVAS) =====
 

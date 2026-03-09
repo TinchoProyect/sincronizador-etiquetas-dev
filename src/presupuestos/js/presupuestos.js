@@ -1238,6 +1238,10 @@ function updatePresupuestosTable(data) {
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
                         🖨️
                     </button>
+                    ${!esRetiro ? `
+                    <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
+                        <span style="font-size: 1.2rem;">🔗</span>
+                    </button>` : ''}
                     ${editButtonHTML}
                     ${deleteButtonHTML}
                     ${syncButtonHTML ? `<span class="separator" style="border-left: 1px solid #ccc; height: 20px; margin: 0 2px;"></span>${syncButtonHTML}` : ''}
@@ -2712,4 +2716,96 @@ async function ejecutarFacturacionBorrador(presupuestoId) {
             alert('Error al facturar: ' + (error.message || 'Error de comunicación con el servidor'));
         }
     }
+}
+
+// ==========================================
+// CONCILIACIÓN LOMASOFT - FASE 1
+// ==========================================
+
+let LOMASOFT_CANDIDATAS = [];
+
+async function buscarCandidatasLomasoft(presupuestoId) {
+    try {
+        Swal.fire({
+            title: 'Buscando en Lomasoft...',
+            text: 'Conectando con el ERP...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // Llamar al nuevo endpoint (CORREGIDO)
+        const res = await fetch(`/api/presupuestos/${presupuestoId}/buscar-candidatas-lomasoft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+            throw new Error(json.message || 'Error en la consulta al túnel');
+        }
+
+        LOMASOFT_CANDIDATAS = json.data;
+
+        if (!LOMASOFT_CANDIDATAS || LOMASOFT_CANDIDATAS.length === 0) {
+            return Swal.fire('Sin resultados', 'Lomasoft no encontró facturas candidatas para este presupuesto.', 'info');
+        }
+
+        // Armar HTML de la tabla para SweetAlert2 (CORREGIDO)
+        let tablaHtml = `
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table class="table" style="width:100%; text-align:left; border-collapse: collapse; font-size: 0.9em;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #ccc;">
+                            <th>Comprobante</th>
+                            <th>Fecha</th>
+                            <th>Total</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        LOMASOFT_CANDIDATAS.forEach((candidata, index) => {
+            const numeroFormateado = candidata.comprobante_formateado || 'S/N';
+            const importe = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(candidata.importe_total);
+
+            // Tooltip básico para mostrar artículos (CORREGIDO)
+            const artsResumen = (candidata.articulos || []).map(a => `${a.cantidad}x ${a.nombre}`).join(' | ');
+
+            tablaHtml += `
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td title="${artsResumen}"><strong>${numeroFormateado}</strong><br><small style="color:#666">${candidata.tipo_comprobante}</small></td>
+                    <td>${new Date(candidata.fecha).toLocaleDateString('es-AR')}</td>
+                    <td>${importe}</td>
+                    <td style="padding: 8px 0;">
+                        <button class="btn btn-sm btn-primary" style="background-color: #8e44ad; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: pointer;" onclick="seleccionarCandidataLomasoft(${presupuestoId}, ${index})">
+                            Seleccionar
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tablaHtml += `</tbody></table></div>`;
+
+        Swal.fire({
+            title: 'Facturas Candidatas (Lomasoft)',
+            html: tablaHtml,
+            width: '600px',
+            showConfirmButton: false,
+            showCloseButton: true
+        });
+
+    } catch (error) {
+        console.error("Error Lomasoft:", error);
+        Swal.fire('Error', error.message, 'error');
+    }
+}
+
+// Fase 2 - Placeholder (CORREGIDO)
+function seleccionarCandidataLomasoft(presupuestoId, candidataIndex) {
+    const seleccionada = LOMASOFT_CANDIDATAS[candidataIndex];
+    console.log("Candidata elegida:", seleccionada);
+    Swal.fire('¡Fase 1 completada!', `Seleccionaste el comprobante: ${seleccionada.comprobante_formateado}`, 'success');
 }
