@@ -23,6 +23,8 @@ router.get('/trazar-factura', mantenimientoCtrl.trazarFacturaOriginal);
 router.get('/retiros/local', mantenimientoCtrl.getRetirosLocal);
 router.get('/retiros/ruta', mantenimientoCtrl.getRetirosRuta);
 router.post('/retiros/recibir-local/:id', mantenimientoCtrl.recibirRetiroLocal);
+// Revertir Recepción Local (Devuelve de Stock Mantenimiento a Orden de Retiro PENDIENTE)
+router.delete('/ingreso', mantenimientoCtrl.revertirIngresoLocal);
 router.post('/emitir-nc-borrador', mantenimientoCtrl.emitirNotaCreditoBorrador);
 
 module.exports = router;

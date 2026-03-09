@@ -651,6 +651,45 @@ const sincronizarBorrador = async (req, res) => {
     }
 };
 
+/**
+ * Eliminar factura en estado BORRADOR
+ * DELETE /facturacion/facturas/:id
+ */
+const eliminarBorrador = async (req, res) => {
+    const { id } = req.params;
+    console.log(`🗑️ [FACTURACION-CTRL] DELETE /facturas/${id} - Eliminar borrador`);
+
+    try {
+        // Verificar que la factura existe y está en BORRADOR (y que NO tenga CAE)
+        const checkQuery = 'SELECT estado, cae FROM factura_facturas WHERE id = $1';
+        const checkResult = await pool.query(checkQuery, [parseInt(id)]);
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Factura no encontrada' });
+        }
+
+        const f = checkResult.rows[0];
+        if (f.cae) {
+            return res.status(400).json({ success: false, error: 'Rechazado: La factura ya posee CAE y valor fiscal.' });
+        }
+        if (f.estado !== 'BORRADOR' && f.estado !== 'RECHAZADA') {
+            return res.status(400).json({ success: false, error: 'Solo se pueden eliminar facturas en estado BORRADOR o RECHAZADA.' });
+        }
+
+        // Eliminar items primero por foreign key
+        await pool.query('DELETE FROM factura_factura_items WHERE factura_id = $1', [parseInt(id)]);
+        // Eliminar factura
+        await pool.query('DELETE FROM factura_facturas WHERE id = $1', [parseInt(id)]);
+
+        console.log(`✅ [FACTURACION-CTRL] Borrador #${id} eliminado exitosamente`);
+        res.status(200).json({ success: true, message: 'Borrador eliminado exitosamente' });
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error eliminando borrador:', error.message);
+        res.status(500).json({ success: false, error: 'Error interno eliminando borrador' });
+    }
+};
+
 module.exports = {
     crearFactura,
     actualizarFactura,
@@ -661,5 +700,6 @@ module.exports = {
     facturarPresupuesto,
     sincronizarBorrador,
     validarFacturaAfip,
-    buscarDevoluciones
+    buscarDevoluciones,
+    eliminarBorrador
 };

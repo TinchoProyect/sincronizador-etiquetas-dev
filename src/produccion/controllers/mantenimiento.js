@@ -723,19 +723,28 @@ async function emitirNotaCreditoBorrador(req, res) {
 
         await client.query('BEGIN');
 
-        // 0.5. RECUPERAR DESCUENTO GLOBAL DE LA FACTURA ORIGINAL (Riesgo Financiero: Pérdida Marginal)
-        if (payloadFacturacion.factura_asociada_id) {
-            console.log(`[MANTENIMIENTO_ORQ] Recuperando descuento de Factura Original ID: ${payloadFacturacion.factura_asociada_id}`);
-            const descQuery = `
-                SELECT COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
-                FROM public.factura_facturas f
-                JOIN public.presupuestos p ON f.presupuesto_id = p.id
-                WHERE f.id = $1
-            `;
-            const resDesc = await client.query(descQuery, [payloadFacturacion.factura_asociada_id]);
-            if (resDesc.rowCount > 0 && resDesc.rows[0].descuento_porcentaje > 0) {
-                payloadFacturacion.descuento = parseFloat(resDesc.rows[0].descuento_porcentaje);
-                console.log(`[MANTENIMIENTO_ORQ] Descuento heredado inyectado al payload: ${payloadFacturacion.descuento}%`);
+        // 0.5. RECUPERAR DESCUENTO GLOBAL DE LA ORDEN DE RETIRO (Fix Fuga Financiera NC)
+        if (itemsInfo && itemsInfo.length > 0) {
+            const primerArticulo = itemsInfo[0].articulo || (itemsInfo[0].descripcion?.match(/Devolución:\s*(.+)/)?.[1]?.trim());
+            if (primerArticulo) {
+                console.log(`[MANTENIMIENTO_ORQ] Intentando recuperar descuento de la Orden de Retiro origen para Art: ${primerArticulo}, Cliente: ${cliente_id}`);
+                const descQuery = `
+                    SELECT COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
+                    FROM public.mantenimiento_movimientos mm
+                    JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                    WHERE p.id_cliente::text = $1
+                      AND mm.articulo_numero = $2
+                      AND mm.estado IS DISTINCT FROM 'REVERTIDO' 
+                      AND mm.estado IS DISTINCT FROM 'FINALIZADO'
+                      AND mm.estado IS DISTINCT FROM 'ANULADO'
+                    ORDER BY mm.id DESC
+                    LIMIT 1
+                `;
+                const resDesc = await client.query(descQuery, [cliente_id.toString(), primerArticulo]);
+                if (resDesc.rowCount > 0 && resDesc.rows[0].descuento_porcentaje > 0) {
+                    payloadFacturacion.descuento = parseFloat(resDesc.rows[0].descuento_porcentaje);
+                    console.log(`[MANTENIMIENTO_ORQ] Descuento heredado de Orden de Retiro inyectado al payload NC: ${payloadFacturacion.descuento}%`);
+                }
             }
         }
 
@@ -1367,6 +1376,90 @@ async function recibirRetiroLocal(req, res) {
     }
 }
 
+/**
+ * Revierte el Ingreso Local (Mostrador)
+ * Borra los movimientos, ajusta el stock de cuarentena y retorna la Orden 
+ * de Retiro a su estado "ESPERANDO_MOSTRADOR" original.
+ */
+async function revertirIngresoLocal(req, res) {
+    const client = await pool.connect();
+    try {
+        const { cliente_id, articulo_numero } = req.body;
+
+        if (!cliente_id || !articulo_numero) {
+            return res.status(400).json({ success: false, error: 'Faltan parámetros obligatorios (cliente_id, articulo_numero).' });
+        }
+
+        console.log(`↩️ [MANTENIMIENTO] Revirtiendo recepción local para Art: ${articulo_numero}, Cliente: ${cliente_id}`);
+
+        await client.query('BEGIN');
+
+        // 1. Encontrar los movimientos 'INGRESO' en estado 'PENDIENTE' para este artículo y cliente agrupados en Presupuestos
+        const movQuery = `
+            SELECT mm.id, mm.cantidad, mm.id_presupuesto_origen 
+            FROM public.mantenimiento_movimientos mm
+            JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+            WHERE p.id_cliente::text = $1
+              AND mm.articulo_numero = $2
+              AND mm.tipo_movimiento = 'INGRESO'
+              AND mm.estado = 'PENDIENTE'
+            FOR UPDATE
+        `;
+        const resMovs = await client.query(movQuery, [cliente_id.toString(), articulo_numero]);
+
+        if (resMovs.rows.length === 0) {
+            throw new Error(`No se encontró recepción física PENDIENTE para el artículo ${articulo_numero} de este cliente.`);
+        }
+
+        let totalSobrante = 0;
+        let pds_a_restaurar = new Set();
+        let movs_a_eliminar = [];
+
+        resMovs.rows.forEach(mov => {
+            totalSobrante += parseFloat(mov.cantidad);
+            pds_a_restaurar.add(mov.id_presupuesto_origen);
+            movs_a_eliminar.push(mov.id);
+        });
+
+        // 2. Restar la cantidad acumulada del stock consolidado
+        const restoreStockQuery = `
+            UPDATE public.stock_real_consolidado
+            SET stock_mantenimiento = stock_mantenimiento - $1, 
+                ultima_actualizacion = NOW()
+            WHERE articulo_numero = $2
+        `;
+        await client.query(restoreStockQuery, [totalSobrante, articulo_numero]);
+
+        // 3. Eliminar los movimientos 'INGRESO' de la auditoría (Hard Delete)
+        // Eliminamos físicamente en lugar de Revertir lógicamente para prevenir basuras si la orden se borra después.
+        const deleteMovs = `DELETE FROM public.mantenimiento_movimientos WHERE id = ANY($1::int[])`;
+        await client.query(deleteMovs, [movs_a_eliminar]);
+
+        // 4. Restaurar el estado Lógico de las Órdenes de Retiro originales en Presupuestos
+        for (let origenId of pds_a_restaurar) {
+            const revertPresupuesto = `
+                UPDATE public.presupuestos
+                SET estado_logistico = 'ESPERANDO_MOSTRADOR', 
+                    estado = 'Orden de Retiro', 
+                    fecha_actualizacion = NOW(),
+                    fecha_entrega_real = NULL
+                WHERE id = $1
+            `;
+            await client.query(revertPresupuesto, [origenId]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'La recepción de la Orden de Retiro se revirtió con éxito.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error al revertir ingreso local:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -1380,5 +1473,6 @@ module.exports = {
     emitirNotaCreditoBorrador,
     getRetirosLocal,
     getRetirosRuta,
-    recibirRetiroLocal
+    recibirRetiroLocal,
+    revertirIngresoLocal
 };

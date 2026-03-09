@@ -859,6 +859,11 @@
                                 🔍 Conciliación Lomasoft
                             </button>
                             ${ncActionHtml}
+                            <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" 
+                                onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')"
+                                ${lomasoftDisabled} title="Eliminar y retornar artículo a la Orden de Retiro">
+                                🗑️ Eliminar Recepción
+                            </button>
                         </div>
                     `;
                     }
@@ -888,8 +893,32 @@
             }
         }
 
-        async function liberarStock(clienteId, articulo, cantidad, obs) {
-            if (!confirm(`¿Confirmar envío a Ventas de ${articulo} (Cantidad: ${cantidad})?\n\nEl stock saldrá de mantenimiento y quedará disponible comercialmente.`)) return;
+        async function eliminarRecepcionGlobal(clienteId, articulo) {
+            if (!confirm(`🚨 ¡ATENCIÓN!\n\n¿Estás seguro de que deseas ELIMINAR la recepción de este artículo?\n\n- Se borrará el stock físico de Cuarentena Mantenimiento.\n- La Orden de Retiro original volverá a la bandeja de "Mostrador" del operador.\n\nEsta acción revertirá al sistema a su estado previo.`)) return;
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/ingreso', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cliente_id: clienteId, articulo_numero: articulo })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    alert('✅ Recepción revertida. El artículo volvió a Presupuestos.');
+                    cargarStock(); // Refrescar grilla activa
+                    cargarMostrador(); // Refrescar bandeja superior
+                } else {
+                    throw new Error(data.error || 'Fallo desconocido al revertir recepción');
+                }
+            } catch (error) {
+                console.error(error);
+                alert(`❌ Error al eliminar recepción: ${error.message}`);
+            }
+        }
+
+        async function liberarStock(clienteId, articulo, cantidadOriginal, motivoDefecto) {
+            if (!confirm(`¿Confirmar envío a Ventas de ${articulo} (Cantidad: ${cantidadOriginal})?\n\nEl stock saldrá de mantenimiento y quedará disponible comercialmente.`)) return;
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/liberar', {

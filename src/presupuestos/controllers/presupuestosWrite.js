@@ -1024,6 +1024,29 @@ const eliminarPresupuesto = async (req, res) => {
         const presupuesto = checkResult.rows[0];
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto encontrado: ${presupuesto.id_presupuesto_ext}`);
 
+        // --- FASE 30: BLOQUEO DE INTEGRIDAD LOGÍSTICA INVERSA ---
+        if (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.tipo_comprobante === 'Remito-Efectivo' || presupuesto.estado === 'Orden de Retiro') {
+            const integrityQuery = `
+                SELECT 1 
+                FROM public.mantenimiento_movimientos 
+                WHERE id_presupuesto_origen = $1 
+                LIMIT 1
+            `;
+            const integrityCheck = await req.db.query(integrityQuery, [presupuesto.id]);
+
+            if (integrityCheck.rowCount > 0) {
+                console.log(`🔒 [PRESUPUESTOS-WRITE] ${requestId} - Eliminación bloqueada (Integridad referencial en Mantenimiento)`);
+                return res.status(400).json({
+                    success: false,
+                    error: 'Error de Integridad: No se puede eliminar esta Orden de Retiro porque la mercadería ya fue recibida físicamente en Mantenimiento. Revierta la recepción en ese módulo primero.',
+                    code: 'LOGISTICS_LOCK',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+        // --------------------------------------------------------
+
         // ===== Transacción para borrado físico completo =====
         client = await req.db.connect();
         try {

@@ -597,6 +597,11 @@
                                 <button class="btn btn-info btn-sm" onclick="verFactura(${factura.id})">
                                     📄 Ver
                                 </button>
+                                ${!factura.cae && (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') ? `
+                                <button class="btn btn-sm" style="background: #e74c3c; color: white;" onclick="eliminarFactura(${factura.id})">
+                                    🗑️ Eliminar
+                                </button>
+                                ` : ''}
                             </div>
                         </td>
                     </tr>
@@ -655,6 +660,32 @@
 
         function verFactura(id) {
             window.open(`/pages/ver-factura.html?id=${id}`, '_blank');
+        }
+
+        async function eliminarFactura(id) {
+            if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente el borrador #${id}?\n\nEsta acción no se puede deshacer.`)) {
+                return;
+            }
+
+            mostrarLoading(true);
+            try {
+                const res = await fetch(`${API_URL}/facturas/${id}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('Borrador eliminado exitosamente.');
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.error || 'No se pudo eliminar el borrador');
+                }
+            } catch (error) {
+                console.error(error);
+                alert(`Error al eliminar: ${error.message}`);
+            } finally {
+                mostrarLoading(false);
+            }
         }
 
         function obtenerTipoComprobante(tipo) {

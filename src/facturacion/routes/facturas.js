@@ -42,6 +42,13 @@ router.put('/facturas/:id', facturasController.actualizarFactura);
 router.post('/facturas/:id/emitir', validarEmitirFactura, facturasController.emitirFactura);
 
 /**
+ * @route DELETE /facturacion/facturas/:id
+ * @desc Eliminar borrador de factura (rechazado si tiene CAE)
+ * @access Privado
+ */
+router.delete('/facturas/:id', facturasController.eliminarBorrador);
+
+/**
  * @route GET /facturacion/facturas/:id
  * @desc Obtener factura por ID
  * @access Privado
