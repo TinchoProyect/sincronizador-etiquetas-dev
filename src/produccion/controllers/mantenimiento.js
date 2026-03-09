@@ -729,7 +729,7 @@ async function emitirNotaCreditoBorrador(req, res) {
             if (primerArticulo) {
                 console.log(`[MANTENIMIENTO_ORQ] Intentando recuperar descuento de la Orden de Retiro origen para Art: ${primerArticulo}, Cliente: ${cliente_id}`);
                 const descQuery = `
-                    SELECT COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
+                    SELECT COALESCE(p.descuento, 0) as descuento_decimal
                     FROM public.mantenimiento_movimientos mm
                     JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
                     WHERE p.id_cliente::text = $1
@@ -741,9 +741,27 @@ async function emitirNotaCreditoBorrador(req, res) {
                     LIMIT 1
                 `;
                 const resDesc = await client.query(descQuery, [cliente_id.toString(), primerArticulo]);
-                if (resDesc.rowCount > 0 && resDesc.rows[0].descuento_porcentaje > 0) {
-                    payloadFacturacion.descuento = parseFloat(resDesc.rows[0].descuento_porcentaje);
-                    console.log(`[MANTENIMIENTO_ORQ] Descuento heredado de Orden de Retiro inyectado al payload NC: ${payloadFacturacion.descuento}%`);
+
+                if (resDesc.rowCount > 0) {
+                    const descuentoDecimal = parseFloat(resDesc.rows[0].descuento_decimal) || 0; // ej: 0.04
+                    if (descuentoDecimal > 0) {
+                        const factorDescuento = 1 - descuentoDecimal; // ej: 0.96
+                        console.log(`[MANTENIMIENTO_ORQ] Descuento activo detectado: ${descuentoDecimal * 100}%. Factor de prorrateo temporal Mantenimiento->Facturación: ${factorDescuento}`);
+
+                        // 1. APLICAMOS LA MATEMÁTICA BRUTA A LOS ITEMS:
+                        // Como Facturación y AFIP calculan basándose netamente en Suma(p_unit * qty), 
+                        // debemos prorrater el precio unitario del payload antes de despacharlo.
+                        itemsInfo.forEach(item => {
+                            if (item.p_unit) {
+                                item.p_unit = parseFloat((parseFloat(item.p_unit) * factorDescuento).toFixed(4));
+                            }
+                        });
+
+                        // 2. Inyección Explícita de Variable en Payload JSON:
+                        // Cumplimos la firma enviando el descuento original
+                        payloadFacturacion.descuento = descuentoDecimal * 100;
+                        console.log(`[MANTENIMIENTO_ORQ] Items prorrateados exitosamente en la memoria del orquestador.`);
+                    }
                 }
             }
         }
@@ -1135,19 +1153,16 @@ async function trazarFacturaOriginal(req, res) {
                 else if (alicNum === 0.21 || alicNum === 21) afipIvaId = 1; // Internal ID 1 = 21%
             }
 
-            // Aplicar descuento prorrateado al precio neto histórico
             const precioHistoricoPuro = parseFloat(item.precio_historico) || 0;
-            const porcentajeDescuentoGlobal = parseFloat(item.descuento_global) || 0;
-            const factorDescuento = 1 - (porcentajeDescuentoGlobal / 100);
-
-            // Limitamos a 4 decimales para evitar problemas aritméticos de coma flotante en AFIP
-            const precioProrrateado = parseFloat((precioHistoricoPuro * factorDescuento).toFixed(4));
+            // Eliminamos el prorrateo erróneo en el Frontend.
+            // El backend orquestador (emitirNotaCreditoBorrador) se encargará 
+            // de aplicar matemáticamente este porcentaje a cada ítem de forma precisa.
 
             return {
                 articulo_numero: item.articulo_numero,
                 descripcion: item.descripcion,
                 cantidad: parseFloat(item.cantidad_devuelta),
-                precio_historico: precioProrrateado,
+                precio_historico: precioHistoricoPuro,
                 alic_iva_id: afipIvaId,
                 limite_fisico_facturado: parseFloat(item.cantidad_original_facturada) // Necesario para la doble alerta frontend
             };
