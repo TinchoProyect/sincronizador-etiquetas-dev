@@ -1138,6 +1138,34 @@ function updatePresupuestosTable(data) {
         if (categoriaDisplay.toLowerCase() === 'factura') {
             categoriaDisplay += (item.condicion_iva === 'Responsable Inscripto') ? ' A' : ' B';
         }
+
+        // Smart Sync UI Logic (Phase 1)
+        let syncButtonHTML = '';
+        if (!item.esta_facturado) {
+            if (item.tiene_borrador && item.id_borrador) {
+                // Caso B: Hay un borrador sin CAE
+                syncButtonHTML = `
+                    <button class="btn-action btn-sync-update" onclick="sincronizarBorrador(${item.id}, ${item.id_borrador})" title="Actualizar Borrador (Sincronización Inteligente)" style="background-color: #f39c12; color: window; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 1.2em;">🔄</span> <span style="font-size: 0.9em; font-weight: bold;">Actualizar Borrador</span>
+                    </button>
+                `;
+            } else {
+                // Caso A: No hay factura de ningún tipo
+                syncButtonHTML = `
+                    <button class="btn-action btn-sync-create" onclick="crearFacturaBorrador(${item.id})" title="Enviar a Facturación (Crear Borrador)" style="background-color: #3498db; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 1.2em;">🛒</span> <span style="font-size: 0.9em; font-weight: bold;">Enviar a Factura</span>
+                    </button>
+                `;
+            }
+        } else {
+            // Tiene CAE (Bloqueo Fiscal)
+            syncButtonHTML = `
+                <button class="btn-action btn-disabled" title="Fiscalmente Bloqueado (Tiene CAE)" disabled style="background-color: #bdc3c7; color: white; cursor: not-allowed; border: none; padding: 5px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 1.2em;">🔒</span> <span style="font-size: 0.9em; font-weight: bold;">Facturado</span>
+                </button>
+             `;
+        }
+
         return `
         <tr class="slide-up" data-presupuesto-id="${item.id}">
             <td class="text-center">
@@ -1163,15 +1191,16 @@ function updatePresupuestosTable(data) {
             </span>` : ''}
             </td>
             <td class="text-center">
-                <div class="action-buttons">
+                <div class="action-buttons" style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: center;">
+                    ${syncButtonHTML}
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
-                        Imprimir
+                        🖨️
                     </button>
                     <button class="btn-action btn-edit" onclick="editarPresupuesto(${item.id})" title="Editar presupuesto">
-                        Editar
+                        ✏️
                     </button>
                     <button class="btn-action btn-delete" onclick="anularPresupuesto(${item.id})" title="Anular presupuesto">
-                        Eliminar
+                        🗑️
                     </button>
                 </div>
             </td>
@@ -2474,3 +2503,17 @@ function updateStandByAccordion() {
 window.toggleAccordion = toggleAccordion;
 
 console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación, auto-update, persistencia de filtros y acordeón de stand-by');
+
+// ==========================================
+// MÓDULO DE INTEGRACIÓN DE FACTURACIÓN (SMART SYNC - FASE 1 STUBS)
+// ==========================================
+
+window.sincronizarBorrador = function (presupuestoId, borradorId) {
+    console.log(`[SMART-SYNC] Preparando actualización de borrador ${borradorId} para presupuesto ${presupuestoId}...`);
+    alert('Actualizar Borrador:\n\nLa función de sincronización inteligente se implementará en la Fase 2.');
+};
+
+window.crearFacturaBorrador = function (presupuestoId) {
+    console.log(`[SMART-SYNC] Preparando creación de borrador para presupuesto ${presupuestoId}...`);
+    alert('Enviar a Facturación:\n\nLa función para crear borradores desde cero se implementará en la Fase 2.');
+};
