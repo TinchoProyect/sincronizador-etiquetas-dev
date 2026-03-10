@@ -8,7 +8,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
             SELECT 
                 p.id_cliente, 
                 p.fecha, 
-                SUM(pd.cantidad * COALESCE(pd.precio1, pd.valor1, 0)) AS monto_total,
+                SUM(pd.cantidad * COALESCE(pd.precio1, pd.valor1, 0)) * (1 - COALESCE(p.descuento, 0)) AS monto_total,
                 json_agg(
                     COALESCE(a.numero, pd.articulo)
                 ) FILTER (WHERE pd.articulo IS NOT NULL) as codigos_articulos
@@ -16,7 +16,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
             LEFT JOIN presupuestos_detalles pd ON pd.id_presupuesto = p.id
             LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
             WHERE p.id = $1
-            GROUP BY p.id, p.id_cliente, p.fecha
+            GROUP BY p.id, p.id_cliente, p.fecha, p.descuento
             LIMIT 1;
         `;
 
