@@ -1209,6 +1209,13 @@ function updatePresupuestosTable(data) {
             syncButtonHTML = '';
         }
 
+        // Bloqueo estricto para registros ya conciliados en Lomasoft
+        if (item.comprobante_lomasoft) {
+            editButtonHTML = '';
+            deleteButtonHTML = '';
+            syncButtonHTML = '';
+        }
+
         return `
         <tr class="slide-up" data-presupuesto-id="${item.id}">
             <td class="text-center">
