@@ -1228,6 +1228,10 @@ function updatePresupuestosTable(data) {
                 `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb;">
                 🧾 Facturado
             </span>` : ''}
+                ${item.comprobante_lomasoft ?
+                `<span class="estado-badge" style="background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; display:block; margin-top:5px;">
+                    ✅ Conciliado: ${escapeHtml(item.comprobante_lomasoft)}
+                </span>` : ''}
                 ${item.estado === 'Orden de Retiro' ?
                 `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#6aa84f' : '#f1c232'}">
                 ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : '🚚 Retira Chofer'}
@@ -1238,7 +1242,7 @@ function updatePresupuestosTable(data) {
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
                         🖨️
                     </button>
-                    ${!esRetiro ? `
+                    ${!esRetiro && !item.comprobante_lomasoft ? `
                     <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
                         <span style="font-size: 1.2rem;">🔗</span>
                     </button>` : ''}

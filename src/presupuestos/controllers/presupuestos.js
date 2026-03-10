@@ -166,7 +166,8 @@ const obtenerPresupuestos = async (req, res) => {
                 EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado,
                 (draft.last_draft_id IS NOT NULL) as tiene_borrador,
                 draft.last_draft_id as id_borrador,
-                (COALESCE(p.fecha_actualizacion, p.fecha) > draft.draft_date) as borrador_desincronizado
+                (COALESCE(p.fecha_actualizacion, p.fecha) > draft.draft_date) as borrador_desincronizado,
+                p.comprobante_lomasoft
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             LEFT JOIN (

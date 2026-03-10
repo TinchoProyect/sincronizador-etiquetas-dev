@@ -108,8 +108,7 @@ const confirmarConciliacion = async (req, res) => {
             UPDATE presupuestos 
             SET 
                 id_factura_lomasoft = $1,
-                comprobante_lomasoft = $2,
-                estado = 'Conciliado'
+                comprobante_lomasoft = $2
             WHERE id = $3
             RETURNING id, id_factura_lomasoft, comprobante_lomasoft, estado
         `;
