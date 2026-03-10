@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "numero": "CRx5",
-    "nombre": "Coco/Rall x 5",
-    "codigo_barras": "2525852547"
-  },
-  "cantidad": "1.00"
+  "numero": "GS10X200G",
+  "nombre": "Grana de Sol 10 x 200 g",
+  "codigo_barras": "7537539518",
+  "cantidad": 2
 }
