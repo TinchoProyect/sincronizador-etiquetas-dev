@@ -2803,9 +2803,55 @@ async function buscarCandidatasLomasoft(presupuestoId) {
     }
 }
 
-// Fase 2 - Placeholder (CORREGIDO)
-function seleccionarCandidataLomasoft(presupuestoId, candidataIndex) {
+// Fase 2 - Implementación Completa de Conciliación
+async function seleccionarCandidataLomasoft(presupuestoId, candidataIndex) {
     const seleccionada = LOMASOFT_CANDIDATAS[candidataIndex];
-    console.log("Candidata elegida:", seleccionada);
-    Swal.fire('¡Fase 1 completada!', `Seleccionaste el comprobante: ${seleccionada.comprobante_formateado}`, 'success');
+    if (!seleccionada) return;
+
+    try {
+        // 1. Mostrar loading mientras guardamos
+        Swal.fire({
+            title: 'Confirmando conciliación...',
+            text: 'Vinculando presupuesto con la factura de Lomasoft...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // 2. Hacer la petición POST al nuevo endpoint de LAMDA
+        const payload = {
+            codigo: seleccionada.codigo,
+            punto_venta: seleccionada.punto_venta,
+            comprobante_formateado: seleccionada.comprobante_formateado
+        };
+
+        const response = await fetch(`/api/presupuestos/${presupuestoId}/confirmar-conciliacion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const json = await response.json();
+
+        if (!response.ok || !json.success) {
+            throw new Error(json.message || 'Error al guardar la conciliación en el servidor');
+        }
+
+        // 3. Éxito: Mostrar mensaje de confirmación
+        await Swal.fire({
+            title: '¡Conciliado!',
+            text: `El presupuesto se vinculó exitosamente a la factura ${seleccionada.comprobante_formateado}.`,
+            icon: 'success',
+            timer: 2500,
+            showConfirmButton: false
+        });
+
+        // 4. Recargar la grilla para que se refleje el estado "Conciliado"
+        if (typeof handleCargarDatos === 'function') {
+            await handleCargarDatos(appState.pagination.currentPage, true);
+        }
+
+    } catch (error) {
+        console.error("Error al confirmar conciliación Lomasoft:", error);
+        Swal.fire('Error de vinculación', error.message, 'error');
+    }
 }

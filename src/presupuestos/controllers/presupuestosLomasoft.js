@@ -1,5 +1,3 @@
-const fetch = require('node-fetch');
-
 const buscarCandidatasLomasoft = async (req, res) => {
     const { id } = req.params;
 
@@ -39,17 +37,25 @@ const buscarCandidatasLomasoft = async (req, res) => {
 
         console.log("🚀 [LOMASOFT] Payload a enviar al ERP:", JSON.stringify(payloadLomasoft, null, 2));
 
-        // 3. Obtener la URL del Túnel
-        // El túnel o servicio local que conecta con Lomasoft
-        const baseUrl = process.env.NGROK_URL || "http://localhost:3000";
+        // 3. Obtener la URL del Túnel (Cloudflare)
+        // El túnel que conecta con Lomasoft (Mantenimiento usa directamente api.lamdaser.com)
+        const baseUrl = process.env.CLOUDFLARE_URL || "https://api.lamdaser.com";
         const urlLomasoft = `${baseUrl}/api/facturas/candidatas`;
 
-        // 4. Llamada al túnel
+        // 4. Llamada al túnel usando la arquitectura de Mantenimiento local (Fetch Nativo de Node + AbortController)
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+
         const lomaRes = await fetch(urlLomasoft, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
             body: JSON.stringify(payloadLomasoft)
         });
+        clearTimeout(timeout);
 
         // Parseamos la respuesta de Lomasoft
         const jsonText = await lomaRes.text();
@@ -57,11 +63,13 @@ const buscarCandidatasLomasoft = async (req, res) => {
         try {
             lomasoftData = JSON.parse(jsonText);
         } catch (e) {
-            console.error(`[LOMASOFT] Error parseando respuesta: ${jsonText.substring(0, 100)}...`);
-            throw new Error('Respuesta inválida del ERP Lomasoft al buscar candidatas.');
+            console.error(`[LOMASOFT] ❌ Error parseando respuesta (HTTP ${lomaRes.status}).`);
+            console.error(`[LOMASOFT] Texto recibido (primeros 500 chars): ${jsonText.substring(0, 500)}`);
+            throw new Error(`Respuesta inválida del ERP Lomasoft al buscar candidatas (HTTP ${lomaRes.status}). Revisa la consola del servidor.`);
         }
 
         if (!lomaRes.ok || lomasoftData.ok === false) {
+            console.error(`[LOMASOFT] ❌ Respuesta de error desde Lomasoft (HTTP ${lomaRes.status}):`, lomasoftData);
             throw new Error(lomasoftData.message || 'Error del ERP Lomasoft al buscar candidatas');
         }
 
@@ -75,11 +83,53 @@ const buscarCandidatasLomasoft = async (req, res) => {
         });
 
     } catch (error) {
-        console.error(`❌ [LOMASOFT] Error en buscarCandidatasLomasoft:`, error);
+        // En caso de Fetch, el error puede tener varias formas
+        console.error(`❌ [LOMASOFT] Error CRÍTICO en buscarCandidatasLomasoft:`);
+        console.error(`- Mensaje: ${error.message}`);
+        if (error.cause) console.error(`- Causa:`, error.cause);
+
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
+const confirmarConciliacion = async (req, res) => {
+    const { id } = req.params;
+    const { codigo, punto_venta, comprobante_formateado } = req.body;
+
+    if (!codigo || !punto_venta || !comprobante_formateado) {
+        return res.status(400).json({ success: false, message: 'Faltan datos de la candidata (código, pto vta o comprobante)' });
+    }
+
+    try {
+        console.log(`🔗 [LOMASOFT] Confirmando conciliación de Presupuesto ${id} con Factura ${comprobante_formateado}`);
+
+        const claveExterna = `${codigo}-${punto_venta}`;
+        const sql = `
+            UPDATE presupuestos 
+            SET 
+                id_factura_lomasoft = $1,
+                comprobante_lomasoft = $2,
+                estado = 'Conciliado'
+            WHERE id = $3
+            RETURNING id, id_factura_lomasoft, comprobante_lomasoft, estado
+        `;
+
+        const dbResult = await req.db.query(sql, [claveExterna, comprobante_formateado, id]);
+
+        if (dbResult.rowCount === 0) {
+            return res.status(404).json({ success: false, message: 'Presupuesto no encontrado para actualizar' });
+        }
+
+        console.log(`✅ [LOMASOFT] Presupuesto ${id} conciliado exitosamente con ${comprobante_formateado}`);
+        return res.json({ success: true, data: dbResult.rows[0] });
+
+    } catch (error) {
+        console.error(`❌ [LOMASOFT] Error en confirmarConciliacion:`, error);
+        res.status(500).json({ success: false, message: 'Error interno guardando la conciliación' });
+    }
+};
+
 module.exports = {
-    buscarCandidatasLomasoft
+    buscarCandidatasLomasoft,
+    confirmarConciliacion
 };
