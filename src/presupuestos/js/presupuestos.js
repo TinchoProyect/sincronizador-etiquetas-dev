@@ -2784,15 +2784,29 @@ async function buscarCandidatasLomasoft(presupuestoId) {
             // Tooltip básico para mostrar artículos (CORREGIDO)
             const artsResumen = (candidata.articulos || []).map(a => `${a.cantidad}x ${a.nombre}`).join(' | ');
 
+            let botonHtml = '';
+            if (candidata.ya_conciliada) {
+                const titleText = candidata.id_presupuesto_local ? `Usado en Presup. #${candidata.id_presupuesto_local}` : 'Ya vinculado';
+                botonHtml = `
+                    <button class="btn btn-sm" disabled style="background-color: #7f8c8d; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: not-allowed; opacity: 0.6;" title="${titleText}">
+                        Ya vinculado
+                    </button>
+                `;
+            } else {
+                botonHtml = `
+                    <button class="btn btn-sm btn-primary" style="background-color: #8e44ad; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: pointer;" onclick="seleccionarCandidataLomasoft(${presupuestoId}, ${index})">
+                        Seleccionar
+                    </button>
+                `;
+            }
+
             tablaHtml += `
                 <tr style="border-bottom: 1px solid #eee;">
                     <td title="${artsResumen}"><strong>${numeroFormateado}</strong><br><small style="color:#666">${candidata.tipo_comprobante}</small></td>
                     <td>${new Date(candidata.fecha).toLocaleDateString('es-AR')}</td>
                     <td>${importe}</td>
                     <td style="padding: 8px 0;">
-                        <button class="btn btn-sm btn-primary" style="background-color: #8e44ad; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: pointer;" onclick="seleccionarCandidataLomasoft(${presupuestoId}, ${index})">
-                            Seleccionar
-                        </button>
+                        ${botonHtml}
                     </td>
                 </tr>
             `;

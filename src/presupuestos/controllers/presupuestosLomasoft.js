@@ -75,11 +75,40 @@ const buscarCandidatasLomasoft = async (req, res) => {
 
         console.log(`✅ [LOMASOFT] Encontradas ${lomasoftData.total} candidatas para pres. ${id}`);
 
+        // Fase 3: Interceptor de facturas ya conciliadas (Bloqueo 1-a-1)
+        const candidatasArray = lomasoftData.data || [];
+        if (candidatasArray.length > 0) {
+            const comprobantes = candidatasArray.map(c => c.comprobante_formateado).filter(Boolean);
+            if (comprobantes.length > 0) {
+                const checkSql = `
+                    SELECT id, comprobante_lomasoft 
+                    FROM presupuestos 
+                    WHERE comprobante_lomasoft = ANY($1::text[]) 
+                      AND comprobante_lomasoft IS NOT NULL
+                `;
+                const checkRes = await req.db.query(checkSql, [comprobantes]);
+
+                const vinculados = {};
+                checkRes.rows.forEach(row => {
+                    vinculados[row.comprobante_lomasoft] = row.id;
+                });
+
+                candidatasArray.forEach(c => {
+                    if (vinculados[c.comprobante_formateado]) {
+                        c.ya_conciliada = true;
+                        c.id_presupuesto_local = vinculados[c.comprobante_formateado];
+                    } else {
+                        c.ya_conciliada = false;
+                    }
+                });
+            }
+        }
+
         // 5. Devolver resultados limpios al Frontend
         return res.json({
             success: true,
-            data: lomasoftData.data || [],
-            total: lomasoftData.total || (lomasoftData.data || []).length
+            data: candidatasArray,
+            total: lomasoftData.total || candidatasArray.length
         });
 
     } catch (error) {
