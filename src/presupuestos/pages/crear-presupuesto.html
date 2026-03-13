@@ -836,6 +836,17 @@
                     </details>
                 </div>
 
+                <!-- CHECKBOX: TRÁMITE ADMINISTRATIVO (Solo visible en MODO_RETIRO) -->
+                <div id="admin-retiro-container" style="display: none; margin-bottom: 20px; padding: 15px; background: #fdf2e9; border: 2px solid #e67e22; border-radius: 8px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold; color: #d35400; font-size: 1.1em;">
+                        <input type="checkbox" id="chk_tramite_administrativo" name="chk_tramite_administrativo" style="width: 20px; height: 20px;">
+                        📝 Trámite Administrativo (Sin movimiento físico - Solo N.C.)
+                    </label>
+                    <p style="margin: 8px 0 0 30px; font-size: 0.85em; color: #7f8c8d;">
+                        Marca esta casilla si el cliente se arrepintió de una venta pero la mercadería <strong>nunca fue entregada ni salió del depósito</strong>. Esto generará una orden que permitirá emitir la Nota de Crédito directamente sin requerir recepción física en Mantenimiento.
+                    </p>
+                </div>
+
                 <form id="form-crear-presupuesto">
                     <input type="hidden" id="informe_generado" name="informe_generado" value="Pendiente">
 

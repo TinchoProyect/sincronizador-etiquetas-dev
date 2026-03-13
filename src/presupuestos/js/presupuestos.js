@@ -1243,6 +1243,10 @@ function updatePresupuestosTable(data) {
                 `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#6aa84f' : '#f1c232'}">
                 ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : '🚚 Retira Chofer'}
             </span>` : ''}
+                ${item.estado === 'Administrativa NC' ?
+                `<span class="estado-badge badge-purple" style="display:block; margin-top:5px; background-color: #f3e5f5; color: #6a1b9a; border: 1px solid #ce93d8;">
+                📁 Admin (Solo NC)
+            </span>` : ''}
             </td>
             <td class="text-center">
                 <div class="action-buttons-compact" style="display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; justify-content: center;">
@@ -1252,6 +1256,13 @@ function updatePresupuestosTable(data) {
                     ${!esRetiro && !item.comprobante_lomasoft ? `
                     <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
                         <span style="font-size: 1.2rem;">🔗</span>
+                    </button>` : ''}
+                    ${item.estado === 'Administrativa NC' ? `
+                    <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
+                        <span style="font-size: 1.2rem;">🔗</span>
+                    </button>
+                    <button class="btn-action btn-facturar" onclick="enviarAFacturador(${item.id})" title="Emitir NC Local" style="background:transparent; border:1px solid #28a745; border-radius: 4px; cursor:pointer; color: #28a745; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
+                        <span style="font-size: 1.2rem;">🧾</span>
                     </button>` : ''}
                     ${editButtonHTML}
                     ${deleteButtonHTML}
@@ -2870,13 +2881,98 @@ async function seleccionarCandidataLomasoft(presupuestoId, candidataIndex) {
             showConfirmButton: false
         });
 
-        // 4. Recargar la grilla para que se refleje el estado "Conciliado"
-        if (typeof handleCargarDatos === 'function') {
-            await handleCargarDatos(appState.pagination.currentPage, true);
-        }
+        // 4. Recargar vista
+        handleCargarDatos(appState.pagination.currentPage, true);
 
     } catch (error) {
-        console.error("Error al confirmar conciliación Lomasoft:", error);
-        Swal.fire('Error de vinculación', error.message, 'error');
+        console.error("Error Lomasoft Conciliación:", error);
+        Swal.fire('Error al conciliar', error.message, 'error');
     }
 }
+
+// ==========================================
+// EMISIÓN DE NOTA DE CRÉDITO LOCAL (ADMINISTRATIVA)
+// ==========================================
+
+window.enviarAFacturador = async function (presupuestoId) {
+    if (!presupuestoId) return;
+
+    try {
+        const result = await Swal.fire({
+            title: '¿Emitir Nota de Crédito Local?',
+            text: "Se generará una Nota de Crédito electrónica en AFIP por este presupuesto Administrativo de NC.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#28a745',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Sí, emitir NC',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!result.isConfirmed) return;
+
+        Swal.fire({
+            title: 'Procesando...',
+            text: 'Emitiendo Nota de Crédito...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // Buscar el detalle del presupuesto en appState para armar el payload
+        const presupuesto = appState.presupuestos.find(p => p.id === presupuestoId);
+        if (!presupuesto) throw new Error("No se pudo localizar el presupuesto en la vista actual.");
+
+        // Realizamos un fetch para traer los detalles exactos del presupuesto
+        const resDetalles = await fetch(URLS.DETALLES(presupuestoId));
+        const detallesJson = await resDetalles.json();
+
+        if (!resDetalles.ok || !detallesJson.success) {
+            throw new Error('No se pudieron obtener los detalles para la NC');
+        }
+
+        const currentClientId = presupuesto.cliente_id ? parseInt(presupuesto.cliente_id.split(' - ')[0]) : null;
+
+        const payload = {
+            es_nota_credito: true,
+            cliente_id: currentClientId,
+            // Asumimos que como es Administrativa NC ya se grabó el factura_asociada_id
+            factura_asociada_id: presupuesto.factura_asociada_id,
+            total: presupuesto.total_final || presupuesto.monto,
+            descuento: presupuesto.descuento || 0,
+            items: detallesJson.data.detalles.map(d => ({
+                id_articulo: d.id_articulo,
+                cantidad: d.cantidad,
+                valor1: d.valor1,
+                camp2: d.camp2
+            }))
+        };
+
+        const response = await fetch('/api/facturacion/facturador/nc/directa', { // Asegurar usar el endpoint correcto o '/api/facturas' con flag
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || data.error || 'Error al emitir Nota de Crédito');
+        }
+
+        await Swal.fire(
+            '¡Nota de Crédito Emitida!',
+            'La NC ha sido generada y aprobada por AFIP.',
+            'success'
+        );
+
+        handleCargarDatos(appState.pagination.currentPage, true);
+
+    } catch (error) {
+        console.error('❌ [NC-ADMIN] Error al emitir NC:', error);
+        Swal.fire(
+            'Error al emitir NC',
+            error.message || 'Error de comunicación',
+            'error'
+        );
+    }
+};

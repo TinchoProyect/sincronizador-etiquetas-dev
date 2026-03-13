@@ -711,11 +711,11 @@ async function handleSubmit(event) {
             tipo_comprobante: MODO_RETIRO ? 'Orden de Retiro' : tipoComprobanteValor,
 
             estado: MODO_RETIRO
-                ? (document.getElementById('debug_estado')?.value || 'Orden de Retiro')
+                ? (document.getElementById('chk_tramite_administrativo')?.checked ? 'Administrativa NC' : (document.getElementById('debug_estado')?.value || 'Orden de Retiro'))
                 : estadoValorRaw,
 
             estado_logistico: overrideLogistico ? overrideLogistico : (MODO_RETIRO
-                ? (document.getElementById('debug_estado_logistico')?.value || 'PENDIENTE_ASIGNAR')
+                ? (document.getElementById('chk_tramite_administrativo')?.checked ? 'OMITIDO' : (document.getElementById('debug_estado_logistico')?.value || 'PENDIENTE_ASIGNAR'))
                 : 'SIN_ESTADO'),
 
             informe_generado: MODO_RETIRO
@@ -2419,9 +2419,12 @@ function activarModoRetiro() {
     setDebugVal('debug_informe', 'Pendiente');
     setDebugVal('debug_descuento', '0');
 
-    // MODO RETIRO EXCLUSIVO: Mostrar selector "Método de Retiro"
+    // MODO RETIRO EXCLUSIVO: Mostrar selector "Método de Retiro" y "Trámite Administrativo"
     const panelMetodo = document.getElementById('seccion-metodo-retiro');
     if (panelMetodo) panelMetodo.style.display = 'block';
+
+    const panelAdmin = document.getElementById('admin-retiro-container');
+    if (panelAdmin) panelAdmin.style.display = 'block';
 }
 
 // Hook para mostrar botón de vincular al seleccionar cliente
@@ -2455,7 +2458,8 @@ async function abrirModalVinculacion(clienteId) {
         const params = new URLSearchParams({
             cliente_id: clienteId,
             limit: 50,
-            estado: 'FACTURADO,Entregado,Confirmado',
+            // Agregamos 'APROBADA' (facturas AFIP) y 'Conciliado' (Lomasoft) para permitir NC administrativas sin entrega física
+            estado: 'FACTURADO,Entregado,Confirmado,APROBADA,Conciliado',
             excluir_tipo: 'Orden de Retiro'
         });
 

@@ -1025,7 +1025,10 @@ const eliminarPresupuesto = async (req, res) => {
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Presupuesto encontrado: ${presupuesto.id_presupuesto_ext}`);
 
         // --- FASE 30: BLOQUEO DE INTEGRIDAD LOGÍSTICA INVERSA ---
-        if (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.tipo_comprobante === 'Remito-Efectivo' || presupuesto.estado === 'Orden de Retiro') {
+        const isReturnDocument = presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.tipo_comprobante === 'Remito-Efectivo' || presupuesto.estado === 'Orden de Retiro';
+        const isAdministrativeReturn = presupuesto.estado === 'Administrativa NC';
+
+        if (isReturnDocument && !isAdministrativeReturn) {
             const integrityQuery = `
                 SELECT 1 
                 FROM public.mantenimiento_movimientos 

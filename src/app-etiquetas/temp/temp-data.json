@@ -1,6 +1,8 @@
 {
-  "numero": "HDGX5",
-  "nombre": "Harina/Garbanzo x 5",
-  "codigo_barras": "468239677",
+  "articulo": {
+    "nombre": "Nuez/Cu/ExtL/Ch x 6",
+    "numero": "NCELCHx6",
+    "codigo_barras": "6569985472"
+  },
   "cantidad": 2
 }

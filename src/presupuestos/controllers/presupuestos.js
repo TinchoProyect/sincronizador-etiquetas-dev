@@ -276,7 +276,7 @@ const obtenerPresupuestos = async (req, res) => {
                 }
 
                 if (includesFacturado) {
-                    stateConditions.push(`EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA')`);
+                    stateConditions.push(`(EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != ''))`);
                 }
 
                 if (stateConditions.length > 0) {
@@ -360,7 +360,23 @@ const obtenerPresupuestos = async (req, res) => {
         console.log('📋 [PRESUPUESTOS] Consulta SQL:', query);
         console.log('📋 [PRESUPUESTOS] Parámetros:', params);
 
+        // VIGÍA DEPURADOR: Trámite Administrativo (Modal de vinculación de presupuesto)
+        const isAdminNCWatcherActive = estado && (estado.includes('APROBADA') || estado.includes('Conciliado'));
+        if (isAdminNCWatcherActive) {
+            console.log('\n======================================================');
+            console.log('🚨 VIGÍA DEPURADOR: Búsqueda Presupuesto (Trámite Admin NC)');
+            console.log('------------------------------------------------------');
+            console.log('➡️ Query cruda a DB:\n', query);
+            console.log('➡️ Parámetros inyectados:', params);
+        }
+
         const result = await req.db.query(query, params);
+
+        if (isAdminNCWatcherActive) {
+            console.log(`➡️ Registros devueltos por DB (crudas): ${result.rows.length}`);
+            console.log('➡️ Resultados (primeros 3):', result.rows.slice(0, 3).map(r => ({id: r.id, concepto: r.concepto, estado: r.estado, esta_facturado: r.esta_facturado})));
+            console.log('======================================================\n');
+        }
 
         // AUDITORÍA DE FECHAS - Instrumentación completa de logs inteligentes
         const auditoriaDeFechas = process.env.DEBUG_FECHAS === 'true' || req.query.debug_fechas === 'true';
@@ -523,10 +539,25 @@ const obtenerPresupuestos = async (req, res) => {
             }
 
             if (estadosArray.length > 0) {
-                const estadosPlaceholders = estadosArray.map((_, index) => `$${countParamCount + index + 1}`).join(', ');
-                countParamCount += estadosArray.length;
-                countQuery += ` AND p.estado IN (${estadosPlaceholders})`;
-                countParams.push(...estadosArray);
+                const includesFacturado = estadosArray.includes('FACTURADO');
+                const realStates = estadosArray.filter(e => e !== 'FACTURADO');
+
+                let stateConditions = [];
+
+                if (realStates.length > 0) {
+                    const estadosPlaceholders = realStates.map((_, index) => `$${countParamCount + index + 1}`).join(', ');
+                    countParamCount += realStates.length;
+                    stateConditions.push(`p.estado IN (${estadosPlaceholders})`);
+                    countParams.push(...realStates);
+                }
+
+                if (includesFacturado) {
+                    stateConditions.push(`(EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != ''))`);
+                }
+
+                if (stateConditions.length > 0) {
+                    countQuery += ` AND (${stateConditions.join(' OR ')})`;
+                }
             }
         }
 
@@ -3077,6 +3108,7 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                   p.estado_logistico IN ('RETIRADO', 'ENTREGADO') 
                   OR p.estado IN ('Entregado', 'Confirmado')
                   OR EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA')
+                  OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '')
               )
               -- QA Modification: Excluir explícitamente Órdenes de Retiro
               AND p.tipo_comprobante != 'Orden de Retiro'
@@ -3084,12 +3116,25 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
             LIMIT 10
         `;
 
-        // Usamos wildcards para ILIKE en ambos parámetros para maximizar probabilidad de match
-        const result = await req.db.query(queryReal, [
+        const queryParams = [
             cliente_id,
             `%${articulo_codigo || ''}%`,
             `%${descripcion || ''}%`
-        ]);
+        ];
+
+        // VIGÍA DEPURADOR: Trámite Administrativo (Modal de vinculación por artículo)
+        console.log('\n======================================================');
+        console.log('🚨 VIGÍA DEPURADOR: Búsqueda Artículo Historial (Posible Trámite Admin NC)');
+        console.log('------------------------------------------------------');
+        console.log('➡️ Query cruda a DB:\n', queryReal);
+        console.log('➡️ Parámetros inyectados:', queryParams);
+
+        // Usamos wildcards para ILIKE en ambos parámetros para maximizar probabilidad de match
+        const result = await req.db.query(queryReal, queryParams);
+
+        console.log(`➡️ Registros devueltos por DB (crudas): ${result.rows.length}`);
+        console.log('➡️ Resultados (primeros 3):', result.rows.slice(0, 3).map(r => ({id_presupuesto: r.id_presupuesto, fecha: r.fecha, descripcion: r.descripcion})));
+        console.log('======================================================\n');
 
         res.json({
             success: true,
