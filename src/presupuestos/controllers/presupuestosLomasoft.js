@@ -8,6 +8,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
             SELECT 
                 p.id_cliente, 
                 p.fecha, 
+                p.estado,
                 SUM(pd.cantidad * COALESCE(pd.precio1, pd.valor1, 0)) * (1 - COALESCE(p.descuento, 0)) AS monto_total,
                 json_agg(
                     COALESCE(a.numero, pd.articulo)
@@ -16,7 +17,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
             LEFT JOIN presupuestos_detalles pd ON pd.id_presupuesto = p.id
             LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
             WHERE p.id = $1
-            GROUP BY p.id, p.id_cliente, p.fecha, p.descuento
+            GROUP BY p.id, p.id_cliente, p.fecha, p.estado, p.descuento
             LIMIT 1;
         `;
 
@@ -26,57 +27,171 @@ const buscarCandidatasLomasoft = async (req, res) => {
         }
 
         const localData = dbResult.rows[0];
-
-        // 2. Armar el contrato estricto de Lomasoft
-        const payloadLomasoft = {
-            cliente_id: String(localData.id_cliente),
-            monto_total: parseFloat(localData.monto_total || 0),
-            fecha_creacion: new Date(localData.fecha).toISOString().split('T')[0], // YYYY-MM-DD
-            articulos: localData.codigos_articulos || [] // Asegurados que son alfanuméricos mediante COALESCE
-        };
-
-        console.log("🚀 [LOMASOFT] Payload a enviar al ERP:", JSON.stringify(payloadLomasoft, null, 2));
-
-        // 3. Obtener la URL del Túnel (Cloudflare)
-        // El túnel que conecta con Lomasoft (Mantenimiento usa directamente api.lamdaser.com)
+        const isAdministrativaNC = localData.estado === 'Administrativa NC';
         const baseUrl = process.env.CLOUDFLARE_URL || "https://api.lamdaser.com";
-        const urlLomasoft = `${baseUrl}/api/facturas/candidatas`;
 
-        // 4. Llamada al túnel usando la arquitectura de Mantenimiento local (Fetch Nativo de Node + AbortController)
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+        let candidatasArray = [];
+        let totalCandidatas = 0;
 
-        const lomaRes = await fetch(urlLomasoft, {
-            method: 'POST',
-            signal: controller.signal,
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(payloadLomasoft)
-        });
-        clearTimeout(timeout);
+        if (isAdministrativaNC) {
+            console.log(`🚀 [LOMASOFT] Presupuesto es 'Administrativa NC'. Buscando Notas de Crédito en /devoluciones`);
+            const articulos = localData.codigos_articulos ? localData.codigos_articulos.filter(a => a && a.toString().trim() !== '') : [];
+            
+            // Si no hay artículos específicos (ej. es un texto genérico de devolución), forzamos una búsqueda general para el cliente
+            const busquedas = articulos.length > 0 ? articulos : ['TODOS'];
+            
+            // Buscar facturas/NC por cada artículo devuelto (o una vez general si no hay artículos)
+            for (const articulo of busquedas) {
+                const urlLomasoft = new URL(`${baseUrl}/devoluciones`);
+                urlLomasoft.searchParams.append('cliente', localData.id_cliente);
+                if (articulo !== 'TODOS') {
+                    urlLomasoft.searchParams.append('articulo', articulo);
+                }
 
-        // Parseamos la respuesta de Lomasoft
-        const jsonText = await lomaRes.text();
-        let lomasoftData;
-        try {
-            lomasoftData = JSON.parse(jsonText);
-        } catch (e) {
-            console.error(`[LOMASOFT] ❌ Error parseando respuesta (HTTP ${lomaRes.status}).`);
-            console.error(`[LOMASOFT] Texto recibido (primeros 500 chars): ${jsonText.substring(0, 500)}`);
-            throw new Error(`Respuesta inválida del ERP Lomasoft al buscar candidatas (HTTP ${lomaRes.status}). Revisa la consola del servidor.`);
+                try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 10000);
+
+                    const lomaRes = await fetch(urlLomasoft.toString(), {
+                        signal: controller.signal,
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    clearTimeout(timeout);
+
+                    if (lomaRes.ok) {
+                        const jsonText = await lomaRes.text();
+                        let lomaData = [];
+                        try {
+                            lomaData = JSON.parse(jsonText);
+                        } catch (e) {
+                            console.error(`[LOMASOFT] Error parseando respuesta de /devoluciones para art ${articulo}`);
+                        }
+
+                        // Lomasoft (/devoluciones) puede devolver un array directo o un objeto con data
+                        const resultadosRaw = Array.isArray(lomaData) ? lomaData : (lomaData.data || []);
+                        
+                        // Fecha base del presupuesto (Límite temporal)
+                        const fechaRef = new Date(localData.fecha);
+                        
+                        // Remover resultados muy antiguos (Más de 45 días de diferencia)
+                        const resultados = resultadosRaw.filter(r => {
+                            const fCandidato = r.fecha || r.fecha_emision;
+                            if (!fCandidato) return false;
+                            
+                            const f2 = new Date(fCandidato);
+                            const difDias = Math.abs(Math.round((f2 - fechaRef) / (1000 * 60 * 60 * 24)));
+                            return difDias <= 45;
+                        });
+                        
+                        // Mapear al formato que espera el Frontend de Presupuestos
+                        resultados.forEach(r => {
+                            let montoCandidato = Math.abs(parseFloat(r.importe_total || r.importe_neto || r.imp_neto || 0));
+                            const isTipoA = (r.tipo_comprobante || '').toUpperCase().includes(' A');
+                            if (isTipoA && !r.importe_total) {
+                                montoCandidato = montoCandidato * 1.21; // Sumar IVA 21% a Facturas/NC A si Lomasoft solo dio neto
+                            }
+
+                            // Validar coincidencia estricta de montos (Tolerancia $500) para limpiar la tabla
+                            const montoPresupuesto = Math.abs(parseFloat(localData.monto_total || 0));
+                            if (montoPresupuesto > 100) {
+                                const diferencia = Math.abs(montoCandidato - montoPresupuesto);
+                                if (diferencia > 500) {
+                                    return; // Ignorar candidata
+                                }
+                            }
+
+                            // Validar que no hayamos agregado ya esta NC (evitar duplicados si trae la misma para distintos artículos)
+                            const compFormat = `${r.punto_venta || 0}-${r.numero_comprobante || 0}`;
+                            
+                            const existe = candidatasArray.find(c => c.comprobante_formateado === compFormat);
+                            
+                            if (!existe) {
+                                candidatasArray.push({
+                                    codigo: r.codigo || 0, // Ajustar según respuesta real
+                                    punto_venta: r.punto_venta || 0,
+                                    numero_comprobante: r.numero_comprobante || 0,
+                                    comprobante_formateado: compFormat,
+                                    tipo_comprobante: r.tipo_comprobante || 'N/C',
+                                    fecha: r.fecha || r.fecha_emision, // Presupuestos espera 'fecha'
+                                    importe_total: montoCandidato,
+                                    articulos: [{
+                                        nombre: r.articulo || r.item_descripcion,
+                                        cantidad: Math.abs(parseFloat(r.cantidad || r.item_cantidad || 0))
+                                    }]
+                                });
+                            } else {
+                                // Si ya existe el comprobante, agregarle el artículo al detalle
+                                const artNombre = r.articulo || r.item_descripcion;
+                                if (!existe.articulos.find(a => a.nombre === artNombre)) {
+                                    existe.articulos.push({
+                                        nombre: artNombre,
+                                        cantidad: Math.abs(parseFloat(r.cantidad || r.item_cantidad || 0))
+                                    });
+                                }
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error(`[LOMASOFT] Error buscando NCs para articulo ${articulo}:`, e);
+                }
+            }
+            totalCandidatas = candidatasArray.length;
+            console.log(`✅ [LOMASOFT] Encontradas ${totalCandidatas} NCs filtradas.`);
+
+        } else {
+            // FLUJO ORIGINAL PARA VENTAS (Buscando Facturas)
+            // 2. Armar el contrato estricto de Lomasoft
+            const payloadLomasoft = {
+                cliente_id: String(localData.id_cliente),
+                monto_total: parseFloat(localData.monto_total || 0),
+                fecha_creacion: new Date(localData.fecha).toISOString().split('T')[0], // YYYY-MM-DD
+                articulos: localData.codigos_articulos || [] // Asegurados que son alfanuméricos mediante COALESCE
+            };
+
+            console.log("🚀 [LOMASOFT] Payload a enviar al ERP:", JSON.stringify(payloadLomasoft, null, 2));
+
+            // 3. Obtener la URL del Túnel (Cloudflare)
+            // El túnel que conecta con Lomasoft (Mantenimiento usa directamente api.lamdaser.com)
+            const urlLomasoft = `${baseUrl}/api/facturas/candidatas`;
+
+            // 4. Llamada al túnel usando la arquitectura de Mantenimiento local (Fetch Nativo de Node + AbortController)
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+
+            const lomaRes = await fetch(urlLomasoft, {
+                method: 'POST',
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payloadLomasoft)
+            });
+            clearTimeout(timeout);
+
+            // Parseamos la respuesta de Lomasoft
+            const jsonText = await lomaRes.text();
+            let lomasoftData;
+            try {
+                lomasoftData = JSON.parse(jsonText);
+            } catch (e) {
+                console.error(`[LOMASOFT] ❌ Error parseando respuesta (HTTP ${lomaRes.status}).`);
+                console.error(`[LOMASOFT] Texto recibido (primeros 500 chars): ${jsonText.substring(0, 500)}`);
+                throw new Error(`Respuesta inválida del ERP Lomasoft al buscar candidatas (HTTP ${lomaRes.status}). Revisa la consola del servidor.`);
+            }
+
+            if (!lomaRes.ok || lomasoftData.ok === false) {
+                console.error(`[LOMASOFT] ❌ Respuesta de error desde Lomasoft (HTTP ${lomaRes.status}):`, lomasoftData);
+                throw new Error(lomasoftData.message || 'Error del ERP Lomasoft al buscar candidatas');
+            }
+
+            console.log(`✅ [LOMASOFT] Encontradas ${lomasoftData.total} candidatas para pres. ${id}`);
+            
+            candidatasArray = lomasoftData.data || [];
+            totalCandidatas = lomasoftData.total || candidatasArray.length;
         }
-
-        if (!lomaRes.ok || lomasoftData.ok === false) {
-            console.error(`[LOMASOFT] ❌ Respuesta de error desde Lomasoft (HTTP ${lomaRes.status}):`, lomasoftData);
-            throw new Error(lomasoftData.message || 'Error del ERP Lomasoft al buscar candidatas');
-        }
-
-        console.log(`✅ [LOMASOFT] Encontradas ${lomasoftData.total} candidatas para pres. ${id}`);
 
         // Fase 3: Interceptor de facturas ya conciliadas (Bloqueo 1-a-1)
-        const candidatasArray = lomasoftData.data || [];
         if (candidatasArray.length > 0) {
             const comprobantes = candidatasArray.map(c => c.comprobante_formateado).filter(Boolean);
             if (comprobantes.length > 0) {
@@ -108,7 +223,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
         return res.json({
             success: true,
             data: candidatasArray,
-            total: lomasoftData.total || candidatasArray.length
+            total: totalCandidatas
         });
 
     } catch (error) {
@@ -123,11 +238,15 @@ const buscarCandidatasLomasoft = async (req, res) => {
 
 const confirmarConciliacion = async (req, res) => {
     const { id } = req.params;
-    const { codigo, punto_venta, comprobante_formateado } = req.body;
+    let { codigo, punto_venta, comprobante_formateado } = req.body;
 
-    if (!codigo || !punto_venta || !comprobante_formateado) {
-        return res.status(400).json({ success: false, message: 'Faltan datos de la candidata (código, pto vta o comprobante)' });
+    if (!comprobante_formateado) {
+        return res.status(400).json({ success: false, message: 'Faltan datos de la candidata (comprobante_formateado es requerido)' });
     }
+    
+    // Normalizar fallbacks si la API externa omitió los datos de orígen
+    codigo = codigo || 0;
+    punto_venta = punto_venta || 0;
 
     try {
         console.log(`🔗 [LOMASOFT] Confirmando conciliación de Presupuesto ${id} con Factura ${comprobante_formateado}`);

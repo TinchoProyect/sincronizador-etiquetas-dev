@@ -2419,12 +2419,61 @@ function activarModoRetiro() {
     setDebugVal('debug_informe', 'Pendiente');
     setDebugVal('debug_descuento', '0');
 
-    // MODO RETIRO EXCLUSIVO: Mostrar selector "Método de Retiro" y "Trámite Administrativo"
-    const panelMetodo = document.getElementById('seccion-metodo-retiro');
-    if (panelMetodo) panelMetodo.style.display = 'block';
+    const panelOpciones = document.getElementById('contenedor-opciones-retiro');
+    if (panelOpciones) panelOpciones.style.display = 'block';
 
     const panelAdmin = document.getElementById('admin-retiro-container');
     if (panelAdmin) panelAdmin.style.display = 'block';
+
+    const panelMetodo = document.getElementById('seccion-metodo-retiro');
+    if (panelMetodo) panelMetodo.style.display = 'block';
+
+    // FASE 3: Lógica de exclusión mutua para Opciones de Retiro
+    setupRetiroMutex();
+}
+
+/**
+ * Configura la exclusión mutua entre Trámite Administrativo y Método de Retiro Físico
+ */
+function setupRetiroMutex() {
+    if (window._retiroMutexSetup) return; // Evitar multiples listeners
+    window._retiroMutexSetup = true;
+
+    const radioOperacion = document.querySelectorAll('input[name="tipo_operacion_retiro"]');
+    const chkAdminHidden = document.getElementById('chk_tramite_administrativo');
+    const radiosSubmetodos = document.querySelectorAll('input.subopcion-retiro');
+    const containerLeyenda = document.getElementById('subopciones-logistica');
+
+    if (radioOperacion.length === 0 || !chkAdminHidden) return;
+
+    // Escuchar cambios en la Opcion Principal (A vs B)
+    radioOperacion.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const isAdministrativo = (e.target.value === 'administrativo');
+
+            // Sincronizar el checkbox oculto que lee el backend original
+            chkAdminHidden.checked = isAdministrativo;
+
+            if (isAdministrativo) {
+                // Deshabilitar las sub-opciones logísticas (Método físico)
+                radiosSubmetodos.forEach(r => {
+                    r.disabled = true;
+                    // Opcionalmente podemos deseleccionar form inputs
+                    r.checked = false;
+                });
+                if (containerLeyenda) containerLeyenda.style.opacity = '0.4';
+                
+            } else {
+                // Habilitar las sub-opciones logísticas
+                radiosSubmetodos.forEach(r => {
+                    r.disabled = false;
+                    // Reseleccionar chofer por defecto al volver a método físico
+                    if (r.value === 'chofer') r.checked = true;
+                });
+                if (containerLeyenda) containerLeyenda.style.opacity = '1';
+            }
+        });
+    });
 }
 
 // Hook para mostrar botón de vincular al seleccionar cliente

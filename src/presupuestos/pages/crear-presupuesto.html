@@ -837,15 +837,22 @@
                 </div>
 
                 <!-- CHECKBOX: TRÁMITE ADMINISTRATIVO (Solo visible en MODO_RETIRO) -->
-                <div id="admin-retiro-container" style="display: none; margin-bottom: 20px; padding: 15px; background: #fdf2e9; border: 2px solid #e67e22; border-radius: 8px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold; color: #d35400; font-size: 1.1em;">
-                        <input type="checkbox" id="chk_tramite_administrativo" name="chk_tramite_administrativo" style="width: 20px; height: 20px;">
-                        📝 Trámite Administrativo (Sin movimiento físico - Solo N.C.)
-                    </label>
-                    <p style="margin: 8px 0 0 30px; font-size: 0.85em; color: #7f8c8d;">
-                        Marca esta casilla si el cliente se arrepintió de una venta pero la mercadería <strong>nunca fue entregada ni salió del depósito</strong>. Esto generará una orden que permitirá emitir la Nota de Crédito directamente sin requerir recepción física en Mantenimiento.
-                    </p>
-                </div>
+                <!-- NUEVA ESTRUCTURA DE EXCLUSIÓN MUTUA PARA RETIROS -->
+                <div id="contenedor-opciones-retiro" style="display: none; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px; color: #d35400;">📦 Tipo de Operación Inversa</h3>
+                    
+                    <!-- OPCIÓN PRINCIPAL A: Trámite Administrativo -->
+                    <div id="admin-retiro-container" style="margin-bottom: 15px; padding: 15px; background: #fdf2e9; border: 2px solid #e67e22; border-radius: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold; color: #d35400; font-size: 1.1em;">
+                            <!-- El backend sigue esperando este ID si usamos el mismo JS original -->
+                            <input type="radio" id="chk_tramite_administrativo_mock" name="tipo_operacion_retiro" value="administrativo" style="width: 20px; height: 20px; accent-color: #e67e22;">
+                            <input type="checkbox" id="chk_tramite_administrativo" name="chk_tramite_administrativo" style="display: none;">
+                            📝 Opción A: Trámite Administrativo (Sin movimiento físico - Solo N.C.)
+                        </label>
+                        <p style="margin: 8px 0 0 30px; font-size: 0.85em; color: #7f8c8d;">
+                            Marca esta opción si el cliente se arrepintió de una venta pero la mercadería <strong>nunca fue entregada ni salió del depósito</strong>.
+                        </p>
+                    </div>
 
                 <form id="form-crear-presupuesto">
                     <input type="hidden" id="informe_generado" name="informe_generado" value="Pendiente">
@@ -1054,25 +1061,25 @@
                     </div>
 
                     <!-- METODO DE RETIRO (NUEVO - SOLO LOGISTICA INVERSA) -->
-                    <div id="seccion-metodo-retiro"
-                        style="display: none; background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 6px; margin-top: 20px; text-align: right;">
-                        <h4 style="color: #856404; margin-top: 0; margin-bottom: 15px; font-size: 16px;">🚚 Método de
-                            Retiro Físico</h4>
-                        <div style="display: flex; gap: 20px; justify-content: flex-end; align-items: center;">
-                            <label
-                                style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #856404; font-weight: 500;">
-                                <input type="radio" name="metodo_retiro" value="chofer" checked
-                                    style="width: 18px; height: 18px; accent-color: #f39c12;">
+                    <!-- METODO DE RETIRO (OPCIÓN B) -->
+                    <div id="seccion-metodo-retiro" style="display: none; background: #fff3cd; border: 2px solid #ffeeba; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold; color: #856404; font-size: 1.1em; margin-bottom: 15px;">
+                            <input type="radio" id="chk_metodo_fisico" name="tipo_operacion_retiro" value="fisico" checked style="width: 20px; height: 20px; accent-color: #f39c12;">
+                            🚚 Opción B: Método de Retiro Físico
+                        </label>
+                        
+                        <div id="subopciones-logistica" style="display: flex; gap: 20px; align-items: center; margin-left: 30px; padding-top: 10px; border-top: 1px dashed #ffeeba;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #856404; font-weight: 500;">
+                                <input type="radio" class="subopcion-retiro" name="metodo_retiro" value="chofer" checked style="width: 18px; height: 18px; accent-color: #f39c12;">
                                 <span>Retira nuestro Chofer (Va a Hoja de Ruta)</span>
                             </label>
-                            <label
-                                style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #856404; font-weight: 500;">
-                                <input type="radio" name="metodo_retiro" value="mostrador"
-                                    style="width: 18px; height: 18px; accent-color: #f39c12;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #856404; font-weight: 500;">
+                                <input type="radio" class="subopcion-retiro" name="metodo_retiro" value="mostrador" style="width: 18px; height: 18px; accent-color: #f39c12;">
                                 <span>El Cliente lo trae al Mostrador</span>
                             </label>
                         </div>
                     </div>
+                </div> <!-- Cierre de contenedor-opciones-retiro -->
 
                     <!-- Acciones -->
                     <div class="form-actions">
