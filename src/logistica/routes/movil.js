@@ -663,6 +663,14 @@ router.post('/rutas/finalizar', async (req, res) => {
                         console.warn(`[MOVIL] ⚠️ No se pudo impactar stock para el artículo ${item.codigo_barras} (No se encontró número interno)`);
                     }
                 }
+
+                // C. Actualizar estado logístico de la orden para que Mantenimiento y Presupuestos la reconozcan
+                await client.query(`
+                    UPDATE presupuestos
+                    SET estado_logistico = 'INGRESADO_LOCAL',
+                        fecha_actualizacion = NOW()
+                    WHERE id = $1
+                `, [retiro.id]);
             }
 
             // 3. Actualizar estado de ruta

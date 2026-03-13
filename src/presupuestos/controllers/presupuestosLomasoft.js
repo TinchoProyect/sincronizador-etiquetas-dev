@@ -101,7 +101,9 @@ const buscarCandidatasLomasoft = async (req, res) => {
                             }
 
                             // Validar que no hayamos agregado ya esta NC (evitar duplicados si trae la misma para distintos artículos)
-                            const compFormat = `${r.punto_venta || 0}-${r.numero_comprobante || 0}`;
+                            const ptoStr = String(r.punto_venta || 0).padStart(4, '0');
+                            const numStr = String(r.numero_comprobante || 0).padStart(8, '0');
+                            const compFormat = `${ptoStr}-${numStr}`;
                             
                             const existe = candidatasArray.find(c => c.comprobante_formateado === compFormat);
                             

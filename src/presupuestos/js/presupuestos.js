@@ -1240,8 +1240,8 @@ function updatePresupuestosTable(data) {
                     ✅ Conciliado: ${escapeHtml(item.comprobante_lomasoft)}
                 </span>` : ''}
                 ${item.estado === 'Orden de Retiro' ?
-                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '#6aa84f' : '#f1c232'}">
-                ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : '🚚 Retira Chofer'}
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${['ESPERANDO_MOSTRADOR', 'INGRESADO_LOCAL'].includes(item.estado_logistico) ? '#e2f0d9; color: #38761d' : '#fff2cc; color: #b45f06'}; border: 1px solid ${['ESPERANDO_MOSTRADOR', 'INGRESADO_LOCAL'].includes(item.estado_logistico) ? '#6aa84f' : '#f1c232'}">
+                ${item.estado_logistico === 'ESPERANDO_MOSTRADOR' ? '🏪 Trae Cliente' : item.estado_logistico === 'INGRESADO_LOCAL' ? '🔧 En Mantenimiento' : '🚚 Retira Chofer'}
             </span>` : ''}
                 ${item.estado === 'Administrativa NC' ?
                 `<span class="estado-badge badge-purple" style="display:block; margin-top:5px; background-color: #f3e5f5; color: #6a1b9a; border: 1px solid #ce93d8;">
@@ -1253,7 +1253,7 @@ function updatePresupuestosTable(data) {
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
                         🖨️
                     </button>
-                    ${!esRetiro && !item.comprobante_lomasoft ? `
+                    ${(!esRetiro || item.estado_logistico === 'INGRESADO_LOCAL') && !item.comprobante_lomasoft ? `
                     <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
                         <span style="font-size: 1.2rem;">🔗</span>
                     </button>` : ''}

@@ -272,19 +272,49 @@ async function diagnosticoVigiaAuditor(req, res) {
             debugLog.push(`⚠️ Error leyendo NCs locales: ${e.message}`);
         }
 
-        // Remover comprobantes ocupados de los resultados
+        // Obtener la descripción local del artículo para hacer un matching más inteligente
+        let descripcionLocal = articulo;
+        try {
+            const resArt = await pool.query(`SELECT nombre FROM public.articulos WHERE numero = $1`, [articulo]);
+            if (resArt.rowCount > 0) {
+                descripcionLocal = resArt.rows[0].nombre.toUpperCase();
+            }
+        } catch (e) {
+            console.error('⚠️ [VIGIA AUDITOR] No se pudo consultar la descripción del artículo', e);
+        }
+        
+        // Función auxiliar para normalizar (quitar tildes, símbolos raros) y armar sets de palabras
+        const normalizar = (str) => {
+            return (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9 ]/g, ' ').toUpperCase().split(' ').filter(w => w.length > 2);
+        };
+        const palabrasLocal = normalizar(descripcionLocal);
+
+        // Remover comprobantes ocupados y filtrar por relevancia de producto
         resultados = resultados.filter(r => {
             const numeroCompleto = `${r.punto_venta || 0}-${r.numero_comprobante || 0}`;
-
-            // Verificamos si la firma (Comprobante|ArticuloLocalQueBuscamos) ya está en set
-            // NOTA: Como lomasoft devuelve TODO el historial, y nosotros filtramos sobre la marcha contra
-            // el articulo de este endpoint, comparamos directamente contra el parametro `articulo`
             const firmaSearch = `${numeroCompleto}|${articulo.toUpperCase()}`;
 
-            return !itemsYaConciliados.has(firmaSearch);
+            if (itemsYaConciliados.has(firmaSearch)) {
+                return false;
+            }
+
+            // HARD FILTER: Aplicar filtro estricto de coincidencia de Artículo
+            // Si el comprobante de Lomasoft pertenece a un producto TOTALMENTE distinto, lo descartamos
+            const descLomasoft = (r.articulo || r.item_descripcion || '').toUpperCase();
+            const palabrasLomasoft = normalizar(descLomasoft);
+            
+            // Chequear si alguna palabra clave de más de 2 letras coincide
+            const interseccion = palabrasLocal.filter(p => palabrasLomasoft.includes(p));
+            
+            // Si no hay ninguna palabra en común (ej: 'AVENA' vs 'NUEZ'), significa que Lomasoft nos dio la basura del cliente
+            if (interseccion.length === 0 && palabrasLocal.length > 0 && palabrasLomasoft.length > 0) {
+                return false; // Descartar candidata
+            }
+
+            return true;
         });
 
-        debugLog.push(`Resultados tras remover NCs "Ocupadas": ${resultados.length}`);
+        debugLog.push(`Resultados tras remover NCs "Ocupadas" y ajenas al producto: ${resultados.length}`);
 
         // Mapa de candidatos con diagnóstico individual
         const candidatosBrutos = resultados.map(r => {
@@ -314,11 +344,11 @@ async function diagnosticoVigiaAuditor(req, res) {
                 }
             }
 
-            // 3. Match de Artículo
+            // 3. Match de Artículo (Generar alerta solo si es un match parcial bajo)
             const nombreArticuloCandidato = (r.articulo || r.item_descripcion || '').toUpperCase();
             let alertaArticulo = null;
-            if (articulo && !nombreArticuloCandidato.includes(articulo.toUpperCase()) && nombreArticuloCandidato) {
-                alertaArticulo = `Código de artículo difiere (${nombreArticuloCandidato})`;
+            if (!nombreArticuloCandidato.includes(articulo.toUpperCase()) && !nombreArticuloCandidato.includes(descripcionLocal)) {
+                alertaArticulo = `Código o nombre difiere parcialmente (${nombreArticuloCandidato})`;
             }
 
             // Determinar color/estado general del diagnóstico
@@ -331,12 +361,24 @@ async function diagnosticoVigiaAuditor(req, res) {
                 }
             }
 
+            // Cálculo de montos con homologación de IVA para Tipo A
+            let montoCandidato = Math.abs(parseFloat(r.importe_total || r.importe_neto || r.imp_neto || 0));
+            const isTipoA = (r.tipo_comprobante || '').toUpperCase().includes(' A');
+            if (isTipoA && !r.importe_total) {
+                montoCandidato = montoCandidato * 1.21;
+            }
+
+            // Homologación de Padding para AFIP/Lomasoft
+            const ptoStr = String(r.punto_venta || 0).padStart(4, '0');
+            const numStr = String(r.numero_comprobante || 0).padStart(8, '0');
+
             return {
                 comprobante: {
                     tipo_comprobante: r.tipo_comprobante || 'N/C',
-                    pto_vta: r.punto_venta || 0,
-                    numero_comprobante: r.numero_comprobante || 0,
+                    pto_vta: ptoStr,
+                    numero_comprobante: numStr,
                     imp_neto: r.importe_neto || r.imp_neto || 0,
+                    importe_total: montoCandidato,
                     fecha_emision: candidatoFecha,
                     item_descripcion: r.articulo || r.item_descripcion,
                     item_cantidad: candidatoCantidad // Guardamos siempre en positivo para UI
@@ -464,8 +506,8 @@ async function confirmarConciliacion(req, res) {
 
         const usuario = req.user ? req.user.username : 'SISTEMA';
         const neto = parseFloat(comprobante.imp_neto || 0);
-        const iva = neto * 0.21;
-        const total = neto + iva;
+        const total = parseFloat(comprobante.importe_total || (neto * 1.21)); // Usa el total homologado desde Vigía
+        const iva = total - neto;
 
         const resCabecera = await client.query(insertCabecera, [
             cliente_id,

@@ -1073,7 +1073,7 @@
                                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                                     <div>
                                         <strong>${icono} ${nc.tipo_comprobante || 'NC'}</strong> - Nro: ${nc.pto_vta || nc.punto_venta}-${nc.numero_comprobante}<br>
-                                        <span style="color: #333; font-weight: bold;">Monto: $${nc.imp_neto || nc.importe_neto}</span><br>
+                                        <span style="color: #333; font-weight: bold;">Monto Total: $${nc.importe_total || nc.imp_neto || nc.importe_neto}</span><br>
                                         <small>F. Emisión: ${nc.fecha_emision ? new Date(nc.fecha_emision).toLocaleDateString() : 'N/A'}</small><br>
                                         <small style="color: #666;">Art: ${nc.item_descripcion || nc.articulo} (${nc.item_cantidad || nc.cantidad} u.)</small>
                                         <div style="margin-top: 8px; border-top: 1px dashed #ccc; padding-top: 5px;">
