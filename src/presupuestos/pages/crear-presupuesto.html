@@ -854,6 +854,31 @@
                         </p>
                     </div>
 
+                    <!-- OPCIÓN PRINCIPAL B: Retiro Físico de Mercadería -->
+                    <div id="seccion-metodo-retiro" style="margin-bottom: 15px; padding: 15px; background: #e8f6f3; border: 2px solid #1abc9c; border-radius: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold; color: #16a085; font-size: 1.1em;">
+                            <input type="radio" name="tipo_operacion_retiro" value="fisico" style="width: 20px; height: 20px; accent-color: #1abc9c;" checked>
+                            🚚 Opción B: Retiro Físico de Mercadería
+                        </label>
+                        <p style="margin: 8px 0 15px 30px; font-size: 0.85em; color: #7f8c8d;">
+                            Elige esta opción si la mercadería debe ingresar físicamente al almacén de Mantenimiento.
+                        </p>
+                        
+                        <div id="subopciones-logistica" style="margin-left: 30px; padding: 15px; background: white; border-radius: 6px; border: 1px solid #bdc3c7;">
+                            <h4 style="margin-top: 0; margin-bottom: 10px; color: #34495e; font-size: 0.95em;">¿Cómo llega la mercadería?</h4>
+                            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="radio" name="metodo_retiro" class="subopcion-retiro" value="chofer" checked>
+                                Lo retira un Chofer de la empresa (Pasa a ruta)
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="metodo_retiro" class="subopcion-retiro" value="mostrador">
+                                El cliente lo trae físicamente por Mostrador
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+
                 <form id="form-crear-presupuesto">
                     <input type="hidden" id="informe_generado" name="informe_generado" value="Pendiente">
 
