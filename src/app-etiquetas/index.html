@@ -139,28 +139,33 @@
       </div>
     </div>
 
-    <nav class="main-menu">
-      <a href="pages/impresion.html" class="menu-button">
-        <span class="icon">🏷️</span>
-        Impresión de etiquetas
-      </a>
-      <a href="http://localhost:3002/pages/produccion.html" class="menu-button">
+        <nav class="main-menu">
+      <!-- NIVEL 1 -->
+      <a href="/api/produccion/produccion.html" class="menu-button menu-tier-1">
         <span class="icon">🏭</span>
         Producción
       </a>
-      <a href="/presupuestos" class="menu-button">
+      <a href="/presupuestos" class="menu-button menu-tier-1">
         <span class="icon">🧾</span>
         Presupuestos
       </a>
-      <a href="http://localhost:3004" class="menu-button">
-        <span class="icon">💰</span>
-        Facturación
-      </a>
-      <a href="http://localhost:3005" class="menu-button">
+      
+      <!-- NIVEL 2 -->
+      <a href="/api/logistica/logistica.html" class="menu-button menu-tier-2">
         <span class="icon">🚚</span>
         Logística y Reparto
       </a>
-      <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal()" class="menu-button" style="background: linear-gradient(135deg, #f39c12 0%, #d35400 100%); color: white;">
+      <a href="/api/facturacion/facturacion.html" class="menu-button menu-tier-2">
+        <span class="icon">💰</span>
+        Facturación
+      </a>
+      
+      <!-- NIVEL 3 -->
+      <a href="pages/impresion.html" class="menu-button menu-tier-3">
+        <span class="icon">🏷️</span>
+        Impresión de etiquetas
+      </a>
+      <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal()" class="menu-button menu-tier-3 warning">
         <span class="icon">🏥</span>
         Enviar a Mantenimiento
       </a>

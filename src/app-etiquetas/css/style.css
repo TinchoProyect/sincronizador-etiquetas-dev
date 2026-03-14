@@ -35,12 +35,72 @@ header h1 {
   font-size: 2.5em;
 }
 
-/* Menú principal */
+/* Nuevo Rediseño de Menú Principal (Dashboard Grid) */
 .main-menu {
-  margin: 40px 0;
-  display: flex;
-  justify-content: center;
+  margin: 40px auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 20px;
+  max-width: 900px;
+}
+
+/* Nivel 1: Principales/Destacados */
+.menu-tier-1 {
+  grid-column: span 1;
+  padding: 30px;
+  font-size: 1.3em;
+  background-color: var(--primary-color);
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+.menu-tier-1 .icon {
+  font-size: 2.2em;
+  display: block;
+  margin-bottom: 15px;
+}
+
+/* Nivel 2: Secundarios */
+.menu-tier-2 {
+  grid-column: span 1;
+  padding: 20px;
+  font-size: 1.1em;
+  background-color: var(--secondary-color);
+  justify-content: center;
+}
+
+/* Nivel 3: Accesorios/Marginales */
+.menu-tier-3 {
+  grid-column: span 1;
+  padding: 12px 20px;
+  font-size: 0.95em;
+  justify-content: center;
+  background-color: white;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+.menu-tier-3:hover {
+  background-color: #f1f1f1;
+  color: var(--primary-color);
+}
+
+.menu-tier-3.warning {
+  background: linear-gradient(135deg, #f39c12 0%, #d35400 100%);
+  color: white;
+  border: none;
+}
+.menu-tier-3.warning:hover {
+  background: linear-gradient(135deg, #e67e22 0%, #c0392b 100%);
+  color: white;
+}
+
+/* Responsividad (Celulares) */
+@media (max-width: 768px) {
+  .main-menu {
+    grid-template-columns: 1fr; /* Todo en una columna */
+    padding: 0 15px;
+  }
 }
 
 .menu-button {
