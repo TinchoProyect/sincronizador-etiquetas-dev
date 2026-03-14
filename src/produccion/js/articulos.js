@@ -410,8 +410,14 @@ export async function actualizarTablaArticulos(articulos) {
                                         title="Quitar receta">
                                     Quitar
                                 </button>
-<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
-<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
+<button type="button" 
+        class="icon-mantenimiento" 
+        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
+        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
+        title="Enviar a Mantenimiento">
+    🏥
+</button>
+
                             ` : `
                                 <button class="btn-editar-receta"
                                         style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
@@ -420,8 +426,14 @@ export async function actualizarTablaArticulos(articulos) {
                                         data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                                     Vincular receta
                                 </button>
-<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
-<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
+<button type="button" 
+        class="icon-mantenimiento" 
+        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
+        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
+        title="Enviar a Mantenimiento">
+    🏥
+</button>
+
                             `}
                         </td>
                     `;
@@ -457,6 +469,13 @@ export async function actualizarTablaArticulos(articulos) {
                                         title="Quitar receta">
                                     Quitar
                                 </button>
+<button type="button" 
+        class="icon-mantenimiento" 
+        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
+        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
+        title="Enviar a Mantenimiento">
+    🏥
+</button>
                             ` : `
                                 <button class="btn-editar-receta"
                                         style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
@@ -465,6 +484,13 @@ export async function actualizarTablaArticulos(articulos) {
                                         data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                                     Vincular receta
                                 </button>
+<button type="button" 
+        class="icon-mantenimiento" 
+        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
+        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
+        title="Enviar a Mantenimiento">
+    🏥
+</button>
                             `}
                         </td>
                     `;

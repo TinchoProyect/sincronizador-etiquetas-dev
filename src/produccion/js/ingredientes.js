@@ -1498,3 +1498,61 @@ window.abrirModalAjusteDesdeTabla = async function (dummy, nombreIngrediente, st
         alert('❌ Error: El módulo de ajustes no está cargado correctamente. Recarga la página con Ctrl+F5.');
     }
 };
+
+// ==========================================
+// FUNCIÓN GLOBAL: TRASLADO MANTENIMIENTO
+// ==========================================
+window.iniciarTrasladoIngrediente = async function(ingredienteId, nombreIngredienteRaw) {
+    const nombre = nombreIngredienteRaw.replace(/\'/g, "'").replace(/'/g, "\'");
+    
+    const { value: formValues } = await Swal.fire({
+        title: 'Mover Kilos a Cuarentena',
+        icon: 'warning',
+        html:
+            '<p style="margin-bottom: 15px;">¿Cuántos <b>KILOS (⚖️)</b> de <span style="color: #d33;">['+nombre+']</span> declarará en cuarentena?</p>' +
+            '<input id="swal-ing-cantidad" type="number" step="0.001" min="0.001" class="swal2-input" placeholder="Cantidad (Kg)" value="">' +
+            '<input id="swal-ing-motivo" type="text" class="swal2-input" placeholder="Motivo de la cuarentena a granel">',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Trasladar a Mantenimiento',
+        cancelButtonText: 'Cancelar',
+        didOpen: () => {
+            document.getElementById('swal-ing-cantidad').focus();
+        },
+        preConfirm: () => {
+            const cantidad = document.getElementById('swal-ing-cantidad').value;
+            const motivo = document.getElementById('swal-ing-motivo').value;
+            if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) {
+                Swal.showValidationMessage('Debe ingresar una cantidad válida mayor a 0');
+                return false;
+            }
+            if (!motivo || motivo.trim() === '') {
+                Swal.showValidationMessage('El motivo es obligatorio');
+                return false;
+            }
+            return { cantidad: parseFloat(cantidad), motivo: motivo };
+        }
+    });
+
+    if (formValues) {
+        try {
+            const res = await fetch('/api/produccion/mantenimiento/traslado-ingredientes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ingrediente_id: ingredienteId, cantidad: formValues.cantidad, motivo: formValues.motivo })
+            });
+            const data = await res.json();
+            if (data.success) {
+                Swal.fire('¡Éxito!', 'Traslado del granel exitoso.', 'success');
+                if (window.cargarIngredientes) {
+                    window.cargarIngredientes();
+                }
+            } else {
+                Swal.fire('Error', data.error || 'Falló el traslado', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            Swal.fire('Error', 'Error técnico al comunicar con el servidor', 'error');
+        }
+    }
+};

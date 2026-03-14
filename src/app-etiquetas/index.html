@@ -160,6 +160,10 @@
         <span class="icon">🚚</span>
         Logística y Reparto
       </a>
+      <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal()" class="menu-button" style="background: linear-gradient(135deg, #f39c12 0%, #d35400 100%); color: white;">
+        <span class="icon">🏥</span>
+        Enviar a Mantenimiento
+      </a>
     </nav>
 
     <main>
@@ -175,5 +179,146 @@
   </div>
 
   <script src="js/main.js"></script>
+
+<!-- CDN SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+window.iniciarTrasladoGlobal = async function() {
+    const { value: tipoMovimiento } = await Swal.fire({
+        title: 'Enviar a Cuarentena Global',
+        text: '¿Qué tipo de mercadería reportará?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '📦 Artículo / Paquete',
+        cancelButtonText: '⚖️ Ingrediente a Granel',
+        customClass: {
+            confirmButton: 'swal2-confirm swal2-styled',
+            cancelButton: 'swal2-cancel swal2-styled'
+        }
+    });
+
+    let isArticulo = null;
+    if (tipoMovimiento === true) isArticulo = true;
+    else if (tipoMovimiento === undefined) return;
+    else isArticulo = false;
+
+    const titleText = isArticulo ? 'Escanear / Buscar Artículo' : 'Escanear / Buscar Ingrediente';
+    const inputPlaceholder = isArticulo ? 'Código o Nombre del Artículo...' : 'Código o Nombre del Ingrediente...';
+    
+    const { value: paramBusqueda } = await Swal.fire({
+        title: titleText,
+        input: 'text',
+        inputLabel: 'Use el lector de código de barras o escriba',
+        inputPlaceholder: inputPlaceholder,
+        showCancelButton: true,
+        confirmButtonText: 'Buscar',
+        didOpen: () => {
+            setTimeout(() => Swal.getInput().focus(), 100);
+            Swal.getInput().addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    Swal.clickConfirm();
+                }
+            });
+        },
+        inputValidator: (value) => {
+            if (!value) return 'El campo de búsqueda no puede estar vacío.';
+        }
+    });
+
+    if (!paramBusqueda) return;
+
+    try {
+        Swal.showLoading();
+        const endpointBusqueda = isArticulo 
+                ? '/api/produccion/articulos' 
+                : '/api/produccion/ingredientes';
+                
+        const resList = await fetch(endpointBusqueda);
+        const list = await resList.json();
+        
+        const dataArr = list.data || list; 
+        
+        let coincidencias = [];
+        if(isArticulo){
+             coincidencias = dataArr.filter(i => 
+                i.numero.toString() === paramBusqueda.trim() || 
+                (i.codigo_barras && i.codigo_barras === paramBusqueda.trim()) || 
+                i.nombre.toLowerCase().includes(paramBusqueda.toLowerCase())
+            );
+        } else {
+             coincidencias = dataArr.filter(i => 
+                i.codigo.toString() === paramBusqueda.trim() || 
+                i.nombre.toLowerCase().includes(paramBusqueda.toLowerCase())
+            );
+        }
+
+        if (coincidencias.length === 0) {
+            return Swal.fire('Sin resultados', 'No se encontró nada coincidente con: ' + paramBusqueda, 'info');
+        }
+
+        const itemEncontrado = coincidencias[0];
+        const idTransaccion = isArticulo ? itemEncontrado.numero : itemEncontrado.id;
+        const nombreDisplay = isArticulo ? itemEncontrado.nombre : itemEncontrado.nombre;
+
+        const htmlCuerpo = isArticulo 
+            ? '<input id="g-cant" type="number" step="1" min="1" value="1" class="swal2-input" placeholder="Cantidad">'
+            : '<input id="g-cant" type="number" step="0.001" min="0.001" value="" class="swal2-input" placeholder="Cantidad (Kg)">';
+
+        const { value: trasladoData } = await Swal.fire({
+            title: 'Confirmar Traslado 🏥',
+            html:
+                '<p>Item: <b>' + nombreDisplay + '</b></p>' +
+                htmlCuerpo +
+                '<input id="g-motivo" type="text" class="swal2-input" placeholder="Obligatorio: Motivo del daño...">',
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Confirmar Envío al Almacén',
+            didOpen: () => {
+                const cant = document.getElementById('g-cant');
+                if(isArticulo) cant.select(); else cant.focus();
+                
+                 document.getElementById('g-motivo').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') Swal.clickConfirm();
+                });
+            },
+            preConfirm: () => {
+                const c = document.getElementById('g-cant').value;
+                const m = document.getElementById('g-motivo').value;
+                if (!c || c <= 0) { Swal.showValidationMessage('Requiere cantidad válida.'); return false; }
+                if (!m) { Swal.showValidationMessage('Requiere motivo.'); return false; }
+                return { c, m };
+            }
+        });
+
+        if (!trasladoData) return;
+
+        const urlTraslado = isArticulo 
+            ? '/api/produccion/mantenimiento/traslado-ventas' 
+            : '/api/produccion/mantenimiento/traslado-ingredientes';
+            
+        const payloadParams = isArticulo 
+            ? { articulo: idTransaccion, cantidad: parseFloat(trasladoData.c), motivo: trasladoData.m }
+            : { ingrediente_id: idTransaccion, cantidad: parseFloat(trasladoData.c), motivo: trasladoData.m };
+
+        const trx = await fetch(urlTraslado, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadParams)
+        });
+        
+        const trxInfo = await trx.json();
+        
+        if (trxInfo.success) {
+            Swal.fire('¡Aislado!', 'El producto fue dado de baja y enviado a cuarentena.', 'success');
+        } else {
+            Swal.fire('Error interno', trxInfo.error || 'No se pudo mover la mercadería', 'error');
+        }
+
+    } catch (e) {
+        Swal.fire('Error de Conexión', e.message, 'error');
+    }
+};
+</script>
 </body>
 </html>
