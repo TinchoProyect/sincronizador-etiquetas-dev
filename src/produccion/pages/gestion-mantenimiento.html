@@ -800,11 +800,41 @@
                     const esLomasoftOK = (item.estado === 'CONCILIADO');
                     const esArcaOK = (item.estado_nc === 'COMPLETADO');
                     const esArcaBorrador = (item.estado_nc === 'BORRADOR');
+                    const esInterno = (item.origen_tipo === 'INGREDIENTE' || (!item.cliente_id && (item.cliente_nombre || '').includes('Traslado')));
 
                     let actionCell = '';
 
-                    if (esLomasoftOK || esArcaOK) {
-                        // Mostrar info del comprobante
+                    if (esInterno) {
+                        let dropInterno = '';
+                        if (item.origen_tipo !== 'INGREDIENTE') {
+                            dropInterno += `
+                                <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente')">
+                                    📦 Devolver a Ventas
+                                </button>
+                            `;
+                        }
+                        
+                        dropInterno += `
+                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, ${item.ingrediente_id || 'null'})">
+                                🧪 Enviar a Ingredientes
+                            </button>
+                            <button onclick="anularTrasladoInterno(${item.movimiento_origen_id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
+                                ↩️ Anular Traslado Interno
+                            </button>
+                        `;
+
+                        actionCell = `
+                        <div class="dropdown">
+                            <button class="btn-accion">⚡ Acciones ▼</button>
+                            <div class="dropdown-content">${dropInterno}</div>
+                        </div>
+                        <div style="margin-top: 5px;">
+                            ${item.origen_tipo === 'INGREDIENTE' ? 
+                                '<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[⚖️ GRANEL]</span>' : 
+                                '<span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[📦 PAQUETE]</span>'}
+                        </div>
+                        `;
+                    } else if (esLomasoftOK || esArcaOK) {
                         let comprobanteInfo = '';
                         if (esLomasoftOK && item.nc_nro) {
                             const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
@@ -813,7 +843,6 @@
                             comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>✅ NC ARCA Emitida</b></span>`;
                         }
 
-                        // Dropdown de Acciones para items conciliados o con CAE OK
                         actionCell = `
                         <div class="dropdown">
                             <button class="btn-accion">⚡ Acciones ▼</button>
@@ -833,39 +862,31 @@
                         <div style="margin-top: 5px;">
                             <span style="color: green; font-weight: bold; font-size: 0.8em; border: 1px solid green; padding: 2px 5px; border-radius: 4px;">✅ Consolidado</span>${comprobanteInfo}
                         </div>
-                    `;
+                        `;
                     } else {
                         let ncActionHtml = '';
                         let lomasoftDisabled = btnDisabled;
                         let lomasoftTitle = btnTitle;
 
                         if (esArcaBorrador) {
-                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA en Proceso</span>`;
+                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA</span>`;
                             lomasoftDisabled = 'disabled';
-                            lomasoftTitle = 'Devolución bloqueada (Proceso de NC local en curso)';
+                            lomasoftTitle = 'Devolución bloqueada';
                         } else {
-                            ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none;" 
-                                onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')"
-                                ${btnDisabled} title="Emitir Nota de Crédito vinculada a Factura">
-                                🧾 Emitir NC ARCA
-                            </button>`;
+                            ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none;" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')" ${btnDisabled}>🧾 Emitir NC ARCA</button>`;
                         }
 
                         actionCell = `
                         <div style="display: flex; gap: 5px; flex-direction: column;">
-                            <button class="btn-conciliar" 
-                                onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')"
-                                ${lomasoftDisabled} title="${lomasoftTitle}">
+                            <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')" ${lomasoftDisabled} title="${lomasoftTitle}">
                                 🔍 Conciliación Lomasoft
                             </button>
                             ${ncActionHtml}
-                            <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" 
-                                onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')"
-                                ${lomasoftDisabled} title="Eliminar y retornar artículo a la Orden de Retiro">
+                            <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" ${lomasoftDisabled}>
                                 🗑️ Eliminar Recepción
                             </button>
                         </div>
-                    `;
+                        `;
                     }
 
                     row.innerHTML = `
@@ -918,19 +939,29 @@
         }
 
         async function liberarStock(clienteId, articulo, cantidadOriginal, motivoDefecto) {
-            if (!confirm(`¿Confirmar envío a Ventas de ${articulo} (Cantidad: ${cantidadOriginal})?\n\nEl stock saldrá de mantenimiento y quedará disponible comercialmente.`)) return;
+            // Usando SweetAlert2 en vez de confirm()
+            const result = await Swal.fire({
+                title: '¿Enviar a Ventas?',
+                text: `¿Confirmar envío a Ventas de ${articulo} (Cantidad: ${cantidadOriginal})? El stock quedará disponible comercialmente.`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, enviar a ventas',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/liberar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cliente_id: clienteId, articulo, cantidad, observaciones: obs })
+                    body: JSON.stringify({ cliente_id: clienteId, articulo, cantidad: cantidadOriginal, observaciones: motivoDefecto })
                 });
 
                 const data = await res.json();
 
                 if (data.success) {
-                    alert('✅ Stock transferido a Ventas exitosamente.');
+                    Swal.fire('¡Éxito!', 'Stock transferido a Ventas exitosamente.', 'success');
                     cargarStock(); // Recargar tabla
                     cargarHistorial(); // Reflejar en historial
                 } else {
@@ -939,7 +970,7 @@
 
             } catch (error) {
                 console.error(error);
-                alert('❌ Error al liberar stock: ' + error.message);
+                Swal.fire('Error', 'Error al liberar stock: ' + error.message, 'error');
             }
         }
 
@@ -1731,7 +1762,45 @@
                 btn.disabled = false;
             }
         }
-    </script>
+    
+        async function anularTrasladoInterno(idMovimiento) {
+            const { value: motivo } = await Swal.fire({
+                title: 'Anular Traslado Interno',
+                input: 'text',
+                inputLabel: 'Motivo de Reversión',
+                inputPlaceholder: 'Indique el motivo de la reversión',
+                showCancelButton: true,
+                confirmButtonText: 'Anular Traslado',
+                cancelButtonText: 'Cancelar',
+                inputValidator: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'El motivo de reversión es obligatorio';
+                    }
+                }
+            });
+
+            if (motivo) {
+                try {
+                    const res = await fetch('/api/produccion/mantenimiento/anular-traslado', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ movimiento_id: idMovimiento, motivo_anulacion: motivo })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        Swal.fire('¡Éxito!', 'Reversión completada exitosamente.', 'success');
+                        cargarStock();
+                        cargarHistorial(); 
+                    } else {
+                        Swal.fire('Error', 'Falló la anulación: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    Swal.fire('Error', 'Error interno en la anulación.', 'error');
+                }
+            }
+        }
+</script>
 </body>
 
 </html>

@@ -27,4 +27,10 @@ router.post('/retiros/recibir-local/:id', mantenimientoCtrl.recibirRetiroLocal);
 router.delete('/ingreso', mantenimientoCtrl.revertirIngresoLocal);
 router.post('/emitir-nc-borrador', mantenimientoCtrl.emitirNotaCreditoBorrador);
 
+
+// Nuevos endpoints de traslados a mantenimiento
+router.post('/traslado-ventas', mantenimientoCtrl.trasladoVentas);
+router.post('/traslado-ingredientes', mantenimientoCtrl.trasladoIngredientes);
+router.post('/anular-traslado', mantenimientoCtrl.anularTraslado);
+
 module.exports = router;

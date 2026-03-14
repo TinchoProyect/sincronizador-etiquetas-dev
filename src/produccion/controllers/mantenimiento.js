@@ -1517,6 +1517,138 @@ async function revertirIngresoLocal(req, res) {
     }
 }
 
+
+const trasladoVentas = async (req, res) => {
+    const { articulo, cantidad, motivo } = req.body;
+    if (!articulo || !cantidad || cantidad <= 0) return res.status(400).json({ error: 'Datos inválidos' });
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // 1. Reducir stock del artículo en ventas
+        const updateArt = await client.query(
+            "UPDATE articulos SET stock_consolidado = stock_consolidado - $1 WHERE numero = $2 RETURNING *",
+            [cantidad, articulo]
+        );
+        if (updateArt.rowCount === 0) throw new Error('Artículo no encontrado');
+
+        // 2. Registrar el ingreso en mantenimiento_movimientos
+        const insertReq = await client.query(`
+            INSERT INTO mantenimiento_movimientos 
+            (cliente_id, articulo_id, cantidad, estado, estado_nc, observaciones, tipo_movimiento, stock_mantenimiento)
+            VALUES (NULL, $1, $2, 'PENDIENTE', 'NO_APLICA', $3, 'TRASLADO_INTERNO_VENTAS', $2)
+            RETURNING id
+        `, [articulo, cantidad, motivo]);
+
+        // Registrar en historial inventarios
+        await client.query(`
+            INSERT INTO historial_inventarios (articulo_numero, accion, cantidad, fecha, modulo, observaciones)
+            VALUES ($1, 'TRASLADO_A_MANTENIMIENTO', $2, NOW(), 'Ventas', $3)
+        `, [articulo, -cantidad, motivo]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, movimiento_id: insertReq.rows[0].id });
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+const trasladoIngredientes = async (req, res) => {
+    const { ingrediente_id, cantidad, motivo } = req.body;
+    if (!ingrediente_id || !cantidad || cantidad <= 0) return res.status(400).json({ error: 'Datos inválidos' });
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // 1. Reducir stock del ingrediente a granel
+        const updateIng = await client.query(
+            "UPDATE ingredientes SET stock_actual = stock_actual - $1 WHERE id = $2 RETURNING *",
+            [cantidad, ingrediente_id]
+        );
+        if (updateIng.rowCount === 0) throw new Error('Ingrediente no encontrado');
+
+        // 2. Registrar log de movimiento de ingrediente
+        await client.query(`
+            INSERT INTO ingredientes_movimientos (ingrediente_id, usuario_id, cantidad, tipo_movimiento, sector_origen_id, modulo, observaciones)
+            VALUES ($1, NULL, $2, 'SALIDA', $3, 'Cuarentena', $4)
+        `, [ingrediente_id, cantidad, updateIng.rows[0].sector_id, 'Traslado a mantenimiento: ' + motivo]);
+
+        // 3. Registrar el ingreso en mantenimiento (usando la nueva columna ingrediente_id)
+        const insertReq = await client.query(`
+            INSERT INTO mantenimiento_movimientos 
+            (cliente_id, articulo_id, ingrediente_id, cantidad, estado, estado_nc, observaciones, tipo_movimiento, stock_mantenimiento)
+            VALUES (NULL, NULL, $1, $2, 'PENDIENTE', 'NO_APLICA', $3, 'TRASLADO_INTERNO_INGREDIENTES', $2)
+            RETURNING id
+        `, [ingrediente_id, cantidad, motivo]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, movimiento_id: insertReq.rows[0].id });
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+const anularTraslado = async (req, res) => {
+    const { movimiento_id, motivo_anulacion } = req.body;
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // Buscar el movimiento original
+        const { rows } = await client.query("SELECT * FROM mantenimiento_movimientos WHERE id = $1", [movimiento_id]);
+        if (rows.length === 0) throw new Error('Movimiento no encontrado');
+        
+        const mov = rows[0];
+        if (mov.estado === 'REVERTIDO' || mov.estado === 'ANULADO') throw new Error('Ya se encuentra revertido');
+        if (mov.cantidad !== mov.stock_mantenimiento) throw new Error('El stock ya fue alterado en cuarentena, no se puede anular');
+
+        // Restaurar según origen
+        if (mov.tipo_movimiento === 'TRASLADO_INTERNO_VENTAS') {
+            await client.query("UPDATE articulos SET stock_consolidado = stock_consolidado + $1 WHERE numero = $2", [mov.cantidad, mov.articulo_id]);
+            await client.query(`
+                INSERT INTO historial_inventarios (articulo_numero, accion, cantidad, fecha, modulo, observaciones)
+                VALUES ($1, 'REVERSION_A_VENTAS', $2, NOW(), 'Mantenimiento', $3)
+            `, [mov.articulo_id, mov.cantidad, motivo_anulacion]);
+
+        } else if (mov.tipo_movimiento === 'TRASLADO_INTERNO_INGREDIENTES') {
+            const ingRow = await client.query("UPDATE ingredientes SET stock_actual = stock_actual + $1 WHERE id = $2 RETURNING sector_id", [mov.cantidad, mov.ingrediente_id]);
+            await client.query(`
+                INSERT INTO ingredientes_movimientos (ingrediente_id, usuario_id, cantidad, tipo_movimiento, sector_origen_id, modulo, observaciones)
+                VALUES ($1, NULL, $2, 'INGRESO', $3, 'Cuarentena', $4)
+            `, [mov.ingrediente_id, mov.cantidad, ingRow.rows[0].sector_id, 'Reversión desde mantenimiento: ' + motivo_anulacion]);
+        } else {
+            throw new Error('Tipo de movimiento no reversible por esta vía');
+        }
+
+        // Marcar como anulado
+        await client.query("UPDATE mantenimiento_movimientos SET estado = 'REVERTIDO', stock_mantenimiento = 0, observaciones = observaciones || ' [ANULADO: ' || $1 || ']' WHERE id = $2", [motivo_anulacion, movimiento_id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -1531,5 +1663,8 @@ module.exports = {
     getRetirosLocal,
     getRetirosRuta,
     recibirRetiroLocal,
-    revertirIngresoLocal
+    revertirIngresoLocal,
+    trasladoVentas,
+    trasladoIngredientes,
+    anularTraslado
 };

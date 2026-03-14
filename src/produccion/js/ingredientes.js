@@ -996,6 +996,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                           ✏️
                       
                     </button>
+<button class="btn-icon" onclick="window.iniciarTrasladoIngrediente('${ingredienteIdReal}', '${ingrediente.nombre_ingrediente.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena" style="cursor:pointer; background:none; border:none; font-size:1.4em; transform:scale(0.9); margin-left:5px;">🏥</button>
                 </td>
             `;
         } else {
@@ -1037,6 +1038,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 <td>
                     <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
                     <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
+<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="window.iniciarTrasladoIngrediente('${ingrediente.id}', '${ingrediente.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
                 </td>
             `;
 

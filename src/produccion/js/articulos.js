@@ -410,6 +410,8 @@ export async function actualizarTablaArticulos(articulos) {
                                         title="Quitar receta">
                                     Quitar
                                 </button>
+<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
+<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
                             ` : `
                                 <button class="btn-editar-receta"
                                         style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
@@ -418,6 +420,8 @@ export async function actualizarTablaArticulos(articulos) {
                                         data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                                     Vincular receta
                                 </button>
+<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
+<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥</button>
                             `}
                         </td>
                     `;
@@ -2586,3 +2590,54 @@ document.addEventListener('recetaActualizada', async (event) => {
 // Hacer la función disponible globalmente para el HTML
 window.agregarMultiplesAlCarroInterno = agregarMultiplesAlCarroInterno;
 window.mostrarModalReceta = mostrarModalReceta;
+
+
+window.iniciarTrasladoVentas = async function(articuloNumero, nombre) {
+    const { value: formValues } = await Swal.fire({
+        title: 'Enviar a Cuarentena',
+        html:
+            '<p style="margin-bottom: 15px;">¿Cuántas <b>UNIDADES (📦)</b> de <span style="color: #d33;">['+nombre+']</span> ingresarán en cuarentena?</p>' +
+            '<input id="swal-input-cantidad" type="number" step="1" min="1" class="swal2-input" placeholder="Cantidad">' +
+            '<input id="swal-input-motivo" type="text" class="swal2-input" placeholder="Motivo del traslado (obligatorio)">',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Trasladar a Mantenimiento',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            const cantidad = document.getElementById('swal-input-cantidad').value;
+            const motivo = document.getElementById('swal-input-motivo').value;
+            if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) {
+                Swal.showValidationMessage('Debe ingresar una cantidad válida mayor a 0');
+                return false;
+            }
+            if (!motivo || motivo.trim() === '') {
+                Swal.showValidationMessage('El motivo es obligatorio');
+                return false;
+            }
+            return { cantidad: parseFloat(cantidad), motivo: motivo };
+        }
+    });
+
+    if (formValues) {
+        try {
+            const res = await fetch('/api/produccion/mantenimiento/traslado-ventas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articulo: articuloNumero, cantidad: formValues.cantidad, motivo: formValues.motivo })
+            });
+            const data = await res.json();
+            if (data.success) {
+                Swal.fire('¡Éxito!', 'Stock trasladado con éxito a Mantenimiento.', 'success');
+                // trigger search refresh
+                const event = new Event('input', { bubbles: true });
+                const search = document.getElementById('busqueda-inteligente');
+                if(search) search.dispatchEvent(event);
+            } else {
+                Swal.fire('Error', data.error || 'Falló el traslado', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            Swal.fire('Error', 'Error técnico al comunicar con el servidor', 'error');
+        }
+    }
+};
