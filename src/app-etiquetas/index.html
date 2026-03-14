@@ -141,7 +141,7 @@
 
         <nav class="main-menu">
       <!-- NIVEL 1 -->
-      <a href="/api/produccion/produccion.html" class="menu-button menu-tier-1">
+      <a href="http://localhost:3002/pages/produccion.html" class="menu-button menu-tier-1">
         <span class="icon">🏭</span>
         Producción
       </a>
@@ -151,11 +151,11 @@
       </a>
       
       <!-- NIVEL 2 -->
-      <a href="/api/logistica/logistica.html" class="menu-button menu-tier-2">
+      <a href="http://localhost:3005" class="menu-button menu-tier-2">
         <span class="icon">🚚</span>
         Logística y Reparto
       </a>
-      <a href="/api/facturacion/facturacion.html" class="menu-button menu-tier-2">
+      <a href="http://localhost:3004" class="menu-button menu-tier-2">
         <span class="icon">💰</span>
         Facturación
       </a>
@@ -189,7 +189,10 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 window.iniciarTrasladoGlobal = async function() {
-    const { value: tipoMovimiento } = await Swal.fire({
+    console.log("🛠️ [VIGÍA DEPURADOR] Iniciando flujo 'Enviar a Cuarentena Global'");
+    
+    // 1. Selector de Tipo
+    const resultadoTipo = await Swal.fire({
         title: 'Enviar a Cuarentena Global',
         text: '¿Qué tipo de mercadería reportará?',
         icon: 'question',
@@ -202,127 +205,282 @@ window.iniciarTrasladoGlobal = async function() {
         }
     });
 
-    let isArticulo = null;
-    if (tipoMovimiento === true) isArticulo = true;
-    else if (tipoMovimiento === undefined) return;
-    else isArticulo = false;
+    let isArticulo = false;
+    if (resultadoTipo.isConfirmed) {
+        isArticulo = true;
+    } else if (resultadoTipo.dismiss === Swal.DismissReason.cancel) {
+        isArticulo = false;
+    } else {
+        return; // Click fuera o ESC
+    }
 
-    const titleText = isArticulo ? 'Escanear / Buscar Artículo' : 'Escanear / Buscar Ingrediente';
-    const inputPlaceholder = isArticulo ? 'Código o Nombre del Artículo...' : 'Código o Nombre del Ingrediente...';
+    const titleText = isArticulo ? 'Buscar Artículo' : 'Buscar Ingrediente';
     
-    const { value: paramBusqueda } = await Swal.fire({
-        title: titleText,
-        input: 'text',
-        inputLabel: 'Use el lector de código de barras o escriba',
-        inputPlaceholder: inputPlaceholder,
-        showCancelButton: true,
-        confirmButtonText: 'Buscar',
-        didOpen: () => {
-            setTimeout(() => Swal.getInput().focus(), 100);
-            Swal.getInput().addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    Swal.clickConfirm();
-                }
-            });
-        },
-        inputValidator: (value) => {
-            if (!value) return 'El campo de búsqueda no puede estar vacío.';
-        }
-    });
-
-    if (!paramBusqueda) return;
-
+    // 2. Traer el catálogo en vivo desde el backend proxy
+    let catalogoValido = [];
     try {
-        Swal.showLoading();
-        const endpointBusqueda = isArticulo 
-                ? '/api/produccion/articulos' 
-                : '/api/produccion/ingredientes';
-                
+        Swal.fire({ title: 'Cargando catálogo en caliente...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const endpointBusqueda = isArticulo ? '/api/produccion/articulos' : '/api/produccion/ingredientes';
         const resList = await fetch(endpointBusqueda);
         const list = await resList.json();
-        
-        const dataArr = list.data || list; 
-        
-        let coincidencias = [];
-        if(isArticulo){
-             coincidencias = dataArr.filter(i => 
-                i.numero.toString() === paramBusqueda.trim() || 
-                (i.codigo_barras && i.codigo_barras === paramBusqueda.trim()) || 
-                i.nombre.toLowerCase().includes(paramBusqueda.toLowerCase())
-            );
-        } else {
-             coincidencias = dataArr.filter(i => 
-                i.codigo.toString() === paramBusqueda.trim() || 
-                i.nombre.toLowerCase().includes(paramBusqueda.toLowerCase())
-            );
-        }
-
-        if (coincidencias.length === 0) {
-            return Swal.fire('Sin resultados', 'No se encontró nada coincidente con: ' + paramBusqueda, 'info');
-        }
-
-        const itemEncontrado = coincidencias[0];
-        const idTransaccion = isArticulo ? itemEncontrado.numero : itemEncontrado.id;
-        const nombreDisplay = isArticulo ? itemEncontrado.nombre : itemEncontrado.nombre;
-
-        const htmlCuerpo = isArticulo 
-            ? '<input id="g-cant" type="number" step="1" min="1" value="1" class="swal2-input" placeholder="Cantidad">'
-            : '<input id="g-cant" type="number" step="0.001" min="0.001" value="" class="swal2-input" placeholder="Cantidad (Kg)">';
-
-        const { value: trasladoData } = await Swal.fire({
-            title: 'Confirmar Traslado 🏥',
-            html:
-                '<p>Item: <b>' + nombreDisplay + '</b></p>' +
-                htmlCuerpo +
-                '<input id="g-motivo" type="text" class="swal2-input" placeholder="Obligatorio: Motivo del daño...">',
-            focusConfirm: false,
-            showCancelButton: true,
-            confirmButtonText: 'Confirmar Envío al Almacén',
-            didOpen: () => {
-                const cant = document.getElementById('g-cant');
-                if(isArticulo) cant.select(); else cant.focus();
-                
-                 document.getElementById('g-motivo').addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') Swal.clickConfirm();
-                });
-            },
-            preConfirm: () => {
-                const c = document.getElementById('g-cant').value;
-                const m = document.getElementById('g-motivo').value;
-                if (!c || c <= 0) { Swal.showValidationMessage('Requiere cantidad válida.'); return false; }
-                if (!m) { Swal.showValidationMessage('Requiere motivo.'); return false; }
-                return { c, m };
-            }
-        });
-
-        if (!trasladoData) return;
-
-        const urlTraslado = isArticulo 
-            ? '/api/produccion/mantenimiento/traslado-ventas' 
-            : '/api/produccion/mantenimiento/traslado-ingredientes';
-            
-        const payloadParams = isArticulo 
-            ? { articulo: idTransaccion, cantidad: parseFloat(trasladoData.c), motivo: trasladoData.m }
-            : { ingrediente_id: idTransaccion, cantidad: parseFloat(trasladoData.c), motivo: trasladoData.m };
-
-        const trx = await fetch(urlTraslado, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payloadParams)
-        });
-        
-        const trxInfo = await trx.json();
-        
-        if (trxInfo.success) {
-            Swal.fire('¡Aislado!', 'El producto fue dado de baja y enviado a cuarentena.', 'success');
-        } else {
-            Swal.fire('Error interno', trxInfo.error || 'No se pudo mover la mercadería', 'error');
-        }
-
-    } catch (e) {
-        Swal.fire('Error de Conexión', e.message, 'error');
+        catalogoValido = list.data || list;
+        Swal.close();
+    } catch(e) {
+        return Swal.fire('Error', 'No se pudo conectar con el catálogo.', 'error');
     }
+
+    // 3. Modal Inteligente UI: Custom Input + Desplegable unificado con Confirmación
+    let modoBusqueda = 'codigo'; // Default escáner
+    let selectedItemGlobal = null;
+
+    const htmlBuscador = `
+        <div id="g-search-section">
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-direction: column;">
+                <button type="button" id="g-btn-toggle" class="swal2-confirm swal2-styled" style="margin: 0; background-color: #6c757d; font-size: 0.9em; padding: 10px;">🔍 Buscar por Nombre</button>
+                <input type="text" id="g-search-input" class="swal2-input" placeholder="Escanear código de barras..." style="width: 100%; max-width: 100%; margin: 0; box-sizing: border-box;" autocomplete="off">
+            </div>
+            <div id="g-search-results" style="max-height: 200px; overflow-y: auto; text-align: left; background: #fafafa; border: 1px solid #ddd; border-radius: 4px; display: none;"></div>
+        </div>
+
+        <div id="g-selection-section" style="display: none; text-align: left; margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; gap: 10px;">
+                <div style="flex: 1; min-width: 0;">
+                    <span style="font-size: 0.85em; color: #666; text-transform: uppercase;">Ítem Seleccionado:</span>
+                    <h4 id="g-selected-name" style="margin: 2px 0 0 0; color: #333; font-size: 1.1em; word-wrap: break-word;"></h4>
+                </div>
+                <button type="button" id="g-btn-change" class="swal2-cancel swal2-styled" style="margin: 0; padding: 5px 10px; font-size: 0.8em; flex-shrink: 0;">Cambiar</button>
+            </div>
+            
+            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Cantidad ${isArticulo ? '' : '(Kg)'}:</label>
+            ${isArticulo 
+                ? '<input id="g-cant" type="number" step="1" min="1" value="1" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; box-sizing: border-box;">'
+                : '<input id="g-cant" type="number" step="0.001" min="0.001" value="" class="swal2-input" placeholder="Ej: 2.5" style="width: 100%; margin: 0 0 15px 0; box-sizing: border-box;">'}
+            
+            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Motivo de Baja/Mantenimiento:</label>
+            <textarea id="g-motivo" class="swal2-textarea" style="width: 100%; height: 80px; margin: 0; box-sizing: border-box;" placeholder="Ej: Vencido, Roto, etc..."></textarea>
+        </div>
+    `;
+
+    // Abrir Modal Unificado
+    await Swal.fire({
+        title: titleText,
+        html: htmlBuscador,
+        showConfirmButton: true,
+        showCancelButton: true,
+        confirmButtonText: 'Confirmar Traslado',
+        cancelButtonText: 'Cancelar',
+        didOpen: () => {
+            const input = document.getElementById('g-search-input');
+            const btnToggle = document.getElementById('g-btn-toggle');
+            const resultsDiv = document.getElementById('g-search-results');
+            const searchSection = document.getElementById('g-search-section');
+            const selectionSection = document.getElementById('g-selection-section');
+            const selectedName = document.getElementById('g-selected-name');
+            const btnChange = document.getElementById('g-btn-change');
+            const confirmBtn = Swal.getConfirmButton();
+            
+            // Ocultar botón confirmar al inicio, solo mostrar al seleccionar
+            confirmBtn.style.display = 'none';
+
+            setTimeout(() => input.focus(), 100);
+
+            // Toggle logic
+            btnToggle.onclick = () => {
+                if (modoBusqueda === 'descripcion') {
+                    modoBusqueda = 'codigo';
+                    btnToggle.textContent = '🔍 Buscar por Nombre';
+                    input.placeholder = 'Escanear código de barras...';
+                } else {
+                    modoBusqueda = 'descripcion';
+                    btnToggle.textContent = '📟 Escanear Código';
+                    input.placeholder = 'Escribí para buscar...';
+                }
+                input.value = '';
+                resultsDiv.style.display = 'none';
+                input.focus();
+            };
+
+            // Función para seleccionar ítem
+            const selectItem = (item) => {
+                selectedItemGlobal = item;
+                searchSection.style.display = 'none';
+                selectionSection.style.display = 'block';
+                selectedName.textContent = item.nombre;
+                confirmBtn.style.display = 'inline-block';
+                Swal.resetValidationMessage();
+                setTimeout(() => {
+                    const cantInput = document.getElementById('g-cant');
+                    cantInput.focus();
+                    if (isArticulo) cantInput.select();
+                }, 100);
+            };
+
+            // Cambiar selección
+            btnChange.onclick = () => {
+                selectedItemGlobal = null;
+                selectionSection.style.display = 'none';
+                searchSection.style.display = 'block';
+                confirmBtn.style.display = 'none';
+                input.value = '';
+                resultsDiv.style.display = 'none';
+                Swal.resetValidationMessage();
+                setTimeout(() => input.focus(), 100);
+            };
+
+            // Búsqueda On-Change
+            input.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                resultsDiv.innerHTML = '';
+                
+                if (query === '') {
+                    resultsDiv.style.display = 'none';
+                    return;
+                }
+
+                // Filtrar (Hasta 20 resultados)
+                const coincidencias = catalogoValido.filter(i => {
+                    const idStr = (isArticulo ? i.numero : i.codigo).toString();
+                    const barcode = (i.codigo_barras || '').toString().toLowerCase();
+                    const nom = (i.nombre || '').toLowerCase();
+                    
+                    if (modoBusqueda === 'codigo') {
+                        return idStr === query || barcode === query;
+                    } else {
+                        return idStr === query || barcode === query || nom.includes(query);
+                    }
+                }).slice(0, 20);
+
+                if (coincidencias.length > 0) {
+                    resultsDiv.style.display = 'block';
+                    coincidencias.forEach(item => {
+                        const divNode = document.createElement('div');
+                        
+                        // CORRECCIÓN BUG STOCK: usar stock_consolidado
+                        const stockReal = typeof item.stock_consolidado !== 'undefined' ? item.stock_consolidado : 
+                                          (typeof item.stock_actual !== 'undefined' ? item.stock_actual : 0);
+                        const unidad = isArticulo ? 'Un' : (item.unidad_medida || 'Kg');
+                        
+                        divNode.style.padding = '12px 15px';
+                        divNode.style.borderBottom = '1px solid #eee';
+                        divNode.style.cursor = 'pointer';
+                        
+                        divNode.innerHTML = `
+                            <div style="font-weight: bold; font-size: 1.1em;">${item.nombre}</div>
+                            <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                                Código: ${isArticulo ? item.numero : item.codigo} | 
+                                Stock disponible: <b style="color: ${stockReal > 0 ? '#28a745' : '#dc3545'};">${stockReal} ${unidad}</b>
+                            </div>
+                        `;
+                        
+                        divNode.onclick = () => selectItem(item);
+                        divNode.onmouseenter = () => divNode.style.backgroundColor = '#e9ecef';
+                        divNode.onmouseleave = () => divNode.style.backgroundColor = 'transparent';
+                        
+                        resultsDiv.appendChild(divNode);
+                    });
+
+                    // Si estamos en modo código y hay 1 coincidencia exacta (ej. escaner leyendo)
+                    if (modoBusqueda === 'codigo' && coincidencias.length === 1) {
+                        const i = coincidencias[0];
+                        const barcode = (i.codigo_barras || '').toString().toLowerCase();
+                        if (barcode === query || (isArticulo ? i.numero : i.codigo).toString() === query) {
+                            selectItem(i);
+                        }
+                    }
+                } else {
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.innerHTML = '<div style="padding: 15px; text-align: center; color: #999;">Sin coincidencias encontradas...</div>';
+                }
+            });
+
+            // Acción Escáner Automático (Enter) en el input
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (searchSection.style.display !== 'none') {
+                        const primerResultado = resultsDiv.querySelector('div[style*="cursor: pointer"]');
+                        if(primerResultado) {
+                            primerResultado.click();
+                        }
+                    }
+                }
+            });
+
+            // Permitir que Enter en cantidad/motivo envíe el form
+            const handleEnterConfirm = (e) => {
+                if (e.key === 'Enter' && selectionSection.style.display !== 'none') {
+                    e.preventDefault();
+                    confirmBtn.click();
+                }
+            };
+            document.getElementById('g-cant').addEventListener('keypress', handleEnterConfirm);
+            document.getElementById('g-motivo').addEventListener('keypress', handleEnterConfirm);
+        },
+        preConfirm: () => {
+            if (!selectedItemGlobal) {
+                Swal.showValidationMessage('Debe buscar y seleccionar un ítem primero.');
+                return false;
+            }
+            const gCant = document.getElementById('g-cant').value;
+            const gMotivo = document.getElementById('g-motivo').value;
+
+            if (!gCant || parseFloat(gCant) <= 0) {
+                Swal.showValidationMessage('Debe ingresar una cantidad válida.');
+                return false;
+            }
+            if (!gMotivo || gMotivo.trim() === '') {
+                Swal.showValidationMessage('Debe ingresar el motivo de baja/mantenimiento.');
+                return false;
+            }
+
+            return {
+                id: isArticulo ? selectedItemGlobal.numero : selectedItemGlobal.codigo,
+                nombre: selectedItemGlobal.nombre,
+                cantidad: parseFloat(gCant),
+                motivo: gMotivo.trim(),
+                isArticulo
+            };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const finalData = result.value;
+            
+            // 4. Envío Definitivo al Backend (Proxy)
+            try {
+                // Rutas que explotan el server.js proxy
+                const urlTraslado = finalData.isArticulo 
+                    ? '/api/produccion/mantenimiento/traslado-ventas' 
+                    : '/api/produccion/mantenimiento/traslado-ingredientes';
+                    
+                const payloadParams = finalData.isArticulo 
+                    ? { articulo: finalData.id, cantidad: finalData.cantidad, motivo: finalData.motivo }
+                    : { ingrediente_id: finalData.id, cantidad: finalData.cantidad, motivo: finalData.motivo };
+
+                Swal.fire({ title: 'Procesando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+                const trx = await fetch(urlTraslado, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadParams)
+                });
+                
+                if (!trx.ok) {
+                    const text = await trx.text();
+                    throw new Error(text || trx.statusText);
+                }
+                
+                const trxInfo = await trx.json();
+                
+                if (trxInfo.success || trxInfo.mensaje) {
+                    Swal.fire('¡Traslado Exitoso!', `${finalData.cantidad} de ${finalData.nombre} enviado a mantenimiento.`, 'success');
+                } else {
+                    Swal.fire('Fallo de Reducción', trxInfo.error || 'Ocurrió un error en sistema.', 'error');
+                }
+            } catch (e) {
+                Swal.fire('Fallo Crítico', e.message, 'error');
+            }
+        }
+    });
 };
 </script>
 </body>

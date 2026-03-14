@@ -45,7 +45,11 @@ app.get('/', (req, res) => {
 // Configurar proxy para el servidor de producción
 app.use('/api/produccion', createProxyMiddleware({
   target: 'http://localhost:3002',
-  changeOrigin: true
+  changeOrigin: true,
+  pathRewrite: (path, req) => {
+    // Restaurar el prefijo que Express elimina
+    return '/api/produccion' + req.url; 
+  }
 }));
 
 // 🧾 [PRESUPUESTOS] Configurar proxy para el módulo de presupuestos
@@ -53,6 +57,10 @@ console.log('🔍 [PRESUPUESTOS] Configurando proxy para módulo de presupuestos
 app.use('/api/presupuestos', createProxyMiddleware({
   target: 'http://localhost:3003',
   changeOrigin: true,
+  pathRewrite: (path, req) => {
+    // Restaurar el prefijo que Express elimina
+    return '/api/presupuestos' + req.url; 
+  },
   onError: (err, req, res) => {
     console.error('❌ [PRESUPUESTOS] Error en proxy:', err.message);
     res.status(503).json({
