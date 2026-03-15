@@ -284,7 +284,7 @@
                 </div>
                 <div class="config-body">
                     <div class="config-accordion">
-                        <div class="accordion-header" style="background:#f1f1f1; font-weight:bold; cursor:pointer;" onclick="toggleFilterAccordion('interno-filters')">
+                        <div class="accordion-header" style="background:#f1f1f1; color:#333; font-weight:bold; cursor:pointer;" onclick="toggleFilterAccordion('interno-filters')">
                             <span>🏢 Arribos Internos</span>
                             <span id="interno-filters-icon">▼</span>
                         </div>
@@ -296,7 +296,7 @@
                     </div>
                     
                     <div class="config-accordion">
-                        <div class="accordion-header" style="background:#f1f1f1; font-weight:bold; cursor:pointer;" onclick="toggleFilterAccordion('externo-filters')">
+                        <div class="accordion-header" style="background:#f1f1f1; color:#333; font-weight:bold; cursor:pointer;" onclick="toggleFilterAccordion('externo-filters')">
                             <span>🚚 Arribos Externos</span>
                             <span id="externo-filters-icon">▼</span>
                         </div>
@@ -308,12 +308,17 @@
                     </div>
 
                     <div class="config-accordion" style="margin-top: 15px;">
-                        <div class="accordion-header">
+                        <div class="accordion-header" style="background:#f1f1f1; color:#333; font-weight:bold;">
                             <span>⚙️ Opciones Generales</span>
                         </div>
                         <div class="accordion-content" style="display:block; padding:10px;">
+                            <label title="Muestra u oculta la tabla inferior con el historial completo">
+                                <input type="checkbox" id="chk-mostrar-historial" onchange="toggleHistorialVisibility()">
+                                Mostrar Historial de Movimientos
+                            </label>
+                            <br><br>
                             <label title="Oculta movimientos revertidos o anulados en Historial">
-                                <input type="checkbox" id="chk-ocultar-anulados" checked onchange="cargarHistorial()">
+                                <input type="checkbox" id="chk-ocultar-anulados" checked onchange="window.cargarHistorial()">
                                 Ocultar Anulados (Historial)
                             </label>
                         </div>
@@ -368,7 +373,7 @@
                         </div>
 
                         <!-- SECCIÓN 2: HISTORIAL -->
-                        <div class="content-section" style="margin-top: 30px;">
+                        <div class="content-section" id="contenedor-historial" style="margin-top: 30px; display: none;">
                             <div class="section-title">
                                 <h2>📜 Historial de Movimientos (Últimos 50)</h2>
                                 <button class="refresh-btn" onclick="cargarHistorial()">🔄 Actualizar</button>
@@ -612,11 +617,54 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             initResizer();
+            cargarFiltrosGuardados(); // 1. Restaurar estado de localStorage
+            
+            // 2. Vincular auto-guardado a los checkboxes
+            const checkboxes = [
+                'chk-interno-articulos', 'chk-interno-ingredientes',
+                'chk-externo-mostrador', 'chk-externo-chofer',
+                'chk-mostrar-historial', 'chk-ocultar-anulados'
+            ];
+            checkboxes.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('change', guardarFiltros);
+            });
+
+            // 3. Evaluar visibilidad del historial basado en estado cargado (esto carga el fetch si corresponde)
+            toggleHistorialVisibility();
+
+            // 4. Cargar el resto
             cargarStock();
-            cargarHistorial();
             cargarMostrador();
             cargarReparto();
         });
+
+        function guardarFiltros() {
+            const estado = {
+                chkInternoArticulos: document.getElementById('chk-interno-articulos')?.checked ?? true,
+                chkInternoIngredientes: document.getElementById('chk-interno-ingredientes')?.checked ?? true,
+                chkExternoMostrador: document.getElementById('chk-externo-mostrador')?.checked ?? true,
+                chkExternoChofer: document.getElementById('chk-externo-chofer')?.checked ?? true,
+                chkMostrarHistorial: document.getElementById('chk-mostrar-historial')?.checked ?? false,
+                chkOcultarAnulados: document.getElementById('chk-ocultar-anulados')?.checked ?? true
+            };
+            localStorage.setItem('mantenimientoFiltros', JSON.stringify(estado));
+        }
+
+        function cargarFiltrosGuardados() {
+            const guardado = localStorage.getItem('mantenimientoFiltros');
+            if (guardado) {
+                try {
+                    const e = JSON.parse(guardado);
+                    if (document.getElementById('chk-interno-articulos')) document.getElementById('chk-interno-articulos').checked = e.chkInternoArticulos;
+                    if (document.getElementById('chk-interno-ingredientes')) document.getElementById('chk-interno-ingredientes').checked = e.chkInternoIngredientes;
+                    if (document.getElementById('chk-externo-mostrador')) document.getElementById('chk-externo-mostrador').checked = e.chkExternoMostrador;
+                    if (document.getElementById('chk-externo-chofer')) document.getElementById('chk-externo-chofer').checked = e.chkExternoChofer;
+                    if (document.getElementById('chk-mostrar-historial')) document.getElementById('chk-mostrar-historial').checked = e.chkMostrarHistorial;
+                    if (document.getElementById('chk-ocultar-anulados')) document.getElementById('chk-ocultar-anulados').checked = e.chkOcultarAnulados;
+                } catch (err) { console.error("Error restaurando filtros", err); }
+            }
+        }
 
         // ==========================================
         // Logística Inversa - Navegación de Pestañas
@@ -1581,6 +1629,19 @@
             } catch (error) {
                 console.error(error);
                 tbody.innerHTML = `<tr><td colspan="6" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
+
+        window.cargarHistorial = cargarHistorial;
+
+        function toggleHistorialVisibility() {
+            const chk = document.getElementById('chk-mostrar-historial');
+            const container = document.getElementById('contenedor-historial');
+            if (chk && chk.checked) {
+                container.style.display = 'block';
+                window.cargarHistorial();
+            } else if (container) {
+                container.style.display = 'none';
             }
         }
 
