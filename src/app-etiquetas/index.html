@@ -216,14 +216,20 @@ window.iniciarTrasladoGlobal = async function() {
 
     const titleText = isArticulo ? 'Buscar Artículo' : 'Buscar Ingrediente';
     
-    // 2. Traer el catálogo en vivo desde el backend proxy
+    // 2. Traer el catálogo en vivo desde el backend proxy y los operarios
     let catalogoValido = [];
+    let operariosValidos = [];
     try {
-        Swal.fire({ title: 'Cargando catálogo en caliente...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        Swal.fire({ title: 'Cargando datos en caliente...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         const endpointBusqueda = isArticulo ? '/api/produccion/articulos' : '/api/produccion/ingredientes';
-        const resList = await fetch(endpointBusqueda);
+        const [resList, resOps] = await Promise.all([
+            fetch(endpointBusqueda),
+            fetch('/api/produccion/operarios')
+        ]);
         const list = await resList.json();
+        const ops = await resOps.json();
         catalogoValido = list.data || list;
+        operariosValidos = ops.data || ops;
         Swal.close();
     } catch(e) {
         return Swal.fire('Error', 'No se pudo conectar con el catálogo.', 'error');
@@ -256,7 +262,14 @@ window.iniciarTrasladoGlobal = async function() {
                 ? '<input id="g-cant" type="number" step="1" min="1" value="1" class="swal2-input" style="width: 100%; margin: 0 0 15px 0; box-sizing: border-box;">'
                 : '<input id="g-cant" type="number" step="0.001" min="0.001" value="" class="swal2-input" placeholder="Ej: 2.5" style="width: 100%; margin: 0 0 15px 0; box-sizing: border-box;">'}
             
-            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Motivo de Baja/Mantenimiento:</label>
+            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Responsable del Traslado:</label>
+            <select id="g-responsable" class="swal2-select" style="width: 100%; margin: 0 0 15px 0; box-sizing: border-box; display: flex; padding: 10px;">
+                <option value="" disabled selected>Seleccione el Responsable...</option>
+                ${operariosValidos.map(op => `<option value="${op.id}">${op.nombre}</option>`).join('')}
+                <option value="-1">SISTEMA</option>
+            </select>
+            
+            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Motivo de Baja/Mantenimiento (Opcional):</label>
             <textarea id="g-motivo" class="swal2-textarea" style="width: 100%; height: 80px; margin: 0; box-sizing: border-box;" placeholder="Ej: Vencido, Roto, etc..."></textarea>
         </div>
     `;
@@ -430,14 +443,15 @@ window.iniciarTrasladoGlobal = async function() {
                 return false;
             }
             const gCant = document.getElementById('g-cant').value;
+            const gResponsable = document.getElementById('g-responsable').value;
             const gMotivo = document.getElementById('g-motivo').value;
 
             if (!gCant || parseFloat(gCant) <= 0) {
                 Swal.showValidationMessage('Debe ingresar una cantidad válida.');
                 return false;
             }
-            if (!gMotivo || gMotivo.trim() === '') {
-                Swal.showValidationMessage('Debe ingresar el motivo de baja/mantenimiento.');
+            if (!gResponsable) {
+                Swal.showValidationMessage('Debe seleccionar un responsable para el movimiento');
                 return false;
             }
 
@@ -446,6 +460,7 @@ window.iniciarTrasladoGlobal = async function() {
                 nombre: selectedItemGlobal.nombre,
                 cantidad: parseFloat(gCant),
                 motivo: gMotivo.trim(),
+                responsable: gResponsable,
                 isArticulo
             };
         }
@@ -461,8 +476,8 @@ window.iniciarTrasladoGlobal = async function() {
                     : '/api/produccion/mantenimiento/traslado-ingredientes';
                     
                 const payloadParams = finalData.isArticulo 
-                    ? { articulo: finalData.id, cantidad: finalData.cantidad, motivo: finalData.motivo }
-                    : { ingrediente_id: finalData.id, cantidad: finalData.cantidad, motivo: finalData.motivo };
+                    ? { articulo: finalData.id, cantidad: finalData.cantidad, motivo: finalData.motivo, responsable: finalData.responsable }
+                    : { ingrediente_id: finalData.id, cantidad: finalData.cantidad, motivo: finalData.motivo, responsable: finalData.responsable };
 
                 Swal.fire({ title: 'Procesando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 

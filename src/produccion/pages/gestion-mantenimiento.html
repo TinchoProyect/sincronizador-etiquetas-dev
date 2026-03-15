@@ -303,7 +303,7 @@
                         <div class="accordion-content" id="externo-filters" style="display:block; padding:10px; border-bottom:1px solid #ddd;">
                             <label><input type="checkbox" id="chk-externo-mostrador" checked onchange="aplicarFiltrosStock()"> 🧍‍♂️ Por Mostrador (Local)</label>
                             <br>
-                            <label><input type="checkbox" id="chk-externo-chofer" checked onchange="aplicarFiltrosStock()"> 🚚 Por Hoja de Ruta (Chofer)</label>
+                            <label><input type="checkbox" id="chk-externo-chofer" checked onchange="aplicarFiltrosStock()"> 🚐 Por Hoja de Ruta (Chofer)</label>
                         </div>
                     </div>
 
@@ -619,7 +619,7 @@
             initResizer();
             cargarFiltrosGuardados(); // 1. Restaurar estado de localStorage
             
-            // 2. Vincular auto-guardado a los checkboxes
+            // 2. Vincular auto-guardado a los checkboxes fijos
             const checkboxes = [
                 'chk-interno-articulos', 'chk-interno-ingredientes',
                 'chk-externo-mostrador', 'chk-externo-chofer',
@@ -630,7 +630,7 @@
                 if (el) el.addEventListener('change', guardarFiltros);
             });
 
-            // 3. Evaluar visibilidad del historial basado en estado cargado (esto carga el fetch si corresponde)
+            // 3. Evaluar visibilidad del historial basado en estado cargado
             toggleHistorialVisibility();
 
             // 4. Cargar el resto
@@ -662,7 +662,7 @@
                     if (document.getElementById('chk-externo-chofer')) document.getElementById('chk-externo-chofer').checked = e.chkExternoChofer;
                     if (document.getElementById('chk-mostrar-historial')) document.getElementById('chk-mostrar-historial').checked = e.chkMostrarHistorial;
                     if (document.getElementById('chk-ocultar-anulados')) document.getElementById('chk-ocultar-anulados').checked = e.chkOcultarAnulados;
-                } catch (err) { console.error("Error restaurando filtros", err); }
+                } catch (err) { console.error("Error restaurando filtros fijos", err); }
             }
         }
 
@@ -856,11 +856,11 @@
         }
 
         function aplicarFiltrosStock() {
-            const chkInternoArticulos = document.getElementById('chk-interno-articulos').checked;
-            const chkInternoIngredientes = document.getElementById('chk-interno-ingredientes').checked;
-            const chkExternoMostrador = document.getElementById('chk-externo-mostrador').checked;
-            const chkExternoChofer = document.getElementById('chk-externo-chofer').checked;
-            
+            const chkInternoArticulos = document.getElementById('chk-interno-articulos')?.checked ?? true;
+            const chkInternoIngredientes = document.getElementById('chk-interno-ingredientes')?.checked ?? true;
+            const chkExternoMostrador = document.getElementById('chk-externo-mostrador')?.checked ?? true;
+            const chkExternoChofer = document.getElementById('chk-externo-chofer')?.checked ?? true;
+
             const filteredData = window.mantenimientoStockData.filter(item => {
                 const esInternoGranel = (item.ingrediente_id != null);
                 const esInternoArticulo = (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))) && item.ingrediente_id == null;
@@ -871,12 +871,15 @@
                 const esHojaDeRuta = esExterno && (item.origen_ruta_id != null);
                 const esMostrador = esExterno && (item.origen_ruta_id == null);
 
-                if (esInternoArticulo && chkInternoArticulos) return true;
-                if (esInternoGranel && chkInternoIngredientes) return true;
-                if (esMostrador && chkExternoMostrador) return true;
-                if (esHojaDeRuta && chkExternoChofer) return true;
+                let passedType = false;
+                if (esInternoArticulo && chkInternoArticulos) passedType = true;
+                if (esInternoGranel && chkInternoIngredientes) passedType = true;
+                if (esMostrador && chkExternoMostrador) passedType = true;
+                if (esHojaDeRuta && chkExternoChofer) passedType = true;
                 
-                return false;
+                if (!passedType) return false;
+
+                return true;
             });
             
             renderStockTable(filteredData);
@@ -1060,7 +1063,10 @@
                     ${actionCell}
                 </td>
                 <td><span class="status-cuarentena">🔒 En Custodia</span></td>
-                <td>${new Date(item.ultima_actualizacion).toLocaleString()}</td>
+                <td>
+                    ${new Date(item.ultima_actualizacion).toLocaleString()}
+                    ${esInterno ? `<br><small style="color: #007bff; font-weight: bold; margin-top: 5px; display: inline-block;">👤 Responsable: ${item.usuario || 'SISTEMA'}</small>` : ''}
+                </td>
             `;
                 tbody.appendChild(row);
             });

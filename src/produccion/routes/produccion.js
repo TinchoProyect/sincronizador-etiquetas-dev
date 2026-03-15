@@ -644,6 +644,23 @@ router.get('/usuarios', async (req, res) => {
     }
 });
 
+// Ruta simple para obtener operarios/usuarios activos (Traceability Modals)
+router.get('/operarios', async (req, res) => {
+    try {
+        const query = `
+            SELECT id, nombre_completo as nombre
+            FROM public.usuarios
+            WHERE activo = true
+            ORDER BY nombre_completo ASC
+        `;
+        const result = await req.db.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error en ruta GET /operarios:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 // Rutas para artículos
 router.get('/articulos', async (req, res) => {

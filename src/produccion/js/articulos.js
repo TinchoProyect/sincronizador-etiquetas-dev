@@ -2619,28 +2619,47 @@ window.mostrarModalReceta = mostrarModalReceta;
 
 
 window.iniciarTrasladoVentas = async function(articuloNumero, nombre) {
+    let operariosValidos = [];
+    try {
+        Swal.fire({ title: 'Cargando datos...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const resOps = await fetch('/api/produccion/operarios');
+        const ops = await resOps.json();
+        operariosValidos = ops.data || ops;
+        Swal.close();
+    } catch(e) {
+        operariosValidos = []; // Fallback silencioso en caso de error
+    }
+
     const { value: formValues } = await Swal.fire({
         title: 'Enviar a Cuarentena',
         html:
             '<p style="margin-bottom: 15px;">¿Cuántas <b>UNIDADES (📦)</b> de <span style="color: #d33;">['+nombre+']</span> ingresarán en cuarentena?</p>' +
             '<input id="swal-input-cantidad" type="number" step="1" min="1" class="swal2-input" placeholder="Cantidad">' +
-            '<input id="swal-input-motivo" type="text" class="swal2-input" placeholder="Motivo del traslado (obligatorio)">',
+            '<select id="swal-responsable" class="swal2-select" style="display: flex;">' +
+            '    <option value="" disabled selected>Seleccione el Responsable...</option>' +
+            operariosValidos.map(op => `    <option value="${op.id}">${op.nombre}</option>`).join('') +
+            '    <option value="-1">SISTEMA</option>' +
+            '</select>' +
+            '<input id="swal-input-motivo" type="text" class="swal2-input" placeholder="Motivo del traslado (Opcional)">',
         focusConfirm: false,
         showCancelButton: true,
         confirmButtonText: 'Trasladar a Mantenimiento',
         cancelButtonText: 'Cancelar',
         preConfirm: () => {
             const cantidad = document.getElementById('swal-input-cantidad').value;
+            const responsable = document.getElementById('swal-responsable').value;
             const motivo = document.getElementById('swal-input-motivo').value;
+
             if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) {
                 Swal.showValidationMessage('Debe ingresar una cantidad válida mayor a 0');
                 return false;
             }
-            if (!motivo || motivo.trim() === '') {
-                Swal.showValidationMessage('El motivo es obligatorio');
+            if (!responsable) {
+                Swal.showValidationMessage('Debe seleccionar un responsable para el movimiento');
                 return false;
             }
-            return { cantidad: parseFloat(cantidad), motivo: motivo };
+            
+            return { cantidad: parseFloat(cantidad), motivo: motivo, responsable: responsable };
         }
     });
 
@@ -2649,7 +2668,12 @@ window.iniciarTrasladoVentas = async function(articuloNumero, nombre) {
             const res = await fetch('/api/produccion/mantenimiento/traslado-ventas', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ articulo: articuloNumero, cantidad: formValues.cantidad, motivo: formValues.motivo })
+                body: JSON.stringify({ 
+                    articulo: articuloNumero, 
+                    cantidad: formValues.cantidad, 
+                    motivo: formValues.motivo,
+                    responsable: formValues.responsable 
+                })
             });
             const data = await res.json();
             if (data.success) {

@@ -21,7 +21,8 @@ async function getStockMantenimiento(req, res) {
                         WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
                         ELSE 0 
                     END) AS stock_mantenimiento,
-                    MAX(mm.fecha_movimiento) as ultima_actualizacion
+                    MAX(mm.fecha_movimiento) as ultima_actualizacion,
+                    (array_agg(mm.usuario ORDER BY mm.fecha_movimiento DESC))[1] AS usuario
                 FROM public.mantenimiento_movimientos mm
                 LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
                 LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
@@ -44,6 +45,8 @@ async function getStockMantenimiento(req, res) {
                 s.stock_movimientos,
                 s.stock_ajustes,
                 sc.ultima_actualizacion,
+                NULLIF(TRIM(sc.usuario), '') AS usuario_id,
+                COALESCE(u_resp.nombre_completo, NULLIF(TRIM(sc.usuario), ''), 'SISTEMA') AS usuario,
                 sc.origen_ruta_id,
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
@@ -61,6 +64,7 @@ async function getStockMantenimiento(req, res) {
             LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
             LEFT JOIN public.ingredientes i ON sc.ingrediente_id = i.id
             LEFT JOIN public.stock_real_consolidado s ON sc.articulo_numero = s.articulo_numero
+            LEFT JOIN public.usuarios u_resp ON u_resp.id::text = sc.usuario::text
             LEFT JOIN LATERAL (
                 SELECT 
                     mc.nro_comprobante_externo,
@@ -1556,9 +1560,9 @@ async function revertirIngresoLocal(req, res) {
 
 
 const trasladoVentas = async (req, res) => {
-    const { articulo, cantidad, motivo } = req.body;
+    const { articulo, cantidad, motivo, responsable } = req.body;
     if (!articulo || !cantidad || cantidad <= 0) return res.status(400).json({ error: 'Datos inválidos' });
-    const usuario = req.user ? req.user.username : 'SISTEMA';
+    const usuarioFinal = responsable && responsable.trim() !== '' ? responsable : (req.user ? req.user.username : 'SISTEMA');
 
     let client;
     try {
@@ -1579,7 +1583,7 @@ const trasladoVentas = async (req, res) => {
             (articulo_numero, cantidad, estado, observaciones, tipo_movimiento, fecha_movimiento, usuario)
             VALUES ($1, $2, 'PENDIENTE', $3, 'TRASLADO_INTERNO_VENTAS', NOW(), $4)
             RETURNING id
-        `, [articulo, cantidad, motivo, usuario]);
+        `, [articulo, cantidad, motivo || null, usuarioFinal]);
 
         // Obtener código de barras para el registro de movimiento
         const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [articulo]);
@@ -1605,9 +1609,9 @@ const trasladoVentas = async (req, res) => {
 };
 
 const trasladoIngredientes = async (req, res) => {
-    const { ingrediente_id, cantidad, motivo } = req.body;
+    const { ingrediente_id, cantidad, motivo, responsable } = req.body;
     if (!ingrediente_id || !cantidad || cantidad <= 0) return res.status(400).json({ error: 'Datos inválidos' });
-    const usuario = req.user ? req.user.username : 'SISTEMA';
+    const usuarioFinal = responsable && responsable.trim() !== '' ? responsable : (req.user ? req.user.username : 'SISTEMA');
 
     let client;
     try {
@@ -1622,11 +1626,12 @@ const trasladoIngredientes = async (req, res) => {
         // 2. Registrar movimiento en ingredientes_movimientos
         // Nota Arquitectónica: Insertaremos 'mantenimiento'. Se requiere un ALTER TABLE DROP/ADD CONSTRAINT previo.
         const kilosParaDescontar = -Math.abs(cantidad);
+        const refMotivo = motivo ? ('Traslado a mantenimiento: ' + motivo) : 'Traslado interno a mantenimiento';
         await client.query(`
             INSERT INTO ingredientes_movimientos 
             (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
             VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
-        `, [ingrediente_id, kilosParaDescontar, 'Traslado a mantenimiento: ' + motivo, stock_anterior]);
+        `, [ingrediente_id, kilosParaDescontar, refMotivo, stock_anterior]);
 
         // 3. Registrar el ingreso en mantenimiento_movimientos (esquema auditado 100% verídico)
         const insertReq = await client.query(`
@@ -1634,7 +1639,7 @@ const trasladoIngredientes = async (req, res) => {
             (ingrediente_id, cantidad, estado, observaciones, tipo_movimiento, fecha_movimiento, usuario)
             VALUES ($1, $2, 'PENDIENTE', $3, 'TRASLADO_INTERNO_INGREDIENTES', NOW(), $4)
             RETURNING id
-        `, [ingrediente_id, cantidad, motivo, usuario]);
+        `, [ingrediente_id, cantidad, motivo || null, usuarioFinal]);
 
         await client.query('COMMIT');
         res.json({ success: true, movimiento_id: insertReq.rows[0].id });
