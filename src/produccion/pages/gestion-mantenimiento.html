@@ -814,7 +814,7 @@
                                 <button onclick="alert('Funcionalidad de liberar ingrediente a producción bajo desarrollo')" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                     📝 Liberar Stock a Producción
                                 </button>
-                                <button onclick="anularTrasladoInternoAgrupado(null, ${item.ingrediente_id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                <button onclick="anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                     ↩️ Anular Movimiento Interno
                                 </button>
                             `;
@@ -901,10 +901,21 @@
                         `;
                     }
 
+                    const tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
+                    
+                    let subtitulo = '';
+                    if (item.articulo_numero) {
+                        subtitulo = item.descripcion || '';
+                    } else if (item.ingrediente_id) {
+                        subtitulo = 'Ingrediente a Granel';
+                    } else {
+                        subtitulo = 'Movimiento Interno';
+                    }
+
                     row.innerHTML = `
                     <td>
-                        <strong>${item.articulo_numero}</strong>
-                        <br><small style="color:#666;">${item.descripcion || ''}</small>
+                        <strong>${tituloPrincipal}</strong>
+                        ${subtitulo ? `<br><small style="color:#666;">${subtitulo}</small>` : ''}
                     </td>
                     <td>${clienteHtml}</td>
                     <td style="font-size: 1.1em; color: #856404;">

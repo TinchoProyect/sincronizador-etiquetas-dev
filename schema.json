@@ -1,0 +1,27 @@
+[
+  {
+    "table_name": "stock_ventas_movimientos",
+    "column_name": "origen_ingreso",
+    "character_maximum_length": 10
+  },
+  {
+    "table_name": "mantenimiento_movimientos",
+    "column_name": "articulo_numero",
+    "character_maximum_length": 50
+  },
+  {
+    "table_name": "mantenimiento_movimientos",
+    "column_name": "usuario",
+    "character_maximum_length": 100
+  },
+  {
+    "table_name": "mantenimiento_movimientos",
+    "column_name": "tipo_movimiento",
+    "character_maximum_length": 50
+  },
+  {
+    "table_name": "mantenimiento_movimientos",
+    "column_name": "estado",
+    "character_maximum_length": 20
+  }
+]
