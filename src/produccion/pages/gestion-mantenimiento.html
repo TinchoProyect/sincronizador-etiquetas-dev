@@ -772,7 +772,10 @@
                     let btnDisabled = 'disabled';
                     let btnTitle = 'Requiere origen para conciliar';
 
-                    if (item.cliente_id) {
+                    // Modificacion por QA:
+                    if (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) {
+                        clienteHtml = `<span style="color: #17a2b8; font-weight: bold;">🔄 Movimiento Interno</span><br><small>Traslado de Depósito</small>`;
+                    } else if (item.cliente_id) {
                         clienteHtml = `<span title="${item.cliente_nombre || ''}">
                             <strong>#${item.cliente_id}</strong>
                             <br>
@@ -800,28 +803,34 @@
                     const esLomasoftOK = (item.estado === 'CONCILIADO');
                     const esArcaOK = (item.estado_nc === 'COMPLETADO');
                     const esArcaBorrador = (item.estado_nc === 'BORRADOR');
-                    const esInterno = (item.origen_tipo === 'INGREDIENTE' || (!item.cliente_id && (item.cliente_nombre || '').includes('Traslado')));
+                    const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))));
 
                     let actionCell = '';
 
                     if (esInterno) {
                         let dropInterno = '';
-                        if (item.origen_tipo !== 'INGREDIENTE') {
+                        if (item.ingrediente_id) {
                             dropInterno += `
-                                <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente')">
+                                <button onclick="alert('Funcionalidad de liberar ingrediente a producción bajo desarrollo')" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                    📝 Liberar Stock a Producción
+                                </button>
+                                <button onclick="anularTrasladoInternoAgrupado(null, ${item.ingrediente_id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                    ↩️ Anular Movimiento Interno
+                                </button>
+                            `;
+                        } else {
+                            dropInterno += `
+                                <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                     📦 Devolver a Ventas
+                                </button>
+                                <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, null)" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                    🧪 Convertir a Ingredientes
+                                </button>
+                                <button onclick="anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                    ↩️ Anular Traslado Interno
                                 </button>
                             `;
                         }
-                        
-                        dropInterno += `
-                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, ${item.ingrediente_id || 'null'})">
-                                🧪 Enviar a Ingredientes
-                            </button>
-                            <button onclick="anularTrasladoInterno(${item.movimiento_origen_id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
-                                ↩️ Anular Traslado Interno
-                            </button>
-                        `;
 
                         actionCell = `
                         <div class="dropdown">
@@ -829,7 +838,7 @@
                             <div class="dropdown-content">${dropInterno}</div>
                         </div>
                         <div style="margin-top: 5px;">
-                            ${item.origen_tipo === 'INGREDIENTE' ? 
+                            ${item.ingrediente_id ? 
                                 '<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[⚖️ GRANEL]</span>' : 
                                 '<span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[📦 PAQUETE]</span>'}
                         </div>
@@ -857,6 +866,9 @@
                                 <button onclick="deshacerConciliacion('${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
                                     🔗 Deshacer Vínculo Lomasoft
                                 </button>` : ''}
+                                <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;" ${btnDisabled}>
+                                    🗑️ Eliminar Recepción
+                                </button>
                             </div>
                         </div>
                         <div style="margin-top: 5px;">
@@ -1800,7 +1812,50 @@
                 }
             }
         }
-</script>
+        async function anularTrasladoInternoAgrupado(articulo_numero, ingrediente_id) {
+            const isIngrediente = ingrediente_id !== null && ingrediente_id !== 'null';
+            const label = isIngrediente ? ('Ingrediente I-' + ingrediente_id) : ('Artículo ' + articulo_numero);
+            
+            const { value: motivo } = await Swal.fire({
+                title: '↩️ Anular Movimientos Internos',
+                text: 'Se revertirán todos los traslados pendientes de ' + label + ' hacia su origen. Por favor especifique el motivo:',
+                input: 'text',
+                inputPlaceholder: 'Ej: Error de carga, Devolución cancelada',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'Sí, Anular',
+                cancelButtonText: 'Cancelar',
+                inputValidator: (value) => {
+                    if (!value) return '¡Necesitas escribir un motivo!';
+                }
+            });
+
+            if (motivo) {
+                try {
+                    const res = await fetch('/api/produccion/mantenimiento/anular-traslado-agrupado', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            articulo_numero: isIngrediente ? null : articulo_numero,
+                            ingrediente_id: isIngrediente ? ingrediente_id : null,
+                            motivo_anulacion: motivo
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (res.ok) {
+                        Swal.fire('¡Anulado!', 'Los movimientos internos han sido revertidos exitosamente.', 'success');
+                        cargarStock();
+                        cargarHistorial();
+                    } else {
+                        throw new Error(data.error || 'Error desconocido');
+                    }
+                } catch (e) {
+                    Swal.fire('Error', e.message, 'error');
+                }
+            }
+        }
+    </script>
 </body>
 
 </html>

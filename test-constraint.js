@@ -10,23 +10,12 @@ async function run() {
   await client.connect();
   
   const cols = await client.query(`
-    SELECT column_name, data_type 
+    SELECT table_name, column_name 
     FROM information_schema.columns 
-    WHERE table_name = 'mantenimiento_movimientos'
+    WHERE table_name LIKE '%historico%' OR table_name LIKE '%stock%'
   `);
   
-  const constr = await client.query(`
-    SELECT pg_get_constraintdef(c.oid) AS definicion
-    FROM pg_constraint c 
-    WHERE c.conname = 'ingredientes_movimientos_tipo_check'
-  `);
-
-  const result = {
-    columns: cols.rows.map(r => r.column_name),
-    constraint: constr.rows.length > 0 ? constr.rows[0].definicion : 'none'
-  };
-
-  require('fs').writeFileSync('debug_schema.json', JSON.stringify(result, null, 2));
+  require('fs').writeFileSync('debug_schema.json', JSON.stringify(cols.rows, null, 2));
   console.log('Saved to debug_schema.json');
   
   await client.end();

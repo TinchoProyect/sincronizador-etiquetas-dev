@@ -12,10 +12,11 @@ async function getStockMantenimiento(req, res) {
             WITH saldos_clientes AS (
                 SELECT 
                     mm.articulo_numero,
+                    mm.ingrediente_id,
                     p.id_cliente AS cliente_id,
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
                     SUM(CASE 
-                        WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
+                        WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN mm.cantidad 
                         WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
                         ELSE 0 
                     END) AS stock_mantenimiento,
@@ -26,16 +27,17 @@ async function getStockMantenimiento(req, res) {
                 WHERE mm.estado IS DISTINCT FROM 'REVERTIDO' 
                   AND mm.estado IS DISTINCT FROM 'FINALIZADO'
                   AND mm.estado IS DISTINCT FROM 'ANULADO'
-                GROUP BY mm.articulo_numero, p.id_cliente, c.nombre, c.apellido, c.otros
+                GROUP BY mm.articulo_numero, mm.ingrediente_id, p.id_cliente, c.nombre, c.apellido, c.otros
                 HAVING SUM(CASE 
-                    WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
+                    WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN mm.cantidad 
                     WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
                     ELSE 0 
                 END) > 0
             )
             SELECT 
                 sc.articulo_numero,
-                COALESCE(a.nombre, sc.articulo_numero) AS descripcion,
+                sc.ingrediente_id,
+                COALESCE(a.nombre, i.nombre, sc.articulo_numero, sc.ingrediente_id::text) AS descripcion,
                 sc.stock_mantenimiento,
                 s.stock_lomasoft,
                 s.stock_movimientos,
@@ -55,6 +57,7 @@ async function getStockMantenimiento(req, res) {
                 END AS estado_nc
             FROM saldos_clientes sc
             LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
+            LEFT JOIN public.ingredientes i ON sc.ingrediente_id = i.id
             LEFT JOIN public.stock_real_consolidado s ON sc.articulo_numero = s.articulo_numero
             LEFT JOIN LATERAL (
                 SELECT 
@@ -80,7 +83,7 @@ async function getStockMantenimiento(req, res) {
                 ORDER BY mm_nc.fecha_movimiento DESC
                 LIMIT 1
             ) nc_estado ON true
-            ORDER BY sc.articulo_numero ASC, sc.cliente_nombre ASC
+            ORDER BY COALESCE(sc.articulo_numero, sc.ingrediente_id::text) ASC, sc.cliente_nombre ASC
         `;
 
         const result = await pool.query(query);
@@ -1543,11 +1546,17 @@ const trasladoVentas = async (req, res) => {
             RETURNING id
         `, [articulo, cantidad, motivo, usuario]);
 
-        // Registrar en historial inventarios (Cantidad auditada numéricamente de forma negativa, convención LAMDA)
+        // Obtener código de barras para el registro de movimiento
+        const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [articulo]);
+        const codigoBarras = artQuery.rows.length > 0 ? artQuery.rows[0].codigo_barras : '';
+
+        // Registrar en historial inventarios de ventas usando stock_ventas_movimientos
         await client.query(`
-            INSERT INTO historial_inventarios (articulo_numero, accion, cantidad, fecha, modulo, observaciones)
-            VALUES ($1, 'ENVIO_A_MANTENIMIENTO', $2, NOW(), 'Mantenimiento', $3)
-        `, [articulo, -Math.abs(cantidad), motivo]);
+            INSERT INTO stock_ventas_movimientos (
+                articulo_numero, codigo_barras, kilos, cantidad, tipo, fecha, usuario_id, origen_ingreso
+            ) VALUES ($1, $2, 0, $3, 'ENVIO_A_MANTENIMIENTO', NOW(), $4, 'mantenimiento')
+        `, [articulo, codigoBarras || '', -Math.abs(cantidad), null]); // null para usuario_id temporalmente, OJO req.user.id no existe
+
 
         await client.query('COMMIT');
         res.json({ success: true, movimiento_id: insertReq.rows[0].id });
@@ -1651,6 +1660,73 @@ const anularTraslado = async (req, res) => {
     }
 };
 
+const anularTrasladoAgrupado = async (req, res) => {
+    const { articulo_numero, ingrediente_id, motivo_anulacion } = req.body;
+    const usuario = req.user ? req.user.username : 'SISTEMA';
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // Buscar movimientos pendientes según el parámetro enviado
+        const param = ingrediente_id || articulo_numero;
+        const whereCol = ingrediente_id ? "ingrediente_id" : "articulo_numero";
+
+        const { rows } = await client.query(`
+            SELECT * FROM mantenimiento_movimientos 
+            WHERE ${whereCol} = $1 
+              AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
+              AND estado = 'PENDIENTE'
+            FOR UPDATE
+        `, [param]);
+
+        if (rows.length === 0) throw new Error('No hay traslados internos pendientes para anular correspondientes a este ítem');
+
+        for (const mov of rows) {
+            if (mov.cantidad !== mov.stock_mantenimiento) throw new Error('El stock ya fue alterado en cuarentena, no se puede anular masivamente');
+
+            // Restaurar según origen orgánico auditado
+            if (mov.tipo_movimiento === 'TRASLADO_INTERNO_VENTAS') {
+                await client.query("UPDATE stock_real_consolidado SET stock_consolidado = stock_consolidado + $1 WHERE articulo_numero = $2", [mov.cantidad, mov.articulo_numero]);
+                // Restaurar histórico de ventas usando stock_ventas_movimientos
+                const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [mov.articulo_numero]);
+                const codigoBarras = artQuery.rows.length > 0 ? artQuery.rows[0].codigo_barras : '';
+
+                await client.query(`
+                    INSERT INTO stock_ventas_movimientos (
+                        articulo_numero, codigo_barras, kilos, cantidad, tipo, fecha, usuario_id, origen_ingreso
+                    ) VALUES ($1, $2, 0, $3, 'REVERSION_DESDE_MANTENIMIENTO', NOW(), $4, 'mantenimiento')
+                `, [mov.articulo_numero, codigoBarras || '', mov.cantidad, null]); // Dejar usuario_id en null
+                
+            } else if (mov.tipo_movimiento === 'TRASLADO_INTERNO_INGREDIENTES') {
+                // Restaurar stock en ingredientes
+                const ingStat = await client.query("SELECT stock_actual, nombre FROM ingredientes WHERE id = $1", [mov.ingrediente_id]);
+                const stockAnterior = ingStat.rows[0].stock_actual;
+                await client.query("UPDATE ingredientes SET stock_actual = stock_actual + $1 WHERE id = $2", [mov.cantidad, mov.ingrediente_id]);
+                
+                // Mapeo simétrico para la tabla de movimientos (requiere alterado de check maintenance en SQL previo de usuario)
+                await client.query(`
+                    INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
+                    VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
+                `, [mov.ingrediente_id, mov.cantidad, 'Reversión desde mantenimiento: ' + motivo_anulacion, stockAnterior]);
+            }
+
+            // Marcar como revertido en cuarentena auditada
+            await client.query("UPDATE mantenimiento_movimientos SET estado = 'REVERTIDO', stock_mantenimiento = 0, observaciones = observaciones || ' [ANULADO: ' || $1 || ']' WHERE id = $2", [motivo_anulacion, mov.id]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
 
 module.exports = {
     getStockMantenimiento,
@@ -1669,5 +1745,6 @@ module.exports = {
     revertirIngresoLocal,
     trasladoVentas,
     trasladoIngredientes,
-    anularTraslado
+    anularTraslado,
+    anularTrasladoAgrupado
 };

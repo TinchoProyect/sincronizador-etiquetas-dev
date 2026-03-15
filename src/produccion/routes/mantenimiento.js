@@ -32,5 +32,6 @@ router.post('/emitir-nc-borrador', mantenimientoCtrl.emitirNotaCreditoBorrador);
 router.post('/traslado-ventas', mantenimientoCtrl.trasladoVentas);
 router.post('/traslado-ingredientes', mantenimientoCtrl.trasladoIngredientes);
 router.post('/anular-traslado', mantenimientoCtrl.anularTraslado);
+router.post('/anular-traslado-agrupado', mantenimientoCtrl.anularTrasladoAgrupado);
 
 module.exports = router;
