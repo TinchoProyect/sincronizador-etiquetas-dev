@@ -284,15 +284,37 @@
                 </div>
                 <div class="config-body">
                     <div class="config-accordion">
+                        <div class="accordion-header" style="background:#f1f1f1; font-weight:bold; cursor:pointer;" onclick="toggleFilterAccordion('interno-filters')">
+                            <span>🏢 Arribos Internos</span>
+                            <span id="interno-filters-icon">▼</span>
+                        </div>
+                        <div class="accordion-content" id="interno-filters" style="display:block; padding:10px; border-bottom:1px solid #ddd;">
+                            <label><input type="checkbox" id="chk-interno-articulos" checked onchange="aplicarFiltrosStock()"> 📦 Artículos (Desde Ventas)</label>
+                            <br>
+                            <label><input type="checkbox" id="chk-interno-ingredientes" checked onchange="aplicarFiltrosStock()"> ⚖️ Ingredientes a Granel</label>
+                        </div>
+                    </div>
+                    
+                    <div class="config-accordion">
+                        <div class="accordion-header" style="background:#f1f1f1; font-weight:bold; cursor:pointer;" onclick="toggleFilterAccordion('externo-filters')">
+                            <span>🚚 Arribos Externos</span>
+                            <span id="externo-filters-icon">▼</span>
+                        </div>
+                        <div class="accordion-content" id="externo-filters" style="display:block; padding:10px; border-bottom:1px solid #ddd;">
+                            <label><input type="checkbox" id="chk-externo-mostrador" checked onchange="aplicarFiltrosStock()"> 🧍‍♂️ Por Mostrador (Local)</label>
+                            <br>
+                            <label><input type="checkbox" id="chk-externo-chofer" checked onchange="aplicarFiltrosStock()"> 🚚 Por Hoja de Ruta (Chofer)</label>
+                        </div>
+                    </div>
+
+                    <div class="config-accordion" style="margin-top: 15px;">
                         <div class="accordion-header">
-                            <span>📦 Estado</span>
+                            <span>⚙️ Opciones Generales</span>
                         </div>
                         <div class="accordion-content" style="display:block; padding:10px;">
-                            <label><input type="checkbox" checked disabled> Stock en Cuarentena</label>
-                            <br>
-                            <label title="Oculta movimientos revertidos o anulados">
+                            <label title="Oculta movimientos revertidos o anulados en Historial">
                                 <input type="checkbox" id="chk-ocultar-anulados" checked onchange="cargarHistorial()">
-                                Ocultar Anulados
+                                Ocultar Anulados (Historial)
                             </label>
                         </div>
                     </div>
@@ -753,6 +775,8 @@
             });
         }
 
+        window.mantenimientoStockData = [];
+        
         async function cargarStock() {
             const tbody = document.getElementById('tbody-stock');
             tbody.innerHTML = '<tr><td colspan="6" class="text-center">⏳ Cargando datos...</td></tr>';
@@ -761,182 +785,237 @@
                 const res = await fetch('/api/produccion/mantenimiento/stock');
                 if (!res.ok) throw new Error('Error al cargar stock');
                 const data = await res.json();
-
-                tbody.innerHTML = '';
-                if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">✅ No hay artículos en cuarentena.</td></tr>';
-                    return;
-                }
-
-                data.forEach(item => {
-                    // Formatear cliente
-                    let clienteHtml = '<span style="color: #999; font-style: italic;">Sin Origen</span>';
-                    let btnDisabled = 'disabled';
-                    let btnTitle = 'Requiere origen para conciliar';
-
-                    // Modificacion por QA:
-                    if (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) {
-                        clienteHtml = `<span style="color: #17a2b8; font-weight: bold;">🔄 Movimiento Interno</span><br><small>Traslado de Depósito</small>`;
-                    } else if (item.cliente_id) {
-                        clienteHtml = `<span title="${item.cliente_nombre || ''}">
-                            <strong>#${item.cliente_id}</strong>
-                            <br>
-                            <small>${item.cliente_nombre || ''}</small>
-                        </span>`;
-
-                        if (item.estado === 'CONCILIADO') {
-                            btnDisabled = 'disabled';
-                            btnTitle = 'Ya conciliado';
-                        } else {
-                            btnDisabled = '';
-                            btnTitle = 'Buscar Nota de Crédito';
-                        }
-                    }
-
-                    const row = document.createElement('tr');
-                    const fechaRef = item.ultima_actualizacion ? new Date(item.ultima_actualizacion).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-
-                    // Cálculo de peso y formato CORRECTO
-                    const cantidad = parseFloat(item.stock_mantenimiento);
-                    const kilosUnidad = parseFloat(item.kilos_unidad) || 1;
-                    const pesoTotal = cantidad * kilosUnidad;
-
-                    // Determinar contenido de la celda de acción
-                    const esLomasoftOK = (item.estado === 'CONCILIADO');
-                    const esArcaOK = (item.estado_nc === 'COMPLETADO');
-                    const esArcaBorrador = (item.estado_nc === 'BORRADOR');
-                    const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))));
-
-                    let actionCell = '';
-
-                    if (esInterno) {
-                        let dropInterno = '';
-                        if (item.ingrediente_id) {
-                            dropInterno += `
-                                <button onclick="alert('Funcionalidad de liberar ingrediente a producción bajo desarrollo')" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                    📝 Liberar Stock a Producción
-                                </button>
-                                <button onclick="window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                    ↩️ Anular Movimiento Interno
-                                </button>
-                            `;
-                        } else {
-                            dropInterno += `
-                                <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                    📦 Devolver a Ventas
-                                </button>
-                                <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, null)" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                    🧪 Convertir a Ingredientes
-                                </button>
-                                <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                    ↩️ Anular Traslado Interno
-                                </button>
-                            `;
-                        }
-
-                        actionCell = `
-                        <div class="dropdown">
-                            <button class="btn-accion">⚡ Acciones ▼</button>
-                            <div class="dropdown-content">${dropInterno}</div>
-                        </div>
-                        <div style="margin-top: 5px;">
-                            ${item.ingrediente_id ? 
-                                '<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[⚖️ GRANEL]</span>' : 
-                                '<span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[📦 PAQUETE]</span>'}
-                        </div>
-                        `;
-                    } else if (esLomasoftOK || esArcaOK) {
-                        let comprobanteInfo = '';
-                        if (esLomasoftOK && item.nc_nro) {
-                            const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
-                            comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>${item.nc_tipo || 'NC'}</b> ${item.nc_nro} (${fechaNC})</span>`;
-                        } else if (esArcaOK) {
-                            comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>✅ NC ARCA Emitida</b></span>`;
-                        }
-
-                        actionCell = `
-                        <div class="dropdown">
-                            <button class="btn-accion">⚡ Acciones ▼</button>
-                            <div class="dropdown-content">
-                                <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa')">
-                                    📦 Enviar a Ventas
-                                </button>
-                                <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
-                                    🧪 Enviar a Ingredientes
-                                </button>
-                                ${esLomasoftOK ? `
-                                <button onclick="deshacerConciliacion('${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
-                                    🔗 Deshacer Vínculo Lomasoft
-                                </button>` : ''}
-                                <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;" ${btnDisabled}>
-                                    🗑️ Eliminar Recepción
-                                </button>
-                            </div>
-                        </div>
-                        <div style="margin-top: 5px;">
-                            <span style="color: green; font-weight: bold; font-size: 0.8em; border: 1px solid green; padding: 2px 5px; border-radius: 4px;">✅ Consolidado</span>${comprobanteInfo}
-                        </div>
-                        `;
-                    } else {
-                        let ncActionHtml = '';
-                        let lomasoftDisabled = btnDisabled;
-                        let lomasoftTitle = btnTitle;
-
-                        if (esArcaBorrador) {
-                            ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA</span>`;
-                            lomasoftDisabled = 'disabled';
-                            lomasoftTitle = 'Devolución bloqueada';
-                        } else {
-                            ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none;" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')" ${btnDisabled}>🧾 Emitir NC ARCA</button>`;
-                        }
-
-                        actionCell = `
-                        <div style="display: flex; gap: 5px; flex-direction: column;">
-                            <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')" ${lomasoftDisabled} title="${lomasoftTitle}">
-                                🔍 Conciliación Lomasoft
-                            </button>
-                            ${ncActionHtml}
-                            <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" ${lomasoftDisabled}>
-                                🗑️ Eliminar Recepción
-                            </button>
-                        </div>
-                        `;
-                    }
-
-                    const tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
-                    
-                    let subtitulo = '';
-                    if (item.articulo_numero) {
-                        subtitulo = item.descripcion || '';
-                    } else if (item.ingrediente_id) {
-                        subtitulo = 'Ingrediente a Granel';
-                    } else {
-                        subtitulo = 'Movimiento Interno';
-                    }
-
-                    row.innerHTML = `
-                    <td>
-                        <strong>${tituloPrincipal}</strong>
-                        ${subtitulo ? `<br><small style="color:#666;">${subtitulo}</small>` : ''}
-                    </td>
-                    <td>${clienteHtml}</td>
-                    <td style="font-size: 1.1em; color: #856404;">
-                        ${cantidad.toFixed(3)} u.
-                        <br><small>(${pesoTotal.toFixed(2)} kg)</small>
-                    </td>
-                    <td>
-                        ${actionCell}
-                    </td>
-                    <td><span class="status-cuarentena">🔒 En Custodia</span></td>
-                    <td>${new Date(item.ultima_actualizacion).toLocaleString()}</td>
-                `;
-                    tbody.appendChild(row);
-                });
+                
+                window.mantenimientoStockData = data;
+                aplicarFiltrosStock();
 
             } catch (error) {
                 console.error(error);
                 tbody.innerHTML = `<tr><td colspan="6" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
             }
+        }
+        
+        function toggleFilterAccordion(id) {
+            const content = document.getElementById(id);
+            const icon = document.getElementById(id + '-icon');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                icon.textContent = '▶';
+            }
+        }
+
+        function aplicarFiltrosStock() {
+            const chkInternoArticulos = document.getElementById('chk-interno-articulos').checked;
+            const chkInternoIngredientes = document.getElementById('chk-interno-ingredientes').checked;
+            const chkExternoMostrador = document.getElementById('chk-externo-mostrador').checked;
+            const chkExternoChofer = document.getElementById('chk-externo-chofer').checked;
+            
+            const filteredData = window.mantenimientoStockData.filter(item => {
+                const esInternoGranel = (item.ingrediente_id != null);
+                const esInternoArticulo = (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))) && item.ingrediente_id == null;
+
+                const esInterno = esInternoGranel || esInternoArticulo;
+                const esExterno = !esInterno;
+                
+                const esHojaDeRuta = esExterno && (item.origen_ruta_id != null);
+                const esMostrador = esExterno && (item.origen_ruta_id == null);
+
+                if (esInternoArticulo && chkInternoArticulos) return true;
+                if (esInternoGranel && chkInternoIngredientes) return true;
+                if (esMostrador && chkExternoMostrador) return true;
+                if (esHojaDeRuta && chkExternoChofer) return true;
+                
+                return false;
+            });
+            
+            renderStockTable(filteredData);
+        }
+
+        function renderStockTable(data) {
+            const tbody = document.getElementById('tbody-stock');
+            tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">✅ No hay artículos que coincidan con los filtros actuales.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                // Formatear cliente
+                let clienteHtml = '<span style="color: #999; font-style: italic;">Sin Origen</span>';
+                let btnDisabled = 'disabled';
+                let btnTitle = 'Requiere origen para conciliar';
+
+                // Modificacion por QA:
+                if (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) {
+                    clienteHtml = `<span style="color: #17a2b8; font-weight: bold;">🔄 Movimiento Interno</span><br><small>Traslado de Depósito</small>`;
+                } else if (item.cliente_id) {
+                    clienteHtml = `<span title="${item.cliente_nombre || ''}">
+                        <strong>#${item.cliente_id}</strong>
+                        <br>
+                        <small>${item.cliente_nombre || ''}</small>
+                    </span>`;
+
+                    if (item.estado === 'CONCILIADO') {
+                        btnDisabled = 'disabled';
+                        btnTitle = 'Ya conciliado';
+                    } else {
+                        btnDisabled = '';
+                        btnTitle = 'Buscar Nota de Crédito';
+                    }
+                }
+
+                const row = document.createElement('tr');
+                const fechaRef = item.ultima_actualizacion ? new Date(item.ultima_actualizacion).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+                // Cálculo de peso y formato CORRECTO
+                const cantidad = parseFloat(item.stock_mantenimiento);
+                const kilosUnidad = parseFloat(item.kilos_unidad) || 1;
+                const pesoTotal = cantidad * kilosUnidad;
+
+                // Determinar contenido de la celda de acción
+                const esLomasoftOK = (item.estado === 'CONCILIADO');
+                const esArcaOK = (item.estado_nc === 'COMPLETADO');
+                const esArcaBorrador = (item.estado_nc === 'BORRADOR');
+                const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))));
+
+                let actionCell = '';
+
+                if (esInterno) {
+                    let dropInterno = '';
+                    if (item.ingrediente_id) {
+                        dropInterno += `
+                            <button onclick="alert('Funcionalidad de liberar ingrediente a producción bajo desarrollo')" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                📝 Liberar Stock a Producción
+                            </button>
+                            <button onclick="window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                ↩️ Anular Movimiento Interno
+                            </button>
+                        `;
+                    } else {
+                        dropInterno += `
+                            <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                📦 Devolver a Ventas
+                            </button>
+                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, null)" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                🧪 Convertir a Ingredientes
+                            </button>
+                            <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                ↩️ Anular Traslado Interno
+                            </button>
+                        `;
+                    }
+
+                    actionCell = `
+                    <div class="dropdown">
+                        <button class="btn-accion">⚡ Acciones ▼</button>
+                        <div class="dropdown-content">${dropInterno}</div>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        ${item.ingrediente_id ? 
+                            '<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[⚖️ GRANEL]</span>' : 
+                            '<span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[📦 PAQUETE]</span>'}
+                    </div>
+                    `;
+                } else if (esLomasoftOK || esArcaOK) {
+                    let comprobanteInfo = '';
+                    if (esLomasoftOK && item.nc_nro) {
+                        const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
+                        comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>${item.nc_tipo || 'NC'}</b> ${item.nc_nro} (${fechaNC})</span>`;
+                    } else if (esArcaOK) {
+                        comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>✅ NC ARCA Emitida</b></span>`;
+                    }
+
+                    actionCell = `
+                    <div class="dropdown">
+                        <button class="btn-accion">⚡ Acciones ▼</button>
+                        <div class="dropdown-content">
+                            <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa')">
+                                📦 Enviar a Ventas
+                            </button>
+                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
+                                🧪 Enviar a Ingredientes
+                            </button>
+                            ${esLomasoftOK ? `
+                            <button onclick="deshacerConciliacion('${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
+                                🔗 Deshacer Vínculo Lomasoft
+                            </button>` : ''}
+                            <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;" ${btnDisabled}>
+                                🗑️ Eliminar Recepción
+                            </button>
+                        </div>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        <span style="color: green; font-weight: bold; font-size: 0.8em; border: 1px solid green; padding: 2px 5px; border-radius: 4px;">✅ Consolidado</span>${comprobanteInfo}
+                    </div>
+                    `;
+                } else {
+                    let ncActionHtml = '';
+                    let lomasoftDisabled = btnDisabled;
+                    let lomasoftTitle = btnTitle;
+
+                    if (esArcaBorrador) {
+                        ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA</span>`;
+                        lomasoftDisabled = 'disabled';
+                        lomasoftTitle = 'Devolución bloqueada';
+                    } else {
+                        ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none;" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')" ${btnDisabled}>🧾 Emitir NC ARCA</button>`;
+                    }
+
+                    actionCell = `
+                    <div style="display: flex; gap: 5px; flex-direction: column;">
+                        <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')" ${lomasoftDisabled} title="${lomasoftTitle}">
+                            🔍 Conciliación Lomasoft
+                        </button>
+                        ${ncActionHtml}
+                        <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" ${lomasoftDisabled}>
+                            🗑️ Eliminar Recepción
+                        </button>
+                    </div>
+                    `;
+                }
+
+                const tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
+                
+                let subtitulo = '';
+                if (item.articulo_numero) {
+                    subtitulo = item.descripcion || '';
+                } else if (item.ingrediente_id) {
+                    subtitulo = 'Ingrediente a Granel';
+                } else {
+                    subtitulo = 'Movimiento Interno';
+                }
+
+                // Mejorar visualización del subtitulo para externos dependiendo si es Hoja de Ruta o Mostrador
+                if (!esInterno) {
+                    if (item.origen_ruta_id != null) {
+                        subtitulo += ` <span style="color:#007bff; font-weight:bold; font-size:0.85em; margin-left:5px;">[🚚 Ruta #${item.origen_ruta_id}]</span>`;
+                    } else {
+                        subtitulo += ` <span style="color:#28a745; font-weight:bold; font-size:0.85em; margin-left:5px;">[🧍‍♂️ Mostrador]</span>`;
+                    }
+                }
+
+                row.innerHTML = `
+                <td>
+                    <strong>${tituloPrincipal}</strong>
+                    ${subtitulo ? `<br><small style="color:#666;">${subtitulo}</small>` : ''}
+                </td>
+                <td>${clienteHtml}</td>
+                <td style="font-size: 1.1em; color: #856404;">
+                    ${cantidad.toFixed(3)} u.
+                    <br><small>(${pesoTotal.toFixed(2)} kg)</small>
+                </td>
+                <td>
+                    ${actionCell}
+                </td>
+                <td><span class="status-cuarentena">🔒 En Custodia</span></td>
+                <td>${new Date(item.ultima_actualizacion).toLocaleString()}</td>
+            `;
+                tbody.appendChild(row);
+            });
         }
 
         async function eliminarRecepcionGlobal(clienteId, articulo) {

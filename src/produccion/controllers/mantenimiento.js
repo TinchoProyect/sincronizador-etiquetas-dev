@@ -15,6 +15,7 @@ async function getStockMantenimiento(req, res) {
                     mm.ingrediente_id,
                     p.id_cliente AS cliente_id,
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
+                    MAX(p.id_ruta) AS origen_ruta_id,
                     SUM(CASE 
                         WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN mm.cantidad 
                         WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
@@ -43,6 +44,7 @@ async function getStockMantenimiento(req, res) {
                 s.stock_movimientos,
                 s.stock_ajustes,
                 sc.ultima_actualizacion,
+                sc.origen_ruta_id,
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
                 CASE WHEN nc.nro_comprobante_externo IS NOT NULL THEN 'CONCILIADO' ELSE 'PENDIENTE' END AS estado,
