@@ -1,0 +1,46 @@
+{
+  "stock": [
+    {
+      "articulo_numero": "AGPX10Q",
+      "stock_consolidado": "0.5",
+      "stock_mantenimiento": "-1.000"
+    }
+  ],
+  "movs": [
+    {
+      "id": 176,
+      "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+      "cantidad": "0.500",
+      "estado": "PENDIENTE",
+      "fecha_movimiento": "2026-03-15T03:51:26.787Z"
+    },
+    {
+      "id": 149,
+      "tipo_movimiento": "EMISION_NC",
+      "cantidad": "1.000",
+      "estado": "FINALIZADO",
+      "fecha_movimiento": "2026-03-09T17:14:57.230Z"
+    },
+    {
+      "id": 79,
+      "tipo_movimiento": "EMISION_NC",
+      "cantidad": "1.000",
+      "estado": "FINALIZADO",
+      "fecha_movimiento": "2026-03-08T16:36:07.456Z"
+    },
+    {
+      "id": 76,
+      "tipo_movimiento": "EMISION_NC",
+      "cantidad": "1.000",
+      "estado": "FINALIZADO",
+      "fecha_movimiento": "2026-03-08T16:35:57.528Z"
+    },
+    {
+      "id": 52,
+      "tipo_movimiento": "INGRESO",
+      "cantidad": "1.000",
+      "estado": "PENDIENTE",
+      "fecha_movimiento": "2026-03-07T16:05:16.119Z"
+    }
+  ]
+}

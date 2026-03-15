@@ -587,7 +587,7 @@ async function liberarStock(req, res) {
         }
 
         // HIGIENE DE BASE DE DATOS: Asegurar que los INGRESOS para este cliente_id queden FINALIZADOS
-        if (cliente_id) {
+        if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
             const updateMov = `
                 UPDATE public.mantenimiento_movimientos
                 SET estado = 'FINALIZADO',
@@ -603,6 +603,27 @@ async function liberarStock(req, res) {
                   )
             `;
             await client.query(updateMov, [articulo, cliente_id]);
+        } else {
+            // Es un movimiento interno (sin cliente asociado en presupuestos)
+            const updateMovInterno = `
+                UPDATE public.mantenimiento_movimientos
+                SET estado = 'FINALIZADO',
+                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
+                WHERE articulo_numero = $1 
+                  AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
+                  AND estado = 'PENDIENTE'
+            `;
+            await client.query(updateMovInterno, [articulo]);
+
+            // Auditoría para Ventas (Crucial para que sume en el frontend del catálogo)
+            const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [articulo]);
+            const codigoBarras = artQuery.rows.length > 0 ? artQuery.rows[0].codigo_barras : '';
+
+            await client.query(`
+                INSERT INTO stock_ventas_movimientos (
+                    articulo_numero, codigo_barras, kilos, cantidad, tipo, fecha, usuario_id, origen_ingreso
+                ) VALUES ($1, $2, 0, $3, 'REVERSION_DESDE_MANTENIMIENTO', NOW(), $4, 'mantenimiento')
+            `, [articulo, codigoBarras || '', cantidad, null]);
         }
 
         await client.query('COMMIT');
@@ -709,7 +730,7 @@ async function transferirAIngredientes(req, res) {
         }
 
         // 5. HIGIENE DE BASE DE DATOS: Marcar como FINALIZADO el INGRESO original del cliente
-        if (cliente_id) {
+        if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
             const updateIngresoOriginal = `
                 UPDATE public.mantenimiento_movimientos
                 SET estado = 'FINALIZADO',
@@ -725,6 +746,17 @@ async function transferirAIngredientes(req, res) {
                   )
             `;
             await client.query(updateIngresoOriginal, [articulo, cliente_id]);
+        } else {
+            // Es un movimiento interno (sin cliente asociado en presupuestos)
+            const updateMovInterno = `
+                UPDATE public.mantenimiento_movimientos
+                SET estado = 'FINALIZADO',
+                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
+                WHERE articulo_numero = $1 
+                  AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
+                  AND estado = 'PENDIENTE'
+            `;
+            await client.query(updateMovInterno, [articulo]);
         }
 
         // Opcional: Registrar en historial de ingredientes si existe tabla. 
@@ -1533,9 +1565,10 @@ const trasladoVentas = async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
 
-        // 1. Reducir stock del artículo en ventas (usando la tabla real consolidada)
+        // 1. Reducir stock del artículo en ventas y pasarlo a cuarentena (usando la tabla real consolidada)
+        // [Fase 23 Fix Matemático]: Se DEBE reflejar la resta en stock_ajustes para que la ecuación de Lomasoft + Movs + Ajustes se mantenga íntegra si luego se intenta devolver el stock.
         const updateArt = await client.query(
-            "UPDATE public.stock_real_consolidado SET stock_consolidado = stock_consolidado - $1, ultima_actualizacion = NOW() WHERE articulo_numero = $2 RETURNING *",
+            "UPDATE public.stock_real_consolidado SET stock_consolidado = stock_consolidado - $1, stock_ajustes = COALESCE(stock_ajustes, 0) - $1, stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1, ultima_actualizacion = NOW() WHERE articulo_numero = $2 RETURNING *",
             [cantidad, articulo]
         );
         if (updateArt.rowCount === 0) throw new Error('Artículo no encontrado en stock_real_consolidado');
@@ -1686,11 +1719,17 @@ const anularTrasladoAgrupado = async (req, res) => {
         if (rows.length === 0) throw new Error('No hay traslados internos pendientes para anular correspondientes a este ítem');
 
         for (const mov of rows) {
-            if (mov.cantidad !== mov.stock_mantenimiento) throw new Error('El stock ya fue alterado en cuarentena, no se puede anular masivamente');
+            const obsMotivo = motivo_anulacion ? motivo_anulacion : 'Deshecho por el usuario';
 
             // Restaurar según origen orgánico auditado
             if (mov.tipo_movimiento === 'TRASLADO_INTERNO_VENTAS') {
-                await client.query("UPDATE stock_real_consolidado SET stock_consolidado = stock_consolidado + $1 WHERE articulo_numero = $2", [mov.cantidad, mov.articulo_numero]);
+                const checkStock = await client.query("SELECT COALESCE(stock_mantenimiento, 0) as stock_mantenimiento FROM stock_real_consolidado WHERE articulo_numero = $1", [mov.articulo_numero]);
+                if (checkStock.rows.length === 0 || parseFloat(checkStock.rows[0].stock_mantenimiento) < parseFloat(mov.cantidad)) {
+                    throw new Error('Stock insuficiente en cuarentena, no se puede anular masivamente.');
+                }
+                
+                await client.query("UPDATE stock_real_consolidado SET stock_consolidado = stock_consolidado + $1, stock_mantenimiento = stock_mantenimiento - $1 WHERE articulo_numero = $2", [mov.cantidad, mov.articulo_numero]);
+                
                 // Restaurar histórico de ventas usando stock_ventas_movimientos
                 const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [mov.articulo_numero]);
                 const codigoBarras = artQuery.rows.length > 0 ? artQuery.rows[0].codigo_barras : '';
@@ -1702,6 +1741,20 @@ const anularTrasladoAgrupado = async (req, res) => {
                 `, [mov.articulo_numero, codigoBarras || '', mov.cantidad, null]); // Dejar usuario_id en null
                 
             } else if (mov.tipo_movimiento === 'TRASLADO_INTERNO_INGREDIENTES') {
+                const sumQuery = await client.query(`
+                    SELECT SUM(CASE 
+                        WHEN tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN cantidad 
+                        WHEN tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -cantidad
+                        ELSE 0 
+                    END) AS current_stock
+                    FROM public.mantenimiento_movimientos
+                    WHERE ingrediente_id = $1 AND estado NOT IN ('REVERTIDO', 'FINALIZADO', 'ANULADO')
+                `, [mov.ingrediente_id]);
+                
+                if (sumQuery.rows.length === 0 || parseFloat(sumQuery.rows[0].current_stock) < parseFloat(mov.cantidad)) {
+                    throw new Error('Stock insuficiente en cuarentena, no se puede anular masivamente.');
+                }
+
                 // Restaurar stock en ingredientes
                 const ingStat = await client.query("SELECT stock_actual, nombre FROM ingredientes WHERE id = $1", [mov.ingrediente_id]);
                 const stockAnterior = ingStat.rows[0].stock_actual;
@@ -1711,11 +1764,11 @@ const anularTrasladoAgrupado = async (req, res) => {
                 await client.query(`
                     INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
                     VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
-                `, [mov.ingrediente_id, mov.cantidad, 'Reversión desde mantenimiento: ' + motivo_anulacion, stockAnterior]);
+                `, [mov.ingrediente_id, mov.cantidad, 'Reversión desde mantenimiento: ' + obsMotivo, stockAnterior]);
             }
 
             // Marcar como revertido en cuarentena auditada
-            await client.query("UPDATE mantenimiento_movimientos SET estado = 'REVERTIDO', stock_mantenimiento = 0, observaciones = observaciones || ' [ANULADO: ' || $1 || ']' WHERE id = $2", [motivo_anulacion, mov.id]);
+            await client.query("UPDATE mantenimiento_movimientos SET estado = 'REVERTIDO', observaciones = observaciones || ' [ANULADO: ' || $1 || ']' WHERE id = $2", [obsMotivo, mov.id]);
         }
 
         await client.query('COMMIT');

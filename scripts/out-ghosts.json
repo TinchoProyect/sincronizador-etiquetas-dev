@@ -1,0 +1,17 @@
+[
+  {
+    "articulo_numero": "LNX5",
+    "ui_traslados_pendientes": "3.000",
+    "db_consumos": "4.000"
+  },
+  {
+    "articulo_numero": "DSSCX10",
+    "ui_traslados_pendientes": "3.000",
+    "db_consumos": "4.000"
+  },
+  {
+    "articulo_numero": "AJPX1",
+    "ui_traslados_pendientes": "10.000",
+    "db_consumos": "10.000"
+  }
+]

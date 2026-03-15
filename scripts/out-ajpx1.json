@@ -1,0 +1,30 @@
+[
+  {
+    "id": 56,
+    "tipo_movimiento": "INGRESO",
+    "cantidad": "3.000",
+    "estado": "PENDIENTE",
+    "observaciones": "Ingreso Local Mostrador - Pendiente de Conciliación"
+  },
+  {
+    "id": 85,
+    "tipo_movimiento": "EMISION_NC",
+    "cantidad": "3.000",
+    "estado": "FINALIZADO",
+    "observaciones": "[NC Generada ID: 142] Emisión de NC Borrador. Cliente #475"
+  },
+  {
+    "id": 177,
+    "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+    "cantidad": "10.000",
+    "estado": "PENDIENTE",
+    "observaciones": "Plaga"
+  },
+  {
+    "id": 182,
+    "tipo_movimiento": "LIBERACION",
+    "cantidad": "10.000",
+    "estado": "FINALIZADO",
+    "observaciones": "Vuelva a Ventas internamente"
+  }
+]

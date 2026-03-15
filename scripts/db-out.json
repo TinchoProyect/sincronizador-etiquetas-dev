@@ -1,0 +1,63 @@
+{
+  "cols": [
+    {
+      "column_name": "id",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "cantidad",
+      "data_type": "numeric"
+    },
+    {
+      "column_name": "id_presupuesto_origen",
+      "data_type": "integer"
+    },
+    {
+      "column_name": "fecha_movimiento",
+      "data_type": "timestamp with time zone"
+    },
+    {
+      "column_name": "estado",
+      "data_type": "character varying"
+    },
+    {
+      "column_name": "usuario",
+      "data_type": "character varying"
+    },
+    {
+      "column_name": "articulo_numero",
+      "data_type": "character varying"
+    },
+    {
+      "column_name": "tipo_movimiento",
+      "data_type": "character varying"
+    },
+    {
+      "column_name": "observaciones",
+      "data_type": "text"
+    }
+  ],
+  "func": "CREATE OR REPLACE FUNCTION public.liberar_stock_mantenimiento(p_articulo_numero character varying, p_cantidad numeric, p_usuario character varying, p_obs text)\n RETURNS json\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    v_stock_actual_mantenimiento NUMERIC;\r\n    v_nuevo_stock_ajustes NUMERIC;\r\n    v_nuevo_consolidado NUMERIC;\r\nBEGIN\r\n    -- 1. Verificar stock suficiente en mantenimiento\r\n    -- Se busca directamente en stock_real_consolidado, sin validar contra la tabla articulos volátil\r\n    SELECT COALESCE(stock_mantenimiento, 0) INTO v_stock_actual_mantenimiento\r\n    FROM public.stock_real_consolidado\r\n    WHERE articulo_numero = p_articulo_numero;\r\n\r\n    IF v_stock_actual_mantenimiento IS NULL THEN\r\n         RETURN json_build_object('success', false, 'error', 'Articulo no encontrado en stock consolidado: ' || p_articulo_numero);\r\n    END IF;\r\n\r\n    IF v_stock_actual_mantenimiento < p_cantidad THEN\r\n        RETURN json_build_object(\r\n            'success', false, \r\n            'error', 'Stock insuficiente en mantenimiento. Disponible: ' || COALESCE(v_stock_actual_mantenimiento, 0)\r\n        );\r\n    END IF;\r\n\r\n    -- 2. Registrar movimiento en auditoría (Usando articulo_numero)\r\n    INSERT INTO public.mantenimiento_movimientos (\r\n        articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento\r\n    ) VALUES (\r\n        p_articulo_numero, p_cantidad, p_usuario, 'LIBERACION', p_obs, NOW()\r\n    );\r\n\r\n    -- 3. Actualizar stock_real_consolidado (Transacción Atómica)\r\n    UPDATE public.stock_real_consolidado\r\n    SET \r\n        stock_mantenimiento = stock_mantenimiento - p_cantidad,\r\n        stock_ajustes = COALESCE(stock_ajustes, 0) + p_cantidad,\r\n        stock_consolidado = COALESCE(stock_lomasoft, 0) + COALESCE(stock_movimientos, 0) + (COALESCE(stock_ajustes, 0) + p_cantidad),\r\n        ultima_actualizacion = NOW()\r\n    WHERE articulo_numero = p_articulo_numero\r\n    RETURNING stock_ajustes, stock_consolidado INTO v_nuevo_stock_ajustes, v_nuevo_consolidado;\r\n\r\n    -- 4. Retornar resultado\r\n    RETURN json_build_object(\r\n        'success', true,\r\n        'mensaje', 'Stock liberado correctamente',\r\n        'articulo', p_articulo_numero,\r\n        'cantidad_liberada', p_cantidad,\r\n        'nuevo_stock_mantenimiento', v_stock_actual_mantenimiento - p_cantidad,\r\n        'nuevo_consolidado', v_nuevo_consolidado\r\n    );\r\n\r\nEXCEPTION WHEN OTHERS THEN\r\n    RETURN json_build_object(\r\n        'success', false,\r\n        'error', SQLERRM,\r\n        'detail', SQLSTATE\r\n    );\r\nEND;\r\n$function$\n",
+  "s_real": [
+    {
+      "articulo_numero": "ADMFX10",
+      "stock_mantenimiento": "0.000"
+    },
+    {
+      "articulo_numero": "AD10x1",
+      "stock_mantenimiento": "0.000"
+    },
+    {
+      "articulo_numero": "ABX10",
+      "stock_mantenimiento": "0.000"
+    },
+    {
+      "articulo_numero": "ABX5",
+      "stock_mantenimiento": "0.000"
+    },
+    {
+      "articulo_numero": "ACx25",
+      "stock_mantenimiento": "0.000"
+    }
+  ]
+}
