@@ -23,25 +23,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
-
-// Configurar el middleware para servir archivos estáticos
-const staticPath = path.join(__dirname);
-console.log('Serving static files from:', staticPath);
-
-// Servir archivos estáticos desde la raíz del proyecto
-app.use(express.static(staticPath));
-
-// Servir archivos desde subdirectorios
-app.use('/css', express.static(path.join(staticPath, 'css')));
-app.use('/js', express.static(path.join(staticPath, 'js')));
-app.use('/pages', express.static(path.join(staticPath, 'pages')));
-
-// Configurar index.html como página principal
-app.get('/', (req, res) => {
-  res.sendFile(path.join(staticPath, 'index.html'));
-});
-
 // Configurar proxy para el servidor de producción
 app.use('/api/produccion', createProxyMiddleware({
   target: 'http://localhost:3002',
@@ -72,6 +53,27 @@ app.use('/api/presupuestos', createProxyMiddleware({
     console.log(`🔍 [PRESUPUESTOS] Proxy request: ${req.method} ${req.url} -> http://localhost:3003${req.url}`);
   }
 }));
+
+app.use(express.json());
+
+// Configurar el middleware para servir archivos estáticos
+const staticPath = path.join(__dirname);
+console.log('Serving static files from:', staticPath);
+
+// Servir archivos estáticos desde la raíz del proyecto
+app.use(express.static(staticPath));
+
+// Servir archivos desde subdirectorios
+app.use('/css', express.static(path.join(staticPath, 'css')));
+app.use('/js', express.static(path.join(staticPath, 'js')));
+app.use('/pages', express.static(path.join(staticPath, 'pages')));
+
+// Configurar index.html como página principal
+app.get('/', (req, res) => {
+  res.sendFile(path.join(staticPath, 'index.html'));
+});
+
+
 
 // 🧾 [PRESUPUESTOS] Ruta para servir la página principal del módulo
 app.get('/presupuestos', (req, res) => {

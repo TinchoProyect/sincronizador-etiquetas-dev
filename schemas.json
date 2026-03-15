@@ -1,0 +1,53 @@
+{
+  "ingredientes_movimientos": [
+    "id (integer)",
+    "ingrediente_id (integer)",
+    "tipo (text)",
+    "kilos (numeric)",
+    "fecha (timestamp without time zone)",
+    "carro_id (integer)",
+    "observaciones (text)",
+    "stock_anterior (numeric)"
+  ],
+  "stock_real_consolidado": [
+    "articulo_numero (text)",
+    "descripcion (text)",
+    "codigo_barras (text)",
+    "stock_lomasoft (numeric)",
+    "stock_movimientos (numeric)",
+    "stock_ajustes (numeric)",
+    "stock_consolidado (numeric)",
+    "ultima_actualizacion (timestamp without time zone)",
+    "no_producido_por_lambda (boolean)",
+    "solo_produccion_externa (boolean)",
+    "kilos_unidad (numeric)",
+    "es_pack (boolean)",
+    "pack_hijo_codigo (text)",
+    "pack_unidades (integer)",
+    "stock_mantenimiento (numeric)"
+  ],
+  "ingredientes": [
+    "id (integer)",
+    "nombre (text)",
+    "descripcion (text)",
+    "unidad_medida (text)",
+    "categoria (text)",
+    "stock_actual (numeric)",
+    "padre_id (integer)",
+    "receta_base_kg (numeric)",
+    "codigo (integer)",
+    "sector_id (integer)"
+  ],
+  "mantenimiento_movimientos": [
+    "id (integer)",
+    "articulo_numero (character varying)",
+    "cantidad (numeric)",
+    "id_presupuesto_origen (integer)",
+    "fecha_movimiento (timestamp with time zone)",
+    "usuario (character varying)",
+    "tipo_movimiento (character varying)",
+    "observaciones (text)",
+    "estado (character varying)",
+    "ingrediente_id (integer)"
+  ]
+}

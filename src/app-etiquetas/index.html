@@ -193,7 +193,7 @@ window.iniciarTrasladoGlobal = async function() {
     
     // 1. Selector de Tipo
     const resultadoTipo = await Swal.fire({
-        title: 'Enviar a Cuarentena Global',
+        title: 'Enviar al almacén de mantenimiento',
         text: '¿Qué tipo de mercadería reportará?',
         icon: 'question',
         showCancelButton: true,
@@ -301,7 +301,7 @@ window.iniciarTrasladoGlobal = async function() {
             };
 
             // Función para seleccionar ítem
-            const selectItem = (item) => {
+            const selectItem = (item, stockReal = 1) => {
                 selectedItemGlobal = item;
                 searchSection.style.display = 'none';
                 selectionSection.style.display = 'block';
@@ -310,6 +310,7 @@ window.iniciarTrasladoGlobal = async function() {
                 Swal.resetValidationMessage();
                 setTimeout(() => {
                     const cantInput = document.getElementById('g-cant');
+                    cantInput.value = stockReal; // Preset al stock total
                     cantInput.focus();
                     if (isArticulo) cantInput.select();
                 }, 100);
@@ -346,7 +347,9 @@ window.iniciarTrasladoGlobal = async function() {
                     if (modoBusqueda === 'codigo') {
                         return idStr === query || barcode === query;
                     } else {
-                        return idStr === query || barcode === query || nom.includes(query);
+                        // Comportamiento esperado: Múltiples palabras, cada una es un filtro sucesivo (AND)
+                        const keywords = query.split(/\s+/).filter(w => w.length > 0);
+                        return idStr === query || barcode === query || keywords.every(kw => nom.includes(kw));
                     }
                 }).slice(0, 20);
 
@@ -372,7 +375,10 @@ window.iniciarTrasladoGlobal = async function() {
                             </div>
                         `;
                         
-                        divNode.onclick = () => selectItem(item);
+                        // Guardar stock real en el div para que selectItem lo recupere fácilmente
+                        divNode.dataset.stock = stockReal;
+                        
+                        divNode.onclick = () => selectItem(item, stockReal);
                         divNode.onmouseenter = () => divNode.style.backgroundColor = '#e9ecef';
                         divNode.onmouseleave = () => divNode.style.backgroundColor = 'transparent';
                         
@@ -384,7 +390,9 @@ window.iniciarTrasladoGlobal = async function() {
                         const i = coincidencias[0];
                         const barcode = (i.codigo_barras || '').toString().toLowerCase();
                         if (barcode === query || (isArticulo ? i.numero : i.codigo).toString() === query) {
-                            selectItem(i);
+                            const stockReal = typeof i.stock_consolidado !== 'undefined' ? i.stock_consolidado : 
+                                              (typeof i.stock_actual !== 'undefined' ? i.stock_actual : 0);
+                            selectItem(i, stockReal);
                         }
                     }
                 } else {
@@ -434,7 +442,7 @@ window.iniciarTrasladoGlobal = async function() {
             }
 
             return {
-                id: isArticulo ? selectedItemGlobal.numero : selectedItemGlobal.codigo,
+                id: isArticulo ? selectedItemGlobal.numero : selectedItemGlobal.id,
                 nombre: selectedItemGlobal.nombre,
                 cantidad: parseFloat(gCant),
                 motivo: gMotivo.trim(),

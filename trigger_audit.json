@@ -1,0 +1,24 @@
+{
+  "triggers": [
+    {
+      "event_object_table": "ingredientes_movimientos",
+      "trigger_name": "trigger_actualizar_stock",
+      "action_statement": "EXECUTE FUNCTION actualizar_stock_ingrediente()"
+    },
+    {
+      "event_object_table": "ingredientes_movimientos",
+      "trigger_name": "trigger_actualizar_stock",
+      "action_statement": "EXECUTE FUNCTION actualizar_stock_ingrediente()"
+    },
+    {
+      "event_object_table": "ingredientes_movimientos",
+      "trigger_name": "trigger_actualizar_stock",
+      "action_statement": "EXECUTE FUNCTION actualizar_stock_ingrediente()"
+    }
+  ],
+  "functions": [
+    {
+      "routine_definition": "\nBEGIN\n  -- Si es un INSERT\n  IF (TG_OP = 'INSERT') THEN\n    UPDATE ingredientes\n    SET stock_actual = stock_actual + NEW.kilos\n    WHERE id = NEW.ingrediente_id;\n\n  -- Si es un DELETE\n  ELSIF (TG_OP = 'DELETE') THEN\n    UPDATE ingredientes\n    SET stock_actual = stock_actual - OLD.kilos\n    WHERE id = OLD.ingrediente_id;\n\n  -- Si es un UPDATE\n  ELSIF (TG_OP = 'UPDATE') THEN\n    -- Si cambió el ingrediente_id, actualizar ambos\n    IF (NEW.ingrediente_id <> OLD.ingrediente_id) THEN\n      UPDATE ingredientes\n      SET stock_actual = stock_actual - OLD.kilos\n      WHERE id = OLD.ingrediente_id;\n\n      UPDATE ingredientes\n      SET stock_actual = stock_actual + NEW.kilos\n      WHERE id = NEW.ingrediente_id;\n    ELSE\n      -- Si es el mismo ingrediente, solo ajustar la diferencia\n      UPDATE ingredientes\n      SET stock_actual = stock_actual + (NEW.kilos - OLD.kilos)\n      WHERE id = NEW.ingrediente_id;\n    END IF;\n  END IF;\n\n  RETURN NULL;\nEND;\n"
+    }
+  ]
+}

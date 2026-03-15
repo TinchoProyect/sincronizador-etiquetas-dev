@@ -1521,32 +1521,33 @@ async function revertirIngresoLocal(req, res) {
 const trasladoVentas = async (req, res) => {
     const { articulo, cantidad, motivo } = req.body;
     if (!articulo || !cantidad || cantidad <= 0) return res.status(400).json({ error: 'Datos inválidos' });
+    const usuario = req.user ? req.user.username : 'SISTEMA';
 
     let client;
     try {
         client = await pool.connect();
         await client.query('BEGIN');
 
-        // 1. Reducir stock del artículo en ventas
+        // 1. Reducir stock del artículo en ventas (usando la tabla real consolidada)
         const updateArt = await client.query(
-            "UPDATE articulos SET stock_consolidado = stock_consolidado - $1 WHERE numero = $2 RETURNING *",
+            "UPDATE public.stock_real_consolidado SET stock_consolidado = stock_consolidado - $1, ultima_actualizacion = NOW() WHERE articulo_numero = $2 RETURNING *",
             [cantidad, articulo]
         );
-        if (updateArt.rowCount === 0) throw new Error('Artículo no encontrado');
+        if (updateArt.rowCount === 0) throw new Error('Artículo no encontrado en stock_real_consolidado');
 
-        // 2. Registrar el ingreso en mantenimiento_movimientos
+        // 2. Registrar el ingreso en mantenimiento_movimientos (esquema auditado 100% verídico)
         const insertReq = await client.query(`
             INSERT INTO mantenimiento_movimientos 
-            (cliente_id, articulo_id, cantidad, estado, estado_nc, observaciones, tipo_movimiento, stock_mantenimiento)
-            VALUES (NULL, $1, $2, 'PENDIENTE', 'NO_APLICA', $3, 'TRASLADO_INTERNO_VENTAS', $2)
+            (articulo_numero, cantidad, estado, observaciones, tipo_movimiento, fecha_movimiento, usuario)
+            VALUES ($1, $2, 'PENDIENTE', $3, 'TRASLADO_INTERNO_VENTAS', NOW(), $4)
             RETURNING id
-        `, [articulo, cantidad, motivo]);
+        `, [articulo, cantidad, motivo, usuario]);
 
-        // Registrar en historial inventarios
+        // Registrar en historial inventarios (Cantidad auditada numéricamente de forma negativa, convención LAMDA)
         await client.query(`
             INSERT INTO historial_inventarios (articulo_numero, accion, cantidad, fecha, modulo, observaciones)
-            VALUES ($1, 'TRASLADO_A_MANTENIMIENTO', $2, NOW(), 'Ventas', $3)
-        `, [articulo, -cantidad, motivo]);
+            VALUES ($1, 'ENVIO_A_MANTENIMIENTO', $2, NOW(), 'Mantenimiento', $3)
+        `, [articulo, -Math.abs(cantidad), motivo]);
 
         await client.query('COMMIT');
         res.json({ success: true, movimiento_id: insertReq.rows[0].id });
@@ -1562,32 +1563,34 @@ const trasladoVentas = async (req, res) => {
 const trasladoIngredientes = async (req, res) => {
     const { ingrediente_id, cantidad, motivo } = req.body;
     if (!ingrediente_id || !cantidad || cantidad <= 0) return res.status(400).json({ error: 'Datos inválidos' });
+    const usuario = req.user ? req.user.username : 'SISTEMA';
 
     let client;
     try {
         client = await pool.connect();
         await client.query('BEGIN');
 
-        // 1. Reducir stock del ingrediente a granel
-        const updateIng = await client.query(
-            "UPDATE ingredientes SET stock_actual = stock_actual - $1 WHERE id = $2 RETURNING *",
-            [cantidad, ingrediente_id]
-        );
-        if (updateIng.rowCount === 0) throw new Error('Ingrediente no encontrado');
+        // 1. Obtener estado previo del ingrediente
+        const ingStatus = await client.query('SELECT stock_actual, nombre FROM ingredientes WHERE id = $1', [ingrediente_id]);
+        if (ingStatus.rowCount === 0) throw new Error('Ingrediente no encontrado');
+        const stock_anterior = ingStatus.rows[0].stock_actual;
 
-        // 2. Registrar log de movimiento de ingrediente
+        // 2. Registrar movimiento en ingredientes_movimientos
+        // Nota Arquitectónica: Insertaremos 'mantenimiento'. Se requiere un ALTER TABLE DROP/ADD CONSTRAINT previo.
+        const kilosParaDescontar = -Math.abs(cantidad);
         await client.query(`
-            INSERT INTO ingredientes_movimientos (ingrediente_id, usuario_id, cantidad, tipo_movimiento, sector_origen_id, modulo, observaciones)
-            VALUES ($1, NULL, $2, 'SALIDA', $3, 'Cuarentena', $4)
-        `, [ingrediente_id, cantidad, updateIng.rows[0].sector_id, 'Traslado a mantenimiento: ' + motivo]);
+            INSERT INTO ingredientes_movimientos 
+            (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
+            VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
+        `, [ingrediente_id, kilosParaDescontar, 'Traslado a mantenimiento: ' + motivo, stock_anterior]);
 
-        // 3. Registrar el ingreso en mantenimiento (usando la nueva columna ingrediente_id)
+        // 3. Registrar el ingreso en mantenimiento_movimientos (esquema auditado 100% verídico)
         const insertReq = await client.query(`
             INSERT INTO mantenimiento_movimientos 
-            (cliente_id, articulo_id, ingrediente_id, cantidad, estado, estado_nc, observaciones, tipo_movimiento, stock_mantenimiento)
-            VALUES (NULL, NULL, $1, $2, 'PENDIENTE', 'NO_APLICA', $3, 'TRASLADO_INTERNO_INGREDIENTES', $2)
+            (ingrediente_id, cantidad, estado, observaciones, tipo_movimiento, fecha_movimiento, usuario)
+            VALUES ($1, $2, 'PENDIENTE', $3, 'TRASLADO_INTERNO_INGREDIENTES', NOW(), $4)
             RETURNING id
-        `, [ingrediente_id, cantidad, motivo]);
+        `, [ingrediente_id, cantidad, motivo, usuario]);
 
         await client.query('COMMIT');
         res.json({ success: true, movimiento_id: insertReq.rows[0].id });
