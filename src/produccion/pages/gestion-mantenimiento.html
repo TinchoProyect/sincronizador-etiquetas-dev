@@ -263,6 +263,8 @@
         }
     </style>
 
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
 <body>
@@ -814,7 +816,7 @@
                                 <button onclick="alert('Funcionalidad de liberar ingrediente a producción bajo desarrollo')" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                     📝 Liberar Stock a Producción
                                 </button>
-                                <button onclick="anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                <button onclick="window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                     ↩️ Anular Movimiento Interno
                                 </button>
                             `;
@@ -826,7 +828,7 @@
                                 <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, null)" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                     🧪 Convertir a Ingredientes
                                 </button>
-                                <button onclick="anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                     ↩️ Anular Traslado Interno
                                 </button>
                             `;
@@ -1786,7 +1788,7 @@
             }
         }
     
-        async function anularTrasladoInterno(idMovimiento) {
+        window.anularTrasladoInterno = async function(idMovimiento) {
             const { value: motivo } = await Swal.fire({
                 title: 'Anular Traslado Interno',
                 input: 'text',
@@ -1823,7 +1825,7 @@
                 }
             }
         }
-        async function anularTrasladoInternoAgrupado(articulo_numero, ingrediente_id) {
+        window.anularTrasladoInternoAgrupado = async function(articulo_numero, ingrediente_id) {
             const isIngrediente = ingrediente_id !== null && ingrediente_id !== 'null';
             const label = isIngrediente ? ('Ingrediente I-' + ingrediente_id) : ('Artículo ' + articulo_numero);
             
