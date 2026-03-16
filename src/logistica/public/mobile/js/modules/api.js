@@ -3,7 +3,7 @@
  * Centraliza todas las llamadas al servidor
  */
 
-const API_BASE_URL = window.location.origin;
+const API_BASE_URL = 'http://181.47.161.172:3005';
 
 /**
  * Realizar petición con autenticación

@@ -4,7 +4,7 @@
  */
 
 // Configuración
-const API_BASE_URL = window.location.origin;
+const API_BASE_URL = 'http://181.47.161.172:3005';
 
 // Estado global
 let state = {

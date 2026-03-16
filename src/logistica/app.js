@@ -19,41 +19,8 @@ console.log('[LOGISTICA] Configurando middleware...');
  */
 const corsOptions = {
     origin: function (origin, callback) {
-        // Lista de orígenes permitidos
-        const allowedOrigins = [
-            'http://localhost:3000',  // Servidor principal de etiquetas
-            'http://localhost:3002',  // Servidor de producción
-            'http://localhost:3003',  // Servidor de presupuestos
-            'http://localhost:3004',  // Servidor de facturación
-            'http://localhost:3005',  // Este mismo servidor (para desarrollo)
-        ];
-        
-        // Agregar URL de Ngrok si está configurada
-        if (process.env.NGROK_URL) {
-            allowedOrigins.push(process.env.NGROK_URL);
-            console.log('[LOGISTICA] ✅ Ngrok URL agregada a CORS:', process.env.NGROK_URL);
-        }
-        
-        // Agregar CORS_ORIGIN adicional si está configurada
-        if (process.env.CORS_ORIGIN) {
-            allowedOrigins.push(process.env.CORS_ORIGIN);
-            console.log('[LOGISTICA] ✅ CORS_ORIGIN adicional agregado:', process.env.CORS_ORIGIN);
-        }
-        
-        // Permitir cualquier URL de Ngrok (*.ngrok.app o *.ngrok.io)
-        const isNgrok = origin && (origin.includes('.ngrok.app') || origin.includes('.ngrok.io'));
-        
-        // En desarrollo, permitir cualquier origen si no hay origin (ej: Postman, curl)
-        // O si es una URL de Ngrok
-        if (!origin || allowedOrigins.indexOf(origin) !== -1 || isNgrok) {
-            if (isNgrok) {
-                console.log('[LOGISTICA] ✅ Ngrok detectado y permitido:', origin);
-            }
-            callback(null, true);
-        } else {
-            console.warn('[LOGISTICA] ⚠️ Origen no permitido:', origin);
-            callback(new Error('No permitido por CORS'));
-        }
+        // Permitir cualquier origen (necesario para conectividad móvil vía IP directa)
+        callback(null, true);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -153,10 +120,6 @@ app.get('/health', (req, res) => {
         },
         google_maps: {
             api_key_configured: !!process.env.GOOGLE_MAPS_API_KEY
-        },
-        ngrok: {
-            url_configured: !!process.env.NGROK_URL,
-            url: process.env.NGROK_URL || 'No configurada'
         }
     });
 });

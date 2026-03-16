@@ -2104,18 +2104,9 @@ async function generarQRAcceso(rutaId) {
 
         const chofer = resultChofer.data;
 
-        // Obtener configuración (NGROK_URL)
-        const config = await obtenerConfiguracion();
-
-        // Usar NGROK_URL si está configurada, sino localhost
-        let baseUrl;
-        if (config.ngrokUrl && config.ngrokUrl.trim() !== '') {
-            baseUrl = config.ngrokUrl;
-            console.log('[QR] Usando Ngrok URL:', baseUrl);
-        } else {
-            baseUrl = window.location.origin;
-            console.warn('[QR] ⚠️ NGROK_URL no configurada, usando localhost (no funcionará en móvil externo)');
-        }
+        // URL Base de IP Pública Directa para acceso móvil
+        const baseUrl = 'http://181.47.161.172:3005';
+        console.log('[QR] Usando IP Pública Directa:', baseUrl);
 
         // Construir URL de autologin
         const urlAutologin = `${baseUrl}/public/mobile/index.html?u=${encodeURIComponent(chofer.usuario)}&p=${encodeURIComponent(chofer.contraseña)}&autologin=true`;
