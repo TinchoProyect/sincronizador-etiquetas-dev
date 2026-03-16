@@ -487,6 +487,11 @@
                     <input type="hidden" id="transf-peso-original">
 
                     <div class="form-group">
+                        <label for="transf-responsable"><b>Responsable Destino:</b></label>
+                        <select id="transf-responsable" style="background-color: #f8f9fa;"></select>
+                    </div>
+
+                    <div class="form-group">
                         <label>Artículo Origen:</label>
                         <input type="text" id="transf-articulo-display" disabled style="background:#eee;">
                     </div>
@@ -948,10 +953,10 @@
                         `;
                     } else {
                         dropInterno += `
-                            <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                            <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 📦 Devolver a Ventas
                             </button>
-                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, null)" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 🧪 Convertir a Ingredientes
                             </button>
                             <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
@@ -984,10 +989,10 @@
                     <div class="dropdown">
                         <button class="btn-accion">⚡ Acciones ▼</button>
                         <div class="dropdown-content">
-                            <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa')">
+                            <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}')">
                                 📦 Enviar a Ventas
                             </button>
-                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, ${kilosUnidad})">
+                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}')">
                                 🧪 Enviar a Ingredientes
                             </button>
                             ${esLomasoftOK ? `
@@ -1096,24 +1101,48 @@
             }
         }
 
-        async function liberarStock(clienteId, articulo, cantidadOriginal, motivoDefecto) {
+        async function liberarStock(clienteId, articulo, cantidadOriginal, motivoDefecto, usuarioOriginalId) {
+            let optionsHtml = '';
+            if (window.operariosActivosCache) {
+                window.operariosActivosCache.forEach(op => {
+                    const selected = (op.id.toString() === usuarioOriginalId) ? 'selected' : '';
+                    optionsHtml += `<option value="${op.id}" ${selected}>${op.nombre}</option>`;
+                });
+            }
+            optionsHtml += `<option value="-1" ${!usuarioOriginalId || usuarioOriginalId === '-1' ? 'selected' : ''}>SISTEMA (Predeterminado)</option>`;
+
+            const inputOpcionalHtml = `
+                    <div style="margin-top: 15px; text-align: left;">
+                        <label for="swal-responsable"><b>Responsable de Salida:</b></label><br>
+                        <select id="swal-responsable" class="swal2-select" style="display: flex; width: 100%; font-size: 16px;">
+                            ${optionsHtml}
+                        </select>
+                    </div>`;
+
             // Usando SweetAlert2 en vez de confirm()
             const result = await Swal.fire({
                 title: '¿Enviar a Ventas?',
-                text: `¿Confirmar envío a Ventas de ${articulo} (Cantidad: ${cantidadOriginal})? El stock quedará disponible comercialmente.`,
+                html: `<p>¿Confirmar envío a Ventas de <b>${articulo}</b> (Cantidad: ${cantidadOriginal})?</p>
+                       <p>El stock quedará disponible comercialmente.</p>
+                       ${inputOpcionalHtml}`,
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonText: 'Sí, enviar a ventas',
-                cancelButtonText: 'Cancelar'
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    let val = document.getElementById('swal-responsable').value;
+                    return val === '-1' ? '' : val;
+                }
             });
 
             if (!result.isConfirmed) return;
+            const responsableSeleccionado = result.value;
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/liberar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cliente_id: clienteId, articulo, cantidad: cantidadOriginal, observaciones: motivoDefecto })
+                    body: JSON.stringify({ cliente_id: clienteId, articulo, cantidad: cantidadOriginal, observaciones: motivoDefecto, responsable: responsableSeleccionado })
                 });
 
                 const data = await res.json();
@@ -1343,6 +1372,17 @@
         // ==========================================
         let ingredientesCache = [];
 
+        async function cargarOperariosParaModales() {
+            try {
+                const res = await fetch('/api/produccion/operarios');
+                if (res.ok) {
+                    window.operariosActivosCache = await res.json();
+                }
+            } catch (error) {
+                console.error('Error cargando operarios para modales:', error);
+            }
+        }
+
         async function cargarIngredientes() {
             try {
                 // Endpoint existente
@@ -1439,6 +1479,7 @@
         }
 
         // Cargar ingredientes al inicio
+        cargarOperariosParaModales();
         cargarIngredientes();
 
         // Cerrar resultados si hago click afuera
@@ -1451,7 +1492,7 @@
         // ==========================================
         // Modal Transferencia
         // ==========================================
-        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad) {
+        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad, usuarioOriginalId) {
             // Asegurar tipos numéricos
             const cantUnidades = parseFloat(unidades) || 0;
             const factorKilos = parseFloat(kilosPorUnidad) || 1;
@@ -1461,6 +1502,19 @@
             document.getElementById('transf-cliente-id').value = clienteId;
             document.getElementById('transf-articulo').value = articulo;
             document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3);
+
+            const selectResp = document.getElementById('transf-responsable');
+            if (selectResp) {
+                let optionsHtml = '';
+                if (window.operariosActivosCache) {
+                    window.operariosActivosCache.forEach(op => {
+                        const selected = (op.id.toString() === usuarioOriginalId) ? 'selected' : '';
+                        optionsHtml += `<option value="${op.id}" ${selected}>${op.nombre}</option>`;
+                    });
+                }
+                optionsHtml += `<option value="-1" ${!usuarioOriginalId || usuarioOriginalId === '-1' ? 'selected' : ''}>SISTEMA (Predeterminado)</option>`;
+                selectResp.innerHTML = optionsHtml;
+            }
 
             document.getElementById('transf-articulo-display').value =
                 `${articulo} (${cantUnidades} u. × ${factorKilos} kg = ${pesoTotal.toFixed(3)} kg)`;
@@ -1507,6 +1561,8 @@
             const ingredienteId = document.getElementById('transf-ingrediente').value;
             const cantidadReal = document.getElementById('transf-cantidad').value;
             const obs = document.getElementById('transf-obs').value;
+            let respVal = document.getElementById('transf-responsable')?.value;
+            const responsableSeleccionado = respVal === '-1' ? '' : respVal;
 
             if (!ingredienteId || !cantidadReal) {
                 alert('⚠️ Por favor seleccione un ingrediente y la cantidad ingresada.');
@@ -1524,7 +1580,8 @@
                         articulo,
                         ingrediente_id: ingredienteId,
                         cantidad_real: cantidadReal,
-                        observaciones: obs
+                        observaciones: obs,
+                        responsable: responsableSeleccionado
                     })
                 });
 
@@ -1620,7 +1677,7 @@
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td>${new Date(mov.fecha_movimiento).toLocaleString()}</td>
-                        <td>${mov.articulo_numero}</td>
+                        <td><strong>${mov.articulo_nombre || mov.articulo_numero}</strong><br><small style="color:#666;">${mov.articulo_numero}</small></td>
                         <td><span class="status-badge ${badgeClass}">${mov.tipo_movimiento}</span></td>
                         <td><strong>${parseFloat(mov.cantidad).toFixed(3)}</strong></td>
                         <td>${mov.usuario}</td>

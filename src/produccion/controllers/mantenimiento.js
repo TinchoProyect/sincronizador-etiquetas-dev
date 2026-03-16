@@ -117,13 +117,17 @@ async function getHistorialMantenimiento(req, res) {
             SELECT 
                 mm.id,
                 mm.articulo_numero,
+                COALESCE(a.nombre, i.nombre, mm.articulo_numero, mm.ingrediente_id::text) AS articulo_nombre,
                 mm.cantidad,
-                mm.usuario,
+                COALESCE(u.nombre_completo, NULLIF(TRIM(mm.usuario), ''), 'SISTEMA') AS usuario,
                 mm.tipo_movimiento,
                 mm.observaciones,
                 mm.fecha_movimiento,
                 mm.estado
             FROM public.mantenimiento_movimientos mm
+            LEFT JOIN public.articulos a ON mm.articulo_numero = a.numero
+            LEFT JOIN public.ingredientes i ON mm.ingrediente_id = i.id
+            LEFT JOIN public.usuarios u ON u.id::text = mm.usuario::text
         `;
 
         if (ocultarAnulados) {
@@ -573,10 +577,10 @@ async function confirmarConciliacion(req, res) {
 async function liberarStock(req, res) {
     const client = await pool.connect();
     try {
-        const { cliente_id, articulo, cantidad, observaciones } = req.body;
-        const usuario = req.user ? req.user.username : 'SISTEMA';
+        const { cliente_id, articulo, cantidad, observaciones, responsable } = req.body;
+        const usuario = responsable || (req.user ? req.user.username : 'SISTEMA');
 
-        console.log(`📦 [MANTENIMIENTO] Liberando stock para Art: ${articulo}, Cant: ${cantidad}`);
+        console.log(`📦 [MANTENIMIENTO] Liberando stock para Art: ${articulo}, Cant: ${cantidad}, Resp: ${usuario}`);
 
         await client.query('BEGIN');
 
@@ -653,14 +657,14 @@ async function transferirAIngredientes(req, res) {
     const client = await pool.connect();
 
     try {
-        const { cliente_id, articulo, ingrediente_id, cantidad_real, observaciones } = req.body;
-        const usuario = req.user ? req.user.username : 'SISTEMA';
+        const { cliente_id, articulo, ingrediente_id, cantidad_real, observaciones, responsable } = req.body;
+        const usuario = responsable || (req.user ? req.user.username : 'SISTEMA');
 
         if (!articulo || !ingrediente_id || !cantidad_real) {
             return res.status(400).json({ success: false, error: 'Faltan datos obligatorios.' });
         }
 
-        console.log(`🧪 [MANTENIMIENTO -> INGREDIENTES] Iniciando transferencia. Art: ${articulo} -> Ing: ${ingrediente_id}`);
+        console.log(`🧪 [MANTENIMIENTO -> INGREDIENTES] Iniciando transferencia. Art: ${articulo} -> Ing: ${ingrediente_id}, Resp: ${usuario}`);
 
         await client.query('BEGIN');
 
