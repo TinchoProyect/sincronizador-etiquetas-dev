@@ -1681,11 +1681,14 @@ const anularTraslado = async (req, res) => {
             `, [mov.articulo_id, mov.cantidad, motivo_anulacion]);
 
         } else if (mov.tipo_movimiento === 'TRASLADO_INTERNO_INGREDIENTES') {
-            const ingRow = await client.query("UPDATE ingredientes SET stock_actual = stock_actual + $1 WHERE id = $2 RETURNING sector_id", [mov.cantidad, mov.ingrediente_id]);
+            const ingStat = await client.query("SELECT stock_actual FROM ingredientes WHERE id = $1", [mov.ingrediente_id]);
+            const stockAnterior = ingStat.rows[0].stock_actual;
+            
+            // NOTA: No hacemos UPDATE ingredientes manual porque el trigger de DB lo hace solo en base al INSERT
             await client.query(`
-                INSERT INTO ingredientes_movimientos (ingrediente_id, usuario_id, cantidad, tipo_movimiento, sector_origen_id, modulo, observaciones)
-                VALUES ($1, NULL, $2, 'INGRESO', $3, 'Cuarentena', $4)
-            `, [mov.ingrediente_id, mov.cantidad, ingRow.rows[0].sector_id, 'Reversión desde mantenimiento: ' + motivo_anulacion]);
+                INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
+                VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
+            `, [mov.ingrediente_id, mov.cantidad, 'Reversión desde mantenimiento: ' + motivo_anulacion, stockAnterior]);
         } else {
             throw new Error('Tipo de movimiento no reversible por esta vía');
         }
@@ -1764,12 +1767,12 @@ const anularTrasladoAgrupado = async (req, res) => {
                     throw new Error('Stock insuficiente en cuarentena, no se puede anular masivamente.');
                 }
 
-                // Restaurar stock en ingredientes
-                const ingStat = await client.query("SELECT stock_actual, nombre FROM ingredientes WHERE id = $1", [mov.ingrediente_id]);
+                // Restaurar stock en ingredientes (Solo audit)
+                const ingStat = await client.query("SELECT stock_actual FROM ingredientes WHERE id = $1", [mov.ingrediente_id]);
                 const stockAnterior = ingStat.rows[0].stock_actual;
-                await client.query("UPDATE ingredientes SET stock_actual = stock_actual + $1 WHERE id = $2", [mov.cantidad, mov.ingrediente_id]);
                 
                 // Mapeo simétrico para la tabla de movimientos (requiere alterado de check maintenance en SQL previo de usuario)
+                // NOTA: El trigger en Postgres interceptará este INSERT y efectuará el UPDATE stock + cantidad por su cuenta. 
                 await client.query(`
                     INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
                     VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
