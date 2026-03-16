@@ -124,6 +124,7 @@ router.get('/', async (req, res) => {
             googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
             environment: process.env.NODE_ENV || 'production',
             apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:3005',
+            publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3005',
             ngrokUrl: ngrokUrl,
             ngrokFuente: fuente
         };

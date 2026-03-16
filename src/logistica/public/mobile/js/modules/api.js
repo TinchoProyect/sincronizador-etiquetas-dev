@@ -3,7 +3,8 @@
  * Centraliza todas las llamadas al servidor
  */
 
-const API_BASE_URL = 'http://181.47.161.172:3005';
+// Configuración (inyectada desde backend vía env-config.js)
+const API_BASE_URL = window.PUBLIC_BASE_URL || window.location.origin;
 
 /**
  * Realizar petición con autenticación
@@ -27,8 +28,15 @@ async function fetchConAuth(url, options = {}) {
     });
     
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+        let errorMsg = `HTTP ${response.status}`;
+        try {
+            const error = await response.json();
+            errorMsg = error.error || error.message || errorMsg;
+        } catch (e) {
+            errorMsg += ` - ${response.statusText}`;
+        }
+        alert('❌ Error de red/API: ' + errorMsg);
+        throw new Error(errorMsg);
     }
     
     return response.json();

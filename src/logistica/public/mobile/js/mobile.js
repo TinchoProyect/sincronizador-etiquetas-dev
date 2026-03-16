@@ -3,8 +3,8 @@
  * Gestión de rutas y entregas
  */
 
-// Configuración
-const API_BASE_URL = 'http://181.47.161.172:3005';
+// Configuración (inyectada desde backend vía env-config.js)
+const API_BASE_URL = window.PUBLIC_BASE_URL || window.location.origin;
 
 // Estado global
 let state = {
@@ -442,7 +442,7 @@ function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
         module.mostrarModalOpciones(presupuestoId, tipoPedido);
     }).catch(error => {
         console.error('[ENTREGA] Error al cargar módulo:', error);
-        alert('Error al cargar módulo de confirmación');
+        alert('❌ Error crítico al cargar módulo de confirmación: ' + (error.message || error));
     });
 }
 

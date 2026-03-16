@@ -2104,9 +2104,12 @@ async function generarQRAcceso(rutaId) {
 
         const chofer = resultChofer.data;
 
-        // URL Base de IP Pública Directa para acceso móvil
-        const baseUrl = 'http://181.47.161.172:3005';
-        console.log('[QR] Usando IP Pública Directa:', baseUrl);
+        // Obtener configuración central del servidor
+        const config = await obtenerConfiguracion();
+
+        // URL Base de IP Pública Directa configurada en .env
+        const baseUrl = config.publicBaseUrl || window.location.origin;
+        console.log('[QR] Usando IP Pública Directa desde configuración:', baseUrl);
 
         // Construir URL de autologin
         const urlAutologin = `${baseUrl}/public/mobile/index.html?u=${encodeURIComponent(chofer.usuario)}&p=${encodeURIComponent(chofer.contraseña)}&autologin=true`;
