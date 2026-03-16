@@ -693,14 +693,16 @@ async function handleSubmit(event) {
 
         // LECTURA DEL MÉTODO DE RETIRO (LOGÍSTICA INVERSA)
         let overrideLogistico = null;
+        let origenFacturacionValor = 'PENDIENTE'; // Default FASE 2
+        
         if (MODO_RETIRO) {
             const radioMostrador = document.querySelector('input[name="metodo_retiro"][value="mostrador"]');
             if (radioMostrador && radioMostrador.checked) {
                 overrideLogistico = 'ESPERANDO_MOSTRADOR';
             }
+            origenFacturacionValor = document.getElementById('origen_facturacion')?.value || 'PENDIENTE';
         }
 
-        // ---- payload final ----
         // ---- payload final ----
         const data = {
             id_cliente: idCliente,
@@ -721,6 +723,8 @@ async function handleSubmit(event) {
             informe_generado: MODO_RETIRO
                 ? (document.getElementById('debug_informe')?.value || 'Pendiente')
                 : informeGeneradoValor,
+                
+            origen_facturacion: origenFacturacionValor, // NUEVO FASE 2
 
             nota: (formData.get('nota') || '').toString(),
             punto_entrega: puntoEntregaValor,

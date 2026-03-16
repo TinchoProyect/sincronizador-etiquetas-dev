@@ -11,8 +11,6 @@ async function getStockMantenimiento(req, res) {
         const query = `
             WITH saldos_clientes AS (
                 SELECT 
-                    mm.id_presupuesto_origen,
-                    p.origen_facturacion,
                     mm.articulo_numero,
                     mm.ingrediente_id,
                     p.id_cliente AS cliente_id,
@@ -31,7 +29,7 @@ async function getStockMantenimiento(req, res) {
                 WHERE mm.estado IS DISTINCT FROM 'REVERTIDO' 
                   AND mm.estado IS DISTINCT FROM 'FINALIZADO'
                   AND mm.estado IS DISTINCT FROM 'ANULADO'
-                GROUP BY mm.id_presupuesto_origen, p.origen_facturacion, mm.articulo_numero, mm.ingrediente_id, p.id_cliente, c.nombre, c.apellido, c.otros
+                GROUP BY mm.articulo_numero, mm.ingrediente_id, p.id_cliente, c.nombre, c.apellido, c.otros
                 HAVING SUM(CASE 
                     WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN mm.cantidad 
                     WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
@@ -39,8 +37,6 @@ async function getStockMantenimiento(req, res) {
                 END) > 0
             )
             SELECT 
-                sc.id_presupuesto_origen,
-                sc.origen_facturacion,
                 sc.articulo_numero,
                 sc.ingrediente_id,
                 COALESCE(a.nombre, i.nombre, sc.articulo_numero, sc.ingrediente_id::text) AS descripcion,
@@ -76,9 +72,8 @@ async function getStockMantenimiento(req, res) {
                     mc.fecha_comprobante
                 FROM public.mantenimiento_conciliaciones mc
                 JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
-                JOIN public.mantenimiento_movimientos m_orig ON mci.id_movimiento_origen = m_orig.id
-                WHERE (m_orig.id_presupuesto_origen = sc.id_presupuesto_origen OR (sc.id_presupuesto_origen IS NULL AND m_orig.id_presupuesto_origen IS NULL))
-                  AND m_orig.articulo_numero = sc.articulo_numero
+                WHERE mc.id_cliente::text = sc.cliente_id::text 
+                  AND mci.articulo_numero = sc.articulo_numero
                 ORDER BY mc.fecha_comprobante DESC
                 LIMIT 1
             ) nc ON true
@@ -88,9 +83,9 @@ async function getStockMantenimiento(req, res) {
                     ff.cae AS fact_cae
                 FROM public.mantenimiento_movimientos mm_nc
                 LEFT JOIN public.factura_facturas ff ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
-                WHERE (mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen OR (sc.id_presupuesto_origen IS NULL AND mm_nc.id_presupuesto_origen IS NULL))
-                  AND mm_nc.articulo_numero = sc.articulo_numero
+                WHERE mm_nc.articulo_numero = sc.articulo_numero
                   AND mm_nc.tipo_movimiento = 'EMISION_NC'
+                  AND mm_nc.observaciones LIKE '%Cliente #' || sc.cliente_id || '%'
                 ORDER BY mm_nc.fecha_movimiento DESC
                 LIMIT 1
             ) nc_estado ON true
@@ -805,7 +800,6 @@ async function emitirNotaCreditoBorrador(req, res) {
         const payloadFacturacion = req.body;
         const itemsInfo = payloadFacturacion.items;
         const cliente_id = payloadFacturacion.cliente?.cliente_id;
-        const idPresupuestoOrigen = payloadFacturacion.id_presupuesto_origen || null;
         const usuario = req.user ? req.user.username : 'SISTEMA';
 
         if (!cliente_id || !itemsInfo || !Array.isArray(itemsInfo) || itemsInfo.length === 0) {
@@ -933,11 +927,11 @@ async function emitirNotaCreditoBorrador(req, res) {
 
             const insertMov = `
                 INSERT INTO public.mantenimiento_movimientos 
-                (id_presupuesto_origen, articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, estado)
-                VALUES ($1, $2, $3, $4, 'EMISION_NC', $5, 'FINALIZADO')
+                (articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, estado)
+                VALUES ($1, $2, $3, 'EMISION_NC', $4, 'FINALIZADO')
                 RETURNING id
             `;
-            await client.query(insertMov, [idPresupuestoOrigen, articulo, cantidadEmitida, usuario, obsFinal]);
+            await client.query(insertMov, [articulo, cantidadEmitida, usuario, obsFinal]);
         }
 
         await client.query('COMMIT');

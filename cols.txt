@@ -1,0 +1,2 @@
+mantenimiento_movimientos: id, cantidad, id_presupuesto_origen, fecha_movimiento, estado, usuario, articulo_numero, tipo_movimiento, observaciones
+stock_real_consolidado: stock_mantenimiento, solo_produccion_externa, kilos_unidad, es_pack, pack_unidades, stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion, no_producido_por_lambda, descripcion, codigo_barras, articulo_numero, pack_hijo_codigo

@@ -840,6 +840,21 @@
                 <!-- NUEVA ESTRUCTURA DE EXCLUSIÓN MUTUA PARA RETIROS -->
                 <div id="contenedor-opciones-retiro" style="display: none; margin-bottom: 20px;">
                     <h3 style="margin-bottom: 15px; color: #d35400;">📦 Tipo de Operación Inversa</h3>
+
+                    <!-- ORIGEN DE FACTURACIÓN -->
+                    <div id="origen-facturacion-container" style="margin-bottom: 15px; padding: 15px; background: #fdfdfd; border: 2px solid #3498db; border-radius: 8px;">
+                        <label for="origen_facturacion" style="display: block; font-weight: bold; color: #2980b9; font-size: 1.1em; margin-bottom: 5px;">
+                            🏢 Origen de la Venta (Facturación Original)
+                        </label>
+                        <p style="margin: 0 0 10px 0; font-size: 0.85em; color: #7f8c8d;">
+                            Indique el sistema en el que se emitió la factura original para esta venta. Esto es vital para saber adonde enrutar la Nota de Crédito.
+                        </p>
+                        <select id="origen_facturacion" name="origen_facturacion" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #bdc3c7; font-size: 1em;">
+                            <option value="PENDIENTE" selected>Pendiente / A determinar luego</option>
+                            <option value="LOMASOFT">Comprobante de LOMASOFT (Punto de Venta Externo)</option>
+                            <option value="LAMDA">Factura Local ARCA/AFIP (Sistema LAMDA)</option>
+                        </select>
+                    </div>
                     
                     <!-- OPCIÓN PRINCIPAL A: Trámite Administrativo -->
                     <div id="admin-retiro-container" style="margin-bottom: 15px; padding: 15px; background: #fdf2e9; border: 2px solid #e67e22; border-radius: 8px;">

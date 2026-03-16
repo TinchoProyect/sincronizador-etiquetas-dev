@@ -1018,7 +1018,19 @@
                         lomasoftDisabled = 'disabled';
                         lomasoftTitle = 'Devolución bloqueada';
                     } else {
-                        ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none;" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}')" ${btnDisabled}>🧾 Emitir NC ARCA</button>`;
+                        if (item.origen_facturacion === 'LAMDA') {
+                            lomasoftDisabled = 'disabled';
+                            lomasoftTitle = 'Conciliación Lomasoft bloqueada por venta de origen LAMDA';
+                        }
+                        
+                        let arcaBtnDisabled = btnDisabled;
+                        let arcaTitle = '';
+                        if (item.origen_facturacion === 'LOMASOFT') {
+                            arcaBtnDisabled = 'disabled';
+                            arcaTitle = 'Emisión ARCA bloqueada por origen de venta LOMASOFT';
+                        }
+                        
+                        ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none; opacity: ${arcaBtnDisabled ? 0.5 : 1}" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}')" ${arcaBtnDisabled} title="${arcaTitle}">🧾 Emitir NC ARCA</button>`;
                     }
 
                     actionCell = `
@@ -1043,6 +1055,10 @@
                     subtitulo = 'Ingrediente a Granel';
                 } else {
                     subtitulo = 'Movimiento Interno';
+                }
+
+                if (item.origen_facturacion && item.origen_facturacion !== 'PENDIENTE') {
+                    subtitulo += `<br><span style="color:#e67e22; font-weight:bold; font-size:0.85em;">🏷️ Origen Facturación: ${item.origen_facturacion}</span>`;
                 }
 
                 // Mejorar visualización del subtitulo para externos dependiendo si es Hoja de Ruta o Mostrador
@@ -1767,7 +1783,7 @@
         // ==========================================
         // Modal Nota de Crédito ARCA
         // ==========================================
-        async function abrirModalNC(articulo, cantidad, clienteId) {
+        async function abrirModalNC(articulo, cantidad, clienteId, idPresupuestoOrigen) {
             // Reset modal states
             document.getElementById('nc-trazabilidad-loading').style.display = 'block';
             document.getElementById('nc-trazabilidad-result').style.display = 'none';
@@ -1782,6 +1798,7 @@
             modal.dataset.articulo = articulo;
             modal.dataset.cantidad = cantidad;
             modal.dataset.clienteId = clienteId;
+            modal.dataset.idPresupuestoOrigen = idPresupuestoOrigen || '';
 
             try {
                 // Trazar Factura Original
@@ -1884,6 +1901,7 @@
         async function confirmarEmisionNC() {
             const modal = document.getElementById('modal-emision-nc');
             const clienteId = modal.dataset.clienteId;
+            const idPresupuestoOrigen = modal.dataset.idPresupuestoOrigen;
 
             const facturaAsociadaId = document.getElementById('nc-hidden-factura-id').value;
             const tipoCbte = parseInt(document.getElementById('nc-hidden-tipo-cbte').value);
@@ -1956,6 +1974,7 @@
                     cliente: {
                         cliente_id: parseInt(clienteId)
                     },
+                    id_presupuesto_origen: idPresupuestoOrigen ? parseInt(idPresupuestoOrigen) : null,
                     concepto: 1, // 1 = Productos
                     precio_modo: 'NETO', // Precios históricos (pd.valor1) están en neto
                     tipo_cbte: tipoCbte,

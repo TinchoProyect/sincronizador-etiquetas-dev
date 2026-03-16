@@ -169,7 +169,8 @@ const crearPresupuesto = async (req, res) => {
             secuencia,
             detalles = [],
             estado_logistico, // NUEVO: Para integración logística
-            informe_generado // NUEVO: Para respetar panel de debug
+            informe_generado, // NUEVO: Para respetar panel de debug
+            origen_facturacion // NUEVO FASE 2: Ruta Inversa
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos:`, {
@@ -248,8 +249,8 @@ const crearPresupuesto = async (req, res) => {
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15)
+                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico, origen_facturacion)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15, $16)
                 RETURNING *
             `;
 
@@ -268,7 +269,8 @@ const crearPresupuesto = async (req, res) => {
                 (secuencia && secuencia.trim()) ? secuencia.trim() : 'Imprimir',
                 configHojaUrl,
                 1, // usuario_id
-                estado_logistico || null // NUEVO: Se guarda lo que viene del front
+                estado_logistico || null, // NUEVO: Se guarda lo que viene del front
+                origen_facturacion || 'PENDIENTE' // NUEVO FASE 2
             ]);
 
             const presupuestoBD = headerResult.rows[0];
@@ -497,7 +499,8 @@ const editarPresupuesto = async (req, res) => {
             fecha,
             secuencia,
             estado_logistico, // NUEVO
-            informe_generado  // NUEVO
+            informe_generado,  // NUEVO
+            origen_facturacion // NUEVO FASE 2
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
@@ -689,6 +692,12 @@ const editarPresupuesto = async (req, res) => {
                 paramCount++;
                 updates.push(`informe_generado = $${paramCount}`);
                 params.push(informe_generado);
+            }
+
+            if (origen_facturacion !== undefined) {
+                paramCount++;
+                updates.push(`origen_facturacion = $${paramCount}`);
+                params.push(origen_facturacion);
             }
 
             // CORRECCIÓN: Respetar secuencia si viene en el payload (no forzar Imprimir ciegamente)
