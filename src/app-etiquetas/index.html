@@ -372,8 +372,9 @@ window.iniciarTrasladoGlobal = async function() {
                         const divNode = document.createElement('div');
                         
                         // CORRECCIÓN BUG STOCK: usar stock_consolidado
-                        const stockReal = typeof item.stock_consolidado !== 'undefined' ? item.stock_consolidado : 
+                        const stockRaw = typeof item.stock_consolidado !== 'undefined' ? item.stock_consolidado : 
                                           (typeof item.stock_actual !== 'undefined' ? item.stock_actual : 0);
+                        const stockReal = parseFloat(Number(stockRaw).toFixed(4));
                         const unidad = isArticulo ? 'Un' : (item.unidad_medida || 'Kg');
                         
                         divNode.style.padding = '12px 15px';
@@ -403,8 +404,9 @@ window.iniciarTrasladoGlobal = async function() {
                         const i = coincidencias[0];
                         const barcode = (i.codigo_barras || '').toString().toLowerCase();
                         if (barcode === query || (isArticulo ? i.numero : i.codigo).toString() === query) {
-                            const stockReal = typeof i.stock_consolidado !== 'undefined' ? i.stock_consolidado : 
+                            const stockRaw = typeof i.stock_consolidado !== 'undefined' ? i.stock_consolidado : 
                                               (typeof i.stock_actual !== 'undefined' ? i.stock_actual : 0);
+                            const stockReal = parseFloat(Number(stockRaw).toFixed(4));
                             selectItem(i, stockReal);
                         }
                     }
