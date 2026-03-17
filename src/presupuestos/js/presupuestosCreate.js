@@ -2785,6 +2785,42 @@ async function confirmarImportacion(idPresupuesto, descuentoPorcentaje = 0) {
 
         const data = await res.json();
 
+        // AUTOFILL DE CAMPOS ORIGEN DE FACTURACIÓN (REGLA GRANÍTICA 1:1) PARA CLONACIÓN COMPLETA
+        try {
+            const origenFactSelect = document.getElementById('origen_facturacion');
+            const origenPuntoVentaInput = document.getElementById('origen_punto_venta');
+            const origenNumFacturaInput = document.getElementById('origen_numero_factura');
+            
+            if (origenFactSelect && origenPuntoVentaInput && origenNumFacturaInput) {
+                let compLomasoft = null;
+                if (data.data && data.data.presupuesto && data.data.presupuesto.comprobante_lomasoft) {
+                    compLomasoft = data.data.presupuesto.comprobante_lomasoft;
+                }
+                
+                if (compLomasoft && String(compLomasoft).trim() !== '') {
+                    // Es de Lomasoft
+                    origenFactSelect.value = 'LOMASOFT';
+                    const partes = String(compLomasoft).split('-');
+                    if (partes.length === 2) {
+                        origenPuntoVentaInput.value = parseInt(partes[0], 10);
+                        origenNumFacturaInput.value = parseInt(partes[1], 10);
+                    }
+                } else if (idPresupuesto) {
+                    // Es de Lamda
+                    origenFactSelect.value = 'LAMDA';
+                    origenPuntoVentaInput.value = 4; // Por defecto
+                    origenNumFacturaInput.value = parseInt(idPresupuesto, 10);
+                }
+                
+                // Bloquear inputs para cumplir con requerimiento (Read-Only estricto tras autocompletar)
+                origenFactSelect.style.pointerEvents = 'none';
+                origenFactSelect.style.backgroundColor = '#ecf0f1';
+                origenFactSelect.tabIndex = -1;
+            }
+        } catch(err) {
+            console.warn("No se pudieron autocompletar los campos de origen en la clonación masiva", err);
+        }
+
         let detalles = [];
         let fetchedDescuento = 0; // QA Fix: Extraer desde la API
         if (data.data && Array.isArray(data.data.detalles)) {
@@ -3121,10 +3157,10 @@ function presentarOpcionesDeOrigen(historial, itemData, precioActual) {
 
                 // Event Listeners para los botones
                 const btnHist = itemDiv.querySelector('.btn-historico');
-                btnHist.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(precioHist, h.descuento_porcentaje || 0); };
+                btnHist.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(precioHist, h.descuento_porcentaje || 0, h.id_presupuesto, h.comprobante_lomasoft); };
 
                 const btnAct = itemDiv.querySelector('.btn-actual');
-                if (btnAct) btnAct.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(null, 0); }; // Null = Recalcula con precio actual y 0 descuento
+                if (btnAct) btnAct.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(null, 0, h.id_presupuesto, h.comprobante_lomasoft); }; // Null = Recalcula con precio actual y 0 descuento
 
                 mesDiv.appendChild(itemDiv);
             });
@@ -3193,8 +3229,35 @@ function tiempoRelativo(fechaISO) {
 /**
  * Callback al seleccionar una opción del modal
  */
-function seleccionarOrigenConfirmed(precioHistorico, descuentoPorcentaje = 0) {
+function seleccionarOrigenConfirmed(precioHistorico, descuentoPorcentaje = 0, origenId = null, comprobanteLomasoft = null) {
     modalOrigen.hide();
+    
+    // AUTOFILL DE CAMPOS ORIGEN DE FACTURACIÓN (REGLA GRANÍTICA 1:1)
+    try {
+        const origenFactSelect = document.getElementById('origen_facturacion');
+        const origenPuntoVentaInput = document.getElementById('origen_punto_venta');
+        const origenNumFacturaInput = document.getElementById('origen_numero_factura');
+        
+        if (origenFactSelect && origenPuntoVentaInput && origenNumFacturaInput) {
+            if (comprobanteLomasoft && String(comprobanteLomasoft).trim() !== '') {
+                // Es de Lomasoft ("0004-00001234")
+                origenFactSelect.value = 'LOMASOFT';
+                const partes = String(comprobanteLomasoft).split('-');
+                if (partes.length === 2) {
+                    origenPuntoVentaInput.value = parseInt(partes[0], 10);
+                    origenNumFacturaInput.value = parseInt(partes[1], 10);
+                }
+            } else if (origenId) {
+                // Es de Lamda
+                origenFactSelect.value = 'LAMDA';
+                origenPuntoVentaInput.value = 4; // Por defecto para Lamda
+                origenNumFacturaInput.value = parseInt(origenId, 10);
+            }
+        }
+    } catch(err) {
+        console.warn("No se pudieron autocompletar los campos de origen de facturación", err);
+    }
+
     if (currentSelectionContext) {
         const { inputElement, suggestionElement } = currentSelectionContext;
         resumeSeleccionArticulo(inputElement, suggestionElement, precioHistorico, descuentoPorcentaje);
