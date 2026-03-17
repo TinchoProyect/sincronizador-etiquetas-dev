@@ -63,12 +63,15 @@
             <div class="center-panel">
                 <div class="panel-header">
                     <h2>🗺️ Rutas del Día</h2>
-                    <div class="panel-actions">
+                    <div class="panel-actions" style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="text" id="search-rutas" placeholder="Buscar cliente o art..." class="search-input" onkeyup="if(event.key === 'Enter') buscarRutasBackend()">
                         <select id="filter-fecha" onchange="filtrarRutas()">
                             <option value="hoy" selected>Hoy</option>
                             <option value="manana">Mañana</option>
                             <option value="semana">Esta Semana</option>
+                            <option value="todas">Todas</option>
                         </select>
+                        <button class="btn-icon" onclick="buscarRutasBackend()" title="Buscar Historial">🔍</button>
                     </div>
                 </div>
 

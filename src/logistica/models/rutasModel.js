@@ -13,7 +13,7 @@ class RutasModel {
      * @returns {Promise<Array>} Lista de rutas
      */
     static async obtenerTodas(filtros = {}) {
-        const { estado, id_chofer, fecha_desde, fecha_hasta } = filtros;
+        const { estado, id_chofer, fecha_desde, fecha_hasta, busqueda } = filtros;
 
         let query = `
             SELECT 
@@ -61,6 +61,23 @@ class RutasModel {
         if (fecha_hasta) {
             query += ` AND r.fecha_salida <= $${paramIndex}`;
             params.push(fecha_hasta);
+            paramIndex++;
+        }
+
+        if (busqueda) {
+            query += ` AND EXISTS (
+                SELECT 1 FROM presupuestos p_search
+                LEFT JOIN clientes c_search ON p_search.id_cliente = c_search.cliente_id::text
+                LEFT JOIN presupuestos_detalles pd_search ON pd_search.id_presupuesto = p_search.id
+                WHERE p_search.id_ruta = r.id
+                AND (
+                    c_search.nombre ILIKE $${paramIndex} OR
+                    c_search.apellido ILIKE $${paramIndex} OR
+                    c_search.cliente_id::text ILIKE $${paramIndex} OR
+                    pd_search.articulo ILIKE $${paramIndex}
+                )
+            )`;
+            params.push(`%${busqueda}%`);
             paramIndex++;
         }
 

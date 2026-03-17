@@ -1512,15 +1512,15 @@ async function revertirIngresoLocal(req, res) {
 
         await client.query('BEGIN');
 
-        // 1. Encontrar los movimientos 'INGRESO' en estado 'PENDIENTE' para este artículo y cliente agrupados en Presupuestos
+        // 1. Encontrar los movimientos 'INGRESO' en estado 'PENDIENTE' o NULL para este artículo y cliente agrupados en Presupuestos
         const movQuery = `
-            SELECT mm.id, mm.cantidad, mm.id_presupuesto_origen 
+            SELECT mm.id, mm.cantidad, mm.id_presupuesto_origen, p.id_ruta 
             FROM public.mantenimiento_movimientos mm
             JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
             WHERE p.id_cliente::text = $1
               AND mm.articulo_numero = $2
               AND mm.tipo_movimiento = 'INGRESO'
-              AND mm.estado = 'PENDIENTE'
+              AND (mm.estado = 'PENDIENTE' OR mm.estado IS NULL)
             FOR UPDATE
         `;
         const resMovs = await client.query(movQuery, [cliente_id.toString(), articulo_numero]);
@@ -1530,12 +1530,12 @@ async function revertirIngresoLocal(req, res) {
         }
 
         let totalSobrante = 0;
-        let pds_a_restaurar = new Set();
+        let origenes_a_restaurar = new Map(); // id -> isRuta
         let movs_a_eliminar = [];
 
         resMovs.rows.forEach(mov => {
             totalSobrante += parseFloat(mov.cantidad);
-            pds_a_restaurar.add(mov.id_presupuesto_origen);
+            origenes_a_restaurar.set(mov.id_presupuesto_origen, mov.id_ruta !== null);
             movs_a_eliminar.push(mov.id);
         });
 
@@ -1554,16 +1554,19 @@ async function revertirIngresoLocal(req, res) {
         await client.query(deleteMovs, [movs_a_eliminar]);
 
         // 4. Restaurar el estado Lógico de las Órdenes de Retiro originales en Presupuestos
-        for (let origenId of pds_a_restaurar) {
+        for (let [origenId, isRuta] of origenes_a_restaurar.entries()) {
+            let estadoLogistico = isRuta ? 'PENDIENTE' : 'ESPERANDO_MOSTRADOR';
+            let estadoBasico = 'Orden de Retiro';
+            
             const revertPresupuesto = `
                 UPDATE public.presupuestos
-                SET estado_logistico = 'ESPERANDO_MOSTRADOR', 
-                    estado = 'Orden de Retiro', 
+                SET estado_logistico = $2, 
+                    estado = $3, 
                     fecha_actualizacion = NOW(),
                     fecha_entrega_real = NULL
                 WHERE id = $1
             `;
-            await client.query(revertPresupuesto, [origenId]);
+            await client.query(revertPresupuesto, [origenId, estadoLogistico, estadoBasico]);
         }
 
         await client.query('COMMIT');

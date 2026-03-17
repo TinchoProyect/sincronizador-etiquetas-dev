@@ -18,7 +18,8 @@ async function obtenerRutas(req, res) {
             estado: req.query.estado,
             id_chofer: req.query.id_chofer ? parseInt(req.query.id_chofer) : undefined,
             fecha_desde: req.query.fecha_desde,
-            fecha_hasta: req.query.fecha_hasta
+            fecha_hasta: req.query.fecha_hasta,
+            busqueda: req.query.busqueda
         };
         
         const rutas = await RutasModel.obtenerTodas(filtros);

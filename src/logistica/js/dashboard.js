@@ -72,7 +72,45 @@ async function cargarPedidos() {
  */
 async function cargarRutas() {
     try {
-        const response = await fetch('/api/logistica/rutas');
+        let url = '/api/logistica/rutas';
+        const searchInput = document.getElementById('search-rutas');
+        const searchTerm = searchInput ? searchInput.value.trim() : '';
+        const fechaFilter = document.getElementById('filter-fecha')?.value || 'todas';
+        
+        let queryParams = [];
+        if (searchTerm) {
+            queryParams.push(`busqueda=${encodeURIComponent(searchTerm)}`);
+        }
+        
+        // La implementación anterior de 'filtrarRutas' en el front no funcionaba.
+        // Ahora enviamos los parámetros para que el backend u otra lógica los maneje si lo desean.
+        // Mantenemos la lógica de fecha básica para no romper el TODO original:
+        const hoy = new Date();
+        hoy.setHours(0,0,0,0);
+        if (fechaFilter === 'hoy') {
+            queryParams.push(`fecha_desde=${hoy.toISOString()}`);
+            const manana = new Date(hoy);
+            manana.setDate(manana.getDate() + 1);
+            queryParams.push(`fecha_hasta=${manana.toISOString()}`);
+        } else if (fechaFilter === 'manana') {
+            const manana = new Date(hoy);
+            manana.setDate(manana.getDate() + 1);
+            queryParams.push(`fecha_desde=${manana.toISOString()}`);
+            const pasado = new Date(manana);
+            pasado.setDate(pasado.getDate() + 1);
+            queryParams.push(`fecha_hasta=${pasado.toISOString()}`);
+        } else if (fechaFilter === 'semana') {
+            queryParams.push(`fecha_desde=${hoy.toISOString()}`);
+            const proxSemana = new Date(hoy);
+            proxSemana.setDate(proxSemana.getDate() + 7);
+            queryParams.push(`fecha_hasta=${proxSemana.toISOString()}`);
+        }
+
+        if (queryParams.length > 0) {
+            url += '?' + queryParams.join('&');
+        }
+
+        const response = await fetch(url);
         const result = await response.json();
 
         if (result.success) {
@@ -85,6 +123,23 @@ async function cargarRutas() {
     } catch (error) {
         console.error('[DASHBOARD] Error al cargar rutas:', error);
         mostrarError('Error al cargar rutas');
+    }
+}
+
+async function buscarRutasBackend() {
+    const btn = event?.currentTarget;
+    if (btn && btn.tagName === 'BUTTON') {
+        btn.innerHTML = '⏳';
+        btn.disabled = true;
+    }
+
+    try {
+        await cargarRutas();
+    } finally {
+        if (btn && btn.tagName === 'BUTTON') {
+            btn.innerHTML = '🔍';
+            btn.disabled = false;
+        }
     }
 }
 
@@ -1047,8 +1102,9 @@ async function refrescarPedidos() {
  * Filtrar rutas
  */
 function filtrarRutas() {
-    // TODO: Implementar filtro de rutas por fecha
-    console.log('[DASHBOARD] Filtrar rutas');
+    // Reutilizamos la lógica del backend para filtrar rutas
+    console.log('[DASHBOARD] Filtrar rutas por fecha y búsqueda de backend');
+    cargarRutas();
 }
 
 /**
