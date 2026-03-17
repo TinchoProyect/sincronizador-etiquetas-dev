@@ -1163,32 +1163,61 @@ async function deshacerConciliacion(req, res) {
         const resItem = await client.query(findItemSql, [idMovimiento]);
 
         let idConciliacion = null;
+        let movimientosAsociados = [];
+
         if (resItem.rowCount > 0) {
             idConciliacion = resItem.rows[0].id_conciliacion;
 
-            // Borrar item vinculante
-            await client.query(`DELETE FROM public.mantenimiento_conciliacion_items WHERE id_movimiento_origen = $1`, [idMovimiento]);
+            // Obtener todos los movimientos asociados a esta misma conciliación
+            const findAllItemsSql = `
+                SELECT mci.id_movimiento_origen, mm.observaciones, mm.id_presupuesto_origen 
+                FROM public.mantenimiento_conciliacion_items mci
+                JOIN public.mantenimiento_movimientos mm ON mci.id_movimiento_origen = mm.id
+                WHERE mci.id_conciliacion = $1
+            `;
+            const resAllItems = await client.query(findAllItemsSql, [idConciliacion]);
+            movimientosAsociados = resAllItems.rows;
 
-            // Si la conciliación quedó huérfana (sin otros items), borrar cabecera
-            const checkHuerfana = await client.query(`SELECT count(1) as cant FROM public.mantenimiento_conciliacion_items WHERE id_conciliacion = $1`, [idConciliacion]);
-            if (parseInt(checkHuerfana.rows[0].cant) === 0) {
-                await client.query(`DELETE FROM public.mantenimiento_conciliaciones WHERE id = $1`, [idConciliacion]);
+            // Borrar todos los items vinculantes de una vez
+            await client.query(`DELETE FROM public.mantenimiento_conciliacion_items WHERE id_conciliacion = $1`, [idConciliacion]);
+            // Borrar la cabecera
+            await client.query(`DELETE FROM public.mantenimiento_conciliaciones WHERE id = $1`, [idConciliacion]);
+        } else {
+            // Si por algún motivo de datos corruptos no hay item de conciliación, operamos solo sobre el movimiento actual
+            movimientosAsociados.push({
+                id_movimiento_origen: idMovimiento,
+                observaciones: obsActual,
+                id_presupuesto_origen: idPresupuesto
+            });
+        }
+
+        // Loop de reversión para todos los movimientos afectados por el vínculo
+        for (const mov of movimientosAsociados) {
+            // Limpiar etiqueta de nota en observaciones
+            const obsLimpia = (mov.observaciones || '').replace(/ \[Conciliado con NC [^\]]+\]/g, '').trim();
+
+            // Actualizar el estado del movimiento en mantenimiento
+            const updateMov = `
+                UPDATE public.mantenimiento_movimientos
+                SET estado = NULL, 
+                    observaciones = $1
+                WHERE id = $2
+            `;
+            await client.query(updateMov, [obsLimpia, mov.id_movimiento_origen]);
+
+            // Sincronización Inversa: Desbloquear la Orden de Retiro en Presupuestos
+            if (mov.id_presupuesto_origen) {
+                const updatePresupuesto = `
+                    UPDATE public.presupuestos
+                    SET estado = 'Orden de Retiro', comprobante_lomasoft = NULL
+                    WHERE id = $1
+                `;
+                await client.query(updatePresupuesto, [mov.id_presupuesto_origen]);
+                console.log(`🔓 [MANTENIMIENTO] Orden de Retiro (Presupuesto #${mov.id_presupuesto_origen}) restaurada a 'Orden de Retiro'.`);
             }
         }
 
-        // Limpiar etiqueta de nota en observaciones ` [Conciliado con NC ...]`
-        const obsLimpia = obsActual.replace(/ \[Conciliado con NC [^\]]+\]/g, '').trim();
-
-        // Actualizar el estado del movimiento a vacío (null) que equivale a estado original (pendiente de conciliar en stock)
-        const updateMov = `
-            UPDATE public.mantenimiento_movimientos
-            SET estado = NULL, 
-                observaciones = $1
-            WHERE id = $2
-        `;
-        await client.query(updateMov, [obsLimpia, idMovimiento]);
-
-        // Registrar acción en bitácora (opcional, dejamos rastro suave usando log en REVERSION)
+        // Registrar acción en bitácora
         const insertReversion = `
             INSERT INTO public.mantenimiento_movimientos (
                 articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento, estado
@@ -1197,17 +1226,6 @@ async function deshacerConciliacion(req, res) {
             )
         `;
         await client.query(insertReversion, [articulo, usuario, `Desvinculación manual de NC`]);
-
-        // Sincronización Inversa: Desbloquear la Orden de Retiro en Presupuestos
-        if (idPresupuesto) {
-            const updatePresupuesto = `
-                UPDATE public.presupuestos
-                SET estado = NULL, comprobante_lomasoft = NULL
-                WHERE id = $1
-            `;
-            await client.query(updatePresupuesto, [idPresupuesto]);
-            console.log(`🔓 [MANTENIMIENTO] Orden de Retiro (Presupuesto #${idPresupuesto}) desbloqueada al revertir conciliación.`);
-        }
 
         await client.query('COMMIT');
         console.log(`✅ [MANTENIMIENTO] Conciliación revertida. Link roto para el movimiento #${idMovimiento}`);
