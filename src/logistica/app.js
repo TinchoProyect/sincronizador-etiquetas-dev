@@ -15,12 +15,32 @@ console.log('[LOGISTICA] Configurando middleware...');
 
 /**
  * Configuración CORS
- * Permite comunicación con otros módulos del sistema y acceso desde app móvil vía Ngrok
+ * Permite comunicación explícita desde el dominio DDNS y localhosts (otros módulos)
  */
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3002',
+    'http://localhost:3003',
+    'http://localhost:3004',
+    'http://localhost:3005',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3002',
+    'http://127.0.0.1:3003',
+    'http://127.0.0.1:3004',
+    'http://127.0.0.1:3005',
+    'http://lamda-logistica.tplinkdns.com:3005',
+    'https://lamda-logistica.tplinkdns.com:3005',
+    'http://lamda-logistica.tplinkdns.com'
+];
+
 const corsOptions = {
     origin: function (origin, callback) {
-        // Permitir cualquier origen (necesario para conectividad móvil vía IP directa)
-        callback(null, true);
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.warn(`[CORS] Origen denegado: ${origin}`);
+            callback(new Error('CORS: origen no permitido'));
+        }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -160,7 +180,7 @@ app.use((err, req, res, next) => {
 });
 
 // Iniciar servidor
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('[LOGISTICA] 🎉 ================================');
     console.log('[LOGISTICA] 🎉 SERVIDOR INICIADO EXITOSAMENTE');
     console.log('[LOGISTICA] 🎉 ================================');
