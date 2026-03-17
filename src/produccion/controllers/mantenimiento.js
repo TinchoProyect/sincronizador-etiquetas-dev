@@ -1866,15 +1866,21 @@ const retornarIngrediente = async (req, res) => {
             VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
         `, [ingrediente_id, pesoRetornoReal, obsAudit, stockActual]);
 
-        // 3. Finalizar (Dar de baja) el registro en Mantenimiento
-        // Ya que Mantenimiento lleva su propio "stock" virtual por diferencia de movimientos, agregamos el contra-movimiento compensador o simplemente matamos los registros.
-        // Lo correcto según el diseño actual para "graneles" es generar un tipo de movimiento 'LIBERACION' o updatear el estado.
+        // 3. Finalizar (Dar de baja) los registros en Mantenimiento preservando su observación original
         await client.query(`
             UPDATE public.mantenimiento_movimientos 
-            SET estado = 'FINALIZADO', 
-                observaciones = COALESCE(observaciones, '') || ' | Retornado a Producción (${pesoRetornoReal}kg, merma registrada en log ingredientes)'
+            SET estado = 'FINALIZADO'
             WHERE ingrediente_id = $1 AND estado NOT IN ('REVERTIDO', 'FINALIZADO', 'ANULADO')
         `, [ingrediente_id]);
+
+        // 4. Insertar el movimiento de salida explícito para el historial (Mantenimiento)
+        const obsHistorialSalida = `${deltaLabel} Retornado a Producción (${pesoRetornoReal}kg)`;
+        
+        await client.query(`
+            INSERT INTO public.mantenimiento_movimientos 
+            (ingrediente_id, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado)
+            VALUES ($1, $2, 'TRANSF_INGREDIENTE', NOW(), $3, $4, 'FINALIZADO')
+        `, [ingrediente_id, pesoRetornoReal, usuario, obsHistorialSalida]);
 
         await client.query('COMMIT');
         res.json({ success: true, deltaLabel });

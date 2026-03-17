@@ -1797,7 +1797,7 @@
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td>${new Date(mov.fecha_movimiento).toLocaleString()}</td>
-                        <td><strong>${mov.articulo_nombre || mov.articulo_numero}</strong><br><small style="color:#666;">${mov.articulo_numero}</small></td>
+                        <td><strong>${mov.articulo_nombre || mov.articulo_numero}</strong>${mov.articulo_numero ? `<br><small style="color:#666;">${mov.articulo_numero}</small>` : ''}</td>
                         <td><span class="status-badge ${badgeClass}">${mov.tipo_movimiento}</span></td>
                         <td><strong>${parseFloat(mov.cantidad).toFixed(3)}</strong></td>
                         <td>${mov.usuario}</td>
