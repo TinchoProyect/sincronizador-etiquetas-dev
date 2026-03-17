@@ -338,6 +338,7 @@
                             <button class="tab-btn" onclick="switchTab('mostrador')">🧍‍♂️ Esperando Cliente
                                 (Mostrador)</button>
                             <button class="tab-btn" onclick="switchTab('reparto')">🚚 Esperando Reparto (Ruta)</button>
+                            <button class="tab-btn" onclick="switchTab('tratamientos')">🏕️ Tratamientos (Carpas)</button>
                         </div>
                     </div>
 
@@ -346,15 +347,19 @@
 
                         <!-- SECCIÓN 1: STOCK EN CUARENTENA -->
                         <div class="content-section">
-                            <div class="section-title">
+                            <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                                 <h2>📦 Stock Actualmente en Mantenimiento</h2>
-                                <button class="refresh-btn" onclick="cargarStock()">🔄 Actualizar</button>
+                                <div>
+                                    <button class="btn-accion" id="btn-crear-tratamiento" style="background-color: #28a745; margin-right: 15px; display: none;" onclick="abrirModalIniciarTratamiento()">🏕️ Iniciar Tratamiento</button>
+                                    <button class="refresh-btn" onclick="cargarStock()">🔄 Actualizar</button>
+                                </div>
                             </div>
 
                             <div class="table-responsive">
                                 <table class="tabla-ingredientes">
                                     <thead>
                                         <tr>
+                                            <th style="width: 40px; text-align: center;"><input type="checkbox" id="chk-all-mantenimiento" onchange="toggleAllMantenimiento(this)"></th>
                                             <th>Artículo (ID)</th>
                                             <th>Origen (Cliente)</th>
                                             <th>Stock Cuarentena</th>
@@ -365,7 +370,7 @@
                                     </thead>
                                     <tbody id="tbody-stock">
                                         <tr>
-                                            <td colspan="6" class="text-center">Cargando...</td>
+                                            <td colspan="7" class="text-center">Cargando...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -458,6 +463,21 @@
                             <p style="margin-top:15px; font-size: 0.9em; color:#666;">ℹ️ Estas devoluciones ingresarán
                                 automáticamente a tu Stock en Cuarentena cuando el chofer finalice su ruta en la
                                 aplicación móvil.</p>
+                        </div>
+                    </div>
+
+                    <!-- TAB TRATAMIENTOS -->
+                    <div id="tab-tratamientos" class="tab-content">
+                        <div class="content-section">
+                            <div class="section-title">
+                                <h2>🏕️ Tratamientos Activos (Carpas/Silos)</h2>
+                                <button class="refresh-btn" onclick="cargarTratamientos()">🔄 Actualizar</button>
+                            </div>
+                            
+                            <div id="tratamientos-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; padding: 15px 0;">
+                                <!-- Las tarjetas de tratamiento se renderizarán aquí -->
+                                <div style="text-align: center; grid-column: 1 / -1; padding: 20px; color: #666;">Cargando tratamientos...</div>
+                            </div>
                         </div>
                     </div>
 
@@ -648,6 +668,82 @@
                     <div class="swal2-actions" style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
                         <button onclick="cerrarModal('modal-retorno-ingrediente')" class="swal2-cancel swal2-styled" style="background-color: #6c757d;">Cancelar</button>
                         <button onclick="ejecutarRetornoIngrediente()" class="swal2-confirm swal2-styled" style="background-color: #28a745;">Confirmar Retorno</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Modal de Iniciar Tratamiento -->
+        <div id="modal-iniciar-tratamiento" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
+            <div class="swal2-popup" style="background: white; width: 500px; max-width: 90%; padding: 20px; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; font-family: 'Inter', sans-serif;">
+                <button onclick="cerrarModalIniciarTratamiento()" style="position: absolute; top: 10px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #aaa;">&times;</button>
+                <h2 class="swal2-title" style="margin-top: 5px; font-size: 1.5em; text-align: left; display: flex; align-items: center; gap: 10px;">
+                    ⛺ Nuevo Tratamiento
+                </h2>
+                <div class="swal2-content" style="text-align: left;">
+                    <p style="margin-bottom: 5px;">Estás por agrupar <strong id="tto-items-count">0</strong> elementos seleccionados en una nueva carpa / zona de cuarentena.</p>
+                    <ul id="tto-items-list" style="margin-bottom: 15px; max-height: 100px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; border: 1px solid #ddd; font-size: 0.85em; list-style-position: inside; color: #555;">
+                        <!-- JS injected list items -->
+                    </ul>
+                    <div style="background: #e8f4f8; padding: 15px; border-radius: 4px; border-left: 4px solid #17a2b8; margin-bottom: 15px;">
+                        <span style="font-size: 0.9em; display: block; margin-bottom: 5px;">Masa Total (Bruta) Calculada:</span>
+                        <strong style="font-size: 1.4em; color: #0056b3;"><span id="tto-kilos-brutos">0.00</span> kg</strong>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="tto-tipo" style="font-weight: bold; display: block; margin-bottom: 5px;">Tipo de Tratamiento:</label>
+                        <select id="tto-tipo" class="swal2-select" style="width: 100%; margin: 0; padding: 8px;">
+                            <option value="INMUNIZADO">Inmunizado (Pastillas / Gas)</option>
+                            <option value="SOPLETEO Y ZARANDA">Sopleteo y Zaranda (Limpieza Física)</option>
+                            <option value="SELECCION MANUAL">Selección Manual Avanzada</option>
+                            <option value="OTRO">Otro</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="tto-notas" style="font-weight: bold; display: block; margin-bottom: 5px;">Notas Operativas (Opcional):</label>
+                        <textarea id="tto-notas" class="swal2-textarea" style="width: 100%; margin: 0; min-height: 60px; padding: 8px;" placeholder="Ej: Se requieren 4 pastillas, revisar en extremo inferior..."></textarea>
+                    </div>
+                    <div class="swal2-actions" style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button onclick="cerrarModalIniciarTratamiento()" class="swal2-cancel swal2-styled" style="background-color: #6c757d;">Cancelar</button>
+                        <button onclick="confirmarIniciarTratamiento()" class="swal2-confirm swal2-styled" style="background-color: #28a745;">🚀 Generar Estructura</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Finalizar Tratamiento -->
+        <div id="modal-finalizar-tratamiento" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
+            <div class="swal2-popup" style="background: white; width: 550px; max-width: 90%; padding: 20px; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; font-family: 'Inter', sans-serif;">
+                <button onclick="cerrarModalFinalizarTratamiento()" style="position: absolute; top: 10px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #aaa;">&times;</button>
+                <h2 class="swal2-title" style="margin-top: 5px; font-size: 1.5em; text-align: left; display: flex; align-items: center; gap: 10px;">
+                    ⚖️ Finalizar y Recuperar Stock
+                </h2>
+                <div class="swal2-content" style="text-align: left;">
+                    <p style="margin-bottom: 20px;">Estás cerrando el tratamiento <strong>#<span id="fin-tto-id-display"></span></strong>. Indicá cuánto de la mercadería bruta original has logrado salvar ("Kilos Limpios") tras descartar mermas/basura.</p>
+                    <input type="hidden" id="fin-tto-id">
+                    
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                        <div style="flex: 1; background: #e9ecef; padding: 10px; border-radius: 4px; text-align: center;">
+                            <span style="font-size: 0.85em; color: #666; display: block;">Masa Original (Bruta)</span>
+                            <strong style="font-size: 1.2em; color: #856404;"><span id="fin-tto-brutos">0.00</span> kg</strong>
+                        </div>
+                        <div style="flex: 1; text-align: center; display: flex; flex-direction: column; justify-content: flex-end;">
+                            <label for="fin-tto-netos" style="font-size: 0.85em; font-weight: bold; color: #333; display: block; margin-bottom: 4px;">Kilos Recuperados (Netos) ↓</label>
+                            <input type="number" step="0.001" id="fin-tto-netos" class="swal2-input" style="width: 100%; margin: 0; text-align: center; font-size: 1.2em; color: #28a745; font-weight: bold;" placeholder="Ej: 5.50" oninput="calcularMermaTtoPreview()" required>
+                        </div>
+                    </div>
+
+                    <div id="fin-tto-merma-preview" style="text-align: center; font-weight: bold; font-size: 1.1em; margin-bottom: 20px;"></div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label for="fin-tto-destino" style="font-weight: bold; display: block; margin-bottom: 5px;">Lote / Ingrediente de Destino:</label>
+                        <select id="fin-tto-destino" class="swal2-select" style="width: 100%; margin: 0; padding: 8px;" required>
+                            <option value="">Cargando catálogo...</option>
+                        </select>
+                        <p style="font-size: 0.85em; color: #666; margin-top: 5px;">Todo lo recuperado se inyectará físicamente como stock a este origen.</p>
+                    </div>
+                    
+                    <div class="swal2-actions" style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button onclick="cerrarModalFinalizarTratamiento()" class="swal2-cancel swal2-styled" style="background-color: #6c757d;">Cancelar</button>
+                        <button onclick="confirmarFinalizarTratamiento()" class="swal2-confirm swal2-styled" style="background-color: #28a745;">✅ Inyectar y Cerrar Carpa</button>
                     </div>
                 </div>
             </div>
@@ -1112,7 +1208,14 @@
                     }
                 }
 
+                const rowId = item.id || '';
+                // QA Bugfix: All items should be selectable for physical treatments/tents.
+                const disabled = '';
+                
                 row.innerHTML = `
+                <td style="text-align: center;">
+                    <input type="checkbox" class="chk-item-stock" ${disabled} onchange="evaluarSeleccionTratamiento()" data-articulo="${item.articulo_numero || ''}" data-ingrediente="${item.ingrediente_id || ''}" data-cliente="${item.cliente_id || ''}" data-kilos="${pesoTotal}" data-id="${rowId}">
+                </td>
                 <td>
                     <strong>${tituloPrincipal}</strong>
                     ${subtitulo ? `<br><small style="color:#666;">${subtitulo}</small>` : ''}
@@ -2194,6 +2297,268 @@
                     Swal.fire('Error', e.message, 'error');
                 }
             }
+        }
+
+        // ==========================================
+        // MÓDULO DE TRATAMIENTOS (CARPAS)
+        // ==========================================
+        let itemsSeleccionadosTratamiento = [];
+
+        function toggleAllMantenimiento(source) {
+            const checkboxes = document.querySelectorAll('.chk-item-stock');
+            checkboxes.forEach(chk => {
+                if(!chk.disabled) chk.checked = source.checked;
+            });
+            evaluarSeleccionTratamiento();
+        }
+
+        function evaluarSeleccionTratamiento() {
+            const checkboxes = document.querySelectorAll('.chk-item-stock:checked');
+            itemsSeleccionadosTratamiento = [];
+            let totalKilos = 0;
+
+            checkboxes.forEach(chk => {
+                const dataset = chk.dataset;
+                const kilos = parseFloat(dataset.kilos || 0);
+                totalKilos += kilos;
+                
+                itemsSeleccionadosTratamiento.push({
+                    id: dataset.id || null, 
+                    articulo_numero: (dataset.articulo && dataset.articulo !== 'undefined' && dataset.articulo !== 'null') ? dataset.articulo : null,
+                    kilos: kilos,
+                    ingrediente_id: (dataset.ingrediente && dataset.ingrediente !== 'undefined' && dataset.ingrediente !== 'null') ? dataset.ingrediente : null,
+                    cliente_origen: (dataset.cliente && dataset.cliente !== 'undefined' && dataset.cliente !== 'null') ? dataset.cliente : null
+                });
+            });
+
+            const btnCrear = document.getElementById('btn-crear-tratamiento');
+            if (itemsSeleccionadosTratamiento.length > 0) {
+                btnCrear.style.display = 'inline-block';
+                btnCrear.innerText = `🏕️ Iniciar Tratamiento (${itemsSeleccionadosTratamiento.length} / ${totalKilos.toFixed(2)}kg)`;
+            } else {
+                btnCrear.style.display = 'none';
+            }
+        }
+
+        function abrirModalIniciarTratamiento() {
+            if (itemsSeleccionadosTratamiento.length === 0) return;
+            let totalKilos = itemsSeleccionadosTratamiento.reduce((acc, curr) => acc + curr.kilos, 0);
+            document.getElementById('tto-kilos-brutos').innerText = totalKilos.toFixed(2);
+            document.getElementById('tto-items-count').innerText = itemsSeleccionadosTratamiento.length;
+            
+            const listEl = document.getElementById('tto-items-list');
+            if (listEl) {
+                listEl.innerHTML = itemsSeleccionadosTratamiento.map(item => `<li><strong>${item.articulo_numero ? 'Art. ' + item.articulo_numero : (item.ingrediente_id ? 'Ingr. I-' + item.ingrediente_id : 'Item')}</strong> - Físico: ${item.kilos.toFixed(2)}kg</li>`).join('');
+            }
+
+            document.getElementById('tto-notas').value = '';
+            document.getElementById('modal-iniciar-tratamiento').style.display = 'block';
+        }
+
+        function cerrarModalIniciarTratamiento() {
+            document.getElementById('modal-iniciar-tratamiento').style.display = 'none';
+        }
+
+        async function confirmarIniciarTratamiento() {
+            const tipo = document.getElementById('tto-tipo').value;
+            const notas = document.getElementById('tto-notas').value;
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/tratamientos/iniciar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tipo_tratamiento: tipo,
+                        notas: notas,
+                        usuario: window.nombreUsuarioLogueado || 'SISTEMA',
+                        items: itemsSeleccionadosTratamiento.map(i => ({...i, cantidad: i.kilos}))
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    Swal.fire('¡Creado!', 'El tratamiento ha comenzado.', 'success');
+                    cerrarModalIniciarTratamiento();
+                    itemsSeleccionadosTratamiento = [];
+                    document.getElementById('chk-all-mantenimiento').checked = false;
+                    cargarStock();
+                    cargarTratamientos();
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                Swal.fire('Error', error.message, 'error');
+            }
+        }
+
+        async function cargarTratamientos() {
+            const grid = document.getElementById('tratamientos-grid');
+            if(!grid) return;
+            
+            grid.innerHTML = '<div style="text-align: center; grid-column: 1 / -1;">Cargando tratamientos...</div>';
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/tratamientos');
+                const data = await res.json();
+
+                if (!data.success) throw new Error(data.error);
+
+                if (data.data.length === 0) {
+                    grid.innerHTML = '<div style="text-align: center; grid-column: 1 / -1; color: #666;">No hay tratamientos activos en este momento.</div>';
+                    return;
+                }
+
+                grid.innerHTML = '';
+                data.data.forEach(tto => {
+                    const card = document.createElement('div');
+                    card.style.border = '1px solid #ccc';
+                    card.style.borderRadius = '8px';
+                    card.style.padding = '15px';
+                    card.style.backgroundColor = tto.estado === 'EN_CUARENTENA' ? '#fff3cd' : (tto.estado === 'EN_ACONDICIONAMIENTO' ? '#cce5ff' : '#f8f9fa');
+                    
+                    let estadoHtml = '';
+                    let actionHtml = '';
+
+                    if (tto.estado === 'ARMANDO') {
+                        estadoHtml = '🟢 Armando (Abierto)';
+                        actionHtml = `<button onclick="sellarTratamiento(${tto.id})" class="btn-accion" style="background-color: #ffc107; color: #000; width: 100%; margin-top: 10px;">🏷️ Sellar e Imprimir Etiqueta</button>`;
+                    } else if (tto.estado === 'EN_CUARENTENA') {
+                        const dias = Math.floor((new Date() - new Date(tto.fecha_inicio_cuarentena)) / (1000 * 60 * 60 * 24));
+                        estadoHtml = `⏳ En Cuarentena (Día ${dias})`;
+                        actionHtml = `<button onclick="abrirTratamiento(${tto.id})" class="btn-accion" style="background-color: #17a2b8; width: 100%; margin-top: 10px;">✂️ Abrir Carpa (Acondicionar)</button>`;
+                    } else if (tto.estado === 'EN_ACONDICIONAMIENTO') {
+                        estadoHtml = '💨 En Acondicionamiento (Abierto)';
+                        actionHtml = `<button onclick="abrirModalFinalizar(${tto.id}, ${tto.kilos_brutos_totales})" class="btn-accion" style="background-color: #28a745; width: 100%; margin-top: 10px;">⚖️ Finalizar y Recuperar</button>`;
+                    }
+
+                    let itemsHtml = '<ul style="font-size: 0.85em; padding-left: 20px; color: #555; max-height: 80px; overflow-y: auto;">';
+                    tto.items.forEach(i => {
+                        let etiquetaArt = i.articulo_numero ? `Art: ${i.articulo_numero}` : `Granel: ${i.ingrediente_id}`;
+                        itemsHtml += `<li>${i.kilos_ingresados}kg - ${etiquetaArt}</li>`;
+                    });
+                    itemsHtml += '</ul>';
+
+                    card.innerHTML = `
+                        <h3 style="margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 5px; font-size: 1.1em;">⛺ Tto #${tto.id} - ${tto.tipo_tratamiento}</h3>
+                        <p style="margin: 5px 0; font-size: 0.9em;"><strong>Estado:</strong> ${estadoHtml}</p>
+                        <p style="margin: 5px 0; font-size: 0.9em;"><strong>Armado:</strong> ${new Date(tto.fecha_inicio_armado).toLocaleDateString()}</p>
+                        <p style="margin: 5px 0; font-size: 1.05em; color: #856404;"><strong>Kilos Brutos:</strong> ${parseFloat(tto.kilos_brutos_totales).toFixed(2)} kg</p>
+                        <hr style="margin: 10px 0; border-top: 1px solid #eee;">
+                        <p style="margin: 0; font-weight: bold; font-size: 0.85em;">Contenido (${tto.items.length} items):</p>
+                        ${itemsHtml}
+                        ${actionHtml}
+                    `;
+                    grid.appendChild(card);
+                });
+
+            } catch (error) {
+                grid.innerHTML = `<div style="text-align: center; color: red; grid-column: 1 / -1;">Error al cargar tratamientos: ${error.message}</div>`;
+            }
+        }
+
+        async function sellarTratamiento(id) {
+            if (!confirm('¿Sellar carpa e iniciar tiempo de cuarentena? Se imprimirá la etiqueta identificatoria.')) return;
+            try {
+                const res = await fetch(`/api/produccion/mantenimiento/tratamientos/${id}/sellar`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    Swal.fire('Sellado', 'La carpa ha sido sellada correctamente. (Etiqueta Generada)', 'success');
+                    cargarTratamientos();
+                } else throw new Error(data.error);
+            } catch (e) { Swal.fire('Error', e.message, 'error'); }
+        }
+
+        async function abrirTratamiento(id) {
+            if (!confirm('¿Abrir carpa para iniciar acondicionamiento o sopleteo?')) return;
+            try {
+                const res = await fetch(`/api/produccion/mantenimiento/tratamientos/${id}/abrir`, { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usuario: window.nombreUsuarioLogueado || 'SISTEMA' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    cargarTratamientos();
+                } else throw new Error(data.error);
+            } catch (e) { Swal.fire('Error', e.message, 'error'); }
+        }
+
+        async function abrirModalFinalizar(id, kilosBrutos) {
+            document.getElementById('fin-tto-id').value = id;
+            document.getElementById('fin-tto-id-display').innerText = id;
+            document.getElementById('fin-tto-brutos').innerText = parseFloat(kilosBrutos).toFixed(2);
+            document.getElementById('fin-tto-netos').value = '';
+            document.getElementById('fin-tto-merma-preview').innerText = '';
+            
+            const select = document.getElementById('fin-tto-destino');
+            select.innerHTML = '<option value="">Cargando ingredientes...</option>';
+            try {
+                // Fetching lote selection from produccion/stock api
+                const resData = await fetch('/api/produccion/stock');
+                const pData = await resData.json();
+
+                select.innerHTML = '<option value="">-- Seleccione Lote / Ingrediente Destino --</option>';
+                pData.data.forEach(ing => {
+                    select.innerHTML += `<option value="${ing.id}">I-${ing.id} - ${ing.nombre} (Libre: ${ing.total_kilos}kg)</option>`;
+                });
+            } catch (e) {
+                select.innerHTML = '<option value="">Error cargando ingredientes. Comuniquese con soporte.</option>';
+            }
+
+            document.getElementById('modal-finalizar-tratamiento').style.display = 'block';
+        }
+
+        function cerrarModalFinalizarTratamiento() {
+            document.getElementById('modal-finalizar-tratamiento').style.display = 'none';
+        }
+
+        function calcularMermaTtoPreview() {
+            const brutos = parseFloat(document.getElementById('fin-tto-brutos').innerText) || 0;
+            const netos = parseFloat(document.getElementById('fin-tto-netos').value) || 0;
+            const preview = document.getElementById('fin-tto-merma-preview');
+            
+            if (netos > brutos) {
+                preview.style.color = '#dc3545';
+                preview.innerText = '⚠️ Error: Los kilos recuperados no pueden ser mayores al peso bruto.';
+            } else {
+                const merma = brutos - netos;
+                preview.style.color = '#28a745';
+                preview.innerText = `[MERMA: ${merma.toFixed(2)} kg perdidos en tratamiento]`;
+            }
+        }
+
+        async function confirmarFinalizarTratamiento() {
+            const id = document.getElementById('fin-tto-id').value;
+            const netos = parseFloat(document.getElementById('fin-tto-netos').value);
+            const brutos = parseFloat(document.getElementById('fin-tto-brutos').innerText);
+            const ingredienteDestino = document.getElementById('fin-tto-destino').value;
+
+            if (!netos || isNaN(netos) || netos < 0 || netos > brutos) {
+                return Swal.fire('Error', 'Ingrese un kilaje neto válido y menor o igual al bruto.', 'error');
+            }
+            if (!ingredienteDestino) {
+                return Swal.fire('Error', 'Seleccione un ingrediente de destino para inyectar los kilos limpios.', 'error');
+            }
+
+            try {
+                const res = await fetch(`/api/produccion/mantenimiento/tratamientos/${id}/finalizar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        kilos_netos: netos,
+                        ingrediente_destino_id: ingredienteDestino,
+                        usuario: window.nombreUsuarioLogueado || 'SISTEMA'
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    Swal.fire('¡Tratamiento Finalizado!', `Merma total calculada: ${data.merma.toFixed(2)} kg.<br>El stock útil ha ingresado a planta (Ingredientes).`, 'success');
+                    cerrarModalFinalizarTratamiento();
+                    cargarTratamientos();
+                    cargarHistorial();
+                } else throw new Error(data.error);
+            } catch (e) { Swal.fire('Error', e.message, 'error'); }
         }
     </script>
 </body>

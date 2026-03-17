@@ -1899,6 +1899,194 @@ const retornarIngrediente = async (req, res) => {
     }
 };
 
+// ==========================================
+// MÓDULO DE TRATAMIENTOS (CARPAS)
+// ==========================================
+
+const iniciarTratamiento = async (req, res) => {
+    let client;
+    try {
+        const { tipo_tratamiento, notas, usuario, items } = req.body;
+        
+        if (!tipo_tratamiento || !items || items.length === 0) {
+            return res.status(400).json({ error: 'Faltan datos obligatorios o no hay items seleccionados.' });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        let kilosBrutosTotales = 0;
+        for (const item of items) {
+            kilosBrutosTotales += parseFloat(item.cantidad || item.descuento_kilos || 0);
+        }
+
+        // 1. Crear la cabecera del Tratamiento
+        const insertTratamiento = `
+            INSERT INTO public.mantenimiento_tratamientos 
+            (tipo_tratamiento, estado, usuario_armado, kilos_brutos_totales, notas)
+            VALUES ($1, 'ARMANDO', $2, $3, $4)
+            RETURNING id
+        `;
+        const resultTratamiento = await client.query(insertTratamiento, [tipo_tratamiento, usuario, kilosBrutosTotales, notas || '']);
+        const tratamientoId = resultTratamiento.rows[0].id;
+
+        // 2. Insertar los items y descontar del stock de mantenimiento consolidado
+        for (const item of items) {
+            const kg = parseFloat(item.cantidad || item.descuento_kilos || 0);
+            
+            const insertItem = `
+                INSERT INTO public.mantenimiento_tratamientos_items 
+                (id_tratamiento, articulo_numero, ingrediente_id, id_cliente_origen, kilos_ingresados, id_movimiento_origen)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            `;
+            await client.query(insertItem, [
+                tratamientoId, 
+                item.articulo_numero, 
+                item.ingrediente_id || null, 
+                item.cliente_origen || null, 
+                kg, 
+                item.id || null
+            ]);
+
+            // Descontar del stock consolidado
+            const updateStock = `
+                UPDATE public.stock_real_consolidado
+                SET stock_mantenimiento = stock_mantenimiento - $1, 
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `;
+            await client.query(updateStock, [kg, item.articulo_numero]);
+
+            // Mutar el movimiento original si es necesario para evitar doble descuento
+            if (item.modulo_origen === 'INGRESO' && item.id) {
+                await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'EN_TRATAMIENTO', observaciones = CONCAT(observaciones, ' -> Enviado a Tratamiento #', $1) WHERE id = $2`, [tratamientoId, item.id]);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, tratamiento_id: tratamientoId, message: 'Tratamiento iniciado correctamente.' });
+
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Error al iniciar tratamiento:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+const getTratamientosActivos = async (req, res) => {
+    try {
+        const query = `
+            SELECT t.*, 
+                   COALESCE(json_agg(json_build_object(
+                       'id', i.id,
+                       'articulo_numero', i.articulo_numero,
+                       'kilos_ingresados', i.kilos_ingresados,
+                       'id_cliente_origen', i.id_cliente_origen,
+                       'ingrediente_id', i.ingrediente_id
+                   )) FILTER (WHERE i.id IS NOT NULL), '[]') as items
+            FROM public.mantenimiento_tratamientos t
+            LEFT JOIN public.mantenimiento_tratamientos_items i ON t.id = i.id_tratamiento
+            WHERE t.estado != 'FINALIZADO'
+            GROUP BY t.id
+            ORDER BY t.fecha_inicio_armado DESC
+        `;
+        const result = await pool.query(query);
+        res.json({ success: true, data: result.rows });
+    } catch (e) {
+        console.error('Error al obtener tratamientos:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+const sellarTratamiento = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const query = `
+            UPDATE public.mantenimiento_tratamientos
+            SET estado = 'EN_CUARENTENA', fecha_inicio_cuarentena = NOW()
+            WHERE id = $1 AND estado = 'ARMANDO'
+            RETURNING *
+        `;
+        const result = await pool.query(query, [id]);
+        if (result.rowCount === 0) return res.status(400).json({ error: 'El tratamiento no existe o no está en estado ARMANDO.' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+const abrirTratamiento = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { usuario } = req.body;
+        const query = `
+            UPDATE public.mantenimiento_tratamientos
+            SET estado = 'EN_ACONDICIONAMIENTO', fecha_apertura = NOW(), usuario_apertura = $2
+            WHERE id = $1 AND estado = 'EN_CUARENTENA'
+            RETURNING *
+        `;
+        const result = await pool.query(query, [id, usuario]);
+        if (result.rowCount === 0) return res.status(400).json({ error: 'El tratamiento no está en cuarentena.' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+const finalizarTratamiento = async (req, res) => {
+    let client;
+    try {
+        const { id } = req.params;
+        const { kilos_netos, ingrediente_destino_id, usuario } = req.body;
+
+        if (!kilos_netos || !ingrediente_destino_id) {
+            return res.status(400).json({ error: 'Debe especificar los kilos limpios recuperados y el ingrediente de destino.' });
+        }
+
+        client = await connectToDatabase();
+        await client.query('BEGIN');
+
+        // 1. Obtener tratamiento
+        const trRes = await client.query(`SELECT * FROM public.mantenimiento_tratamientos WHERE id = $1 AND estado IN ('EN_ACONDICIONAMIENTO', 'EN_CUARENTENA')`, [id]);
+        if (trRes.rowCount === 0) throw new Error('Tratamiento no válido para finalizar.');
+        const tratamiento = trRes.rows[0];
+
+        // 2. Calcular merma
+        const kilosNetos = parseFloat(kilos_netos);
+        const kilosBrutos = parseFloat(tratamiento.kilos_brutos_totales);
+        const merma = kilosBrutos - kilosNetos;
+
+        // 3. Finalizar Master
+        await client.query(`
+            UPDATE public.mantenimiento_tratamientos
+            SET estado = 'FINALIZADO', kilos_netos_recuperados = $2, merma_total = $3
+            WHERE id = $1
+        `, [id, kilosNetos, merma]);
+
+        // 4. Inyectar kilos netos en ingresos de ingredientes 
+        const stockData = await client.query(`SELECT total_kilos FROM vista_stock_ingredientes WHERE id = $1`, [ingrediente_destino_id]);
+        const stockActual = stockData.rows.length > 0 ? parseFloat(stockData.rows[0].total_kilos) : 0;
+        
+        const obsHistorial = `[MERMA TTO: ${merma.toFixed(2)} kg] Tratamiento #${id} finalizado. Recupero limpio: ${kilosNetos} kg.`;
+
+        await client.query(`
+            INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, observaciones, fecha, stock_anterior)
+            VALUES ($1, $2, 'mantenimiento', $3, NOW(), $4)
+        `, [ingrediente_destino_id, kilosNetos, obsHistorial, stockActual]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Tratamiento finalizado, stock inyectado en producción.', merma: merma });
+
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -1918,5 +2106,10 @@ module.exports = {
     trasladoIngredientes,
     anularTraslado,
     anularTrasladoAgrupado,
-    retornarIngrediente
+    retornarIngrediente,
+    iniciarTratamiento,
+    getTratamientosActivos,
+    sellarTratamiento,
+    abrirTratamiento,
+    finalizarTratamiento
 };
