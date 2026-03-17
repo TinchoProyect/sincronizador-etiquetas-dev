@@ -33,5 +33,6 @@ router.post('/traslado-ventas', mantenimientoCtrl.trasladoVentas);
 router.post('/traslado-ingredientes', mantenimientoCtrl.trasladoIngredientes);
 router.post('/anular-traslado', mantenimientoCtrl.anularTraslado);
 router.post('/anular-traslado-agrupado', mantenimientoCtrl.anularTrasladoAgrupado);
+router.post('/retornar-ingrediente', mantenimientoCtrl.retornarIngrediente);
 
 module.exports = router;

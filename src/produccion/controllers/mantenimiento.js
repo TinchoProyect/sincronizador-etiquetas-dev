@@ -1789,10 +1789,11 @@ const anularTrasladoAgrupado = async (req, res) => {
                 
                 // Mapeo simétrico para la tabla de movimientos (requiere alterado de check maintenance en SQL previo de usuario)
                 // NOTA: El trigger en Postgres interceptará este INSERT y efectuará el UPDATE stock + cantidad por su cuenta. 
+                const anulaObs = `[ANULACIÓN] Movimiento a mantenimiento revertido por error operativo. Motivo: ${obsMotivo}`;
                 await client.query(`
                     INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
                     VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
-                `, [mov.ingrediente_id, mov.cantidad, 'Reversión desde mantenimiento: ' + obsMotivo, stockAnterior]);
+                `, [mov.ingrediente_id, mov.cantidad, anulaObs, stockAnterior]);
             }
 
             // Marcar como revertido en cuarentena auditada
@@ -1810,6 +1811,82 @@ const anularTrasladoAgrupado = async (req, res) => {
     }
 };
 
+
+const retornarIngrediente = async (req, res) => {
+    const { ingrediente_id, cantidad_real } = req.body;
+    const usuario = req.user ? req.user.username : 'SISTEMA';
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // Obtener stock actual en ingredientes para el log (trigger necesita esto si está implementado así, o es útil para el audit)
+        const ingStat = await client.query("SELECT stock_actual, nombre FROM ingredientes WHERE id = $1 FOR UPDATE", [ingrediente_id]);
+        if (ingStat.rows.length === 0) throw new Error('Ingrediente no encontrado.');
+        const stockActual = ingStat.rows[0].stock_actual;
+        const nombreIngrediente = ingStat.rows[0].nombre;
+
+        // Sumar todos los pendientes en mantenimiento para este ingrediente para calcular el peso original esperado
+        const currentData = await client.query(`
+            SELECT SUM(CASE 
+                WHEN tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN cantidad 
+                WHEN tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -cantidad
+                ELSE 0 
+            END) AS stock_mantenimiento
+            FROM public.mantenimiento_movimientos
+            WHERE ingrediente_id = $1 AND estado NOT IN ('REVERTIDO', 'FINALIZADO', 'ANULADO')
+        `, [ingrediente_id]);
+
+        const pesoTeoricoOrig = parseFloat(currentData.rows[0].stock_mantenimiento || 0);
+        const pesoRetornoReal = parseFloat(cantidad_real);
+
+        if (pesoTeoricoOrig <= 0) {
+            throw new Error(`El ingrediente ${ingrediente_id} no tiene stock activo en mantenimiento para devolver.`);
+        }
+
+        // 1. Calculamos la Diferencia (Merma o Sobrante)
+        // Delta = Peso real que retorna - Peso teórico prestado
+        const diferencia = pesoRetornoReal - pesoTeoricoOrig;
+        let deltaLabel = '';
+        if (diferencia < 0) {
+            deltaLabel = `[MERMA: ${Math.abs(diferencia).toFixed(2)} kg]`;
+        } else if (diferencia > 0) {
+            deltaLabel = `[SOBRANTE: +${diferencia.toFixed(2)} kg]`;
+        } else {
+            deltaLabel = `[EXACTO: 0.00 kg]`;
+        }
+
+        const obsAudit = `${deltaLabel} Retorno desde Mantenimiento. Esperado: ${pesoTeoricoOrig.toFixed(2)} kg. Real: ${pesoRetornoReal.toFixed(2)} kg.`;
+
+        // 2. Insertar movimiento en ingredientes_movimientos
+        // EL TRIGGER SE ENCARGARÁ DE HACER EL UPDATE A LA TABLA INGREDIENTES AÑADIENDO ESTOS KILOS (pesoRetornoReal)
+        await client.query(`
+            INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, carro_id, observaciones, fecha, stock_anterior)
+            VALUES ($1, $2, 'mantenimiento', NULL, $3, NOW(), $4)
+        `, [ingrediente_id, pesoRetornoReal, obsAudit, stockActual]);
+
+        // 3. Finalizar (Dar de baja) el registro en Mantenimiento
+        // Ya que Mantenimiento lleva su propio "stock" virtual por diferencia de movimientos, agregamos el contra-movimiento compensador o simplemente matamos los registros.
+        // Lo correcto según el diseño actual para "graneles" es generar un tipo de movimiento 'LIBERACION' o updatear el estado.
+        await client.query(`
+            UPDATE public.mantenimiento_movimientos 
+            SET estado = 'FINALIZADO', 
+                observaciones = COALESCE(observaciones, '') || ' | Retornado a Producción (${pesoRetornoReal}kg, merma registrada en log ingredientes)'
+            WHERE ingrediente_id = $1 AND estado NOT IN ('REVERTIDO', 'FINALIZADO', 'ANULADO')
+        `, [ingrediente_id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, deltaLabel });
+
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Error en retornarIngrediente:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
 
 module.exports = {
     getStockMantenimiento,
@@ -1829,5 +1906,6 @@ module.exports = {
     trasladoVentas,
     trasladoIngredientes,
     anularTraslado,
-    anularTrasladoAgrupado
+    anularTrasladoAgrupado,
+    retornarIngrediente
 };
