@@ -694,11 +694,19 @@ async function transferirAIngredientes(req, res) {
             throw new Error(`El artículo ${articulo} no tiene stock en mantenimiento.`);
         }
 
-        // Calculamos la MERMA (Diferencia de peso)
-        // Merma = Peso teòrico (sistema) - Peso real (balanza)
-        const merma = pesoOriginal - pesoIngreso;
+        // Calculamos la MERMA/SOBRANTE (Diferencia de peso)
+        // Delta = Peso real (balanza) - Peso teòrico (sistema)
+        const diferencia = pesoIngreso - pesoOriginal;
+        let deltaLabel = '';
+        if (diferencia < 0) {
+            deltaLabel = `[MERMA: ${diferencia.toFixed(2)} kg]`;
+        } else if (diferencia > 0) {
+            deltaLabel = `[SOBRANTE: +${diferencia.toFixed(2)} kg]`;
+        } else {
+            deltaLabel = `[EXACTO: 0.00 kg]`;
+        }
 
-        console.log(`📊 Cálculo: Original=${pesoOriginal}, Real=${pesoIngreso}, Merma=${merma}`);
+        console.log(`📊 Cálculo: Original=${pesoOriginal}, Real=${pesoIngreso}, Delta=${diferencia}`);
 
         // 2. DAR DE BAJA EN MANTENIMIENTO (Todo el stock)
         // Usamos la lógica de actualización directa para no depender de la función PL/SQL si queremos atomicidad controlada aquí
@@ -708,16 +716,15 @@ async function transferirAIngredientes(req, res) {
             UPDATE public.stock_real_consolidado
             SET 
                 stock_mantenimiento = 0, -- Se vacía
-                -- Ajustamos el consolidado restando lo que estaba en mantenimiento
-                stock_consolidado = stock_consolidado - $1, 
+                -- NOTA: No restamos de stock_consolidado aquí porque ya se descontó al ingresar a mantenimiento
                 ultima_actualizacion = NOW()
-            WHERE articulo_numero = $2
+            WHERE articulo_numero = $1
         `;
-        await client.query(updateMantenimiento, [pesoOriginal, articulo]);
+        await client.query(updateMantenimiento, [articulo]);
 
         // 3. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA)
-        // Registramos que salieron X kilos, y en observaciones detallamos la merma
-        const obsFinal = `${observaciones || ''} | Transferencia a Ingredientes (ID: ${ingrediente_id}). Peso Orig: ${pesoOriginal}, Real: ${pesoIngreso}, Merma: ${merma.toFixed(3)}`;
+        // Registramos que salieron X kilos, y en observaciones detallamos la diferencia
+        const obsFinal = `${observaciones || ''} | Transferencia a Ingredientes (ID: ${ingrediente_id}). Peso Orig: ${pesoOriginal}, Real: ${pesoIngreso} ${deltaLabel}`;
 
         const insertMov = `
             INSERT INTO public.mantenimiento_movimientos (
@@ -783,7 +790,8 @@ async function transferirAIngredientes(req, res) {
         res.json({
             success: true,
             mensaje: 'Transferencia realizada',
-            merma: merma.toFixed(3),
+            deltaLabel: deltaLabel,
+            merma: diferencia < 0 ? Math.abs(diferencia).toFixed(3) : (-diferencia).toFixed(3),
             ingrediente: resIng.rows[0].nombre
         });
 
