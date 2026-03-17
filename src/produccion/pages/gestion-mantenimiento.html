@@ -2493,6 +2493,7 @@
                         <h3 style="margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 5px; font-size: 1.1em;">⛺ Tto #${tto.id} - ${tto.tipo_tratamiento}</h3>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Estado:</strong> ${estadoHtml}</p>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Armado:</strong> ${new Date(tto.fecha_inicio_armado).toLocaleDateString()}</p>
+                        <p style="margin: 5px 0; font-size: 0.9em;"><strong>Responsable:</strong> 🧑‍🏭 ${tto.usuario_armado || 'Desc.'}</p>
                         <p style="margin: 5px 0; font-size: 1.05em; color: #856404;"><strong>Kilos Brutos:</strong> ${parseFloat(tto.kilos_brutos_totales).toFixed(2)} kg</p>
                         <hr style="margin: 10px 0; border-top: 1px solid #eee;">
                         <p style="margin: 0; font-weight: bold; font-size: 0.85em;">Contenido (${tto.items.length} items):</p>
