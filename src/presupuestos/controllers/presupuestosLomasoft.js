@@ -255,12 +255,23 @@ const confirmarConciliacion = async (req, res) => {
 
         const claveExterna = `${codigo}-${punto_venta}`;
         const sql = `
-            UPDATE presupuestos 
-            SET 
-                id_factura_lomasoft = $1,
-                comprobante_lomasoft = $2
-            WHERE id = $3
-            RETURNING id, id_factura_lomasoft, comprobante_lomasoft, estado
+            WITH updated_pres AS (
+                UPDATE presupuestos 
+                SET 
+                    id_factura_lomasoft = $1,
+                    comprobante_lomasoft = $2
+                WHERE id = $3
+                RETURNING id, id_factura_lomasoft, comprobante_lomasoft, estado
+            ),
+            updated_mant AS (
+                UPDATE mantenimiento_movimientos
+                SET estado = 'CONCILIADO',
+                    observaciones = observaciones || ' [Conciliado vía Lomasoft: ' || $2 || ']'
+                WHERE id_presupuesto_origen = $3
+                  AND tipo_movimiento = 'INGRESO'
+                  AND (estado IS NULL OR estado != 'CONCILIADO')
+            )
+            SELECT * FROM updated_pres;
         `;
 
         const dbResult = await req.db.query(sql, [claveExterna, comprobante_formateado, id]);

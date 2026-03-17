@@ -18,6 +18,8 @@ async function getStockMantenimiento(req, res) {
                     p.id_cliente AS cliente_id,
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
                     MAX(p.id_ruta) AS origen_ruta_id,
+                    MAX(p.comprobante_lomasoft) AS presup_comprobante_lomasoft,
+                    MAX(p.fecha) AS presup_fecha,
                     SUM(CASE 
                         WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN mm.cantidad 
                         WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
@@ -54,11 +56,15 @@ async function getStockMantenimiento(req, res) {
                 sc.origen_ruta_id,
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
-                CASE WHEN nc.nro_comprobante_externo IS NOT NULL THEN 'CONCILIADO' ELSE 'PENDIENTE' END AS estado,
+                CASE 
+                    WHEN nc.nro_comprobante_externo IS NOT NULL THEN 'CONCILIADO' 
+                    WHEN sc.presup_comprobante_lomasoft IS NOT NULL AND TRIM(sc.presup_comprobante_lomasoft) != '' THEN 'CONCILIADO'
+                    ELSE 'PENDIENTE' 
+                END AS estado,
                 sc.cliente_nombre,
-                nc.nro_comprobante_externo as nc_nro,
-                nc.tipo_comprobante as nc_tipo,
-                nc.fecha_comprobante as nc_fecha,
+                COALESCE(nc.nro_comprobante_externo, sc.presup_comprobante_lomasoft) as nc_nro,
+                COALESCE(nc.tipo_comprobante, 'NC ERP') as nc_tipo,
+                COALESCE(nc.fecha_comprobante, sc.presup_fecha) as nc_fecha,
                 CASE 
                     WHEN nc_estado.fact_cae IS NOT NULL AND nc_estado.fact_cae != '' THEN 'COMPLETADO'
                     WHEN nc_estado.fact_estado IS NOT NULL THEN 'BORRADOR'
@@ -493,7 +499,7 @@ async function confirmarConciliacion(req, res) {
         // 1. Identificar Movimiento Pendiente (Lock Row)
         // Lo buscamos ANTES de insertar para obtener su ID y asegurar consistencia
         const findMovSql = `
-            SELECT mm.id 
+            SELECT mm.id, p.id AS id_presupuesto
             FROM public.mantenimiento_movimientos mm
             JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
             WHERE mm.articulo_numero = $1
@@ -511,6 +517,7 @@ async function confirmarConciliacion(req, res) {
         }
 
         const idMovimiento = resMov.rows[0].id;
+        const idPresupuesto = resMov.rows[0].id_presupuesto;
 
         // 1.5. CHECK EXCLUSIÓN MUTUA: Verificar que ARCA no tenga un borrador en curso
         const arcaCheck = `
@@ -573,8 +580,20 @@ async function confirmarConciliacion(req, res) {
             idMovimiento
         ]);
 
+        // 5. Sincronización Inversa: Actualizar la Orden de Retiro original (Presupuestos)
+        const updatePresupuesto = `
+            UPDATE public.presupuestos
+            SET estado = 'Conciliado',
+                comprobante_lomasoft = $1
+            WHERE id = $2
+        `;
+        await client.query(updatePresupuesto, [
+            `${comprobante.pto_vta}-${comprobante.numero_comprobante}`,
+            idPresupuesto
+        ]);
+
         await client.query('COMMIT');
-        console.log(`✅ [MANTENIMIENTO] Conciliación Exitosa. Link V2: Conciliacion #${idConciliacion} <-> Movimiento #${idMovimiento}`);
+        console.log(`✅ [MANTENIMIENTO] Conciliación Exitosa. Link V2: Conciliacion #${idConciliacion} <-> Movimiento #${idMovimiento} <-> Presupuesto #${idPresupuesto}`);
 
         res.json({ success: true, id_conciliacion: idConciliacion });
 
@@ -960,6 +979,17 @@ async function emitirNotaCreditoBorrador(req, res) {
                 RETURNING id
             `;
             await client.query(insertMov, [idPresupuestoOrigen, articulo, cantidadEmitida, usuario, obsFinal]);
+        }
+
+        // Sincronización Inversa: Marcar la Orden de Retiro como Conciliada para bloquear UI en Presupuestos
+        if (idPresupuestoOrigen) {
+            const updatePresupuesto = `
+                UPDATE public.presupuestos
+                SET estado = 'Conciliado'
+                WHERE id = $1 AND (estado IS NULL OR estado != 'Conciliado')
+            `;
+            await client.query(updatePresupuesto, [idPresupuestoOrigen]);
+            console.log(`🔒 [MANTENIMIENTO_ORQ] Orden de Retiro (Presupuesto #${idPresupuestoOrigen}) bloqueada como Conciliada.`);
         }
 
         await client.query('COMMIT');
