@@ -1,0 +1,26 @@
+[
+  {
+    "id": 52,
+    "articulo_numero": "AAIx5",
+    "id_presupuesto_origen": 8232694,
+    "estado": null,
+    "observaciones": "Ingreso por Retiro Ruta #90 - Pendiente de Conciliación",
+    "cantidad": "1.000"
+  },
+  {
+    "id": 26,
+    "articulo_numero": "AAIx5",
+    "id_presupuesto_origen": 8232639,
+    "estado": null,
+    "observaciones": "Ingreso por Retiro Ruta #76",
+    "cantidad": "0.600"
+  },
+  {
+    "id": 11,
+    "articulo_numero": "AAIx5",
+    "id_presupuesto_origen": 8232558,
+    "estado": null,
+    "observaciones": "Ingreso por Retiro Ruta #57",
+    "cantidad": "1.000"
+  }
+]

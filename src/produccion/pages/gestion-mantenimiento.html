@@ -1143,7 +1143,7 @@
                                 🧪 Enviar a Ingredientes
                             </button>
                             ${esLomasoftOK ? `
-                            <button onclick="deshacerConciliacion('${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
+                            <button onclick="deshacerConciliacion('${item.articulo_numero}', '${item.id_presupuesto_origen || ''}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
                                 🔗 Deshacer Vínculo Lomasoft
                             </button>` : ''}
                             <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;" ${btnDisabled}>
@@ -1169,7 +1169,7 @@
                         if (item.origen_facturacion !== 'LAMDA') {
                             let lomasoftDisabled = btnDisabled ? 'disabled' : '';
                             lomasoftBtnHtml = `
-                        <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')" ${lomasoftDisabled} title="${btnTitle}">
+                        <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}', '${item.id_presupuesto_origen}')" ${lomasoftDisabled} title="${btnTitle}">
                             🔍 Conciliación Lomasoft
                         </button>`;
                         }
@@ -1413,7 +1413,7 @@
         }
 
         // Función para confirmar la conciliación
-        async function confirmarConciliacion(articulo, clienteId, cantidad, comprobanteEncoded) {
+        async function confirmarConciliacion(articulo, clienteId, cantidad, comprobanteEncoded, idPresupuestoOrigen) {
             const comprobante = JSON.parse(decodeURIComponent(comprobanteEncoded));
 
             if (!confirm(`¿Confirmar conciliación con Nota de Crédito ${comprobante.tipo_comprobante} ${comprobante.pto_vta}-${comprobante.numero_comprobante}?`)) return;
@@ -1429,7 +1429,8 @@
                         articulo,
                         cliente_id: clienteId,
                         cantidad,
-                        comprobante
+                        comprobante,
+                        id_presupuesto_origen: idPresupuestoOrigen || null
                     })
                 });
 
@@ -1449,14 +1450,17 @@
             }
         }
 
-        async function deshacerConciliacion(articulo) {
+        async function deshacerConciliacion(articulo, idPresupuestoOrigen) {
             if (!confirm(`¿Estás completamente seguro de deshacer la conciliación manual del artículo ${articulo}?\n\nEl comprobante quedará libre para otra conciliación y el artículo volverá a estado Pendiente.`)) return;
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/conciliar/deshacer', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ articulo })
+                    body: JSON.stringify({ 
+                        articulo, 
+                        id_presupuesto_origen: idPresupuestoOrigen || null 
+                    })
                 });
 
                 const data = await res.json();
@@ -1473,7 +1477,7 @@
             }
         }
 
-        async function conciliar(clienteId, articulo, cantidad, fecha) {
+        async function conciliar(clienteId, articulo, cantidad, fecha, idPresupuestoOrigen) {
             const modalBody = document.getElementById('modal-body');
             const modal = document.getElementById('modal-conciliacion');
 
@@ -1552,7 +1556,7 @@
                                     </div>
                                     <div style="display: flex; flex-direction: column; align-items: flex-end;">
                                         <button class="btn-conciliar" style="background-color: #007bff; color: white; padding: 5px 10px; font-size: 0.9em;" 
-                                            onclick="confirmarConciliacion('${articulo}', '${clienteId}', '${cantidad}', '${ncString}')">
+                                            onclick="confirmarConciliacion('${articulo}', '${clienteId}', '${cantidad}', '${ncString}', '${idPresupuestoOrigen || ''}')">
                                             📥 Asignar Manualmente
                                         </button>
                                     </div>

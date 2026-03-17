@@ -86,7 +86,7 @@ async function getStockMantenimiento(req, res) {
                 FROM public.mantenimiento_conciliaciones mc
                 JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
                 JOIN public.mantenimiento_movimientos m_orig ON mci.id_movimiento_origen = m_orig.id
-                WHERE (m_orig.id_presupuesto_origen = sc.id_presupuesto_origen OR (sc.id_presupuesto_origen IS NULL AND m_orig.id_presupuesto_origen IS NULL))
+                WHERE m_orig.id_presupuesto_origen = sc.id_presupuesto_origen
                   AND m_orig.articulo_numero = sc.articulo_numero
                 ORDER BY mc.fecha_comprobante DESC
                 LIMIT 1
@@ -97,7 +97,7 @@ async function getStockMantenimiento(req, res) {
                     ff.cae AS fact_cae
                 FROM public.mantenimiento_movimientos mm_nc
                 LEFT JOIN public.factura_facturas ff ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
-                WHERE (mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen OR (sc.id_presupuesto_origen IS NULL AND mm_nc.id_presupuesto_origen IS NULL))
+                WHERE mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen
                   AND mm_nc.articulo_numero = sc.articulo_numero
                   AND mm_nc.tipo_movimiento = 'EMISION_NC'
                 ORDER BY mm_nc.fecha_movimiento DESC
@@ -489,7 +489,8 @@ async function confirmarConciliacion(req, res) {
             articulo,
             cliente_id,
             cantidad,
-            comprobante
+            comprobante,
+            id_presupuesto_origen
         } = req.body;
 
         console.log(`💾 [MANTENIMIENTO] Iniciando Transacción de Conciliación (V2 - Strong Link) para Art: ${articulo}`);
@@ -498,7 +499,7 @@ async function confirmarConciliacion(req, res) {
 
         // 1. Identificar Movimiento Pendiente (Lock Row)
         // Lo buscamos ANTES de insertar para obtener su ID y asegurar consistencia
-        const findMovSql = `
+        let findMovSql = `
             SELECT mm.id, p.id AS id_presupuesto
             FROM public.mantenimiento_movimientos mm
             JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
@@ -506,11 +507,20 @@ async function confirmarConciliacion(req, res) {
               AND p.id_cliente = $2
               AND mm.tipo_movimiento = 'INGRESO'
               AND (mm.estado IS NULL OR mm.estado != 'CONCILIADO')
+        `;
+        const queryParams = [articulo, cliente_id];
+
+        if (id_presupuesto_origen) {
+            findMovSql += ` AND p.id = $3 `;
+            queryParams.push(id_presupuesto_origen);
+        }
+
+        findMovSql += `
             ORDER BY mm.fecha_movimiento DESC
             LIMIT 1
             FOR UPDATE
         `;
-        const resMov = await client.query(findMovSql, [articulo, cliente_id]);
+        const resMov = await client.query(findMovSql, queryParams);
 
         if (resMov.rowCount === 0) {
             throw new Error('No se encontró movimiento pendiente para conciliar (o ya fue conciliado por otro usuario).');
@@ -1100,36 +1110,49 @@ async function revertirMovimiento(req, res) {
 async function deshacerConciliacion(req, res) {
     const client = await pool.connect();
     try {
-        const { articulo } = req.body;
+        const { articulo, id_presupuesto_origen } = req.body;
         const usuario = req.user ? req.user.username : 'SISTEMA';
 
         if (!articulo) {
             return res.status(400).json({ success: false, error: 'Se requiere el artículo para deshacer la conciliación.' });
         }
 
-        console.log(`🔗 [MANTENIMIENTO] Deshaciendo conciliacion de Art: ${articulo}`);
+        console.log(`🔗 [MANTENIMIENTO] Deshaciendo conciliacion de Art: ${articulo} | ID Presupuesto Origen: ${id_presupuesto_origen}`);
 
         await client.query('BEGIN');
 
-        // Buscar el movimiento de ingreso más reciente CONCILIADO
-        const findMovSql = `
-            SELECT mm.id, mm.observaciones 
+        // Buscar el movimiento de ingreso (el estado puede ser null si se limpió parcialmente por error previo, así que confiamos en id_presupuesto_origen)
+        let findMovSql = `
+            SELECT mm.id, mm.observaciones, mm.id_presupuesto_origen 
             FROM public.mantenimiento_movimientos mm
             WHERE mm.articulo_numero = $1
               AND mm.tipo_movimiento = 'INGRESO'
-              AND mm.estado = 'CONCILIADO'
+              AND mm.estado IS DISTINCT FROM 'REVERTIDO' 
+              AND mm.estado IS DISTINCT FROM 'FINALIZADO'
+              AND mm.estado IS DISTINCT FROM 'ANULADO'
+        `;
+        const queryParams = [articulo];
+
+        if (id_presupuesto_origen && id_presupuesto_origen !== 'null' && id_presupuesto_origen.toString().trim() !== '') {
+            findMovSql += ` AND mm.id_presupuesto_origen = $2 `;
+            queryParams.push(id_presupuesto_origen);
+        }
+
+        findMovSql += `
             ORDER BY mm.fecha_movimiento DESC
             LIMIT 1
             FOR UPDATE
         `;
-        const resMov = await client.query(findMovSql, [articulo]);
+        const resMov = await client.query(findMovSql, queryParams);
 
         if (resMov.rowCount === 0) {
-            throw new Error('No se encontró movimiento conciliado para revertir.');
+            console.error(`❌ [MANTENIMIENTO] No se encontró ingreso activo para AAIx5. Params:`, queryParams);
+            throw new Error('No se encontró movimiento activo de ingreso para revertir, o ya fue procesado.');
         }
 
         const idMovimiento = resMov.rows[0].id;
         const obsActual = resMov.rows[0].observaciones || '';
+        const idPresupuesto = resMov.rows[0].id_presupuesto_origen;
 
         // Buscar items de conciliación vinculados a este movimiento
         const findItemSql = `
@@ -1174,6 +1197,17 @@ async function deshacerConciliacion(req, res) {
             )
         `;
         await client.query(insertReversion, [articulo, usuario, `Desvinculación manual de NC`]);
+
+        // Sincronización Inversa: Desbloquear la Orden de Retiro en Presupuestos
+        if (idPresupuesto) {
+            const updatePresupuesto = `
+                UPDATE public.presupuestos
+                SET estado = NULL, comprobante_lomasoft = NULL
+                WHERE id = $1
+            `;
+            await client.query(updatePresupuesto, [idPresupuesto]);
+            console.log(`🔓 [MANTENIMIENTO] Orden de Retiro (Presupuesto #${idPresupuesto}) desbloqueada al revertir conciliación.`);
+        }
 
         await client.query('COMMIT');
         console.log(`✅ [MANTENIMIENTO] Conciliación revertida. Link roto para el movimiento #${idMovimiento}`);
