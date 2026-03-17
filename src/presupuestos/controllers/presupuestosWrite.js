@@ -526,7 +526,11 @@ const editarPresupuesto = async (req, res) => {
             secuencia,
             estado_logistico, // NUEVO
             informe_generado,  // NUEVO
-            origen_facturacion // NUEVO FASE 2
+            origen_facturacion, // NUEVO FASE 2
+            origen_punto_venta, // NUEVO FASE 2
+            origen_numero_factura, // NUEVO FASE 2
+            metodo_retiro, // NUEVO FASE 2
+            chk_tramite_administrativo // NUEVO FASE 2
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
@@ -724,6 +728,24 @@ const editarPresupuesto = async (req, res) => {
                 paramCount++;
                 updates.push(`origen_facturacion = $${paramCount}`);
                 params.push(origen_facturacion);
+            }
+
+            if (origen_punto_venta !== undefined) {
+                paramCount++;
+                updates.push(`origen_punto_venta = $${paramCount}`);
+                params.push(origen_punto_venta ? parseInt(origen_punto_venta) : null);
+            }
+
+            if (origen_numero_factura !== undefined) {
+                paramCount++;
+                updates.push(`origen_numero_factura = $${paramCount}`);
+                params.push(origen_numero_factura ? parseInt(origen_numero_factura) : null);
+            }
+
+            if (metodo_retiro !== undefined) {
+                paramCount++;
+                updates.push(`metodo_retiro = $${paramCount}`);
+                params.push(metodo_retiro);
             }
 
             // CORRECCIÓN: Respetar secuencia si viene en el payload (no forzar Imprimir ciegamente)

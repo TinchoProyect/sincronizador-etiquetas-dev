@@ -873,6 +873,76 @@
                     </div>
                 </div>
 
+                <!-- Bloque clonado desde crear-presupuesto.html para Paridad UI de Órdenes de Retiro -->
+                <div id="contenedor-opciones-retiro" style="display: none; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px; color: #d35400;">📦 Tipo de Operación Inversa</h3>
+
+                    <!-- ORIGEN DE FACTURACIÓN -->
+                    <div id="origen-facturacion-container" style="margin-bottom: 15px; padding: 15px; background: #fdfdfd; border: 2px solid #3498db; border-radius: 8px;">
+                        <label for="origen_facturacion" style="display: block; font-weight: bold; color: #2980b9; font-size: 1.1em; margin-bottom: 5px;">
+                            🏢 Origen de la Venta (Facturación Original)
+                        </label>
+                        <p style="margin: 0 0 10px 0; font-size: 0.85em; color: #7f8c8d;">
+                            Indique el sistema en el que se emitió la factura original para esta venta. Esto es vital para saber adonde enrutar la Nota de Crédito.
+                        </p>
+                        <select id="origen_facturacion" name="origen_facturacion" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #bdc3c7; font-size: 1em; margin-bottom: 10px;">
+                            <option value="PENDIENTE" selected>Pendiente / A determinar luego</option>
+                            <option value="LOMASOFT">Comprobante de LOMASOFT (Punto de Venta Externo)</option>
+                            <option value="LAMDA">Factura Local ARCA/AFIP (Sistema LAMDA)</option>
+                        </select>
+                        <div id="origen-factura-detalle" style="display: flex; gap: 10px; margin-top: 10px;">
+                            <div style="flex: 1;">
+                                <label for="origen_punto_venta" style="display: block; font-weight: bold; color: #34495e; font-size: 0.9em; margin-bottom: 5px;">
+                                    Punto de Venta (Puesto)
+                                </label>
+                                <input type="number" id="origen_punto_venta" name="origen_punto_venta" placeholder="Ej: 3" min="1" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #bdc3c7;">
+                            </div>
+                            <div style="flex: 2;">
+                                <label for="origen_numero_factura" style="display: block; font-weight: bold; color: #34495e; font-size: 0.9em; margin-bottom: 5px;">
+                                    Número de Factura
+                                </label>
+                                <input type="number" id="origen_numero_factura" name="origen_numero_factura" placeholder="Ej: 150024" min="1" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #bdc3c7;">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- OPCIÓN PRINCIPAL A: Trámite Administrativo -->
+                    <div id="admin-retiro-container" style="margin-bottom: 15px; padding: 15px; background: #fdf2e9; border: 2px solid #e67e22; border-radius: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold; color: #d35400; font-size: 1.1em;">
+                            <input type="radio" id="chk_tramite_administrativo_mock" name="tipo_operacion_retiro" value="administrativo" style="width: 20px; height: 20px; accent-color: #e67e22;">
+                            <input type="checkbox" id="chk_tramite_administrativo" name="chk_tramite_administrativo" style="display: none;">
+                            📝 Opción A: Trámite Administrativo (Sin movimiento físico - Solo N.C.)
+                        </label>
+                        <p style="margin: 8px 0 0 30px; font-size: 0.85em; color: #7f8c8d;">
+                            Marca esta opción si el cliente se arrepintió de una venta pero la mercadería <strong>nunca fue entregada ni salió del depósito</strong>.
+                        </p>
+                    </div>
+
+                    <!-- OPCIÓN PRINCIPAL B: Retiro Físico de Mercadería -->
+                    <div id="seccion-metodo-retiro" style="margin-bottom: 15px; padding: 15px; background: #e8f6f3; border: 2px solid #1abc9c; border-radius: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold; color: #16a085; font-size: 1.1em;">
+                            <input type="radio" name="tipo_operacion_retiro" value="fisico" style="width: 20px; height: 20px; accent-color: #1abc9c;" checked>
+                            🚚 Opción B: Retiro Físico de Mercadería
+                        </label>
+                        <p style="margin: 8px 0 15px 30px; font-size: 0.85em; color: #7f8c8d;">
+                            Elige esta opción si la mercadería debe ingresar físicamente al almacén de Mantenimiento.
+                        </p>
+                        
+                        <div id="subopciones-logistica" style="margin-left: 30px; padding: 15px; background: white; border-radius: 6px; border: 1px solid #bdc3c7;">
+                            <h4 style="margin-top: 0; margin-bottom: 10px; color: #34495e; font-size: 0.95em;">¿Cómo llega la mercadería?</h4>
+                            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="radio" name="metodo_retiro" id="metodo_chofer" class="subopcion-retiro" value="chofer" checked>
+                                Lo retira un Chofer de la empresa (Pasa a ruta)
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="metodo_retiro" id="metodo_mostrador" class="subopcion-retiro" value="mostrador">
+                                El cliente lo trae físicamente por Mostrador
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+
                 <form id="form-editar-presupuesto">
                     <!-- Campo oculto para ID Cliente (requerido para el formulario) -->
                     <input type="hidden" id="id_cliente" name="id_cliente" required>
