@@ -676,7 +676,7 @@ async function transferirAIngredientes(req, res) {
         // 1. Obtener Stock Actual en Mantenimiento (Peso Original)
         // Bloqueamos la fila para evitar concurrencia
         const stockQuery = `
-            SELECT stock_mantenimiento 
+            SELECT stock_mantenimiento, kilos_unidad 
             FROM public.stock_real_consolidado 
             WHERE articulo_numero = $1
             FOR UPDATE
@@ -687,26 +687,27 @@ async function transferirAIngredientes(req, res) {
             throw new Error(`Artículo ${articulo} no encontrado en stock consolidado.`);
         }
 
-        const pesoOriginal = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
+        const cantidadUnidades = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
+        const kilosUnidad = parseFloat(resStock.rows[0].kilos_unidad || 1);
+        const pesoTeoricoTotal = cantidadUnidades * kilosUnidad;
         const pesoIngreso = parseFloat(cantidad_real);
 
-        if (pesoOriginal <= 0) {
+        if (cantidadUnidades <= 0) {
             throw new Error(`El artículo ${articulo} no tiene stock en mantenimiento.`);
         }
 
         // Calculamos la MERMA/SOBRANTE (Diferencia de peso)
-        // Delta = Peso real (balanza) - Peso teòrico (sistema)
-        const diferencia = pesoIngreso - pesoOriginal;
+        const diferencia = pesoIngreso - pesoTeoricoTotal;
         let deltaLabel = '';
         if (diferencia < 0) {
-            deltaLabel = `[MERMA: ${diferencia.toFixed(2)} kg]`;
+            deltaLabel = `[MERMA: ${Math.abs(diferencia).toFixed(2)} kg]`;
         } else if (diferencia > 0) {
             deltaLabel = `[SOBRANTE: +${diferencia.toFixed(2)} kg]`;
         } else {
             deltaLabel = `[EXACTO: 0.00 kg]`;
         }
 
-        console.log(`📊 Cálculo: Original=${pesoOriginal}, Real=${pesoIngreso}, Delta=${diferencia}`);
+        console.log(`📊 Cálculo: Unidades=${cantidadUnidades}, Kilos/U=${kilosUnidad}, Teorico=${pesoTeoricoTotal}, Real=${pesoIngreso}, Delta=${diferencia}`);
 
         // 2. DAR DE BAJA EN MANTENIMIENTO (Todo el stock)
         // Usamos la lógica de actualización directa para no depender de la función PL/SQL si queremos atomicidad controlada aquí
@@ -724,7 +725,8 @@ async function transferirAIngredientes(req, res) {
 
         // 3. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA)
         // Registramos que salieron X kilos, y en observaciones detallamos la diferencia
-        const obsFinal = `${observaciones || ''} | Transferencia a Ingredientes (ID: ${ingrediente_id}). Peso Orig: ${pesoOriginal}, Real: ${pesoIngreso} ${deltaLabel}`;
+        const obsAdicional = observaciones ? ` | Obs: ${observaciones}` : '';
+        const obsFinal = `${deltaLabel} Transferencia a ingredientes. Peso original esperado: ${pesoTeoricoTotal.toFixed(2)} kg. Peso real ingresado: ${pesoIngreso.toFixed(2)} kg.${obsAdicional}`;
 
         const insertMov = `
             INSERT INTO public.mantenimiento_movimientos (
@@ -733,7 +735,7 @@ async function transferirAIngredientes(req, res) {
                 $1, $2, $3, 'TRANSF_INGREDIENTE', $4, NOW()
             )
         `;
-        await client.query(insertMov, [articulo, pesoOriginal, usuario, obsFinal]);
+        await client.query(insertMov, [articulo, cantidadUnidades, usuario, obsFinal]);
 
         // 4. DAR DE ALTA EN INGREDIENTES
         // Incrementamos stock_actual

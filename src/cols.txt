@@ -1,0 +1,1 @@
+articulo_numero, descripcion, codigo_barras, stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion, no_producido_por_lambda, solo_produccion_externa, kilos_unidad, es_pack, pack_hijo_codigo, pack_unidades, stock_mantenimiento
