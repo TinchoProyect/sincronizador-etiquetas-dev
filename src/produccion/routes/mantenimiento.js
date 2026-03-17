@@ -39,6 +39,7 @@ router.post('/retornar-ingrediente', mantenimientoCtrl.retornarIngrediente);
 router.post('/tratamientos/iniciar', mantenimientoCtrl.iniciarTratamiento);
 router.get('/tratamientos', mantenimientoCtrl.getTratamientosActivos);
 router.post('/tratamientos/:id/sellar', mantenimientoCtrl.sellarTratamiento);
+router.post('/tratamientos/:id/anular', mantenimientoCtrl.anularTratamiento);
 router.post('/tratamientos/:id/abrir', mantenimientoCtrl.abrirTratamiento);
 router.post('/tratamientos/:id/finalizar', mantenimientoCtrl.finalizarTratamiento);
 

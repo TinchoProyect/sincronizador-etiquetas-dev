@@ -1209,8 +1209,27 @@
                 }
 
                 const rowId = item.id || '';
-                // QA Bugfix: All items should be selectable for physical treatments/tents.
-                const disabled = '';
+                // QA Bugfix: All items should be selectable for physical treatments/tents, UNLESS they belong to an active tent.
+                let disabled = '';
+                let bgStyle = '';
+                let statusBadge = '<span class="status-cuarentena">🔒 En Custodia</span>';
+                
+                if (item.tratamiento_estado) {
+                    disabled = 'disabled';
+                    bgStyle = 'background-color: #fdf5e6; color: #856404;';
+                    // Override status badge
+                    statusBadge = `<span style="background-color: #ffc107; color: #856404; padding: 5px; border-radius: 4px; font-weight: bold; font-size: 0.85em; border: 1px solid #ffeeba;">⛺ Carpa ${item.tratamiento_id} - ${item.tratamiento_estado}</span>`;
+                    
+                    // Override action cell
+                    actionCell = `<div style="text-align: center; color: #856404; font-size: 0.9em; font-weight: bold;">
+                        🔒 Bloqueado Físicamente
+                        <br><small>Asignado al Tratamiento: ${item.tipo_tratamiento || '⛺'}</small>
+                    </div>`;
+                }
+                
+                if (bgStyle) {
+                    row.setAttribute('style', bgStyle);
+                }
                 
                 row.innerHTML = `
                 <td style="text-align: center;">
@@ -1228,7 +1247,7 @@
                 <td>
                     ${actionCell}
                 </td>
-                <td><span class="status-cuarentena">🔒 En Custodia</span></td>
+                <td>${statusBadge}</td>
                 <td>
                     ${new Date(item.ultima_actualizacion).toLocaleString()}
                     ${esInterno ? `<br><small style="color: #007bff; font-weight: bold; margin-top: 5px; display: inline-block;">👤 Responsable: ${item.usuario || 'SISTEMA'}</small>` : ''}
@@ -2421,7 +2440,10 @@
 
                     if (tto.estado === 'ARMANDO') {
                         estadoHtml = '🟢 Armando (Abierto)';
-                        actionHtml = `<button onclick="sellarTratamiento(${tto.id})" class="btn-accion" style="background-color: #ffc107; color: #000; width: 100%; margin-top: 10px;">🏷️ Sellar e Imprimir Etiqueta</button>`;
+                        actionHtml = `
+                        <button onclick="sellarTratamiento(${tto.id})" class="btn-accion" style="background-color: #ffc107; color: #000; width: 100%; margin-top: 10px;">🏷️ Sellar e Imprimir Etiqueta</button>
+                        <button onclick="anularTratamiento(${tto.id})" class="btn-accion" style="background-color: transparent; border: 1px solid #dc3545; color: #dc3545; width: 100%; margin-top: 5px; box-shadow: none;">❌ Cancelar / Anular Carpa</button>
+                        `;
                     } else if (tto.estado === 'EN_CUARENTENA') {
                         const dias = Math.floor((new Date() - new Date(tto.fecha_inicio_cuarentena)) / (1000 * 60 * 60 * 24));
                         estadoHtml = `⏳ En Cuarentena (Día ${dias})`;
@@ -2464,6 +2486,19 @@
                 if (data.success) {
                     Swal.fire('Sellado', 'La carpa ha sido sellada correctamente. (Etiqueta Generada)', 'success');
                     cargarTratamientos();
+                } else throw new Error(data.error);
+            } catch (e) { Swal.fire('Error', e.message, 'error'); }
+        }
+
+        async function anularTratamiento(id) {
+            if (!confirm('🚨 ¿Estás seguro de que deseas anular esta carpa en armado?\nTodos los artículos volverán a estar libres en el almacén central.')) return;
+            try {
+                const res = await fetch(`/api/produccion/mantenimiento/tratamientos/${id}/anular`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    Swal.fire('Anulado', 'La carpa ha sido anulada y el stock físico restaurado.', 'success');
+                    cargarTratamientos();
+                    cargarStock(); // Re-render grid to unlock items
                 } else throw new Error(data.error);
             } catch (e) { Swal.fire('Error', e.message, 'error'); }
         }

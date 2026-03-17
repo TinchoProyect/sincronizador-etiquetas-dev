@@ -63,7 +63,10 @@ async function getStockMantenimiento(req, res) {
                     WHEN nc_estado.fact_cae IS NOT NULL AND nc_estado.fact_cae != '' THEN 'COMPLETADO'
                     WHEN nc_estado.fact_estado IS NOT NULL THEN 'BORRADOR'
                     ELSE 'DISPONIBLE'
-                END AS estado_nc
+                END AS estado_nc,
+                tto.tratamiento_estado,
+                tto.tratamiento_id,
+                tto.tipo_tratamiento
             FROM saldos_clientes sc
             LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
             LEFT JOIN public.ingredientes i ON sc.ingrediente_id = i.id
@@ -94,6 +97,15 @@ async function getStockMantenimiento(req, res) {
                 ORDER BY mm_nc.fecha_movimiento DESC
                 LIMIT 1
             ) nc_estado ON true
+            LEFT JOIN LATERAL (
+                SELECT tt.estado as tratamiento_estado, tt.id as tratamiento_id, tt.tipo_tratamiento
+                FROM public.mantenimiento_tratamientos_items tti
+                JOIN public.mantenimiento_tratamientos tt ON tti.id_tratamiento = tt.id
+                WHERE (tti.articulo_numero = sc.articulo_numero OR (sc.articulo_numero IS NULL AND tti.articulo_numero IS NULL AND tti.ingrediente_id = sc.ingrediente_id))
+                  AND (tti.id_cliente_origen = sc.cliente_id OR (sc.cliente_id IS NULL AND tti.id_cliente_origen IS NULL))
+                  AND tt.estado IN ('ARMANDO', 'EN_CUARENTENA', 'EN_ACONDICIONAMIENTO')
+                LIMIT 1
+            ) tto ON true
             ORDER BY COALESCE(sc.articulo_numero, sc.ingrediente_id::text) ASC, sc.cliente_nombre ASC
         `;
 
@@ -1975,6 +1987,44 @@ const iniciarTratamiento = async (req, res) => {
     }
 };
 
+const anularTratamiento = async (req, res) => {
+    let client;
+    try {
+        const id = req.params.id;
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const check = await client.query('SELECT estado FROM public.mantenimiento_tratamientos WHERE id = $1', [id]);
+        if (check.rowCount === 0) throw new Error('Tratamiento no encontrado.');
+        if (check.rows[0].estado !== 'ARMANDO') throw new Error('Solo se pueden anular carpas en estado ARMANDO.');
+
+        const items = await client.query('SELECT articulo_numero, kilos_ingresados FROM public.mantenimiento_tratamientos_items WHERE id_tratamiento = $1', [id]);
+        
+        await client.query('DELETE FROM public.mantenimiento_tratamientos_items WHERE id_tratamiento = $1', [id]);
+        await client.query('DELETE FROM public.mantenimiento_tratamientos WHERE id = $1', [id]);
+
+        for (const item of items.rows) {
+            if (item.articulo_numero) {
+                await client.query(`
+                    UPDATE public.stock_real_consolidado
+                    SET stock_mantenimiento = stock_mantenimiento + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [item.kilos_ingresados, item.articulo_numero]);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Tratamiento anulado correctamente.' });
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Error al anular tratamiento:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
 const getTratamientosActivos = async (req, res) => {
     try {
         const query = `
@@ -2108,6 +2158,7 @@ module.exports = {
     anularTrasladoAgrupado,
     retornarIngrediente,
     iniciarTratamiento,
+    anularTratamiento,
     getTratamientosActivos,
     sellarTratamiento,
     abrirTratamiento,
