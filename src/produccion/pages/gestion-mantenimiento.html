@@ -1052,37 +1052,38 @@
                     </div>
                     `;
                 } else {
+                    let lomasoftBtnHtml = '';
                     let ncActionHtml = '';
-                    let lomasoftDisabled = btnDisabled;
-                    let lomasoftTitle = btnTitle;
+                    
+                    let eliminarDisabled = btnDisabled ? 'disabled' : '';
 
                     if (esArcaBorrador) {
                         ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA</span>`;
-                        lomasoftDisabled = 'disabled';
-                        lomasoftTitle = 'Devolución bloqueada';
+                        eliminarDisabled = 'disabled';
                     } else {
-                        if (item.origen_facturacion === 'LAMDA') {
-                            lomasoftDisabled = 'disabled';
-                            lomasoftTitle = 'Conciliación Lomasoft bloqueada por venta de origen LAMDA';
+                        // Botón Lomasoft
+                        if (item.origen_facturacion !== 'LAMDA') {
+                            let lomasoftDisabled = btnDisabled ? 'disabled' : '';
+                            lomasoftBtnHtml = `
+                        <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')" ${lomasoftDisabled} title="${btnTitle}">
+                            🔍 Conciliación Lomasoft
+                        </button>`;
                         }
                         
-                        let arcaBtnDisabled = btnDisabled;
-                        let arcaTitle = '';
-                        if (item.origen_facturacion === 'LOMASOFT') {
-                            arcaBtnDisabled = 'disabled';
-                            arcaTitle = 'Emisión ARCA bloqueada por origen de venta LOMASOFT';
+                        // Botón ARCA
+                        if (item.origen_facturacion !== 'LOMASOFT') {
+                            let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
+                            let opacity = btnDisabled ? '0.5' : '1';
+                            ncActionHtml = `
+                        <button class="btn-accion" style="background-color: #17a2b8; border: none; opacity: ${opacity}" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}')" ${arcaBtnDisabled}>🧾 Emitir NC ARCA</button>`;
                         }
-                        
-                        ncActionHtml = `<button class="btn-accion" style="background-color: #17a2b8; border: none; opacity: ${arcaBtnDisabled ? 0.5 : 1}" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}')" ${arcaBtnDisabled} title="${arcaTitle}">🧾 Emitir NC ARCA</button>`;
                     }
 
                     actionCell = `
                     <div style="display: flex; gap: 5px; flex-direction: column;">
-                        <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}')" ${lomasoftDisabled} title="${lomasoftTitle}">
-                            🔍 Conciliación Lomasoft
-                        </button>
+                        ${lomasoftBtnHtml}
                         ${ncActionHtml}
-                        <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" ${lomasoftDisabled}>
+                        <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" ${eliminarDisabled}>
                             🗑️ Eliminar Recepción
                         </button>
                     </div>
