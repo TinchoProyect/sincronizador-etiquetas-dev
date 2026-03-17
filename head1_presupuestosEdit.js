@@ -1,4 +1,4 @@
-// MÄ‚Å‚dulo de ediciÄ‚Å‚n de presupuestos - Integrado con detalles-common.js
+﻿﻿// MÄ‚Å‚dulo de ediciÄ‚Å‚n de presupuestos - Integrado con detalles-common.js
 (function () {
     console.log('[EDIT] Cargando mÄ‚Å‚dulo de ediciÄ‚Å‚n integrado...');
 
@@ -239,7 +239,7 @@
         if (form) {
             form.addEventListener('submit', handleSubmit);
         } else {
-            console.error('Ã¢Â ÂŒ [PRESUPUESTOS-EDIT] Formulario #form-editar-presupuesto no encontrado');
+            console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Formulario #form-editar-presupuesto no encontrado');
         }
 
         // Configurar autocompletar de clientes
@@ -449,41 +449,6 @@
             const fechaEntrega = new Date(presupuestoData.fecha_entrega);
             if (!isNaN(fechaEntrega.getTime())) {
                 document.getElementById('fecha_entrega').value = fechaEntrega.toISOString().split('T')[0];
-            }
-        }
-
-        // ===== Lógica de Edición de Retiros (Paridad) =====
-        if (presupuestoData.estado === 'Orden de Retiro' || presupuestoData.estado === 'Administrativa NC') {
-            const origenSelect = document.getElementById('origen_facturacion');
-            if (origenSelect && presupuestoData.origen_facturacion) {
-                // Seleccionar opcion LOMASOFT o LAMDA
-                const options = Array.from(origenSelect.options);
-                const hasMatch = options.some(opt => opt.value === presupuestoData.origen_facturacion);
-                if (hasMatch) {
-                    origenSelect.value = presupuestoData.origen_facturacion;
-                }
-                origenSelect.dispatchEvent(new Event('change')); // dispara handler de UI
-            }
-
-            if (presupuestoData.origen_punto_venta) {
-                document.getElementById('origen_punto_venta').value = presupuestoData.origen_punto_venta;
-            }
-            if (presupuestoData.origen_numero_factura) {
-                document.getElementById('origen_numero_factura').value = presupuestoData.origen_numero_factura;
-            }
-
-            // Marcar Trámite Administrativo si aplica
-            if (presupuestoData.estado === 'Administrativa NC') {
-                const optAdmin = document.getElementById('chk_tramite_administrativo_mock');
-                if (optAdmin) {
-                    optAdmin.click(); // dispara los checks de UI manuales
-                }
-            }
-            
-            // Logística
-            if (presupuestoData.metodo_retiro) {
-                const metodoRadio = document.querySelector(`input[name="metodo_retiro"][value="${presupuestoData.metodo_retiro}"]`);
-                if (metodoRadio) metodoRadio.checked = true;
             }
         }
 
@@ -1306,103 +1271,14 @@ function activarModoRetiroEdicion() {
         btnGuardar.style.backgroundColor = '#f39c12';
         btnGuardar.style.color = '#fff';
     }
-
-    // 5. Mostrar Opciones Inversas (Paridad con Creación)
-    const opcionesRetiro = document.getElementById('contenedor-opciones-retiro');
-    if (opcionesRetiro) {
-        opcionesRetiro.style.display = 'block';
-    }
-}
-
-/**
- * Configurar Listeners UI para las Opciones de Retiro
- */
-function setupRetirosUI() {
-    const origenFacturacionSel = document.getElementById('origen_facturacion');
-    const origenFacturaDetalle = document.getElementById('origen-factura-detalle');
-    const origenPuntoVenta = document.getElementById('origen_punto_venta');
-    const origenNroFactura = document.getElementById('origen_numero_factura');
-
-    if (origenFacturacionSel) {
-        origenFacturacionSel.addEventListener('change', function () {
-            if (this.value === 'LOMASOFT' || this.value === 'LAMDA') {
-                origenFacturaDetalle.style.display = 'flex';
-                origenPuntoVenta.required = true;
-                origenNroFactura.required = true;
-                
-                origenPuntoVenta.readOnly = false;
-                origenPuntoVenta.style.backgroundColor = '#fff';
-                origenPuntoVenta.style.cursor = 'text';
-                
-                origenNroFactura.readOnly = false;
-                origenNroFactura.style.backgroundColor = '#fff';
-                origenNroFactura.style.cursor = 'text';
-            } else {
-                // Ocultar Opciones PENDIENTE
-                origenPuntoVenta.required = false;
-                origenNroFactura.required = false;
-                origenPuntoVenta.value = '';
-                origenNroFactura.value = '';
-                origenPuntoVenta.readOnly = true;
-                origenPuntoVenta.style.backgroundColor = '#ecf0f1';
-                origenNroFactura.readOnly = true;
-                origenNroFactura.style.backgroundColor = '#ecf0f1';
-                // Dejamos el contenedor visible para que sepan que existe, solo de solo-lectura
-            }
-        });
-        
-        // Trigger inicial
-        origenFacturacionSel.dispatchEvent(new Event('change'));
-    }
-
-    // --- MANEJO EXCLUSIÓN MUTUA TIPO RETIRO ---
-    const radioAdmin = document.getElementById('chk_tramite_administrativo_mock');
-    const radioFisico = document.querySelector('input[name="tipo_operacion_retiro"][value="fisico"]');
-    const chkOcultoAdmin = document.getElementById('chk_tramite_administrativo');
-    const subopcionesLogistica = document.getElementById('subopciones-logistica');
-
-    function syncRetiroLogic() {
-        if (!radioAdmin || !radioFisico || !chkOcultoAdmin || !subopcionesLogistica) return;
-
-        if (radioAdmin.checked) {
-            // Administrativo
-            chkOcultoAdmin.checked = true;
-            subopcionesLogistica.style.opacity = "0.5";
-            subopcionesLogistica.style.pointerEvents = "none";
-            document.querySelectorAll('.subopcion-retiro').forEach(rb => {
-                rb.required = false;
-                rb.checked = false;
-            });
-            document.getElementById('estado').value = 'Administrativa NC';
-        } else {
-            // Físico
-            chkOcultoAdmin.checked = false;
-            subopcionesLogistica.style.opacity = "1";
-            subopcionesLogistica.style.pointerEvents = "auto";
-            const currentSub = document.querySelector('.subopcion-retiro:checked');
-            if(!currentSub) {
-                const chofer = document.getElementById('metodo_chofer');
-                if(chofer) chofer.checked = true;
-            }
-            document.getElementById('estado').value = 'Orden de Retiro';
-        }
-    }
-
-    if (radioAdmin) radioAdmin.addEventListener('change', syncRetiroLogic);
-    if (radioFisico) radioFisico.addEventListener('change', syncRetiroLogic);
 }
 
 // Exponer globalmente
 window.activarModoRetiroEdicion = activarModoRetiroEdicion;
 
-// Configurar botón al cargar página
+// Configurar botÃ³n al cargar pÃ¡gina
 document.addEventListener("DOMContentLoaded", () => {
-    // El botón se configurará automáticamente al cargar el presupuesto
-    console.log('[FACTURAR] Inicialización del botón de facturación lista');
-    
-    // Configurar UI de retiro inmediatamente
-    if (typeof setupRetirosUI === 'function') {
-        setupRetirosUI();
-    }
+    // El botÃ³n se configurarÃ¡ automÃ¡ticamente al cargar el presupuesto
+    console.log('[FACTURAR] InicializaciÃ³n del botÃ³n de facturaciÃ³n lista');
 });
 
