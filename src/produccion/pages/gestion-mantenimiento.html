@@ -698,6 +698,12 @@
                         </select>
                     </div>
                     <div style="margin-bottom: 15px;">
+                        <label for="tto-operario" style="font-weight: bold; display: block; margin-bottom: 5px;">Operario Responsable (Firma):</label>
+                        <select id="tto-operario" class="swal2-select" style="width: 100%; margin: 0; padding: 8px;" required>
+                            <option value="">Seleccione un operario...</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 15px;">
                         <label for="tto-notas" style="font-weight: bold; display: block; margin-bottom: 5px;">Notas Operativas (Opcional):</label>
                         <textarea id="tto-notas" class="swal2-textarea" style="width: 100%; margin: 0; min-height: 60px; padding: 8px;" placeholder="Ej: Se requieren 4 pastillas, revisar en extremo inferior..."></textarea>
                     </div>
@@ -779,6 +785,7 @@
             cargarStock();
             cargarMostrador();
             cargarReparto();
+            cargarTratamientos();
         });
 
         function guardarFiltros() {
@@ -822,6 +829,7 @@
             if (tabId === 'taller') cargarStock();
             if (tabId === 'mostrador') cargarMostrador();
             if (tabId === 'reparto') cargarReparto();
+            if (tabId === 'tratamientos') cargarTratamientos();
         }
 
         // ==========================================
@@ -2371,6 +2379,18 @@
             }
 
             document.getElementById('tto-notas').value = '';
+            
+            const selectOperario = document.getElementById('tto-operario');
+            if (selectOperario) {
+                let optionsHtml = '<option value="">-- Seleccione un operario --</option>';
+                if (window.operariosActivosCache) {
+                    window.operariosActivosCache.forEach(op => {
+                        optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
+                    });
+                }
+                selectOperario.innerHTML = optionsHtml;
+            }
+
             document.getElementById('modal-iniciar-tratamiento').style.display = 'block';
         }
 
@@ -2381,6 +2401,14 @@
         async function confirmarIniciarTratamiento() {
             const tipo = document.getElementById('tto-tipo').value;
             const notas = document.getElementById('tto-notas').value;
+            const operarioSelect = document.getElementById('tto-operario');
+            
+            if (!operarioSelect.value) {
+                return Swal.fire('Error', 'Debe seleccionar un Operario Responsable.', 'warning');
+            }
+
+            const operarioNombre = operarioSelect.options[operarioSelect.selectedIndex].text;
+            const operarioId = operarioSelect.value;
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/tratamientos/iniciar', {
@@ -2389,7 +2417,8 @@
                     body: JSON.stringify({
                         tipo_tratamiento: tipo,
                         notas: notas,
-                        usuario: window.nombreUsuarioLogueado || 'SISTEMA',
+                        usuario: operarioNombre,
+                        usuario_armado_id: operarioId,
                         items: itemsSeleccionadosTratamiento.map(i => ({...i, cantidad: i.kilos}))
                     })
                 });
