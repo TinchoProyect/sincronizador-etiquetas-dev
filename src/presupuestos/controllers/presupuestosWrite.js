@@ -170,7 +170,9 @@ const crearPresupuesto = async (req, res) => {
             detalles = [],
             estado_logistico, // NUEVO: Para integración logística
             informe_generado, // NUEVO: Para respetar panel de debug
-            origen_facturacion // NUEVO FASE 2: Ruta Inversa
+            origen_facturacion, // NUEVO FASE 2: Ruta Inversa
+            origen_punto_venta,
+            origen_numero_factura
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos:`, {
@@ -228,6 +230,29 @@ const crearPresupuesto = async (req, res) => {
             await client.query("SET LOCAL lock_timeout TO '5s'");
             await client.query("SET LOCAL statement_timeout TO '15s'");
 
+            // VALIDACIÓN FASE 2: Bloquear Ordenes de Retiro duplicadas
+            const isRetiro = (tipo_comprobante === 'Orden de Retiro' || estado === 'Orden de Retiro' || estado === 'Administrativa NC');
+            const pVentaStr = (origen_punto_venta || '').toString().trim();
+            const nFacturaStr = (origen_numero_factura || '').toString().trim();
+
+            if (isRetiro && pVentaStr && nFacturaStr) {
+                const checkDupQuery = `
+                    SELECT id, id_presupuesto_ext, fecha 
+                    FROM presupuestos 
+                    WHERE origen_punto_venta = $1 
+                      AND origen_numero_factura = $2 
+                      AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro' OR estado = 'Administrativa NC')
+                      AND activo = true
+                      AND estado != 'ANULADO'
+                    LIMIT 1
+                `;
+                const dupResult = await client.query(checkDupQuery, [pVentaStr, nFacturaStr]);
+                if (dupResult.rows.length > 0) {
+                    throw new Error(`Ya existe una Orden de Retiro activa (ID: ${dupResult.rows[0].id_presupuesto_ext}) asociada al Puesto ${pVentaStr} y Factura ${nFacturaStr}.`);
+                }
+                console.log(`✅ [PRESUPUESTOS-WRITE] Validación de duplicidad superada para PV: ${pVentaStr}, Factura: ${nFacturaStr}`);
+            }
+
             // Obtener configuración activa para completar campos
             const configQuery = `
                 SELECT hoja_url
@@ -244,13 +269,12 @@ const crearPresupuesto = async (req, res) => {
                 console.log(`[SINCRO] Config hoja_url para nuevo presupuesto: ${configHojaUrl}`);
             }
 
-            // Insertar encabezado en BD como PENDIENTE
             // Insertar encabezado en BD
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico, origen_facturacion)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15, $16)
+                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico, origen_facturacion, origen_punto_venta, origen_numero_factura)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15, $16, $17, $18)
                 RETURNING *
             `;
 
@@ -270,7 +294,9 @@ const crearPresupuesto = async (req, res) => {
                 configHojaUrl,
                 1, // usuario_id
                 estado_logistico || null, // NUEVO: Se guarda lo que viene del front
-                origen_facturacion || 'PENDIENTE' // NUEVO FASE 2
+                origen_facturacion || 'PENDIENTE', // NUEVO FASE 2
+                pVentaStr,
+                nFacturaStr
             ]);
 
             const presupuestoBD = headerResult.rows[0];

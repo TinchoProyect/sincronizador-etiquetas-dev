@@ -849,11 +849,25 @@
                         <p style="margin: 0 0 10px 0; font-size: 0.85em; color: #7f8c8d;">
                             Indique el sistema en el que se emitió la factura original para esta venta. Esto es vital para saber adonde enrutar la Nota de Crédito.
                         </p>
-                        <select id="origen_facturacion" name="origen_facturacion" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #bdc3c7; font-size: 1em;">
+                        <select id="origen_facturacion" name="origen_facturacion" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #bdc3c7; font-size: 1em; margin-bottom: 10px;">
                             <option value="PENDIENTE" selected>Pendiente / A determinar luego</option>
                             <option value="LOMASOFT">Comprobante de LOMASOFT (Punto de Venta Externo)</option>
                             <option value="LAMDA">Factura Local ARCA/AFIP (Sistema LAMDA)</option>
                         </select>
+                        <div id="origen-factura-detalle" style="display: flex; gap: 10px; margin-top: 10px;">
+                            <div style="flex: 1;">
+                                <label for="origen_punto_venta" style="display: block; font-weight: bold; color: #34495e; font-size: 0.9em; margin-bottom: 5px;">
+                                    Punto de Venta (Puesto)
+                                </label>
+                                <input type="number" id="origen_punto_venta" name="origen_punto_venta" placeholder="Ej: 4" min="1" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #bdc3c7;">
+                            </div>
+                            <div style="flex: 2;">
+                                <label for="origen_numero_factura" style="display: block; font-weight: bold; color: #34495e; font-size: 0.9em; margin-bottom: 5px;">
+                                    Número de Factura
+                                </label>
+                                <input type="number" id="origen_numero_factura" name="origen_numero_factura" placeholder="Ej: 12345678" min="1" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #bdc3c7;">
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- OPCIÓN PRINCIPAL A: Trámite Administrativo -->

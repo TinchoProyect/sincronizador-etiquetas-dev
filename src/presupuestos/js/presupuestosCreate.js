@@ -694,6 +694,8 @@ async function handleSubmit(event) {
         // LECTURA DEL MÉTODO DE RETIRO (LOGÍSTICA INVERSA)
         let overrideLogistico = null;
         let origenFacturacionValor = 'PENDIENTE'; // Default FASE 2
+        let origenPuntoVentaValor = '';
+        let origenNumeroFacturaValor = '';
         
         if (MODO_RETIRO) {
             const radioMostrador = document.querySelector('input[name="metodo_retiro"][value="mostrador"]');
@@ -701,6 +703,13 @@ async function handleSubmit(event) {
                 overrideLogistico = 'ESPERANDO_MOSTRADOR';
             }
             origenFacturacionValor = document.getElementById('origen_facturacion')?.value || 'PENDIENTE';
+            origenPuntoVentaValor = document.getElementById('origen_punto_venta')?.value || '';
+            origenNumeroFacturaValor = document.getElementById('origen_numero_factura')?.value || '';
+
+            // Validación básica si se ingresó uno pero no el otro
+            if ((origenPuntoVentaValor && !origenNumeroFacturaValor) || (!origenPuntoVentaValor && origenNumeroFacturaValor)) {
+                throw new Error('Debe completar tanto el Punto de Venta como el Número de Factura para registrar el origen de la venta.');
+            }
         }
 
         // ---- payload final ----
@@ -725,6 +734,8 @@ async function handleSubmit(event) {
                 : informeGeneradoValor,
                 
             origen_facturacion: origenFacturacionValor, // NUEVO FASE 2
+            origen_punto_venta: origenPuntoVentaValor,
+            origen_numero_factura: origenNumeroFacturaValor,
 
             nota: (formData.get('nota') || '').toString(),
             punto_entrega: puntoEntregaValor,
