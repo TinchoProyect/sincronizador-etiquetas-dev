@@ -1555,8 +1555,9 @@ async function revertirIngresoLocal(req, res) {
 
         // 4. Restaurar el estado Lógico de las Órdenes de Retiro originales en Presupuestos
         for (let [origenId, isRuta] of origenes_a_restaurar.entries()) {
-            let estadoLogistico = isRuta ? 'PENDIENTE' : 'ESPERANDO_MOSTRADOR';
+            let estadoLogistico = isRuta ? 'PENDIENTE_ASIGNAR' : 'ESPERANDO_MOSTRADOR';
             let estadoBasico = 'Orden de Retiro';
+            let extraUpdates = isRuta ? ', id_ruta = NULL, orden_entrega = NULL, fecha_asignacion_ruta = NULL' : '';
             
             const revertPresupuesto = `
                 UPDATE public.presupuestos
@@ -1564,6 +1565,7 @@ async function revertirIngresoLocal(req, res) {
                     estado = $3, 
                     fecha_actualizacion = NOW(),
                     fecha_entrega_real = NULL
+                    ${extraUpdates}
                 WHERE id = $1
             `;
             await client.query(revertPresupuesto, [origenId, estadoLogistico, estadoBasico]);
