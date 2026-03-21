@@ -202,6 +202,8 @@ const buscarCandidatasLomasoft = async (req, res) => {
                     FROM presupuestos 
                     WHERE comprobante_lomasoft = ANY($1::text[]) 
                       AND comprobante_lomasoft IS NOT NULL
+                      AND activo = true
+                      AND estado != 'Anulado'
                 `;
                 const checkRes = await req.db.query(checkSql, [comprobantes]);
 
