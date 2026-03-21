@@ -500,7 +500,7 @@ async function confirmarConciliacion(req, res) {
         // 1. Identificar Movimiento Pendiente (Lock Row)
         // Lo buscamos ANTES de insertar para obtener su ID y asegurar consistencia
         let findMovSql = `
-            SELECT mm.id, p.id AS id_presupuesto
+            SELECT mm.id, p.id AS id_presupuesto, p.estado AS estado_presupuesto
             FROM public.mantenimiento_movimientos mm
             JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
             WHERE mm.articulo_numero = $1
@@ -528,6 +528,7 @@ async function confirmarConciliacion(req, res) {
 
         const idMovimiento = resMov.rows[0].id;
         const idPresupuesto = resMov.rows[0].id_presupuesto;
+        const estadoPresupuesto = resMov.rows[0].estado_presupuesto;
 
         // 1.5. CHECK EXCLUSIÓN MUTUA: Verificar que ARCA no tenga un borrador en curso
         const arcaCheck = `
@@ -601,6 +602,25 @@ async function confirmarConciliacion(req, res) {
             `${comprobante.pto_vta}-${comprobante.numero_comprobante}`,
             idPresupuesto
         ]);
+
+        // 6. Ajuste de Saldo Lomasoft (Sólo si NO es Administrativa NC)
+        if (estadoPresupuesto !== 'Administrativa NC') {
+            const updateStock = `
+                UPDATE public.stock_real_consolidado
+                SET stock_consolidado = stock_consolidado - $1,
+                    stock_ajustes = COALESCE(stock_ajustes, 0) - $1, 
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `;
+            await client.query(updateStock, [cantidad, articulo]);
+
+            const insertAudit = `
+                INSERT INTO public.mantenimiento_movimientos 
+                (articulo_numero, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado, id_presupuesto_origen)
+                VALUES ($1, $2, 'LIBERACION', NOW(), $3, '[Ajuste Automático] Reversión por Conciliación Lomasoft', 'FINALIZADO', $4)
+            `;
+            await client.query(insertAudit, [articulo, cantidad, usuario, idPresupuesto]);
+        }
 
         await client.query('COMMIT');
         console.log(`✅ [MANTENIMIENTO] Conciliación Exitosa. Link V2: Conciliacion #${idConciliacion} <-> Movimiento #${idMovimiento} <-> Presupuesto #${idPresupuesto}`);

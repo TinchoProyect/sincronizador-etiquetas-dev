@@ -241,6 +241,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
 const confirmarConciliacion = async (req, res) => {
     const { id } = req.params;
     let { codigo, punto_venta, comprobante_formateado } = req.body;
+    const usuario = req.user ? req.user.username : 'SISTEMA';
 
     if (!comprobante_formateado) {
         return res.status(400).json({ success: false, message: 'Faltan datos de la candidata (comprobante_formateado es requerido)' });
@@ -251,7 +252,7 @@ const confirmarConciliacion = async (req, res) => {
     punto_venta = punto_venta || 0;
 
     try {
-        console.log(`🔗 [LOMASOFT] Confirmando conciliación de Presupuesto ${id} con Factura ${comprobante_formateado}`);
+        console.log(`🔗 [LOMASOFT] Confirmando conciliación de Presupuesto ${id} con ${comprobante_formateado} (Usu: ${usuario})`);
 
         const claveExterna = `${codigo}-${punto_venta}`;
         const sql = `
@@ -270,11 +271,34 @@ const confirmarConciliacion = async (req, res) => {
                 WHERE id_presupuesto_origen = $3
                   AND tipo_movimiento = 'INGRESO'
                   AND (estado IS NULL OR estado != 'CONCILIADO')
+                RETURNING articulo_numero, cantidad, id_presupuesto_origen
+            ),
+            stock_reversion AS (
+                UPDATE public.stock_real_consolidado src
+                SET stock_consolidado = src.stock_consolidado - agg.total_cantidad,
+                    stock_ajustes = COALESCE(src.stock_ajustes, 0) - agg.total_cantidad,
+                    ultima_actualizacion = NOW()
+                FROM (
+                    SELECT um.articulo_numero, SUM(um.cantidad) as total_cantidad
+                    FROM updated_mant um
+                    JOIN updated_pres up ON up.id = um.id_presupuesto_origen
+                    WHERE up.estado != 'Administrativa NC'
+                    GROUP BY um.articulo_numero
+                ) agg
+                WHERE src.articulo_numero = agg.articulo_numero
+            ),
+            insert_audit AS (
+                INSERT INTO public.mantenimiento_movimientos 
+                (articulo_numero, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado, id_presupuesto_origen)
+                SELECT um.articulo_numero, um.cantidad, 'LIBERACION', NOW(), $4, '[Ajuste Automático] Reversión por Conciliación Lomasoft', 'FINALIZADO', um.id_presupuesto_origen
+                FROM updated_mant um
+                JOIN updated_pres up ON up.id = um.id_presupuesto_origen
+                WHERE up.estado != 'Administrativa NC'
             )
             SELECT * FROM updated_pres;
         `;
 
-        const dbResult = await req.db.query(sql, [claveExterna, comprobante_formateado, id]);
+        const dbResult = await req.db.query(sql, [claveExterna, comprobante_formateado, id, usuario]);
 
         if (dbResult.rowCount === 0) {
             return res.status(404).json({ success: false, message: 'Presupuesto no encontrado para actualizar' });

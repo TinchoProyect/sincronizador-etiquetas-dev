@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "total": 1,
+  "data": [
+    {
+      "codigo": 25288,
+      "numero_comprobante": 10003287,
+      "punto_venta": 1,
+      "comprobante_formateado": "B-0001-10003287",
+      "fecha": "2026-03-19T00:00:00.000Z",
+      "importe_total": 210502.97,
+      "tipo_comprobante": "FB",
+      "articulos": [
+        {
+          "codigo": "PRx2",
+          "nombre": "Pasa/Rubia x 2",
+          "cantidad": 1
+        },
+        {
+          "codigo": "NCBxK",
+          "nombre": "Nuez/Cu/ExtL x 2",
+          "cantidad": 1
+        },
+        {
+          "codigo": "PPCXK",
+          "nombre": "Pistacho/Pel/Crudo x 1 K",
+          "cantidad": 1
+        },
+        {
+          "codigo": "DADNSCX5",
+          "nombre": "Datil/Algerian/Nour/SCarozo x 5",
+          "cantidad": 1
+        }
+      ]
+    }
+  ]
+}
