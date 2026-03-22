@@ -32,9 +32,15 @@ function renderizarEntregas() {
         let dropdownDomicilios = '';
         if (primerEntrega.domicilios_alternativos && primerEntrega.domicilios_alternativos.length > 1) {
             dropdownDomicilios = `
-                <select class="form-control" onchange="window.cambiarDomicilio(${primerEntrega.cliente.id}, this.value)" style="margin-top: 0.75rem; width: 100%; border-radius: 4px; padding: 6px; font-size: 0.85rem; background-color: #f8fafc; border: 1px solid #cbd5e1; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    ${primerEntrega.domicilios_alternativos.map(d => `<option value="${d.id}" ${parseInt(d.id) === parseInt(primerEntrega.domicilio.id) ? 'selected' : ''}>${d.direccion} ${d.localidad ? '('+d.localidad+')' : ''}</option>`).join('')}
-                </select>
+                <div style="margin-top: 1rem; padding: 10px; background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; box-shadow: 0 2px 4px rgba(59,130,246,0.15);">
+                    <label style="display: block; font-size: 0.8rem; color: #1e3a8a; font-weight: 800; margin-bottom: 6px; text-transform: uppercase;">🔄 Destino Alternativo Disponible:</label>
+                    <div style="position: relative;">
+                        <select onchange="window.cambiarDomicilio(${primerEntrega.cliente.id}, this.value)" style="width: 100%; padding: 12px 35px 12px 12px; font-size: 0.95rem; font-weight: bold; background-color: white; color: #1e3a8a; border: 1px solid #bfdbfe; border-radius: 6px; appearance: none; outline: none; cursor: pointer;">
+                            ${primerEntrega.domicilios_alternativos.map(d => `<option value="${d.id}" ${parseInt(d.id) === parseInt(primerEntrega.domicilio.id) ? 'selected' : ''}>📍 ${d.direccion} ${d.localidad ? '('+d.localidad+')' : ''}</option>`).join('')}
+                        </select>
+                        <div style="position: absolute; right: 12px; top: 14px; pointer-events: none; color: #3b82f6; font-size: 0.9rem; font-weight: bold;">▼</div>
+                    </div>
+                </div>
             `;
         }
 
@@ -65,15 +71,16 @@ function renderizarEntregas() {
         }).join('');
 
         return `
-            <div class="${claseCard}" data-parada-key="${parada.key}" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondragenter="dragEnter(event)" ondragleave="dragLeave(event)" ondrop="dropAndSave(event)" style="${estiloBorde} box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; cursor: grab; transition: all 0.2s ease;">
-                <div style="position: absolute; top: 0; left: 0; right: 0; height: 12px; display: flex; justify-content: center; align-items: center; cursor: grab; background: #f8fafc; border-top-left-radius: 0.5rem; border-top-right-radius: 0.5rem;">
-                    <div style="width: 30px; height: 4px; border-radius: 2px; background: #cbd5e1;"></div>
-                </div>
+            <div class="${claseCard}" data-parada-key="${parada.key}" style="${estiloBorde} box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; transition: all 0.2s ease;">
                 <div class="entrega-header" style="margin-top: 8px;">
                     <div class="entrega-numero" style="background: ${esRetiro ? '#d35400' : '#1e3a8a'}; opacity: 0.9;">
-                        ${esRetiro ? '↩️' : index + 1}
+                        ${index + 1}
                     </div>
-                    <div>${headerBadgeHTML}</div>
+                    <div style="flex: 1;">${headerBadgeHTML}</div>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button onclick="window.moverParada('${parada.key}', -1)" ${index === 0 ? 'disabled style="opacity:0.3;"' : ''} class="btn-ordenar" style="padding: 6px 14px; background: #e2e8f0; color: #334155; border: none; border-radius: 6px; font-weight: bold; font-size: 1.1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">↑</button>
+                        <button onclick="window.moverParada('${parada.key}', 1)" ${index === paradas.length - 1 ? 'disabled style="opacity:0.3;"' : ''} class="btn-ordenar" style="padding: 6px 14px; background: #e2e8f0; color: #334155; border: none; border-radius: 6px; font-weight: bold; font-size: 1.1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">↓</button>
+                    </div>
                 </div>
                 
                 <div class="entrega-cliente" style="margin-top: 0.75rem;">
@@ -153,57 +160,25 @@ window.cambiarDomicilio = (clienteId, nuevoDomicilioId) => {
     renderizarEntregas();
 };
 
-window.dragStart = (e) => {
-    e.dataTransfer.setData('text/plain', e.target.closest('.entrega-card').dataset.paradaKey);
-    e.target.closest('.entrega-card').style.opacity = '0.4';
-    e.target.closest('.entrega-card').style.transform = 'scale(0.98)';
-};
-window.dragOver = (e) => {
-    e.preventDefault();
-};
-window.dragEnter = (e) => {
-    e.preventDefault();
-    const card = e.target.closest('.entrega-card');
-    if(card) {
-        card.style.borderTop = '4px solid #2563eb';
-    }
-};
-window.dragLeave = (e) => {
-    e.preventDefault();
-    const card = e.target.closest('.entrega-card');
-    if(card) {
-        card.style.borderTop = 'none';
-    }
-};
-window.dropAndSave = async (e) => {
-    e.preventDefault();
-    
-    // Restaurar estilos globales de drag
-    document.querySelectorAll('.entrega-card').forEach(c => {
-        c.style.opacity = '1';
-        c.style.transform = 'none';
-        c.style.borderTop = 'none';
-    });
-
-    const draggedKey = e.dataTransfer.getData('text/plain');
-    const dropTarget = e.target.closest('.entrega-card');
-    if (!dropTarget) return;
-    
-    const targetKey = dropTarget.dataset.paradaKey;
-    if (draggedKey === targetKey) return;
-
-    // Recalcular orden en local state vector
+window.moverParada = async (paradaKey, direccion) => {
     const paradas = agruparEntregasEnParadas(state.entregas);
-    const draggedIndex = paradas.findIndex(p => p.key === draggedKey);
-    const targetIndex = paradas.findIndex(p => p.key === targetKey);
+    const index = paradas.findIndex(p => p.key === paradaKey);
     
-    const [draggedParada] = paradas.splice(draggedIndex, 1);
-    paradas.splice(targetIndex, 0, draggedParada);
+    if (index === -1) return;
+    if (direccion === -1 && index === 0) return;
+    if (direccion === 1 && index === paradas.length - 1) return;
     
+    // Intercambiar
+    const nuevaPosicion = index + direccion;
+    const temp = paradas[index];
+    paradas[index] = paradas[nuevaPosicion];
+    paradas[nuevaPosicion] = temp;
+    
+    // Aplicar a vector y renderizar
     state.entregas = paradas.flatMap(p => p.entregas);
-    renderizarEntregas(); // Re-render for visual immediate feedback
-
-    // Persistir orden en DB
+    renderizarEntregas();
+    
+    // Guardar vía backend silencioso
     const nuevoOrdenIds = state.entregas.map(e => parseInt(e.id_presupuesto));
     try {
         await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/reordenar`, {
@@ -212,7 +187,7 @@ window.dropAndSave = async (e) => {
             body: JSON.stringify({ orden: nuevoOrdenIds })
         });
     } catch(err) { 
-        console.error('Fallo de Red al guardar reordenamiento en base:', err); 
+        console.error('Fallo Network en Reordenamiento:', err); 
     }
 };
 

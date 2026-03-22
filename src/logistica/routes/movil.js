@@ -291,7 +291,7 @@ router.get('/ruta-activa', async (req, res) => {
                 cd.latitud,
                 cd.longitud,
                 (SELECT json_agg(json_build_object('id', d.id, 'direccion', d.direccion, 'localidad', d.localidad, 'latitud', d.latitud, 'longitud', d.longitud)) 
-                 FROM clientes_domicilios d WHERE d.id_cliente::text = p.id_cliente::text) as domicilios_alternativos,
+                 FROM clientes_domicilios d WHERE d.id_cliente = c.id OR d.id_cliente::text = c.cliente_id::text) as domicilios_alternativos,
                 COALESCE(
                     (SELECT ROUND(SUM(pd.cantidad * COALESCE(pd.precio1, 0)), 2)
                      FROM presupuestos_detalles pd
