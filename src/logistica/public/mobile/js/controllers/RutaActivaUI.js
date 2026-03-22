@@ -9,6 +9,11 @@ function renderizarEntregas() {
                 <div class="empty-state-icon">📦</div>
                 <h2>Ruta Sin Entregas</h2>
                 <p>Esta ruta no tiene entregas asignadas.</p>
+                ${state.ruta ? `
+                <button onclick="window.eliminarRutaActiva()" style="margin-top: 1.5rem; padding: 12px 20px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; width: 100%; box-shadow: 0 4px 6px rgba(239,68,68,0.2);">
+                    🗑️ Eliminar Hoja de Ruta
+                </button>
+                ` : ''}
             </div>
         `;
         return;
@@ -16,7 +21,27 @@ function renderizarEntregas() {
 
     const paradas = agruparEntregasEnParadas(state.entregas);
 
-    container.innerHTML = paradas.map((parada, index) => {
+    let routeHeaderHTML = '';
+    if (state.ruta) {
+        const isArmando = state.ruta.estado === 'ARMANDO';
+        routeHeaderHTML = `
+            <div style="margin-bottom: 1.5rem; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; border-left: 4px solid ${isArmando ? '#d97706' : '#059669'};">
+                <div style="display: flex; flex-direction: column;">
+                    <span style="font-size: 0.8rem; color: #64748b; font-weight: bold; text-transform: uppercase;">Estado Actual</span>
+                    <span style="font-weight: 800; color: ${isArmando ? '#d97706' : '#059669'}; font-size: 1.1rem;">
+                        ${isArmando ? 'Modo Armado' : '▶ Ruta Iniciada'}
+                    </span>
+                </div>
+                <div>
+                    <button onclick="window.toggleEstadoRuta('${isArmando ? 'EN_CAMINO' : 'ARMANDO'}')" style="background: ${isArmando ? '#059669' : '#f59e0b'}; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        ${isArmando ? '🚀 Iniciar Ruta' : '⏸ Detener Ruta'}
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = routeHeaderHTML + paradas.map((parada, index) => {
         const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO');
         const primerEntrega = parada.entregas[0];
         const esRetiro = primerEntrega.estado === 'Orden de Retiro';
@@ -53,12 +78,17 @@ function renderizarEntregas() {
             const colorTextoBoton = completado ? '#166534' : 'white';
 
             return `
-                <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9;">
-                    <div style="flex: 1;">
+                <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
+                    <div style="flex: 1; min-width: 140px;">
                         <div style="font-weight: 600; color: #475569;">${esItemRetiro ? '↩️' : ''} Pedido #${entrega.id_presupuesto}</div>
                         ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
                     </div>
-                    <div>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn-confirmar-sm" 
+                                onclick="window.quitarPedido(${entrega.id_presupuesto})" 
+                                style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            ❌ Quitar
+                        </button>
                         <button class="btn-confirmar-sm" 
                                 onclick="confirmarEntrega(${entrega.id_presupuesto}, '${esItemRetiro ? 'retiro' : 'entrega'}')" 
                                 ${completado ? 'disabled' : ''}
@@ -223,3 +253,55 @@ function finalizarRutaDelDia() {
         alert('Error al cargar módulo de ruta');
     });
 }
+
+// -------------------------------------------------------------
+// Controladores de Vida Operativa de Ruta (Fase 11)
+// -------------------------------------------------------------
+
+window.toggleEstadoRuta = async (nuevoEstado) => {
+    if (!state.ruta) return;
+    try {
+        const payload = { estado: nuevoEstado };
+        const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/estado`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            state.ruta.estado = nuevoEstado;
+            renderizarEntregas(); 
+        } else alert("Error: " + data.error);
+    } catch(err) { alert("Error de red."); }
+};
+
+window.quitarPedido = async (idPresupuesto) => {
+    if (!confirm("¿Está seguro que desea devolver este pedido a PENDIENTES? (Se desvinculará de la hoja de ruta)")) return;
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/pedidos/${idPresupuesto}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            // Eliminar de state local y renderizar
+            state.entregas = state.entregas.filter(e => e.id_presupuesto != idPresupuesto);
+            renderizarEntregas();
+        } else alert("Error: " + data.error);
+    } catch(err) { alert("Error de red."); }
+};
+
+window.eliminarRutaActiva = async () => {
+    if (!confirm("⚠️ ATENCIÓN: ¿Está absolutamente seguro de ELIMINAR toda la hora de ruta? Solo se permite si no hay pedidos adosados.")) return;
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("Ruta eliminada con éxito.");
+            window.location.reload(); // Hard reset
+        } else alert("Error: " + data.error);
+    } catch(err) { alert("Error de red."); }
+};

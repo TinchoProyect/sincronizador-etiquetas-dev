@@ -942,6 +942,56 @@ router.put('/pedidos/:id/domicilio', validarTokenMovil, async (req, res) => {
     } catch(err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+/**
+ * @route PUT /api/logistica/movil/rutas/:id/estado
+ * @desc Cambiar estado a EN_CAMINO o regresar a ARMANDO desde PWA
+ */
+router.put('/rutas/:id/estado', validarTokenMovil, async (req, res) => {
+    const { id } = req.params;
+    const { estado } = req.body;
+    try {
+        if (estado === 'EN_CAMINO') {
+            await req.db.query(`UPDATE rutas SET estado = $1, fecha_salida = NOW() WHERE id = $2`, [estado, id]);
+        } else {
+            await req.db.query(`UPDATE rutas SET estado = $1 WHERE id = $2`, [estado, id]);
+        }
+        res.json({ success: true, message: `Ruta movida a ${estado}` });
+    } catch(err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/**
+ * @route DELETE /api/logistica/movil/rutas/:id/pedidos/:presupuestoId
+ * @desc Quitar pedido dinámicamente de una ruta, eludiendo bloqueo de "EN_CAMINO"
+ */
+router.delete('/rutas/:id/pedidos/:presupuestoId', validarTokenMovil, async (req, res) => {
+    const { id, presupuestoId } = req.params;
+    try {
+        await req.db.query(
+            `UPDATE presupuestos 
+             SET id_ruta = NULL, estado_logistico = 'PENDIENTE_ASIGNAR', secuencia = 'Pedido_Listo', orden_entrega = NULL, fecha_asignacion_ruta = NULL 
+             WHERE id = $1 AND id_ruta = $2`,
+            [presupuestoId, id]
+        );
+        res.json({ success: true, message: 'Excepción de calle: Pedido desvinculado hacia Pendientes' });
+    } catch(err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/**
+ * @route DELETE /api/logistica/movil/rutas/:id
+ * @desc Eliminar ruta (Solo si está completamente vacía)
+ */
+router.delete('/rutas/:id', validarTokenMovil, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await req.db.query(`SELECT count(id) as count FROM presupuestos WHERE id_ruta = $1`, [id]);
+        if (parseInt(result.rows[0].count) > 0) {
+            return res.status(400).json({ success: false, error: 'No se puede eliminar la ruta: Debe vaciarse quitando las paradas primero.' });
+        }
+        await req.db.query(`DELETE FROM rutas WHERE id = $1`, [id]);
+        res.json({ success: true, message: 'Hoja de ruta eliminada exitosamente' });
+    } catch(err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 console.log('📋 [MOVIL] Rutas disponibles:');
 console.log('   - POST   /api/logistica/movil/login');
 console.log('   - GET    /api/logistica/movil/ruta-activa');
