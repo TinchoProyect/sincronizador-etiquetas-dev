@@ -156,12 +156,10 @@ const WizardController = {
         const qRaw = (query || '').trim();
 
         try {
-            // Emulando lógica de la PC: Buscar base robusta por la primera palabra
-            const primerTermino = qRaw.split(/\\s+/)[0] || qRaw;
-            // Se piden más al back para compensar y se filtra hiper-rápido en RAM del celular
-            const offset = primerTermino.length === 0 ? 15 : 150; 
+            // El backend ya tiene búsqueda por Token (AND). Enviamos la query completa
+            const offset = qRaw.length === 0 ? 15 : 150; 
             
-            const res = await fetch(`${API_BASE_URL}/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(primerTermino)}&limit=${offset}`);
+            const res = await fetch(`${API_BASE_URL}/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}`);
             const data = await res.json();
             
             if(data.success && data.data) {
@@ -176,11 +174,12 @@ const WizardController = {
                         .replace(/ñ/g, 'n');
                 };
 
-                const terms = normalizarTexto(qRaw).split(/\\s+/).filter(Boolean);
+                const terms = normalizarTexto(qRaw).split(/\s+/).filter(Boolean);
                 const queryLower = qRaw.toLowerCase();
                 
                 let articulosFiltrados = data.data;
 
+                // Doble chequeo en RAM (opcional pero hace que el tecleo sea instantáneo)
                 if (terms.length > 0) {
                     articulosFiltrados = data.data.filter(a => {
                         const descNormalizada = normalizarTexto(a.descripcion || a.nombre || '');
@@ -201,21 +200,21 @@ const WizardController = {
                     const renders = articulosFiltrados.slice(0, 40);
 
                     renders.forEach(a => {
-                        const qtyActual = this.cart.items[a.numero] ? this.cart.items[a.numero].cantidad : 0;
+                        const fallBckId = a.codigo_articulo || a.numero || a.codigo_barras;
+                        const qtyActual = this.cart.items[fallBckId] ? this.cart.items[fallBckId].cantidad : 0;
                         
                         const card = document.createElement('div');
                         card.className = 'card-articulo';
-                        // Nota: el atributo data-prod guarda JSON serializado para recuperar los datos exactos del click
                         const jsonSafe = JSON.stringify(a).replace(/"/g, '&quot;');
                         
                         card.innerHTML = `
                             <div class="articulo-info">
-                                <span class="articulo-nombre">${a.descripcion || a.nombre} <br><small style="color:#94a3b8; font-weight:normal;">Cod: ${a.numero}</small></span>
+                                <span class="articulo-nombre">${a.descripcion || a.nombre} <br><small style="color:#94a3b8; font-weight:normal;">Cod: ${fallBckId} &nbsp;|&nbsp; <strong>Stock: ${Math.floor(a.stock_actual || 0)}</strong></small></span>
                                 <span class="articulo-precio">$${parseFloat(a.precio_venta || 0).toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
                             </div>
                             <div class="articulo-actions">
                                 <button class="stepper-btn btn-minus" onclick='WizardController.actualizarCantidad(${jsonSafe}, -1)'>-</button>
-                                <span class="stepper-qty" id="qty-${a.numero}">${qtyActual}</span>
+                                <span class="stepper-qty" id="qty-${fallBckId}">${qtyActual}</span>
                                 <button class="stepper-btn btn-plus" onclick='WizardController.actualizarCantidad(${jsonSafe}, 1)'>+</button>
                             </div>
                         `;
@@ -234,11 +233,12 @@ const WizardController = {
     },
 
     actualizarCantidad(producto, delta) {
-        const id = producto.numero;
+        const id = producto.codigo_articulo || producto.numero || producto.codigo_barras;
         if(!this.cart.items[id]) {
             if(delta < 0) return; // No se puede bajar de 0
             this.cart.items[id] = {
-                id: producto.numero,
+                id: id,
+                numero: id,
                 nombre: producto.descripcion || producto.nombre,
                 precio: parseFloat(producto.precio_venta || 0),
                 cantidad: 0

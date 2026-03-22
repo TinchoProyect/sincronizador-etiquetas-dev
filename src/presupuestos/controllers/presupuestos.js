@@ -969,8 +969,10 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         src.codigo_barras,
         src.articulo_numero,
         src.descripcion,
-        COALESCE(src.stock_consolidado, 0) AS stock_consolidado
+        COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
+        COALESCE(pa.precio_neg, 0) AS precio_venta
       FROM public.stock_real_consolidado src
+      LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
       ${whereClause}
       ORDER BY
         CASE WHEN COALESCE(src.stock_consolidado,0) > 0 THEN 0 ELSE 1 END ASC,
@@ -987,7 +989,11 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         const sugerencias = result.rows.map(a => ({
             codigo_barras: a.codigo_barras,
             articulo_numero: a.articulo_numero,
+            codigo_articulo: a.codigo_barras, // Parity para PWA
+            numero: a.codigo_barras, // Fallback anterior
             descripcion: a.descripcion,
+            precio_venta: parseFloat(a.precio_venta || 0),
+            stock_actual: parseFloat(a.stock_consolidado || 0),
             stock_consolidado: parseFloat(a.stock_consolidado || 0),
             text: `${a.descripcion} — [${a.articulo_numero}] (stock: ${Math.floor(a.stock_consolidado || 0)})`
         }));
