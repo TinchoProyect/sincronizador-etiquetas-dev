@@ -331,7 +331,8 @@ router.get('/ruta-activa', async (req, res) => {
                 instrucciones_entrega: e.domicilio_instrucciones,
                 latitud: e.latitud,
                 longitud: e.longitud
-            }
+            },
+            domicilios_alternativos: e.domicilios_alternativos
         }));
 
         console.log(`[MOVIL] ✅ Ruta activa encontrada: ${ruta.nombre_ruta} con ${entregas.length} entregas`);
