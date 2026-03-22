@@ -12,8 +12,11 @@ const WizardController = {
         tipo: 'venta'
     },
     
-    // Almacenamiento temporal para busquedas (debouncing)
-    timerBusqueda: null,
+    // Almacenamiento temporal para busquedas (debouncing y abort controllers)
+    timerBusquedaCliente: null,
+    timerBusquedaArticulo: null,
+    abortControllerClientes: null,
+    abortControllerArticulos: null,
 
     init() {
         // Interceptar barra de retroceso del navegador (Hardware Back Button)
@@ -31,10 +34,10 @@ const WizardController = {
         const inputCliente = document.getElementById('buscar-cliente-input');
         if(inputCliente) {
             inputCliente.addEventListener('input', (e) => {
-                clearTimeout(this.timerBusqueda);
+                clearTimeout(this.timerBusquedaCliente);
                 const query = e.target.value;
                 if(query.length >= 3) {
-                    this.timerBusqueda = setTimeout(() => this.buscarClientesAPI(query), 500);
+                    this.timerBusquedaCliente = setTimeout(() => this.buscarClientesAPI(query), 350);
                 } else {
                     document.getElementById('resultados-cliente').innerHTML = '<div class="placeholder-msg">Escribí al menos 3 letras para buscar...</div>';
                 }
@@ -44,10 +47,10 @@ const WizardController = {
         const inputArticulo = document.getElementById('buscar-articulo-input');
         if(inputArticulo) {
             inputArticulo.addEventListener('input', (e) => {
-                clearTimeout(this.timerBusqueda);
+                clearTimeout(this.timerBusquedaArticulo);
                 const query = e.target.value;
                 if(query.length >= 2) {
-                    this.timerBusqueda = setTimeout(() => this.buscarArticulosAPI(query), 500);
+                    this.timerBusquedaArticulo = setTimeout(() => this.buscarArticulosAPI(query), 350);
                 }
             });
         }
@@ -110,11 +113,17 @@ const WizardController = {
     // API & DATOS: CLIENTES
     // ============================
     async buscarClientesAPI(query) {
+        if (this.abortControllerClientes) {
+            this.abortControllerClientes.abort(); // Cancelar petición letal pendiente
+        }
+        this.abortControllerClientes = new AbortController();
+        const signal = this.abortControllerClientes.signal;
+
         const contenedor = document.getElementById('resultados-cliente');
         contenedor.innerHTML = '<div class="placeholder-msg">Buscando...</div>';
         
         try {
-            const res = await fetch(`/api/presupuestos/clientes/sugerencias?q=${encodeURIComponent(query)}`);
+            const res = await fetch(`/api/presupuestos/clientes/sugerencias?q=${encodeURIComponent(query)}`, { signal });
             const data = await res.json();
             
             if(data.success && data.data.length > 0) {
@@ -136,6 +145,10 @@ const WizardController = {
                 contenedor.innerHTML = '<div class="placeholder-msg">No se encontraron resultados.</div>';
             }
         } catch(e) {
+            if (e.name === 'AbortError') {
+                console.log('Búsqueda de clientes abortada: Prevención de Carrera');
+                return;
+            }
             console.error(e);
             contenedor.innerHTML = '<div class="placeholder-msg" style="color:red">Error de conexión.</div>';
         }
@@ -150,6 +163,12 @@ const WizardController = {
     // API & DATOS: ARTÍCULOS
     // ============================
     async buscarArticulosAPI(query) {
+        if (this.abortControllerArticulos) {
+            this.abortControllerArticulos.abort(); // Cancelar la cascada paralela anterior
+        }
+        this.abortControllerArticulos = new AbortController();
+        const signal = this.abortControllerArticulos.signal;
+
         const contenedor = document.getElementById('resultados-articulo');
         contenedor.innerHTML = '<div class="loader-spinner" style="margin:2rem auto"></div><p style="text-align:center; color:#64748b">Buscando en catálogo...</p>';
         const qRaw = (query || '').trim();
@@ -157,7 +176,7 @@ const WizardController = {
         try {
             const offset = qRaw.length === 0 ? 15 : 150; 
             
-            const res = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}&cliente_id=${this.cart.cliente.id}`);
+            const res = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}&cliente_id=${this.cart.cliente.id}`, { signal });
             const data = await res.json();
             
             if(data.success && data.data) {
@@ -225,6 +244,10 @@ const WizardController = {
                 contenedor.innerHTML = '<div class="placeholder-msg">Sin resultados.</div>';
             }
         } catch(e) {
+            if (e.name === 'AbortError') {
+                console.log('Búsqueda de artículos abortada: Fast-Typing detectado');
+                return;
+            }
             console.error(e);
             contenedor.innerHTML = '<div class="placeholder-msg" style="color:red">Error consultando catálogo.</div>';
         }
