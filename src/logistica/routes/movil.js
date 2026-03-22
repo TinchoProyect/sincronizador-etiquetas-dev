@@ -290,6 +290,8 @@ router.get('/ruta-activa', async (req, res) => {
                 cd.instrucciones_entrega as domicilio_instrucciones,
                 cd.latitud,
                 cd.longitud,
+                (SELECT json_agg(json_build_object('id', d.id, 'direccion', d.direccion, 'localidad', d.localidad, 'latitud', d.latitud, 'longitud', d.longitud)) 
+                 FROM clientes_domicilios d WHERE d.id_cliente::text = p.id_cliente::text) as domicilios_alternativos,
                 COALESCE(
                     (SELECT ROUND(SUM(pd.cantidad * COALESCE(pd.precio1, 0)), 2)
                      FROM presupuestos_detalles pd
@@ -897,11 +899,55 @@ router.get('/rutas-activas', validarTokenMovil, async (req, res) => {
     }
 });
 
+/**
+ * @route PUT /api/logistica/movil/rutas/:id/reordenar
+ * @desc Proxy PWA para reordenar (Drag & Drop) 
+ */
+router.put('/rutas/:id/reordenar', validarTokenMovil, async (req, res) => {
+    const { id } = req.params;
+    const { orden } = req.body;
+    try {
+        if (!Array.isArray(orden)) throw new Error('Se requiere array orden');
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            for (let i = 0; i < orden.length; i++) {
+                await client.query(
+                    `UPDATE presupuestos SET orden_entrega = $1 WHERE id = $2 AND id_ruta = $3`,
+                    [i + 1, orden[i], id]
+                );
+            }
+            await client.query('COMMIT');
+            res.json({ success: true, message: 'Reordenado via PWA' });
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+    } catch(err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/**
+ * @route PUT /api/logistica/movil/pedidos/:id/domicilio
+ * @desc Persistir cambio de domicilio alternativo On-The-Fly
+ */
+router.put('/pedidos/:id/domicilio', validarTokenMovil, async (req, res) => {
+    const { id } = req.params;
+    const { id_domicilio_entrega } = req.body;
+    try {
+        await req.db.query(`UPDATE presupuestos SET id_domicilio_entrega = $1 WHERE id = $2`, [id_domicilio_entrega, id]);
+        res.json({ success: true });
+    } catch(err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 console.log('📋 [MOVIL] Rutas disponibles:');
 console.log('   - POST   /api/logistica/movil/login');
 console.log('   - GET    /api/logistica/movil/ruta-activa');
 console.log('   - GET    /api/logistica/movil/pedidos/:id/detalles');
 console.log('   - POST   /api/logistica/movil/entregas/confirmar');
 console.log('   - POST   /api/logistica/movil/rutas/finalizar');
+console.log('   - PUT    /api/logistica/movil/rutas/:id/reordenar');
+console.log('   - PUT    /api/logistica/movil/pedidos/:id/domicilio');
 
 module.exports = router;

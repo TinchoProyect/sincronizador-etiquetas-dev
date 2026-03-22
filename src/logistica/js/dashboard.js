@@ -1357,23 +1357,45 @@ function mostrarMarcadoresRuta(ruta) {
     const bounds = new google.maps.LatLngBounds();
     let marcadoresCreados = 0;
 
-    // Crear marcador para cada presupuesto
-    ruta.presupuestos.forEach((presupuesto, index) => {
-        if (!presupuesto.latitud || !presupuesto.longitud) {
-            console.warn(`[DASHBOARD] Presupuesto ${presupuesto.id} sin coordenadas`);
+    // Agrupar por Coordenadas Físicas
+    const paradasMap = new Map();
+    ruta.presupuestos.forEach(p => {
+        if (!p.latitud || !p.longitud) {
+            console.warn(`[DASHBOARD] Presupuesto ${p.id} ignorado por falta de GPS`);
             return;
         }
+        const key = `${p.latitud}_${p.longitud}`;
+        if (!paradasMap.has(key)) {
+            paradasMap.set(key, { 
+                latitud: p.latitud, longitud: p.longitud, 
+                cliente_nombre: p.cliente_nombre, 
+                domicilio_direccion: p.domicilio_direccion,
+                ids: [p.id], totales: p.total ? [parseFloat(p.total)] : [], 
+                count: 1 
+            });
+        } else {
+            const parada = paradasMap.get(key);
+            parada.ids.push(p.id);
+            if (p.total) parada.totales.push(parseFloat(p.total));
+            parada.count++;
+        }
+    });
 
+    let index = 0;
+    paradasMap.forEach((parada, key) => {
         const position = {
-            lat: parseFloat(presupuesto.latitud),
-            lng: parseFloat(presupuesto.longitud)
+            lat: parseFloat(parada.latitud),
+            lng: parseFloat(parada.longitud)
         };
 
-        // Crear marcador con número de orden
+        const totalSuma = parada.totales.reduce((a,b)=>a+b, 0);
+        const multilineLabel = parada.count > 1 ? ` (${parada.count} Pedidos)` : '';
+
+        // Crear marcador con número de Parada Física
         const marker = new google.maps.Marker({
             position: position,
             map: state.map,
-            title: `${index + 1}. ${presupuesto.cliente_nombre}`,
+            title: `${index + 1}. ${parada.cliente_nombre}${multilineLabel}`,
             label: {
                 text: `${index + 1}`,
                 color: 'white',
@@ -1383,15 +1405,17 @@ function mostrarMarcadoresRuta(ruta) {
             animation: google.maps.Animation.DROP
         });
 
-        // Info window con detalles
+        // Info window agrupada
         const infoWindow = new google.maps.InfoWindow({
             content: `
-                <div style="padding: 0.5rem;">
-                    <strong>Parada ${index + 1}</strong><br>
-                    <strong>Pedido #${presupuesto.id}</strong><br>
-                    Cliente: ${presupuesto.cliente_nombre || 'Sin nombre'}<br>
-                    Dirección: ${presupuesto.domicilio_direccion || 'Sin dirección'}<br>
-                    ${presupuesto.total ? `Monto: $${parseFloat(presupuesto.total).toFixed(2)}` : ''}
+                <div style="padding: 0.5rem; min-width: 200px;">
+                    <div style="background: #1e3a8a; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-bottom: 8px;">
+                        <strong>Parada Geográfica ${index + 1}</strong>
+                    </div><br>
+                    <strong>Carga Documental: #${parada.ids.join(', #')}</strong><br>
+                    Cliente: ${parada.cliente_nombre || 'Sin nombre'}<br>
+                    Dirección: ${parada.domicilio_direccion || 'Sin dirección'}<br>
+                    ${totalSuma > 0 ? `<div style="margin-top: 6px; color: #059669; font-weight: bold;">Monto Físico Total: $${totalSuma.toFixed(2)}</div>` : ''}
                 </div>
             `
         });
@@ -1403,6 +1427,7 @@ function mostrarMarcadoresRuta(ruta) {
         state.markers.push(marker);
         bounds.extend(position);
         marcadoresCreados++;
+        index++;
     });
 
     // Ajustar zoom para mostrar todos los marcadores
