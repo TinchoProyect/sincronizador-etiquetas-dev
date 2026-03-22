@@ -2470,6 +2470,7 @@
                     
                     let estadoHtml = '';
                     let actionHtml = '';
+                    let badgeHtml = '';
 
                     if (tto.estado === 'ARMANDO') {
                         estadoHtml = '🟢 Armando (Abierto)';
@@ -2479,7 +2480,8 @@
                         `;
                     } else if (tto.estado === 'EN_CUARENTENA') {
                         const dias = Math.floor((new Date() - new Date(tto.fecha_inicio_cuarentena)) / (1000 * 60 * 60 * 24));
-                        estadoHtml = `⏳ En Cuarentena (Día ${dias})`;
+                        estadoHtml = `⏳ En Cuarentena`;
+                        badgeHtml = `<span style="float: right; background-color: #dc3545; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.9em; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); letter-spacing: 0.5px;">⏳ DÍA ${dias}</span>`;
                         actionHtml = `<button onclick="abrirTratamiento(${tto.id})" class="btn-accion" style="background-color: #17a2b8; width: 100%; margin-top: 10px;">✂️ Abrir Carpa (Acondicionar)</button>`;
                     } else if (tto.estado === 'EN_ACONDICIONAMIENTO') {
                         estadoHtml = '💨 En Acondicionamiento (Abierto)';
@@ -2495,7 +2497,10 @@
                     itemsHtml += '</ul>';
 
                     card.innerHTML = `
-                        <h3 style="margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 5px; font-size: 1.1em;">⛺ Tto #${tto.id} - ${tto.tipo_tratamiento}</h3>
+                        <h3 style="margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 5px; font-size: 1.1em;">
+                            ${badgeHtml}
+                            ⛺ Tto #${tto.id} - ${tto.tipo_tratamiento}
+                        </h3>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Estado:</strong> ${estadoHtml}</p>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Armado:</strong> ${new Date(tto.fecha_inicio_armado).toLocaleDateString()}</p>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Responsable:</strong> 🧑‍🏭 ${tto.usuario_armado || 'Desc.'}</p>
