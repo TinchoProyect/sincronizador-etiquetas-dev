@@ -175,12 +175,20 @@
         <div class="tab-btn" onclick="switchTabComercial('retiros')" id="tab-retiros">Retiros</div>
     </div>
 
-    <div class="recientes-container">
-        <h3 class="section-title"><span>🕒</span> Historial de la Sesión</h3>
-        <div class="placeholder-card" id="historial-container">
+    <div class="recientes-container" style="padding-top: 0.5rem">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom: 1rem;">
+            <h3 class="section-title" style="margin:0"><span>🕒</span> Historial</h3>
+            <div style="display:flex; gap:0.5rem">
+                <input type="date" id="filtro-fecha" class="wizard-input" style="padding:0.4rem; font-size:0.8rem; border-radius:0.5rem; height:auto; width:130px;" onchange="DashboardComercial.aplicarFiltroFecha()">
+            </div>
+        </div>
+        
+        <div class="placeholder-card" id="historial-container" style="padding: 1rem;">
             <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
             <p><strong>Listado Vacío</strong><br>Aquí aparecerán tus operaciones recientes separadas por pestañas.</p>
         </div>
+
+        <button id="btn-cargar-mas" class="btn-continue" style="display:none; margin-top:1rem; width:100%; padding: 0.8rem; font-size: 1rem; border-radius:0.75rem; background:#334155; box-shadow:none" onclick="DashboardComercial.cargarMas()">Cargar Más Antiguos ↓</button>
     </div>
 
     <!-- Scripts -->
