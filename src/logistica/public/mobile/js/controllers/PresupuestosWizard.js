@@ -362,12 +362,12 @@ const WizardController = {
             agente: state.sesion.usuario || 'Cajero Móvil',
             tipo_comprobante: isOrdenRetiro ? 'Orden de Retiro' : 'Factura',
             estado: isOrdenRetiro ? 'Orden de Retiro' : estadoSeleccionado,
-            estado_logistico: isOrdenRetiro ? 'ESPERANDO_MOSTRADOR' : 'PENDIENTE_ASIGNAR',
+            estado_logistico: isOrdenRetiro ? 'ESPERANDO_MOSTRADOR' : 'SIN_ESTADO',
             informe_generado: 'Pendiente',
             nota: obs,
             punto_entrega: 'Mostrador / Automático (Móvil)',
             descuento: descuentoInputFormateado,
-            secuencia: 'Pedido_Listo',
+            secuencia: 'Imprimir',
             detalles: []
         };
 
