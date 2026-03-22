@@ -277,13 +277,15 @@ const WizardController = {
     renderCheckout() {
         document.getElementById('ticket-cliente').innerText = this.cart.cliente.nombre;
         const lista = document.getElementById('ticket-items-lista');
+        
+        // Conservar el DOM renderizado optimizadamente (sólo repintar lista la primera vez si es estática)
         lista.innerHTML = '';
         
-        let total = 0;
+        let totalFinalBase = 0;
         for(let key in this.cart.items) {
             const p = this.cart.items[key];
             const subtotal = p.cantidad * p.precio;
-            total += subtotal;
+            totalFinalBase += subtotal;
 
             const row = document.createElement('div');
             row.className = 'ticket-row';
@@ -294,14 +296,55 @@ const WizardController = {
             lista.appendChild(row);
         }
 
-        document.getElementById('ticket-total-final').innerText = `$ ${total.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+        // --- Cálculos Dinámicos Financieros ---
+        const descInput = parseFloat(document.getElementById('descuento-input').value) || 0;
+        const descAmount = totalFinalBase * (descInput / 100);
+        const totalFinalConDesc = totalFinalBase - descAmount;
+
+        const condIva = (this.cart.cliente.condicion_iva || '').toLowerCase();
+        const isRI = condIva.includes('responsable inscripto');
+
+        const rowSubtotal = document.getElementById('row-subtotal');
+        const rowSubDesc = document.getElementById('row-subtotal-desc');
+        const rowIva = document.getElementById('row-iva');
+
+        if (isRI) {
+            // Discriminar IVA (Simulación Factura A)
+            const subNeto = totalFinalBase / 1.21;
+            const subNetoDesc = totalFinalConDesc / 1.21;
+            const ivaCalculado = subNetoDesc * 0.21;
+            
+            rowSubtotal.style.display = 'flex';
+            rowSubDesc.style.display = 'flex';
+            rowIva.style.display = 'flex';
+            
+            document.getElementById('row-subtotal').querySelector('span').innerText = 'Subtotal Neto (Sin IVA)';
+            document.getElementById('row-subtotal-desc').querySelector('span').innerText = `Subtotal c/Desc (${descInput}%)`;
+
+            document.getElementById('ticket-subtotal-neto').innerText = `$ ${subNeto.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-desc').innerText = `$ ${subNetoDesc.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+            document.getElementById('ticket-iva').innerText = `$ ${ivaCalculado.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+        } else {
+            // Factura B (Consumidor Final, Monotributista) - El IVA va integrado
+            rowSubtotal.style.display = 'flex';
+            rowSubDesc.style.display = 'flex';
+            rowIva.style.display = 'none';
+
+            document.getElementById('row-subtotal').querySelector('span').innerText = 'Subtotal (Bruto)';
+            document.getElementById('row-subtotal-desc').querySelector('span').innerText = `Subtotal c/Desc (${descInput}%)`;
+
+            document.getElementById('ticket-subtotal-neto').innerText = `$ ${totalFinalBase.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-desc').innerText = `$ ${totalFinalConDesc.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+        }
+
+        document.getElementById('ticket-total-final').innerText = `$ ${totalFinalConDesc.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
     },
 
     async confirmarVenta() {
         // Recolectar datos
-        const selectOperacion = document.getElementById('tipo-operacion');
-        const isOrdenRetiro = selectOperacion.value === 'retiro';
+        const isOrdenRetiro = false; // Parche Arquitectura: Este wizard ya es exclusivamente de Venta
         const obs = document.getElementById('observaciones-input').value.trim();
+        const descuentoInputFormateado = parseFloat(document.getElementById('descuento-input').value) || 0;
 
         // Armar Payload 100% Data-Parity con Desktop para evitar inserciones Null/Consumidor Final
         const hoy = new Date().toISOString().split('T')[0];
@@ -317,7 +360,7 @@ const WizardController = {
             informe_generado: 'Pendiente',
             nota: obs,
             punto_entrega: 'Mostrador / Automático (Móvil)',
-            descuento: 0,
+            descuento: descuentoInputFormateado,
             secuencia: 'Pedido_Listo',
             detalles: []
         };

@@ -3,16 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#10b981">
+    <meta name="theme-color" content="#f59e0b">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Nuevo Remito - LAMDA Móvil</title>
+    <title>Nuevo Retiro - LAMDA Móvil</title>
     <link rel="icon" type="image/x-icon" href="../../favicon.ico">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/comercial.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="/env-config.js"></script>
+    <style>
+        .wizard-header {
+            background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+        }
+        .btn-continue {
+            background: #f59e0b;
+            box-shadow: 0 4px 6px rgba(245, 158, 11, 0.3);
+        }
+        .btn-confirm {
+            background: #ea580c;
+            box-shadow: 0 4px 6px rgba(234, 88, 12, 0.3);
+        }
+    </style>
 </head>
 <body class="wizard-page">
 
@@ -23,11 +36,11 @@
                 ←
             </button>
             <h1 class="header-title" id="wizard-title">Paso 1: Cliente</h1>
-            <div style="width: 44px; text-align:right" id="wizard-step-indicator">1/3</div>
+            <div style="width: 44px; text-align:right" id="wizard-step-indicator">1/4</div>
         </div>
         <!-- Progress Bar -->
         <div class="wizard-progress-track">
-            <div class="wizard-progress-fill" id="wizard-progress"></div>
+            <div class="wizard-progress-fill" id="wizard-progress" style="width: 25%"></div>
         </div>
     </header>
 
@@ -35,7 +48,7 @@
     <div id="step-1" class="wizard-step active-step">
         <div class="wizard-content">
             <div class="search-hero">
-                <h2>¿A quién le enviamos?</h2>
+                <h2>¿Quién devuelve?</h2>
                 <div class="search-bar-wrapper">
                     <span class="search-icon">🔍</span>
                     <input type="text" id="buscar-cliente-input" class="wizard-input-gigante" placeholder="Escriba nombre o código...">
@@ -43,52 +56,66 @@
             </div>
             
             <div class="resultados-lista" id="resultados-cliente">
-                <!-- Se inyecta por JS (Tarjetas tap-to-select) -->
                 <div class="placeholder-msg">Escribí al menos 3 letras para buscar...</div>
             </div>
         </div>
     </div>
 
-    <!-- STEP 2: ARTÍCULOS ("Tap-To-Add") -->
+    <!-- STEP 2: FACTURA ORIGEN -->
     <div id="step-2" class="wizard-step">
         <div class="wizard-content">
-            <div class="selected-customer-pill" id="pill-cliente">
+            <div class="selected-customer-pill" id="pill-cliente-step-2">
                 <span class="avatar">👤</span>
-                <span id="label-cliente-seleccionado">Cargando...</span>
+                <span id="label-cliente-step-2">Cargando...</span>
             </div>
 
-            <div class="search-bar-wrapper" style="margin-top: 1rem;">
-                <span class="search-icon">🔍</span>
-                <input type="text" id="buscar-articulo-input" class="wizard-input" placeholder="Buscar producto...">
+            <div class="search-hero" style="margin-top: 1.5rem">
+                <h2>Comprobante Origen</h2>
+                <p style="color: #64748b; font-size: 0.95rem;">Seleccioná la Factura de donde proviene la mercadería.</p>
             </div>
 
+            <div class="resultados-lista" id="resultados-facturas">
+                <div class="placeholder-msg">Buscando historiales...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 3: ARTÍCULOS ("Tap-To-Add" Devolución) -->
+    <div id="step-3" class="wizard-step">
+        <div class="wizard-content">
+            <div class="selected-customer-pill" style="margin-bottom: 0.5rem;">
+                <span class="avatar">📄</span>
+                <span id="label-factura-seleccionada">Cargando...</span>
+            </div>
+
+            <h3 style="margin-top: 1rem; color: #334155;">Seleccioná lo que devuelve:</h3>
             <div class="resultados-lista articulos-lista" id="resultados-articulo">
-                <!-- Tarjetas de Artículos -->
+                <!-- Tarjetas de Artículos Originales de la Factura -->
             </div>
         </div>
 
         <!-- Carrito Flotante Inferior -->
         <div class="bottom-cart-shelf">
             <div class="cart-info">
-                <span class="cart-icon">🛒</span>
+                <span class="cart-icon">📦</span>
                 <div class="cart-money">
-                    <span class="cart-qty" id="cart-qty">0 ítems</span>
+                    <span class="cart-qty" id="cart-qty">0 ítems a devolver</span>
                     <h3 id="cart-total">$ 0.00</h3>
                 </div>
             </div>
-            <button class="btn-continue" onclick="avanzarPaso(3)">Revisar Presupuesto →</button>
+            <button class="btn-continue" onclick="avanzarPaso(4)">Continuar →</button>
         </div>
     </div>
 
-    <!-- STEP 3: CHECKOUT TOTALIZADOR -->
-    <div id="step-3" class="wizard-step">
+    <!-- STEP 4: CHECKOUT TOTALIZADOR -->
+    <div id="step-4" class="wizard-step">
         <div class="wizard-content checkout-bg">
-            <h2 class="checkout-title">Resumen de Venta</h2>
+            <h2 class="checkout-title">Resumen de Retiro</h2>
 
             <div class="checkout-card">
                 <div class="input-group">
-                    <label>Observaciones (Opcional):</label>
-                    <textarea id="observaciones-input" class="wizard-textarea" placeholder="Nota para el chofer o el depósito..." rows="2"></textarea>
+                    <label>Observaciones (Motivo de Devolución):</label>
+                    <textarea id="observaciones-input" class="wizard-textarea" placeholder="Roto, mal pedido, vencido..." rows="2"></textarea>
                 </div>
             </div>
 
@@ -96,31 +123,15 @@
             <div class="ticket-card">
                 <div class="ticket-header">
                     <span id="ticket-cliente">Cliente</span>
+                    <div style="font-size:0.85rem; color:#64748b; margin-top:0.2rem" id="ticket-factura">Ref: Comprobante N° X</div>
                 </div>
                 <div class="ticket-items" id="ticket-items-lista">
                     <!-- Artículos -->
                 </div>
                 <div class="ticket-divider"></div>
-                <div class="ticket-row" id="row-subtotal" style="display:none; font-weight:bold;">
-                    <span>Subtotal Neto</span>
-                    <span class="ticket-money" id="ticket-subtotal-neto">$ 0.00</span>
-                </div>
-                <div class="ticket-row" style="align-items: center; justify-content: space-between; margin: 0.5rem 0; font-weight:bold;">
-                    <span style="color:#ea580c">Descuento %</span>
-                    <input type="number" id="descuento-input" class="wizard-input" style="width:100px; text-align:right; padding: 0.5rem; font-size:1rem; border-radius:0.5rem; border: 2px solid #cbd5e1" placeholder="0" min="0" max="100" oninput="WizardController.renderCheckout()">
-                </div>
-                <div class="ticket-row" id="row-subtotal-desc" style="display:none; font-weight:bold;">
-                    <span>Subtotal c/Desc</span>
-                    <span class="ticket-money" id="ticket-subtotal-desc">$ 0.00</span>
-                </div>
-                <div class="ticket-row" id="row-iva" style="display:none; font-weight:bold;">
-                    <span style="color:#64748b">IVA 21%</span>
-                    <span class="ticket-money" style="color:#64748b" id="ticket-iva">$ 0.00</span>
-                </div>
-                <div class="ticket-divider"></div>
                 <div class="ticket-total-row">
-                    <span>TOTAL FINAL</span>
-                    <span class="ticket-total-money" id="ticket-total-final">$ 0.00</span>
+                    <span>TOTAL A DEVOLVER</span>
+                    <span class="ticket-total-money" id="ticket-total-final" style="color: #ea580c">$ 0.00</span>
                 </div>
             </div>
         </div>
@@ -128,19 +139,19 @@
         <!-- Botonera Final -->
         <div class="bottom-cart-shelf final-shelf">
             <button class="btn-cancel" onclick="cancelarWizard()">Cancelar</button>
-            <button class="btn-confirm" id="btn-confirmar-venta" onclick="confirmarVenta()">🚀 CONFIRMAR</button>
+            <button class="btn-confirm" id="btn-confirmar-retiro" onclick="confirmarRetiro()">🚀 REGISTRAR RETIRO</button>
         </div>
     </div>
 
     <!-- Fullscreen Loader (Oculto) -->
     <div id="full-loader" class="full-loader hidden">
-        <div class="loader-spinner"></div>
+        <div class="loader-spinner" style="border-top-color: #f59e0b"></div>
         <h3 id="loader-msg">Procesando Operación...</h3>
     </div>
 
     <!-- Scripts -->
     <script src="js/mobile.js"></script>
-    <script src="js/controllers/PresupuestosWizard.js"></script>
+    <script src="js/controllers/RetirosWizard.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             if (!verificarSesion()) {
