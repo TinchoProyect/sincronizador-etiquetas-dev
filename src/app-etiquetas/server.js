@@ -9,7 +9,7 @@ const port = 3000;
 
 // Configuración CORS
 app.use(cors({
-  origin: 'http://localhost:3002',
+  origin: ['http://localhost:3002', 'http://localhost:3005', 'http://127.0.0.1:3005'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));

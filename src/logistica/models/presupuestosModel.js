@@ -117,7 +117,9 @@ async function obtenerPresupuestosDisponibles(pool) {
                  FROM presupuestos_detalles pd
                  WHERE pd.id_presupuesto = p.id),
                 0
-            ) as total
+            ) as total,
+            p.comprobante_lomasoft,
+            p.id_factura_lomasoft
             
         FROM presupuestos p
         
@@ -164,6 +166,8 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             p.estado,
             p.estado_logistico,
             p.orden_entrega,
+            p.comprobante_lomasoft,
+            p.id_factura_lomasoft,
             
             -- Datos del cliente (cliente_id es el código visual, no el PK)
             c.cliente_id,

@@ -255,9 +255,15 @@ function renderizarPedidos() {
                     <span class="pedido-cliente-id" style="font-size: 1.1rem; font-weight: 600; color: ${esRetiro ? '#d35400' : '#1e40af'};">
                         ${iconoCliente} ${esRetiro ? 'RETIRO' : 'Cliente'} #${clienteId}
                     </span>
-                    <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
-                        ${pedido.estado_logistico || 'PENDIENTE'}
-                    </span>
+                    <div style="display:flex; gap:0.25rem; align-items:center;">
+                        ${pedido.comprobante_lomasoft ? 
+                            `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Conciliado</span>` : 
+                            `<span title="Falta conciliar en Lomasoft" class="pedido-badge" style="background-color:#9ca3af; color:white;">⏳ Lomasoft</span>`
+                        }
+                        <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
+                            ${pedido.estado_logistico || 'PENDIENTE'}
+                        </span>
+                    </div>
                 </div>
 
                 ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 ORDEN DE RETIRO</div>` : ''}
@@ -271,8 +277,14 @@ function renderizarPedidos() {
                 <div class="pedido-direccion">
                     📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}
                 </div>
-                ${pedido.total ? `<div class="pedido-monto">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : ''}
-                ${pedido.bloqueo_entrega ? '<div class="pedido-badge badge-bloqueado">🔒 Bloqueado</div>' : ''}
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    ${pedido.total ? `<div class="pedido-monto" style="font-weight:bold; color:#059669;">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : '<div></div>'}
+                    <div style="display:flex; gap:0.25rem;">
+                        <button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${pedido.id})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Lomasoft">Lomasoft</button>
+                        <button onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #3b82f6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
+                    </div>
+                </div>
+                ${pedido.bloqueo_entrega ? '<div class="pedido-badge badge-bloqueado" style="margin-top:0.25rem;">🔒 Bloqueado</div>' : ''}
             </div>
         `;
     }).join('');
@@ -702,15 +714,48 @@ function renderizarTarjetaRuta(ruta) {
                         ${esArmando ? `
                             <div style="display: flex; flex-direction: column; gap: 0.2rem;">
                                 ${parada.presupuestos.map(p => `
-                                    <button class="btn-icon-danger" 
-                                            onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, ${p.id})"
-                                            title="Quitar pedido #${p.id}"
-                                            style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.8;">
-                                        🗑️ #${p.id}
-                                    </button>
+                                    <div style="display:flex; gap:2px;">
+                                        <button class="btn-icon-danger" 
+                                                onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, ${p.id})"
+                                                title="Quitar pedido #${p.id}"
+                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.8;">
+                                            🗑️ #${p.id}
+                                        </button>
+                                        <button class="btn-icon-lomasoft" 
+                                                onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})"
+                                                title="Conciliar Lomasoft #${p.id}"
+                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                            LS
+                                        </button>
+                                        <button class="btn-icon-lamda" 
+                                                onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
+                                                title="Imprimir LAMDA #${p.id}"
+                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #3b82f6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                            🖨️
+                                        </button>
+                                    </div>
                                 `).join('')}
                             </div>
-                        ` : ''}
+                        ` : `
+                            <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                ${parada.presupuestos.map(p => `
+                                    <div style="display:flex; gap:2px;">
+                                        <button class="btn-icon-lomasoft" 
+                                                onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})"
+                                                title="Conciliar Lomasoft #${p.id}"
+                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                            LS
+                                        </button>
+                                        <button class="btn-icon-lamda" 
+                                                onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
+                                                title="Imprimir LAMDA #${p.id}"
+                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #3b82f6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                            🖨️
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `}
                     </div>
                 `;
         }).join('')}
@@ -2212,5 +2257,200 @@ async function obtenerConfiguracion() {
     } catch (error) {
         console.error('[CONFIG] Error al obtener configuración:', error);
         return {};
+    }
+}
+
+// ==========================================
+// INTEGRACIONES EXTERNAS (LOMASOFT Y LAMDA)
+// ==========================================
+
+let LOMASOFT_CANDIDATAS = [];
+
+window.buscarCandidatasLomasoft = async function(presupuestoId) {
+    try {
+        if (typeof Swal === 'undefined') {
+            alert("Error: SweetAlert2 no está cargado. Se requiere recargar la página.");
+            return;
+        }
+
+        Swal.fire({
+            title: 'Buscando en Lomasoft...',
+            text: 'Conectando con el ERP...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // La API de presupuestos de Lomasoft corre en localhost:3003
+        const LOMASOFT_URL = 'http://localhost:3003';
+        const res = await fetch(`${LOMASOFT_URL}/api/presupuestos/${presupuestoId}/buscar-candidatas-lomasoft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+            throw new Error(json.message || 'Error en la consulta al túnel Lomasoft');
+        }
+
+        LOMASOFT_CANDIDATAS = json.data;
+
+        if (!LOMASOFT_CANDIDATAS || LOMASOFT_CANDIDATAS.length === 0) {
+            return Swal.fire('Sin resultados', 'Lomasoft no encontró facturas candidatas para este presupuesto.', 'info');
+        }
+
+        let tablaHtml = `
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table class="table" style="width:100%; text-align:left; border-collapse: collapse; font-size: 0.9em;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #ccc;">
+                            <th>Comprobante</th>
+                            <th>Fecha</th>
+                            <th>Total</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        LOMASOFT_CANDIDATAS.forEach((candidata, index) => {
+            const numeroFormateado = candidata.comprobante_formateado || 'S/N';
+            const importe = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(candidata.importe_total);
+            const artsResumen = (candidata.articulos || []).map(a => `${a.cantidad}x ${a.nombre}`).join(' | ');
+
+            let botonHtml = '';
+            if (candidata.ya_conciliada) {
+                const titleText = candidata.id_presupuesto_local ? `Usado en Presup. #${candidata.id_presupuesto_local}` : 'Ya vinculado';
+                botonHtml = `
+                    <button class="btn btn-sm" disabled style="background-color: #7f8c8d; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: not-allowed; opacity: 0.6;" title="${titleText}">
+                        Ya vinculado
+                    </button>
+                `;
+            } else {
+                botonHtml = `
+                    <button class="btn btn-sm btn-primary" style="background-color: #8e44ad; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: pointer;" onclick="seleccionarCandidataLomasoft(${presupuestoId}, ${index})">
+                        Seleccionar
+                    </button>
+                `;
+            }
+
+            tablaHtml += `
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td title="${artsResumen}"><strong>${numeroFormateado}</strong><br><small style="color:#666">${candidata.tipo_comprobante}</small></td>
+                    <td>${new Date(candidata.fecha).toLocaleDateString('es-AR')}</td>
+                    <td>${importe}</td>
+                    <td style="padding: 8px 0;">
+                        ${botonHtml}
+                    </td>
+                </tr>
+            `;
+        });
+
+        tablaHtml += `</tbody></table></div>`;
+
+        Swal.fire({
+            title: 'Facturas Candidatas (Lomasoft)',
+            html: tablaHtml,
+            width: '600px',
+            showConfirmButton: false,
+            showCloseButton: true
+        });
+
+    } catch (error) {
+        console.error("Error Lomasoft:", error);
+        Swal.fire('Error', error.message, 'error');
+    }
+}
+
+window.seleccionarCandidataLomasoft = async function(presupuestoId, candidataIndex) {
+    const seleccionada = LOMASOFT_CANDIDATAS[candidataIndex];
+    if (!seleccionada) return;
+
+    try {
+        Swal.fire({
+            title: 'Confirmando conciliación...',
+            text: 'Vinculando presupuesto con la factura de Lomasoft...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        const payload = {
+            codigo: seleccionada.codigo,
+            punto_venta: seleccionada.punto_venta,
+            comprobante_formateado: seleccionada.comprobante_formateado
+        };
+
+        const LOMASOFT_URL = 'http://localhost:3003';
+        const response = await fetch(`${LOMASOFT_URL}/api/presupuestos/${presupuestoId}/confirmar-conciliacion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const json = await response.json();
+
+        if (!response.ok || !json.success) {
+            throw new Error(json.message || 'Error al guardar la conciliación en el servidor');
+        }
+
+        await Swal.fire({
+            title: '¡Conciliado!',
+            text: `El pedido se vinculó exitosamente a la factura ${seleccionada.comprobante_formateado}.`,
+            icon: 'success',
+            timer: 2500,
+            showConfirmButton: false
+        });
+
+        // REFRESCAR VISTAS PARA ACTUALIZAR BADGES 
+        // (asumiendo que los métodos devuelven promise y repintan)
+        if (typeof cargarPedidos === 'function') cargarPedidos();
+        if (typeof cargarRutas === 'function') cargarRutas();
+
+    } catch (error) {
+        console.error("Error Lomasoft Conciliación:", error);
+        Swal.fire('Error al conciliar', error.message, 'error');
+    }
+}
+
+window.imprimirEtiquetaLamda = async function() {
+    const datos = {
+        textoPrincipal: 'LAMDA',
+        textoSecundario: '221-6615746',
+        textoAdicional: ''
+    };
+    
+    // Asumimos cantidad 1 por defecto al imprimir rapido desde modulo logística
+    const cantidad = 1;
+
+    try {
+        // La API de etiquetas corre en localhost:3000
+        const res = await fetch('http://localhost:3000/api/imprimir-personalizada', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ datos, cantidad }),
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Éxito', "Etiqueta LAMDA enviada a impresora", 'success');
+            } else {
+                alert("Etiqueta LAMDA enviada a impresora");
+            }
+        } else {
+            console.error('Error al imprimir:', data.error);
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Error', 'No se pudo contactar al servidor LAMDA Impresiones: ' + data.error, 'error');
+            } else {
+                alert('Error al imprimir: ' + data.error);
+            }
+        }
+    } catch (error) {
+        console.error('Error al pedir impresión:', error.message);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire('Error', 'Impresora App-Etiquetas fuera de linea: ' + error.message, 'error');
+        } else {
+            alert('Error al imprimir: ' + error.message);
+        }
     }
 }

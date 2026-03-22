@@ -26,7 +26,9 @@ const corsOptions = {
     origin: [
         'http://localhost:3000',  // Servidor principal de etiquetas
         'http://localhost:3002',  // Servidor de producción
-        'http://localhost:3003'   // Este mismo servidor (para desarrollo)
+        'http://localhost:3003',  // Este mismo servidor (para desarrollo)
+        'http://localhost:3005',  // Logistica Front
+        'http://127.0.0.1:3005'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
