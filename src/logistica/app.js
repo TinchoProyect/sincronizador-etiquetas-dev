@@ -51,10 +51,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 console.log('[LOGISTICA] ✅ CORS configurado');
 
-// Middleware básico
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
+// CUIDADO: El Middleware json() debe ir DESPUÉS de los Proxys
+// para evitar el Falso Silencioso en Peticiones POST donde el Proxy
+// se queda infinito esperando un Body Stream que ya fue consumido.
 // Middleware de logging personalizado
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
@@ -106,6 +105,11 @@ app.use('/api/presupuestos', createProxyMiddleware({
     }
 }));
 // ==========================================
+
+// Middleware básico (Parseo de Body para RUTAS NATIVAS de Logística)
+// Se inyecta aquí para no interferir con el parseo en crudo del Proxy.
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Ruta raíz - redirigir al dashboard
 app.get('/', (req, res) => {
