@@ -6,10 +6,10 @@
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Mi Ruta - Logística Lamda</title>
+    <title>Dashboard - Logística LAMDA</title>
     <link rel="icon" type="image/x-icon" href="../../favicon.ico">
+    <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/mobile.css">
-    <!-- Configuración dinámica de entorno -->
     <script src="/env-config.js"></script>
 </head>
 <body class="ruta-page">
@@ -19,8 +19,8 @@
             <button class="btn-icon" onclick="cerrarSesion()" title="Cerrar sesión">
                 ← Salir
             </button>
-            <h1 class="header-title">Mi Ruta</h1>
-            <button class="btn-icon" onclick="refrescarRuta()" title="Refrescar">
+            <h1 class="header-title" id="main-title">Mi Ruta</h1>
+            <button class="btn-icon" onclick="refrescarTabActual()" title="Refrescar">
                 🔄
             </button>
         </div>
@@ -29,7 +29,7 @@
                 <span class="icon">👤</span>
                 <span id="chofer-nombre">Cargando...</span>
             </div>
-            <div class="ruta-info">
+            <div class="ruta-info" id="info-ruta-activa">
                 <span class="icon">📅</span>
                 <span id="ruta-nombre">Cargando ruta...</span>
             </div>
@@ -50,20 +50,60 @@
         </div>
     </header>
 
-    <!-- Lista de Entregas -->
-    <main class="entregas-container" id="entregas-container">
-        <div class="loading-screen">
-            <div class="spinner"></div>
-            <p>Cargando tu ruta...</p>
+    <!-- TABS CONTENT -->
+    
+    <!-- Tab 1: Pedidos Pendientes -->
+    <main class="tab-content" id="tab-pendientes">
+        <div class="entregas-container" id="pendientes-container">
+            <div class="loading-screen">
+                <div class="spinner"></div>
+                <p>Cargando pedidos pendientes...</p>
+            </div>
         </div>
     </main>
 
-    <!-- Botón Flotante de Finalizar Reparto -->
-    <button class="btn-finalizar-ruta" onclick="finalizarRutaDelDia()" title="Finalizar reparto del día">
-        🏁 Finalizar Reparto
-    </button>
+    <!-- Tab 2: Ruta Activa (Default) -->
+    <main class="tab-content active" id="tab-ruta">
+        <div class="entregas-container" id="entregas-container">
+            <div class="loading-screen">
+                <div class="spinner"></div>
+                <p>Cargando tu ruta...</p>
+            </div>
+        </div>
+        
+        <!-- Botón Flotante (Solo visible en esta tab, manejado por JS) -->
+        <button class="btn-finalizar-ruta" id="btn-finalizar-flotante" onclick="finalizarRutaDelDia()" title="Finalizar reparto del día">
+            🏁 Finalizar Reparto
+        </button>
+    </main>
 
-    <!-- Modal de Confirmación de Entrega (para futuro) -->
+    <!-- Tab 3: Historial Cerradas -->
+    <main class="tab-content" id="tab-historial">
+        <div class="entregas-container" id="historial-container">
+            <div class="loading-screen">
+                <div class="spinner"></div>
+                <p>Cargando historial...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- BOTTOM NAVIGATION -->
+    <nav class="bottom-nav">
+        <a href="#" class="nav-item" id="nav-pendientes" onclick="switchTab('pendientes')">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Pendientes</span>
+        </a>
+        <a href="#" class="nav-item active" id="nav-ruta" onclick="switchTab('ruta')">
+            <span class="nav-icon">🚚</span>
+            <span class="nav-label">Mi Ruta</span>
+        </a>
+        <a href="#" class="nav-item" id="nav-historial" onclick="switchTab('historial')">
+            <span class="nav-icon">🕒</span>
+            <span class="nav-label">Historial</span>
+        </a>
+    </nav>
+
+    <!-- Modal de Confirmación de Entrega -->
     <div id="modal-confirmar-entrega" class="modal-mobile" style="display: none;">
         <div class="modal-content-mobile">
             <div class="modal-header-mobile">
@@ -76,13 +116,17 @@
         </div>
     </div>
 
-    <!-- Scripts: Primero mobile.js (base), luego módulos se cargan dinámicamente -->
+    <!-- Scripts -->
     <script src="js/mobile.js"></script>
+    <script src="js/controllers/PendientesUI.js"></script>
+    <script src="js/controllers/RutaActivaUI.js"></script>
+    <script src="js/controllers/HistorialUI.js"></script>
     <script>
-        // Inicializar cuando el DOM esté listo
         document.addEventListener('DOMContentLoaded', () => {
-            verificarSesion();
-            cargarRutaActiva();
+            if (verificarSesion()) {
+                // Iniciar Tab por defecto
+                iniciarDashboard();
+            }
         });
     </script>
 </body>

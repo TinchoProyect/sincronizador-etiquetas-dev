@@ -6,6 +6,10 @@
 const express = require('express');
 const router = express.Router();
 
+// Importar modelos y controladores del escritorio (Dashboard Gerencial)
+const { obtenerPresupuestosDisponibles } = require('../models/presupuestosModel.js');
+const { crearRuta, asignarPresupuestos, eliminarRuta } = require('../controllers/rutasController.js');
+
 console.log('🔍 [MOVIL] Configurando rutas del módulo móvil...');
 
 /**
@@ -293,7 +297,7 @@ router.get('/ruta-activa', async (req, res) => {
                     0
                 ) as total
             FROM presupuestos p
-            INNER JOIN clientes c ON p.id_cliente::integer = c.cliente_id
+            INNER JOIN clientes c ON p.id_cliente::text = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
             WHERE p.id_ruta = $1
             ORDER BY COALESCE(p.orden_entrega, 999) ASC
@@ -714,6 +718,185 @@ router.post('/rutas/finalizar', async (req, res) => {
 });
 
 console.log('✅ [MOVIL] Rutas configuradas exitosamente');
+
+/**
+ * @route GET /api/logistica/movil/rutas-historial
+ * @desc Obtener historial de rutas finalizadas del chofer
+ * @access Privado (requiere token)
+ */
+router.get('/rutas-historial', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta GET /rutas-historial - Obteniendo historial');
+
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ success: false, error: 'Token no proporcionado' });
+        }
+        const token = authHeader.substring(7);
+
+        let choferId;
+        try {
+            const decoded = Buffer.from(token, 'base64').toString('utf-8');
+            choferId = parseInt(decoded.split(':')[0]);
+        } catch (error) {
+            return res.status(401).json({ success: false, error: 'Token inválido' });
+        }
+
+        const query = `
+            SELECT id, nombre_ruta, fecha_salida, fecha_finalizacion 
+            FROM rutas
+            WHERE id_chofer = $1 AND estado = 'FINALIZADA'
+            ORDER BY fecha_finalizacion DESC NULLS LAST, id DESC
+            LIMIT 30
+        `;
+        const result = await req.db.query(query, [choferId]);
+        
+        res.json({
+            success: true,
+            data: result.rows
+        });
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al obtener historial:', error);
+        res.status(500).json({ success: false, error: 'Error interno' });
+    }
+});
+
+/**
+ * @route GET /api/logistica/movil/pedidos-pendientes
+ * @desc Obtener pedidos huérfanos pendientes de asignar ruta (Delegado a Modelo Escritorio)
+ * @access Privado (requiere token)
+ */
+router.get('/pedidos-pendientes', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta GET /pedidos-pendientes - Listando pendientes (Vía Modelo Central)');
+
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ success: false, error: 'Token no proporcionado' });
+        }
+
+        // Recuperamos la información exacta que usaría la versión Desktop
+        const presupuestos = await obtenerPresupuestosDisponibles(req.db);
+        
+        res.json({
+            success: true,
+            data: presupuestos
+        });
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al obtener pendientes (Modelo):', error);
+        res.status(500).json({ success: false, error: 'Error interno en BD' });
+    }
+});
+
+// ==========================================
+// PROXYS DE GESTION (CRUD DE RUTAS)
+// Reutilizan controladores de Backoffice
+// ==========================================
+
+const validarTokenMovil = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, error: 'Token denegado' });
+    }
+    next();
+};
+
+/**
+ * @route POST /api/logistica/movil/rutas
+ * @desc Crear una nueva ruta desde el celular (Proxy)
+ */
+router.post('/rutas', validarTokenMovil, async (req, res) => {
+    console.log('🔍 [MOVIL-CRUD] Delegando creación de ruta al controlador central...');
+    await crearRuta(req, res);
+});
+
+/**
+ * @route PUT /api/logistica/movil/rutas/:id/asignar
+ * @desc Asignar presupuestos a ruta desde celular (Proxy)
+ */
+router.put('/rutas/:id/asignar', validarTokenMovil, async (req, res) => {
+    console.log(`🔍 [MOVIL-CRUD] Delegando asignación de ruta ${req.params.id} al controlador central...`);
+    await asignarPresupuestos(req, res);
+});
+
+/**
+ * @route DELETE /api/logistica/movil/rutas/:id
+ * @desc Eliminar o cancelar ruta desde celular (Proxy)
+ */
+router.delete('/rutas/:id', validarTokenMovil, async (req, res) => {
+    console.log(`🔍 [MOVIL-CRUD] Delegando eliminación de ruta ${req.params.id} al controlador central...`);
+    await eliminarRuta(req, res);
+});
+/**
+ * @route GET /api/logistica/movil/rutas/:id/detalle-completo
+ * @desc Obtener detalle auditoría de ruta con presupuestos e items (App Gerencial)
+ */
+router.get('/rutas/:id/detalle-completo', validarTokenMovil, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const queryRuta = `SELECT r.id, r.nombre_ruta, u.nombre_completo as chofer_nombre FROM rutas r LEFT JOIN usuarios u ON r.id_chofer = u.id WHERE r.id = $1`;
+        const resultRuta = await req.db.query(queryRuta, [id]);
+        if(resultRuta.rows.length === 0) return res.status(404).json({ success: false, error: 'Ruta no encontrada' });
+        const ruta = resultRuta.rows[0];
+
+        // 1. Obtener Presupuestos y Totalizar Montos
+        const queryPresupuestos = `
+            SELECT p.id, p.estado, p.estado_logistico, p.comprobante_lomasoft, p.id_factura_lomasoft, 
+            COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
+            COALESCE( (SELECT SUM(pd.cantidad * pd.precio1) FROM presupuestos_detalles pd WHERE pd.id_presupuesto = p.id), 0) as total_monto
+            FROM presupuestos p 
+            INNER JOIN clientes c ON p.id_cliente::text = c.cliente_id::text 
+            WHERE p.id_ruta = $1
+            ORDER BY p.orden_entrega ASC NULLS LAST, p.id ASC`;
+        const resultPresupuestos = await req.db.query(queryPresupuestos, [id]);
+        
+        // 2. Obtener Detalles y Cruzar ID Numérico por String Real
+        const idsPresupuestos = resultPresupuestos.rows.map(p => p.id);
+        let items = [];
+        if(idsPresupuestos.length > 0) {
+            const queryItems = `
+                SELECT pd.id_presupuesto, pd.cantidad,
+                COALESCE(a.nombre, pd.articulo) as articulo
+                FROM presupuestos_detalles pd
+                LEFT JOIN articulos a ON pd.articulo::text = a.numero::text OR pd.articulo::text = a.codigo_barras::text
+                WHERE pd.id_presupuesto = ANY($1)
+            `;
+            const resultItems = await req.db.query(queryItems, [idsPresupuestos]);
+            items = resultItems.rows;
+        }
+
+        // 3. Vincular los items anidados
+        ruta.entregas = resultPresupuestos.rows.map(p => ({
+            ...p,
+            articulos: items.filter(i => i.id_presupuesto === p.id)
+        }));
+
+        res.json({ success: true, data: ruta });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * @route GET /api/logistica/movil/rutas-activas
+ * @desc Proxy para listar rutas en ARMANDO usando validador local de celuar (Bearer)
+ */
+router.get('/rutas-activas', validarTokenMovil, async (req, res) => {
+    try {
+        const queryRutas = `
+            SELECT r.id, r.nombre_ruta, r.estado, u.nombre_completo as chofer_nombre
+            FROM rutas r
+            LEFT JOIN usuarios u ON r.id_chofer = u.id
+            WHERE r.estado = 'ARMANDO'
+            ORDER BY r.fecha_creacion DESC
+        `;
+        const result = await req.db.query(queryRutas);
+        res.json({ success: true, data: result.rows });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 console.log('📋 [MOVIL] Rutas disponibles:');
 console.log('   - POST   /api/logistica/movil/login');
 console.log('   - GET    /api/logistica/movil/ruta-activa');

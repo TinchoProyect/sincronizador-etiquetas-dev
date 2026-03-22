@@ -252,199 +252,19 @@ function actualizarHeader() {
 /**
  * Renderizar lista de entregas (Agrupadas por Parada)
  */
-function renderizarEntregas() {
-    const container = document.getElementById('entregas-container');
-
-    if (!state.entregas || state.entregas.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">📦</div>
-                <h2>Ruta Sin Entregas</h2>
-                <p>Esta ruta no tiene entregas asignadas.</p>
-            </div>
-        `;
-        return;
-    }
-
-    // AGRUPAR POR CLIENTE Y DOMICILIO
-    // AGRUPAR POR CLIENTE Y DOMICILIO
-    const paradas = agruparEntregasEnParadas(state.entregas);
-
-    container.innerHTML = paradas.map((parada, index) => {
-        const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO');
-        const primerEntrega = parada.entregas[0];
-
-        // Detectar si es una parada de Retiro (basado en el primer ítem)
-        const esRetiro = primerEntrega.estado === 'Orden de Retiro';
-
-        const claseCard = esCompletadaTotal ? 'entrega-card completada' : 'entrega-card';
-        // Badge general de la parada
-        const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO' && e.estado_logistico !== 'RETIRADO').length;
-
-        // Estilos específicos para Retiro
-        const estiloBorde = esRetiro && !esCompletadaTotal ? 'border-left: 5px solid #d35400;' : '';
-        const iconoTipo = esRetiro ? '🔙' : '#';
-
-        let headerBadgeHTML = '';
-        if (esCompletadaTotal) {
-            headerBadgeHTML = '<div class="entrega-badge badge-completada">Completada</div>';
-        } else {
-            headerBadgeHTML = `<div class="entrega-badge badge-pendiente">${pendientes} Pendiente${pendientes !== 1 ? 's' : ''}</div>`;
-        }
-
-        // Badge adicional de Retiro
-        const labelRetiroHTML = esRetiro ? '<div style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">RETIRAR</div>' : '';
-
-        // Renderizar lista de pedidos dentro de la parada
-        const pedidosListHTML = parada.entregas.map(entrega => {
-            const esItemRetiro = entrega.estado === 'Orden de Retiro';
-            const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
-
-            // Textos y colores dinámicos
-            const textoBoton = completado
-                ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado')
-                : (esItemRetiro ? 'Retirar' : 'Entregar');
-
-            const backgroundBoton = completado
-                ? '#dcfce7' // Verde claro (completado)
-                : (esItemRetiro ? '#e67e22' : '#2563eb'); // Naranja (Retiro) vs Azul (Entrega)
-
-            const colorTextoBoton = completado
-                ? '#166534'
-                : 'white';
-
-            return `
-                <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9;">
-                    <div style="flex: 1;">
-                        <div style="font-weight: 600; color: #475569;">${esItemRetiro ? '↩️' : ''} Pedido #${entrega.id_presupuesto}</div>
-                        ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
-                    </div>
-                    <div>
-                        <button class="btn-confirmar-sm" 
-                                onclick="confirmarEntrega(${entrega.id_presupuesto}, '${esItemRetiro ? 'retiro' : 'entrega'}')" 
-                                ${completado ? 'disabled' : ''}
-                                style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; background: ${backgroundBoton}; color: ${colorTextoBoton}; border: none;">
-                            ${textoBoton}
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        return `
-            <div class="${claseCard}" data-parada-key="${parada.key}" style="${estiloBorde}">
-                <div class="entrega-header">
-                    <div class="entrega-numero" style="background: ${esRetiro ? '#d35400' : '#1e3a8a'};">
-                        ${esRetiro ? '↩️' : index + 1}
-                    </div>
-                    <div>
-                        ${headerBadgeHTML}
-                    </div>
-                </div>
-                
-                <!-- CLIENTE DESTACADO -->
-                <div class="entrega-cliente" style="margin-top: 0.5rem;">
-                    <div style="font-size: 1.25rem; font-weight: 800; color: #1e40af; margin-bottom: 0.25rem;">
-                        #${primerEntrega.cliente.id || 'S/N'}
-                    </div>
-                    <div style="font-size: 1.1rem; font-weight: 600; color: #1e293b;">
-                        ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
-                    </div>
-                    ${labelRetiroHTML}
-                </div>
-                
-                <div class="entrega-direccion" style="margin-top: 0.5rem; padding-bottom: 0.5rem; border-bottom: 2px dashed #e2e8f0;">
-                    📍 ${primerEntrega.domicilio.direccion || 'Sin dirección'}
-                    ${primerEntrega.domicilio.localidad ? `<br><small style="color: #64748b; margin-left: 1.5rem;">${primerEntrega.domicilio.localidad}</small>` : ''}
-                    
-                    ${primerEntrega.domicilio.instrucciones_entrega ? `
-                        <div style="font-size: 0.85rem; color: #b45309; margin-top: 0.5rem; padding: 0.5rem; background-color: #fffbeb; border-radius: 0.375rem; border-left: 3px solid #f59e0b;">
-                            💡 ${primerEntrega.domicilio.instrucciones_entrega}
-                        </div>
-                    ` : ''}
-                </div>
-                
-                <!-- LISTA DE PEDIDOS -->
-                <div class="entregas-lista-interna" style="margin-bottom: 1rem;">
-                    ${pedidosListHTML}
-                </div>
-                
-                <div class="entrega-actions">
-                    <button class="btn-navegar" onclick="navegarAEntrega(${primerEntrega.domicilio.latitud}, ${primerEntrega.domicilio.longitud}, '${encodeURIComponent(primerEntrega.domicilio.direccion || '')}')"
-                            style="width: 100%; padding: 0.75rem; background: #fff; color: #2563eb; border: 1px solid #2563eb; font-weight: 600;">
-                        🗺️ Navegar al Domicilio
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    // Agregar clase de animación
-    container.classList.add('fade-in');
-}
 
 /**
  * Agrupar entregas por Cliente + Domicilio
  */
-function agruparEntregasEnParadas(entregas) {
-    if (!entregas || entregas.length === 0) return [];
-
-    const paradas = [];
-    const mapaParadas = new Map();
-
-    entregas.forEach(entrega => {
-        // Clave única: cliente + domicilio
-        const key = `${entrega.cliente.id}_${entrega.domicilio.id || 'sin_dom'}`;
-
-        if (!mapaParadas.has(key)) {
-            const nuevaParada = {
-                key: key,
-                entregas: []
-            };
-            paradas.push(nuevaParada);
-            mapaParadas.set(key, nuevaParada);
-        }
-
-        mapaParadas.get(key).entregas.push(entrega);
-    });
-
-    return paradas;
-}
 
 /**
  * Navegar a una entrega usando Google Maps
  */
-function navegarAEntrega(latitud, longitud, direccion) {
-    if (!latitud || !longitud) {
-        mostrarError('Esta entrega no tiene coordenadas GPS');
-        return;
-    }
-
-    // Generar link de Google Maps con navegación
-    const direccionEncoded = encodeURIComponent(decodeURIComponent(direccion));
-    const link = `https://www.google.com/maps/dir/?api=1&destination=${latitud},${longitud}&destination_place_id=${direccionEncoded}`;
-
-    console.log('[NAVEGACION] Abriendo Google Maps:', link);
-
-    // Abrir en nueva pestaña/app
-    window.open(link, '_blank');
-}
 
 /**
  * Confirmar entrega
  * Delega a módulo de confirmación
  */
-function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
-    console.log(`[ENTREGA] Confirmar ${tipoPedido} de presupuesto:`, presupuestoId);
-
-    // Importar dinámicamente el módulo de confirmación
-    import('./modules/confirmacion.js').then(module => {
-        module.mostrarModalOpciones(presupuestoId, tipoPedido);
-    }).catch(error => {
-        console.error('[ENTREGA] Error al cargar módulo:', error);
-        alert('❌ Error crítico al cargar módulo de confirmación: ' + (error.message || error));
-    });
-}
 
 /**
  * Refrescar ruta
@@ -462,14 +282,6 @@ async function refrescarRuta() {
  * Finalizar ruta del día
  * Delega a módulo de ruta
  */
-function finalizarRutaDelDia() {
-    import('./modules/ruta.js').then(module => {
-        module.finalizarRutaDelDia();
-    }).catch(error => {
-        console.error('[RUTA] Error al cargar módulo:', error);
-        alert('Error al cargar módulo de ruta');
-    });
-}
 
 /**
  * Cerrar modal de entrega
@@ -685,3 +497,98 @@ function mostrarFeedbackAutologin() {
         console.log('[AUTOLOGIN] API Base URL:', API_BASE_URL);
     }
 }
+
+// ===== DASHBOARD & TABS =====
+
+let currentTab = 'ruta';
+
+/**
+ * Arranca la lógica multi-pestañas
+ */
+function iniciarDashboard() {
+    console.log('[DASHBOARD] Inicializando dashboard...');
+    switchTab('ruta'); // Inicia cargando la ruta activa por defecto
+}
+
+/**
+ * Cambia la pestaña de navegación
+ */
+function switchTab(tabId) {
+    if (!verificarSesion()) return;
+    
+    // Ocultar todas las tabs
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    // Deseleccionar items del nav
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    
+    // Mostrar tab seleccionada
+    const tabElement = document.getElementById(`tab-${tabId}`);
+    const navElement = document.getElementById(`nav-${tabId}`);
+    
+    if(tabElement) tabElement.classList.add('active');
+    if(navElement) navElement.classList.add('active');
+    
+    currentTab = tabId;
+    
+    // Cambiar título header principal
+    const titles = {
+        'pendientes': 'Pedidos Pendientes',
+        'ruta': 'Mi Ruta Activa',
+        'historial': 'Mis Rutas Cerradas'
+    };
+    const mainTitle = document.getElementById('main-title');
+    if(mainTitle) mainTitle.textContent = titles[tabId];
+    
+    // Ocultar botón flotante de finalizar si no es ruta activa
+    const btnFlotante = document.getElementById('btn-finalizar-flotante');
+    if(btnFlotante) {
+        btnFlotante.style.display = (tabId === 'ruta' && state.ruta) ? 'flex' : 'none';
+    }
+    
+    // Ocultar panel de estadísticas de ruta y el mini-header de ruta si no estamos en ruta
+    const headerStats = document.getElementById('header-stats');
+    if(headerStats) headerStats.style.display = tabId === 'ruta' ? 'flex' : 'none';
+    
+    const infoRutaActiva = document.getElementById('info-ruta-activa');
+    if(infoRutaActiva) infoRutaActiva.style.display = tabId === 'ruta' ? 'flex' : 'none';
+    
+    // Cargar datos asíncronos según la pestaña focalizada
+    if (tabId === 'ruta') {
+        cargarRutaActiva();
+    } else if (tabId === 'pendientes') {
+        cargarPendientes();
+    } else if (tabId === 'historial') {
+        cargarHistorial();
+    }
+}
+
+/**
+ * Forzar actualización de la Data de la pestaña en pantalla
+ */
+function refrescarTabActual() {
+    switchTab(currentTab);
+}
+
+// ===== PENDIENTES =====
+
+/**
+ * Extrae y renderiza el listado global de Pedidos sin Asignar
+ */
+
+// ===== HISTORIAL =====
+
+/**
+ * Extrae y renderiza el listado de Rutas Finalizadas por este Chofer
+ */
+
+// ==========================================
+// FUNCIONES CRUD DE RUTAS (APP GERENCIAL)
+// ==========================================
+
+
+
+
+
+
+
+
