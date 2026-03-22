@@ -25,7 +25,6 @@ const WizardController = {
         }
 
         this.bindEvents();
-        this.renderStep();
     },
 
     bindEvents() {
@@ -115,7 +114,7 @@ const WizardController = {
         contenedor.innerHTML = '<div class="placeholder-msg">Buscando...</div>';
         
         try {
-            const res = await fetch(`${API_BASE_URL}/api/presupuestos/clientes/sugerencias?q=${encodeURIComponent(query)}`);
+            const res = await fetch(`/api/presupuestos/clientes/sugerencias?q=${encodeURIComponent(query)}`);
             const data = await res.json();
             
             if(data.success && data.data.length > 0) {
@@ -158,7 +157,7 @@ const WizardController = {
         try {
             const offset = qRaw.length === 0 ? 15 : 150; 
             
-            const res = await fetch(`${API_BASE_URL}/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}&cliente_id=${this.cart.cliente.id}`);
+            const res = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}&cliente_id=${this.cart.cliente.id}`);
             const data = await res.json();
             
             if(data.success && data.data) {
@@ -389,7 +388,7 @@ const WizardController = {
         document.getElementById('full-loader').classList.remove('hidden');
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/presupuestos`, {
+            const response = await fetch(`/api/presupuestos`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
