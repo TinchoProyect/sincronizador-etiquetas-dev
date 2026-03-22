@@ -2488,7 +2488,8 @@
 
                     let itemsHtml = '<ul style="font-size: 0.85em; padding-left: 20px; color: #555; max-height: 80px; overflow-y: auto;">';
                     tto.items.forEach(i => {
-                        let etiquetaArt = i.articulo_numero ? `Art: ${i.articulo_numero}` : `Granel: ${i.ingrediente_id}`;
+                        let baseName = i.item_nombre ? ` - ${i.item_nombre}` : '';
+                        let etiquetaArt = i.articulo_numero ? `Art: ${i.articulo_numero}${baseName}` : `Granel: I-${i.ingrediente_id}${baseName}`;
                         itemsHtml += `<li>${i.kilos_ingresados}kg - ${etiquetaArt}</li>`;
                     });
                     itemsHtml += '</ul>';

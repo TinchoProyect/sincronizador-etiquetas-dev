@@ -2136,10 +2136,13 @@ const getTratamientosActivos = async (req, res) => {
                        'articulo_numero', i.articulo_numero,
                        'kilos_ingresados', i.kilos_ingresados,
                        'id_cliente_origen', i.id_cliente_origen,
-                       'ingrediente_id', i.ingrediente_id
+                       'ingrediente_id', i.ingrediente_id,
+                       'item_nombre', COALESCE(a.nombre, ing.nombre)
                    )) FILTER (WHERE i.id IS NOT NULL), '[]') as items
             FROM public.mantenimiento_tratamientos t
             LEFT JOIN public.mantenimiento_tratamientos_items i ON t.id = i.id_tratamiento
+            LEFT JOIN public.articulos a ON i.articulo_numero = a.numero
+            LEFT JOIN public.ingredientes ing ON i.ingrediente_id = ing.id
             WHERE t.estado != 'FINALIZADO'
             GROUP BY t.id
             ORDER BY t.fecha_inicio_armado DESC
