@@ -116,7 +116,32 @@
         </div>
     </div>
 
+    <!-- Modal Acomodar Ruta (Estilo Google Maps) -->
+    <div id="modal-acomodar-ruta" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #f8fafc; z-index: 9999; flex-direction: column;">
+        <div style="background: #2563eb; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 10;">
+            <h2 style="margin: 0; font-size: 1.2rem;">🗺️ Modificar Recorrido</h2>
+            <button onclick="window.cerrarModalAcomodar()" style="background: none; border: none; color: white; font-size: 1.5rem;">&times;</button>
+        </div>
+        
+        <div id="mapa-acomodar" style="height: 40vh; width: 100%; background: #e2e8f0; z-index: 1;">
+            <!-- El mapa se renderiza aquí -->
+        </div>
+
+        <div style="flex: 1; overflow-y: auto; background: #f1f5f9; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); position: relative; z-index: 5;">
+            <div id="lista-acomodar" style="padding-bottom: 80px;">
+                <!-- La lista Sortable de filas compactas va aquí -->
+            </div>
+        </div>
+
+        <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 15px; background: white; border-top: 1px solid #cbd5e1; z-index: 20;">
+            <button id="btn-guardar-acomodacion" onclick="window.guardarAcomodacion()" style="width: 100%; padding: 12px; background: #059669; color: white; font-weight: bold; font-size: 1.1rem; border: none; border-radius: 8px; box-shadow: 0 4px 6px rgba(5,150,105,0.2);">
+                ✅ Confirmar Orden
+            </button>
+        </div>
+    </div>
+
     <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <script src="js/mobile.js"></script>
     <script src="js/controllers/PendientesUI.js"></script>
     <script src="js/controllers/RutaActivaUI.js"></script>
