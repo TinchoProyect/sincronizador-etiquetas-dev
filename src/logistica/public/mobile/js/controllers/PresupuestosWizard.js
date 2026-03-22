@@ -280,28 +280,37 @@ const WizardController = {
         // Conservar el DOM renderizado optimizadamente (sólo repintar lista la primera vez si es estática)
         lista.innerHTML = '';
         
-        let totalFinalBase = 0;
+        const condIva = (this.cart.cliente.condicion_iva || '').toLowerCase();
+        const isRI = condIva.includes('responsable inscripto');
+
+        let totalNetoBase = 0;
         for(let key in this.cart.items) {
             const p = this.cart.items[key];
-            const subtotal = p.cantidad * p.precio;
-            totalFinalBase += subtotal;
+            const subtotalNeto = p.cantidad * p.precio;
+            totalNetoBase += subtotalNeto;
 
             const row = document.createElement('div');
             row.className = 'ticket-row';
+            
+            // Presentación Visual: En Factura A cobramos Neto, en B mostramos el unitario IVA incluido.
+            const precioMostrar = isRI ? p.precio : (p.precio * 1.21);
+            const subtotalMostrar = isRI ? subtotalNeto : (subtotalNeto * 1.21);
+            
             row.innerHTML = `
                 <span>${p.cantidad}x ${p.nombre}</span>
-                <span style="font-weight:bold">$${subtotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
+                <span style="font-weight:bold">$${subtotalMostrar.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
             `;
             lista.appendChild(row);
         }
 
-        // --- Cálculos Dinámicos Financieros ---
+        // --- Cálculos Dinámicos Financieros (Precisión 2 decimales) ---
         const descInput = parseFloat(document.getElementById('descuento-input').value) || 0;
-        const descAmount = totalFinalBase * (descInput / 100);
-        const totalFinalConDesc = totalFinalBase - descAmount;
-
-        const condIva = (this.cart.cliente.condicion_iva || '').toLowerCase();
-        const isRI = condIva.includes('responsable inscripto');
+        
+        const descNeto = totalNetoBase * (descInput / 100);
+        const subtotalNetoConDesc = totalNetoBase - descNeto;
+        
+        const ivaTotal = subtotalNetoConDesc * 0.21;
+        const totalFinal = subtotalNetoConDesc + ivaTotal;
 
         const rowSubtotal = document.getElementById('row-subtotal');
         const rowSubDesc = document.getElementById('row-subtotal-desc');
@@ -309,10 +318,6 @@ const WizardController = {
 
         if (isRI) {
             // Discriminar IVA (Simulación Factura A)
-            const subNeto = totalFinalBase / 1.21;
-            const subNetoDesc = totalFinalConDesc / 1.21;
-            const ivaCalculado = subNetoDesc * 0.21;
-            
             rowSubtotal.style.display = 'flex';
             rowSubDesc.style.display = 'flex';
             rowIva.style.display = 'flex';
@@ -320,27 +325,29 @@ const WizardController = {
             document.getElementById('row-subtotal').querySelector('span').innerText = 'Subtotal Neto (Sin IVA)';
             document.getElementById('row-subtotal-desc').querySelector('span').innerText = `Subtotal c/Desc (${descInput}%)`;
 
-            document.getElementById('ticket-subtotal-neto').innerText = `$ ${subNeto.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
-            document.getElementById('ticket-subtotal-desc').innerText = `$ ${subNetoDesc.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
-            document.getElementById('ticket-iva').innerText = `$ ${ivaCalculado.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-neto').innerText = `$ ${totalNetoBase.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-desc').innerText = `$ ${subtotalNetoConDesc.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('ticket-iva').innerText = `$ ${ivaTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
         } else {
-            // Factura B (Consumidor Final, Monotributista) - El IVA va integrado
+            // Factura B (Consumidor Final, Monotributista) - El IVA va integrado visualmente
             rowSubtotal.style.display = 'flex';
             rowSubDesc.style.display = 'flex';
             rowIva.style.display = 'none';
 
+            const totalBrutoBase = totalNetoBase * 1.21;
+            const subtotalBrutoConDesc = subtotalNetoConDesc * 1.21;
+
             document.getElementById('row-subtotal').querySelector('span').innerText = 'Subtotal (Bruto)';
             document.getElementById('row-subtotal-desc').querySelector('span').innerText = `Subtotal c/Desc (${descInput}%)`;
 
-            document.getElementById('ticket-subtotal-neto').innerText = `$ ${totalFinalBase.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
-            document.getElementById('ticket-subtotal-desc').innerText = `$ ${totalFinalConDesc.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-neto').innerText = `$ ${totalBrutoBase.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-desc').innerText = `$ ${subtotalBrutoConDesc.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
         }
 
-        document.getElementById('ticket-total-final').innerText = `$ ${totalFinalConDesc.toLocaleString('es-AR', {minimumFractionDigits:2})}`;
+        document.getElementById('ticket-total-final').innerText = `$ ${totalFinal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
     },
 
     async confirmarVenta() {
-        // Recolectar datos
         const isOrdenRetiro = false; // Parche Arquitectura: Este wizard ya es exclusivamente de Venta
         const obs = document.getElementById('observaciones-input').value.trim();
         const descuentoInputFormateado = parseFloat(document.getElementById('descuento-input').value) || 0;
@@ -365,14 +372,15 @@ const WizardController = {
         };
 
         for(let key in this.cart.items) {
-            const netPriceDesktop = this.cart.items[key].precio / 1.21; // Emulando un IVA 21 default (si no, precio1 hace de total unitario validado)
+            const neto = this.cart.items[key].precio; // La BD escupe neto
+            const bruto = neto * 1.21;
             
             payload.detalles.push({
                 articulo: this.cart.items[key].id.toString(), // El back exige el nro o barcode
                 cantidad: parseFloat(this.cart.items[key].cantidad),
-                valor1: parseFloat(netPriceDesktop.toFixed(2)),
+                valor1: parseFloat(neto.toFixed(2)),
                 iva1: 21,
-                precio1: parseFloat(this.cart.items[key].precio.toFixed(2)) // Desktop envia el valor_final_unitario como precio1
+                precio1: parseFloat(bruto.toFixed(2)) // Desktop envia el valor_final_unitario como precio1
             });
         }
 
