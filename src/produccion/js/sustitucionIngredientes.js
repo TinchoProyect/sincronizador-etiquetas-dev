@@ -516,21 +516,32 @@ function mostrarNotificacionModalExito(mensaje) {
 
 /**
  * Filtra la lista de ingredientes según el término de búsqueda
+ * Soporta múltiples bloques (AND) y es Accent/Case Insensitive
  */
 function filtrarIngredientes() {
     const input = document.getElementById('sustitucion-buscar-origen');
     if (!input) return;
 
-    const termino = input.value.toLowerCase().trim();
+    const terminoRaw = input.value.trim();
 
-    if (!termino) {
+    if (!terminoRaw) {
         renderizarListaIngredientes(estadoSustitucion.ingredientesDisponibles);
         return;
     }
 
-    const ingredientesFiltrados = estadoSustitucion.ingredientesDisponibles.filter(ing =>
-        ing.nombre.toLowerCase().includes(termino)
-    );
+    // Función auxiliar para normalizar texto: pasa todo a minúsculas y quita tildes/diéresis
+    const normalizeText = (text) => 
+        (text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+    // Separar en tokens eliminando espacios vacíos
+    const tokens = normalizeText(terminoRaw).split(/\s+/).filter(t => t.length > 0);
+
+    // Filtrar los ingredientes disponibles aplicando lógica AND en múltiples términos
+    const ingredientesFiltrados = estadoSustitucion.ingredientesDisponibles.filter(ing => {
+        const nombreNormalizado = normalizeText(ing.nombre);
+        // Filtrado múltiple: el nombre del ingrediente debe incluir TODOS los tokens tipeados
+        return tokens.every(token => nombreNormalizado.includes(token));
+    });
 
     renderizarListaIngredientes(ingredientesFiltrados);
 }
