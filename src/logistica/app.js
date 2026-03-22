@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 console.log('[LOGISTICA] 🚀 Iniciando servidor del módulo de logística...');
 
@@ -72,6 +73,39 @@ app.use('/js', express.static(path.join(staticPath, 'js')));
 app.use('/css', express.static(path.join(staticPath, 'css')));
 
 console.log('[LOGISTICA] 📁 Archivos estáticos configurados desde:', staticPath);
+
+// ==========================================
+// 🛡️ REVERSE PROXIES (Microservicios)
+// ==========================================
+console.log('[LOGISTICA] 🔗 Inicializando Reverse Proxies para Integraciones Cruzadas...');
+
+// Proxy para la interfaz de Usuario (HTML/CSS) de Presupuestos
+app.use('/presupuestos', createProxyMiddleware({
+    target: 'http://localhost:3003',
+    changeOrigin: true,
+    pathRewrite: {
+        '^/presupuestos': '', // Remueve /presupuestos cuando llega al 3003
+    },
+    onError: (err, req, res) => {
+        console.error('[LOGISTICA] ❌ Error en Proxy de Presupuestos (UI):', err.message);
+        res.status(503).send('Módulo de presupuestos fuera de línea.');
+    }
+}));
+
+// Proxy para las transacciones API de Presupuestos
+app.use('/api/presupuestos', createProxyMiddleware({
+    target: 'http://localhost:3003',
+    changeOrigin: true,
+    pathRewrite: (path, req) => {
+        // Restauramos el prefijo que Express elimina para que enganche al router del 3003
+        return '/api/presupuestos' + req.url; 
+    },
+    onError: (err, req, res) => {
+        console.error('[LOGISTICA] ❌ Error en Proxy de Presupuestos (API):', err.message);
+        res.status(503).json({ error: 'Módulo de presupuestos fuera de línea.' });
+    }
+}));
+// ==========================================
 
 // Ruta raíz - redirigir al dashboard
 app.get('/', (req, res) => {

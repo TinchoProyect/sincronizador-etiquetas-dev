@@ -592,3 +592,21 @@ function refrescarTabActual() {
 
 
 
+
+
+/* ===== SIDEBAR / MENÚ GLOBAL ===== */
+window.abrirSidebar = () => {
+    const isReady = document.getElementById('sidebar-menu');
+    if(isReady) {
+        isReady.classList.add('active');
+        document.getElementById('sidebar-overlay').classList.add('active');
+    }
+};
+
+window.cerrarSidebar = () => {
+    const isReady = document.getElementById('sidebar-menu');
+    if(isReady) {
+        isReady.classList.remove('active');
+        document.getElementById('sidebar-overlay').classList.remove('active');
+    }
+};

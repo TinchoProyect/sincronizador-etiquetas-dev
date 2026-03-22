@@ -13,13 +13,13 @@
     <script src="/env-config.js"></script>
 </head>
 <body class="ruta-page">
-    <!-- Header Fijo -->
+    <!-- CABECERA PRINCIPAL -->
     <header class="mobile-header">
         <div class="header-top">
-            <button class="btn-icon" onclick="cerrarSesion()" title="Cerrar sesión">
-                ← Salir
+            <button class="btn-icon" onclick="window.abrirSidebar()" title="Menú Principal" style="font-size: 1.5rem; padding: 0.2rem 0.6rem;">
+                ☰
             </button>
-            <h1 class="header-title" id="main-title">Mi Ruta</h1>
+            <h1 class="header-title" id="main-title">Logística</h1>
             <button class="btn-icon" onclick="refrescarTabActual()" title="Refrescar">
                 🔄
             </button>
@@ -140,9 +140,65 @@
         </div>
     </div>
 
+    <!-- SIDEBAR GLOBAL (Menú Hamburguesa Multimódulo) -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="window.cerrarSidebar()"></div>
+    <div id="sidebar-menu" class="sidebar-menu">
+        <div class="sidebar-header">
+            <h2>LAMDA PWA</h2>
+            <p>Sistema Integral de Gestión</p>
+        </div>
+        <div class="sidebar-content">
+            <div class="sidebar-nav-title">Módulos Activos</div>
+            
+            <a href="ruta.html" class="sidebar-item active-module">
+                <span class="sidebar-icon">🚚</span>
+                <span>Logística (Hoja de Ruta)</span>
+            </a>
+            
+            <a href="presupuestos.html" class="sidebar-item">
+                <span class="sidebar-icon">💰</span>
+                <span>Ventas / Presupuestos</span>
+            </a>
+        </div>
+        <div class="sidebar-footer">
+            <button class="sidebar-logout" onclick="cerrarSesion()">
+                <span>🚪</span> Cerrar Sesión
+            </button>
+        </div>
+    </div>
+    </div>
+
+    <!-- SIDEBAR GLOBAL (Menú Hamburguesa Multimódulo) -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="window.cerrarSidebar()"></div>
+    <div id="sidebar-menu" class="sidebar-menu">
+        <div class="sidebar-header">
+            <h2>LAMDA PWA</h2>
+            <p>Sistema Integral de Gestión</p>
+        </div>
+        <div class="sidebar-content">
+            <div class="sidebar-nav-title">Módulos Activos</div>
+            
+            <a href="ruta.html" class="sidebar-item active-module">
+                <span class="sidebar-icon">🚚</span>
+                <span>Logística (Hoja de Ruta)</span>
+            </a>
+            
+            <a href="presupuestos.html" class="sidebar-item">
+                <span class="sidebar-icon">💰</span>
+                <span>Ventas / Presupuestos</span>
+            </a>
+        </div>
+        <div class="sidebar-footer">
+            <button class="sidebar-logout" onclick="cerrarSesion()">
+                <span>🚪</span> Cerrar Sesión
+            </button>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <script src="js/mobile.js"></script>
+    <script src="js/controllers/AcomodarRutaUI.js"></script>
     <script src="js/controllers/PendientesUI.js"></script>
     <script src="js/controllers/RutaActivaUI.js"></script>
     <script src="js/controllers/HistorialUI.js"></script>

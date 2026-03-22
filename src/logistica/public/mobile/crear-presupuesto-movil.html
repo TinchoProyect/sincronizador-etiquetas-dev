@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#10b981">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Nuevo Remito - LAMDA Móvil</title>
+    <link rel="icon" type="image/x-icon" href="../../favicon.ico">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css">
+    <link rel="stylesheet" href="css/comercial.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js"></script>
+</head>
+<body class="wizard-page">
+
+    <!-- CABECERA WIZARD -->
+    <header class="mobile-header wizard-header">
+        <div class="header-top">
+            <button class="btn-icon header-back-btn" onclick="wizardBack()" title="Atrás" id="btn-back">
+                ←
+            </button>
+            <h1 class="header-title" id="wizard-title">Paso 1: Cliente</h1>
+            <div style="width: 44px; text-align:right" id="wizard-step-indicator">1/3</div>
+        </div>
+        <!-- Progress Bar -->
+        <div class="wizard-progress-track">
+            <div class="wizard-progress-fill" id="wizard-progress"></div>
+        </div>
+    </header>
+
+    <!-- STEP 1: CLIENTE -->
+    <div id="step-1" class="wizard-step active-step">
+        <div class="wizard-content">
+            <div class="search-hero">
+                <h2>¿A quién le enviamos?</h2>
+                <div class="search-bar-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="buscar-cliente-input" class="wizard-input-gigante" placeholder="Escriba nombre o código...">
+                </div>
+            </div>
+            
+            <div class="resultados-lista" id="resultados-cliente">
+                <!-- Se inyecta por JS (Tarjetas tap-to-select) -->
+                <div class="placeholder-msg">Escribí al menos 3 letras para buscar...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STEP 2: ARTÍCULOS ("Tap-To-Add") -->
+    <div id="step-2" class="wizard-step">
+        <div class="wizard-content">
+            <div class="selected-customer-pill" id="pill-cliente">
+                <span class="avatar">👤</span>
+                <span id="label-cliente-seleccionado">Cargando...</span>
+            </div>
+
+            <div class="search-bar-wrapper" style="margin-top: 1rem;">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="buscar-articulo-input" class="wizard-input" placeholder="Buscar producto...">
+            </div>
+
+            <div class="resultados-lista articulos-lista" id="resultados-articulo">
+                <!-- Tarjetas de Artículos -->
+            </div>
+        </div>
+
+        <!-- Carrito Flotante Inferior -->
+        <div class="bottom-cart-shelf">
+            <div class="cart-info">
+                <span class="cart-icon">🛒</span>
+                <div class="cart-money">
+                    <span class="cart-qty" id="cart-qty">0 ítems</span>
+                    <h3 id="cart-total">$ 0.00</h3>
+                </div>
+            </div>
+            <button class="btn-continue" onclick="avanzarPaso(3)">Continuar →</button>
+        </div>
+    </div>
+
+    <!-- STEP 3: CHECKOUT TOTALIZADOR -->
+    <div id="step-3" class="wizard-step">
+        <div class="wizard-content checkout-bg">
+            <h2 class="checkout-title">Resumen de Venta</h2>
+
+            <!-- Tarjeta Operativa -->
+            <div class="checkout-card">
+                <div class="toggle-group">
+                    <label>Tipo de Operación:</label>
+                    <div class="toggle-switch-wrapper">
+                        <select id="tipo-operacion" class="wizard-select">
+                            <option value="venta">🚚 Envío Normal (Venta)</option>
+                            <option value="retiro">📦 Orden de Retiro (Devolución)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="input-group" style="margin-top: 1rem;">
+                    <label>Observaciones (Opcional):</label>
+                    <textarea id="observaciones-input" class="wizard-textarea" placeholder="Nota para el chofer o el depósito..." rows="2"></textarea>
+                </div>
+            </div>
+
+            <!-- Ticket Resumen -->
+            <div class="ticket-card">
+                <div class="ticket-header">
+                    <span id="ticket-cliente">Cliente</span>
+                </div>
+                <div class="ticket-items" id="ticket-items-lista">
+                    <!-- Artículos -->
+                </div>
+                <div class="ticket-divider"></div>
+                <div class="ticket-total-row">
+                    <span>TOTAL</span>
+                    <span class="ticket-total-money" id="ticket-total-final">$ 0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botonera Final -->
+        <div class="bottom-cart-shelf final-shelf">
+            <button class="btn-cancel" onclick="cancelarWizard()">Cancelar</button>
+            <button class="btn-confirm" id="btn-confirmar-venta" onclick="confirmarVenta()">🚀 CONFIRMAR</button>
+        </div>
+    </div>
+
+    <!-- Fullscreen Loader (Oculto) -->
+    <div id="full-loader" class="full-loader hidden">
+        <div class="loader-spinner"></div>
+        <h3 id="loader-msg">Procesando Operación...</h3>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/mobile.js"></script>
+    <script src="js/controllers/PresupuestosWizard.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!verificarSesion()) {
+                window.location.href = 'index.html';
+                return;
+            }
+            // Inicializar Wizard Local
+            WizardController.init();
+        });
+    </script>
+</body>
+</html>

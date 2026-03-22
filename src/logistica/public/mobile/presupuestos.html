@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Ventas - LAMDA</title>
+    <link rel="icon" type="image/x-icon" href="../../favicon.ico">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js"></script>
+    <style>
+        /* Estilos específicos para la landing del módulo de presupuestos */
+        .presupuestos-page {
+            background-color: #f8fafc;
+            min-height: 100vh;
+            padding-bottom: 2rem;
+        }
+        
+        .hero-section {
+            padding: 2rem 1.5rem;
+            text-align: center;
+            background: linear-gradient(180deg, #1e40af 0%, #2563eb 100%);
+            color: white;
+            border-bottom-left-radius: 1.5rem;
+            border-bottom-right-radius: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .hero-icon {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .btn-crear-presupuesto {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 1.25rem 2rem;
+            border-radius: 1rem;
+            font-size: 1.25rem;
+            font-weight: 800;
+            text-decoration: none;
+            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: 1.5rem;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-crear-presupuesto:active {
+            transform: scale(0.96);
+            box-shadow: 0 5px 10px rgba(16, 185, 129, 0.3);
+        }
+
+        /* Tabs Móviles */
+        .tabs-container {
+            display: flex;
+            background: white;
+            padding: 0.5rem;
+            margin: -1rem 1.5rem 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            position: relative;
+            z-index: 10;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem;
+            text-align: center;
+            font-weight: 700;
+            color: #64748b;
+            border-radius: 0.75rem;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: #2563eb;
+            color: white;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+        }
+
+        .recientes-container {
+            padding: 2rem 1.5rem;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #334155;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .placeholder-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            text-align: center;
+            color: #94a3b8;
+            border: 2px dashed #cbd5e1;
+        }
+    </style>
+</head>
+<body class="presupuestos-page">
+    
+    <!-- CABECERA PRINCIPAL -->
+    <header class="mobile-header">
+        <div class="header-top">
+            <button class="btn-icon" onclick="window.abrirSidebar()" title="Menú Principal" style="font-size: 1.5rem; padding: 0.2rem 0.6rem;">
+                ☰
+            </button>
+            <h1 class="header-title">Ventas</h1>
+            <div style="width: 44px;"></div> <!-- Spacer -->
+        </div>
+    </header>
+
+    <!-- SIDEBAR GLOBAL -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="window.cerrarSidebar()"></div>
+    <div id="sidebar-menu" class="sidebar-menu">
+        <div class="sidebar-header">
+            <h2>LAMDA PWA</h2>
+            <p>Sistema Integral de Gestión</p>
+        </div>
+        <div class="sidebar-content">
+            <div class="sidebar-nav-title">Módulos Activos</div>
+            
+            <a href="ruta.html" class="sidebar-item">
+                <span class="sidebar-icon">🚚</span>
+                <span>Logística (Hoja de Ruta)</span>
+            </a>
+            
+            <a href="presupuestos.html" class="sidebar-item active-module">
+                <span class="sidebar-icon">💰</span>
+                <span>Ventas / Presupuestos</span>
+            </a>
+        </div>
+        <div class="sidebar-footer">
+            <button class="sidebar-logout" onclick="cerrarSesion()">
+                <span>🚪</span> Cerrar Sesión
+            </button>
+        </div>
+    </div>
+
+    <!-- CONTENIDO COMERCIAL -->
+    <div class="hero-section">
+        <div class="hero-icon">💸</div>
+        <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Cajero Móvil</h2>
+        <p style="font-size: 0.95rem; opacity: 0.9;">Creá remitos en la calle con el asistente paso a paso.</p>
+        
+        <a href="crear-presupuesto-movil.html" class="btn-crear-presupuesto">
+            <span style="font-size: 1.5rem;">➕</span> Iniciar Venta
+        </a>
+    </div>
+
+    <div class="tabs-container">
+        <div class="tab-btn active" onclick="switchTabComercial('ventas')" id="tab-ventas">Ventas</div>
+        <div class="tab-btn" onclick="switchTabComercial('retiros')" id="tab-retiros">Retiros</div>
+    </div>
+
+    <div class="recientes-container">
+        <h3 class="section-title"><span>🕒</span> Historial de la Sesión</h3>
+        <div class="placeholder-card" id="historial-container">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
+            <p><strong>Listado Vacío</strong><br>Aquí aparecerán tus operaciones recientes separadas por pestañas.</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/mobile.js"></script>
+    <script src="js/controllers/PresupuestosDashboard.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Utilizamos el mismo pipeline de verificación del chofer
+            if (!verificarSesion()) {
+                window.location.href = 'index.html';
+                return;
+            }
+            // Arrancar Controlador de Dashboard de Movimientos Reales
+            DashboardComercial.init();
+        });
+        
+        function switchTabComercial(tab) {
+            DashboardComercial.setTab(tab);
+        }
+    </script>
+</body>
+</html>
