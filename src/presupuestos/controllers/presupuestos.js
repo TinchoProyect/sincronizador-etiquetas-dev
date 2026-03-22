@@ -917,6 +917,29 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         const limitParam = parseInt(req.query.limit, 10);
         const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 200) : 50;
 
+        // Recuperar Lista de Precios basada en cliente_id
+        const clienteId = parseInt(req.query.cliente_id, 10);
+        let lista = 1;
+
+        if (clienteId > 0) {
+            try {
+                const rLista = await req.db.query('SELECT lista_precios FROM public.clientes WHERE cliente_id = $1 LIMIT 1', [clienteId]);
+                if (rLista.rows.length) {
+                    const n = parseInt(rLista.rows[0].lista_precios, 10);
+                    if (Number.isFinite(n) && n >= 1 && n <= 5) lista = n;
+                }
+            } catch (e) {
+                console.warn('[PRESUPUESTOS] Error al leer lista_precios en sugerencias móviles:', e.message);
+            }
+        }
+
+        const colPrecio = 
+            lista === 1 ? 'pa.precio_neg' :
+            lista === 2 ? 'pa.mayorista' :
+            lista === 3 ? 'pa.especial_brus' :
+            lista === 4 ? 'pa.consumidor_final' :
+            lista === 5 ? 'pa.lista_5' : 'pa.precio_neg';
+
         // Tokenización (múltiples palabras) – tolerante a espacios y acentos (solo para logs);
         // en SQL usamos ILIKE para insensibilidad de mayúsc/minúsc.
         const tokens = qRaw
@@ -970,7 +993,7 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         src.articulo_numero,
         src.descripcion,
         COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
-        COALESCE(pa.precio_neg, 0) AS precio_venta
+        COALESCE(${colPrecio}, 0) AS precio_venta
       FROM public.stock_real_consolidado src
       LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
       ${whereClause}

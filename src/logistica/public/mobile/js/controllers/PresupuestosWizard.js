@@ -156,10 +156,9 @@ const WizardController = {
         const qRaw = (query || '').trim();
 
         try {
-            // El backend ya tiene búsqueda por Token (AND). Enviamos la query completa
             const offset = qRaw.length === 0 ? 15 : 150; 
             
-            const res = await fetch(`${API_BASE_URL}/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}`);
+            const res = await fetch(`${API_BASE_URL}/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}&cliente_id=${this.cart.cliente.id}`);
             const data = await res.json();
             
             if(data.success && data.data) {
