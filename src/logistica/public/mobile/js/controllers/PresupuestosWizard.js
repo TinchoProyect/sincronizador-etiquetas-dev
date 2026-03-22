@@ -350,6 +350,7 @@ const WizardController = {
     async confirmarVenta() {
         const isOrdenRetiro = false; // Parche Arquitectura: Este wizard ya es exclusivamente de Venta
         const obs = document.getElementById('observaciones-input').value.trim();
+        const estadoSeleccionado = document.getElementById('estado-input').value;
         const descuentoInputFormateado = parseFloat(document.getElementById('descuento-input').value) || 0;
 
         // Armar Payload 100% Data-Parity con Desktop para evitar inserciones Null/Consumidor Final
@@ -361,7 +362,7 @@ const WizardController = {
             fecha_entrega: hoy,
             agente: state.sesion.usuario || 'Cajero Móvil',
             tipo_comprobante: isOrdenRetiro ? 'Orden de Retiro' : 'Factura',
-            estado: isOrdenRetiro ? 'Orden de Retiro' : 'Presupuesto/Orden',
+            estado: isOrdenRetiro ? 'Orden de Retiro' : estadoSeleccionado,
             estado_logistico: isOrdenRetiro ? 'ESPERANDO_MOSTRADOR' : 'PENDIENTE_ASIGNAR',
             informe_generado: 'Pendiente',
             nota: obs,
