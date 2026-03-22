@@ -205,6 +205,7 @@ const WizardController = {
                         
                         const card = document.createElement('div');
                         card.className = 'card-articulo';
+                        card.onclick = () => WizardController.actualizarCantidad(a, 1);
                         const jsonSafe = JSON.stringify(a).replace(/"/g, '&quot;');
                         
                         card.innerHTML = `
@@ -213,9 +214,8 @@ const WizardController = {
                                 <span class="articulo-precio">$${parseFloat(a.precio_venta || 0).toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
                             </div>
                             <div class="articulo-actions">
-                                <button class="stepper-btn btn-minus" onclick='WizardController.actualizarCantidad(${jsonSafe}, -1)'>-</button>
+                                <button class="stepper-btn btn-minus" onclick='event.stopPropagation(); WizardController.actualizarCantidad(${jsonSafe}, -1)'>-</button>
                                 <span class="stepper-qty" id="qty-${fallBckId}">${qtyActual}</span>
-                                <button class="stepper-btn btn-plus" onclick='WizardController.actualizarCantidad(${jsonSafe}, 1)'>+</button>
                             </div>
                         `;
                         contenedor.appendChild(card);
