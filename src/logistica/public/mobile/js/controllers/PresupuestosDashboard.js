@@ -219,8 +219,23 @@ const DashboardComercial = {
 
                     // Extensión PWA Imprimir (Excluimos Retiros)
                     if (this.estadoActual === 'ventas') {
+                        // REGLAS CONTABLES ESTRICTAS: ¿El presupuesto es lógicamente modificable?
+                        const pFound = this.listaMemoria.find(x => x.id == idPresupuesto) || {};
+                        const stt = (pFound.estado || '').toUpperCase();
+                        
+                        const estaFacturado = !!pFound.esta_facturado;
+                        const estaConciliado = !!pFound.comprobante_lomasoft;
+                        const esEstadoTerminado = ['ENTREGADO', 'FACTURADO', 'FINALIZADO', 'CANCELADO', 'COMPLETADO'].includes(stt);
+                        
+                        const esIntocableContablemente = estaFacturado || estaConciliado || esEstadoTerminado;
+
+                        const btnEditarDynamic = !esIntocableContablemente 
+                            ? `<button class="btn-secondary" style="padding:0.6rem 1rem; font-size:0.85rem; background:#64748b; color:white; border:none; display:inline-flex; width:auto; border-radius:0.5rem;" onclick="window.location.href='crear-presupuesto-movil.html?edit=${idPresupuesto}'">✏️ Editar</button>`
+                            : ''; // Si está sellado legalmente, desaparece el acceso a Edición
+
                         htmlDetalles += `
-                            <div style="margin-top:1rem; text-align:right;">
+                            <div style="margin-top:1rem; text-align:right; display:flex; gap:0.5rem; justify-content:flex-end;">
+                                ${btnEditarDynamic}
                                 <button class="btn-continue" style="padding:0.6rem 1rem; font-size:0.85rem; background:#2563eb; display:inline-flex; width:auto; border-radius:0.5rem;" onclick="DashboardComercial.abrirPreImpresion(${idPresupuesto})">
                                     🖨️ Imprimir / Compartir
                                 </button>

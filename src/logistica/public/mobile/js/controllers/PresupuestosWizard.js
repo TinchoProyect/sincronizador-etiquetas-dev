@@ -18,16 +18,113 @@ const WizardController = {
     abortControllerClientes: null,
     abortControllerArticulos: null,
 
-    init() {
+    async init() {
+        // [NUEVO] Fase 33: Detección de Modo Edición ANTES del pushState limpiador
+        const params = new URLSearchParams(window.location.search);
+        const editId = params.get('edit');
+
         // Interceptar barra de retroceso del navegador (Hardware Back Button)
         if (window.history && window.history.pushState) {
-            window.history.pushState('forward', null, './crear-presupuesto-movil.html');
+            // Preservar la URL real para evitar que se borre el ?edit si se recarga la página
+            window.history.pushState('forward', null, window.location.href);
             window.onpopstate = function () {
                 WizardController.wizardBack();
             };
         }
 
         this.bindEvents();
+
+        if(editId) {
+            await this.cargarPresupuestoParaEdicion(editId);
+        }
+    },
+
+    async cargarPresupuestoParaEdicion(id) {
+        try {
+            document.getElementById('full-loader').classList.remove('hidden'); 
+            
+            // 1. Obtener Cabecera
+            const resHeader = await fetch(`/api/presupuestos/${id}`, {
+                headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+            });
+            const dataHeader = await resHeader.json();
+            
+            if(!dataHeader.success || !dataHeader.data) throw new Error("No se encontró el original");
+            const cabecera = dataHeader.data;
+            
+            // 2. Obtener Detalles
+            const resDetalles = await fetch(`/api/presupuestos/${id}/detalles`, {
+                headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+            });
+            const dataDetalles = await resDetalles.json();
+            
+            if(!dataDetalles.success || !dataDetalles.data) throw new Error("Fallo en detalles");
+            
+            const itemsArray = Array.isArray(dataDetalles.data) ? dataDetalles.data : (dataDetalles.data.detalles || []);
+            
+            // 3. Hidratacion de Estado
+            this.cart.editId = id; 
+            this.cart.cliente = {
+                id: cabecera.id_cliente,
+                nombre: cabecera.cliente_nombre || cabecera.concepto || 'Desconocido',
+                condicion_iva: cabecera.condicion_iva || ''
+            };
+            
+            // 4. Inyección Visual
+            document.getElementById('observaciones-input').value = cabecera.nota || '';
+            const dropEstado = document.getElementById('estado-input');
+            if(dropEstado && cabecera.estado) dropEstado.value = cabecera.estado;
+            
+            const txtDescuento = document.getElementById('descuento-input');
+            if(txtDescuento && cabecera.descuento) txtDescuento.value = cabecera.descuento;
+            
+            // 5. Hidratar Artículos
+            itemsArray.forEach(item => {
+                const arrId = item.articulo;
+                this.cart.items[arrId] = {
+                    id: arrId,
+                    nombre: item.descripcion || item.descripcion_articulo || item.articulo,
+                    precio: parseFloat(item.valor1 || 0), 
+                    cantidad: Math.abs(parseFloat(item.cantidad || 0))
+                };
+            });
+            
+            document.getElementById('full-loader').classList.add('hidden');
+            this.avanzarPaso(2); // Salto Directo a Catálogo
+            
+            // Re-render del catálogo
+            const listContainer = document.getElementById('resultados-articulo');
+            if (listContainer) {
+                listContainer.innerHTML = '';
+                for (const arrId in this.cart.items) {
+                    const item = this.cart.items[arrId];
+                    const card = document.createElement('div');
+                    card.className = 'card-cliente';
+                    card.innerHTML = `
+                        <div style="flex-grow:1; max-width:65%;">
+                            <div class="cliente-nombre text-truncate">${item.nombre}</div>
+                            <div class="cliente-id" style="color:#2563eb">$${item.precio.toLocaleString('es-AR')}</div>
+                        </div>
+                        <div class="qty-controls">
+                            <!-- Tap over div adds +1 -->
+                            <button class="btn-qty" onclick="event.stopPropagation(); window.WizardController.modificarCantidad(${arrId}, -1)">-</button>
+                            <span class="qty-display" id="qty-${arrId}" data-id="${arrId}">${item.cantidad}</span>
+                        </div>
+                    `;
+                    // Tap over div logic
+                    card.onclick = () => window.WizardController.modificarCantidad(arrId, 1, item.nombre, item.precio);
+                    listContainer.appendChild(card);
+                }
+            }
+            this.renderCarritoFlotante();
+
+        } catch(e) {
+            document.getElementById('full-loader').classList.add('hidden');
+            console.error(e);
+            Swal.fire('Error', 'No se pudo recuperar Presupuesto: ' + e.message, 'error').then(()=> {
+                window.location.href = 'presupuestos.html';
+            });
+        }
     },
 
     bindEvents() {
@@ -411,8 +508,12 @@ const WizardController = {
         document.getElementById('full-loader').classList.remove('hidden');
 
         try {
-            const response = await fetch(`/api/presupuestos`, {
-                method: 'POST',
+            const isEdit = !!this.cart.editId;
+            const endpointUrl = isEdit ? `/api/presupuestos/${this.cart.editId}` : `/api/presupuestos`;
+            const methodHttp = isEdit ? 'PUT' : 'POST';
+
+            const response = await fetch(endpointUrl, {
+                method: methodHttp,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${state.sesion.token}`
@@ -425,12 +526,15 @@ const WizardController = {
             // Ocultar Loader
             document.getElementById('full-loader').classList.add('hidden');
 
-            if(data.success || data.presupuestoId) {
+            if(data.success || data.presupuestoId || data.data) {
                 // Notificación Nativa Swal
+                const titleSuccess = isEdit ? 'Edición Exitosa' : 'Operación Exitosa';
+                const idGenerado = data.presupuestoId || (data.data && data.data.id) || this.cart.editId || 'Desconocido';
+                
                 Swal.fire({
                     icon: 'success',
-                    title: 'Operación Exitosa',
-                    text: `El documento fue emitido bajo el N° ${data.presupuestoId || data.id}`,
+                    title: titleSuccess,
+                    text: `El documento fiscal guardado bajo el N° ${idGenerado}`,
                     confirmButtonText: 'Aceptar',
                     confirmButtonColor: '#2563eb'
                 }).then(() => {
