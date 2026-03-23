@@ -191,6 +191,24 @@ async function cambiarFormato(nuevoFormato) {
 }
 
 /**
+ * Alternar visibilidad del bloque de totales (Modo Solo Lista)
+ */
+window.toggleSoloLista = function() {
+    const isChecked = document.getElementById('chk-solo-lista')?.checked;
+    const totalesSection = document.getElementById('totales-section-container') || document.querySelector('.totales-section');
+    
+    if (totalesSection) {
+        if (isChecked) {
+            totalesSection.style.display = 'none';
+            console.log('👁️ [UI] Modo Solo Lista: Totales ocultos');
+        } else {
+            totalesSection.style.display = 'block'; // Block es el display original por defecto allí
+            console.log('👁️ [UI] Modo Normal: Totales visibles');
+        }
+    }
+};
+
+/**
  * Normalizar texto para nombre de archivo (eliminar caracteres inválidos de Windows)
  */
 function normalizarNombreArchivo(texto) {

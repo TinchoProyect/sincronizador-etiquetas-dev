@@ -29,6 +29,12 @@
             </div>
         </div>
         
+        <!-- Toggle Solo Lista -->
+        <div class="formato-selector" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+            <label for="chk-solo-lista" style="font-weight:bold; cursor:pointer; color:#333; font-size: 0.9rem;">Ocultar Totales (Solo Lista):</label>
+            <input type="checkbox" id="chk-solo-lista" style="cursor:pointer; width:18px; height:18px; margin:0;" onchange="toggleSoloLista()">
+        </div>
+        
         <button id="btn-imprimir" class="btn btn-primary" onclick="imprimirPresupuesto()">
             Imprimir / Guardar PDF
         </button>
@@ -112,7 +118,7 @@
                 </div>
                 
                 <!-- Totales a la derecha -->
-                <div class="totales-section">
+                <div class="totales-section" id="totales-section-container">
                     <div class="totales-grid">
                         <div class="total-row">
                             <span class="total-label">Subtotal:</span>
