@@ -21,25 +21,51 @@ function renderizarEntregas() {
 
     const paradas = agruparEntregasEnParadas(state.entregas);
 
+    const totalPedidos = state.entregas.length;
+    const estadosFinalizados = ['ENTREGADO', 'RETIRADO', 'RECHAZADO', 'REPROGRAMADO'];
+    const completados = state.entregas.filter(e => estadosFinalizados.includes(e.estado_logistico)).length;
+    const ruta100Porciento = (totalPedidos > 0 && completados === totalPedidos);
+
     let routeHeaderHTML = '';
     if (state.ruta) {
         const isArmando = state.ruta.estado === 'ARMANDO';
+        
+        let headerActionsHTML = '';
+        if (ruta100Porciento) {
+            headerActionsHTML = `
+                <button onclick="finalizarRutaDelDia()" style="background: #dc2626; color: white; padding: 14px 16px; border: none; border-radius: 8px; font-weight: 800; font-size: 1.1rem; box-shadow: 0 4px 6px rgba(220,38,38,0.3); width: 100%; animation: pulse 2s infinite;">
+                    🏁 FINALIZAR HOJA DE RUTA
+                </button>
+            `;
+        } else {
+            headerActionsHTML = `
+                <button onclick="window.toggleEstadoRuta('${isArmando ? 'EN_CAMINO' : 'ARMANDO'}')" style="background: ${isArmando ? '#059669' : '#f59e0b'}; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
+                    ${isArmando ? '🚀 Iniciar Ruta' : '⏸ Detener Ruta'}
+                </button>
+                ${isArmando ? `
+                <button onclick="window.abrirModalAcomodar()" style="background: #3b82f6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
+                    🗺️ Acomodar Ruta
+                </button>` : ''}
+            `;
+        }
+
         routeHeaderHTML = `
-            <div style="margin-bottom: 1.5rem; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; border-left: 4px solid ${isArmando ? '#d97706' : '#059669'};">
+            <style>
+                @keyframes pulse {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.02); }
+                    100% { transform: scale(1); }
+                }
+            </style>
+            <div style="margin-bottom: 1.5rem; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: ${ruta100Porciento ? 'column' : 'row'}; justify-content: space-between; align-items: ${ruta100Porciento ? 'stretch' : 'center'}; gap: 12px; border-left: 4px solid ${ruta100Porciento ? '#dc2626' : (isArmando ? '#d97706' : '#059669')};">
                 <div style="display: flex; flex-direction: column;">
                     <span style="font-size: 0.8rem; color: #64748b; font-weight: bold; text-transform: uppercase;">Estado Actual</span>
-                    <span style="font-weight: 800; color: ${isArmando ? '#d97706' : '#059669'}; font-size: 1.1rem;">
-                        ${isArmando ? 'Modo Armado' : '▶ Ruta Iniciada'}
+                    <span style="font-weight: 800; color: ${ruta100Porciento ? '#dc2626' : (isArmando ? '#d97706' : '#059669')}; font-size: 1.1rem;">
+                        ${ruta100Porciento ? '100% Completado' : (isArmando ? 'Modo Armado' : '▶ Ruta Iniciada')}
                     </span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <button onclick="window.toggleEstadoRuta('${isArmando ? 'EN_CAMINO' : 'ARMANDO'}')" style="background: ${isArmando ? '#059669' : '#f59e0b'}; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
-                        ${isArmando ? '🚀 Iniciar Ruta' : '⏸ Detener Ruta'}
-                    </button>
-                    ${isArmando ? `
-                    <button onclick="window.abrirModalAcomodar()" style="background: #3b82f6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
-                        🗺️ Acomodar Ruta
-                    </button>` : ''}
+                    ${headerActionsHTML}
                 </div>
             </div>
         `;
@@ -241,7 +267,7 @@ function navegarAEntrega(latitud, longitud, direccion) {
 function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
     console.log('[ENTREGA] Confirmar', tipoPedido, 'de presupuesto:', presupuestoId);
 
-    import('./modules/confirmacion.js').then(module => {
+    import('../modules/confirmacion.js').then(module => {
         module.mostrarModalOpciones(presupuestoId, tipoPedido);
     }).catch(error => {
         console.error('[ENTREGA] Error al cargar módulo:', error);
@@ -250,7 +276,7 @@ function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
 }
 
 function finalizarRutaDelDia() {
-    import('./modules/ruta.js').then(module => {
+    import('../modules/ruta.js').then(module => {
         module.finalizarRutaDelDia();
     }).catch(error => {
         console.error('[RUTA] Error al cargar módulo:', error);

@@ -1,6 +1,8 @@
 {
-  "numero": "BF24X50",
-  "nombre": "Barra Flor  24 x 50 g.",
-  "codigo_barras": "6842648535",
-  "cantidad": 6
+  "articulo": {
+    "numero": "AAIx5",
+    "nombre": "Avena Arroll Instantanea x 5",
+    "codigo_barras": "7744550021"
+  },
+  "cantidad": "1.00"
 }
