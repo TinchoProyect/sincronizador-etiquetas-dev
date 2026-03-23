@@ -242,7 +242,15 @@ const validarActualizarPresupuesto = (req, res, next) => {
       'estado',
       'id_cliente',
       'fecha',
-      'secuencia'  // Campo de secuencia agregado
+      'secuencia',  // Campo de secuencia agregado
+      
+      // NUEVOS FASE LOGÍSTICA/MOVIL: Integración de variables tácticas
+      'estado_logistico',
+      'informe_generado',
+      'origen_facturacion',
+      'origen_punto_venta',
+      'origen_numero_factura',
+      'metodo_retiro'
     ];
     const body = req.body || {};
     const keys = Object.keys(body);

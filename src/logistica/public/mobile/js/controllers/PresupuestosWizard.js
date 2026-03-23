@@ -99,20 +99,20 @@ const WizardController = {
                 for (const arrId in this.cart.items) {
                     const item = this.cart.items[arrId];
                     const card = document.createElement('div');
-                    card.className = 'card-cliente';
+                    card.className = 'card-articulo';
+                    // Tap over div logic (+1)
+                    card.onclick = () => window.WizardController.modificarCantidad(arrId, 1);
+                    
                     card.innerHTML = `
-                        <div style="flex-grow:1; max-width:65%;">
-                            <div class="cliente-nombre text-truncate">${item.nombre}</div>
-                            <div class="cliente-id" style="color:#2563eb">$${item.precio.toLocaleString('es-AR')}</div>
+                        <div class="articulo-info">
+                            <span class="articulo-nombre">${item.nombre} <br><small style="color:#94a3b8; font-weight:normal;">Cod: ${arrId}</small></span>
+                            <span class="articulo-precio">$${parseFloat(item.precio || 0).toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
                         </div>
-                        <div class="qty-controls">
-                            <!-- Tap over div adds +1 -->
-                            <button class="btn-qty" onclick="event.stopPropagation(); window.WizardController.modificarCantidad(${arrId}, -1)">-</button>
-                            <span class="qty-display" id="qty-${arrId}" data-id="${arrId}">${item.cantidad}</span>
+                        <div class="articulo-actions">
+                            <button class="stepper-btn btn-minus" onclick="event.stopPropagation(); window.WizardController.modificarCantidad('${arrId}', -1)">-</button>
+                            <span class="stepper-qty" id="qty-${arrId}" data-id="${arrId}">${item.cantidad}</span>
                         </div>
                     `;
-                    // Tap over div logic
-                    card.onclick = () => window.WizardController.modificarCantidad(arrId, 1, item.nombre, item.precio);
                     listContainer.appendChild(card);
                 }
             }
@@ -370,6 +370,31 @@ const WizardController = {
         } else {
             this.cart.items[id].cantidad = newQty;
             document.getElementById(`qty-${id}`).innerText = newQty;
+        }
+
+        this.renderCarritoFlotante();
+    },
+
+    modificarCantidad(idArticulo, delta) {
+        // [NUEVO] Handler exclusivo para los ítems re-hidratados desde una Edición
+        if(!this.cart.items[idArticulo]) {
+            console.warn("Item no hallado en RAM para mutación rápida");
+            return;
+        }
+
+        const newQty = this.cart.items[idArticulo].cantidad + delta;
+        if(newQty <= 0) {
+            delete this.cart.items[idArticulo];
+            // Eliminación visual definitiva del nodo HTML para evitar confusiones de interfaz
+            const display = document.getElementById(`qty-${idArticulo}`);
+            if(display) {
+                const domCard = display.closest('.card-articulo');
+                if(domCard) domCard.remove();
+            }
+        } else {
+            this.cart.items[idArticulo].cantidad = newQty;
+            const display = document.getElementById(`qty-${idArticulo}`);
+            if(display) display.innerText = newQty;
         }
 
         this.renderCarritoFlotante();
