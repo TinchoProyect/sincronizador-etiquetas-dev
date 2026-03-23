@@ -9,6 +9,7 @@ const DashboardComercial = {
     fechaFiltro: '',
     listaMemoria: [],
     hasMore: false,
+    presupuestoImpresionId: null,
 
     init() {
         // Inicializar fecha de hoy por defecto si lo requiere, o vacio
@@ -215,6 +216,18 @@ const DashboardComercial = {
                         `;
                     });
                     htmlDetalles += '</ul>';
+
+                    // Extensión PWA Imprimir (Excluimos Retiros)
+                    if (this.estadoActual === 'ventas') {
+                        htmlDetalles += `
+                            <div style="margin-top:1rem; text-align:right;">
+                                <button class="btn-continue" style="padding:0.6rem 1rem; font-size:0.85rem; background:#2563eb; display:inline-flex; width:auto; border-radius:0.5rem;" onclick="DashboardComercial.abrirPreImpresion(${idPresupuesto})">
+                                    🖨️ Imprimir / Compartir
+                                </button>
+                            </div>
+                        `;
+                    }
+
                     container.innerHTML = htmlDetalles;
                 }
                 container.dataset.cargado = 'true';
@@ -224,6 +237,112 @@ const DashboardComercial = {
         } catch (error) {
             console.error('[DETALLES ERROR]:', error);
             container.innerHTML = '<p style="text-align:center; color:#ef4444; font-size:0.75rem; margin:0">Error de conexión al cargar detalle.</p>';
+        }
+    },
+
+    async abrirPreImpresion(id) {
+        this.presupuestoImpresionId = id;
+        const modal = document.getElementById('modal-impresion');
+        const selectFormato = document.getElementById('select-formato-impresion');
+        const btnGenerar = document.getElementById('btn-generar-pdf-movil');
+        
+        document.getElementById('chk-solo-lista-movil').checked = false;
+        
+        // Bloquear scroll del fondo
+        document.body.style.overflow = 'hidden';
+        
+        modal.style.display = 'flex';
+        selectFormato.disabled = true;
+        btnGenerar.disabled = true;
+        btnGenerar.innerText = "Cargando...";
+
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/presupuestos/${id}`, {
+                headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+            });
+            const data = await resp.json();
+            const condicion = data.data.condicion_iva || '';
+
+            if (condicion.toUpperCase().includes('INSCRIPTO')) {
+                selectFormato.value = 'IVA_DISCRIMINADO';
+            } else {
+                selectFormato.value = 'IVA_INCLUIDO';
+            }
+        } catch(e) {
+            console.error('Error auto-detectando IVA:', e);
+        } finally {
+            selectFormato.disabled = false;
+            btnGenerar.disabled = false;
+            btnGenerar.innerText = "Compartir Ticket 📤";
+        }
+    },
+
+    cerrarPreImpresion() {
+        document.getElementById('modal-impresion').style.display = 'none';
+        document.body.style.overflow = ''; // Restaurar scroll
+        this.presupuestoImpresionId = null;
+    },
+
+    async generarImpresion() {
+        if(!this.presupuestoImpresionId) return;
+        const btnGenerar = document.getElementById('btn-generar-pdf-movil');
+        const formato = document.getElementById('select-formato-impresion').value;
+        const soloLista = document.getElementById('chk-solo-lista-movil').checked;
+        const idTicket = this.presupuestoImpresionId;
+        
+        // Loader y Bloqueo de Interfaz mientras el Headless genera el Ticket Binario
+        btnGenerar.disabled = true;
+        btnGenerar.innerText = "Renderizando...";
+
+        try {
+            const queryParams = new URLSearchParams({ formato: formato });
+            if (soloLista) queryParams.append('sololista', 'true');
+            
+            // Utilizamos el Proxy local Logístico '/api/presupuestos'
+            const response = await fetch(`${API_BASE_URL}/api/presupuestos/${idTicket}/pdf?${queryParams.toString()}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+            });
+            
+            if (!response.ok) {
+                const errJson = await response.json();
+                throw new Error(errJson.error || "Fallo HTTP del generador P.D.F.");
+            }
+            
+            const blob = await response.blob();
+            const file = new File([blob], `Cotizacion_${idTicket}.pdf`, { type: 'application/pdf' });
+            
+            // Ocultar Modal YA MISMO para UX Instantánea
+            this.cerrarPreImpresion();
+            
+            // Native Share API
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: `Presupuesto #${idTicket}`,
+                    text: `Te comparto nuestra cotización.`,
+                    files: [file]
+                });
+                console.log('✅ [SHARE] Archivo pasado al SO');
+            } else {
+                console.warn('⚠️ [SHARE] Web Share no disponible, descargando...');
+                const objectUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = objectUrl;
+                a.download = `Cotizacion_${idTicket}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(objectUrl);
+            }
+            
+        } catch (error) {
+            console.error('❌ [PDF ERROR]:', error);
+            alert(`Fallo en Renderización / Compartir: ${error.message}`);
+        } finally {
+            if(btnGenerar) {
+                btnGenerar.disabled = false;
+                btnGenerar.innerText = "Compartir Ticket 📤";
+            }
         }
     }
 };

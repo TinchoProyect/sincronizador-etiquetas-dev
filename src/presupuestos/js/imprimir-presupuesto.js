@@ -104,7 +104,13 @@ async function cargarPresupuesto(id) {
         // DETERMINAR FORMATO DE IMPRESIÓN
         const presupuesto = presupuestoData.presupuesto;
 
-        if (presupuesto.formato_impresion) {
+        const urlParamsOverride = new URLSearchParams(window.location.search);
+        
+        if (urlParamsOverride.has('formato')) {
+            // Override absoluto vía PWA Móvil
+            formatoActual = urlParamsOverride.get('formato');
+            console.log(`📱 [FORMATO] Override por PWA URL: ${formatoActual}`);
+        } else if (presupuesto.formato_impresion) {
             // Si ya tiene formato guardado, usarlo
             formatoActual = presupuesto.formato_impresion;
             console.log(`📋 [FORMATO] Usando formato guardado: ${formatoActual}`);
@@ -120,6 +126,15 @@ async function cargarPresupuesto(id) {
 
         // Renderizar presupuesto con el formato determinado
         renderizarPresupuesto(presupuestoData);
+
+        // PWA Override: Modo Solo Lista Automático
+        if (urlParamsOverride.get('sololista') === 'true') {
+            const chk = document.getElementById('chk-solo-lista');
+            if(chk) {
+                chk.checked = true;
+                if(typeof window.toggleSoloLista === 'function') window.toggleSoloLista();
+            }
+        }
 
     } catch (error) {
         console.error('❌ [IMPRIMIR-PRESUPUESTO] Error al cargar presupuesto:', error);
@@ -715,13 +730,16 @@ function imprimirPresupuesto() {
     console.log('✅ [IMPRIMIR-PRESUPUESTO] Diálogo de impresión abierto');
 }
 
-/**
- * Volver a la lista de presupuestos
- */
 function volverALista() {
     console.log('🔙 [IMPRIMIR-PRESUPUESTO] Volviendo a lista de presupuestos...');
 
-    // Volver a la página de presupuestos
+    // Soporte PWA: Volver al menú móvil si vinimos de ahí
+    if (new URLSearchParams(window.location.search).get('origen') === 'mobile') {
+        window.history.back();
+        return;
+    }
+
+    // Volver a la página de presupuestos (modo Desktop)
     window.location.href = '/pages/presupuestos.html';
 }
 

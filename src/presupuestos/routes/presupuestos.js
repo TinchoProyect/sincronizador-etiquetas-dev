@@ -97,6 +97,20 @@ const {
 // Aplicar middleware de autenticación a todas las rutas
 router.use(validateSession);
 
+// ==========================================
+// 📄 GENERACIÓN DE PDF HEADLESS (PUPPETEER)
+// ==========================================
+
+/**
+ * @route GET /api/presupuestos/:id/pdf
+ * @desc Generar PDF binario del presupuesto usando Chrome Headless para Compartir Nativo
+ * @access Privado
+ */
+router.get('/:id/pdf', validatePermissions('presupuestos.read'), async (req, res) => {
+    const { generarPDFPresupuesto } = require('../controllers/pdfGenerator');
+    await generarPDFPresupuesto(req, res);
+});
+
 /**
  * @route GET /api/presupuestos
  * @desc Obtener todos los presupuestos con filtros avanzados

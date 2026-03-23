@@ -198,9 +198,35 @@
         <button id="btn-cargar-mas" class="btn-continue" style="display:none; margin-top:1rem; width:100%; padding: 0.8rem; font-size: 1rem; border-radius:0.75rem; background:#334155; box-shadow:none" onclick="DashboardComercial.cargarMas()">Cargar Más Antiguos ↓</button>
     </div>
 
+    <!-- MODAL DE PRE-IMPRESIÓN -->
+    <div id="modal-impresion" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; backdrop-filter:blur(3px); pointer-events:auto;">
+        <div style="background: white; width: 90%; max-width: 400px; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); pointer-events:auto; position:relative;">
+            <h3 style="margin-top:0; color:#1e293b;">🖨️ Opciones de Ticket</h3>
+            <p style="font-size:0.85rem; color:#64748b; margin-bottom:1.5rem;">Configurá cómo se verá el documento del cliente.</p>
+
+            <div style="margin-bottom:1rem;">
+                <label style="font-weight:700; color:#1e293b; display:block; margin-bottom:0.5rem">Formato de I.V.A.:</label>
+                <select id="select-formato-impresion" class="wizard-select" style="pointer-events:auto;">
+                    <option value="IVA_DISCRIMINADO">Discriminado (Factura A)</option>
+                    <option value="IVA_INCLUIDO" selected>Incluido (Factura B / CF)</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:1.5rem; display:flex; align-items:center; gap:0.5rem; background:#f8fafc; padding:0.75rem; border-radius:0.5rem;" onclick="document.getElementById('chk-solo-lista-movil').click()">
+                <input type="checkbox" id="chk-solo-lista-movil" style="width:1.4rem; height:1.4rem; accent-color:#2563eb; pointer-events:auto;" onclick="event.stopPropagation()">
+                <label for="chk-solo-lista-movil" style="font-weight:700; color:#1e293b; margin:0; pointer-events:auto; cursor:pointer;">Ocultar Totales <span style="font-weight:normal; color:#64748b">(Solo Lista)</span></label>
+            </div>
+
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+                <button class="btn-secondary" style="padding:0.75rem 1rem; border:none; background:#e2e8f0; border-radius:0.5rem; font-weight:700; cursor:pointer; pointer-events:auto; color:#334155" onclick="DashboardComercial.cerrarPreImpresion()">Cancelar</button>
+                <button class="btn-primary" id="btn-generar-pdf-movil" style="padding:0.75rem 1rem; border:none; background:#2563eb; color:white; border-radius:0.5rem; font-weight:700; cursor:pointer; pointer-events:auto;" onclick="DashboardComercial.generarImpresion()">Compartir Ticket 📤</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="js/mobile.js"></script>
-    <script src="js/controllers/PresupuestosDashboard.js"></script>
+    <script src="js/controllers/PresupuestosDashboard.js?v=3"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // Utilizamos el mismo pipeline de verificación del chofer

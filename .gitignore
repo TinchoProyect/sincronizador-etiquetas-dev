@@ -1,4 +1,4 @@
-﻿# -----------------------
+# -----------------------
 # ⛔ Ignorar dependencias
 # -----------------------
 node_modules/
@@ -53,6 +53,13 @@ DIAGNOSTICO_CONEXION_GOOGLE_SHEETS.md
 !package-lock.json
 !/src/
 !/src/**
+
+# -----------------------
+# ⛔ Re-ignorar dependencias dentro de src/ (Evita explosión de Git tras NPM Install)
+# -----------------------
+src/**/node_modules/
+src/**/.npm/
+
 !/pages/
 !/pages/**
 !/migrations/
