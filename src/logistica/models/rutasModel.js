@@ -142,6 +142,8 @@ class RutasModel {
                 p.estado_logistico,
                 p.bloqueo_entrega,
                 p.fecha_asignacion_ruta,
+                p.comprobante_lomasoft,
+                p.id_factura_lomasoft,
                 COALESCE(
                     (SELECT SUM(pd.cantidad * pd.precio1)
                      FROM presupuestos_detalles pd

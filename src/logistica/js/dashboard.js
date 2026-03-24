@@ -280,7 +280,7 @@ function renderizarPedidos() {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
                     ${pedido.total ? `<div class="pedido-monto" style="font-weight:bold; color:#059669;">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : '<div></div>'}
                     <div style="display:flex; gap:0.25rem;">
-                        <button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${pedido.id})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Lomasoft">Lomasoft</button>
+                        ${!pedido.comprobante_lomasoft ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${pedido.id})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
                         <button onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #3b82f6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
                     </div>
                 </div>
@@ -714,19 +714,17 @@ function renderizarTarjetaRuta(ruta) {
                         ${esArmando ? `
                             <div style="display: flex; flex-direction: column; gap: 0.2rem;">
                                 ${parada.presupuestos.map(p => `
-                                    <div style="display:flex; gap:2px;">
+                                    <div style="display:flex; gap:2px; align-items:center;">
                                         <button class="btn-icon-danger" 
                                                 onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, ${p.id})"
                                                 title="Quitar pedido #${p.id}"
                                                 style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.8;">
                                             🗑️ #${p.id}
                                         </button>
-                                        <button class="btn-icon-lomasoft" 
-                                                onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})"
-                                                title="Conciliar Lomasoft #${p.id}"
-                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
-                                            LS
-                                        </button>
+                                        ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
+                                            ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
+                                            : `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
+                                        }
                                         <button class="btn-icon-lamda" 
                                                 onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
                                                 title="Imprimir LAMDA #${p.id}"
@@ -739,13 +737,11 @@ function renderizarTarjetaRuta(ruta) {
                         ` : `
                             <div style="display: flex; flex-direction: column; gap: 0.2rem;">
                                 ${parada.presupuestos.map(p => `
-                                    <div style="display:flex; gap:2px;">
-                                        <button class="btn-icon-lomasoft" 
-                                                onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})"
-                                                title="Conciliar Lomasoft #${p.id}"
-                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
-                                            LS
-                                        </button>
+                                    <div style="display:flex; gap:2px; align-items:center;">
+                                        ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
+                                            ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
+                                            : `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
+                                        }
                                         <button class="btn-icon-lamda" 
                                                 onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
                                                 title="Imprimir LAMDA #${p.id}"

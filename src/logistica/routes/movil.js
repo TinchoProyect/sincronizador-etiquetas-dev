@@ -278,6 +278,8 @@ router.get('/ruta-activa', async (req, res) => {
                 p.estado_logistico,
                 p.nota,
                 p.descuento,
+                p.comprobante_lomasoft,
+                p.id_factura_lomasoft,
                 c.cliente_id as cliente_id,
                 COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
                 c.telefono as cliente_telefono,
@@ -315,6 +317,8 @@ router.get('/ruta-activa', async (req, res) => {
             orden_entrega: e.orden_entrega,
             estado: e.estado,
             estado_logistico: e.estado_logistico,
+            comprobante_lomasoft: e.comprobante_lomasoft,
+            id_factura_lomasoft: e.id_factura_lomasoft,
             total: e.total,
             cliente: {
                 id: e.cliente_id,
