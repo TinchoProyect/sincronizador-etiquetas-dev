@@ -133,9 +133,10 @@ const DashboardComercial = {
             if(p.estado === 'FINALIZADO' || p.estado === 'ENTREGADO' || p.estado === 'FACTURADO') colorSt = '#10b981';
 
             // INDICADOR LOMASOFT ULTRASMOTH (Click para popup nativo Swal)
-            const badgeLomasoft = p.comprobante_lomasoft 
-                ? `<span class="badge-mini link-loma" onclick="event.stopPropagation(); Swal.fire('Conciliación Lomasoft','Este registro pertenece al comprobante Lomasoft: <b>${p.comprobante_lomasoft}</b>','info')">🔗 Lomasoft</span>` 
-                : '';
+            const isReconciled = p.comprobante_lomasoft || p.id_factura_lomasoft;
+            const badgeLomasoft = isReconciled 
+                ? `<span class="badge-mini" style="background:#10b981; color:white; cursor:pointer;" onclick="event.stopPropagation(); Swal.fire('Conciliación Lomasoft','Comprobante asociado: <b>${p.comprobante_lomasoft || p.id_factura_lomasoft}</b>','info')">✅ Lomasoft</span>` 
+                : `<span class="badge-mini" style="background:#475569; color:white; cursor:pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente Lomasoft','Aún no ha sido facturado ni conciliado.','info')">⏳ Pte. Facturación</span>`;
             
             const badgeAFIP = p.esta_facturado 
                 ? `<span class="badge-mini" style="background:#10b981;">🧾 AFIP</span>` 

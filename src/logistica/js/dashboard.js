@@ -257,8 +257,8 @@ function renderizarPedidos() {
                     </span>
                     <div style="display:flex; gap:0.25rem; align-items:center;">
                         ${pedido.comprobante_lomasoft ? 
-                            `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Conciliado</span>` : 
-                            `<span title="Falta conciliar en Lomasoft" class="pedido-badge" style="background-color:#9ca3af; color:white;">⏳ Lomasoft</span>`
+                            `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Lomasoft</span>` : 
+                            `<span title="Pendiente de Facturación" class="pedido-badge" style="background-color:#475569; color:white;">⏳ Pte. Facturación</span>`
                         }
                         <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
                             ${pedido.estado_logistico || 'PENDIENTE'}

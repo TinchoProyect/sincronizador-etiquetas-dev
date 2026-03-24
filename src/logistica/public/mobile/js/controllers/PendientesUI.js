@@ -26,9 +26,11 @@ async function cargarPendientes() {
                     // Badge Lomasoft
                     let badgeLomasoft = '';
                     if (p.comprobante_lomasoft) {
-                        badgeLomasoft = `<div style="font-size: 0.75rem; color: #059669; font-weight: bold; margin-top: 6px; padding: 4px; background: #d1fae5; border-radius: 4px; display: inline-block;">✅ Conciliado: ${p.comprobante_lomasoft}</div>`;
+                        badgeLomasoft = `<div style="font-size: 0.75rem; color: white; font-weight: bold; margin-top: 6px; padding: 4px 8px; background: #10b981; border-radius: 4px; display: inline-block;">✅ Lomasoft: ${p.comprobante_lomasoft}</div>`;
                     } else if (p.id_factura_lomasoft) {
-                        badgeLomasoft = `<div style="font-size: 0.75rem; color: #059669; font-weight: bold; margin-top: 6px; padding: 4px; background: #d1fae5; border-radius: 4px; display: inline-block;">📄 Fac/NC: ${p.id_factura_lomasoft}</div>`;
+                        badgeLomasoft = `<div style="font-size: 0.75rem; color: white; font-weight: bold; margin-top: 6px; padding: 4px 8px; background: #10b981; border-radius: 4px; display: inline-block;">✅ Lomasoft: ${p.id_factura_lomasoft}</div>`;
+                    } else {
+                        badgeLomasoft = `<div style="font-size: 0.75rem; color: white; font-weight: bold; margin-top: 6px; padding: 4px 8px; background: #475569; border-radius: 4px; display: inline-block;">⏳ Pte. Facturación</div>`;
                     }
                     
                     return `

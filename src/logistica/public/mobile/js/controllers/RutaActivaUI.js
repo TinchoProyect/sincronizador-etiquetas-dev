@@ -102,6 +102,11 @@ function renderizarEntregas() {
         const pedidosListHTML = parada.entregas.map(entrega => {
             const esItemRetiro = entrega.estado === 'Orden de Retiro';
             const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
+            
+            const isReconciled = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
+            const badgeLomasoft = isReconciled
+                ? `<span style="font-size: 0.70rem; color: white; background: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Lomasoft', 'Comprobante: ${entrega.comprobante_lomasoft || entrega.id_factura_lomasoft}', 'info')">✅ Lomasoft</span>`
+                : `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>`;
 
             const textoBoton = completado ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado') : (esItemRetiro ? 'Retirar' : 'Entregar');
             const backgroundBoton = completado ? '#dcfce7' : (esItemRetiro ? '#e67e22' : '#2563eb');
@@ -110,8 +115,11 @@ function renderizarEntregas() {
             return `
                 <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
                     <div style="flex: 1; min-width: 140px;">
-                        <div style="font-weight: 600; color: #475569;">${esItemRetiro ? '↩️' : ''} Pedido #${entrega.id_presupuesto}</div>
-                        ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
+                        <div style="font-weight: 600; color: #475569; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                            <span>${esItemRetiro ? '↩️' : ''} Pedido #${entrega.id_presupuesto}</span>
+                            ${badgeLomasoft}
+                        </div>
+                        ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669; margin-top: 4px;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button class="btn-confirmar-sm" 
