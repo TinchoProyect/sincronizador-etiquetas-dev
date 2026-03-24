@@ -43,7 +43,10 @@ async function cargarPendientes() {
                                 <div style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">${esIngreso?'↩️':''} Pedido #${p.id}</div>
                                 <div class="entrega-badge badge-pendiente" style="background:${borderColor}; color:${iconColor};">${p.estado_logistico || 'Pendiente'}</div>
                             </div>
-                            <div class="entrega-cliente" style="font-size: 0.95rem; margin-bottom: 0.25rem;">👤 ${p.cliente_nombre}</div>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
+                                <div class="entrega-cliente" style="font-size: 0.95rem;">👤 ${p.cliente_nombre}</div>
+                                <button onclick="DomiciliosUI.abrirModalABM(${p.cliente_id})" style="background: #e2e8f0; color: #3b82f6; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">📍 Domicilios</button>
+                            </div>
                             <div class="entrega-direccion" style="margin-bottom: 0; font-size: 0.85rem;">
                                 📍 ${p.domicilio_direccion || 'Sin domicilio'} <br>
                                 <small style="margin-left: 1.25rem; color: #94a3b8;">${p.domicilio_localidad || ''}</small>
