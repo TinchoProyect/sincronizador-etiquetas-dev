@@ -208,7 +208,7 @@ class BunkerService {
      * Actualizar artículo en Búnker y UPSERT de márgenes
      */
     static async actualizarArticuloTransaccional(db, articulo_id, articuloData, listasMargenes) {
-        const client = await db.getClient();
+        const client = await db.connect();
         try {
             await client.query('BEGIN');
 
@@ -268,6 +268,30 @@ class BunkerService {
 
             await client.query('COMMIT');
             return true;
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Eliminar artículo exclusivamente del Búnker
+     */
+    static async eliminarArticuloTransaccional(db, articulo_id) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // Eliminar registros financieros asociados
+            await client.query(`DELETE FROM public.bunker_margenes WHERE articulo_id = $1`, [articulo_id]);
+            
+            // Eliminar el artículo base del Búnker
+            const result = await client.query(`DELETE FROM public.bunker_articulos WHERE articulo_id = $1`, [articulo_id]);
+            
+            await client.query('COMMIT');
+            return result.rowCount > 0;
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;

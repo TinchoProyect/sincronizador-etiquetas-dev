@@ -31,6 +31,9 @@ router.get('/articulos/:id', bunkerController.obtenerArticulo);
 // Actualizar valores/márgenes en el Búnker
 router.put('/articulos/:id', bunkerController.actualizarArticulo);
 
+// Eliminar un artículo exclusivamente del Búnker
+router.delete('/articulos/:id', bunkerController.eliminarArticulo);
+
 console.log('✅ [BUNKER-ROUTES] Rutas del Búnker configuradas exitosamente');
 
 module.exports = router;

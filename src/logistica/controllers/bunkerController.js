@@ -149,6 +149,21 @@ exports.obtenerArticulo = async (req, res) => {
     }
 };
 
+exports.eliminarArticulo = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await BunkerService.eliminarArticuloTransaccional(req.db, id);
+        if (result) {
+            res.json({ success: true, message: 'Artículo eliminado del Búnker exitosamente' });
+        } else {
+            res.status(404).json({ success: false, error: 'Artículo no encontrado en el Búnker' });
+        }
+    } catch (error) {
+        console.error(`❌ [BUNKER] Error eliminando artículo ${req.params.id}:`, error);
+        res.status(500).json({ success: false, error: 'Error interno eliminando artículo' });
+    }
+};
+
 exports.obtenerTodosLosArticulos = async (req, res) => {
     try {
         const filtros = { search: req.query.search };

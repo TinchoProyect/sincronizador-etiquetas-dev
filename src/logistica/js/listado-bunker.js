@@ -240,7 +240,10 @@ function renderizarGrid(articulos) {
                 ${toggleIcon} ${margenPrincipalText}
             </td>
             <td style="text-align: center;">
-                <button class="btn-edit" onclick="editarArticulo('${art.articulo_id}')">✏️ Editar</button>
+                <div style="display: flex; justify-content: center; align-items: center; gap: 8px;">
+                    <button class="btn-edit" onclick="editarArticulo('${art.articulo_id}')">✏️ Editar</button>
+                    <button type="button" style="background: transparent; border: none; cursor: pointer; font-size: 1.3em; padding: 0; display: flex; transition: transform 0.2s; color: #ef4444;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'" title="Eliminar del Búnker" onclick="eliminarArticuloBunker('${art.articulo_id}')">🗑️</button>
+                </div>
             </td>
         `;
         tbody.appendChild(trMain);
@@ -274,4 +277,42 @@ window.toggleRow = function(targetId, elIcon) {
 
 window.editarArticulo = function(id) {
     window.location.href = `bunker.html?edit=${id}`;
+};
+
+window.eliminarArticuloBunker = async function(id) {
+    Swal.fire({
+        title: 'Baja del Búnker',
+        text: '¿Está seguro que desea eliminar este artículo del Búnker? Esta acción no afectará al sistema Lomasoft, pero se perderán los atributos y márgenes configurados localmente.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, Eliminar Definitivamente',
+        cancelButtonText: 'Cancelar'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                Swal.fire({ title: 'Procesando Baja...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                const response = await fetch(`/api/logistica/bunker/articulos/${encodeURIComponent(id)}`, {
+                    method: 'DELETE'
+                });
+                const res = await response.json();
+                
+                if (response.ok && res.success) {
+                    Swal.fire({
+                        title: 'Eliminado',
+                        text: 'El artículo ha sido purgado del ecosistema Búnker.',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    await cargarDataGrid();
+                } else {
+                    Swal.fire('Error', res.error || 'No se pudo eliminar el artículo', 'error');
+                }
+            } catch (e) {
+                Swal.fire('Error', 'Fallo de red al intentar comunicarse con el servidor.', 'error');
+            }
+        }
+    });
 };
