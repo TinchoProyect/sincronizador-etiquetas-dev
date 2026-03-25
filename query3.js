@@ -9,12 +9,9 @@ const pool = new Pool({
     port: process.env.DB_PORT
 });
 
-pool.query("SELECT articulo_id, descripcion_generada, propiedades_dinamicas FROM bunker_articulos ORDER BY articulo_id DESC LIMIT 15;")
+pool.query("SELECT propiedades_dinamicas FROM bunker_articulos WHERE articulo_id='PRUEBA_997';")
     .then(res => {
         console.log(JSON.stringify(res.rows, null, 2));
         pool.end();
     })
-    .catch(e => {
-        console.error(e);
-        pool.end();
-    });
+    .catch(console.error);

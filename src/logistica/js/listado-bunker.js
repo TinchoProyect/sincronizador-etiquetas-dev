@@ -142,24 +142,29 @@ function renderizarGrid(articulos) {
             const keys = Object.keys(art.propiedades_dinamicas);
             if (keys.length > 0) {
                 if (keys.length === 1) {
-                    propSummary = `<span style="font-size: 0.9em;">${keys[0].toUpperCase()}: ${art.propiedades_dinamicas[keys[0]]}</span>`;
+                    const rawVal = art.propiedades_dinamicas[keys[0]];
+                    const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+                    propSummary = `<span style="font-size: 0.9em;">${keys[0].toUpperCase()}: ${valStr}</span>`;
                 } else {
                     propSummary = `<span style="font-size: 0.9em;">[ ${keys.length} Propiedades ]</span>`;
                 }
 
                 let badgesHtml = '';
                 keys.forEach((key, index) => {
-                    const val = art.propiedades_dinamicas[key];
+                    const rawVal = art.propiedades_dinamicas[key];
+                    const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+                    const isVisible = typeof rawVal === 'object' ? (rawVal.visible !== false) : true;
+                    const eyeIcon = isVisible ? '' : ' 🙈';
                     const colorClass = `color-${index % 6}`;
                     badgesHtml += `<span class="badge ${colorClass}">
-                        <span class="badge-cat">${key.toUpperCase()}:</span> ${val}
+                        <span class="badge-cat">${key.toUpperCase()}:</span> ${valStr}${eyeIcon}
                     </span>`;
                 });
 
                 propSummary = `
                     <div class="badge-tooltip-container">
                         ${propSummary}
-                        <div class="tooltip-content">${badgesHtml}</div>
+                        <div class="tooltip-content" style="width: auto; max-width: 400px; display: flex; flex-wrap: wrap;">${badgesHtml}</div>
                     </div>
                 `;
             }

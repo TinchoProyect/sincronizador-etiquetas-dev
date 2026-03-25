@@ -301,19 +301,27 @@ function limpiarTerminoDict(inputId) {
     actualizarLivePreview();
 }
 
-window.toggleVisibilidadAtributo = function(inputId) {
+window.toggleVisibilidadAtributo = function(inputId, forceSilencioso = null) {
     const prop = dictLocal.propiedades.find(p => p.idContainer === inputId);
     if (!prop) return;
-    prop.silencioso = !prop.silencioso;
-    const btn = document.getElementById(`toggle_attr_${inputId}`);
-    if (prop.silencioso) {
-        btn.innerHTML = '🙈';
-        btn.title = "Silencioso (No se concatena al Nomenclador)";
-        btn.style.color = "#94a3b8";
+    
+    if (forceSilencioso !== null) {
+        prop.silencioso = forceSilencioso;
     } else {
-        btn.innerHTML = '👁️';
-        btn.title = "Visible en Nomenclador";
-        btn.style.color = "#3b82f6";
+        prop.silencioso = !prop.silencioso;
+    }
+    
+    const btn = document.getElementById(`toggle_attr_${inputId}`);
+    if (btn) {
+        if (prop.silencioso) {
+            btn.innerHTML = '🙈';
+            btn.title = "Silencioso (No se concatena al Nomenclador)";
+            btn.style.color = "#94a3b8";
+        } else {
+            btn.innerHTML = '👁️';
+            btn.title = "Visible en Nomenclador";
+            btn.style.color = "#3b82f6";
+        }
     }
     actualizarLivePreview();
 };
@@ -390,7 +398,11 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
                 onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}">
             <div id="autocomplete-list-${inputId}" class="autocomplete-items" style="display:none;"></div>
         </div>
-        <button type="button" class="btn-icon" id="toggle_attr_${inputId}" style="color: #3b82f6; font-size: 1.2em; border:none; background:transparent; cursor:pointer;" onclick="toggleVisibilidadAtributo('${inputId}')" title="Visible en Nomenclador">👁️</button>
+        <div style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
+            <button type="button" title="Mover Arriba" onclick="moverAtributo('${rowId}', 'arriba')" style="border:none; background:transparent; cursor:pointer; font-size: 0.85em; padding:0; line-height:1; opacity: 0.6;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">⬆️</button>
+            <button type="button" title="Mover Abajo" onclick="moverAtributo('${rowId}', 'abajo')" style="border:none; background:transparent; cursor:pointer; font-size: 0.85em; padding:0; line-height:1; opacity: 0.6; margin-top:2px;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">⬇️</button>
+        </div>
+        <button type="button" class="btn-icon" id="toggle_attr_${inputId}" style="color: #3b82f6; font-size: 1.2em; border:none; background:transparent; cursor:pointer; margin-left:5px;" onclick="toggleVisibilidadAtributo('${inputId}')" title="Visible en Nomenclador">👁️</button>
         <button type="button" class="btn-icon" style="color:red;" onclick="eliminarAtributoUI('${rowId}', '${inputId}')">✖</button>
     `;
     container.appendChild(div);
@@ -407,6 +419,37 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
         selectCat.value = defaultCategoria;
         actualizarCategoriaAtributo(inputId, selectCat);
     }
+    
+    return inputId;
+};
+
+window.moverAtributo = function(rowId, direccion) {
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    
+    // Find the inputId associated with this row (e.g. attr_row_1 -> attr_val_1)
+    const inputId = rowId.replace('row', 'val');
+    const index = dictLocal.propiedades.findIndex(p => p.idContainer === inputId);
+    if (index === -1) return;
+
+    if (direccion === 'arriba' && index > 0) {
+        // Swap in DOM
+        row.parentNode.insertBefore(row, row.previousElementSibling);
+        // Swap in dictLocal array
+        const temp = dictLocal.propiedades[index];
+        dictLocal.propiedades[index] = dictLocal.propiedades[index - 1];
+        dictLocal.propiedades[index - 1] = temp;
+    } else if (direccion === 'abajo' && index < dictLocal.propiedades.length - 1) {
+        // Swap in DOM
+        row.parentNode.insertBefore(row.nextElementSibling, row);
+        // Swap in dictLocal array
+        const temp = dictLocal.propiedades[index];
+        dictLocal.propiedades[index] = dictLocal.propiedades[index + 1];
+        dictLocal.propiedades[index + 1] = temp;
+    }
+    
+    // Re-render live preview to reflect new order
+    actualizarLivePreview();
 };
 
 window.actualizarCategoriaAtributo = async function(inputId, selectEl) {
@@ -649,10 +692,21 @@ window.hidratarFormularioEdicion = async function(id) {
         // 5. JSONB Re-construction
         // Note: Some properties might have been auto-added by `obtenerPlantillaParaArticulo`. We must map them.
         const propsJSON = art.propiedades_dinamicas || {};
-        const keys = Object.keys(propsJSON);
+        
+        // Extraer claves y ordenarlas por el atributo interno 'orden' para mantener la estructura de la Nomenclatura
+        const keys = Object.keys(propsJSON).sort((a, b) => {
+            const propA = propsJSON[a];
+            const propB = propsJSON[b];
+            const ordA = (typeof propA === 'object' && propA !== null && propA.orden !== undefined) ? propA.orden : 99;
+            const ordB = (typeof propB === 'object' && propB !== null && propB.orden !== undefined) ? propB.orden : 99;
+            return ordA - ordB;
+        });
         
         for (const cat of keys) {
-            const val = propsJSON[cat];
+            const propData = propsJSON[cat];
+            
+            const val = typeof propData === 'object' && propData !== null ? propData.valor : propData;
+            const isVisible = typeof propData === 'object' && propData !== null ? (propData.visible !== false) : true;
             
             // Re-use auto-generated UI container or create new one
             let existingProp = dictLocal.propiedades.find(p => p.categoria === cat);
@@ -697,9 +751,24 @@ window.hidratarFormularioEdicion = async function(id) {
             if (pIndex >= 0) {
                 dictLocal.propiedades[pIndex].termino = val;
                 dictLocal.propiedades[pIndex].abreviatura = abrevReconstructed;
+                window.toggleVisibilidadAtributo(targetInputId, !isVisible);
             }
         }
         
+        // REORDER DOM AND DICTLOCAL TO OVERRIDE TEMPLATE AUTO-FILLER
+        const container = document.getElementById('atributos-container');
+        dictLocal.propiedades.sort((a, b) => {
+            const ordA = (propsJSON[a.categoria] && propsJSON[a.categoria].orden !== undefined) ? propsJSON[a.categoria].orden : 99;
+            const ordB = (propsJSON[b.categoria] && propsJSON[b.categoria].orden !== undefined) ? propsJSON[b.categoria].orden : 99;
+            return ordA - ordB;
+        });
+        
+        dictLocal.propiedades.forEach(p => {
+            const rowId = p.idContainer.replace('val', 'row');
+            const rowEl = document.getElementById(rowId);
+            if (rowEl) container.appendChild(rowEl);
+        });
+
         actualizarLivePreview();
         Swal.close();
         
@@ -856,11 +925,15 @@ async function guardarArticuloBunker(event) {
 
     const desc_abreviada = actualizarLivePreview();
     
-    // Generar JSONB Propiedades Dinámicas
+    // Generar JSONB Propiedades Dinámicas respetando el orden de inserción visual
     const propsJSON = {};
-    dictLocal.propiedades.forEach(p => {
+    dictLocal.propiedades.forEach((p, idx) => {
         if (p.termino && p.categoria) {
-            propsJSON[p.categoria] = p.termino;
+            propsJSON[p.categoria] = {
+                valor: p.termino,
+                visible: !p.silencioso,
+                orden: idx
+            };
         }
     });
 
