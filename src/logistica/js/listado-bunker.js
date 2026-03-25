@@ -2,8 +2,17 @@ let articulosBunkerGlobal = [];
 let listaSeleccionadaGlobal = 1; // Default a Lista 1
 
 document.addEventListener('DOMContentLoaded', async () => {
+    initColumnToggler();
     await cargarListasPreciosFiltro();
     await cargarDataGrid();
+});
+
+// Click outside to close column settings dropdown
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('col-toggler-dropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        dropdown.classList.remove('open');
+    }
 });
 
 async function cargarListasPreciosFiltro() {
@@ -33,6 +42,63 @@ window.cambiarListaPreciosDataGrid = function(nuevaListaId) {
     listaSeleccionadaGlobal = parseInt(nuevaListaId);
     renderizarGrid(articulosBunkerGlobal);
 };
+
+// --- LOGICA DE VISIBILIDAD DE COLUMNAS ---
+const BUNKER_COLUMNS = [
+    { id: 0, name: 'ID Pivote', defaultVisible: true },
+    { id: 1, name: 'Art. Principal / Rubro', defaultVisible: true },
+    { id: 2, name: 'Nomenclatura (Prod)', defaultVisible: true },
+    { id: 3, name: 'Propiedades (Intel)', defaultVisible: true },
+    { id: 4, name: 'Precio Final c/IVA', defaultVisible: true },
+    { id: 5, name: 'Margen Base', defaultVisible: true }
+];
+
+let bunkerGridPreferences = {};
+
+function initColumnToggler() {
+    const saved = localStorage.getItem('bunker_grid_preferences');
+    if (saved) {
+        try { bunkerGridPreferences = JSON.parse(saved); } catch(e) {}
+    }
+
+    const container = document.getElementById('col-toggler-list');
+    if (!container) return;
+
+    BUNKER_COLUMNS.forEach(col => {
+        if (bunkerGridPreferences[col.id] === undefined) {
+            bunkerGridPreferences[col.id] = col.defaultVisible;
+        }
+
+        const isVisible = bunkerGridPreferences[col.id];
+        aplicarVisibilidadColumna(col.id, isVisible);
+
+        const label = document.createElement('label');
+        label.className = 'settings-dropdown-label';
+        label.innerHTML = `
+            <input type="checkbox" value="${col.id}" ${isVisible ? 'checked' : ''} onchange="toggleBunkerColumn(${col.id}, this.checked)">
+            ${col.name}
+        `;
+        container.appendChild(label);
+    });
+}
+
+window.toggleBunkerColumn = function(colId, isVisible) {
+    bunkerGridPreferences[colId] = isVisible;
+    localStorage.setItem('bunker_grid_preferences', JSON.stringify(bunkerGridPreferences));
+    aplicarVisibilidadColumna(colId, isVisible);
+};
+
+function aplicarVisibilidadColumna(colId, isVisible) {
+    const table = document.getElementById('tabla-bunker');
+    if (!table) return;
+    const hideClass = `hide-col-${colId}`;
+    if (isVisible) {
+        table.classList.remove(hideClass);
+    } else {
+        table.classList.add(hideClass);
+    }
+}
+// ------------------------------------------
 
 async function cargarDataGrid() {
     const search = document.getElementById('filtro-busqueda').value.trim();

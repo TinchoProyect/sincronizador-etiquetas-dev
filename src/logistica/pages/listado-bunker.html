@@ -153,6 +153,62 @@
             border-style: solid;
             border-color: #cbd5e1 transparent transparent transparent;
         }
+
+        /* Column Toggler Settings */
+        .settings-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .settings-dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background-color: #fff;
+            min-width: 200px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            z-index: 1000;
+            padding: 10px;
+            text-align: left;
+        }
+        .settings-dropdown.open .settings-dropdown-content {
+            display: block;
+        }
+        .settings-dropdown-label {
+            display: flex;
+            align-items: center;
+            padding: 5px 0;
+            font-size: 0.9em;
+            color: #1e293b;
+            cursor: pointer;
+        }
+        .settings-dropdown-label input {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        .btn-icon {
+            background: #e2e8f0;
+            color: #1e293b;
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-icon:hover { background: #cbd5e1; }
+
+        /* Dynamic Column Visibility Rules */
+        #tabla-bunker.hide-col-0 th:nth-child(1), #tabla-bunker.hide-col-0 tbody tr:not(.expandable-row) > td:nth-child(1) { display: none !important; }
+        #tabla-bunker.hide-col-1 th:nth-child(2), #tabla-bunker.hide-col-1 tbody tr:not(.expandable-row) > td:nth-child(2) { display: none !important; }
+        #tabla-bunker.hide-col-2 th:nth-child(3), #tabla-bunker.hide-col-2 tbody tr:not(.expandable-row) > td:nth-child(3) { display: none !important; }
+        #tabla-bunker.hide-col-3 th:nth-child(4), #tabla-bunker.hide-col-3 tbody tr:not(.expandable-row) > td:nth-child(4) { display: none !important; }
+        #tabla-bunker.hide-col-4 th:nth-child(5), #tabla-bunker.hide-col-4 tbody tr:not(.expandable-row) > td:nth-child(5) { display: none !important; }
+        #tabla-bunker.hide-col-5 th:nth-child(6), #tabla-bunker.hide-col-5 tbody tr:not(.expandable-row) > td:nth-child(6) { display: none !important; }
     </style>
 </head>
 <body>
@@ -177,9 +233,20 @@
         <div class="main-content">
             <div class="bunker-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3>📊 Buscador y Filtros</h3>
-                    <input type="text" id="filtro-busqueda" placeholder="🔎 Buscar por Artículo o ID Pivote..." style="padding: 10px; width: 350px; border-radius: 4px; border: 1px solid #cbd5e1;" onkeyup="if(event.key === 'Enter') cargarDataGrid()">
-                    <button class="btn-edit" style="background-color: #0f172a;" onclick="cargarDataGrid()">Filtrar</button>
+                    <h3 style="margin-bottom: 0px; border-bottom: none; padding-bottom: 0px;">📊 Buscador y Filtros</h3>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="filtro-busqueda" placeholder="🔎 Buscar por Artículo o ID Pivote..." style="padding: 10px; width: 350px; border-radius: 4px; border: 1px solid #cbd5e1;" onkeyup="if(event.key === 'Enter') cargarDataGrid()">
+                        <button class="btn-edit" style="background-color: #0f172a;" onclick="cargarDataGrid()">Filtrar</button>
+                        
+                        <div class="settings-dropdown" id="col-toggler-dropdown">
+                            <button class="btn-icon" onclick="document.getElementById('col-toggler-dropdown').classList.toggle('open')" title="Configurar Columnas">
+                                ⚙️
+                            </button>
+                            <div class="settings-dropdown-content" id="col-toggler-list">
+                                <!-- JS Injected Content -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
