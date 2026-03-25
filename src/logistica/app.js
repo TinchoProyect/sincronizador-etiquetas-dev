@@ -144,6 +144,10 @@ console.log('[LOGISTICA] ✅ Rutas de Configuración montadas en /api/logistica/
 app.use('/api/logistica/articulos', require('./routes/articulos'));
 console.log('[LOGISTICA] ✅ Rutas de Artículos montadas en /api/logistica/articulos');
 
+// Rutas del Búnker (Core Financiero)
+app.use('/api/logistica/bunker', require('./routes/bunker'));
+console.log('[LOGISTICA] ✅ Rutas del Búnker montadas en /api/logistica/bunker');
+
 // Rutas de Presupuestos
 app.use('/api/logistica/presupuestos', require('./routes/presupuestos'));
 console.log('[LOGISTICA] ✅ Rutas de Presupuestos montadas en /api/logistica/presupuestos');

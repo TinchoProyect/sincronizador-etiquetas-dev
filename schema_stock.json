@@ -1,0 +1,62 @@
+[
+  {
+    "column_name": "stock_mantenimiento",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "solo_produccion_externa",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "kilos_unidad",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "es_pack",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "pack_unidades",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "stock_lomasoft",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "stock_movimientos",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "stock_ajustes",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "stock_consolidado",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "ultima_actualizacion",
+    "data_type": "timestamp without time zone"
+  },
+  {
+    "column_name": "no_producido_por_lambda",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "descripcion",
+    "data_type": "text"
+  },
+  {
+    "column_name": "codigo_barras",
+    "data_type": "text"
+  },
+  {
+    "column_name": "articulo_numero",
+    "data_type": "text"
+  },
+  {
+    "column_name": "pack_hijo_codigo",
+    "data_type": "text"
+  }
+]

@@ -1,27 +1,50 @@
 [
   {
-    "table_name": "stock_ventas_movimientos",
-    "column_name": "origen_ingreso",
-    "character_maximum_length": 50
+    "column_name": "especial_brus",
+    "data_type": "numeric"
   },
   {
-    "table_name": "mantenimiento_movimientos",
-    "column_name": "articulo_numero",
-    "character_maximum_length": 50
+    "column_name": "consumidor_final",
+    "data_type": "numeric"
   },
   {
-    "table_name": "mantenimiento_movimientos",
-    "column_name": "usuario",
-    "character_maximum_length": 100
+    "column_name": "lista_5",
+    "data_type": "numeric"
   },
   {
-    "table_name": "mantenimiento_movimientos",
-    "column_name": "tipo_movimiento",
-    "character_maximum_length": 50
+    "column_name": "costo",
+    "data_type": "numeric"
   },
   {
-    "table_name": "mantenimiento_movimientos",
-    "column_name": "estado",
-    "character_maximum_length": 20
+    "column_name": "iva",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "precio_neg",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "mayorista",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "sub_rubro",
+    "data_type": "text"
+  },
+  {
+    "column_name": "descripcion",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "moneda",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "rubro",
+    "data_type": "text"
+  },
+  {
+    "column_name": "articulo",
+    "data_type": "character varying"
   }
 ]

@@ -11,8 +11,8 @@ const pool = new Pool({
 
 async function run() {
     try {
-        const res = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'precios_articulos'");
-        fs.writeFileSync('schema.json', JSON.stringify(res.rows, null, 2));
+        const res = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'stock_real_consolidado'");
+        fs.writeFileSync('schema_stock.json', JSON.stringify(res.rows, null, 2));
     } catch(err) {
         console.error(err);
     } finally {
