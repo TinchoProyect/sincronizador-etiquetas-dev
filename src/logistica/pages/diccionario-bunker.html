@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Diccionario Búnker</title>
+    <link rel="icon" type="image/x-icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        .container-box { padding: 20px 40px; }
+        .bunker-panel {
+            background-color: #f8fafc; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px;
+        }
+        .header { display: flex; justify-content: space-between; align-items: center; background: #2c3e50; color: white; padding: 15px 40px; }
+        .grid-dict {
+            width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .grid-dict th, .grid-dict td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+        .grid-dict th { background: #334155; color: white; }
+        .btn-action { padding: 5px 10px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; }
+        .btn-edit { background: #3b82f6; color: white; }
+        .btn-delete { background: #ef4444; color: white; }
+        .btn-edit:hover { background: #2563eb; }
+        .btn-delete:hover { background: #dc2626; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div>
+            <h1 style="margin: 0; font-size: 1.5em;">📚 Gestor de Diccionario Búnker</h1>
+            <span style="color: #cbd5e1; font-size: 0.9em;">Control de Abreviaturas y Nomenclatura</span>
+        </div>
+        <button class="btn-action" style="background:#eab308; color:#000; font-size: 1em; padding: 8px 15px;" onclick="window.location.href='listado-bunker.html'">← Volver a Gestión de Artículos</button>
+    </header>
+
+    <div class="container-box">
+        <div class="bunker-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="margin:0; border:none; padding:0;">Configuración de Términos Guardados</h3>
+                <input type="text" id="buscador-local" placeholder="Buscar término o abreviatura..." style="padding: 8px; width: 300px; border: 1px solid #cbd5e1; border-radius: 4px;" onkeyup="filtrarGrilla()">
+            </div>
+            
+            <table class="grid-dict">
+                <thead>
+                    <tr>
+                        <th style="width: 250px;">Categoría (Familia)</th>
+                        <th>Término Original</th>
+                        <th style="width: 250px;">Abreviatura (Impresión)</th>
+                        <th style="width: 150px; text-align: center;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-diccionario">
+                    <tr><td colspan="4" style="text-align:center; padding: 20px;">Cargando Diccionario...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="../js/diccionario-bunker.js"></script>
+</body>
+</html>

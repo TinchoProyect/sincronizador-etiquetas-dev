@@ -389,6 +389,19 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
     // Añadir al store virtual
     dictLocal.propiedades.push({ idContainer: inputId, categoria: '', termino: '', abreviatura: '', silencioso: false });
 
+    // Inyectar categorías dinámicas desde el diccionario global que no sean las base
+    const categoriasBase = ['calibre', 'origen', 'color', 'tratamiento', 'variedad', 'otro', ''];
+    let opcionesExtraHtml = '';
+    if (window.diccionarioCategorizado) {
+        const categoriasUnicas = [...new Set(window.diccionarioCategorizado.map(d => d.categoria))];
+        categoriasUnicas.forEach(cat => {
+            if (cat && !categoriasBase.includes(cat.toLowerCase())) {
+                const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+                opcionesExtraHtml += `<option value="${cat}">${catLabel} (Búnker)</option>`;
+            }
+        });
+    }
+
     const div = document.createElement('div');
     div.className = 'attr-row';
     div.id = rowId;
@@ -400,6 +413,7 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
             <option value="color">Color</option>
             <option value="tratamiento">Tratamiento</option>
             <option value="variedad">Variedad</option>
+            ${opcionesExtraHtml}
             <option value="otro">Otro Atributo</option>
         </select>
         <div id="container_texto_${inputId}" style="position: relative; flex: 1;">

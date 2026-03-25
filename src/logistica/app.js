@@ -148,6 +148,10 @@ console.log('[LOGISTICA] ✅ Rutas de Artículos montadas en /api/logistica/arti
 app.use('/api/logistica/bunker', require('./routes/bunker'));
 console.log('[LOGISTICA] ✅ Rutas del Búnker montadas en /api/logistica/bunker');
 
+// Rutas del Diccionario ABM Búnker
+app.use('/api/logistica/bunker-diccionario', require('./routes/bunkerDiccionario'));
+console.log('[LOGISTICA] ✅ Rutas ABM de Diccionario montadas en /api/logistica/bunker-diccionario');
+
 // Rutas de Presupuestos
 app.use('/api/logistica/presupuestos', require('./routes/presupuestos'));
 console.log('[LOGISTICA] ✅ Rutas de Presupuestos montadas en /api/logistica/presupuestos');
