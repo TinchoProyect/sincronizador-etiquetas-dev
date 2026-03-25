@@ -14,6 +14,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (searchPanels.length > 0 && searchPanels[0].innerHTML.includes('Enriquecer')) {
             searchPanels[0].style.display = 'none';
         }
+        
+        // UX: Dynamic Return Button
+        const headerRight = document.querySelector('.header-right');
+        if (headerRight) {
+            headerRight.innerHTML = `
+                <button class="btn-secondary" onclick="window.location.href='/pages/listado-bunker.html'" style="background-color: #3b82f6; color: white; border: none;">
+                    ← Volver a Gestión de Artículos
+                </button>
+            `;
+        }
+
         await hidratarFormularioEdicion(editId);
     }
 });
@@ -812,10 +823,10 @@ window.limpiarFilaFinanciera = function(listaId) {
     const margenInput = document.querySelector(`.input-margen-dinamico[data-listaid="${listaId}"]`);
     const precioInput = document.getElementById(`precio_final_${listaId}`);
     
-    // Hard UI Reset
+    // Hard UI Reset to 0
     if (margenInput) {
         margenInput.type = 'number';
-        margenInput.value = '';
+        margenInput.value = '0.00';
     }
     if (precioInput) {
         precioInput.type = 'number';
@@ -844,7 +855,7 @@ window.recalcularFilaPorMargen = function(listaId) {
     const margenText = (margenInput.type === 'text') ? margenInput.value.trim() : margenInput.value;
     let margen = parseInputValue(margenInput);
 
-    if (isNaN(margen)) {
+    if (isNaN(margen) || margen === 0) {
         document.getElementById(`s_iva_${listaId}`).innerText = formatCurrencyARG(0);
         document.getElementById(`iibb_${listaId}`).innerText = formatCurrencyARG(0);
         document.getElementById(`neta_${listaId}`).innerText = formatCurrencyARG(0);
@@ -884,14 +895,14 @@ window.recalcularFilaPorPrecioFinal = function(listaId) {
     
     let precioFinal = parseInputValue(precioInput);
     
-    if (isNaN(precioFinal)) {
+    if (isNaN(precioFinal) || precioFinal === 0) {
         document.getElementById(`s_iva_${listaId}`).innerText = formatCurrencyARG(0);
         document.getElementById(`iibb_${listaId}`).innerText = formatCurrencyARG(0);
         document.getElementById(`neta_${listaId}`).innerText = formatCurrencyARG(0);
         const margenInput = document.querySelector(`.input-margen-dinamico[data-listaid="${listaId}"]`);
         if (margenInput) {
             margenInput.type = 'number';
-            margenInput.value = '';
+            margenInput.value = '0.00';
         }
         return;
     }
