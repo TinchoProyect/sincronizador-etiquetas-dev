@@ -2605,7 +2605,9 @@
                         item_nombre: nombre,
                         cantidad_text: `${parseFloat(i.kilos_ingresados).toFixed(2)}kg | ${etiquetaArt}`,
                         bulto_actual: b,
-                        bultos_totales: bultos
+                        bultos_totales: bultos,
+                        tipo_tratamiento: `${tto.tipo_tratamiento || 'TTO'} #${tto.id}`,
+                        responsable: tto.usuario_armado || 'Desc.'
                     });
                 });
             }

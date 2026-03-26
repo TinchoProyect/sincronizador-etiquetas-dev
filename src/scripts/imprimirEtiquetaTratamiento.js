@@ -26,7 +26,11 @@ ${fuentePaginacion}
 ${fuenteTitulos}
 ^FO${offsetX},115^FB380,2,0,L^FD${nombreCorto}^FS
 ${fuenteDetalles}
-^FO${offsetX},170^FB380,1,0,L^FD${datos.cantidad_text || ''}^FS`;
+^FO${offsetX},170^FB380,1,0,L^FD${datos.cantidad_text || ''}^FS
+^CF0,18
+^FO${offsetX + 200},25^FD${(datos.tipo_tratamiento || '').substring(0,25)}^FS
+^CF0,18
+^FO${offsetX + 200},50^FDResp: ${(datos.responsable || '').substring(0,12)}^FS`;
   };
 
   const izq = generarMitad(etiquetaIzq, 23);

@@ -2151,6 +2151,21 @@ const iniciarTratamiento = async (req, res) => {
             if (item.modulo_origen === 'INGRESO' && item.id) {
                 await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'EN_TRATAMIENTO', observaciones = CONCAT(observaciones, ' -> Enviado a Tratamiento #', $1) WHERE id = $2`, [tratamientoId, item.id]);
             }
+
+            // Insertar traza documental para el Historial
+            const insertAuditoria = `
+                INSERT INTO public.mantenimiento_movimientos 
+                (articulo_numero, ingrediente_id, id_cliente_origen, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado)
+                VALUES ($1, $2, $3, $4, 'ENVIO_TRATAMIENTO', NOW(), $5, $6, 'EN_TRATAMIENTO')
+            `;
+            await client.query(insertAuditoria, [
+                item.articulo_numero || null,
+                item.ingrediente_id || null,
+                item.cliente_origen || null,
+                kg,
+                usuario,
+                `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento}`
+            ]);
         }
 
         await client.query('COMMIT');
