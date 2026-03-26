@@ -4,6 +4,7 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
     await cargarListasDinamicas();
+    await cargarRubrosTaxonomia();
     
     // Interceptar Modo Edición (Fase 7)
     const urlParams = new URLSearchParams(window.location.search);
@@ -112,7 +113,7 @@ async function seleccionarArticuloConsolidado(item) {
         const res = await fetch(`/api/logistica/bunker/articulos/${encodeURIComponent(item.id)}`);
         const data = await res.json();
         if (data.success && data.data) {
-           cargarDatosBunkerExistentes(data.data);
+           await cargarDatosBunkerExistentes(data.data);
            Swal.fire({
                 toast: true, position: 'top-end', showConfirmButton: false, timer: 3000,
                 icon: 'info', title: 'Artículo existente en Búnker. Datos cargados.'
@@ -141,13 +142,20 @@ function limpiarSeleccionConsolidado() {
     document.querySelectorAll('.input-margen-dinamico').forEach(i => i.value = '');
 }
 
-function cargarDatosBunkerExistentes(data) {
+async function cargarDatosBunkerExistentes(data) {
     document.getElementById('costo_base').value = data.costo_base || '';
     document.getElementById('porcentaje_iva').value = data.porcentaje_iva || 21;
     document.getElementById('kilos_unidad').value = data.kilos_unidad || 0;
     document.getElementById('moneda').value = data.moneda || '($)Pesos';
-    document.getElementById('rubro').value = data.rubro || '';
     document.getElementById('mantener_utilidad').checked = data.mantener_utilidad || false;
+    
+    if (data.rubro) {
+        document.getElementById('rubro').value = data.rubro;
+        await window.rubroSeleccionadoContexto(document.getElementById('rubro'));
+        if (data.sub_rubro) {
+            document.getElementById('sub_rubro').value = data.sub_rubro;
+        }
+    }
     
     // Margenes
     if (data.margenes && data.margenes.length > 0) {
@@ -162,6 +170,139 @@ function cargarDatosBunkerExistentes(data) {
         recalcularTodaLaGrilla();
     }
 }
+
+/**
+ * TAXONOMÍA DINÁMICA (RUBROS & SUBRUBROS)
+ */
+let rubrosGlobales = [];
+let subrubrosGlobales = [];
+
+window.cargarRubrosTaxonomia = async function(preselectRubroName = null) {
+    try {
+        const res = await fetch('/api/logistica/bunker-taxonomia/rubros');
+        const json = await res.json();
+        const select = document.getElementById('rubro');
+        
+        if (json.success) {
+            rubrosGlobales = json.data;
+            select.innerHTML = '<option value="" disabled selected>Seleccione Rubro...</option>';
+            rubrosGlobales.forEach(r => {
+                select.innerHTML += `<option value="${r.nombre}" data-id="${r.id}">${r.nombre}</option>`;
+            });
+            select.innerHTML += `<option value="CREAR_NUEVO" style="font-weight:bold; color:#2563eb;">✨ [+] Crear Nuevo Rubro...</option>`;
+            
+            if (preselectRubroName) {
+                select.value = preselectRubroName;
+                await window.rubroSeleccionadoContexto(select);
+            }
+        }
+    } catch(e) { console.error(e); }
+};
+
+window.rubroSeleccionadoContexto = async function(selectEl) {
+    const val = selectEl.value;
+    const subRubroSelect = document.getElementById('sub_rubro');
+    
+    if (val === "CREAR_NUEVO") {
+        selectEl.value = ""; 
+        const { value: nuevoNombre } = await Swal.fire({
+            title: 'Nuevo Rubro',
+            input: 'text',
+            inputPlaceholder: 'Ej: Bebidas, Lácteos...',
+            showCancelButton: true,
+            confirmButtonText: 'Guardar',
+            cancelButtonText: 'Cancelar'
+        });
+        
+        if (nuevoNombre) {
+            try {
+                Swal.fire({title:'Guardando...', didOpen:()=>Swal.showLoading()});
+                const res = await fetch('/api/logistica/bunker-taxonomia/rubros', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ nombre: nuevoNombre })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    Swal.fire({title:'Creado', icon:'success', timer:1500, showConfirmButton:false});
+                    await window.cargarRubrosTaxonomia(json.data.nombre);
+                    return;
+                } else {
+                    Swal.fire('Error', json.error, 'error');
+                }
+            } catch(e) { Swal.fire('Error', 'Fallo de red', 'error'); }
+        }
+        return;
+    }
+    
+    const selectedOpt = selectEl.options[selectEl.selectedIndex];
+    const rubroId = selectedOpt ? selectedOpt.getAttribute('data-id') : null;
+    
+    if (rubroId) {
+        subRubroSelect.disabled = false;
+        await window.cargarSubrubrosTaxonomia(rubroId);
+    } else {
+        subRubroSelect.disabled = true;
+    }
+};
+
+window.cargarSubrubrosTaxonomia = async function(rubroId, preselectSubrubroName = null) {
+    try {
+        const res = await fetch(`/api/logistica/bunker-taxonomia/${rubroId}/subrubros`);
+        const json = await res.json();
+        const select = document.getElementById('sub_rubro');
+        
+        if (json.success) {
+            subrubrosGlobales = json.data;
+            select.innerHTML = '<option value="" disabled selected>Seleccione Subrubro...</option>';
+            subrubrosGlobales.forEach(s => {
+                select.innerHTML += `<option value="${s.nombre}">${s.nombre}</option>`;
+            });
+            select.innerHTML += `<option value="CREAR_NUEVO" style="font-weight:bold; color:#2563eb;">✨ [+] Crear Nuevo Subrubro...</option>`;
+            
+            if (preselectSubrubroName) {
+                select.value = preselectSubrubroName;
+            }
+        }
+    } catch(e) { console.error(e); }
+};
+
+window.subrubroSeleccionadoContexto = async function(selectEl) {
+    const val = selectEl.value;
+    if (val === "CREAR_NUEVO") {
+        selectEl.value = ""; 
+        const rubroSelect = document.getElementById('rubro');
+        const rubroOpt = rubroSelect.options[rubroSelect.selectedIndex];
+        const rubroId = rubroOpt.getAttribute('data-id');
+        
+        const { value: nuevoNombre } = await Swal.fire({
+            title: 'Nuevo Subrubro',
+            input: 'text',
+            inputPlaceholder: 'Ej: Gaseosas, Jugos...',
+            showCancelButton: true,
+            confirmButtonText: 'Guardar',
+            cancelButtonText: 'Cancelar'
+        });
+        
+        if (nuevoNombre) {
+            try {
+                Swal.fire({title:'Guardando...', didOpen:()=>Swal.showLoading()});
+                const res = await fetch(`/api/logistica/bunker-taxonomia/${rubroId}/subrubros`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ nombre: nuevoNombre })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    Swal.fire({title:'Creado', icon:'success', timer:1500, showConfirmButton:false});
+                    await window.cargarSubrubrosTaxonomia(rubroId, json.data.nombre);
+                } else {
+                    Swal.fire('Error', json.error, 'error');
+                }
+            } catch(e) { Swal.fire('Error', 'Fallo de red', 'error'); }
+        }
+    }
+};
 
 /**
  * Autocomplete y Búsqueda en el Diccionario
@@ -696,8 +837,15 @@ window.hidratarFormularioEdicion = async function(id) {
         document.getElementById('kilos_unidad').value = parseFloat(art.kilos_unidad || 0).toFixed(3);
         document.getElementById('cantidad_pack').value = art.pack_unidades || 1;
         document.getElementById('moneda').value = art.moneda || '($)Pesos';
-        document.getElementById('rubro').value = art.rubro || '';
-        document.getElementById('sub_rubro').value = art.sub_rubro || '';
+        
+        if (art.rubro) {
+            document.getElementById('rubro').value = art.rubro;
+            await window.rubroSeleccionadoContexto(document.getElementById('rubro'));
+            if (art.sub_rubro) {
+                document.getElementById('sub_rubro').value = art.sub_rubro;
+            }
+        }
+        
         document.getElementById('pack_hijo_codigo').value = art.pack_hijo_codigo || '';
         document.getElementById('no_producido_por_lambda').checked = art.no_producido_por_lambda || false;
         document.getElementById('mantener_utilidad').checked = art.mantener_utilidad !== false;

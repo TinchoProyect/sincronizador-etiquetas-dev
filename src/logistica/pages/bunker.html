@@ -250,11 +250,15 @@
                         </div>
                         <div class="form-group">
                             <label for="rubro">Rubro</label>
-                            <input type="text" id="rubro" placeholder="Ej: Bebidas">
+                            <select id="rubro" onchange="rubroSeleccionadoContexto(this)">
+                                <option value="" disabled selected>⏳ Cargando rubros...</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label for="sub_rubro">Sub-Rubro</label>
-                            <input type="text" id="sub_rubro" placeholder="Ej: Gaseosas">
+                            <select id="sub_rubro" disabled onchange="subrubroSeleccionadoContexto(this)">
+                                <option value="" disabled selected>🔒 Seleccione un Rubro primero...</option>
+                            </select>
                         </div>
                     </div>
                     
@@ -293,6 +297,6 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../js/bunker.js?v=1.4.9"></script>
+    <script src="../js/bunker.js?v=1.5.0"></script>
 </body>
 </html>

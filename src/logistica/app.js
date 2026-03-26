@@ -152,6 +152,10 @@ console.log('[LOGISTICA] ✅ Rutas del Búnker montadas en /api/logistica/bunker
 app.use('/api/logistica/bunker-diccionario', require('./routes/bunkerDiccionario'));
 console.log('[LOGISTICA] ✅ Rutas ABM de Diccionario montadas en /api/logistica/bunker-diccionario');
 
+// Rutas de Taxonomía Búnker (Rubros/Subrubros)
+app.use('/api/logistica/bunker-taxonomia', require('./routes/bunkerTaxonomia'));
+console.log('[LOGISTICA] ✅ Rutas de Taxonomía montadas en /api/logistica/bunker-taxonomia');
+
 // Rutas de Presupuestos
 app.use('/api/logistica/presupuestos', require('./routes/presupuestos'));
 console.log('[LOGISTICA] ✅ Rutas de Presupuestos montadas en /api/logistica/presupuestos');
