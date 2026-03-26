@@ -234,6 +234,10 @@
                         <div class="form-group">
                             <label for="kilos_unidad">Kilos x Unidad</label>
                             <input type="number" step="0.001" id="kilos_unidad" required value="0.000" oninput="actualizarLivePreview()">
+                            <div style="margin-top: 5px; display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" id="expresar_gramos" onchange="actualizarLivePreview()" style="width: auto;">
+                                <label for="expresar_gramos" style="font-size: 0.85em; font-weight: normal; color: #475569; margin: 0;">Expresar en gramos</label>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="cantidad_pack">Cantidad</label>
@@ -297,6 +301,6 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../js/bunker.js?v=1.5.3"></script>
+    <script src="../js/bunker.js?v=1.5.4"></script>
 </body>
 </html>

@@ -92,7 +92,8 @@ class BunkerService {
                 es_pack,
                 pack_hijo_codigo,
                 descripcion_abreviada,
-                propiedades_dinamicas
+                propiedades_dinamicas,
+                expresado_en_gramos
             } = articuloData;
 
             // 1. Guardar términos nuevos "On-The-Fly"
@@ -113,9 +114,9 @@ class BunkerService {
                 INSERT INTO public.bunker_articulos (
                     articulo_id, descripcion, descripcion_generada, costo_base, porcentaje_iva, moneda, redondeo, mantener_utilidad,
                     rubro, sub_rubro, no_producido_por_lambda, kilos_unidad, es_pack, pack_hijo_codigo,
-                    propiedades_dinamicas
+                    propiedades_dinamicas, expresado_en_gramos
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
                 )
                 ON CONFLICT (articulo_id) DO UPDATE SET
                     descripcion = EXCLUDED.descripcion,
@@ -131,13 +132,15 @@ class BunkerService {
                     kilos_unidad = EXCLUDED.kilos_unidad,
                     es_pack = EXCLUDED.es_pack,
                     pack_hijo_codigo = EXCLUDED.pack_hijo_codigo,
-                    propiedades_dinamicas = EXCLUDED.propiedades_dinamicas
+                    propiedades_dinamicas = EXCLUDED.propiedades_dinamicas,
+                    expresado_en_gramos = EXCLUDED.expresado_en_gramos
             `;
             await client.query(queryBunker, [
                 articulo_id, descripcion, descFinal, costo_base || 0, porcentaje_iva || 21.00, moneda || '($)Pesos', redondeo || 'Ninguno',
                 mantener_utilidad || false, rubro || null, sub_rubro || null, no_producido_por_lambda || false,
                 kilos_unidad || 0, es_pack || false, pack_hijo_codigo || null,
-                propiedades_dinamicas ? JSON.stringify(propiedades_dinamicas) : '{}'
+                propiedades_dinamicas ? JSON.stringify(propiedades_dinamicas) : '{}',
+                expresado_en_gramos || false
             ]);
 
             // 4. Upsert Iterativo en los márgenes: `bunker_margenes`

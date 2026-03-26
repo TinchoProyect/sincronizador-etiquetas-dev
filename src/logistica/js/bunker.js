@@ -502,16 +502,27 @@ function actualizarLivePreview() {
     let sufijoFisico = "";
     const kilosEl = document.getElementById('kilos_unidad');
     const cantEl  = document.getElementById('cantidad_pack');
+    const gramosEl = document.getElementById('expresar_gramos');
+    const enGramos = gramosEl ? gramosEl.checked : false;
+
     if (kilosEl && cantEl) {
         const kilos = parseFloat(kilosEl.value) || 0;
         const cantidad = parseInt(cantEl.value) || 1;
         
         if (kilos > 0) {
             if (cantidad === 1) {
-                sufijoFisico = ` x ${kilos}kg`;
+                if (enGramos) {
+                    sufijoFisico = ` x ${Math.round(kilos * 1000)}g`;
+                } else {
+                    sufijoFisico = ` x ${kilos}kg`;
+                }
             } else if (cantidad > 1) {
                 const pesoUnitario = parseFloat((kilos / cantidad).toFixed(3));
-                sufijoFisico = ` ${cantidad} x ${pesoUnitario}kg`;
+                if (enGramos) {
+                    sufijoFisico = ` ${cantidad} x ${Math.round(pesoUnitario * 1000)}g`;
+                } else {
+                    sufijoFisico = ` ${cantidad} x ${pesoUnitario}kg`;
+                }
             }
         }
     }
@@ -867,6 +878,9 @@ window.hidratarFormularioEdicion = async function(id) {
         document.getElementById('porcentaje_iva').value = parseFloat(art.porcentaje_iva || 21).toFixed(2);
         document.getElementById('kilos_unidad').value = parseFloat(art.kilos_unidad || 0).toFixed(3);
         document.getElementById('cantidad_pack').value = art.pack_unidades || 1;
+        if (document.getElementById('expresar_gramos')) {
+            document.getElementById('expresar_gramos').checked = art.expresado_en_gramos || false;
+        }
         document.getElementById('moneda').value = art.moneda || '($)Pesos';
         
         if (art.rubro) {
@@ -1163,8 +1177,7 @@ async function guardarArticuloBunker(event) {
         porcentaje_iva: parseFloat(document.getElementById('porcentaje_iva').value) || 21,
         kilos_unidad: parseFloat(document.getElementById('kilos_unidad').value) || 0,
         pack_unidades: parseInt(document.getElementById('cantidad_pack').value) || 1,
-        kilos_unidad: parseFloat(document.getElementById('kilos_unidad').value) || 0,
-        pack_unidades: parseInt(document.getElementById('cantidad_pack').value) || 1,
+        expresado_en_gramos: document.getElementById('expresar_gramos') ? document.getElementById('expresar_gramos').checked : false,
         moneda: document.getElementById('moneda').value,
         rubro: document.getElementById('rubro').value.trim(),
         sub_rubro: document.getElementById('sub_rubro').value.trim(),
