@@ -120,7 +120,24 @@ exports.crearArticulo = async (req, res) => {
         articuloData.articulo_id = articulo_id;
         articuloData.codigo_barras = codigo_barras || articulo_id;
 
-        const resultado = await BunkerService.crearArticuloTransaccional(db, articuloData, listasMargenes, nuevos_terminos_diccionario);
+        // PARCHE CRÍTICO: Asegurar que el Artículo Principal se registre SIEMPRE en el diccionario (categoria = 'general')
+        // Si el usuario grabó tan rápido que evadió el Swal.fire del OnBlur, lo forzamos silenciosamente en backend
+        let terminosAsegurados = nuevos_terminos_diccionario || [];
+        const terminoPrimarioStr = articuloData.descripcion_abreviada || articuloData.descripcion;
+        if (terminoPrimarioStr) {
+             let baseNombre = terminoPrimarioStr.split('.')[0].trim();
+             // Limpiar sufijos genericos de empaque que ensucian el diccionario raiz
+             baseNombre = baseNombre.replace(/\s*\d*\s*[xX]\s*\d+(\.\d+)?[kK]?[gG]?/g, '').trim();
+             if (baseNombre && !terminosAsegurados.some(t => t.termino.toLowerCase() === baseNombre.toLowerCase())) {
+                  terminosAsegurados.push({
+                      termino: baseNombre,
+                      abreviatura: baseNombre.substring(0, 3).toUpperCase(),
+                      categoria: 'general'
+                  });
+             }
+        }
+
+        const resultado = await BunkerService.crearArticuloTransaccional(db, articuloData, listasMargenes, terminosAsegurados);
 
         res.status(201).json({
             success: true,

@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "numero": "MFSPx5",
-    "nombre": "Mix/F/Secas/Premium x 5",
-    "codigo_barras": "6475845"
-  },
-  "cantidad": "2.00"
+  "numero": "SNIX5",
+  "nombre": "Sesamo/Nat/Integral x 5",
+  "codigo_barras": "468233341",
+  "cantidad": 2
 }

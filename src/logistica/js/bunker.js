@@ -488,7 +488,12 @@ function terminoYaAsignado(inputId, query) {
 
 function actualizarLivePreview() {
     let parts = [];
-    if (dictLocal.principal) parts.push(dictLocal.principal.abreviatura);
+    if (dictLocal.principal && dictLocal.principal.abreviatura) {
+        let baseAb = dictLocal.principal.abreviatura.toString();
+        // Regex para eliminar strings estilo "x 10kg" o "1 x 10kg" cargados por legacy
+        baseAb = baseAb.replace(/\s*\d*\s*[xX]\s*\d+(\.\d+)?[kK]?[gG]?/g, '').trim();
+        if (baseAb) parts.push(baseAb);
+    }
     dictLocal.propiedades.forEach(p => {
         if (p.abreviatura && !p.silencioso) parts.push(p.abreviatura);
     });
@@ -530,7 +535,7 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
     dictLocal.propiedades.push({ idContainer: inputId, categoria: '', termino: '', abreviatura: '', silencioso: false });
 
     // Inyectar categorías dinámicas desde el diccionario global que no sean las base ni las internas del sistema
-    const categoriasBase = ['calibre', 'origen', 'color', 'tratamiento', 'variedad', 'otro', '', 'general', 'propiedad_dinamica', 'tipo', 'articulo_principal'];
+    const categoriasBase = ['otro', '', 'general', 'propiedad_dinamica', 'tipo', 'articulo_principal'];
     let opcionesExtraHtml = '';
     if (window.diccionarioCategorizado) {
         const categoriasUnicas = [...new Set(window.diccionarioCategorizado.map(d => d.categoria))];
@@ -549,13 +554,8 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
     div.innerHTML = `
         <select style="width: 150px;" onchange="actualizarCategoriaAtributo('${inputId}', this)" required>
             <option value="" disabled selected>Familia...</option>
-            <option value="calibre">Calibre</option>
-            <option value="origen">Origen</option>
-            <option value="color">Color</option>
-            <option value="tratamiento">Tratamiento</option>
-            <option value="variedad">Variedad</option>
             ${opcionesExtraHtml}
-            <option value="otro">Otro Atributo</option>
+            <option value="otro">✨ Crear nueva Familia...</option>
         </select>
         </select>
         <div id="container_texto_${inputId}" style="position: relative; flex: 1;">
