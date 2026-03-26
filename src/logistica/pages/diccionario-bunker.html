@@ -36,27 +36,26 @@
 
     <div class="container-box">
         <div class="bunker-panel">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h3 style="margin:0; border:none; padding:0;">Configuración de Términos Guardados</h3>
-                <input type="text" id="buscador-local" placeholder="Buscar término o abreviatura..." style="padding: 8px; width: 300px; border: 1px solid #cbd5e1; border-radius: 4px;" onkeyup="filtrarGrilla()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #fffbeeb3; padding: 15px; border: 1px solid #eab308; border-radius: 6px;">
+                <div>
+                    <h3 style="margin:0; border:none; padding:0; color: #b45309;">Jerarquía por Artículo</h3>
+                    <p style="margin:5px 0 0 0; font-size: 0.9em; color:#78350f;">Seleccione un Artículo para visualizar las familias de atributos dinámicos que utiliza.</p>
+                </div>
+                <div>
+                    <select id="filtro-principal" style="padding: 10px; width: 300px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.1em; font-weight: bold; color: #1e293b;" onchange="cargarJerarquia()">
+                        <option value="" disabled selected>⏳ Cargando artículos...</option>
+                    </select>
+                </div>
             </div>
             
-            <table class="grid-dict">
-                <thead>
-                    <tr>
-                        <th style="width: 250px;">Categoría (Familia)</th>
-                        <th>Término Original</th>
-                        <th style="width: 250px;">Abreviatura (Impresión)</th>
-                        <th style="width: 150px; text-align: center;">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="tbody-diccionario">
-                    <tr><td colspan="4" style="text-align:center; padding: 20px;">Cargando Diccionario...</td></tr>
-                </tbody>
-            </table>
+            <div id="diccionario-acordeon-container" style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="text-align: center; padding: 40px; color: #94a3b8; font-size: 1.2em; border: 2px dashed #cbd5e1; border-radius: 8px;">
+                    👆 Seleccione un Artículo Principal arriba para desplegar su diccionario.
+                </div>
+            </div>
         </div>
     </div>
 
-    <script src="../js/diccionario-bunker.js"></script>
+    <script src="../js/diccionario-bunker.js?v=2.0.0"></script>
 </body>
 </html>

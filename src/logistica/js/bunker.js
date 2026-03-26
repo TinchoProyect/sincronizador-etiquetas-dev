@@ -529,15 +529,16 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
     // Añadir al store virtual
     dictLocal.propiedades.push({ idContainer: inputId, categoria: '', termino: '', abreviatura: '', silencioso: false });
 
-    // Inyectar categorías dinámicas desde el diccionario global que no sean las base
-    const categoriasBase = ['calibre', 'origen', 'color', 'tratamiento', 'variedad', 'otro', ''];
+    // Inyectar categorías dinámicas desde el diccionario global que no sean las base ni las internas del sistema
+    const categoriasBase = ['calibre', 'origen', 'color', 'tratamiento', 'variedad', 'otro', '', 'general', 'propiedad_dinamica', 'tipo', 'articulo_principal'];
     let opcionesExtraHtml = '';
     if (window.diccionarioCategorizado) {
         const categoriasUnicas = [...new Set(window.diccionarioCategorizado.map(d => d.categoria))];
         categoriasUnicas.forEach(cat => {
             if (cat && !categoriasBase.includes(cat.toLowerCase())) {
-                const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
-                opcionesExtraHtml += `<option value="${cat}">${catLabel} (Búnker)</option>`;
+                let catCleaned = cat.replaceAll('_', ' ');
+                const catLabel = catCleaned.charAt(0).toUpperCase() + catCleaned.slice(1);
+                opcionesExtraHtml += `<option value="${cat}">${catLabel}</option>`;
             }
         });
     }

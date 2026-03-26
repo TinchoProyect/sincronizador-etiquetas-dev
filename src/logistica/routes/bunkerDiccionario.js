@@ -5,6 +5,8 @@ const diccionarioController = require('../controllers/bunkerDiccionarioControlle
 console.log('🔍 [BUNKER-DICCIONARIO] Configurando rutas ABM separadas...');
 
 router.get('/', diccionarioController.obtenerDiccionario);
+router.get('/principales', diccionarioController.obtenerArticulosPrincipales);
+router.get('/jerarquia/:terminoPrincipal', diccionarioController.obtenerJerarquiaPorPrincipal);
 router.put('/:id', diccionarioController.actualizarTermino);
 router.delete('/:id', diccionarioController.eliminarTermino);
 
