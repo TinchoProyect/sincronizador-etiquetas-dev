@@ -1,6 +1,8 @@
 {
-  "numero": "SNIX5",
-  "nombre": "Sesamo/Nat/Integral x 5",
-  "codigo_barras": "468233341",
-  "cantidad": 2
+  "articulo": {
+    "numero": "MPB",
+    "nombre": "Mezcla p/ Barritas x 4 kg",
+    "codigo_barras": "5689515951"
+  },
+  "cantidad": "1.00"
 }

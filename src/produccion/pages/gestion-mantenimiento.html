@@ -292,6 +292,8 @@
                             <label><input type="checkbox" id="chk-interno-articulos" checked onchange="aplicarFiltrosStock()"> 📦 Artículos (Desde Ventas)</label>
                             <br>
                             <label><input type="checkbox" id="chk-interno-ingredientes" checked onchange="aplicarFiltrosStock()"> ⚖️ Ingredientes a Granel</label>
+                            <br>
+                            <label><input type="checkbox" id="chk-interno-tratamientos" checked onchange="aplicarFiltrosStock()"> 🧪 Desde Tratamientos</label>
                         </div>
                     </div>
                     
@@ -532,8 +534,8 @@
 
                     <div class="form-group">
                         <label for="transf-cantidad">Cantidad Real Ingresada (Kg):</label>
-                        <input type="number" id="transf-cantidad" step="0.001" placeholder="Ej: 9.500"
-                            oninput="calcularMerma()">
+                        <input type="text" inputmode="decimal" id="transf-cantidad" placeholder="Ej: 9.500 o 9,500"
+                            oninput="this.value = this.value.replace(/[^0-9.,]/g, ''); calcularMerma()">
                     </div>
 
                     <div class="info-merma" id="merma-container" style="display:none;">
@@ -704,6 +706,10 @@
                         </select>
                     </div>
                     <div style="margin-bottom: 15px;">
+                        <label for="tto-bultos" style="font-weight: bold; display: block; margin-bottom: 5px;">Cantidad de bultos físicos (Bolsas/Paquetes):</label>
+                        <input type="number" id="tto-bultos" class="swal2-input" style="width: 100%; margin: 0; padding: 8px; box-sizing: border-box;" placeholder="Ej: 2" min="0">
+                    </div>
+                    <div style="margin-bottom: 15px;">
                         <label for="tto-notas" style="font-weight: bold; display: block; margin-bottom: 5px;">Notas Operativas (Opcional):</label>
                         <textarea id="tto-notas" class="swal2-textarea" style="width: 100%; margin: 0; min-height: 60px; padding: 8px;" placeholder="Ej: Se requieren 4 pastillas, revisar en extremo inferior..."></textarea>
                     </div>
@@ -720,36 +726,22 @@
             <div class="swal2-popup" style="background: white; width: 550px; max-width: 90%; padding: 20px; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; font-family: 'Inter', sans-serif;">
                 <button onclick="cerrarModalFinalizarTratamiento()" style="position: absolute; top: 10px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #aaa;">&times;</button>
                 <h2 class="swal2-title" style="margin-top: 5px; font-size: 1.5em; text-align: left; display: flex; align-items: center; gap: 10px;">
-                    ⚖️ Finalizar y Recuperar Stock
+                    ⚖️ Finalizar y Recuperar a Cuarentena
                 </h2>
                 <div class="swal2-content" style="text-align: left;">
-                    <p style="margin-bottom: 20px;">Estás cerrando el tratamiento <strong>#<span id="fin-tto-id-display"></span></strong>. Indicá cuánto de la mercadería bruta original has logrado salvar ("Kilos Limpios") tras descartar mermas/basura.</p>
+                    <p style="margin-bottom: 20px;">Estás cerrando el tratamiento <strong>#<span id="fin-tto-id-display"></span></strong>. Todo el contenido volverá a la Mesa de Trabajo con su historial de tratamiento respectivo.</p>
                     <input type="hidden" id="fin-tto-id">
                     
-                    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-                        <div style="flex: 1; background: #e9ecef; padding: 10px; border-radius: 4px; text-align: center;">
-                            <span style="font-size: 0.85em; color: #666; display: block;">Masa Original (Bruta)</span>
-                            <strong style="font-size: 1.2em; color: #856404;"><span id="fin-tto-brutos">0.00</span> kg</strong>
-                        </div>
-                        <div style="flex: 1; text-align: center; display: flex; flex-direction: column; justify-content: flex-end;">
-                            <label for="fin-tto-netos" style="font-size: 0.85em; font-weight: bold; color: #333; display: block; margin-bottom: 4px;">Kilos Recuperados (Netos) ↓</label>
-                            <input type="number" step="0.001" id="fin-tto-netos" class="swal2-input" style="width: 100%; margin: 0; text-align: center; font-size: 1.2em; color: #28a745; font-weight: bold;" placeholder="Ej: 5.50" oninput="calcularMermaTtoPreview()" required>
-                        </div>
+                    <div style="background: #e9ecef; padding: 15px; border-radius: 4px; text-align: center; margin-bottom: 20px;">
+                        <span style="font-size: 0.85em; color: #666; display: block;">Mercadería que retornará</span>
+                        <strong style="font-size: 1.4em; color: #856404;"><span id="fin-tto-brutos">0.00</span> kg</strong>
                     </div>
 
-                    <div id="fin-tto-merma-preview" style="text-align: center; font-weight: bold; font-size: 1.1em; margin-bottom: 20px;"></div>
-
-                    <div style="margin-bottom: 15px;">
-                        <label for="fin-tto-destino" style="font-weight: bold; display: block; margin-bottom: 5px;">Lote / Ingrediente de Destino:</label>
-                        <select id="fin-tto-destino" class="swal2-select" style="width: 100%; margin: 0; padding: 8px;" required>
-                            <option value="">Cargando catálogo...</option>
-                        </select>
-                        <p style="font-size: 0.85em; color: #666; margin-top: 5px;">Todo lo recuperado se inyectará físicamente como stock a este origen.</p>
-                    </div>
+                    <p style="font-size: 0.85em; color: #666; margin-top: 5px;">Nota: El cálculo final de Merma se realizará posteriormente cuando decidas enviar la mercadería definitiva a Ingredientes o Ventas.</p>
                     
                     <div class="swal2-actions" style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
                         <button onclick="cerrarModalFinalizarTratamiento()" class="swal2-cancel swal2-styled" style="background-color: #6c757d;">Cancelar</button>
-                        <button onclick="confirmarFinalizarTratamiento()" class="swal2-confirm swal2-styled" style="background-color: #28a745;">✅ Inyectar y Cerrar Carpa</button>
+                        <button onclick="confirmarFinalizarTratamiento()" class="swal2-confirm swal2-styled" style="background-color: #28a745;">✅ Retornar a Cuarentena</button>
                     </div>
                 </div>
             </div>
@@ -1008,15 +1000,20 @@
         function aplicarFiltrosStock() {
             const chkInternoArticulos = document.getElementById('chk-interno-articulos')?.checked ?? true;
             const chkInternoIngredientes = document.getElementById('chk-interno-ingredientes')?.checked ?? true;
+            const chkInternoTratamientos = document.getElementById('chk-interno-tratamientos')?.checked ?? true;
             const chkExternoMostrador = document.getElementById('chk-externo-mostrador')?.checked ?? true;
             const chkExternoChofer = document.getElementById('chk-externo-chofer')?.checked ?? true;
 
             const filteredData = window.mantenimientoStockData.filter(item => {
-                const esInternoGranel = (item.ingrediente_id != null);
-                const esInternoArticulo = (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))) && item.ingrediente_id == null;
+                let historialParsed = [];
+                try { if (item.historial_tratamientos) historialParsed = JSON.parse(item.historial_tratamientos); } catch(e) {}
+                const esTratamiento = Array.isArray(historialParsed) && historialParsed.length > 0;
 
-                const esInterno = esInternoGranel || esInternoArticulo;
-                const esExterno = !esInterno;
+                const esInternoGranel = (item.ingrediente_id != null) && !esTratamiento;
+                const esInternoArticulo = (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))) && item.ingrediente_id == null && !esTratamiento;
+
+                const esInterno = esInternoGranel || esInternoArticulo || esTratamiento;
+                const esExterno = !esInterno && !esTratamiento; // Aseguramos exclusion real
                 
                 const esHojaDeRuta = esExterno && (item.origen_ruta_id != null);
                 const esMostrador = esExterno && (item.origen_ruta_id == null);
@@ -1024,6 +1021,7 @@
                 let passedType = false;
                 if (esInternoArticulo && chkInternoArticulos) passedType = true;
                 if (esInternoGranel && chkInternoIngredientes) passedType = true;
+                if (esTratamiento && chkInternoTratamientos) passedType = true;
                 if (esMostrador && chkExternoMostrador) passedType = true;
                 if (esHojaDeRuta && chkExternoChofer) passedType = true;
                 
@@ -1100,10 +1098,10 @@
                         `;
                     } else {
                         dropInterno += `
-                            <button onclick="liberarStock(null, '${item.articulo_numero}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                            <button onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 📦 Devolver a Ventas
                             </button>
-                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 🧪 Convertir a Ingredientes
                             </button>
                             <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
@@ -1139,7 +1137,7 @@
                             <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}')">
                                 📦 Enviar a Ventas
                             </button>
-                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}')">
+                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}')">
                                 🧪 Enviar a Ingredientes
                             </button>
                             ${esLomasoftOK ? `
@@ -1205,6 +1203,22 @@
 
                 if (item.origen_facturacion && item.origen_facturacion !== 'PENDIENTE') {
                     subtitulo += `<br><span style="color:#e67e22; font-weight:bold; font-size:0.85em;">🏷️ Origen Facturación: ${item.origen_facturacion}</span>`;
+                }
+
+                if (item.historial_tratamientos) {
+                    let hArray = [];
+                    try {
+                        hArray = typeof item.historial_tratamientos === 'string' ? JSON.parse(item.historial_tratamientos) : item.historial_tratamientos;
+                    } catch(e) {}
+
+                    if (hArray && hArray.length > 0) {
+                        subtitulo += `<div style="margin-top: 5px; font-size: 0.8em;">`;
+                        hArray.forEach(tto => {
+                            let fFinStr = tto.fecha_fin ? new Date(tto.fecha_fin).toLocaleDateString() : 'N/A';
+                            subtitulo += `<span title="Tratamiento #${tto.tratamiento_id} (${tto.tipo_tratamiento}) - Fin: ${fFinStr}" style="display:inline-block; margin-right:3px; padding:2px 4px; background:#e2f0d9; color:#385723; border:1px solid #c5e0b3; border-radius:3px; font-weight:bold;">🛡️ TTO #${tto.tratamiento_id}</span>`;
+                        });
+                        subtitulo += `</div>`;
+                    }
                 }
 
                 // Mejorar visualización del subtitulo para externos dependiendo si es Hoja de Ruta o Mostrador
@@ -1747,7 +1761,7 @@
         // ==========================================
         // Modal Transferencia
         // ==========================================
-        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad, usuarioOriginalId) {
+        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad, usuarioOriginalId, origenIngredienteId = null) {
             // Asegurar tipos numéricos
             const cantUnidades = parseFloat(unidades) || 0;
             const factorKilos = parseFloat(kilosPorUnidad) || 1;
@@ -1757,6 +1771,25 @@
             document.getElementById('transf-cliente-id').value = clienteId;
             document.getElementById('transf-articulo').value = articulo;
             document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3);
+            
+            // Inyectamos unidades originales y el Ingrediente de origen (si aplica) para backend
+            let reqUnid = document.getElementById('transf-unidades-origen');
+            if(!reqUnid) {
+                reqUnid = document.createElement('input');
+                reqUnid.type = 'hidden';
+                reqUnid.id = 'transf-unidades-origen';
+                document.getElementById('modal-body-transferencia').appendChild(reqUnid);
+            }
+            reqUnid.value = cantUnidades;
+
+            let reqIngOrig = document.getElementById('transf-origen-ingrediente-id');
+            if(!reqIngOrig) {
+                reqIngOrig = document.createElement('input');
+                reqIngOrig.type = 'hidden';
+                reqIngOrig.id = 'transf-origen-ingrediente-id';
+                document.getElementById('modal-body-transferencia').appendChild(reqIngOrig);
+            }
+            reqIngOrig.value = origenIngredienteId || '';
 
             const selectResp = document.getElementById('transf-responsable');
             if (selectResp) {
@@ -1791,7 +1824,8 @@
 
         function calcularMerma() {
             const pesoOrig = parseFloat(document.getElementById('transf-peso-original').value) || 0;
-            const pesoReal = parseFloat(document.getElementById('transf-cantidad').value) || 0;
+            const strReal = document.getElementById('transf-cantidad').value.replace(',', '.');
+            const pesoReal = parseFloat(strReal) || 0;
             const merma = pesoOrig - pesoReal;
 
             document.getElementById('merma-peso-orig').textContent = pesoOrig.toFixed(3);
@@ -1814,17 +1848,20 @@
             const clienteId = document.getElementById('transf-cliente-id').value;
             const articulo = document.getElementById('transf-articulo').value;
             const ingredienteId = document.getElementById('transf-ingrediente').value;
-            const cantidadReal = document.getElementById('transf-cantidad').value;
+            let cantidadReal = document.getElementById('transf-cantidad').value;
+            if (cantidadReal) cantidadReal = cantidadReal.replace(',', '.');
             const obs = document.getElementById('transf-obs').value;
             let respVal = document.getElementById('transf-responsable')?.value;
             const responsableSeleccionado = respVal === '-1' ? '' : respVal;
+            const unidadesOrigen = document.getElementById('transf-unidades-origen').value;
+            const origenIngredienteId = document.getElementById('transf-origen-ingrediente-id') ? document.getElementById('transf-origen-ingrediente-id').value : '';
 
             if (!ingredienteId || !cantidadReal) {
                 alert('⚠️ Por favor seleccione un ingrediente y la cantidad ingresada.');
                 return;
             }
 
-            if (!confirm('¿Confirma la transferencia a ingredientes? Esta acción vaciará el stock de mantenimiento.')) return;
+            if (!confirm('¿Confirma la transferencia a ingredientes? Esta acción restará el stock de mantenimiento correspondientemente.')) return;
 
             try {
                 const res = await fetch('/api/produccion/mantenimiento/transferir-ingrediente', {
@@ -1836,7 +1873,9 @@
                         ingrediente_id: ingredienteId,
                         cantidad_real: cantidadReal,
                         observaciones: obs,
-                        responsable: responsableSeleccionado
+                        responsable: responsableSeleccionado,
+                        unidades_origen: unidadesOrigen,
+                        origen_ingrediente_id: origenIngredienteId
                     })
                 });
 
@@ -2383,6 +2422,8 @@
             }
 
             document.getElementById('tto-notas').value = '';
+            const ttoBultos = document.getElementById('tto-bultos');
+            if (ttoBultos) ttoBultos.value = '';
             
             const selectOperario = document.getElementById('tto-operario');
             if (selectOperario) {
@@ -2405,6 +2446,8 @@
         async function confirmarIniciarTratamiento() {
             const tipo = document.getElementById('tto-tipo').value;
             const notas = document.getElementById('tto-notas').value;
+            const ttoBultosEl = document.getElementById('tto-bultos');
+            const bultos = ttoBultosEl ? (ttoBultosEl.value ? parseInt(ttoBultosEl.value, 10) : 0) : 0;
             const operarioSelect = document.getElementById('tto-operario');
             
             if (!operarioSelect.value) {
@@ -2421,6 +2464,7 @@
                     body: JSON.stringify({
                         tipo_tratamiento: tipo,
                         notas: notas,
+                        bultos_fisicos: bultos,
                         usuario: operarioNombre,
                         usuario_armado_id: operarioId,
                         items: itemsSeleccionadosTratamiento.map(i => ({...i, cantidad: i.kilos}))
@@ -2504,7 +2548,7 @@
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Estado:</strong> ${estadoHtml}</p>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Armado:</strong> ${new Date(tto.fecha_inicio_armado).toLocaleDateString()}</p>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Responsable:</strong> 🧑‍🏭 ${tto.usuario_armado || 'Desc.'}</p>
-                        <p style="margin: 5px 0; font-size: 1.05em; color: #856404;"><strong>Kilos Brutos:</strong> ${parseFloat(tto.kilos_brutos_totales).toFixed(2)} kg</p>
+                        <p style="margin: 5px 0; font-size: 1.05em; color: #856404;"><strong>Kilos Brutos:</strong> ${parseFloat(tto.kilos_brutos_totales).toFixed(2)} kg ${tto.bultos_fisicos ? `| 📦 ${tto.bultos_fisicos} Bultos` : ''}</p>
                         <hr style="margin: 10px 0; border-top: 1px solid #eee;">
                         <p style="margin: 0; font-weight: bold; font-size: 0.85em;">Contenido (${tto.items.length} items):</p>
                         ${itemsHtml}
@@ -2562,24 +2606,6 @@
             document.getElementById('fin-tto-id').value = id;
             document.getElementById('fin-tto-id-display').innerText = id;
             document.getElementById('fin-tto-brutos').innerText = parseFloat(kilosBrutos).toFixed(2);
-            document.getElementById('fin-tto-netos').value = '';
-            document.getElementById('fin-tto-merma-preview').innerText = '';
-            
-            const select = document.getElementById('fin-tto-destino');
-            select.innerHTML = '<option value="">Cargando ingredientes...</option>';
-            try {
-                // Fetching lote selection from produccion/stock api
-                const resData = await fetch('/api/produccion/stock');
-                const pData = await resData.json();
-
-                select.innerHTML = '<option value="">-- Seleccione Lote / Ingrediente Destino --</option>';
-                pData.data.forEach(ing => {
-                    select.innerHTML += `<option value="${ing.id}">I-${ing.id} - ${ing.nombre} (Libre: ${ing.total_kilos}kg)</option>`;
-                });
-            } catch (e) {
-                select.innerHTML = '<option value="">Error cargando ingredientes. Comuniquese con soporte.</option>';
-            }
-
             document.getElementById('modal-finalizar-tratamiento').style.display = 'block';
         }
 
@@ -2587,50 +2613,24 @@
             document.getElementById('modal-finalizar-tratamiento').style.display = 'none';
         }
 
-        function calcularMermaTtoPreview() {
-            const brutos = parseFloat(document.getElementById('fin-tto-brutos').innerText) || 0;
-            const netos = parseFloat(document.getElementById('fin-tto-netos').value) || 0;
-            const preview = document.getElementById('fin-tto-merma-preview');
-            
-            if (netos > brutos) {
-                preview.style.color = '#dc3545';
-                preview.innerText = '⚠️ Error: Los kilos recuperados no pueden ser mayores al peso bruto.';
-            } else {
-                const merma = brutos - netos;
-                preview.style.color = '#28a745';
-                preview.innerText = `[MERMA: ${merma.toFixed(2)} kg perdidos en tratamiento]`;
-            }
-        }
-
         async function confirmarFinalizarTratamiento() {
             const id = document.getElementById('fin-tto-id').value;
-            const netos = parseFloat(document.getElementById('fin-tto-netos').value);
-            const brutos = parseFloat(document.getElementById('fin-tto-brutos').innerText);
-            const ingredienteDestino = document.getElementById('fin-tto-destino').value;
-
-            if (!netos || isNaN(netos) || netos < 0 || netos > brutos) {
-                return Swal.fire('Error', 'Ingrese un kilaje neto válido y menor o igual al bruto.', 'error');
-            }
-            if (!ingredienteDestino) {
-                return Swal.fire('Error', 'Seleccione un ingrediente de destino para inyectar los kilos limpios.', 'error');
-            }
 
             try {
                 const res = await fetch(`/api/produccion/mantenimiento/tratamientos/${id}/finalizar`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        kilos_netos: netos,
-                        ingrediente_destino_id: ingredienteDestino,
                         usuario: window.nombreUsuarioLogueado || 'SISTEMA'
                     })
                 });
                 const data = await res.json();
                 
                 if (data.success) {
-                    Swal.fire('¡Tratamiento Finalizado!', `Merma total calculada: ${data.merma.toFixed(2)} kg.<br>El stock útil ha ingresado a planta (Ingredientes).`, 'success');
+                    Swal.fire('¡Tratamiento Finalizado!', `La carpa ha sido cerrada exitosamente.<br>Todo el contenido ha vuelto a la Mesa de Trabajo (Cuarentena).`, 'success');
                     cerrarModalFinalizarTratamiento();
                     cargarTratamientos();
+                    cargarStock(); // Re-fetch the current stock
                     cargarHistorial();
                 } else throw new Error(data.error);
             } catch (e) { Swal.fire('Error', e.message, 'error'); }

@@ -21,21 +21,23 @@ async function getStockMantenimiento(req, res) {
                     MAX(p.comprobante_lomasoft) AS presup_comprobante_lomasoft,
                     MAX(p.fecha) AS presup_fecha,
                     SUM(CASE 
-                        WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN mm.cantidad 
+                        WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO') THEN mm.cantidad 
                         WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
                         ELSE 0 
                     END) AS stock_mantenimiento,
                     MAX(mm.fecha_movimiento) as ultima_actualizacion,
-                    (array_agg(mm.usuario ORDER BY mm.fecha_movimiento DESC))[1] AS usuario
+                    (array_agg(mm.usuario ORDER BY mm.fecha_movimiento DESC))[1] AS usuario,
+                    (array_agg(mm.historial_tratamientos::text ORDER BY mm.fecha_movimiento DESC))[1] AS historial_tratamientos
                 FROM public.mantenimiento_movimientos mm
                 LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
                 LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
                 WHERE mm.estado IS DISTINCT FROM 'REVERTIDO' 
                   AND mm.estado IS DISTINCT FROM 'FINALIZADO'
                   AND mm.estado IS DISTINCT FROM 'ANULADO'
+                  AND mm.estado IS DISTINCT FROM 'FINALIZADO_TRATAMIENTO'
                 GROUP BY mm.id_presupuesto_origen, p.origen_facturacion, mm.articulo_numero, mm.ingrediente_id, p.id_cliente, c.nombre, c.apellido, c.otros
                 HAVING SUM(CASE 
-                    WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN mm.cantidad 
+                    WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO') THEN mm.cantidad 
                     WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
                     ELSE 0 
                 END) > 0
@@ -53,6 +55,7 @@ async function getStockMantenimiento(req, res) {
                 sc.ultima_actualizacion,
                 NULLIF(TRIM(sc.usuario), '') AS usuario_id,
                 COALESCE(u_resp.nombre_completo, NULLIF(TRIM(sc.usuario), ''), 'SISTEMA') AS usuario,
+                sc.historial_tratamientos,
                 sc.origen_ruta_id,
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
@@ -723,39 +726,56 @@ async function transferirAIngredientes(req, res) {
     const client = await pool.connect();
 
     try {
-        const { cliente_id, articulo, ingrediente_id, cantidad_real, observaciones, responsable } = req.body;
+        const { cliente_id, articulo, ingrediente_id, cantidad_real, observaciones, responsable, unidades_origen, origen_ingrediente_id } = req.body;
         const usuario = responsable || (req.user ? req.user.username : 'SISTEMA');
 
-        if (!articulo || !ingrediente_id || !cantidad_real) {
-            return res.status(400).json({ success: false, error: 'Faltan datos obligatorios.' });
+        // Permitimos que articulo_numero y origen_ingrediente_id estén vacíos para procesar items huérfanos pre-fix
+        if (!ingrediente_id || !cantidad_real) {
+            return res.status(400).json({ success: false, error: 'Faltan datos obligatorios (Ingrediente de Destino o Cantidad).' });
         }
 
-        console.log(`🧪 [MANTENIMIENTO -> INGREDIENTES] Iniciando transferencia. Art: ${articulo} -> Ing: ${ingrediente_id}, Resp: ${usuario}`);
+        console.log(`🧪 [MANTENIMIENTO -> INGREDIENTES] Iniciando transferencia. Origen: (Art: ${articulo} / Ing: ${origen_ingrediente_id}) -> Ing_Destino: ${ingrediente_id}, Resp: ${usuario}`);
 
         await client.query('BEGIN');
 
-        // 1. Obtener Stock Actual en Mantenimiento (Peso Original)
-        // Bloqueamos la fila para evitar concurrencia
-        const stockQuery = `
-            SELECT stock_mantenimiento, kilos_unidad 
-            FROM public.stock_real_consolidado 
-            WHERE articulo_numero = $1
-            FOR UPDATE
-        `;
-        const resStock = await client.query(stockQuery, [articulo]);
+        let cantidadUnidades = parseFloat(unidades_origen || 0);
+        let kilosUnidad = 1;
+        let pesoTeoricoTotal = cantidadUnidades;
 
-        if (resStock.rows.length === 0) {
-            throw new Error(`Artículo ${articulo} no encontrado en stock consolidado.`);
+        // 1. Obtener Stock Actual en Mantenimiento para KilosPorUnidad y validaciones secundarias
+        if (articulo && articulo !== 'null' && articulo !== '') {
+            const stockQuery = `
+                SELECT stock_mantenimiento, kilos_unidad 
+                FROM public.stock_real_consolidado 
+                WHERE articulo_numero = $1
+                FOR UPDATE
+            `;
+            const resStock = await client.query(stockQuery, [articulo]);
+
+            if (resStock.rows.length === 0) {
+                throw new Error(`Artículo ${articulo} no encontrado en stock consolidado.`);
+            }
+
+            if (!cantidadUnidades || cantidadUnidades <= 0) {
+                cantidadUnidades = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
+            }
+
+            kilosUnidad = parseFloat(resStock.rows[0].kilos_unidad || 1);
+            pesoTeoricoTotal = cantidadUnidades * kilosUnidad;
+
+            if (cantidadUnidades <= 0) {
+                throw new Error(`El artículo ${articulo} no tiene stock asignado a transferir.`);
+            }
+        } else {
+            // Es un ingrediente
+            if (!cantidadUnidades || cantidadUnidades <= 0) {
+                // Sacamos del historial si faltaran unidades origen
+                throw new Error(`Faltan unidades originales definidas para el ingrediente en la UI.`);
+            }
+            pesoTeoricoTotal = cantidadUnidades; // 1 unidad = 1 kg para granel
         }
 
-        const cantidadUnidades = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
-        const kilosUnidad = parseFloat(resStock.rows[0].kilos_unidad || 1);
-        const pesoTeoricoTotal = cantidadUnidades * kilosUnidad;
         const pesoIngreso = parseFloat(cantidad_real);
-
-        if (cantidadUnidades <= 0) {
-            throw new Error(`El artículo ${articulo} no tiene stock en mantenimiento.`);
-        }
 
         // Calculamos la MERMA/SOBRANTE (Diferencia de peso)
         const diferencia = pesoIngreso - pesoTeoricoTotal;
@@ -770,36 +790,41 @@ async function transferirAIngredientes(req, res) {
 
         console.log(`📊 Cálculo: Unidades=${cantidadUnidades}, Kilos/U=${kilosUnidad}, Teorico=${pesoTeoricoTotal}, Real=${pesoIngreso}, Delta=${diferencia}`);
 
-        // 2. DAR DE BAJA EN MANTENIMIENTO (Todo el stock)
-        // Usamos la lógica de actualización directa para no depender de la función PL/SQL si queremos atomicidad controlada aquí
-        // O podríamos llamar a la función, pero aquí es una operación compuesta compleja. Haremos update manual.
-
+        // 2. DAR DE BAJA EN MANTENIMIENTO (Sustraccion Dinámica por unidades de origen)
         const updateMantenimiento = `
             UPDATE public.stock_real_consolidado
             SET 
-                stock_mantenimiento = 0, -- Se vacía
-                -- NOTA: No restamos de stock_consolidado aquí porque ya se descontó al ingresar a mantenimiento
+                stock_mantenimiento = GREATEST(0, stock_mantenimiento - $2), -- Restamos únicamente la cantidad transferida iterada
                 ultima_actualizacion = NOW()
             WHERE articulo_numero = $1
         `;
-        await client.query(updateMantenimiento, [articulo]);
+        await client.query(updateMantenimiento, [articulo, cantidadUnidades]);
 
         // 3. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA)
-        // Registramos que salieron X kilos, y en observaciones detallamos la diferencia
         const obsAdicional = observaciones ? ` | Obs: ${observaciones}` : '';
         const obsFinal = `${deltaLabel} Transferencia a ingredientes. Peso original esperado: ${pesoTeoricoTotal.toFixed(2)} kg. Peso real ingresado: ${pesoIngreso.toFixed(2)} kg.${obsAdicional}`;
 
-        const insertMov = `
-            INSERT INTO public.mantenimiento_movimientos (
-                articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento
-            ) VALUES (
-                $1, $2, $3, 'TRANSF_INGREDIENTE', $4, NOW()
-            )
-        `;
-        await client.query(insertMov, [articulo, cantidadUnidades, usuario, obsFinal]);
+        if (articulo && articulo !== 'null' && articulo !== '') {
+            const insertMov = `
+                INSERT INTO public.mantenimiento_movimientos (
+                    articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento
+                ) VALUES (
+                    $1, $2, $3, 'TRANSF_INGREDIENTE', $4, NOW()
+                )
+            `;
+            await client.query(insertMov, [articulo, cantidadUnidades, usuario, obsFinal]);
+        } else {
+            const insertMov = `
+                INSERT INTO public.mantenimiento_movimientos (
+                    ingrediente_id, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento
+                ) VALUES (
+                    $1, $2, $3, 'TRANSF_INGREDIENTE', $4, NOW()
+                )
+            `;
+            await client.query(insertMov, [origen_ingrediente_id, cantidadUnidades, usuario, obsFinal]);
+        }
 
         // 4. DAR DE ALTA EN INGREDIENTES
-        // Incrementamos stock_actual
         const updateIngrediente = `
             UPDATE ingredientes
             SET stock_actual = stock_actual + $1
@@ -812,34 +837,76 @@ async function transferirAIngredientes(req, res) {
             throw new Error(`Ingrediente destino ${ingrediente_id} no encontrado.`);
         }
 
-        // 5. HIGIENE DE BASE DE DATOS: Marcar como FINALIZADO el INGRESO original del cliente
-        if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
-            const updateIngresoOriginal = `
-                UPDATE public.mantenimiento_movimientos
-                SET estado = 'FINALIZADO',
-                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
-                WHERE articulo_numero = $1 
-                  AND tipo_movimiento = 'INGRESO' 
-                  AND estado IS DISTINCT FROM 'FINALIZADO'
-                  AND id IN (
-                      SELECT mm.id 
-                      FROM public.mantenimiento_movimientos mm
-                      JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                      WHERE mm.articulo_numero = $1 AND p.id_cliente = $2
-                  )
-            `;
-            await client.query(updateIngresoOriginal, [articulo, cliente_id]);
+        // 5. HIGIENE DE BASE DATOS
+        if (articulo && articulo !== 'null' && articulo !== '') {
+            if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
+                const updateIngresoOriginal = `
+                    UPDATE public.mantenimiento_movimientos
+                    SET estado = 'FINALIZADO',
+                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
+                    WHERE articulo_numero = $1 
+                      AND tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
+                      AND estado IS DISTINCT FROM 'FINALIZADO'
+                      AND id IN (
+                          SELECT mm.id 
+                          FROM public.mantenimiento_movimientos mm
+                          JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                          WHERE mm.articulo_numero = $1 AND p.id_cliente = $2
+                      )
+                `;
+                await client.query(updateIngresoOriginal, [articulo, cliente_id]);
+            } else {
+                const updateMovInterno = `
+                    UPDATE public.mantenimiento_movimientos
+                    SET estado = 'FINALIZADO',
+                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
+                    WHERE articulo_numero = $1 
+                      AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'INGRESO')
+                      AND estado = 'PENDIENTE'
+                `;
+                await client.query(updateMovInterno, [articulo]);
+            }
+        } else if (origen_ingrediente_id && origen_ingrediente_id !== 'null' && origen_ingrediente_id !== '') {
+            if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
+                const updateIngresoOriginal = `
+                    UPDATE public.mantenimiento_movimientos
+                    SET estado = 'FINALIZADO',
+                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
+                    WHERE ingrediente_id = $1 
+                      AND tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
+                      AND estado IS DISTINCT FROM 'FINALIZADO'
+                      AND id IN (
+                          SELECT mm.id 
+                          FROM public.mantenimiento_movimientos mm
+                          JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                          WHERE mm.ingrediente_id = $1 AND p.id_cliente = $2
+                      )
+                `;
+                await client.query(updateIngresoOriginal, [origen_ingrediente_id, cliente_id]);
+            } else {
+                const updateMovInterno = `
+                    UPDATE public.mantenimiento_movimientos
+                    SET estado = 'FINALIZADO',
+                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
+                    WHERE ingrediente_id = $1 
+                      AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'INGRESO')
+                      AND estado = 'PENDIENTE'
+                `;
+                await client.query(updateMovInterno, [origen_ingrediente_id]);
+            }
         } else {
-            // Es un movimiento interno (sin cliente asociado en presupuestos)
-            const updateMovInterno = `
+            // FALLBACK HUÉRFANO (Ambos articulo e ingrediente son nulos)
+            // Se asume procedente de legacy BUG de checkboxes
+            const updateIngresoOrphan = `
                 UPDATE public.mantenimiento_movimientos
                 SET estado = 'FINALIZADO',
                     observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
-                WHERE articulo_numero = $1 
-                  AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
-                  AND estado = 'PENDIENTE'
+                WHERE articulo_numero IS NULL 
+                  AND ingrediente_id IS NULL
+                  AND tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
+                  AND estado IS DISTINCT FROM 'FINALIZADO'
             `;
-            await client.query(updateMovInterno, [articulo]);
+            await client.query(updateIngresoOrphan);
         }
 
         // Opcional: Registrar en historial de ingredientes si existe tabla. 
@@ -2020,7 +2087,7 @@ const retornarIngrediente = async (req, res) => {
 const iniciarTratamiento = async (req, res) => {
     let client;
     try {
-        const { tipo_tratamiento, notas, usuario, items } = req.body;
+        const { tipo_tratamiento, notas, usuario, items, bultos_fisicos } = req.body;
         
         if (!tipo_tratamiento || !items || items.length === 0) {
             return res.status(400).json({ error: 'Faltan datos obligatorios o no hay items seleccionados.' });
@@ -2037,16 +2104,25 @@ const iniciarTratamiento = async (req, res) => {
         // 1. Crear la cabecera del Tratamiento
         const insertTratamiento = `
             INSERT INTO public.mantenimiento_tratamientos 
-            (tipo_tratamiento, estado, usuario_armado, kilos_brutos_totales, notas)
-            VALUES ($1, 'ARMANDO', $2, $3, $4)
+            (tipo_tratamiento, estado, usuario_armado, kilos_brutos_totales, notas, bultos_fisicos)
+            VALUES ($1, 'ARMANDO', $2, $3, $4, $5)
             RETURNING id
         `;
-        const resultTratamiento = await client.query(insertTratamiento, [tipo_tratamiento, usuario, kilosBrutosTotales, notas || '']);
+        const resultTratamiento = await client.query(insertTratamiento, [tipo_tratamiento, usuario, kilosBrutosTotales, notas || '', parseFloat(bultos_fisicos) || 0]);
         const tratamientoId = resultTratamiento.rows[0].id;
 
         // 2. Insertar los items y descontar del stock de mantenimiento consolidado
         for (const item of items) {
             const kg = parseFloat(item.cantidad || item.descuento_kilos || 0);
+
+            let kilosUnidad = 1;
+            if (item.articulo_numero) {
+                const artQ = await client.query('SELECT kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
+                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                }
+            }
+            const cantidadEnUnidades = kg / kilosUnidad;
             
             const insertItem = `
                 INSERT INTO public.mantenimiento_tratamientos_items 
@@ -2069,7 +2145,7 @@ const iniciarTratamiento = async (req, res) => {
                     ultima_actualizacion = NOW()
                 WHERE articulo_numero = $2
             `;
-            await client.query(updateStock, [kg, item.articulo_numero]);
+            await client.query(updateStock, [cantidadEnUnidades, item.articulo_numero]);
 
             // Mutar el movimiento original si es necesario para evitar doble descuento
             if (item.modulo_origen === 'INGRESO' && item.id) {
@@ -2107,12 +2183,20 @@ const anularTratamiento = async (req, res) => {
 
         for (const item of items.rows) {
             if (item.articulo_numero) {
+                const kg = parseFloat(item.kilos_ingresados);
+                let kilosUnidad = 1;
+                const artQ = await client.query('SELECT kilos_unidad FROM public.articulos WHERE numero = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
+                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                }
+                const cantidadEnUnidades = kg / kilosUnidad;
+
                 await client.query(`
                     UPDATE public.stock_real_consolidado
                     SET stock_mantenimiento = stock_mantenimiento + $1,
                         ultima_actualizacion = NOW()
                     WHERE articulo_numero = $2
-                `, [item.kilos_ingresados, item.articulo_numero]);
+                `, [cantidadEnUnidades, item.articulo_numero]);
             }
         }
 
@@ -2194,48 +2278,106 @@ const finalizarTratamiento = async (req, res) => {
     let client;
     try {
         const { id } = req.params;
-        const { kilos_netos, ingrediente_destino_id, usuario } = req.body;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
 
-        if (!kilos_netos || !ingrediente_destino_id) {
-            return res.status(400).json({ error: 'Debe especificar los kilos limpios recuperados y el ingrediente de destino.' });
-        }
-
-        client = await connectToDatabase();
+        client = await pool.connect();
         await client.query('BEGIN');
 
         // 1. Obtener tratamiento
-        const trRes = await client.query(`SELECT * FROM public.mantenimiento_tratamientos WHERE id = $1 AND estado IN ('EN_ACONDICIONAMIENTO', 'EN_CUARENTENA')`, [id]);
+        const trRes = await client.query(`SELECT * FROM public.mantenimiento_tratamientos WHERE id = $1 AND estado IN ('EN_ACONDICIONAMIENTO', 'EN_CUARENTENA', 'ARMANDO')`, [id]);
         if (trRes.rowCount === 0) throw new Error('Tratamiento no válido para finalizar.');
         const tratamiento = trRes.rows[0];
 
-        // 2. Calcular merma
-        const kilosNetos = parseFloat(kilos_netos);
-        const kilosBrutos = parseFloat(tratamiento.kilos_brutos_totales);
-        const merma = kilosBrutos - kilosNetos;
-
-        // 3. Finalizar Master
+        // 2. Finalizar Master
         await client.query(`
             UPDATE public.mantenimiento_tratamientos
-            SET estado = 'FINALIZADO', kilos_netos_recuperados = $2, merma_total = $3
+            SET estado = 'FINALIZADO'
             WHERE id = $1
-        `, [id, kilosNetos, merma]);
+        `, [id]);
 
-        // 4. Inyectar kilos netos en ingresos de ingredientes 
-        const stockData = await client.query(`SELECT total_kilos FROM vista_stock_ingredientes WHERE id = $1`, [ingrediente_destino_id]);
-        const stockActual = stockData.rows.length > 0 ? parseFloat(stockData.rows[0].total_kilos) : 0;
+        // 3. Quinto Flujo: Devolver a Cuarentena
+        const itemsRes = await client.query(`SELECT * FROM public.mantenimiento_tratamientos_items WHERE id_tratamiento = $1`, [id]);
         
-        const obsHistorial = `[MERMA TTO: ${merma.toFixed(2)} kg] Tratamiento #${id} finalizado. Recupero limpio: ${kilosNetos} kg.`;
+        let kilosDevueltosTotales = 0;
 
-        await client.query(`
-            INSERT INTO ingredientes_movimientos (ingrediente_id, kilos, tipo, observaciones, fecha, stock_anterior)
-            VALUES ($1, $2, 'mantenimiento', $3, NOW(), $4)
-        `, [ingrediente_destino_id, kilosNetos, obsHistorial, stockActual]);
+        for (const item of itemsRes.rows) {
+            // Obtener el movimiento original para heredar su JSON historial_tratamientos si existe
+            const originalMov = await client.query(`SELECT id_presupuesto_origen, observaciones, historial_tratamientos FROM public.mantenimiento_movimientos WHERE id = $1`, [item.id_movimiento_origen]);
+            
+            let historialPrevio = '[]';
+            let idPresupuestoOrigen = null;
+            let obsOriginal = '';
+
+            if (originalMov.rowCount > 0) {
+                const movData = originalMov.rows[0];
+                idPresupuestoOrigen = movData.id_presupuesto_origen;
+                historialPrevio = typeof movData.historial_tratamientos === 'string' ? movData.historial_tratamientos : JSON.stringify(movData.historial_tratamientos || []);
+                obsOriginal = movData.observaciones || '';
+            }
+
+            // Parsear para armar el nuevo estado
+            let historyArray = [];
+            try { historyArray = JSON.parse(historialPrevio); } catch(e) {}
+            
+            // Agregar el tratamiento actual al historial
+            historyArray.push({
+                tratamiento_id: id,
+                tipo_tratamiento: tratamiento.tipo_tratamiento,
+                estado_cierre: 'FINALIZADO',
+                fecha_inicio: tratamiento.fecha_inicio_armado,
+                fecha_fin: new Date()
+            });
+
+            // Recuperar kilos_unidad y convertir a unidades
+            const kg = parseFloat(item.kilos_ingresados);
+            let kilosUnidad = 1;
+            if (item.articulo_numero) {
+                const artQ = await client.query('SELECT kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
+                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                }
+            }
+            const cantidadEnUnidades = kg / kilosUnidad;
+
+            // 3.1 Insertar el nuevo movimiento de RETORNO en Mantenimiento (Quinto Flujo)
+            await client.query(`
+                INSERT INTO public.mantenimiento_movimientos
+                (articulo_numero, ingrediente_id, id_presupuesto_origen, cantidad, usuario, tipo_movimiento, estado, observaciones, historial_tratamientos)
+                VALUES ($1, $2, $3, $4, $5, 'RETORNO_TRATAMIENTO', 'PENDIENTE', $6, $7::jsonb)
+            `, [
+                item.articulo_numero, 
+                item.ingrediente_id || null,
+                idPresupuestoOrigen, 
+                cantidadEnUnidades, 
+                usuario, 
+                `[RETORNO TRATAMIENTO #${id}] ` + obsOriginal,
+                JSON.stringify(historyArray)
+            ]);
+
+            // 3.2 Marcar el movimiento de entrada original como FINALIZADO_TRATAMIENTO
+            if (item.id_movimiento_origen) {
+                await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'FINALIZADO_TRATAMIENTO' WHERE id = $1`, [item.id_movimiento_origen]);
+            }
+
+            // 3.3 Devolver el stock a mantenimiento consolidado
+            if (item.articulo_numero) {
+                await client.query(`
+                    UPDATE public.stock_real_consolidado
+                    SET stock_mantenimiento = stock_mantenimiento + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [cantidadEnUnidades, item.articulo_numero]);
+            }
+
+            kilosDevueltosTotales += kg;
+        }
 
         await client.query('COMMIT');
-        res.json({ success: true, message: 'Tratamiento finalizado, stock inyectado en producción.', merma: merma });
+        res.json({ success: true, message: `Tratamiento finalizado. ${kilosDevueltosTotales} kg retornados a Cuarentena.` });
 
     } catch (e) {
         if (client) await client.query('ROLLBACK');
+        console.error('Error al finalizar tratamiento:', e);
         res.status(500).json({ error: e.message });
     } finally {
         if (client) client.release();
