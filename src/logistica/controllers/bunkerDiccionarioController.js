@@ -55,13 +55,13 @@ exports.eliminarTermino = async (req, res) => {
 exports.obtenerArticulosPrincipales = async (req, res) => {
     try {
         const query = `
-            SELECT DISTINCT termino 
+            SELECT id, termino, abreviatura
             FROM public.bunker_diccionario 
             WHERE categoria IN ('general', 'articulo_principal')
             ORDER BY termino ASC
         `;
         const result = await req.db.query(query);
-        res.json({ success: true, data: result.rows.map(r => r.termino) });
+        res.json({ success: true, data: result.rows });
     } catch (error) {
         console.error('❌ [DICCIONARIO] Error obteniendo artículos principales:', error);
         res.status(500).json({ success: false, error: 'Error interno obteniendo listado principal' });

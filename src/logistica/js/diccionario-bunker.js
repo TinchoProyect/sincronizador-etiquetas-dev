@@ -1,4 +1,5 @@
 let jerarquiaGlobal = {};
+let principalesGlobales = [];
 let principalSeleccionado = '';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,12 +11,13 @@ async function cargarPrincipales() {
         const res = await fetch('/api/logistica/bunker-diccionario/principales');
         const json = await res.json();
         if(json.success && json.data) {
+            principalesGlobales = json.data;
             const select = document.getElementById('filtro-principal');
-            select.innerHTML = '<option value="" disabled selected>📦 Seleccione Artículo Principal...</option>';
-            json.data.forEach(termino => {
+            select.innerHTML = '<option value="" disabled selected>📦 Seleccione Atributo Principal...</option>';
+            json.data.forEach(obj => {
                 const opt = document.createElement('option');
-                opt.value = termino;
-                opt.text = termino;
+                opt.value = obj.termino;
+                opt.text = obj.termino;
                 select.appendChild(opt);
             });
         }
@@ -29,6 +31,7 @@ window.cargarJerarquia = async function() {
     const termino = select.value;
     if(!termino) return;
     
+    document.getElementById('acciones-raiz').style.display = 'flex';
     principalSeleccionado = termino;
     const container = document.getElementById('diccionario-acordeon-container');
     container.innerHTML = '<div style="text-align: center; padding: 20px;">Cargando jerarquía...</div>';
@@ -193,4 +196,100 @@ window.eliminarTermino = async function(id) {
             }
         }
     });
+};
+
+window.editarRaiz = async function() {
+    const terminoSeleccionado = document.getElementById('filtro-principal').value;
+    if (!terminoSeleccionado) return;
+    
+    const obj = principalesGlobales.find(p => p.termino === terminoSeleccionado);
+    if (!obj) return;
+
+    const { value: formValues } = await Swal.fire({
+        title: 'Editar Atributo Raíz',
+        html:
+            `<div style="display:flex; flex-direction:column; gap:10px; text-align:left;">
+                <label style="font-weight:bold; font-size:0.9em; color:#475569;">Atributo Principal (Raíz)</label>
+                <input id="swal-term-raiz" class="swal2-input" style="margin:0;" value="${obj.termino}">
+                <label style="font-weight:bold; font-size:0.9em; color:#475569;">Abreviatura de Impresión</label>
+                <input id="swal-abrev-raiz" class="swal2-input" style="margin:0; text-transform:uppercase;" value="${obj.abreviatura}">
+            </div>`,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar Cambios',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            return {
+                termino: document.getElementById('swal-term-raiz').value.trim(),
+                abreviatura: document.getElementById('swal-abrev-raiz').value.trim().toUpperCase()
+            };
+        }
+    });
+
+    if (formValues) {
+        if(!formValues.termino || !formValues.abreviatura) {
+            Swal.fire('Atención', 'El atributo y la abreviatura son obligatorios.', 'warning');
+            return;
+        }
+        
+        try {
+            Swal.fire({title:'Actualizando...', didOpen:()=>Swal.showLoading()});
+            const payload = { termino: formValues.termino, abreviatura: formValues.abreviatura, categoria: 'general' };
+            const response = await fetch(`/api/logistica/bunker-diccionario/${obj.id}`, {
+                method: 'PUT',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                Swal.fire('Actualizado', 'El atributo raíz fue modificado', 'success');
+                await cargarPrincipales();
+                document.getElementById('filtro-principal').value = formValues.termino;
+                document.getElementById('diccionario-acordeon-container').innerHTML = `<div style="text-align: center; padding: 40px; color: #94a3b8; font-size: 1.2em; border: 2px dashed #cbd5e1; border-radius: 8px;">👆 Seleccione un Atributo Principal arriba para desplegar su diccionario.</div>`;
+                document.getElementById('acciones-raiz').style.display = 'flex';
+                cargarJerarquia();
+            } else { Swal.fire('Error', result.error, 'error'); }
+        } catch(e) { Swal.fire('Error', 'Fallo de red', 'error'); }
+    }
+};
+
+window.eliminarRaiz = async function() {
+    const terminoSeleccionado = document.getElementById('filtro-principal').value;
+    if (!terminoSeleccionado) return;
+    
+    const obj = principalesGlobales.find(p => p.termino === terminoSeleccionado);
+    if (!obj) return;
+    
+    const numFamilies = Object.keys(jerarquiaGlobal).length;
+    let warningText = `Se eliminará el Atributo Raíz "${terminoSeleccionado}". Esta acción es irreversible.`;
+    if (numFamilies > 0) warningText = `¡ATENCIÓN! "${terminoSeleccionado}" tiene ${numFamilies} familias vinculadas. Borrar la raíz romperá el nomenclador del SKU. ¿Aún desea continuar?`;
+
+    const { isConfirmed } = await Swal.fire({
+        title: '¿Eliminar Atributo Raíz?',
+        text: warningText,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, Eliminar Definitivamente',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (isConfirmed) {
+        try {
+            Swal.fire({title:'Borrando...', didOpen:()=>Swal.showLoading()});
+            const response = await fetch(`/api/logistica/bunker-diccionario/${obj.id}`, { method: 'DELETE' });
+            const result = await response.json();
+            
+            if (result.success) {
+                Swal.fire('Eliminado', 'Atributo raíz eliminado exitosamente', 'success');
+                await cargarPrincipales();
+                document.getElementById('diccionario-acordeon-container').innerHTML = `<div style="text-align: center; padding: 40px; color: #94a3b8; font-size: 1.2em; border: 2px dashed #cbd5e1; border-radius: 8px;">👆 Seleccione un Atributo Principal arriba para desplegar su diccionario.</div>`;
+                document.getElementById('acciones-raiz').style.display = 'none';
+                principalSeleccionado = '';
+                jerarquiaGlobal = {};
+            } else { Swal.fire('Error', result.error, 'error'); }
+        } catch(e) { Swal.fire('Error', 'Fallo de red', 'error'); }
+    }
 };
