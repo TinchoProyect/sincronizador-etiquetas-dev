@@ -2505,7 +2505,10 @@
                 }
 
                 grid.innerHTML = '';
+                window.tratamientosCache = {}; // Cache para impresión zebra
+
                 data.data.forEach(tto => {
+                    window.tratamientosCache[tto.id] = tto;
                     const card = document.createElement('div');
                     card.style.border = '1px solid #ccc';
                     card.style.borderRadius = '8px';
@@ -2526,7 +2529,10 @@
                         const dias = Math.floor((new Date() - new Date(tto.fecha_inicio_cuarentena)) / (1000 * 60 * 60 * 24));
                         estadoHtml = `⏳ En Cuarentena`;
                         badgeHtml = `<span style="float: right; background-color: #dc3545; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.9em; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); letter-spacing: 0.5px;">⏳ DÍA ${dias}</span>`;
-                        actionHtml = `<button onclick="abrirTratamiento(${tto.id})" class="btn-accion" style="background-color: #17a2b8; width: 100%; margin-top: 10px;">✂️ Abrir Carpa (Acondicionar)</button>`;
+                        actionHtml = `
+                        <button onclick="abrirTratamiento(${tto.id})" class="btn-accion" style="background-color: #17a2b8; width: 100%; margin-top: 10px;">✂️ Abrir Carpa (Acondicionar)</button>
+                        <button onclick="imprimirEtiquetasTratamiento(${tto.id})" class="btn-accion" style="background-color: #6c757d; width: 100%; margin-top: 5px; color: white;">🖨️ Imprimir Etiquetas Zebra</button>
+                        `;
                     } else if (tto.estado === 'EN_ACONDICIONAMIENTO') {
                         estadoHtml = '💨 En Acondicionamiento (Abierto)';
                         actionHtml = `<button onclick="abrirModalFinalizar(${tto.id}, ${tto.kilos_brutos_totales})" class="btn-accion" style="background-color: #28a745; width: 100%; margin-top: 10px;">⚖️ Finalizar y Recuperar</button>`;
@@ -2563,15 +2569,60 @@
         }
 
         async function sellarTratamiento(id) {
-            if (!confirm('¿Sellar carpa e iniciar tiempo de cuarentena? Se imprimirá la etiqueta identificatoria.')) return;
+            if (!confirm('¿Sellar carpa e iniciar tiempo de cuarentena?')) return;
             try {
                 const res = await fetch(`/api/produccion/mantenimiento/tratamientos/${id}/sellar`, { method: 'POST' });
                 const data = await res.json();
                 if (data.success) {
-                    Swal.fire('Sellado', 'La carpa ha sido sellada correctamente. (Etiqueta Generada)', 'success');
+                    // Preguntar impresión ZPL
+                    const deseaImprimir = confirm('La carpa ha sido sellada correctamente.\n\n¿Desea enviar las etiquetas a la impresora Zebra ahora?');
+                    if(deseaImprimir) {
+                        imprimirEtiquetasTratamiento(id);
+                    } else {
+                        Swal.fire('Sellado', 'La carpa ha sido sellada en sistema (Sin impresión automática).', 'success');
+                    }
                     cargarTratamientos();
                 } else throw new Error(data.error);
             } catch (e) { Swal.fire('Error', e.message, 'error'); }
+        }
+
+        async function imprimirEtiquetasTratamiento(id) {
+            const tto = window.tratamientosCache ? window.tratamientosCache[id] : null;
+            if(!tto) return Swal.fire('Error', 'No se encontraron datos de la carpa para generar las etiquetas. Recarga la página.', 'error');
+
+            const matrizEtiquetas = [];
+            const bultos = parseInt(tto.bultos_fisicos) || 1;
+            const fechaStr = new Date().toLocaleDateString('es-AR');
+
+            // Bucle que cruza ítems alojados vs bultos físicos declarados (Ej: 1 item x 2 bultos = 2 etiquetas)
+            for (let b = 1; b <= bultos; b++) {
+                tto.items.forEach(i => {
+                    let nombre = i.item_nombre || 'S/N';
+                    let etiquetaArt = i.articulo_numero ? `Art #${i.articulo_numero}` : `Granel #${i.ingrediente_id}`;
+                    
+                    matrizEtiquetas.push({
+                        fecha_sellado: fechaStr,
+                        item_nombre: nombre,
+                        cantidad_text: `${parseFloat(i.kilos_ingresados).toFixed(2)}kg | ${etiquetaArt}`,
+                        bulto_actual: b,
+                        bultos_totales: bultos
+                    });
+                });
+            }
+
+            try {
+                Swal.fire({ title: 'Generando ZPL...', text: 'Conectando con Zebra', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
+                const res = await fetch('http://localhost:3000/api/etiquetas/tratamiento', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(matrizEtiquetas)
+                });
+                if(!res.ok) throw new Error('Error al conectar con servidor de impresión Zebra (Puerto 3000)');
+                const respFinal = await res.json();
+                Swal.fire('🖨️ Zebra Activada', `Se han mandado a imprimir exitosamente ${respFinal.total} etiquetas a la cola.`, 'success');
+            } catch (error) {
+                Swal.fire('Error ZPL', error.message, 'error');
+            }
         }
 
         async function anularTratamiento(id) {

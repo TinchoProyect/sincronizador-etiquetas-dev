@@ -253,6 +253,34 @@ router.post('/etiquetas/sector', (req, res) => {
   });
 });
 
+// NUEVO: Endpoint para imprimir etiquetas de TRATAMIENTO (CARPAS)
+router.post('/etiquetas/tratamiento', (req, res) => {
+  const matrizEtiquetas = req.body; 
+
+  if (!Array.isArray(matrizEtiquetas) || matrizEtiquetas.length === 0) {
+    return res.status(400).json({ error: 'Falta la matriz de etiquetas de los bultos' });
+  }
+
+  const scriptPath = path.resolve(__dirname, '../scripts/imprimirEtiquetaTratamiento.js');
+  const tempDir = path.join(__dirname, 'temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  const tempDataPath = path.join(tempDir, 'temp-tratamiento.json');
+  fs.writeFileSync(tempDataPath, JSON.stringify(matrizEtiquetas, null, 2));
+
+  // No necesitamos pasar cantidad de argumentos porque la iteracion la hace el propio script basado en el JSON
+  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}"`;
+
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error('Error al imprimir etiqueta de TRATAMIENTO:', error);
+      return res.status(500).json({ error: 'Error al imprimir etiquetas' });
+    }
+    console.log(`Etiquetas de TRATAMIENTO enviadas a Zebra (Cant: ${matrizEtiquetas.length}).`);
+    res.json({ message: 'Etiquetas enviadas a imprimir', total: matrizEtiquetas.length });
+  });
+});
+
 // Montar las rutas API
 app.use('/api', router);
 app.use('/api', rutasUsuarios); // 🟩 NUEVAS rutas de usuarios
