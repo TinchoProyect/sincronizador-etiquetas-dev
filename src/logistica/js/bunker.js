@@ -556,12 +556,11 @@ window.agregarAtributoUI = function(defaultCategoria = '') {
             ${opcionesExtraHtml}
             <option value="otro">Otro Atributo</option>
         </select>
+        </select>
         <div id="container_texto_${inputId}" style="position: relative; flex: 1;">
-            <input type="text" id="${inputId}" placeholder="Término o valor (Ej: 27/30)" required
-                onblur="validarDiccionarioBlur(this, 'propiedad_dinamica')" 
-                oninput="buscarDiccionarioEnVivo(this)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}">
-            <div id="autocomplete-list-${inputId}" class="autocomplete-items" style="display:none;"></div>
+            <select id="${inputId}" disabled onchange="seleccionarOpcionInteligente('${inputId}', this.value)" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 10px; font-size: 1em; background: #f8fafc; color: #94a3b8;" required>
+                <option value="" disabled selected>🔒 Seleccione una Familia primero...</option>
+            </select>
         </div>
         <div style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
             <button type="button" title="Mover Arriba" onclick="moverAtributo('${rowId}', 'arriba')" style="border:none; background:transparent; cursor:pointer; font-size: 0.85em; padding:0; line-height:1; opacity: 0.6;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">⬆️</button>
@@ -678,48 +677,79 @@ window.obtenerPlantillaParaArticulo = async function(termino) {
     }
 };
 
-window.cargarOpcionesDeCategoria = function(inputId, categoria) {
+window.cargarOpcionesDeCategoria = function(inputId, categoria, preventReset = false) {
     const contenedorTexto = document.getElementById(`container_texto_${inputId}`);
     if (!contenedorTexto || !window.diccionarioCategorizado) return;
     
-    // Resetear valor visual si se cambia categoría
     const prop = dictLocal.propiedades.find(p => p.idContainer === inputId);
-    if(prop) { prop.termino = ''; prop.abreviatura = ''; actualizarLivePreview(); }
+    if(prop && !preventReset) { 
+        prop.termino = ''; 
+        prop.abreviatura = ''; 
+        actualizarLivePreview(); 
+    }
 
     const opciones = window.diccionarioCategorizado.filter(d => d.categoria === categoria);
     
+    let html = `<select id="${inputId}" required onchange="seleccionarOpcionInteligente('${inputId}', this.value)" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 10px; font-size: 1em; background: #fffbeeb3; color: #1e293b;">`;
+    
     if (opciones.length > 0) {
-        let html = `<select id="${inputId}" required onchange="seleccionarOpcionInteligente('${inputId}', this.value)" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 10px; font-size: 1em; background: #fffbeeb3;">`;
         html += `<option value="" disabled selected>📋 Seleccione ${categoria} del diccionario...</option>`;
         opciones.forEach(opt => {
             html += `<option value='${JSON.stringify({t: opt.termino, a: opt.abreviatura})}'>${opt.termino} [${opt.abreviatura}]</option>`;
         });
-        html += `<option value="NUEVO">✨ + Escribir una Opción Nueva</option>`;
-        html += `</select>`;
-        contenedorTexto.innerHTML = html;
-        
     } else {
-        contenedorTexto.innerHTML = `
-            <input type="text" id="${inputId}" placeholder="Término nuevo (Ej: 27/30)" required
-                onblur="validarDiccionarioBlur(this, 'propiedad_dinamica')" 
-                oninput="buscarDiccionarioEnVivo(this)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}">
-            <div id="autocomplete-list-${inputId}" class="autocomplete-items" style="display:none;"></div>
-        `;
+        html += `<option value="" disabled selected>⚠️ No hay términos registrados para ${categoria}.</option>`;
     }
+    html += `<option value="NUEVO" style="font-weight:bold; color:#2563eb;">✨ [+] Crear nuevo término para ${categoria}...</option>`;
+    html += `</select>`;
+    
+    contenedorTexto.innerHTML = html;
 };
 
 window.seleccionarOpcionInteligente = async function(inputId, valStr) {
+    const prop = dictLocal.propiedades.find(p => p.idContainer === inputId);
+    if (!prop) return;
+    
     if (valStr === "NUEVO") {
-         const contenedorTexto = document.getElementById(`container_texto_${inputId}`);
-         contenedorTexto.innerHTML = `
-            <input type="text" id="${inputId}" placeholder="Escriba el nuevo término..." required
-                onblur="validarDiccionarioBlur(this, 'propiedad_dinamica')" 
-                oninput="buscarDiccionarioEnVivo(this)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}">
-            <div id="autocomplete-list-${inputId}" class="autocomplete-items" style="display:none;"></div>
+         document.getElementById(inputId).value = ""; // Reset visualmente
+         
+         const formHtml = `
+             <input id="swal-input-termino" class="swal2-input" placeholder="Nombre (Ej: Partida, Mediano...)">
+             <input id="swal-input-abrev" class="swal2-input" placeholder="Abreviatura (Ej: PTA, MED...)">
          `;
-         setTimeout(() => document.getElementById(inputId).focus(), 100);
+         const { value: formValues } = await Swal.fire({
+            title: `Nuevo Término para ${prop.categoria}`,
+            html: formHtml,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Guardar',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                const term = document.getElementById('swal-input-termino').value.trim();
+                const abrv = document.getElementById('swal-input-abrev').value.trim().toUpperCase();
+                if (!term || !abrv) Swal.showValidationMessage('Ambos campos son obligatorios');
+                if (abrv.length > 10) Swal.showValidationMessage('Abreviatura muy larga (Máx 10 char)');
+                return { term, abrv };
+            }
+         });
+         
+         if (formValues) {
+             const keyName = prop.categoria;
+             // Guardar in RAM para envio "on-the-fly" legacy
+             nuevosTerminosPendientes.push({ termino: formValues.term, abreviatura: formValues.abrv, categoria: keyName });
+             // Inyectar localmente para render
+             window.diccionarioCategorizado.push({ termino: formValues.term, abreviatura: formValues.abrv, categoria: keyName });
+             
+             // Recargar el Select y autoseleccionar
+             window.cargarOpcionesDeCategoria(inputId, keyName, true);
+             
+             setTimeout(() => {
+                 const selectRecreado = document.getElementById(inputId);
+                 const valJson = JSON.stringify({t: formValues.term, a: formValues.abrv});
+                 if (selectRecreado) selectRecreado.value = valJson;
+                 window.seleccionarOpcionInteligente(inputId, valJson);
+             }, 50);
+         }
          return;
     }
     
@@ -890,7 +920,11 @@ window.hidratarFormularioEdicion = async function(id) {
                 if (prop) prop.categoria = cat;
                 
                 // Trigger Smart Dropdown logic to construct the innerHTML appropriately
-                await window.actualizarCategoriaAtributo(document.querySelector(`select[onchange*="${targetInputId}"]`));
+                const selectElCat = document.querySelector(`select[onchange*="${targetInputId}"]`);
+                if(selectElCat) {
+                     selectElCat.value = cat; 
+                     await window.actualizarCategoriaAtributo(targetInputId, selectElCat);
+                }
             }
 
             // At this point, the innerHTML is either a text input or a Smart <select>
@@ -906,11 +940,19 @@ window.hidratarFormularioEdicion = async function(id) {
             if (elContainer) {
                 const selectEl = elContainer.querySelector('select');
                 if (selectEl) {
-                    // It's a templated dropdown. Find option where JSON matches val
                     const targetJSONStr = JSON.stringify({t: val, a: abrevReconstructed});
                     let foundOpt = Array.from(selectEl.options).find(opt => opt.value === targetJSONStr);
                     if (foundOpt) {
                         selectEl.value = targetJSONStr;
+                    } else {
+                        const newOpt = document.createElement('option');
+                        newOpt.value = targetJSONStr;
+                        newOpt.text = `${val} [${abrevReconstructed}]`;
+                        selectEl.add(newOpt, selectEl.options[selectEl.options.length - 1]);
+                        selectEl.value = targetJSONStr;
+                        if(window.diccionarioCategorizado) {
+                             window.diccionarioCategorizado.push({termino: val, abreviatura: abrevReconstructed, categoria: cat});
+                        }
                     }
                 } else {
                     const textEl = document.getElementById(targetInputId);
