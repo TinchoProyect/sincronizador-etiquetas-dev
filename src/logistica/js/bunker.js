@@ -352,26 +352,25 @@ function actualizarLivePreview() {
         if (p.abreviatura && !p.silencioso) parts.push(p.abreviatura);
     });
     
-    // Lógica QA Fase 3: Cantidad y Kilos Sufijos
+    // Lógica QA Fase 3: Cantidad y Kilos Sufijos (Formato Presentation)
+    let sufijoFisico = "";
     const kilosEl = document.getElementById('kilos_unidad');
     const cantEl  = document.getElementById('cantidad_pack');
     if (kilosEl && cantEl) {
         const kilos = parseFloat(kilosEl.value) || 0;
         const cantidad = parseInt(cantEl.value) || 1;
         
-        let sufijo = "";
         if (kilos > 0) {
             if (cantidad === 1) {
-                sufijo = `x.${kilos}kg`;
+                sufijoFisico = ` x ${kilos}kg`;
             } else if (cantidad > 1) {
                 const pesoUnitario = parseFloat((kilos / cantidad).toFixed(3));
-                sufijo = `${cantidad}.x.${pesoUnitario}kg`;
+                sufijoFisico = ` ${cantidad} x ${pesoUnitario}kg`;
             }
         }
-        if (sufijo) parts.push(sufijo);
     }
 
-    const finalDesc = parts.join('.');
+    const finalDesc = parts.join('.') + sufijoFisico;
     document.getElementById('live_preview').value = finalDesc;
     return finalDesc;
 }
