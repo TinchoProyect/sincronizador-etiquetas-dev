@@ -209,6 +209,10 @@
         #tabla-bunker.hide-col-3 th:nth-child(4), #tabla-bunker.hide-col-3 tbody tr:not(.expandable-row) > td:nth-child(4) { display: none !important; }
         #tabla-bunker.hide-col-4 th:nth-child(5), #tabla-bunker.hide-col-4 tbody tr:not(.expandable-row) > td:nth-child(5) { display: none !important; }
         #tabla-bunker.hide-col-5 th:nth-child(6), #tabla-bunker.hide-col-5 tbody tr:not(.expandable-row) > td:nth-child(6) { display: none !important; }
+        #tabla-bunker.hide-col-6 th:nth-child(7), #tabla-bunker.hide-col-6 tbody tr:not(.expandable-row) > td:nth-child(7) { display: none !important; }
+        #tabla-bunker.hide-col-7 th:nth-child(8), #tabla-bunker.hide-col-7 tbody tr:not(.expandable-row) > td:nth-child(8) { display: none !important; }
+        #tabla-bunker.hide-col-8 th:nth-child(9), #tabla-bunker.hide-col-8 tbody tr:not(.expandable-row) > td:nth-child(9) { display: none !important; }
+        #tabla-bunker.hide-col-9 th:nth-child(10), #tabla-bunker.hide-col-9 tbody tr:not(.expandable-row) > td:nth-child(10) { display: none !important; }
     </style>
 </head>
 <body>
@@ -261,6 +265,10 @@
                             <th>Art. Principal / Rubro</th>
                             <th>Nomenclatura (Prod)</th>
                             <th style="width: 300px;">Propiedades (Inteligencia)</th>
+                            <th style="text-align: center; width: 60px;">% IVA</th>
+                            <th style="text-align: right;">Costo s/IVA</th>
+                            <th style="text-align: right;">IIBB (4%)</th>
+                            <th style="text-align: right;">Ganancia Neta</th>
                             <th style="text-align: right;" id="th-precios">
                                 Precio Final c/IVA
                                 <select id="filtro-lista-precios" style="margin-top: 5px; width: 100%; border: 1px solid #94a3b8; border-radius: 4px; padding: 2px; font-size: 0.9em; background-color: #f8fafc; color: #0f172a;" onchange="cambiarListaPreciosDataGrid(this.value)">
@@ -273,13 +281,13 @@
                     </thead>
                     <tbody id="tbody-bunker">
                         <!-- Renderizado Vía JS -->
-                        <tr><td colspan="7" style="text-align: center; padding: 20px;">Cargando Artículos...</td></tr>
+                        <tr><td colspan="11" style="text-align: center; padding: 20px;">Cargando Artículos...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
     
-    <script src="../js/listado-bunker.js?v=1.4.2"></script>
+    <script src="../js/listado-bunker.js?v=1.4.3"></script>
 </body>
 </html>

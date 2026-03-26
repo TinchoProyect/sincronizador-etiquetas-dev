@@ -49,8 +49,12 @@ const BUNKER_COLUMNS = [
     { id: 1, name: 'Art. Principal / Rubro', defaultVisible: true },
     { id: 2, name: 'Nomenclatura (Prod)', defaultVisible: true },
     { id: 3, name: 'Propiedades (Intel)', defaultVisible: true },
-    { id: 4, name: 'Precio Final c/IVA', defaultVisible: true },
-    { id: 5, name: 'Margen Base', defaultVisible: true }
+    { id: 4, name: '% IVA', defaultVisible: false },
+    { id: 5, name: 'Costo s/IVA', defaultVisible: false },
+    { id: 6, name: 'IIBB (4%)', defaultVisible: false },
+    { id: 7, name: 'Ganancia Neta', defaultVisible: false },
+    { id: 8, name: 'Precio Final c/IVA', defaultVisible: true },
+    { id: 9, name: 'Margen Base', defaultVisible: true }
 ];
 
 let bunkerGridPreferences = {};
@@ -103,7 +107,7 @@ function aplicarVisibilidadColumna(colId, isVisible) {
 async function cargarDataGrid() {
     const search = document.getElementById('filtro-busqueda').value.trim();
     const tbody = document.getElementById('tbody-bunker');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Cargando Búnker...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 20px;">Cargando Búnker...</td></tr>';
     
     try {
         const query = search ? `?search=${encodeURIComponent(search)}` : '';
@@ -126,7 +130,7 @@ function renderizarGrid(articulos) {
     tbody.innerHTML = '';
     
     if (articulos.length === 0) {
-         tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">No se encontraron artículos en el Búnker.</td></tr>';
+         tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 20px;">No se encontraron artículos en el Búnker.</td></tr>';
          return;
     }
     
@@ -170,9 +174,12 @@ function renderizarGrid(articulos) {
             }
         }
         
-        // Multi-tier Margins a Mini Grid y Precio Dinamico
         let margenPrincipalText = 'N/A';
         let precioFinalDinamicoHtml = `<span style="color:#94a3b8;">N/D</span>`;
+        let ivaStr = `${iva.toFixed(2)}%`;
+        let costoSivaStr = `<span style="color:#94a3b8;">N/D</span>`;
+        let iibbStr = `<span style="color:#94a3b8;">N/D</span>`;
+        let gananciaNetaStr = `<span style="color:#94a3b8;">N/D</span>`;
         let expandedGridHtml = '';
         
         if (art.margenes && Array.isArray(art.margenes) && art.margenes.length > 0) {
@@ -180,11 +187,21 @@ function renderizarGrid(articulos) {
             
             // Buscar el margen de la lista enfocada globalmente
             const mFocused = art.margenes.find(m => m.lista_id === listaSeleccionadaGlobal) || art.margenes[0];
-            margenPrincipalText = `${parseFloat(mFocused.margen_porcentaje).toFixed(2)} %`;
+            const pctMargen = parseFloat(mFocused.margen_porcentaje);
+            margenPrincipalText = `${pctMargen.toFixed(2)} %`;
             
-            const precioS_iva = costo * (1 + (parseFloat(mFocused.margen_porcentaje)/100));
+            const precioS_iva = costo * (1 + (pctMargen/100));
             const precioC_iva = precioS_iva * (1 + (iva/100));
+            
+            // Cálculos financieros derivados
+            const montoIibb = (precioC_iva * 4) / 100; // Impuestos Brutos 4%
+            const gananciaNeta = (precioS_iva - costo) - montoIibb;
+
             precioFinalDinamicoHtml = `<span style="font-weight:bold; color: #15803d; font-size: 1.1em;">${formatter.format(precioC_iva)}</span>`;
+            
+            costoSivaStr = formatter.format(precioS_iva);
+            iibbStr = formatter.format(montoIibb);
+            gananciaNetaStr = formatter.format(gananciaNeta);
             
             expandedGridHtml = `
                 <table class="mini-grid">
@@ -233,6 +250,10 @@ function renderizarGrid(articulos) {
             </td>
             <td style="font-family: monospace; font-size: 0.9em;">${art.descripcion_generada || '-'}</td>
             <td>${propSummary}</td>
+            <td style="text-align: center; color: #475569;">${ivaStr}</td>
+            <td style="text-align: right; color: #0f172a;">${costoSivaStr}</td>
+            <td style="text-align: right; color: #ea580c;">${iibbStr}</td>
+            <td style="text-align: right; color: #16a34a; font-weight: bold;">${gananciaNetaStr}</td>
             <td style="text-align: right; background-color: #f8fafc;">
                 ${precioFinalDinamicoHtml}
             </td>
@@ -253,7 +274,7 @@ function renderizarGrid(articulos) {
             trDetails.id = `details_${rowIndex}`;
             trDetails.className = 'expandable-row';
             trDetails.innerHTML = `
-                <td colspan="7" style="padding: 10px 40px; background-color: #f1f5f9;">
+                <td colspan="11" style="padding: 10px 40px; background-color: #f1f5f9;">
                     <div style="margin-bottom: 5px; font-weight: 600; color: #334155; font-size: 0.9em;">👇 Desglose Financiero (Costo Base: ${formatter.format(costo)} | IVA Aplicado: ${iva}%)</div>
                     ${expandedGridHtml}
                 </td>
