@@ -1565,7 +1565,7 @@
             let stockPre = "...";
             if (window.ingredientesCache) {
                 const iC = window.ingredientesCache.find(i => Number(i.id) === Number(ingredienteId));
-                if (iC) stockPre = parseFloat(iC.stock || 0).toFixed(2);
+                if (iC) stockPre = parseFloat(iC.stock_actual || 0).toFixed(2);
             }
             uiPesoOrig.dataset.originalStock = stockPre;
 
