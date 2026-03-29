@@ -663,6 +663,19 @@
                         </div>
                     </div>
 
+                    <!-- Buscador Inteligente para Reclasificación -->
+                    <div style="margin-bottom: 15px; position:relative;">
+                        <label for="retorno-buscador-destino" style="font-weight: bold; display: block; margin-bottom: 5px;">Reclasificar a (Ingrediente Destino):</label>
+                        <input type="text" id="retorno-buscador-destino" class="swal2-input" autocomplete="off" placeholder="Buscar por nombre o número de lote para cambiar el destino final" style="width: 100%; margin: 0; padding: 8px; box-sizing: border-box; font-size: 14px;">
+                        
+                        <ul id="retorno-lista-ingredientes" style="list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 4px; display: none; text-align: left; position: absolute; width: 100%; z-index: 1050; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></ul>
+                        
+                        <div id="retorno-destino-seleccionado" style="margin-top: 8px; font-weight: bold; color: #28a745; font-size: 13px; padding: 5px; background: #e8f5e9; border-radius: 3px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>Pre-seleccionado: (Original)</span>
+                        </div>
+                        <input type="hidden" id="retorno-ingrediente-id">
+                    </div>
+
                     <div style="margin-bottom: 15px;">
                         <label for="retorno-cantidad-real" style="font-weight: bold; display: block; margin-bottom: 5px;">Cantidad Real que Retorna (Balanza):</label>
                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -671,7 +684,13 @@
                         </div>
                     </div>
 
-                    <input type="hidden" id="retorno-ingrediente-id">
+                    <!-- Operario Responsable -->
+                    <div style="margin-bottom: 15px;">
+                        <label for="retorno-responsable" style="font-weight: bold; display: block; margin-bottom: 5px; color:#dc3545;">Operario Responsable (OBLIGATORIO):</label>
+                        <select id="retorno-responsable" class="swal2-select" style="width: 100%; margin: 0; padding: 8px; box-sizing: border-box; border-color: #dc3545;" required>
+                            <option value="-1" disabled selected>Seleccione responsable</option>
+                        </select>
+                    </div>
 
                     <div class="swal2-actions" style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
                         <button onclick="cerrarModal('modal-retorno-ingrediente')" class="swal2-cancel swal2-styled" style="background-color: #6c757d;">Cancelar</button>
@@ -1519,9 +1538,29 @@
 
         function abrirModalRetornoIngrediente(ingredienteId, cantidadOriginal, nombreIngrediente) {
             document.getElementById('retorno-ingrediente-id').value = ingredienteId;
-            document.getElementById('retorno-peso-orig').textContent = parseFloat(cantidadOriginal).toFixed(3);
+            const uiPesoOrig = document.getElementById('retorno-peso-orig');
+            uiPesoOrig.textContent = parseFloat(cantidadOriginal).toFixed(3);
+            uiPesoOrig.dataset.originalId = ingredienteId;
+            uiPesoOrig.dataset.originalNombre = nombreIngrediente;
+            
             document.getElementById('retorno-ingrediente-nombre').textContent = nombreIngrediente;
             document.getElementById('retorno-cantidad-real').value = parseFloat(cantidadOriginal).toFixed(3); // Por defecto mismo peso
+
+            // Llenar operarios responsable vacio por defecto
+            const selectResp = document.getElementById('retorno-responsable');
+            if (selectResp) {
+                let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
+                if (window.operariosActivosCache) {
+                    window.operariosActivosCache.forEach(op => {
+                        optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
+                    });
+                }
+                selectResp.innerHTML = optionsHtml;
+            }
+
+            // Poner el original en el HTML del buscador auto-seleccionado
+            document.getElementById('retorno-buscador-destino').value = '';
+            document.getElementById('retorno-destino-seleccionado').innerHTML = `<span>Pre-seleccionado: <b>#${ingredienteId} - ${nombreIngrediente}</b> (Original)</span>`;
             
             const modal = document.getElementById('modal-retorno-ingrediente');
             modal.style.display = "flex";
@@ -1536,13 +1575,19 @@
         async function ejecutarRetornoIngrediente() {
             const ingredienteId = document.getElementById('retorno-ingrediente-id').value;
             const cantidadRealStr = document.getElementById('retorno-cantidad-real').value;
+            const respSelect = document.getElementById('retorno-responsable');
             
             if (!cantidadRealStr || parseFloat(cantidadRealStr) < 0) {
                 Swal.fire('Error', 'Ingrese una cantidad real válida.', 'error');
                 return;
             }
+            if (respSelect && (!respSelect.value || respSelect.value === '-1')) {
+                Swal.fire('Alto', 'ERROR: OBLIGATORIO. Debe firmar la acción seleccionando al responsable de la devolución material en la balanza.', 'warning');
+                return;
+            }
 
             const cantidadReal = parseFloat(cantidadRealStr);
+            const responsable = respSelect ? respSelect.value : null;
 
             try {
                 // Notifica al usuario que estamos procesando
@@ -1559,7 +1604,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         ingrediente_id: ingredienteId, 
-                        cantidad_real: cantidadReal 
+                        cantidad_real: cantidadReal,
+                        responsable: responsable
                     })
                 });
 
@@ -2844,6 +2890,85 @@
                 } else throw new Error(data.error);
             } catch (e) { Swal.fire('Error', e.message, 'error'); }
         }
+
+        // Lógica de Buscador Retorno de Ingredientes
+        document.addEventListener('DOMContentLoaded', () => {
+            const buscadorRetorno = document.getElementById('retorno-buscador-destino');
+            const listaRetorno = document.getElementById('retorno-lista-ingredientes');
+            const hiddenId = document.getElementById('retorno-ingrediente-id');
+            const divSeleccion = document.getElementById('retorno-destino-seleccionado');
+
+            if(buscadorRetorno) {
+                let debounceRetorno;
+                buscadorRetorno.addEventListener('keyup', function(e) {
+                    clearTimeout(debounceRetorno);
+                    const terminoRaw = e.target.value.toLowerCase().trim();
+                    if (terminoRaw.length < 2) {
+                        listaRetorno.style.display = 'none';
+                        return;
+                    }
+                    debounceRetorno = setTimeout(() => {
+                        listaRetorno.innerHTML = '';
+                        listaRetorno.style.display = 'block';
+                        
+                        if(!window.ingredientesCache) {
+                             listaRetorno.innerHTML = '<li style="padding:10px;">Caché vacío o cargando...</li>';
+                             return;
+                        }
+
+                        const normalizeStr = str => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : '';
+                        const terms = terminoRaw.split(/\s+/).map(normalizeStr).filter(t => t.length > 0);
+                        
+                        const resultados = window.ingredientesCache.filter(ing => {
+                            const descNorm = normalizeStr(ing.descripcion);
+                            const codNorm = normalizeStr(ing.id ? ing.id.toString() : '');
+                            const fullText = descNorm + " " + codNorm;
+                            return terms.every(t => fullText.includes(t));
+                        }).slice(0, 15);
+                        
+                        if(resultados.length === 0) {
+                            listaRetorno.innerHTML = '<li style="padding:10px; color:#dc3545;">No se encontraron artículos destinos</li>';
+                            return;
+                        }
+
+                        resultados.forEach(ing => {
+                            const li = document.createElement('li');
+                            li.style.cssText = 'padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px;';
+                            // El Stock Real del ingrediente
+                            let stockTexto = parseFloat(ing.stock || 0).toFixed(2);
+                            li.innerHTML = `<strong>#${ing.id}</strong> - ${ing.descripcion} <br><small style="color:#666;">Stock Actual: ${stockTexto} kg</small>`;
+                            li.addEventListener('mouseover', () => li.style.backgroundColor = '#f1f1f1');
+                            li.addEventListener('mouseout', () => li.style.backgroundColor = 'transparent');
+                            
+                            li.addEventListener('click', function() {
+                                hiddenId.value = ing.id;
+                                buscadorRetorno.value = `#${ing.id} - ${ing.descripcion}`;
+                                listaRetorno.style.display = 'none';
+                                
+                                divSeleccion.innerHTML = `
+                                    <span>Reclasificado: <b>#${ing.id} - ${ing.descripcion}</b></span>
+                                    <button type="button" style="padding:2px 5px; font-size:11px; background:red; color:white; border:none; border-radius:3px; cursor:pointer;" class="btn-limpiar-retorno">❌ Limpiar</button>
+                                `;
+                                
+                                divSeleccion.querySelector('.btn-limpiar-retorno').onclick = (ev) => {
+                                    ev.stopPropagation();
+                                    const origId = document.getElementById('retorno-peso-orig').dataset.originalId || '';
+                                    const origNom = document.getElementById('retorno-peso-orig').dataset.originalNombre || '';
+                                    hiddenId.value = origId;
+                                    buscadorRetorno.value = '';
+                                    divSeleccion.innerHTML = `<span>Pre-seleccionado: <b>#${origId} - ${origNom}</b> (Original)</span>`;
+                                };
+                            });
+                            listaRetorno.appendChild(li);
+                        });
+                    }, 250);
+                });
+
+                document.addEventListener('click', function(e) {
+                    if(e.target !== buscadorRetorno) listaRetorno.style.display = 'none';
+                });
+            }
+        });
     </script>
 </body>
 

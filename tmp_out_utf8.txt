@@ -1,0 +1,86 @@
+Not found: devolverIngrediente
+
+=== Func: ejecutarRetornoIngrediente at 1535
+        }
+
+        async function ejecutarRetornoIngrediente() {
+            const ingredienteId = document.getElementById('retorno-ingrediente-id').value;
+            const cantidadRealStr = document.getElementById('retorno-cantidad-real').value;
+            
+            if (!cantidadRealStr || parseFloat(cantidadRealStr) < 0) {
+                Swal.fire('Error', 'Ingrese una cantidad real válida.', 'error');
+                return;
+            }
+
+            const cantidadReal = parseFloat(cantidadRealStr);
+
+            try {
+                // Notifica al usuario que estamos procesando
+                const modalParams = {
+                    title: 'Procesando Retorno',
+                    html: `Calculando mermas y reintegrando stock...`,
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading()
+                };
+                Swal.fire(modalParams);
+
+                const res = await fetch('/api/produccion/mantenimiento/retornar-ingrediente', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        ingrediente_id: ingredienteId, 
+                        cantidad_real: cantidadReal 
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    Swal.fire('¡Éxito!', `Stock devuelto a la planta exitosamente.<br><br><b>Resultado:</b> ${data.deltaLabel}`, 'success');
+                    cerrarModal('modal-retorno-ingrediente');
+                    cargarStock();
+                    cargarHistorial();
+                } else {
+                    throw new Error(data.error || 'Error desconocido');
+                }
+
+            } catch (error) {
+                console.error(error);
+                Swal.fire('Error', 'Hubo un error al ejecutar el retorno: ' + error.message, 'error');
+            }
+        }
+
+        // Función para confirmar la conciliación
+        async function confirmarConciliacion(articulo, clienteId, cantidad, comprobanteEncoded, idPresupuestoOrigen) {
+            const comprobante = JSON.parse(decodeURIComponent(comprobanteEncoded));
+
+            if (!confirm(`¿Confirmar conciliación con Nota de Crédito ${comprobante.tipo_comprobante} ${comprobante.pto_vta}-${comprobante.numero_comprobante}?`)) return;
+
+            const modalBody = document.getElementById('modal-body');
+            modalBody.innerHTML = '<p class="text-center">💾 Asentando conciliación en sistema...</p>';
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/conciliar/confirmar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        articulo,
+                        cliente_id: clienteId,
+                        cantidad,
+                        comprobante,
+                        id_presupuesto_origen: idPresupuestoOrigen || null
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ Conciliación registrada exitosamente.');
+                    location.reload(); // Recargar para ver estado "Consolidado"
+                } else {
+                    throw new Error(data.error);
+                }
+
+            } catch (error) {
+                console.error(error);
+
