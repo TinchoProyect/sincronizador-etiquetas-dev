@@ -1560,7 +1560,16 @@
 
             // Poner el original en el HTML del buscador auto-seleccionado
             document.getElementById('retorno-buscador-destino').value = '';
-            document.getElementById('retorno-destino-seleccionado').innerHTML = `<span>Pre-seleccionado: <b>#${ingredienteId} - ${nombreIngrediente}</b> (Original)</span>`;
+            
+            // Requerimiento UAT: Stock en Tiempo Real del Original
+            let stockPre = "...";
+            if (window.ingredientesCache) {
+                const iC = window.ingredientesCache.find(i => Number(i.id) === Number(ingredienteId));
+                if (iC) stockPre = parseFloat(iC.stock || 0).toFixed(2);
+            }
+            uiPesoOrig.dataset.originalStock = stockPre;
+
+            document.getElementById('retorno-destino-seleccionado').innerHTML = `<span>Pre-seleccionado: <b>#${ingredienteId} - ${nombreIngrediente}</b> <span style="background:#fff; color:#333; padding:1px 4px; border-radius:3px; border:1px solid #ccc; margin-left:5px;">Stock Actual: ${stockPre} kg</span></span>`;
             
             const modal = document.getElementById('modal-retorno-ingrediente');
             modal.style.display = "flex";
@@ -1868,6 +1877,7 @@
                         console.error('Formato de ingredientes no reconocido', data);
                         return;
                     }
+                    window.ingredientesCache = ingredientesCache; // Bind global para Buscadores
                     console.log(`✅ ${ingredientesCache.length} ingredientes cargados para búsqueda.`);
                 }
             } catch (error) {
@@ -2920,14 +2930,14 @@
                         const terms = terminoRaw.split(/\s+/).map(normalizeStr).filter(t => t.length > 0);
                         
                         const resultados = window.ingredientesCache.filter(ing => {
-                            const descNorm = normalizeStr(ing.descripcion);
+                            const descNorm = normalizeStr(ing.nombre);
                             const codNorm = normalizeStr(ing.id ? ing.id.toString() : '');
                             const fullText = descNorm + " " + codNorm;
                             return terms.every(t => fullText.includes(t));
                         }).slice(0, 15);
                         
                         if(resultados.length === 0) {
-                            listaRetorno.innerHTML = '<li style="padding:10px; color:#dc3545;">No se encontraron artículos destinos</li>';
+                            listaRetorno.innerHTML = '<li style="padding:10px; color:#dc3545;">No se encontraron ingredientes destinos</li>';
                             return;
                         }
 
@@ -2935,18 +2945,18 @@
                             const li = document.createElement('li');
                             li.style.cssText = 'padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px;';
                             // El Stock Real del ingrediente
-                            let stockTexto = parseFloat(ing.stock || 0).toFixed(2);
-                            li.innerHTML = `<strong>#${ing.id}</strong> - ${ing.descripcion} <br><small style="color:#666;">Stock Actual: ${stockTexto} kg</small>`;
+                            let stockTexto = parseFloat(ing.stock_actual || 0).toFixed(2);
+                            li.innerHTML = `<strong>#${ing.id}</strong> - ${ing.nombre} <br><small style="color:#666;">Stock Actual: ${stockTexto} kg</small>`;
                             li.addEventListener('mouseover', () => li.style.backgroundColor = '#f1f1f1');
                             li.addEventListener('mouseout', () => li.style.backgroundColor = 'transparent');
                             
                             li.addEventListener('click', function() {
                                 hiddenId.value = ing.id;
-                                buscadorRetorno.value = `#${ing.id} - ${ing.descripcion}`;
+                                buscadorRetorno.value = `#${ing.id} - ${ing.nombre}`;
                                 listaRetorno.style.display = 'none';
                                 
                                 divSeleccion.innerHTML = `
-                                    <span>Reclasificado: <b>#${ing.id} - ${ing.descripcion}</b></span>
+                                    <span>Reclasificado: <b>#${ing.id} - ${ing.nombre}</b></span>
                                     <button type="button" style="padding:2px 5px; font-size:11px; background:red; color:white; border:none; border-radius:3px; cursor:pointer;" class="btn-limpiar-retorno">❌ Limpiar</button>
                                 `;
                                 
@@ -2954,9 +2964,10 @@
                                     ev.stopPropagation();
                                     const origId = document.getElementById('retorno-peso-orig').dataset.originalId || '';
                                     const origNom = document.getElementById('retorno-peso-orig').dataset.originalNombre || '';
+                                    const origStock = document.getElementById('retorno-peso-orig').dataset.originalStock || '...';
                                     hiddenId.value = origId;
                                     buscadorRetorno.value = '';
-                                    divSeleccion.innerHTML = `<span>Pre-seleccionado: <b>#${origId} - ${origNom}</b> (Original)</span>`;
+                                    divSeleccion.innerHTML = `<span>Pre-seleccionado: <b>#${origId} - ${origNom}</b> <span style="background:#fff; color:#333; padding:1px 4px; border-radius:3px; border:1px solid #ccc; margin-left:5px;">Stock Actual: ${origStock} kg</span></span>`;
                                 };
                             });
                             listaRetorno.appendChild(li);

@@ -1,0 +1,60 @@
+async function obtenerIngredientes() {
+    try {
+        const query = `
+            SELECT 
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.descripcion,
+                i.unidad_medida,
+                i.categoria,
+                i.stock_actual,
+                i.sector_id,
+                s.nombre as sector_nombre,
+                s.descripcion as sector_descripcion,
+                -- ✅ CÁLCULO DE STOCK POTENCIAL
+                COALESCE(
+                    i.stock_actual + (
+                        SELECT COALESCE(SUM(src.stock_consolidado * src.kilos_unidad), 0)
+                        FROM ingrediente_articulos_nutrientes ian
+                        JOIN stock_real_consolidado src ON src.articulo_numero = ian.articulo_numero
+                        WHERE ian.ingrediente_id = i.id 
+                          AND ian.activo = true
+                    ),
+                    i.stock_actual
+                ) as stock_potencial,
+            -- ✅ CONTADOR DE VÍNCULOS ACTIVOS
+                (
+                    SELECT COUNT(*)::integer
+                    FROM ingrediente_articulos_nutrientes ian
+                    WHERE ian.ingrediente_id = i.id 
+                      AND ian.activo = true
+                ) as vinculos_activos,
+                -- ✅ INDICADOR DE MIX (Optimizado)
+                (
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM ingrediente_composicion ic WHERE ic.mix_id = i.id
+                    ) AND i.padre_id IS NULL THEN true ELSE false END
+                ) as es_mix
+            FROM ingredientes i
+            LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            ORDER BY i.nombre ASC;
+        `;
+
+        const result = await pool.query(query);
+
+        // Enriquecer con letra de sector
+        const ingredientesEnriquecidos = result.rows.map(ing => ({
+            ...ing,
+            sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre || ing.sector_descripcion || null
+        }));
+
+        return ingredientesEnriquecidos;
+    } catch (error) {
+        console.error('❌ [SECTORES] Error en obtenerIngredientes:', error);
+        throw new Error('No se pudo obtener la lista de ingredientes');
+    }
+}
+
+/**
+ * Obtiene los nutrientes de un ingrediente (artículos o componentes según el tipo)
