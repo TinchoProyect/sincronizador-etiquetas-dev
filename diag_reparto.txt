@@ -1,0 +1,50 @@
+        async function cargarReparto() {
+            const tbody = document.getElementById('tbody-reparto');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">⏳ Consultando rutas activas...</td></tr>';
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/retiros/ruta');
+                const data = await res.json();
+
+                if (data.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">✅ No hay devoluciones asignadas a choferes actualmente.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                data.data.forEach(retiro => {
+                    const row = document.createElement('tr');
+
+                    // NO usar barra invertida \ delante del símbolo dolar.
+                    let itemsHtml = retiro.items.map(i => `<li><b>${i.cantidad} u.</b> - ${i.descripcion} (${i.articulo_numero || i.articulo})</li>`).join('');
+                    let badgeEstado = 'background:#6c757d; color:white'; // Default gris para Pendientes
+                    if (retiro.ruta_estado === 'EN_CAMINO') badgeEstado = 'background:#17a2b8';
+                    if (retiro.ruta_estado === 'ARMANDO') badgeEstado = 'background:#ffc107; color:black';
+
+                    row.innerHTML = `
+                        <td>
+                            <strong>${retiro.nombre_ruta || 'Asignación Pendiente'}</strong><br>
+                            <span style="font-size:0.8em; padding:2px 5px; border-radius:3px; color:white; ${badgeEstado}">
+                                ${retiro.ruta_estado || 'Sin Flota'}
+                            </span>
+                        </td>
+                        <td>${retiro.chofer_nombre || 'Sin chofer'}</td>
+                        <td><strong>#${retiro.cliente_id}</strong><br><small>${retiro.cliente_nombre || ''} ${retiro.cliente_apellido || ''}</small></td>
+                        <td><ul style="margin:0; padding-left:20px; font-size:0.9em;">${itemsHtml}</ul></td>
+                        <td>
+                            <span style="font-size:0.85em; font-weight:bold; color:#6c757d;">
+                                ${retiro.estado_logistico}
+                            </span>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="5" style="color:red; text-align:center;">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
+
+        function initResizer() {
+            const resizer = document.getElementById('panel-resizer');
+            const panel = document.getElementById('panel-config');
+            let isResizing = false;

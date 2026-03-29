@@ -1,0 +1,70 @@
+{
+  "movimientos": [
+    {
+      "id": 48,
+      "articulo_numero": "SZAAX1",
+      "estado": "FINALIZADO",
+      "tipo_movimiento": "EMISION_NC",
+      "observaciones": "[NC Generada ID: 106] Emisión de NC Borrador. Cliente #621"
+    },
+    {
+      "id": 105,
+      "articulo_numero": "ACAx5",
+      "estado": "PENDIENTE",
+      "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+      "observaciones": null
+    },
+    {
+      "id": 98,
+      "articulo_numero": null,
+      "estado": "PENDIENTE",
+      "tipo_movimiento": "TRASLADO_INTERNO_INGREDIENTES",
+      "observaciones": "Sombies"
+    },
+    {
+      "id": 99,
+      "articulo_numero": "SNIX25",
+      "estado": "PENDIENTE",
+      "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+      "observaciones": "Polilla"
+    },
+    {
+      "id": 100,
+      "articulo_numero": "ADAX5",
+      "estado": "PENDIENTE",
+      "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+      "observaciones": null
+    },
+    {
+      "id": 107,
+      "articulo_numero": "LRTX5",
+      "estado": "PENDIENTE",
+      "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+      "observaciones": "Polilla"
+    },
+    {
+      "id": 108,
+      "articulo_numero": "SCHx5M",
+      "estado": "PENDIENTE",
+      "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+      "observaciones": "Polilla"
+    },
+    {
+      "id": 112,
+      "articulo_numero": "SCHx5M",
+      "estado": "EN_TRATAMIENTO",
+      "tipo_movimiento": "ENVIO_TRATAMIENTO",
+      "observaciones": "[ENVIO CARPA #16] INMUNIZADO | Cliente Origen: 621"
+    },
+    {
+      "id": 113,
+      "articulo_numero": null,
+      "estado": "PENDIENTE",
+      "tipo_movimiento": "TRASLADO_INTERNO_INGREDIENTES",
+      "observaciones": null
+    }
+  ],
+  "retiros": [],
+  "devoluciones": [],
+  "presupuestos": []
+}
