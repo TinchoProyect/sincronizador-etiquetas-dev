@@ -1,0 +1,63 @@
+     alert(`❌ Error al eliminar recepción: ${error.message}`);
+            }
+        }
+
+        async function liberarStock(clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId) {
+            // Extraer nombre del articulo origen para UI amigable
+            let nombreArtOrigen = '';
+            if (window.stockMantenimientoCache) {
+                const origenCache = window.stockMantenimientoCache.find(a => a.articulo_numero?.toString() === articuloActivo?.toString() || a.ingrediente_id?.toString() === articuloActivo?.toString());
+                if (origenCache) nombreArtOrigen = origenCache.descripcion;
+            }
+
+            // 1. Opciones de Responsable (obligatorio vacío inicial)
+            let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
+            if (window.operariosActivosCache) {
+                window.operariosActivosCache.forEach(op => {
+                    optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
+                });
+            }
+
+            // Variable local para sostener el Articulo Seleccionado en la búsqueda
+            let articuloDestinoId = articuloActivo;
+
+            const inputOpcionalHtml = `
+                    <div style="margin-top: 15px; text-align: left; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <label for="swal-buscador-art"><b>Reenvasar en (Buscar Destino Ventas):</b></label><br>
+                        <input type="text" id="swal-buscador-art" class="swal2-input" autocomplete="off" placeholder="Borrar para buscar Destino" value="${articuloActivo}" style="width: 100%; margin: 5px 0; font-size: 14px;">
+                        <ul id="swal-lista-articulos" style="list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 4px; display: none; text-align: left; position: absolute; width: 90%; z-index: 9999;"></ul>
+                        <div id="swal-destino-seleccionado" style="margin-top: 5px; font-weight: bold; color: #28a745; font-size: 13px;">Pre-seleccionado: Art. #${articuloActivo} (Original)</div>
+                    </div>
+
+                    <div style="margin-top: 15px; text-align: left;">
+                        <label for="swal-responsable"><b>Responsable de Salida:</b></label><br>
+                        <select id="swal-responsable" class="swal2-select" style="display: flex; width: 100%; font-size: 16px; margin-top: 5px; border-color: #dc3545;" required>
+                            ${optionsHtml}
+                        </select>
+                    </div>
+
+                    <div style="margin-top: 15px; text-align: left; border: 1px solid #ced4da; padding: 10px; border-radius: 5px;">
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                            <b>🖨️ Imprimir Etiquetas de Ventas (Zebra)</b>
+                            <input type="checkbox" id="swal-imprimir-zpl" style="width: 20px; height: 20px;" checked>
+                        </label>
+                        <div style="margin-top: 10px; font-size: 13px; color: #666;">Se imprimirán etiquetas estándar con el Artículo Destino.</div>
+                        <label style="margin-top: 5px; display: block; font-size: 14px;">Cant. Etiquetas a imprimir: <input type="number" id="swal-copias-zpl" value="1" min="1" style="width: 60px;"></label>
+                    </div>`;
+
+            const result = await Swal.fire({
+                title: '¿Enviar a Ventas (Liberar)?',
+                customClass: { popup: 'swal-wide-liberar' },
+                html: `<p>¿Confirmar salida comercial de <br><b>Origen: Art. #${articuloActivo} ${nombreArtOrigen ? '- ' + nombreArtOrigen : ''}</b> (Cantidad Física a enviar: ${cantidadOriginal})?</p>
+                       ${inputOpcionalHtml}`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, Ejecutar Liberación',
+                cancelButtonText: 'Cancelar',
+                didOpen: () => {
+                    const buscadorInput = document.getElementById('swal-buscador-art');
+                    const listaResultados = document.getElementById('swal-lista-articulos');
+                    const divSeleccion = document.getElementById('swal-destino-seleccionado');
+
+                    let debounceBuscador;
+                    buscadorInput.addEventListener('key

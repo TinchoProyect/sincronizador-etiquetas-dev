@@ -1,0 +1,54 @@
+function cargarStock() {
+            const tbody = document.getElementById('tbody-stock');
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">⏳ Cargando datos...</td></tr>';
+
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/stock');
+                if (!res.ok) throw new Error('Error al cargar stock');
+                const data = await res.json();
+                
+                window.mantenimientoStockData = data;
+                aplicarFiltrosStock();
+
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="6" class="mensaje-error">❌ Error: ${error.message}</td></tr>`;
+            }
+        }
+        
+        function toggleFilterAccordion(id) {
+            const content = document.getElementById(id);
+            const icon = document.getElementById(id + '-icon');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                icon.textContent = '▶';
+            }
+        }
+
+        function aplicarFiltrosStock() {
+            const chkInternoArticulos = document.getElementById('chk-interno-articulos')?.checked ?? true;
+            const chkInternoIngredientes = document.getElementById('chk-interno-ingredientes')?.checked ?? true;
+            const chkInternoTratamientos = document.getElementById('chk-interno-tratamientos')?.checked ?? true;
+            const chkExternoMostrador = document.getElementById('chk-externo-mostrador')?.checked ?? true;
+            const chkExternoChofer = document.getElementById('chk-externo-chofer')?.checked ?? true;
+
+            const filteredData = window.mantenimientoStockData.filter(item => {
+                let historialParsed = [];
+                try { if (item.historial_tratamientos) historialParsed = JSON.parse(item.historial_tratamientos); } catch(e) {}
+                const esTratamiento = Array.isArray(historialParsed) && historialParsed.length > 0;
+
+                const esInternoGranel = (item.ingrediente_id != null) && !esTratamiento;
+                const esInternoArticulo = (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))) && item.ingrediente_id == null && !esTratamiento;
+
+                const esInterno = esInternoGranel || esInternoArticulo || esTratamiento;
+                const esExterno = !esInterno && !esTratamiento; // Aseguramos exclusion real
+                
+                const esHojaDeRuta = esExterno && (item.origen_ruta_id != null);
+                const esMostrador = esExterno && (item.origen_ruta_id == null);
+
+                let passedType = false;
+                if (esInternoArticulo && chkInternoArticulos) passedType = true;
+                if (esInternoGranel && chkInternoIngredi

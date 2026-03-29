@@ -1,0 +1,190 @@
+const iniciarTratamiento = async (req, res) => {
+    let client;
+    try {
+        const { tipo_tratamiento, notas, usuario, items, bultos_fisicos } = req.body;
+        
+        if (!tipo_tratamiento || !items || items.length === 0) {
+            return res.status(400).json({ error: 'Faltan datos obligatorios o no hay items seleccionados.' });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        let kilosBrutosTotales = 0;
+        for (const item of items) {
+            kilosBrutosTotales += parseFloat(item.cantidad || item.descuento_kilos || 0);
+        }
+
+        // 1. Crear la cabecera del Tratamiento
+        const insertTratamiento = `
+            INSERT INTO public.mantenimiento_tratamientos 
+            (tipo_tratamiento, estado, usuario_armado, kilos_brutos_totales, notas, bultos_fisicos)
+            VALUES ($1, 'ARMANDO', $2, $3, $4, $5)
+            RETURNING id
+        `;
+        const resultTratamiento = await client.query(insertTratamiento, [tipo_tratamiento, usuario, kilosBrutosTotales, notas || '', parseFloat(bultos_fisicos) || 0]);
+        const tratamientoId = resultTratamiento.rows[0].id;
+
+        // 2. Insertar los items y descontar del stock de mantenimiento consolidado
+        for (const item of items) {
+            const kg = parseFloat(item.cantidad || item.descuento_kilos || 0);
+
+            let kilosUnidad = 1;
+            if (item.articulo_numero) {
+                const artQ = await client.query('SELECT kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
+                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                }
+            }
+            const cantidadEnUnidades = kg / kilosUnidad;
+            
+            const insertItem = `
+                INSERT INTO public.mantenimiento_tratamientos_items 
+                (id_tratamiento, articulo_numero, ingrediente_id, id_cliente_origen, kilos_ingresados, id_movimiento_origen)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            `;
+            await client.query(insertItem, [
+                tratamientoId, 
+                item.articulo_numero, 
+                item.ingrediente_id || null, 
+                item.cliente_origen || null, 
+                kg, 
+                item.id || null
+            ]);
+
+            // Descontar del stock consolidado
+            const updateStock = `
+                UPDATE public.stock_real_consolidado
+                SET stock_mantenimiento = stock_mantenimiento - $1, 
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `;
+            await client.query(updateStock, [cantidadEnUnidades, item.articulo_numero]);
+
+            // Mutar el movimiento original si es necesario para evitar doble descuento
+            if (item.modulo_origen === 'INGRESO' && item.id) {
+                await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'EN_TRATAMIENTO', observaciones = CONCAT(observaciones, ' -> Enviado a Tratamiento #', $1) WHERE id = $2`, [tratamientoId, item.id]);
+            }
+
+            // Insertar traza documental para el Historial
+            const insertAuditoria = `
+                INSERT INTO public.mantenimiento_movimientos 
+                (articulo_numero, ingrediente_id, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado)
+                VALUES ($1, $2, $3, 'ENVIO_TRATAMIENTO', NOW(), $4, $5, 'EN_TRATAMIENTO')
+            `;
+            const obsConCliente = item.cliente_origen 
+                ? `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento} | Cliente Origen: ${item.cliente_origen}`
+                : `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento}`;
+                
+            await client.query(insertAuditoria, [
+                item.articulo_numero || null,
+                item.ingrediente_id || null,
+                kg,
+                usuario,
+                obsConCliente
+            ]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, tratamiento_id: tratamientoId, message: 'Tratamiento iniciado correctamente.' });
+
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Error al iniciar tratamiento:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+const anularTratamiento = async (req, res) => {
+    let client;
+    try {
+        const id = req.params.id;
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const check = await client.query('SELECT estado FROM public.mantenimiento_tratamientos WHERE id = $1', [id]);
+        if (check.rowCount === 0) throw new Error('Tratamiento no encontrado.');
+        if (check.rows[0].estado !== 'ARMANDO') throw new Error('Solo se pueden anular carpas en estado ARMANDO.');
+
+        const items = await client.query('SELECT articulo_numero, kilos_ingresados FROM public.mantenimiento_tratamientos_items WHERE id_tratamiento = $1', [id]);
+        
+        await client.query('DELETE FROM public.mantenimiento_tratamientos_items WHERE id_tratamiento = $1', [id]);
+        await client.query('DELETE FROM public.mantenimiento_tratamientos WHERE id = $1', [id]);
+
+        for (const item of items.rows) {
+            if (item.articulo_numero) {
+                const kg = parseFloat(item.kilos_ingresados);
+                let kilosUnidad = 1;
+                const artQ = await client.query('SELECT kilos_unidad FROM public.articulos WHERE numero = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
+                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                }
+                const cantidadEnUnidades = kg / kilosUnidad;
+
+                await client.query(`
+                    UPDATE public.stock_real_consolidado
+                    SET stock_mantenimiento = stock_mantenimiento + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [cantidadEnUnidades, item.articulo_numero]);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Tratamiento anulado correctamente.' });
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Error al anular tratamiento:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+const getTratamientosActivos = async (req, res) => {
+    try {
+        const query = `
+            SELECT t.*, 
+                   COALESCE(json_agg(json_build_object(
+                       'id', i.id,
+                       'articulo_numero', i.articulo_numero,
+                       'kilos_ingresados', i.kilos_ingresados,
+                       'id_cliente_origen', i.id_cliente_origen,
+                       'ingrediente_id', i.ingrediente_id,
+                       'item_nombre', COALESCE(a.nombre, ing.nombre)
+                   )) FILTER (WHERE i.id IS NOT NULL), '[]') as items
+            FROM public.mantenimiento_tratamientos t
+            LEFT JOIN public.mantenimiento_tratamientos_items i ON t.id = i.id_tratamiento
+            LEFT JOIN public.articulos a ON i.articulo_numero = a.numero
+            LEFT JOIN public.ingredientes ing ON i.ingrediente_id = ing.id
+            WHERE t.estado != 'FINALIZADO'
+            GROUP BY t.id
+            ORDER BY t.fecha_inicio_armado DESC
+        `;
+        const result = await pool.query(query);
+        res.json({ success: true, data: result.rows });
+    } catch (e) {
+        console.error('Error al obtener tratamientos:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+const sellarTratamiento = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const query = `
+            UPDATE public.mantenimiento_tratamientos
+            SET estado = 'EN_CUARENTENA', fecha_inicio_cuarentena = NOW()
+            WHERE id = $1 AND estado = 'ARMANDO'
+            RETURNING *
+        `;
+        const result = await pool.query(query, [id]);
+        if (result.rowCount === 0) return res.status(400).json({ error: 'El tratamiento no existe o no está en estado ARMANDO.' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+

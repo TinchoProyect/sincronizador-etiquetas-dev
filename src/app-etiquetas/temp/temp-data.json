@@ -1,8 +1,9 @@
 {
-  "articulo": {
-    "nombre": "Nuez/Ma/ExtL/Ch x 5",
-    "numero": "NMELCHx5",
-    "codigo_barras": "2569478523"
-  },
-  "cantidad": 2
+  "nombre": "APN27/30X5",
+  "numero": "APN27/30X5",
+  "codigo_barras": "0000000000000",
+  "fecha": "29/3/2026",
+  "responsable_id": "7",
+  "cantidad": "1",
+  "estado": "1"
 }

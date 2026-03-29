@@ -1,0 +1,30 @@
+let actionCell = '';
+
+                if (esInterno) {
+                    let dropInterno = '';
+                    if (item.ingrediente_id) {
+                        dropInterno += `
+                            <button onclick="abrirModalRetornoIngrediente('${item.ingrediente_id}', ${cantidad}, '${tituloPrincipal}')" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                📦 Devolver a Ingredientes
+                            </button>
+                            <button onclick="window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                ↩️ Anular Movimiento Interno
+                            </button>
+                        `;
+                    } else {
+                        dropInterno += `
+                            <button onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                📦 Devolver a Ventas
+                            </button>
+                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                🧪 Convertir a Ingredientes
+                            </button>
+                            <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                ↩️ Anular Traslado Interno
+                            </button>
+                        `;
+                    }
+
+                    actionCell = `
+                    <div class="dropdown">
+                        <button class="btn-accion">⚡ Acciones ▼</butto

@@ -1,0 +1,24 @@
+--- async function liberarStock(clienteId, articuloAct... ---
+clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId) {
+            // Extraer nombre del articulo origen para UI amigable
+            let nombreArtOrigen = '';
+            if (window.stockMantenimientoCache) {
+                const origenCache = window.stockMantenimientoCache.find(a => a.articulo_numero?.toString() === articuloActivo?.toString() || a.ingrediente_id?.toString() === articuloActivo?.toString());
+                if (origenCache) nombreArtOrigen = origenCache.descripcion;
+            }
+
+            // 1. Opciones de Responsable (obligatorio vacío inicial)
+            let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
+            if (window.operariosActivosCache) {
+                window.operariosActivosCache.forEach(op => {
+                    optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
+                });
+            }
+
+            // Variable local para sostener el Articulo Seleccionado en la búsqueda
+            let articuloDestinoId = articuloActivo;
+
+            const inputOpcionalHtml = `
+                    <div style="margin-top: 15px; text-align: left; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <label for="swal-buscador-art"><b>Reenvasar en (Buscar Destino Ventas):</b></label><br>
+                        <input type="text" id="swal-buscador-art" class="swal2-input" autocomplete="off" placeholder="

@@ -1,0 +1,142 @@
+[
+  {
+    "id": 152,
+    "articulo_numero": "APN27/30X5",
+    "cantidad": "2.000",
+    "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+    "estado": "PENDIENTE"
+  },
+  {
+    "id": 150,
+    "articulo_numero": "APN27/30X5",
+    "cantidad": "1.000",
+    "tipo_movimiento": "RETORNO_TRATAMIENTO",
+    "estado": "PENDIENTE"
+  },
+  {
+    "id": 148,
+    "articulo_numero": "APN27/30X5",
+    "cantidad": "5.000",
+    "tipo_movimiento": "ENVIO_TRATAMIENTO",
+    "estado": "EN_TRATAMIENTO"
+  },
+  {
+    "id": 145,
+    "articulo_numero": "APN27/30X5",
+    "cantidad": "1.000",
+    "tipo_movimiento": "TRASLADO_INTERNO_VENTAS",
+    "estado": "PENDIENTE"
+  },
+  {
+    "id": 144,
+    "articulo_numero": "HSX1",
+    "cantidad": "0.500",
+    "tipo_movimiento": "ENVIO_TRATAMIENTO",
+    "estado": "EN_TRATAMIENTO"
+  },
+  {
+    "id": 143,
+    "articulo_numero": "HSX1",
+    "cantidad": "0.500",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 142,
+    "articulo_numero": "HSX1",
+    "cantidad": "0.500",
+    "tipo_movimiento": "INGRESO",
+    "estado": "CONCILIADO"
+  },
+  {
+    "id": 140,
+    "articulo_numero": "NMECHX2",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 139,
+    "articulo_numero": "NMLX5",
+    "cantidad": "0.360",
+    "tipo_movimiento": "TRANSF_INGREDIENTE",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 138,
+    "articulo_numero": "NCC34/36X10",
+    "cantidad": "0.630",
+    "tipo_movimiento": "TRANSF_INGREDIENTE",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 137,
+    "articulo_numero": "NCBxK",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 136,
+    "articulo_numero": "DACCDNX5",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 135,
+    "articulo_numero": "MFQX18",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 134,
+    "articulo_numero": "DSSCX10",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 133,
+    "articulo_numero": "CCTSx2B",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 132,
+    "articulo_numero": "ATySx2",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 131,
+    "articulo_numero": "ATySx2",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 130,
+    "articulo_numero": "ATySx2",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 126,
+    "articulo_numero": "APx2",
+    "cantidad": "1.000",
+    "tipo_movimiento": "LIBERACION",
+    "estado": "FINALIZADO"
+  },
+  {
+    "id": 125,
+    "articulo_numero": "AATFX25",
+    "cantidad": "2.000",
+    "tipo_movimiento": "TRANSF_INGREDIENTE",
+    "estado": "FINALIZADO"
+  }
+]

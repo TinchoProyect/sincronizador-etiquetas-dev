@@ -1,0 +1,19 @@
+} else {
+                        dropInterno += `
+                            <button onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cu
+
+=========
+
+<div class="dropdown-content">
+                            <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}')">
+                                📦 Enviar a Venta
+
+=========
+
+rror al eliminar recepción: ${error.message}`);
+            }
+        }
+
+        async function liberarStock(clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId) {
+            // Extraer nombre del articulo origen para UI amigable
+            let nombreArtOrigen = '';

@@ -1,0 +1,40 @@
+2071:                 tratamientoId, 
+2072:                 item.articulo_numero, 
+2073:                 item.ingrediente_id || null, 
+2074:                 item.cliente_origen || null, 
+2075:                 kg, 
+2076:                 item.id || null
+2077:             ]);
+2078: 
+2079:             // Descontar del stock consolidado
+2080:             const updateStock = `
+2081:                 UPDATE public.stock_real_consolidado
+2082:                 SET stock_mantenimiento = stock_mantenimiento - $1, 
+2083:                     ultima_actualizacion = NOW()
+2084:                 WHERE articulo_numero = $2
+2085:             `;
+2086:             await client.query(updateStock, [cantidadEnUnidades, item.articulo_numero]);
+2087: 
+2088:             // Mutar el movimiento original para apagar el Bulto Listado
+2089:             if (item.id) {
+2090:                 await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'EN_TRATAMIENTO', observaciones = CONCAT(COALESCE(observaciones, ''), ' -> Enviado a Tratamiento #', $1) WHERE id = $2`, [tratamientoId, item.id]);
+2091:             }
+2092: 
+2093:             // Insertar traza documental para el Historial
+2094:             const insertAuditoria = `
+2095:                 INSERT INTO public.mantenimiento_movimientos 
+2096:                 (articulo_numero, ingrediente_id, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado)
+2097:                 VALUES ($1, $2, $3, 'ENVIO_TRATAMIENTO', NOW(), $4, $5, 'EN_TRATAMIENTO')
+2098:             `;
+2099:             const obsConCliente = item.cliente_origen 
+2100:                 ? `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento} | Cliente Origen: ${item.cliente_origen}`
+2101:                 : `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento}`;
+2102:                 
+2103:             await client.query(insertAuditoria, [
+2104:                 item.articulo_numero || null,
+2105:                 item.ingrediente_id || null,
+2106:                 item.articulo_numero ? cantidadEnUnidades : kg,
+2107:                 usuario,
+2108:                 obsConCliente
+2109:             ]);
+2110:         }

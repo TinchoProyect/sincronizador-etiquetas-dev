@@ -1,0 +1,56 @@
+[
+  {
+    "articulo_numero": "AAIx5",
+    "creditos": "0",
+    "debitos": "0",
+    "algebra": "0"
+  },
+  {
+    "articulo_numero": "LRTX5",
+    "creditos": "8.000",
+    "debitos": "40.000",
+    "algebra": "-32.000"
+  },
+  {
+    "articulo_numero": "HSX1",
+    "creditos": "0.500",
+    "debitos": "0.500",
+    "algebra": "0.000"
+  },
+  {
+    "articulo_numero": "APN27/30X5",
+    "creditos": "4.000",
+    "debitos": "5.000",
+    "algebra": "-1.000"
+  },
+  {
+    "articulo_numero": "SCHx5M",
+    "creditos": "3.000",
+    "debitos": "15.000",
+    "algebra": "-12.000"
+  },
+  {
+    "articulo_numero": "ADAX5",
+    "creditos": "2.000",
+    "debitos": "0",
+    "algebra": "2.000"
+  },
+  {
+    "articulo_numero": "ACAx5",
+    "creditos": "5.000",
+    "debitos": "0",
+    "algebra": "5.000"
+  },
+  {
+    "articulo_numero": "GDFX1",
+    "creditos": "0",
+    "debitos": "0",
+    "algebra": "0"
+  },
+  {
+    "articulo_numero": "SNIX25",
+    "creditos": "1.000",
+    "debitos": "0",
+    "algebra": "1.000"
+  }
+]

@@ -1,0 +1,92 @@
+async function liberarStock(req, res) {
+    const client = await pool.connect();
+    try {
+        const { cliente_id, articulo_origen, articulo_destino, cantidad, observaciones, responsable } = req.body;
+        // Compatibilidad hacia atrás si sólo viene 'articulo'
+        const origen = articulo_origen || req.body.articulo;
+        const destino = articulo_destino || origen;
+        const usuario = responsable || (req.user ? req.user.username : 'SISTEMA');
+
+        if (!responsable || responsable === '-1') {
+            throw new Error('Debe seleccionar obligatoriamente un responsable para enviar a ventas.');
+        }
+
+        console.log(`📦 [MANTENIMIENTO] Liberando stock para Ventas. Origen: ${origen} -> Destino: ${destino}, Cant: ${cantidad}, Resp: ${usuario}`);
+
+        await client.query('BEGIN');
+
+        // La bajada de Mantenimiento siempre ataca al origen
+        let obsvAuditoria = observaciones || 'Reintegro a Ventas tras Conciliacion';
+        if (origen !== destino) {
+            obsvAuditoria = `[REENVASADO: Hacia Art. #${destino}] ` + obsvAuditoria;
+        }
+
+        // REEMPLAZO DETERMINISTA: Ejecutar baja global tolerante (GREATEST 0 para eludir errores asincronicos)
+        await client.query(`
+            UPDATE public.stock_real_consolidado
+            SET 
+                stock_mantenimiento = GREATEST(0, stock_mantenimiento - $1),
+                stock_ajustes = COALESCE(stock_ajustes, 0) + $1,
+                stock_consolidado = COALESCE(stock_lomasoft, 0) + COALESCE(stock_movimientos, 0) + (COALESCE(stock_ajustes, 0) + $1),
+                ultima_actualizacion = NOW()
+            WHERE articulo_numero = $2
+        `, [cantidad, origen]);
+        
+        // Registrar el movimiento de LIBERACION explícitamente para auditoría contable
+        // (Debe indicarse como 'CONCILIADO' o estado válido del Check de la DB para que resista el filtro 'FINALIZADO' y
+        // la query agrupada de getStockMantenimiento pueda sumar el negativo y dar 0)
+        await client.query(`
+            INSERT INTO public.mantenimiento_movimientos (
+                articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento, estado
+            ) VALUES ($1, $2, $3, 'LIBERACION', $4, NOW(), 'CONCILIADO')
+        `, [origen, cantidad, usuario, obsvAuditoria]);
+
+        // Cierre Definitivo de Registros (HIGIENE):
+        // Actualizamos explícitamente el lote origen a 'FINALIZADO' para que desaparezca de la tabla Mantenimiento
+        // Soportando tanto ARTÍCULOS (Ventas) como INGREDIENTES (Mostrador)
+        const updateMov = `
+            UPDATE public.mantenimiento_movimientos
+            SET estado = 'FINALIZADO',
+                observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
+            WHERE (articulo_numero = $1 OR ingrediente_id = $2)
+              AND estado NOT IN ('FINALIZADO', 'FINALIZADO_TRATAMIENTO', 'REVERTIDO', 'ANULADO')
+        `;
+        let idAsInt = parseInt(origen);
+        if (isNaN(idAsInt)) idAsInt = null;
+        
+        await client.query(updateMov, [origen, idAsInt]);
+        
+        // Alta explícita en Ventas para el Destino
+        try {
+            const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [destino]);
+            const codigoBarras = artQuery.rows.length > 0 ? artQuery.rows[0].codigo_barras : '';
+
+            // Sumamos el stock al articulo_destino en el historial de ventas
+            await client.query(`
+                INSERT INTO stock_ventas_movimientos (
+                    articulo_numero, codigo_barras, kilos, cantidad, tipo, fecha, usuario_id, origen_ingreso
+                ) VALUES ($1, $2, 0, $3, 'REVERSION_DESDE_MANTENIMIENTO', NOW(), $4, 'mantenimiento')
+            `, [destino, codigoBarras || '', cantidad, null]);
+        } catch (e) {
+            console.error('⚠️ [MANTENIMIENTO] Error al hacer insert en stock_ventas_movimientos para el Destino. El trigger de la DB podría estar bloqueándolo o ya hizo el ingreso automático.', e.message);
+        }
+
+        await client.query('COMMIT');
+        console.log(`✅ Stock liberado exitosamente. Origen: ${origen} Destino: ${destino}`);
+        res.json({ success: true, message: 'Se ha liberado en Mantenimiento y reenvasado a Ventas correctamente' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error al liberar stock:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Transferir Stock de Mantenimiento a Ingredientes
+ * 1. Da de baja en mantenimiento (stock_real_consolidado) por el TOTAL del peso original.
+ * 2. Da de alta en ingredientes por la CANTIDAD REAL ingresada.
+ * 3. Registra la merma/diferencia en el movimiento de salida.
+ */

@@ -1123,7 +1123,7 @@
                         `;
                     } else {
                         dropInterno += `
-                            <button onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                            <button onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}', ${item.id})" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 📦 Devolver a Ventas
                             </button>
                             <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
@@ -1159,7 +1159,7 @@
                     <div class="dropdown">
                         <button class="btn-accion">⚡ Acciones ▼</button>
                         <div class="dropdown-content">
-                            <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}')">
+                            <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}', ${item.id})">
                                 📦 Enviar a Ventas
                             </button>
                             <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}')">
@@ -1328,7 +1328,7 @@
             }
         }
 
-        async function liberarStock(clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId) {
+        async function liberarStock(clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId, movimientoId) {
             // Extraer nombre del articulo origen para UI amigable
             let nombreArtOrigen = '';
             if (window.stockMantenimientoCache) {
@@ -1478,9 +1478,7 @@
                 const res = await fetch('/api/produccion/mantenimiento/liberar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        cliente_id: clienteId, 
-                        articulo_origen: articuloActivo,
+                    body: JSON.stringify({ movimiento_id: movimientoId, cliente_id: clienteId, articulo_origen: articuloActivo,
                         articulo_destino: payload.articuloDestino,
                         cantidad: cantidadOriginal, 
                         observaciones: motivoDefecto, 
@@ -1495,18 +1493,24 @@
                     // Si pidió impresión
                     if (payload.imprimirZPL) {
                         try {
-                            // Construir el nombre completo de destino buscando en la cache
-                            let artNombreDest = '' + payload.articuloDestino;
+                            // Construir objeto Zebra completo de destino buscando en la cache
+                            let artZebra = { nombre: '' + payload.articuloDestino, numero: '' + payload.articuloDestino, codigo_barras: '0000000000000' };
                             if (window.articulosCache) {
                                 const articuloDbg = window.articulosCache.find(a => a.numero.toString() === payload.articuloDestino.toString());
-                                if (articuloDbg) artNombreDest = articuloDbg.nombre;
+                                if (articuloDbg) {
+                                    artZebra.nombre = articuloDbg.nombre;
+                                    artZebra.numero = articuloDbg.numero;
+                                    artZebra.codigo_barras = articuloDbg.codigo_barras;
+                                }
                             }
                             
                             const resImp = await fetch('http://localhost:3000/api/imprimir', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    articulo: artNombreDest,
+                                    nombre: artZebra.nombre,
+                                    numero: artZebra.numero,
+                                    codigo_barras: artZebra.codigo_barras,
                                     fecha: new Date().toLocaleDateString('es-AR'),
                                     responsable_id: payload.responsable,
                                     cantidad: payload.copiasZPL || 1,

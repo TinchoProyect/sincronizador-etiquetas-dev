@@ -11,38 +11,30 @@ async function getStockMantenimiento(req, res) {
         const query = `
             WITH saldos_clientes AS (
                 SELECT 
+                    mm.id as id_movimiento,
                     mm.id_presupuesto_origen,
                     p.origen_facturacion,
                     mm.articulo_numero,
                     mm.ingrediente_id,
                     p.id_cliente AS cliente_id,
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
-                    MAX(p.id_ruta) AS origen_ruta_id,
-                    MAX(p.comprobante_lomasoft) AS presup_comprobante_lomasoft,
-                    MAX(p.fecha) AS presup_fecha,
-                    SUM(CASE 
-                        WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO') THEN mm.cantidad 
-                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
-                        ELSE 0 
-                    END) AS stock_mantenimiento,
-                    MAX(mm.fecha_movimiento) as ultima_actualizacion,
-                    (array_agg(mm.usuario ORDER BY mm.fecha_movimiento DESC))[1] AS usuario,
-                    (array_agg(mm.historial_tratamientos::text ORDER BY mm.fecha_movimiento DESC))[1] AS historial_tratamientos
+                    p.id_ruta AS origen_ruta_id,
+                    p.comprobante_lomasoft AS presup_comprobante_lomasoft,
+                    p.fecha AS presup_fecha,
+                    mm.cantidad AS stock_mantenimiento,
+                    mm.fecha_movimiento as ultima_actualizacion,
+                    mm.usuario AS usuario,
+                    mm.historial_tratamientos::text AS historial_tratamientos,
+                    mm.estado as transaccion_estado
                 FROM public.mantenimiento_movimientos mm
                 LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
                 LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
-                WHERE mm.estado IS DISTINCT FROM 'REVERTIDO' 
-                  AND mm.estado IS DISTINCT FROM 'FINALIZADO'
-                  AND mm.estado IS DISTINCT FROM 'ANULADO'
-                  AND mm.estado IS DISTINCT FROM 'FINALIZADO_TRATAMIENTO'
-                GROUP BY mm.id_presupuesto_origen, p.origen_facturacion, mm.articulo_numero, mm.ingrediente_id, p.id_cliente, c.nombre, c.apellido, c.otros
-                HAVING SUM(CASE 
-                    WHEN mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO') THEN mm.cantidad 
-                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
-                    ELSE 0 
-                END) > 0
+                WHERE mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
+                  AND mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO')
+                  AND mm.cantidad > 0
             )
             SELECT 
+                sc.id_movimiento AS id,
                 sc.id_presupuesto_origen,
                 sc.origen_facturacion,
                 sc.articulo_numero,
@@ -59,11 +51,7 @@ async function getStockMantenimiento(req, res) {
                 sc.origen_ruta_id,
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
-                CASE 
-                    WHEN nc.nro_comprobante_externo IS NOT NULL THEN 'CONCILIADO' 
-                    WHEN sc.presup_comprobante_lomasoft IS NOT NULL AND TRIM(sc.presup_comprobante_lomasoft) != '' THEN 'CONCILIADO'
-                    ELSE 'PENDIENTE' 
-                END AS estado,
+                sc.transaccion_estado as estado,
                 sc.cliente_nombre,
                 COALESCE(nc.nro_comprobante_externo, sc.presup_comprobante_lomasoft) as nc_nro,
                 COALESCE(nc.tipo_comprobante, 'NC ERP') as nc_tipo,
@@ -88,9 +76,7 @@ async function getStockMantenimiento(req, res) {
                     mc.fecha_comprobante
                 FROM public.mantenimiento_conciliaciones mc
                 JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
-                JOIN public.mantenimiento_movimientos m_orig ON mci.id_movimiento_origen = m_orig.id
-                WHERE m_orig.id_presupuesto_origen = sc.id_presupuesto_origen
-                  AND m_orig.articulo_numero = sc.articulo_numero
+                WHERE mci.id_movimiento_origen = sc.id_movimiento
                 ORDER BY mc.fecha_comprobante DESC
                 LIMIT 1
             ) nc ON true
@@ -110,12 +96,15 @@ async function getStockMantenimiento(req, res) {
                 SELECT tt.estado as tratamiento_estado, tt.id as tratamiento_id, tt.tipo_tratamiento
                 FROM public.mantenimiento_tratamientos_items tti
                 JOIN public.mantenimiento_tratamientos tt ON tti.id_tratamiento = tt.id
-                WHERE (tti.articulo_numero = sc.articulo_numero OR (sc.articulo_numero IS NULL AND tti.articulo_numero IS NULL AND tti.ingrediente_id = sc.ingrediente_id))
-                  AND (tti.id_cliente_origen = sc.cliente_id OR (sc.cliente_id IS NULL AND tti.id_cliente_origen IS NULL))
+                WHERE (tti.id_movimiento_origen = sc.id_movimiento 
+                       OR (tti.id_movimiento_origen IS NULL AND (tti.articulo_numero = sc.articulo_numero OR (sc.articulo_numero IS NULL AND tti.articulo_numero IS NULL AND tti.ingrediente_id = sc.ingrediente_id))
+                                                            AND (tti.id_cliente_origen = sc.cliente_id OR (sc.cliente_id IS NULL AND tti.id_cliente_origen IS NULL))
+                          )
+                      )
                   AND tt.estado IN ('ARMANDO', 'EN_CUARENTENA', 'EN_ACONDICIONAMIENTO')
                 LIMIT 1
             ) tto ON true
-            ORDER BY COALESCE(sc.articulo_numero, sc.ingrediente_id::text) ASC, sc.cliente_nombre ASC
+            ORDER BY sc.ultima_actualizacion DESC
         `;
 
         const result = await pool.query(query);
@@ -686,20 +675,17 @@ async function liberarStock(req, res) {
             ) VALUES ($1, $2, $3, 'LIBERACION', $4, NOW(), 'CONCILIADO')
         `, [origen, cantidad, usuario, obsvAuditoria]);
 
-        // Cierre Definitivo de Registros (HIGIENE):
-        // Actualizamos explícitamente el lote origen a 'FINALIZADO' para que desaparezca de la tabla Mantenimiento
-        // Soportando tanto ARTÍCULOS (Ventas) como INGREDIENTES (Mostrador)
-        const updateMov = `
-            UPDATE public.mantenimiento_movimientos
-            SET estado = 'FINALIZADO',
-                observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
-            WHERE (articulo_numero = $1 OR ingrediente_id = $2)
-              AND estado NOT IN ('FINALIZADO', 'FINALIZADO_TRATAMIENTO', 'REVERTIDO', 'ANULADO')
-        `;
-        let idAsInt = parseInt(origen);
-        if (isNaN(idAsInt)) idAsInt = null;
-        
-        await client.query(updateMov, [origen, idAsInt]);
+        // Cierre Definitivo del Lote (HIGIENE):
+        // Actualizamos estrictamente el lote transaccional a 'FINALIZADO'
+        if (req.body.movimiento_id) {
+            const updateMov = `
+                UPDATE public.mantenimiento_movimientos
+                SET estado = 'FINALIZADO',
+                    observaciones = COALESCE(observaciones, '') || ' [Transferido Mantenimiento -> Ventas]'
+                WHERE id = $1
+            `;
+            await client.query(updateMov, [req.body.movimiento_id]);
+        }
         
         // Alta explícita en Ventas para el Destino
         try {
@@ -851,75 +837,14 @@ async function transferirAIngredientes(req, res) {
         }
 
         // 5. HIGIENE DE BASE DATOS
-        if (articulo && articulo !== 'null' && articulo !== '') {
-            if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
-                const updateIngresoOriginal = `
-                    UPDATE public.mantenimiento_movimientos
-                    SET estado = 'FINALIZADO',
-                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
-                    WHERE articulo_numero = $1 
-                      AND tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
-                      AND estado IS DISTINCT FROM 'FINALIZADO'
-                      AND id IN (
-                          SELECT mm.id 
-                          FROM public.mantenimiento_movimientos mm
-                          JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                          WHERE mm.articulo_numero = $1 AND p.id_cliente = $2
-                      )
-                `;
-                await client.query(updateIngresoOriginal, [articulo, cliente_id]);
-            } else {
-                const updateMovInterno = `
-                    UPDATE public.mantenimiento_movimientos
-                    SET estado = 'FINALIZADO',
-                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
-                    WHERE articulo_numero = $1 
-                      AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'INGRESO')
-                      AND estado = 'PENDIENTE'
-                `;
-                await client.query(updateMovInterno, [articulo]);
-            }
-        } else if (origen_ingrediente_id && origen_ingrediente_id !== 'null' && origen_ingrediente_id !== '') {
-            if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
-                const updateIngresoOriginal = `
-                    UPDATE public.mantenimiento_movimientos
-                    SET estado = 'FINALIZADO',
-                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
-                    WHERE ingrediente_id = $1 
-                      AND tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
-                      AND estado IS DISTINCT FROM 'FINALIZADO'
-                      AND id IN (
-                          SELECT mm.id 
-                          FROM public.mantenimiento_movimientos mm
-                          JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                          WHERE mm.ingrediente_id = $1 AND p.id_cliente = $2
-                      )
-                `;
-                await client.query(updateIngresoOriginal, [origen_ingrediente_id, cliente_id]);
-            } else {
-                const updateMovInterno = `
-                    UPDATE public.mantenimiento_movimientos
-                    SET estado = 'FINALIZADO',
-                        observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
-                    WHERE ingrediente_id = $1 
-                      AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'INGRESO')
-                      AND estado = 'PENDIENTE'
-                `;
-                await client.query(updateMovInterno, [origen_ingrediente_id]);
-            }
-        } else {
-            // FALLBACK HUÉRFANO (Ambos articulo e ingrediente son nulos)
-            // Se asume procedente de legacy BUG de checkboxes
-            const updateIngresoOrphan = `
+        if (req.body.movimiento_id) {
+            const updateMovInterno = `
                 UPDATE public.mantenimiento_movimientos
                 SET estado = 'FINALIZADO',
-                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ingredientes]'
-                WHERE articulo_numero IS NULL 
-                  AND ingrediente_id IS NULL
-                  AND tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
-                  AND estado IS DISTINCT FROM 'FINALIZADO'
+                    observaciones = COALESCE(observaciones, '') || ' [Transferido Mantenimiento -> Ingredientes]'
+                WHERE id = $1
             `;
-            await client.query(updateIngresoOrphan);
+            await client.query(updateMovInterno, [req.body.movimiento_id]);
         }
 
         // Opcional: Registrar en historial de ingredientes si existe tabla. 
@@ -2029,7 +1954,7 @@ const retornarIngrediente = async (req, res) => {
         // Sumar todos los pendientes en mantenimiento para este ingrediente para calcular el peso original esperado
         const currentData = await client.query(`
             SELECT SUM(CASE 
-                WHEN tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES') THEN cantidad 
+                WHEN tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO') THEN cantidad 
                 WHEN tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -cantidad
                 ELSE 0 
             END) AS stock_mantenimiento
@@ -2160,9 +2085,9 @@ const iniciarTratamiento = async (req, res) => {
             `;
             await client.query(updateStock, [cantidadEnUnidades, item.articulo_numero]);
 
-            // Mutar el movimiento original si es necesario para evitar doble descuento
-            if (item.modulo_origen === 'INGRESO' && item.id) {
-                await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'EN_TRATAMIENTO', observaciones = CONCAT(observaciones, ' -> Enviado a Tratamiento #', $1) WHERE id = $2`, [tratamientoId, item.id]);
+            // Mutar el movimiento original para apagar el Bulto Listado
+            if (item.id) {
+                await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'EN_TRATAMIENTO', observaciones = CONCAT(COALESCE(observaciones, ''), ' -> Enviado a Tratamiento #', $1::text) WHERE id = $2`, [tratamientoId, item.id]);
             }
 
             // Insertar traza documental para el Historial
@@ -2178,7 +2103,7 @@ const iniciarTratamiento = async (req, res) => {
             await client.query(insertAuditoria, [
                 item.articulo_numero || null,
                 item.ingrediente_id || null,
-                kg,
+                item.articulo_numero ? cantidadEnUnidades : kg,
                 usuario,
                 obsConCliente
             ]);
@@ -2362,13 +2287,30 @@ const finalizarTratamiento = async (req, res) => {
             // Recuperar kilos_unidad y convertir a unidades
             const kg = parseFloat(item.kilos_ingresados);
             let kilosUnidad = 1;
-            if (item.articulo_numero) {
+            const esArticulo = !!item.articulo_numero;
+            
+            if (esArticulo) {
                 const artQ = await client.query('SELECT kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
                 if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
                     kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
                 }
             }
             const cantidadEnUnidades = kg / kilosUnidad;
+
+            // --- VIGÍA DE AUDITORÍA QA ---
+            console.log(`\n============== [QA VIGIA] REINGRESO (BOLSA #${id}) ==============`);
+            console.log(`| ITEM TIPO    : ${esArticulo ? 'ARTICULO COMERCIAL' : 'INGREDIENTE (GRANEL)'}`);
+            console.log(`| ID DETECTADO : ${item.articulo_numero || 'Ing.#: ' + item.ingrediente_id}`);
+            console.log(`| BOLSÓN NETO  : ${kg} kg`);
+            if (esArticulo) {
+                console.log(`| MAPEO        : División Comercial -> DIVISOR: ${kilosUnidad}`);
+                console.log(`| UNIDADES     : ${cantidadEnUnidades.toFixed(2)} (A grilla Mantenimiento)`);
+            } else {
+                console.log(`| MAPEO        : Ingrediente -> Sin conversión. Proporción 1:1`);
+                console.log(`| KILOS        : ${cantidadEnUnidades.toFixed(2)} (A grilla Mantenimiento)`);
+            }
+            console.log(`| ESTÁTICO BD  : ${esArticulo ? 'Suma comercial aprobada en código' : '⚠ ¡ALERTA! El backend NO está actualizando la tabla global ING.'}`);
+            console.log(`=================================================================\n`);
 
             // 3.1 Insertar el nuevo movimiento de RETORNO en Mantenimiento (Quinto Flujo)
             await client.query(`
@@ -2385,9 +2327,14 @@ const finalizarTratamiento = async (req, res) => {
                 JSON.stringify(historyArray)
             ]);
 
-            // 3.2 Marcar el movimiento de entrada original como FINALIZADO_TRATAMIENTO
+            // 3.2 NUEVO MODELO 1:1 - Cierre de Bulto Original (Desactivando visual)
             if (item.id_movimiento_origen) {
-                await client.query(`UPDATE public.mantenimiento_movimientos SET estado = 'FINALIZADO_TRATAMIENTO' WHERE id = $1`, [item.id_movimiento_origen]);
+                await client.query(`
+                    UPDATE public.mantenimiento_movimientos
+                    SET estado = 'FINALIZADO',
+                        observaciones = CONCAT(COALESCE(observaciones, ''), ' -> Tratamiento concluido. Bulto Retornado a Mesa.')
+                    WHERE id = $1
+                `, [item.id_movimiento_origen]);
             }
 
             // 3.3 Devolver el stock a mantenimiento consolidado

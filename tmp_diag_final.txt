@@ -1,0 +1,179 @@
+onst result = await pool.query(query, [id]);
+        if (result.rowCount === 0) return res.status(400).json({ error: 'El tratamiento no existe o no está en estado ARMANDO.' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+const abrirTratamiento = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { usuario } = req.body;
+        const query = `
+            UPDATE public.mantenimiento_tratamientos
+            SET estado = 'EN_ACONDICIONAMIENTO', fecha_apertura = NOW(), usuario_apertura = $2
+            WHERE id = $1 AND estado = 'EN_CUARENTENA'
+            RETURNING *
+        `;
+        const result = await pool.query(query, [id, usuario]);
+        if (result.rowCount === 0) return res.status(400).json({ error: 'El tratamiento no está en cuarentena.' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+const finalizarTratamiento = async (req, res) => {
+    let client;
+    try {
+        const { id } = req.params;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // 1. Obtener tratamiento
+        const trRes = await client.query(`SELECT * FROM public.mantenimiento_tratamientos WHERE id = $1 AND estado IN ('EN_ACONDICIONAMIENTO', 'EN_CUARENTENA', 'ARMANDO')`, [id]);
+        if (trRes.rowCount === 0) throw new Error('Tratamiento no válido para finalizar.');
+        const tratamiento = trRes.rows[0];
+
+        // 2. Finalizar Master
+        await client.query(`
+            UPDATE public.mantenimiento_tratamientos
+            SET estado = 'FINALIZADO'
+            WHERE id = $1
+        `, [id]);
+
+        // 3. Quinto Flujo: Devolver a Cuarentena
+        const itemsRes = await client.query(`SELECT * FROM public.mantenimiento_tratamientos_items WHERE id_tratamiento = $1`, [id]);
+        
+        let kilosDevueltosTotales = 0;
+
+        for (const item of itemsRes.rows) {
+            // Obtener el movimiento original para heredar su JSON historial_tratamientos si existe
+            const originalMov = await client.query(`SELECT id_presupuesto_origen, observaciones, historial_tratamientos FROM public.mantenimiento_movimientos WHERE id = $1`, [item.id_movimiento_origen]);
+            
+            let historialPrevio = '[]';
+            let idPresupuestoOrigen = null;
+            let obsOriginal = '';
+
+            if (originalMov.rowCount > 0) {
+                const movData = originalMov.rows[0];
+                idPresupuestoOrigen = movData.id_presupuesto_origen;
+                historialPrevio = typeof movData.historial_tratamientos === 'string' ? movData.historial_tratamientos : JSON.stringify(movData.historial_tratamientos || []);
+                obsOriginal = movData.observaciones || '';
+            }
+
+            // Parsear para armar el nuevo estado
+            let historyArray = [];
+            try { historyArray = JSON.parse(historialPrevio); } catch(e) {}
+            
+            // Agregar el tratamiento actual al historial
+            historyArray.push({
+                tratamiento_id: id,
+                tipo_tratamiento: tratamiento.tipo_tratamiento,
+                estado_cierre: 'FINALIZADO',
+                fecha_inicio: tratamiento.fecha_inicio_armado,
+                fecha_fin: new Date()
+            });
+
+            // Recuperar kilos_unidad y convertir a unidades
+            const kg = parseFloat(item.kilos_ingresados);
+            let kilosUnidad = 1;
+            const esArticulo = !!item.articulo_numero;
+            
+            if (esArticulo) {
+                const artQ = await client.query('SELECT kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
+                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                }
+            }
+            const cantidadEnUnidades = kg / kilosUnidad;
+
+            // --- VIGÍA DE AUDITORÍA QA ---
+            console.log(`\n============== [QA VIGIA] REINGRESO (BOLSA #${id}) ==============`);
+            console.log(`| ITEM TIPO    : ${esArticulo ? 'ARTICULO COMERCIAL' : 'INGREDIENTE (GRANEL)'}`);
+            console.log(`| ID DETECTADO : ${item.articulo_numero || 'Ing.#: ' + item.ingrediente_id}`);
+            console.log(`| BOLSÓN NETO  : ${kg} kg`);
+            if (esArticulo) {
+                console.log(`| MAPEO        : División Comercial -> DIVISOR: ${kilosUnidad}`);
+                console.log(`| UNIDADES     : ${cantidadEnUnidades.toFixed(2)} (A grilla Mantenimiento)`);
+            } else {
+                console.log(`| MAPEO        : Ingrediente -> Sin conversión. Proporción 1:1`);
+                console.log(`| KILOS        : ${cantidadEnUnidades.toFixed(2)} (A grilla Mantenimiento)`);
+            }
+            console.log(`| ESTÁTICO BD  : ${esArticulo ? 'Suma comercial aprobada en código' : '⚠ ¡ALERTA! El backend NO está actualizando la tabla global ING.'}`);
+            console.log(`=================================================================\n`);
+
+            // 3.1 Insertar el nuevo movimiento de RETORNO en Mantenimiento (Quinto Flujo)
+            await client.query(`
+                INSERT INTO public.mantenimiento_movimientos
+                (articulo_numero, ingrediente_id, id_presupuesto_origen, cantidad, usuario, tipo_movimiento, estado, observaciones, historial_tratamientos)
+                VALUES ($1, $2, $3, $4, $5, 'RETORNO_TRATAMIENTO', 'PENDIENTE', $6, $7::jsonb)
+            `, [
+                item.articulo_numero, 
+                item.ingrediente_id || null,
+                idPresupuestoOrigen, 
+                cantidadEnUnidades, 
+                usuario, 
+                `[RETORNO TRATAMIENTO #${id}] ` + obsOriginal,
+                JSON.stringify(historyArray)
+            ]);
+
+            // 3.2 ANULADO MODO EVENT-SOURCING: 
+            // Ya no buscamos y anulamos el movimiento ingreso previo (id_movimiento_origen).
+            // La grilla calcula el Débito en vivo usando el movimiento ENVIO_TRATAMIENTO.
+
+            // 3.3 Devolver el stock a mantenimiento consolidado
+            if (item.articulo_numero) {
+                await client.query(`
+                    UPDATE public.stock_real_consolidado
+                    SET stock_mantenimiento = stock_mantenimiento + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [cantidadEnUnidades, item.articulo_numero]);
+            }
+
+            kilosDevueltosTotales += kg;
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: `Tratamiento finalizado. ${kilosDevueltosTotales} kg retornados a Cuarentena.` });
+
+    } catch (e) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Error al finalizar tratamiento:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+module.exports = {
+    getStockMantenimiento,
+    diagnosticoVigiaAuditor,
+    confirmarConciliacion,
+    getHistorialMantenimiento,
+    liberarStock,
+    transferirAIngredientes,
+    revertirMovimiento,
+    deshacerConciliacion,
+    trazarFacturaOriginal,
+    emitirNotaCreditoBorrador,
+    getRetirosLocal,
+    getRetirosRuta,
+    recibirRetiroLocal,
+    revertirIngresoLocal,
+    trasladoVentas,
+    trasladoIngredientes,
+    anularTraslado,
+    anularTrasladoAgrupado,
+    retornarIngrediente,
+    iniciarTratamiento,
+    anularTratamiento,
+    getTratamientosActivos,
+    sellarTratamiento,
+    abrirTratamiento,
+    finalizarTratamiento
+};
