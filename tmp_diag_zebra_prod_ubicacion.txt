@@ -1,0 +1,8 @@
+src\produccion\controllers\impresionEtiquetasIngredientes.js
+src\produccion\js\carroPreparado.js
+src\produccion\js\ingresoManual.js
+src\produccion\js\modal-abrir-caja.js
+src\produccion\js\produccion.js
+src\produccion\pages\gestion-mantenimiento.html
+src\produccion\pages\pendientes-compra-new.html
+src\produccion\routes\produccion.js

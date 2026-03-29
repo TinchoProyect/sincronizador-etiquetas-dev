@@ -1508,13 +1508,12 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    nombre: artZebra.nombre,
-                                    numero: artZebra.numero,
-                                    codigo_barras: artZebra.codigo_barras,
-                                    fecha: new Date().toLocaleDateString('es-AR'),
-                                    responsable_id: payload.responsable,
-                                    cantidad: payload.copiasZPL || 1,
-                                    estado: '1'
+                                    articulo: {
+                                        numero: artZebra.numero,
+                                        nombre: artZebra.nombre,
+                                        codigo_barras: artZebra.codigo_barras
+                                    },
+                                    cantidad: payload.copiasZPL || 1
                                 })
                             });
                             if(!resImp.ok) throw new Error('Error al conectar con spooler Zebra local.');
