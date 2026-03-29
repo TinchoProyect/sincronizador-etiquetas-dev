@@ -842,7 +842,7 @@ window.hidratarFormularioEdicion = async function(id) {
     try {
         Swal.fire({ title: 'Recuperando Búnker...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
         
-        const res = await fetch(`/api/logistica/bunker/articulos/${id}`);
+        const res = await fetch(`/api/logistica/bunker/articulos/${encodeURIComponent(id)}`);
         const result = await res.json();
         if (!res.ok || !result.success) throw new Error(result.error);
         

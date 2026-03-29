@@ -1,7 +1,8 @@
 {
-  "articulo": "CCTSx2B",
-  "fecha": "28/3/2026",
-  "responsable_id": "7",
-  "cantidad": "1",
-  "estado": "1"
+  "articulo": {
+    "nombre": "Nuez/Ma/ExtL/Ch x 5",
+    "numero": "NMELCHx5",
+    "codigo_barras": "2569478523"
+  },
+  "cantidad": 2
 }

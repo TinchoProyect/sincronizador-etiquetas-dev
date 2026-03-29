@@ -297,7 +297,7 @@ window.toggleRow = function(targetId, elIcon) {
 };
 
 window.editarArticulo = function(id) {
-    window.location.href = `bunker.html?edit=${id}`;
+    window.location.href = `bunker.html?edit=${encodeURIComponent(id)}`;
 };
 
 window.eliminarArticuloBunker = async function(id) {
