@@ -1,0 +1,1 @@
+CHECK (((estado)::text = ANY ((ARRAY['PENDIENTE'::character varying, 'FINALIZADO'::character varying, 'CANCELADO'::character varying, 'REVERTIDO'::character varying, 'AUTOMATICO'::character varying, 'CONCILIADO'::character varying, 'CUARENTENA_INTERNA'::character varying, 'ANULADO'::character varying])::text[])))

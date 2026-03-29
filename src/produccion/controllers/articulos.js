@@ -321,7 +321,19 @@ async function buscarArticulos(req, res) {
             `;
             params = [busqueda];
         } else {
-            // Búsqueda PARCIAL por descripción
+            // Búsqueda INTELIGENTE por tokens (grupos de palabras)
+            const terminos = busqueda.split(' ').filter(t => t.trim() !== '');
+            let whereConds = [];
+            params = [];
+            
+            terminos.forEach((term, index) => {
+                const paramIdx = index + 1;
+                // El token debe estar en la descripcion o ser un match al codigo
+                whereConds.push(`(src.descripcion ILIKE $${paramIdx} OR src.articulo_numero ILIKE $${paramIdx})`);
+                params.push(`%${term}%`);
+            });
+            const filterSQL = whereConds.length > 0 ? whereConds.join(' AND ') : '1=1';
+
             query = `
                 SELECT 
                     src.articulo_numero as codigo,
@@ -332,11 +344,10 @@ async function buscarArticulos(req, res) {
                     src.pack_hijo_codigo,
                     src.pack_unidades
                 FROM stock_real_consolidado src
-                WHERE src.descripcion ILIKE $1
+                WHERE ${filterSQL}
                 ORDER BY src.descripcion
                 LIMIT 50
             `;
-            params = [`%${busqueda}%`];
         }
         
         console.log('🔍 [BUSCAR-ART] Params:', params);

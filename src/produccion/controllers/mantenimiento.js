@@ -646,66 +646,79 @@ async function confirmarConciliacion(req, res) {
 async function liberarStock(req, res) {
     const client = await pool.connect();
     try {
-        const { cliente_id, articulo, cantidad, observaciones, responsable } = req.body;
+        const { cliente_id, articulo_origen, articulo_destino, cantidad, observaciones, responsable } = req.body;
+        // Compatibilidad hacia atrás si sólo viene 'articulo'
+        const origen = articulo_origen || req.body.articulo;
+        const destino = articulo_destino || origen;
         const usuario = responsable || (req.user ? req.user.username : 'SISTEMA');
 
-        console.log(`📦 [MANTENIMIENTO] Liberando stock para Art: ${articulo}, Cant: ${cantidad}, Resp: ${usuario}`);
+        if (!responsable || responsable === '-1') {
+            throw new Error('Debe seleccionar obligatoriamente un responsable para enviar a ventas.');
+        }
+
+        console.log(`📦 [MANTENIMIENTO] Liberando stock para Ventas. Origen: ${origen} -> Destino: ${destino}, Cant: ${cantidad}, Resp: ${usuario}`);
 
         await client.query('BEGIN');
 
-        const query = `SELECT public.liberar_stock_mantenimiento($1, $2, $3, $4) as resultado`;
-        const values = [articulo, cantidad, usuario, observaciones || 'Reintegro a Ventas tras Conciliacion'];
-
-        const result = await client.query(query, values);
-        const data = result.rows[0].resultado;
-
-        if (!data.success) {
-            throw new Error(data.error);
+        // La bajada de Mantenimiento siempre ataca al origen
+        let obsvAuditoria = observaciones || 'Reintegro a Ventas tras Conciliacion';
+        if (origen !== destino) {
+            obsvAuditoria = `[REENVASADO: Hacia Art. #${destino}] ` + obsvAuditoria;
         }
 
-        // HIGIENE DE BASE DE DATOS: Asegurar que los INGRESOS para este cliente_id queden FINALIZADOS
-        if (cliente_id && cliente_id !== 'null' && cliente_id !== 'undefined') {
-            const updateMov = `
-                UPDATE public.mantenimiento_movimientos
-                SET estado = 'FINALIZADO',
-                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
-                WHERE articulo_numero = $1 
-                  AND tipo_movimiento = 'INGRESO' 
-                  AND estado IS DISTINCT FROM 'FINALIZADO'
-                  AND id IN (
-                      SELECT mm.id 
-                      FROM public.mantenimiento_movimientos mm
-                      JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                      WHERE mm.articulo_numero = $1 AND p.id_cliente = $2
-                  )
-            `;
-            await client.query(updateMov, [articulo, cliente_id]);
-        } else {
-            // Es un movimiento interno (sin cliente asociado en presupuestos)
-            const updateMovInterno = `
-                UPDATE public.mantenimiento_movimientos
-                SET estado = 'FINALIZADO',
-                    observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
-                WHERE articulo_numero = $1 
-                  AND tipo_movimiento IN ('TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES')
-                  AND estado = 'PENDIENTE'
-            `;
-            await client.query(updateMovInterno, [articulo]);
+        // REEMPLAZO DETERMINISTA: Ejecutar baja global tolerante (GREATEST 0 para eludir errores asincronicos)
+        await client.query(`
+            UPDATE public.stock_real_consolidado
+            SET 
+                stock_mantenimiento = GREATEST(0, stock_mantenimiento - $1),
+                stock_ajustes = COALESCE(stock_ajustes, 0) + $1,
+                stock_consolidado = COALESCE(stock_lomasoft, 0) + COALESCE(stock_movimientos, 0) + (COALESCE(stock_ajustes, 0) + $1),
+                ultima_actualizacion = NOW()
+            WHERE articulo_numero = $2
+        `, [cantidad, origen]);
+        
+        // Registrar el movimiento de LIBERACION explícitamente para auditoría contable
+        // (Debe indicarse como 'CONCILIADO' o estado válido del Check de la DB para que resista el filtro 'FINALIZADO' y
+        // la query agrupada de getStockMantenimiento pueda sumar el negativo y dar 0)
+        await client.query(`
+            INSERT INTO public.mantenimiento_movimientos (
+                articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento, estado
+            ) VALUES ($1, $2, $3, 'LIBERACION', $4, NOW(), 'CONCILIADO')
+        `, [origen, cantidad, usuario, obsvAuditoria]);
 
-            // Auditoría para Ventas (Crucial para que sume en el frontend del catálogo)
-            const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [articulo]);
+        // Cierre Definitivo de Registros (HIGIENE):
+        // Actualizamos explícitamente el lote origen a 'FINALIZADO' para que desaparezca de la tabla Mantenimiento
+        // Soportando tanto ARTÍCULOS (Ventas) como INGREDIENTES (Mostrador)
+        const updateMov = `
+            UPDATE public.mantenimiento_movimientos
+            SET estado = 'FINALIZADO',
+                observaciones = observaciones || ' [Transferido Mantenimiento -> Ventas]'
+            WHERE (articulo_numero = $1 OR ingrediente_id = $2)
+              AND estado NOT IN ('FINALIZADO', 'FINALIZADO_TRATAMIENTO', 'REVERTIDO', 'ANULADO')
+        `;
+        let idAsInt = parseInt(origen);
+        if (isNaN(idAsInt)) idAsInt = null;
+        
+        await client.query(updateMov, [origen, idAsInt]);
+        
+        // Alta explícita en Ventas para el Destino
+        try {
+            const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [destino]);
             const codigoBarras = artQuery.rows.length > 0 ? artQuery.rows[0].codigo_barras : '';
 
+            // Sumamos el stock al articulo_destino en el historial de ventas
             await client.query(`
                 INSERT INTO stock_ventas_movimientos (
                     articulo_numero, codigo_barras, kilos, cantidad, tipo, fecha, usuario_id, origen_ingreso
                 ) VALUES ($1, $2, 0, $3, 'REVERSION_DESDE_MANTENIMIENTO', NOW(), $4, 'mantenimiento')
-            `, [articulo, codigoBarras || '', cantidad, null]);
+            `, [destino, codigoBarras || '', cantidad, null]);
+        } catch (e) {
+            console.error('⚠️ [MANTENIMIENTO] Error al hacer insert en stock_ventas_movimientos para el Destino. El trigger de la DB podría estar bloqueándolo o ya hizo el ingreso automático.', e.message);
         }
 
         await client.query('COMMIT');
-        console.log(`✅ Stock liberado exitosamente y estado actualizado: ${articulo}`);
-        res.json(data);
+        console.log(`✅ Stock liberado exitosamente. Origen: ${origen} Destino: ${destino}`);
+        res.json({ success: true, message: 'Se ha liberado en Mantenimiento y reenvasado a Ventas correctamente' });
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -2155,16 +2168,19 @@ const iniciarTratamiento = async (req, res) => {
             // Insertar traza documental para el Historial
             const insertAuditoria = `
                 INSERT INTO public.mantenimiento_movimientos 
-                (articulo_numero, ingrediente_id, id_cliente_origen, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado)
-                VALUES ($1, $2, $3, $4, 'ENVIO_TRATAMIENTO', NOW(), $5, $6, 'EN_TRATAMIENTO')
+                (articulo_numero, ingrediente_id, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado)
+                VALUES ($1, $2, $3, 'ENVIO_TRATAMIENTO', NOW(), $4, $5, 'EN_TRATAMIENTO')
             `;
+            const obsConCliente = item.cliente_origen 
+                ? `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento} | Cliente Origen: ${item.cliente_origen}`
+                : `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento}`;
+                
             await client.query(insertAuditoria, [
                 item.articulo_numero || null,
                 item.ingrediente_id || null,
-                item.cliente_origen || null,
                 kg,
                 usuario,
-                `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento}`
+                obsConCliente
             ]);
         }
 

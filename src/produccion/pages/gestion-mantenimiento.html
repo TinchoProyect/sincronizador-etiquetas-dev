@@ -183,6 +183,12 @@
             border: 1px solid #dee2e6;
         }
 
+        /* Modal y SweetAlerts personalizadas */
+        .swal-wide-liberar {
+            max-width: 600px !important;
+            width: 90% !important;
+        }
+
         /* Buscador Inteligente Styles */
         .search-results {
             border: 1px solid #ccc;
@@ -1303,56 +1309,204 @@
             }
         }
 
-        async function liberarStock(clienteId, articulo, cantidadOriginal, motivoDefecto, usuarioOriginalId) {
-            let optionsHtml = '';
+        async function liberarStock(clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId) {
+            // Extraer nombre del articulo origen para UI amigable
+            let nombreArtOrigen = '';
+            if (window.stockMantenimientoCache) {
+                const origenCache = window.stockMantenimientoCache.find(a => a.articulo_numero?.toString() === articuloActivo?.toString() || a.ingrediente_id?.toString() === articuloActivo?.toString());
+                if (origenCache) nombreArtOrigen = origenCache.descripcion;
+            }
+
+            // 1. Opciones de Responsable (obligatorio vacío inicial)
+            let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
             if (window.operariosActivosCache) {
                 window.operariosActivosCache.forEach(op => {
-                    const selected = (op.id.toString() === usuarioOriginalId) ? 'selected' : '';
-                    optionsHtml += `<option value="${op.id}" ${selected}>${op.nombre}</option>`;
+                    optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
                 });
             }
-            optionsHtml += `<option value="-1" ${!usuarioOriginalId || usuarioOriginalId === '-1' ? 'selected' : ''}>SISTEMA (Predeterminado)</option>`;
+
+            // Variable local para sostener el Articulo Seleccionado en la búsqueda
+            let articuloDestinoId = articuloActivo;
 
             const inputOpcionalHtml = `
+                    <div style="margin-top: 15px; text-align: left; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <label for="swal-buscador-art"><b>Reenvasar en (Buscar Destino Ventas):</b></label><br>
+                        <input type="text" id="swal-buscador-art" class="swal2-input" autocomplete="off" placeholder="Borrar para buscar Destino" value="${articuloActivo}" style="width: 100%; margin: 5px 0; font-size: 14px;">
+                        <ul id="swal-lista-articulos" style="list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 4px; display: none; text-align: left; position: absolute; width: 90%; z-index: 9999;"></ul>
+                        <div id="swal-destino-seleccionado" style="margin-top: 5px; font-weight: bold; color: #28a745; font-size: 13px;">Pre-seleccionado: Art. #${articuloActivo} (Original)</div>
+                    </div>
+
                     <div style="margin-top: 15px; text-align: left;">
                         <label for="swal-responsable"><b>Responsable de Salida:</b></label><br>
-                        <select id="swal-responsable" class="swal2-select" style="display: flex; width: 100%; font-size: 16px;">
+                        <select id="swal-responsable" class="swal2-select" style="display: flex; width: 100%; font-size: 16px; margin-top: 5px; border-color: #dc3545;" required>
                             ${optionsHtml}
                         </select>
+                    </div>
+
+                    <div style="margin-top: 15px; text-align: left; border: 1px solid #ced4da; padding: 10px; border-radius: 5px;">
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                            <b>🖨️ Imprimir Etiquetas de Ventas (Zebra)</b>
+                            <input type="checkbox" id="swal-imprimir-zpl" style="width: 20px; height: 20px;" checked>
+                        </label>
+                        <div style="margin-top: 10px; font-size: 13px; color: #666;">Se imprimirán etiquetas estándar con el Artículo Destino.</div>
+                        <label style="margin-top: 5px; display: block; font-size: 14px;">Cant. Etiquetas a imprimir: <input type="number" id="swal-copias-zpl" value="1" min="1" style="width: 60px;"></label>
                     </div>`;
 
-            // Usando SweetAlert2 en vez de confirm()
             const result = await Swal.fire({
-                title: '¿Enviar a Ventas?',
-                html: `<p>¿Confirmar envío a Ventas de <b>${articulo}</b> (Cantidad: ${cantidadOriginal})?</p>
-                       <p>El stock quedará disponible comercialmente.</p>
+                title: '¿Enviar a Ventas (Liberar)?',
+                customClass: { popup: 'swal-wide-liberar' },
+                html: `<p>¿Confirmar salida comercial de <br><b>Origen: Art. #${articuloActivo} ${nombreArtOrigen ? '- ' + nombreArtOrigen : ''}</b> (Cantidad Física a enviar: ${cantidadOriginal})?</p>
                        ${inputOpcionalHtml}`,
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonText: 'Sí, enviar a ventas',
+                confirmButtonText: 'Sí, Ejecutar Liberación',
                 cancelButtonText: 'Cancelar',
+                didOpen: () => {
+                    const buscadorInput = document.getElementById('swal-buscador-art');
+                    const listaResultados = document.getElementById('swal-lista-articulos');
+                    const divSeleccion = document.getElementById('swal-destino-seleccionado');
+
+                    let debounceBuscador;
+                    buscadorInput.addEventListener('keyup', function(e) {
+                        clearTimeout(debounceBuscador);
+                        const termino = e.target.value.toLowerCase().trim();
+                        
+                        if (termino.length < 2) {
+                            listaResultados.style.display = 'none';
+                            return;
+                        }
+                        
+                        debounceBuscador = setTimeout(async () => {
+                            try {
+                                const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(termino)}`);
+                                const dataObj = await response.json();
+                                const resultadosArticulos = dataObj.articulos || [];
+                                
+                                listaResultados.innerHTML = '';
+                                listaResultados.style.display = 'block';
+
+                                let contador = 0;
+                                for (const art of resultadosArticulos) {
+                                    if (contador > 15) break;
+                                    contador++;
+                                    
+                                    const li = document.createElement('li');
+                                    li.style.padding = '8px 10px';
+                                    li.style.borderBottom = '1px solid #eee';
+                                    li.style.cursor = 'pointer';
+                                    li.style.fontSize = '12px';
+                                    li.innerHTML = `<strong>#${art.codigo}</strong> - ${art.descripcion} <br><span style="color:#666;">Stock Libre Consolidado: ${art.stock_consolidado || 0}</span>`;
+                                    
+                                    li.addEventListener('click', function() {
+                                        articuloDestinoId = art.codigo;
+                                        buscadorInput.value = `#${art.codigo} - ${art.descripcion}`;
+                                        listaResultados.style.display = 'none';
+                                        divSeleccion.innerHTML = `✅ Seleccionado para Reenvasado: <b>#${art.codigo} - ${art.descripcion}</b>
+                                        <button type="button" style="margin-left:8px; padding:2px 5px; font-size:11px; background:red; color:white; border:none; border-radius:3px; cursor:pointer;"
+                                            onclick="event.stopPropagation();
+                                                     window.swalDestinoLimpiado(this);">
+                                            ❌ Limpiar Selección
+                                        </button>`;
+                                        
+                                        // Función global atada a Window para ser visible por SweetAlert en DOM
+                                        window.swalDestinoLimpiado = (btnElement) => {
+                                            articuloDestinoId = articuloActivo;
+                                            document.getElementById('swal-buscador-art').value = '';
+                                            document.getElementById('swal-destino-seleccionado').innerHTML = `✅ Regresado al Artículo Original: <b>#${articuloActivo} ${nombreArtOrigen ? '- ' + nombreArtOrigen : ''}</b>`;
+                                        };
+                                    });
+                                    
+                                    listaResultados.appendChild(li);
+                                }
+                                
+                                if(contador === 0) {
+                                    listaResultados.innerHTML = '<li style="padding:10px; color:#dc3545;">No se encontraron artículos</li>';
+                                }
+                            } catch (err) {
+                                console.error('Error buscando artículos:', err);
+                            }
+                        }, 300);
+                    });
+
+                    // Si hace clic fuera del buscador, lo escondemos
+                    document.addEventListener('click', function(e) {
+                        if(e.target !== buscadorInput) {
+                            listaResultados.style.display = 'none';
+                        }
+                    });
+                },
                 preConfirm: () => {
-                    let val = document.getElementById('swal-responsable').value;
-                    return val === '-1' ? '' : val;
+                    const resp = document.getElementById('swal-responsable').value;
+                    if (resp === '-1' || !resp) {
+                        Swal.showValidationMessage('⚠️ Debe indicar quién es el operario Responsable.');
+                        return false;
+                    }
+                    return {
+                        responsable: resp,
+                        articuloDestino: articuloDestinoId,
+                        imprimirZPL: document.getElementById('swal-imprimir-zpl').checked,
+                        copiasZPL: document.getElementById('swal-copias-zpl').value
+                    };
                 }
             });
 
             if (!result.isConfirmed) return;
-            const responsableSeleccionado = result.value;
+            const payload = result.value;
 
             try {
+                Swal.fire({ title: 'Liberando, un momento...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
+                
                 const res = await fetch('/api/produccion/mantenimiento/liberar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cliente_id: clienteId, articulo, cantidad: cantidadOriginal, observaciones: motivoDefecto, responsable: responsableSeleccionado })
+                    body: JSON.stringify({ 
+                        cliente_id: clienteId, 
+                        articulo_origen: articuloActivo,
+                        articulo_destino: payload.articuloDestino,
+                        cantidad: cantidadOriginal, 
+                        observaciones: motivoDefecto, 
+                        responsable: payload.responsable 
+                    })
                 });
 
                 const data = await res.json();
 
                 if (data.success) {
-                    Swal.fire('¡Éxito!', 'Stock transferido a Ventas exitosamente.', 'success');
-                    cargarStock(); // Recargar tabla
-                    cargarHistorial(); // Reflejar en historial
+                    
+                    // Si pidió impresión
+                    if (payload.imprimirZPL) {
+                        try {
+                            // Construir el nombre completo de destino buscando en la cache
+                            let artNombreDest = '' + payload.articuloDestino;
+                            if (window.articulosCache) {
+                                const articuloDbg = window.articulosCache.find(a => a.numero.toString() === payload.articuloDestino.toString());
+                                if (articuloDbg) artNombreDest = articuloDbg.nombre;
+                            }
+                            
+                            const resImp = await fetch('http://localhost:3000/api/imprimir', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    articulo: artNombreDest,
+                                    fecha: new Date().toLocaleDateString('es-AR'),
+                                    responsable_id: payload.responsable,
+                                    cantidad: payload.copiasZPL || 1,
+                                    estado: '1'
+                                })
+                            });
+                            if(!resImp.ok) throw new Error('Error al conectar con spooler Zebra local.');
+                        } catch(errImp) {
+                            console.error('Error Zebra:', errImp);
+                            Swal.fire('Atención', 'Stock liberado y reenvasado a ventas, pero la impresora Zebra no respondió. Genera la etiqueta manual desde el módulo interno.', 'warning');
+                        }
+                    }
+
+                    Swal.fire('¡Éxito!', 'Stock reenvasado transferido a Ventas exitosamente.', 'success').then(() => {
+                        setTimeout(() => {
+                            cargarStock(); 
+                            cargarHistorial(); 
+                        }, 200);
+                    });
                 } else {
                     throw new Error(data.error || 'Error desconocido');
                 }

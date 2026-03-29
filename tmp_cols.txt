@@ -1,0 +1,1 @@
+id, cantidad, id_presupuesto_origen, fecha_movimiento, ingrediente_id, historial_tratamientos, articulo_numero, tipo_movimiento, observaciones, estado, usuario
