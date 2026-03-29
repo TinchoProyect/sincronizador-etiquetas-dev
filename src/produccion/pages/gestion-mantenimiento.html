@@ -1947,14 +1947,12 @@
 
             const selectResp = document.getElementById('transf-responsable');
             if (selectResp) {
-                let optionsHtml = '';
+                let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
                 if (window.operariosActivosCache) {
                     window.operariosActivosCache.forEach(op => {
-                        const selected = (op.id.toString() === usuarioOriginalId) ? 'selected' : '';
-                        optionsHtml += `<option value="${op.id}" ${selected}>${op.nombre}</option>`;
+                        optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
                     });
                 }
-                optionsHtml += `<option value="-1" ${!usuarioOriginalId || usuarioOriginalId === '-1' ? 'selected' : ''}>SISTEMA (Predeterminado)</option>`;
                 selectResp.innerHTML = optionsHtml;
             }
 
@@ -2012,6 +2010,10 @@
 
             if (!ingredienteId || !cantidadReal) {
                 alert('⚠️ Por favor seleccione un ingrediente y la cantidad ingresada.');
+                return;
+            }
+            if (!respVal || respVal === '-1') {
+                alert('⚠️ ERROR: OBLIGATORIO. Debe seleccionar al responsable de la recepción en la balanza.');
                 return;
             }
 
