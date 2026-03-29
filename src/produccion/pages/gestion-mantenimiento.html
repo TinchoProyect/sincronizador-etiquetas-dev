@@ -2804,7 +2804,10 @@
 
             const matrizEtiquetas = [];
             const bultos = parseInt(tto.bultos_fisicos) || 1;
-            const fechaStr = new Date().toLocaleDateString('es-AR');
+            
+            // Requerimiento UAT: Usar la fecha de inicio del tratamiento en lugar de la actual para no perder el tracking temporal al reimprimir
+            const dtOrigen = tto.fecha_inicio_armado ? new Date(tto.fecha_inicio_armado) : new Date();
+            const fechaStr = dtOrigen.toLocaleDateString('es-AR');
 
             // Bucle que cruza ítems alojados vs bultos físicos declarados (Ej: 1 item x 2 bultos = 2 etiquetas)
             for (let b = 1; b <= bultos; b++) {
