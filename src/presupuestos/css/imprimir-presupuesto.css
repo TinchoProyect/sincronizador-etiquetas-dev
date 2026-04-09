@@ -730,6 +730,13 @@ body {
     }
 }
 
+/* ===== TABLA FALTANTES ===== */
+.faltantes-header-row th {
+    background-color: #fcf3cf !important;
+    color: #d35400 !important;
+    border-color: #e67e22 !important;
+}
+
 /* ===== ANIMACIONES ===== */
 
 @keyframes fadeIn {

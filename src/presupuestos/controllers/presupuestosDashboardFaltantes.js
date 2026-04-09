@@ -19,7 +19,7 @@ const getDashboardFaltantesController = async (req, res) => {
                 json_agg(
                     json_build_object(
                         'id', s.id,
-                        'fecha', p.fecha,
+                        'fecha', s.fecha_registro,
                         'cantidad', s.cantidad,
                         'motivo_falta', s.motivo_falta,
                         'presupuesto_ext', p.id_presupuesto_ext,

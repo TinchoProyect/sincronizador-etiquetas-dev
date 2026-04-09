@@ -9,15 +9,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Calcula dinámicamente "Hace X días"
 function calcularTiempoAtras(fechaIso) {
+    if (!fechaIso) return 'Desconocido';
     const ahora = new Date();
-    const fecha = new Date(fechaIso);
+    
+    let fecha;
+    // Previene desplazamiento de Medianoche UTC dividiendo fecha estática YYYY-MM-DD
+    if (typeof fechaIso === 'string' && fechaIso.length <= 10 && fechaIso.includes('-')) {
+        const [y, m, d] = fechaIso.split('-');
+        fecha = new Date(y, m - 1, d);
+    } else {
+        fecha = new Date(fechaIso);
+    }
     
     // Normalizar a medianoche para cálculo de días
     const ahoraMedianoche = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
     const fechaMedianoche = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
     
     const diffTiempo = Math.abs(ahoraMedianoche - fechaMedianoche);
-    const diffDias = Math.round(diffTiempo / (1000 * 60 * 60 * 24)); 
+    const diffDias = Math.floor(diffTiempo / (1000 * 60 * 60 * 24)); 
 
     if (diffDias === 0) return 'Hoy';
     if (diffDias === 1) return 'Ayer';
@@ -76,7 +85,7 @@ function renderDashboard(datos) {
         html += `
             <div class="item-row" onclick="toggleAccordion('${accordionId}', this)">
                 <div class="item-title">${grupo.descripcion || grupo.articulo}</div>
-                <div class="item-qty">${grupo.cantidad_total} Un/Kg</div>
+                <div class="item-qty">${grupo.cantidad_total} Un.</div>
                 <div class="chevron-icon"><i class="fas fa-chevron-down"></i></div>
             </div>
             

@@ -91,8 +91,15 @@
     function toNum(x) {
         if (typeof x === 'number' && Number.isFinite(x)) return x;
         if (typeof x === 'string') {
-            const s = x.trim().replace(/\./g, '').replace(',', '.'); // quita miles y cambia coma por punto
-            const n = parseFloat(s);
+            const trimmed = x.trim();
+            // Si tiene coma, asumimos formato es-AR (ej. "1.234,56") -> quitamos puntos y reemplazamos coma por punto
+            if (trimmed.includes(',')) {
+                const s = trimmed.replace(/\./g, '').replace(',', '.');
+                const n = parseFloat(s);
+                return Number.isFinite(n) ? n : 0;
+            }
+            // Formato estándar JS/DB (ej. "1.00" o "1234.56")
+            const n = parseFloat(trimmed);
             return Number.isFinite(n) ? n : 0;
         }
         return 0;
