@@ -756,6 +756,37 @@
                 font-size: 1.4em;
             }
         }
+        /* --- Estilos Sin Stock --- */
+        .out-of-stock-row {
+            background-color: #fce4e4 !important;
+            opacity: 0.8;
+            border-left: 4px solid #e74c3c;
+        }
+        .out-of-stock-row input {
+            pointer-events: none;
+            color: #999;
+            text-decoration: line-through;
+        }
+        .btn-sin-stock {
+            background-color: transparent;
+            color: #95a5a6;
+            border: none;
+            padding: 2px 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-sin-stock:hover {
+            color: #e74c3c;
+            transform: scale(1.1);
+        }
+        .btn-sin-stock.active {
+            color: #e74c3c;
+            opacity: 1;
+        }
     </style>
     <script>
         // Función para toggle del acordeón de opciones avanzadas

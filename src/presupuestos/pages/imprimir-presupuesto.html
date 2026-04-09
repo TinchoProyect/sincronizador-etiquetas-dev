@@ -35,6 +35,12 @@
             <input type="checkbox" id="chk-solo-lista" style="cursor:pointer; width:18px; height:18px; margin:0;" onchange="toggleSoloLista()">
         </div>
         
+        <!-- Toggle Histórico Sin Stock -->
+        <div class="formato-selector" style="display:flex; align-items:center; gap:8px;">
+            <label for="chk-faltantes" style="font-weight:bold; cursor:pointer; color:#d35400; font-size: 0.9rem;">Imprimir faltantes:</label>
+            <input type="checkbox" id="chk-faltantes" style="cursor:pointer; width:18px; height:18px; margin:0;" onchange="toggleFaltantes()" checked>
+        </div>
+        
         <button id="btn-imprimir" class="btn btn-primary" onclick="imprimirPresupuesto()">
             Imprimir / Guardar PDF
         </button>
@@ -142,6 +148,23 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Tabla de artículos sin disponibilidad (Faltantes) -->
+            <div class="faltantes-section" id="faltantes-section" style="display: none; margin-top: 20px; border-top: 1px dashed #ccc; padding-top: 15px;">
+                <h3 style="color: #d35400; font-size: 1.1em; margin-bottom: 10px; border-bottom: 2px solid #e67e22; padding-bottom: 5px;">⚠️ Artículos Sin Disponibilidad</h3>
+                <table class="articulos-table" id="tabla-faltantes" style="width: 100%;">
+                    <thead>
+                        <tr style="background-color: #fcf3cf;">
+                            <th class="col-articulo">Artículo</th>
+                            <th class="col-cantidad">Cantidad</th>
+                            <th class="col-precio" style="text-align: right;">Precio</th>
+                        </tr>
+                    </thead>
+                    <tbody id="articulos-tbody-faltantes">
+                        <!-- Se llena dinámicamente -->
+                    </tbody>
+                </table>
             </div>
 
             <!-- Observaciones -->

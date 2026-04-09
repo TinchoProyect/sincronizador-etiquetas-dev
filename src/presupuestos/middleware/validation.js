@@ -250,7 +250,8 @@ const validarActualizarPresupuesto = (req, res, next) => {
       'origen_facturacion',
       'origen_punto_venta',
       'origen_numero_factura',
-      'metodo_retiro'
+      'metodo_retiro',
+      'detalles_sin_stock'
     ];
     const body = req.body || {};
     const keys = Object.keys(body);
@@ -355,6 +356,28 @@ const validarActualizarPresupuesto = (req, res, next) => {
           const iva1 = toNum(item.iva1);
           if (!Number.isFinite(iva1) || iva1 < 0 || iva1 > 100) {
             errores.push(`${prefix} 'iva1' debe ser un número entre 0 y 100.`);
+          }
+        });
+      }
+    }
+
+    // Validar detalles sin stock (opcional)
+    if (body.detalles_sin_stock !== undefined) {
+      if (!Array.isArray(body.detalles_sin_stock)) {
+        errores.push("El campo 'detalles_sin_stock' debe ser un array.");
+      } else {
+        body.detalles_sin_stock.forEach((item, idx) => {
+          const prefix = `Faltante #${idx + 1}:`;
+          if (!item || typeof item !== 'object') {
+            errores.push(`${prefix} Formato inválido.`);
+            return;
+          }
+          if (item.articulo === undefined || item.articulo === null || String(item.articulo).trim() === '') {
+            errores.push(`${prefix} El campo 'articulo' es obligatorio.`);
+          }
+          const cant = toNum(item.cantidad);
+          if (!Number.isFinite(cant) || cant < 0) {
+            errores.push(`${prefix} 'cantidad' debe ser un número ≥ 0.`);
           }
         });
       }

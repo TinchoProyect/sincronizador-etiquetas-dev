@@ -64,6 +64,11 @@ const {
     obtenerEstadoSalud
 } = require('../controllers/sync_config');
 
+// Importar Controlador de Faltantes (Demanda No Satisfecha)
+const {
+    getDashboardFaltantesController
+} = require('../controllers/presupuestosDashboardFaltantes');
+
 // Importar controlador de escritura
 const {
     crearPresupuesto: crearPresupuestoWrite,
@@ -171,6 +176,19 @@ router.post('/sync/bidireccional-safe', validatePermissions('presupuestos.sync')
             details: error.message,
             timestamp: new Date().toISOString()
         });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/faltantes/dashboard
+ * @desc Obtener dashboard analítico de demanda no satisfecha
+ * @access Privado
+ */
+router.get('/faltantes/dashboard', validatePermissions('presupuestos.read'), async (req, res) => {
+    try {
+        await getDashboardFaltantesController(req, res);
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Error del enrutador', message: error.message });
     }
 });
 

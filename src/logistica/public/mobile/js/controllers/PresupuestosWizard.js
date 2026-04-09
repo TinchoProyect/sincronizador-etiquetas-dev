@@ -85,7 +85,8 @@ const WizardController = {
                     id: arrId,
                     nombre: item.descripcion || item.descripcion_articulo || item.articulo,
                     precio: parseFloat(item.valor1 || 0), 
-                    cantidad: Math.abs(parseFloat(item.cantidad || 0))
+                    cantidad: Math.abs(parseFloat(item.cantidad || 0)),
+                    iva_pct: parseFloat(item.iva1) || 21 // Restauración segura de IVA desde base original
                 };
             });
             
@@ -354,12 +355,34 @@ const WizardController = {
         const id = producto.codigo_articulo || producto.numero || producto.codigo_barras;
         if(!this.cart.items[id]) {
             if(delta < 0) return; // No se puede bajar de 0
+            
+            // Extracción robusta de IVA y Fallback Seguro
+            let ivaDetectado = 21;
+            if (producto.iva !== undefined && producto.iva !== null && producto.iva !== '') {
+                const parsedIva = parseFloat(producto.iva);
+                if (parsedIva > 0 && parsedIva < 1) ivaDetectado = parsedIva * 100;
+                else ivaDetectado = parsedIva;
+            } else if (producto.alicuota_iva !== undefined && producto.alicuota_iva !== null && producto.alicuota_iva !== '') {
+                const parsedAli = parseFloat(producto.alicuota_iva);
+                if (parsedAli > 0 && parsedAli < 1) ivaDetectado = parsedAli * 100;
+                else ivaDetectado = parsedAli;
+            } else if (producto.camp2) {
+                const parsedCamp = parseFloat(producto.camp2);
+                if (parsedCamp < 1) ivaDetectado = parsedCamp * 100;
+                else ivaDetectado = parsedCamp;
+            }
+            if (isNaN(ivaDetectado) || ivaDetectado < 0) {
+                console.warn(`[WARNING] IVA inválido para artículo ${id}, fallback a 21%`);
+                ivaDetectado = 21;
+            }
+
             this.cart.items[id] = {
                 id: id,
                 numero: id,
                 nombre: producto.descripcion || producto.nombre,
                 precio: parseFloat(producto.precio_venta || 0),
-                cantidad: 0
+                cantidad: 0,
+                iva_pct: ivaDetectado
             };
         }
 
@@ -428,33 +451,54 @@ const WizardController = {
         const isRI = condIva.includes('responsable inscripto');
 
         let totalNetoBase = 0;
+        let totalTotalizadorIVA = 0; // Agrupa todas las alícuotas
+        let iva21Total = 0; 
+        let iva105Total = 0;
+
+        // Leemos porcentaje de descuento para la distribución
+        const descInput = parseFloat(document.getElementById('descuento-input').value) || 0;
+        const descuentoDecimal = descInput / 100;
+
         for(let key in this.cart.items) {
             const p = this.cart.items[key];
             const subtotalNeto = p.cantidad * p.precio;
             totalNetoBase += subtotalNeto;
 
+            // Extraemos IVA específico del ítem (Fallback 21% por seguridad)
+            const ivaItem = p.iva_pct !== undefined ? p.iva_pct : 21;
+            const ivaMultiplicador = 1 + (ivaItem / 100);
+
             const row = document.createElement('div');
             row.className = 'ticket-row';
             
-            // Presentación Visual: En Factura A cobramos Neto, en B mostramos el unitario IVA incluido.
-            const precioMostrar = isRI ? p.precio : (p.precio * 1.21);
-            const subtotalMostrar = isRI ? subtotalNeto : (subtotalNeto * 1.21);
+            // Presentación Visual Filas: En A es Neto, en B mostramos el unitario IVA incluido según su propia alícuota.
+            const precioMostrar = isRI ? p.precio : (p.precio * ivaMultiplicador);
+            const subtotalMostrar = isRI ? subtotalNeto : (subtotalNeto * ivaMultiplicador);
             
             row.innerHTML = `
                 <span>${p.cantidad}x ${p.nombre}</span>
                 <span style="font-weight:bold">$${subtotalMostrar.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
             `;
             lista.appendChild(row);
+
+            // === ACUMULADORES IMPOSITIVOS POR FILA ===
+            // Calculamos el descuento proporcional a esta fila para la Base Imponible
+            const baseLinea = subtotalNeto * (1 - descuentoDecimal);
+            const ivaLinea = baseLinea * (ivaItem / 100);
+
+            if (Math.abs(ivaItem - 10.5) < 0.1) {
+                iva105Total += ivaLinea;
+            } else {
+                iva21Total += ivaLinea; // Por defecto recae en 21%
+            }
+
+            totalTotalizadorIVA += ivaLinea;
         }
 
         // --- Cálculos Dinámicos Financieros (Precisión 2 decimales) ---
-        const descInput = parseFloat(document.getElementById('descuento-input').value) || 0;
-        
-        const descNeto = totalNetoBase * (descInput / 100);
+        const descNeto = totalNetoBase * descuentoDecimal;
         const subtotalNetoConDesc = totalNetoBase - descNeto;
-        
-        const ivaTotal = subtotalNetoConDesc * 0.21;
-        const totalFinal = subtotalNetoConDesc + ivaTotal;
+        const totalFinal = subtotalNetoConDesc + totalTotalizadorIVA;
 
         const rowSubtotal = document.getElementById('row-subtotal');
         const rowSubDesc = document.getElementById('row-subtotal-desc');
@@ -471,21 +515,26 @@ const WizardController = {
 
             document.getElementById('ticket-subtotal-neto').innerText = `$ ${totalNetoBase.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             document.getElementById('ticket-subtotal-desc').innerText = `$ ${subtotalNetoConDesc.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('ticket-iva').innerText = `$ ${ivaTotal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('ticket-iva').innerText = `$ ${totalTotalizadorIVA.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
         } else {
-            // Factura B (Consumidor Final, Monotributista) - El IVA va integrado visualmente
+            // Factura B (Consumidor Final, Monotributista) - El IVA va integrado
             rowSubtotal.style.display = 'flex';
             rowSubDesc.style.display = 'flex';
             rowIva.style.display = 'none';
 
-            const totalBrutoBase = totalNetoBase * 1.21;
-            const subtotalBrutoConDesc = subtotalNetoConDesc * 1.21;
+            // Base Bruto Original sumando cada elemento con su respectivo multiplicador
+            let totalBrutoBaseOriginal = 0;
+            for(let key in this.cart.items) {
+                const px = this.cart.items[key];
+                const multi = 1 + ((px.iva_pct !== undefined ? px.iva_pct : 21) / 100);
+                totalBrutoBaseOriginal += px.cantidad * px.precio * multi;
+            }
 
             document.getElementById('row-subtotal').querySelector('span').innerText = 'Subtotal (Bruto)';
             document.getElementById('row-subtotal-desc').querySelector('span').innerText = `Subtotal c/Desc (${descInput}%)`;
 
-            document.getElementById('ticket-subtotal-neto').innerText = `$ ${totalBrutoBase.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('ticket-subtotal-desc').innerText = `$ ${subtotalBrutoConDesc.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-neto').innerText = `$ ${totalBrutoBaseOriginal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('ticket-subtotal-desc').innerText = `$ ${totalFinal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`; // Final contiene neto descontado + IVA descontado
         }
 
         document.getElementById('ticket-total-final').innerText = `$ ${totalFinal.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
@@ -518,13 +567,14 @@ const WizardController = {
 
         for(let key in this.cart.items) {
             const neto = this.cart.items[key].precio; // La BD escupe neto
-            const bruto = neto * 1.21;
+            const ivaItemPct = this.cart.items[key].iva_pct !== undefined ? this.cart.items[key].iva_pct : 21;
+            const bruto = neto * (1 + (ivaItemPct / 100));
             
             payload.detalles.push({
                 articulo: this.cart.items[key].id.toString(), // El back exige el nro o barcode
                 cantidad: parseFloat(this.cart.items[key].cantidad),
                 valor1: parseFloat(neto.toFixed(2)),
-                iva1: 21,
+                iva1: parseFloat(ivaItemPct), // Transmisión dinámica e intacta de la alícuota (ej: 21, 10.5)
                 precio1: parseFloat(bruto.toFixed(2)) // Desktop envia el valor_final_unitario como precio1
             });
         }

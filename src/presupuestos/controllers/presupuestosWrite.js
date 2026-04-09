@@ -172,7 +172,8 @@ const crearPresupuesto = async (req, res) => {
             informe_generado, // NUEVO: Para respetar panel de debug
             origen_facturacion, // NUEVO FASE 2: Ruta Inversa
             origen_punto_venta,
-            origen_numero_factura
+            origen_numero_factura,
+            detalles_sin_stock = []
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos:`, {
@@ -221,6 +222,8 @@ const crearPresupuesto = async (req, res) => {
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - IDs/fechas listos:`, {
             presupuestoId, fechaNormalizada, fechaEntregaNormalizada, descuentoNormalizado
         });
+
+        let notaFinal = (nota || '').toString();
 
         // ===== Transacción corta para header + detalles =====
         client = await req.db.connect();
@@ -285,7 +288,7 @@ const crearPresupuesto = async (req, res) => {
                 fechaEntregaNormalizada,
                 agente || '',
                 tipo_comprobante || 'Factura',
-                nota || '',
+                notaFinal,
                 estadoNormalizado,
                 informe_generado || 'Pendiente', // Respetar payload o default
                 punto_entrega || '',
@@ -409,6 +412,25 @@ const crearPresupuesto = async (req, res) => {
                 ]);
             }
 
+            // Insertar faltantes de stock en tabla auxiliar
+            if (detalles_sin_stock && detalles_sin_stock.length > 0) {
+                const insertFaltanteQuery = `
+                    INSERT INTO presupuestos_articulos_sin_stock
+                    (id_presupuesto, articulo, descripcion, cantidad, motivo_falta, fecha_registro)
+                    VALUES ($1, $2, $3, $4, $5, NOW())
+                `;
+                console.log(`[POST - SIN-STOCK] Insertando ${detalles_sin_stock.length} faltantes para el presupuesto ${presupuestoBD.id}`);
+                for (const faltante of detalles_sin_stock) {
+                    await client.query(insertFaltanteQuery, [
+                        presupuestoBD.id,
+                        faltante.articulo,
+                        faltante.descripcion || '',
+                        faltante.cantidad || 0,
+                        faltante.motivo_falta || 'Sin Stock en mostrador'
+                    ]);
+                }
+            }
+
             await client.query('COMMIT');
 
             console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Transacción OK. Presupuesto creado: ${presupuestoId}`);
@@ -530,7 +552,8 @@ const editarPresupuesto = async (req, res) => {
             origen_punto_venta, // NUEVO FASE 2
             origen_numero_factura, // NUEVO FASE 2
             metodo_retiro, // NUEVO FASE 2
-            chk_tramite_administrativo // NUEVO FASE 2
+            chk_tramite_administrativo, // NUEVO FASE 2
+            detalles_sin_stock = []
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
@@ -663,7 +686,7 @@ const editarPresupuesto = async (req, res) => {
             if (nota !== undefined) {
                 paramCount++;
                 updates.push(`nota = $${paramCount}`);
-                params.push(nota);
+                params.push(nota.toString());
             }
 
             if (punto_entrega !== undefined) {
@@ -906,6 +929,28 @@ const editarPresupuesto = async (req, res) => {
                 console.log(`[PUT-DET] Detalles insertados: ${detallesInsertados}`);
                 console.log(`[PUT-DET] ✅ Operación de detalles completada`);
 
+                // 4. Actualizar detalles Sin Stock (borrar y reinsertar)
+                console.log(`[PUT-DET] Eliminando faltantes de stock anteriores para id_presupuesto=${presupuesto.id}`);
+                await client.query(`DELETE FROM presupuestos_articulos_sin_stock WHERE id_presupuesto = $1`, [presupuesto.id]);
+                
+                if (detalles_sin_stock && detalles_sin_stock.length > 0) {
+                    const insertFaltanteQuery = `
+                        INSERT INTO presupuestos_articulos_sin_stock
+                        (id_presupuesto, articulo, descripcion, cantidad, motivo_falta, fecha_registro)
+                        VALUES ($1, $2, $3, $4, $5, NOW())
+                    `;
+                    console.log(`[PUT-DET] Insertando ${detalles_sin_stock.length} nuevos faltantes de stock`);
+                    for (const faltante of detalles_sin_stock) {
+                        await client.query(insertFaltanteQuery, [
+                            presupuesto.id,
+                            faltante.articulo,
+                            faltante.descripcion || '',
+                            faltante.cantidad || 0,
+                            faltante.motivo_falta || 'Sin Stock en mostrador'
+                        ]);
+                    }
+                }
+
                 // Log antes del COMMIT
                 console.log(`[TRACE-EDIT-LOCAL] id=${presupuesto.id_presupuesto_ext} detalles_eliminados=${detallesEliminados} detalles_insertados=${detallesNormalizados.length}`);
 
@@ -987,6 +1032,17 @@ const editarPresupuesto = async (req, res) => {
                     success: false,
                     error: 'La operación superó el tiempo máximo permitido. Intente nuevamente.',
                     code: 'STATEMENT_TIMEOUT',
+                    requestId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            if (dbErr instanceof TypeError || String(msg).includes('[object') || (dbErr.code && dbErr.code.startsWith('22'))) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Estructura de datos no procesable (Payload inválido)',
+                    message: msg,
+                    code: dbErr.code || 'BAD_PAYLOAD',
                     requestId,
                     timestamp: new Date().toISOString()
                 });

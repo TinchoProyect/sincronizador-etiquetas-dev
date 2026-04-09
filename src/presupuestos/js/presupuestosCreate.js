@@ -14,6 +14,7 @@ window.seleccionarArticuloPorClick = seleccionarArticuloPorClick;
 window.seleccionarArticulo = seleccionarArticulo;
 window.seleccionarClientePorClick = seleccionarClientePorClick;
 window.toggleModoBusqueda = toggleModoBusqueda;
+window.toggleSinStock = toggleSinStock;
 
 /**
  * Toggle entre modo descripción y modo código de barras
@@ -324,6 +325,7 @@ function agregarDetalle() {
                 </td>
 
                 <td>
+                    ${MODO_RETIRO ? '' : `<button type="button" class="btn-sin-stock" onclick="toggleSinStock(this)" title="Marcar artículo como Faltante">🚫</button><br>`}
                     <button type="button" class="btn-remove-detalle"
                             onclick="removerDetalle(this)"
                             title="Eliminar línea">
@@ -406,6 +408,30 @@ function removerDetalle(arg) {
     row.remove();
     recalcTotales(); // Asegurar recalculo global
     console.log(`✅ [PRESUPUESTOS-CREATE] Fila removida exitosamente.`);
+}
+
+/**
+ * Toggle estado Sin Stock
+ */
+function toggleSinStock(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+    row.classList.toggle('out-of-stock-row');
+    btn.classList.toggle('active');
+    
+    if (row.classList.contains('out-of-stock-row')) {
+        btn.textContent = '✅';
+        // Nullify the visible subtotal display but keep data intact
+        const subtotalInput = row.querySelector('.subtotal-display');
+        if (subtotalInput) subtotalInput.value = '$ 0,00';
+        mostrarMensaje('Artículo marcado como Sin Stock (excluido de totales)', 'success');
+    } else {
+        btn.textContent = '🚫';
+        // Recalculate precisely
+        const id = getDetalleIdFromInput(row.querySelector('input'));
+        if (id != null) calcularPrecio(id);
+    }
+    recalcTotales();
 }
 
 /**
@@ -531,6 +557,8 @@ function recalcTotales() {
 
     // Calcular Subtotal Neto Inicial
     tbody.querySelectorAll('tr').forEach(row => {
+        if (row.classList.contains('out-of-stock-row')) return;
+        
         const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
         const netoUnitario = parseFloat(row.querySelector('input[name*="[valor1]"]')?.value) || 0;
         subtotalGeneralNeto += cant * netoUnitario;
@@ -544,6 +572,8 @@ function recalcTotales() {
 
     // Calcular IVA sobre base con descuento
     tbody.querySelectorAll('tr').forEach(row => {
+        if (row.classList.contains('out-of-stock-row')) return;
+
         const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
         const netoUnitario = parseFloat(row.querySelector('input[name*="[valor1]"]')?.value) || 0;
         const ivaPorcentaje = parseFloat(row.querySelector('input[name*="[iva1]"]')?.value) || 0;
@@ -747,7 +777,8 @@ async function handleSubmit(event) {
                 ? (document.getElementById('debug_secuencia')?.value || 'Pedido_Listo')
                 : secuenciaValor,
 
-            detalles: []
+            detalles: [],
+            detalles_sin_stock: []
         };
 
         // Log de Debug
@@ -812,9 +843,21 @@ async function handleSubmit(event) {
             const tieneArticuloTexto = detalle.articulo && detalle.articulo.trim() !== '';
 
             if (tieneCodigoBarras && tieneCantidadValida && tieneArticuloTexto) {
-                data.detalles.push(detalle);
-                detallesValidos++;
-                console.log(`✅ [PRESUPUESTOS-CREATE] Detalle ${index + 1} válido: ${detalle.articulo} (cantidad: ${detalle.cantidad})`);
+                // Ruteo condicional si está Sin Stock
+                if (row.classList.contains('out-of-stock-row')) {
+                    const detalleSinStock = {
+                        articulo: detalle.articulo,
+                        descripcion: articuloInput.value || '',
+                        cantidad: detalle.cantidad,
+                        motivo_falta: 'Sin Stock en mostrador'
+                    };
+                    data.detalles_sin_stock.push(detalleSinStock);
+                    console.log(`🚫 [PRESUPUESTOS-CREATE] Detalle Faltante agregado: ${detalle.articulo} (cantidad: ${detalle.cantidad})`);
+                } else {
+                    data.detalles.push(detalle);
+                    detallesValidos++;
+                    console.log(`✅ [PRESUPUESTOS-CREATE] Detalle ${index + 1} válido: ${detalle.articulo} (cantidad: ${detalle.cantidad})`);
+                }
             } else {
                 detallesDescartados++;
                 console.log(`⚠️ [PRESUPUESTOS-CREATE] Detalle ${index + 1} descartado (campo vacío del lector):`, {

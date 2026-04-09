@@ -90,6 +90,7 @@ async function cargarPresupuesto(id) {
         presupuestoData = {
             presupuesto: dataPresupuesto.data,
             detalles: dataDetalles.data.detalles || [],
+            detalles_sin_stock: dataDetalles.data.detalles_sin_stock || [],
             totales: dataDetalles.data.totales || {}
         };
 
@@ -368,6 +369,17 @@ function renderizarPresupuesto(data) {
 
     // Renderizar artículos
     renderizarArticulos(detalles);
+    
+    // Renderizar faltantes si los hay
+    if (data.detalles_sin_stock && data.detalles_sin_stock.length > 0) {
+        renderizarFaltantes(data.detalles_sin_stock);
+        document.getElementById('faltantes-section').style.display = 'block';
+    } else {
+        document.getElementById('faltantes-section').style.display = 'none';
+        // Hide the checkbox UI if no missing items exist
+        const chkContainer = document.getElementById('chk-faltantes')?.closest('.formato-selector');
+        if(chkContainer) chkContainer.style.display = 'none';
+    }
 
     // Renderizar totales
     renderizarTotales(presupuesto, totales);
@@ -541,6 +553,50 @@ function renderizarArticulos(detalles) {
 
     console.log(`✅ [IMPRIMIR-PRESUPUESTO] Artículos renderizados en formato: ${formatoActual}`);
 }
+
+/**
+ * Renderiza la sección de Faltantes (Sin Disponibilidad)
+ */
+function renderizarFaltantes(detallesSinStock) {
+    console.log('🎨 [IMPRIMIR-PRESUPUESTO] Renderizando faltantes...');
+    const tbodyFaltantes = document.getElementById('articulos-tbody-faltantes');
+    if (!tbodyFaltantes) return;
+
+    if (!detallesSinStock || detallesSinStock.length === 0) {
+        tbodyFaltantes.innerHTML = '<tr><td colspan="3" class="text-center">No hay artículos faltantes registrados.</td></tr>';
+        return;
+    }
+
+    tbodyFaltantes.innerHTML = detallesSinStock.map(item => {
+        const cantidad = parseFloat(item.cantidad) || 0;
+        const descripcion = item.descripcion || item.articulo || 'Sin descripción';
+
+        return `
+            <tr>
+                <td>
+                    <span class="articulo-descripcion" style="color:#d35400;">${escapeHtml(descripcion)}</span>
+                </td>
+                <td class="text-center" style="color:#d35400;">${formatearNumero(cantidad)}</td>
+                <td class="text-right" style="color:#7f8c8d; font-style: italic; font-size: 0.9em;">Sin disponibilidad</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Toggle section faltantes via checkbox
+ */
+window.toggleFaltantes = function() {
+    const chk = document.getElementById('chk-faltantes');
+    const seccionFaltantes = document.getElementById('faltantes-section');
+    if (!chk || !seccionFaltantes) return;
+
+    if (chk.checked && presupuestoData && presupuestoData.detalles_sin_stock && presupuestoData.detalles_sin_stock.length > 0) {
+        seccionFaltantes.style.display = 'block';
+    } else {
+        seccionFaltantes.style.display = 'none';
+    }
+};
 
 /**
  * Renderizar totales según formato seleccionado

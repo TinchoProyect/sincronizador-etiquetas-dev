@@ -80,6 +80,23 @@ CREATE INDEX IF NOT EXISTS idx_presupuestos_detalles_ext_id ON presupuestos_deta
 CREATE INDEX IF NOT EXISTS idx_presupuestos_detalles_articulo ON presupuestos_detalles(articulo);
 
 -- ===================================
+-- TABLA DE ARTÍCULOS SIN STOCK
+-- ===================================
+
+CREATE TABLE IF NOT EXISTS presupuestos_articulos_sin_stock (
+    id SERIAL PRIMARY KEY,
+    id_presupuesto INTEGER REFERENCES presupuestos(id) ON DELETE CASCADE,
+    articulo VARCHAR(100) NOT NULL,
+    descripcion VARCHAR(255),
+    cantidad NUMERIC(10,2) DEFAULT 0,
+    motivo_falta VARCHAR(100) DEFAULT 'Sin Stock',
+    fecha_registro TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices para presupuestos_articulos_sin_stock
+CREATE INDEX IF NOT EXISTS idx_pres_sin_stock_presupuesto ON presupuestos_articulos_sin_stock(id_presupuesto);
+
+-- ===================================
 -- TABLA DE LOGS DE SINCRONIZACIÓN
 -- ===================================
 

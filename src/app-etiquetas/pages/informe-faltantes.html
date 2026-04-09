@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demanda No Satisfecha - Gestiones Lamda</title>
+    <!-- Reutilizando estilos de la aplicación principal -->
+    <link rel="stylesheet" href="../css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .header-section h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 1.8em;
+        }
+
+        .btn-back {
+            background-color: #6c757d;
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .btn-back:hover {
+            background-color: #5a6268;
+        }
+
+        /* Acordeón Grid */
+        .grid-header {
+            display: grid;
+            grid-template-columns: 2fr 1fr 50px;
+            background-color: #34495e;
+            color: white;
+            padding: 12px 15px;
+            border-radius: 6px 6px 0 0;
+            font-weight: bold;
+        }
+
+        .item-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 50px;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+            background-color: #fff;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .item-row:hover {
+            background-color: #f8f9fa;
+        }
+
+        .item-row.expanded {
+            background-color: #e9ecef;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .item-title {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .item-qty {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+
+        .chevron-icon {
+            text-align: right;
+            color: #95a5a6;
+            transition: transform 0.3s;
+        }
+
+        .item-row.expanded .chevron-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Detalle Expandible */
+        .item-details {
+            display: none;
+            padding: 0;
+            background-color: #fafbfc;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .item-details.active {
+            display: block;
+        }
+
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .details-table th, .details-table td {
+            padding: 10px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            font-size: 0.9em;
+        }
+
+        .details-table th {
+            background-color: #f1f3f5;
+            color: #495057;
+            font-weight: 600;
+        }
+
+        .details-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .time-badge {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        .reason-badge {
+            background-color: #ffe0e0;
+            color: #d32f2f;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .loader {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+            font-size: 1.2em;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 50px;
+            color: #95a5a6;
+        }
+
+        .empty-state i {
+            font-size: 3em;
+            margin-bottom: 15px;
+            color: #bdc3c7;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <div class="header-section">
+            <h1><i class="fas fa-chart-line" style="color: #e74c3c; margin-right: 10px;"></i> Demanda No Satisfecha (Faltantes)</h1>
+            <a href="../index.html" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Inicio</a>
+        </div>
+
+        <div id="loading" class="loader">
+            <i class="fas fa-spinner fa-spin"></i> Cargando datos de faltantes...
+        </div>
+
+        <div id="dashboard-content" style="display: none;">
+            <div class="grid-header">
+                <div>Artículo</div>
+                <div>Demanda Total Perdida</div>
+                <div></div>
+            </div>
+            <div id="grid-body">
+                <!-- Inyectado por JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Script de lógica de UI separada -->
+    <script src="../js/informe-faltantes.js"></script>
+</body>
+</html>

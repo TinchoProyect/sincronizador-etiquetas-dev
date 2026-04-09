@@ -21,7 +21,8 @@ window.Detalles = {
     recalcTotales: recalcTotales,
     calcularPrecio: calcularPrecio,
     setupClienteAutocomplete: setupClienteAutocomplete,
-    setupArticuloAutocomplete: setupArticuloAutocomplete
+    setupArticuloAutocomplete: setupArticuloAutocomplete,
+    toggleSinStock: toggleSinStock
 };
 
 // === Modo IVA según tipo de comprobante ===
@@ -120,6 +121,7 @@ function agregarDetalle() {
                 </td>
 
                 <td>
+                    ${(typeof window.MODO_RETIRO !== 'undefined' && window.MODO_RETIRO) ? '' : `<button type="button" class="btn-sin-stock" onclick="window.Detalles.toggleSinStock(this)" title="Marcar artículo como Faltante">🚫</button><br>`}
                     <button type="button" class="btn-remove-detalle"
                             onclick="window.Detalles.removerDetalle(${window.Detalles.detalleCounter})">
                     🗑️
@@ -179,6 +181,30 @@ function removerDetalle(id) {
     });
 
     // Recalcular totales después de eliminar
+    recalcTotales();
+}
+
+/**
+ * Toggle estado Sin Stock
+ */
+function toggleSinStock(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+    row.classList.toggle('out-of-stock-row');
+    btn.classList.toggle('active');
+    
+    if (row.classList.contains('out-of-stock-row')) {
+        btn.textContent = '✅';
+        // Nullify the visible subtotal display but keep data intact
+        const subtotalInput = row.querySelector('.subtotal-display');
+        if (subtotalInput) subtotalInput.value = '$ 0,00';
+        mostrarMensaje('Artículo marcado como Sin Stock (excluido de totales)', 'success');
+    } else {
+        btn.textContent = '🚫';
+        // Recalculate precisely
+        const id = getDetalleIdFromInput(row.querySelector('input'));
+        if (id != null) calcularPrecio(id);
+    }
     recalcTotales();
 }
 
@@ -293,6 +319,7 @@ function recalcTotales() {
 
   let subtotalBruto = 0;
   tbody.querySelectorAll('tr').forEach(row => {
+    if (row.classList.contains('out-of-stock-row')) return; // IGNORAR FILAS SIN STOCK
     const cant = parseFloat(row.querySelector('input[name*="[cantidad]"]')?.value) || 0;
     const pvu  = parseFloat(row.querySelector('input[name*="[precio1]"]')?.value) || 0; // precio unit. con IVA
     subtotalBruto += cant * pvu;

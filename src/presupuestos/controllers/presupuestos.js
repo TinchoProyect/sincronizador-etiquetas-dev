@@ -993,7 +993,8 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         src.articulo_numero,
         src.descripcion,
         COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
-        COALESCE(${colPrecio}, 0) AS precio_venta
+        COALESCE(${colPrecio}, 0) AS precio_venta,
+        COALESCE(pa.iva, 21) AS iva
       FROM public.stock_real_consolidado src
       LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
       ${whereClause}
@@ -1018,6 +1019,8 @@ const obtenerSugerenciasArticulos = async (req, res) => {
             precio_venta: parseFloat(a.precio_venta || 0),
             stock_actual: parseFloat(a.stock_consolidado || 0),
             stock_consolidado: parseFloat(a.stock_consolidado || 0),
+            iva: parseFloat(a.iva || 21), // Aseguramos propagar el IVA
+            alicuota_iva: parseFloat(a.iva || 21), // Fallback de paridad
             text: `${a.descripcion} — [${a.articulo_numero}] (stock: ${Math.floor(a.stock_consolidado || 0)})`
         }));
 
@@ -1996,6 +1999,24 @@ const obtenerDetallesPresupuesto = async (req, res) => {
         // Log de control por presupuesto según especificación
         console.log(`[DETALLE] sumNeto= ${totales.neto_total.toFixed(2)} sumIVA= ${totales.iva_total.toFixed(2)} sumTotal= ${totales.total_general.toFixed(2)}`);
 
+        // NUEVO: Obtener detalles sin stock (información histórica)
+        let detallesSinStock = [];
+        try {
+            const sinStockQuery = `
+                SELECT 
+                    id, articulo, descripcion, cantidad, 
+                    motivo_falta, fecha_registro as created_at
+                FROM public.presupuestos_articulos_sin_stock
+                WHERE id_presupuesto = $1
+                ORDER BY id ASC
+            `;
+            const sinStockResult = await req.db.query(sinStockQuery, [presupuesto.id]);
+            detallesSinStock = sinStockResult.rows;
+            console.log(`✅ [PRESUPUESTOS] Detalles sin stock encontrados: ${detallesSinStock.length} artículos`);
+        } catch (err) {
+            console.warn(`⚠️ [PRESUPUESTOS] Error al obtener detalles sin stock (posible tabla no existente):`, err.message);
+        }
+
         console.log('📊 [PRESUPUESTOS] Totales calculados:', totales);
 
         res.json({
@@ -2009,6 +2030,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                     descuento: parseFloat(presupuesto.descuento || 0)
                 },
                 detalles: detallesConCalculos,
+                detalles_sin_stock: detallesSinStock,
                 totales: totales,
                 total_articulos: detallesConCalculos.length
             },

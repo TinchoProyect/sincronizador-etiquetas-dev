@@ -387,6 +387,16 @@
                 const data = result.data;
                 const lista = Array.isArray(data) ? data : (Array.isArray(data?.detalles) ? data.detalles : []);
                 detallesData = lista.map(normalizarDetalle);
+                
+                // Merge detalles_sin_stock if present
+                if (data && data.detalles_sin_stock && Array.isArray(data.detalles_sin_stock)) {
+                    const sinStockMap = data.detalles_sin_stock.map(d => {
+                        const nod = normalizarDetalle(d);
+                        nod.is_out_of_stock = true;
+                        return nod;
+                    });
+                    detallesData = detallesData.concat(sinStockMap);
+                }
 
                 const detallesCount = detallesData.length;
                 document.getElementById('info-detalles').textContent = `${detallesCount} artÄ‚Â­culos`;
@@ -571,6 +581,14 @@
             // (igual que en creaciÄ‚Å‚n cuando se cambia un valor)
             if (window.Detalles && window.Detalles.calcularPrecio) {
                 window.Detalles.calcularPrecio(idx);
+            }
+
+            // Flag de sin stock
+            if (det.is_out_of_stock && window.Detalles && window.Detalles.toggleSinStock) {
+                const btn = row.querySelector('.btn-sin-stock');
+                if (btn) {
+                    window.Detalles.toggleSinStock(btn);
+                }
             }
 
             console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Detalle ${idx} renderizado correctamente`);
@@ -1068,6 +1086,8 @@
 
             // Serializar detalles del DOM con el mismo formato que espera el POST
             const detalles = [];
+            const detalles_sin_stock = [];
+            
             rows.forEach(row => {
                 const artInput = row.querySelector('input[name*="[articulo]"]');
                 const cantInput = row.querySelector('input[name*="[cantidad]"]');
@@ -1075,16 +1095,25 @@
                 const ivaInput = row.querySelector('input[name*="[iva1]"]');
 
                 if (artInput && artInput.dataset.codigoBarras) {
-                    detalles.push({
-                        articulo: artInput.dataset.codigoBarras.trim(),  // CÄ‚Å‚digo de barras
-                        cantidad: parseFloat(cantInput.value) || 0,      // Cantidad
-                        valor1: parseFloat(valorInput.value) || 0,       // Neto unitario
-                        iva1: parseFloat(ivaInput.value) || 0            // IVA (% o decimal, backend normaliza)
-                    });
+                    const rowData = {
+                        articulo: artInput.dataset.codigoBarras.trim(),
+                        descripcion: artInput.value || '',
+                        cantidad: parseFloat(cantInput.value) || 0,
+                        valor1: parseFloat(valorInput.value) || 0,
+                        iva1: parseFloat(ivaInput.value) || 0
+                    };
+                    
+                    if (row.classList.contains('out-of-stock-row')) {
+                        const motivoInput = row.querySelector('input[name*="motivo"], .motivo-input, input.motivo');
+                        rowData.motivo_falta = motivoInput ? motivoInput.value.trim() : 'Sin Stock en mostrador';
+                        detalles_sin_stock.push(rowData);
+                    } else {
+                        detalles.push(rowData);
+                    }
                 }
             });
 
-            console.log(`[PUT-FRONT] detalles serializados:`, detalles.length, detalles[0]);
+            console.log(`[PUT-FRONT] detalles serializados:`, detalles.length, 'faltantes:', detalles_sin_stock.length);
 
             // Enviar actualizaciÄ‚Å‚n del presupuesto (cabecera + detalles)
             const updateData = {
@@ -1105,7 +1134,8 @@
                     : 'Imprimir', // REQ: "Pedido_Listo" si es Retiro, sino "Imprimir"
 
                 // Detalles
-                detalles: detalles
+                detalles: detalles,
+                detalles_sin_stock: detalles_sin_stock
             };
 
             console.log(`[PRESUPUESTO] Guardando presupuesto editado, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuestoId}`);
