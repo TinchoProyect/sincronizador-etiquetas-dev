@@ -119,14 +119,29 @@ async function cargarIngredientesDisponibles() {
 
         const ingredientes = await response.json();
 
-        // Filtrar ingredientes con la misma unidad de medida y stock > 0
-        estadoSustitucion.ingredientesDisponibles = ingredientes.filter(ing =>
-            ing.id !== estadoSustitucion.ingredienteDestino.id && // No incluir el mismo ingrediente
-            ing.unidad_medida === estadoSustitucion.ingredienteDestino.unidad && // Misma unidad
-            ing.stock_actual > 0 // Con stock disponible
-        );
+        const normalizeUnit = (u) => {
+            const val = (u || '').trim().toLowerCase();
+            if (val === 'kg') return 'kilo';
+            if (val === 'g' || val === 'gr') return 'gramos';
+            return val;
+        };
+        const destUnit = normalizeUnit(estadoSustitucion.ingredienteDestino.unidad);
 
-        console.log(`✅ ${estadoSustitucion.ingredientesDisponibles.length} ingredientes disponibles para sustitución`);
+        // Filtrar ingredientes con la misma unidad de medida y stock > 0
+        // REGLA DE EXCLUSIÓN: No incluir ingredientes cuyo nombre contenga "(mix)"
+        estadoSustitucion.ingredientesDisponibles = ingredientes.filter(ing => {
+            if (ing.id === estadoSustitucion.ingredienteDestino.id) return false;
+            if (normalizeUnit(ing.unidad_medida) !== destUnit) return false;
+            if (parseFloat(ing.stock_actual) <= 0) return false;
+            
+            // Excluir explícitamente los combinados
+            const nombreNormalizado = (ing.nombre || '').toLowerCase();
+            if (nombreNormalizado.includes('(mix)')) return false;
+
+            return true;
+        });
+
+        console.log(`✅ ${estadoSustitucion.ingredientesDisponibles.length} ingredientes disponibles para sustitución (Filtro normalizado y excluyente de mix)`);
 
         renderizarListaIngredientes(estadoSustitucion.ingredientesDisponibles);
 

@@ -1,31 +1,23 @@
 const { Client } = require('pg');
+require('dotenv').config({path: './.env'});
 const client = new Client({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'etiquetas',
-    password: 'ta3Mionga',
-    port: 5432,
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT
 });
-
-async function run() {
-    await client.connect();
-    const res = await client.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public'");
-    const tables = res.rows.map(r => r.table_name);
-    console.log("Tablas encontradas:", tables);
-
-    if (tables.includes('presupuestos')) {
-        const pCols = await client.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'presupuestos'");
-        console.log("Columnas de presupuestos:", pCols.rows);
-
-        const pData = await client.query("SELECT * FROM presupuestos ORDER BY fecha_creacion DESC LIMIT 5");
-        console.log("Ejemplos presupuestos:", pData.rows);
-    }
-
-    if (tables.includes('facturas')) {
-        const fCols = await client.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'facturas'");
-        console.log("Columnas de facturas:", fCols.rows);
-    }
-
-    await client.end();
-}
-run().catch(console.error);
+client.connect()
+    .then(() => client.query("UPDATE ingredientes SET unidad_medida = 'Kilo' WHERE id = 154"))
+    .then(res => {
+        console.log('Update result:', res.rowCount);
+        return client.query('SELECT id, nombre, unidad_medida FROM ingredientes WHERE id = 154');
+    })
+    .then(res => {
+        console.log('Verification:', res.rows);
+        client.end();
+    })
+    .catch(err => {
+        console.error('DB ERROR:', err.message);
+        client.end();
+    });
