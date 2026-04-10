@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+﻿const pool = require('../config/database');
 const JsBarcode = require('jsbarcode');
 const { createCanvas } = require('canvas');
 
@@ -812,31 +812,20 @@ const imprimirPresupuestoCliente = async (req, res) => {
 };
 
 /**
- * Genera HTML en formato remito rediseñado (Formato R)
- * REDISEÑO: Una hoja por presupuesto cuando hay múltiples
- * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
- * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
+ * ==========================================
+ * FUNCIONES COMPARTIDAS DE RENDERIZADO (DRY)
+ * ==========================================
+ * Estas funciones son consumidas tanto por la impresión individual como por la impresión por lote,
+ * garantizando que el documento generado sea visual y estructuralmente idéntico.
  */
-function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = []) {
-    try {
-        const fechaHoy = new Date().toLocaleDateString('es-AR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-        const horaHoy = new Date().toLocaleTimeString('es-AR', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        let html = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remito R - Cliente ${clienteData.cliente_id}</title>
-    <style>
+
+/**
+ * Genera la cadena CSS completa para el remito formato R.
+ * Fuente única de estilos para todas las variantes de impresión HTML.
+ * @returns {string} CSS para incluir en el <style> del HTML
+ */
+function generarCSSRemito() {
+    return `
         @page {
             size: A4;
             margin: 1.5cm;
@@ -874,13 +863,13 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
         .header-left {
             display: flex;
             align-items: center;
-            justify-content: center; /* Centra el logo y la letra R dentro de su espacio */
+            justify-content: center;
             gap: 15px;
-            flex: 0 1 auto; /* No crece, se encoge si es necesario */
+            flex: 0 1 auto;
         }
         
         .modificacion-container {
-            flex: 1 1 auto; /* Ocupa el espacio central disponible */
+            flex: 1 1 auto;
             text-align: center;
         }
 
@@ -964,7 +953,7 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             font-size: 10px; 
             text-align: right;
             color: #666;
-            flex: 0 1 auto; /* No crece, se encoge si es necesario */
+            flex: 0 1 auto;
             white-space: nowrap;
         }
         
@@ -1172,67 +1161,72 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
                 margin-top: 20px;
             }
         }
-    </style>
-</head>
-<body>
-    <div class="remito-container">
-        <!-- ENCABEZADO MODERNO -->
-        <div class="header">
-            <div class="header-left">
-                <div class="logo-lamda">LAMDA</div>
-                <div class="letra-r">R</div>
-            </div>
-            <div class="fecha-emision">
-                ${fechaHoy} - ${horaHoy}
-            </div>
-        </div>
-        
-`;
-        
-        // Log de debug
-        console.log('🛒 [REMITO-R-HTML] esPendienteCompra:', esPendienteCompra);
-        console.log('🛒 [REMITO-R-HTML] articulosEnFalta:', articulosEnFalta);
-        console.log('🛒 [REMITO-R-HTML] articulosEnFalta.length:', articulosEnFalta.length);
-        
-        // Generar una página por cada presupuesto
-        clienteData.presupuestos.forEach((presupuesto, presupIndex) => {
-            const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
-            
-            // Calcular datos para código de barras y total de artículos
-            const idPresupuesto = presupuesto._id_presupuesto || 0;
-            const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
-            const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
-            // CORRECCIÓN: Se usa .length para contar items distintos
-            const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
-            const svgCodigoBarras = generarSVGCodigoBarras(codigoBarras);
-            
-            console.log(`🛒 [REMITO-R-HTML] Presupuesto ${presupIndex}: ${presupuesto.id_presupuesto_ext}`);
-            console.log(`🛒 [REMITO-R-HTML] Aplicando título: ${esPendienteCompra ? 'ORDEN EN ESPERA' : 'R'}`);
-            console.log(`📊 [BARCODE] Código de barras generado: ${codigoBarras}, Total artículos: ${totalArticulos}`);
+    `;
+}
 
-            // Determinar si el presupuesto fue modificado y generar el HTML correspondiente
-            let modificacionHtml = '';
-            if (presupuesto._snapshot) {
-                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                
-                if (esModificado) {
-                    const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
-                    const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR', {
-                        year: 'numeric', month: '2-digit', day: '2-digit'
-                    });
+/**
+ * Genera el HTML de un presupuesto individual (una "página" del remito).
+ * Función canónica consumida tanto por impresión individual como por lote.
+ * @param {Object} params
+ * @param {number|string} params.clienteId - ID del cliente
+ * @param {string} params.clienteNombre - Nombre del cliente
+ * @param {Object} params.presupuesto - Datos del presupuesto (con _snapshot, _id_presupuesto, articulos, id_presupuesto_ext, fecha)
+ * @param {boolean} [params.esPendienteCompra=false] - Si es true, muestra "ORDEN EN ESPERA"
+ * @param {Array} [params.articulosEnFalta=[]] - Array de códigos de artículos en falta
+ * @param {string} params.fechaHoy - Fecha formateada
+ * @param {string} params.horaHoy - Hora formateada
+ * @param {number} params.paginaActual - Número de página actual
+ * @param {number} params.totalPaginas - Total de páginas
+ * @param {boolean} [params.agregarPageBreak=false] - Si debe agregar salto de página
+ * @returns {string} HTML del presupuesto
+ */
+function generarHTMLPresupuestoUnico({
+    clienteId,
+    clienteNombre,
+    presupuesto,
+    esPendienteCompra = false,
+    articulosEnFalta = [],
+    fechaHoy,
+    horaHoy,
+    paginaActual,
+    totalPaginas,
+    agregarPageBreak = false
+}) {
+    const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
+    
+    // Calcular datos para código de barras y total de artículos
+    const idPresupuesto = presupuesto._id_presupuesto || 0;
+    const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+    const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+    // CORRECCIÓN: Se usa .length para contar items distintos
+    const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
+    const svgCodigoBarras = generarSVGCodigoBarras(codigoBarras);
+    
+    console.log(`📊 [BARCODE] Código de barras generado: ${codigoBarras}, Total artículos: ${totalArticulos}`);
 
-                    modificacionHtml = `
+    // Determinar si el presupuesto fue modificado y generar el HTML correspondiente
+    let modificacionHtml = '';
+    if (presupuesto._snapshot) {
+        const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                           presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+        
+        if (esModificado) {
+            const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+            const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR', {
+                year: 'numeric', month: '2-digit', day: '2-digit'
+            });
+
+            modificacionHtml = `
                 <div class="modificacion-container">
                     <h3>MODIFICADO ${numeroModificacion}</h3>
                     <p>Fecha de modificación: ${fechaModificacion}</p>
                 </div>
 `;
-                }
-            }
-            
-            html += `
-    <div class="remito-container${presupIndex < clienteData.presupuestos.length - 1 ? ' page-break' : ''}">
+        }
+    }
+    
+    let html = `
+    <div class="remito-container${agregarPageBreak ? ' page-break' : ''}">
         <!-- ENCABEZADO MODERNO -->
         <div class="header">
             <div class="header-left">
@@ -1255,8 +1249,8 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
         <!-- DATOS DEL PEDIDO -->
         <div class="datos-pedido">
             <div>
-                <div class="numero-cliente">N° de Cliente: ${clienteData.cliente_id}</div>
-                <div class="nombre-cliente">${clienteData.cliente_nombre}</div>
+                <div class="numero-cliente">N° de Cliente: ${clienteId}</div>
+                <div class="nombre-cliente">${clienteNombre}</div>
             </div>
             <div>
                 <div class="codigo-presupuesto">${presupuesto.id_presupuesto_ext}</div>
@@ -1264,9 +1258,6 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
                 <div style="font-size: 11px; font-weight: bold; color: #2c3e50; margin-top: 8px;">
                     Total Items Distintos: ${totalArticulos}
                 </div>
-`;
-            
-            html += `
             </div>
         </div>
         
@@ -1281,141 +1272,138 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             </thead>
             <tbody>
 `;
+    
+    // Mostrar artículos de ESTE presupuesto
+    if (presupuesto.articulos && presupuesto.articulos.length > 0) {
+        const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
+        
+        // Si es pendiente de compra, separar artículos en falta
+        if (esPendienteCompra && articulosEnFalta.length > 0) {
+            const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
+            const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
             
-            // Mostrar artículos de ESTE presupuesto
-            if (presupuesto.articulos && presupuesto.articulos.length > 0) {
-                const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
-                
-                console.log(`🛒 [REMITO-R-HTML] Artículos del presupuesto:`, articulosSorted.map(a => a.articulo_numero));
-                console.log(`🛒 [REMITO-R-HTML] Comparando con articulosEnFalta:`, articulosEnFalta);
-                
-                // Si es pendiente de compra, separar artículos en falta
-                if (esPendienteCompra && articulosEnFalta.length > 0) {
-                    const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
-                    const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
-                    
-                    console.log(`🛒 [REMITO-R-HTML] Artículos CON stock:`, articulosConStock.length);
-                    console.log(`🛒 [REMITO-R-HTML] Artículos SIN stock:`, articulosSinStock.length);
-                    
-                    // Primero mostrar artículos CON stock (si hay)
-                    if (articulosConStock.length > 0) {
-                        html += `
+            console.log(`🛒 [REMITO-R-HTML] Artículos CON stock:`, articulosConStock.length);
+            console.log(`🛒 [REMITO-R-HTML] Artículos SIN stock:`, articulosSinStock.length);
+            
+            // Primero mostrar artículos CON stock (si hay)
+            if (articulosConStock.length > 0) {
+                html += `
                 <tr>
                     <td colspan="3" class="seccion-titulo">Artículos Disponibles</td>
                 </tr>
 `;
-                        articulosConStock.forEach(articulo => {
-                            html += `
+                articulosConStock.forEach(articulo => {
+                    html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
                     <td class="col-descripcion">${articulo.descripcion}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
                 </tr>
 `;
-                        });
-                    }
-                    
-                    // Luego mostrar artículos EN FALTA (destacados)
-                    if (articulosSinStock.length > 0) {
-                        html += `
+                });
+            }
+            
+            // Luego mostrar artículos EN FALTA (destacados)
+            if (articulosSinStock.length > 0) {
+                html += `
                 <tr>
                     <td colspan="3" class="seccion-titulo en-falta">⚠️ Artículos en Falta</td>
                 </tr>
 `;
-                        articulosSinStock.forEach(articulo => {
-                            html += `
+                articulosSinStock.forEach(articulo => {
+                    html += `
                 <tr class="articulo-en-falta">
                     <td class="col-codigo">${articulo.articulo_numero}</td>
                     <td class="col-descripcion">${articulo.descripcion}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
                 </tr>
 `;
-                        });
-                    }
-                } else {
-                    // Modo normal (sin pendientes de compra)
-                    articulosSorted.forEach(articulo => {
-                        html += `
+                });
+            }
+        } else {
+            // Modo normal (sin pendientes de compra)
+            articulosSorted.forEach(articulo => {
+                html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
                     <td class="col-descripcion">${articulo.descripcion}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
                 </tr>
 `;
-                    });
-                }
-            } else {
-                html += `
+            });
+        }
+    } else {
+        html += `
                 <tr>
                     <td colspan="3" style="text-align: center; font-style: italic; color: #666; padding: 15px;">
                         No hay artículos registrados
                     </td>
                 </tr>
 `;
-            }
-            
-            html += `
+    }
+    
+    html += `
             </tbody>
         </table>
 `;
+    
+    // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
+    if (presupuesto._snapshot) {
+        const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                           presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+        
+        if (esModificado && presupuesto._snapshot.diferencias_detalles) {
+            const diferencias = presupuesto._snapshot.diferencias_detalles;
             
-            // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
-            if (presupuesto._snapshot) {
-                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+            // Filtrar solo diferencias relevantes (cambios de cantidad)
+            const diferenciasRelevantes = diferencias.filter(dif => {
+                if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
+                    return true;
+                }
+                if (dif.tipo_cambio === 'modificado') {
+                    const cantAntes = parseFloat(dif.cantidad_antes || 0);
+                    const cantDespues = parseFloat(dif.cantidad_despues || 0);
+                    return cantAntes !== cantDespues;
+                }
+                return false;
+            });
+            
+            if (diferenciasRelevantes.length > 0) {
+                console.log(`[PRINT-MOD] Bloque de cambios agregado a impresión (${diferenciasRelevantes.length} diferencias relevantes)`);
                 
-                if (esModificado && presupuesto._snapshot.diferencias_detalles) {
-                    const diferencias = presupuesto._snapshot.diferencias_detalles;
-                    
-                    // Filtrar solo diferencias relevantes (cambios de cantidad)
-                    const diferenciasRelevantes = diferencias.filter(dif => {
-                        if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
-                            return true;
-                        }
-                        if (dif.tipo_cambio === 'modificado') {
-                            const cantAntes = parseFloat(dif.cantidad_antes || 0);
-                            const cantDespues = parseFloat(dif.cantidad_despues || 0);
-                            return cantAntes !== cantDespues;
-                        }
-                        return false;
-                    });
-                    
-                    if (diferenciasRelevantes.length > 0) {
-                        console.log(`[PRINT-MOD] Bloque de cambios agregado a impresión (${diferenciasRelevantes.length} diferencias relevantes)`);
-                        
-                        html += `
+                html += `
         <!-- BLOQUE DE CAMBIOS -->
         <div class="bloque-cambios">
             <h4>CAMBIOS:</h4>
 `;
-                        
-                        diferenciasRelevantes.forEach(dif => {
-                            const tipoClase = dif.tipo_cambio.toLowerCase();
-                            let textoCambio = '';
-                            
-                            if (dif.tipo_cambio === 'modificado') {
-                                textoCambio = `<span class="cambio-tipo ${tipoClase}">MODIFICADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}, cantidad después: ${dif.cantidad_despues}`;
-                            } else if (dif.tipo_cambio === 'agregado') {
-                                textoCambio = `<span class="cambio-tipo ${tipoClase}">AGREGADO:</span> ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
-                            } else if (dif.tipo_cambio === 'eliminado') {
-                                textoCambio = `<span class="cambio-tipo ${tipoClase}">ELIMINADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
-                            }
-                            
-                            html += `
+                
+                diferenciasRelevantes.forEach(dif => {
+                    const tipoClase = dif.tipo_cambio.toLowerCase();
+                    let textoCambio = '';
+                    
+                    if (dif.tipo_cambio === 'modificado') {
+                        textoCambio = `<span class="cambio-tipo ${tipoClase}">MODIFICADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}, cantidad después: ${dif.cantidad_despues}`;
+                    } else if (dif.tipo_cambio === 'agregado') {
+                        textoCambio = `<span class="cambio-tipo ${tipoClase}">AGREGADO:</span> ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
+                    } else if (dif.tipo_cambio === 'eliminado') {
+                        textoCambio = `<span class="cambio-tipo ${tipoClase}">ELIMINADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
+                    }
+                    
+                    html += `
             <div class="cambio-item">${textoCambio}</div>
 `;
-                        });
-                        
-                        html += `
+                });
+                
+                html += `
         </div>
 `;
-                    } else {
-                        console.log(`[PRINT-MOD] Snapshot modificado sin diferencias relevantes -> no se muestra bloque de cambios`);
-                    }
-                }
+            } else {
+                console.log(`[PRINT-MOD] Snapshot modificado sin diferencias relevantes -> no se muestra bloque de cambios`);
             }
-            
-            html += `
+        }
+    }
+    
+    html += `
         
         <!-- CONTROL DE ENTREGA REDISEÑADO -->
         <div class="control-entrega">
@@ -1441,16 +1429,475 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             </div>
         </div>
         
-        <!-- CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL -->
+        <!-- CÓDIGO DE BARRAS AL FINAL -->
         <div style="text-align: center; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
             ${svgCodigoBarras}
         </div>
 
         <div class="pie-pagina">
-            Sistema LAMDA - Presupuesto ${presupIndex + 1} de ${clienteData.presupuestos.length} - ${new Date().toLocaleString('es-AR')}
+            Sistema LAMDA - Presupuesto ${paginaActual} de ${totalPaginas} - ${new Date().toLocaleString('es-AR')}
         </div>
     </div>
 `;
+    
+    return html;
+}
+
+/**
+ * Renderiza un presupuesto individual en un documento PDFKit.
+ * Función canónica consumida tanto por impresión individual como por lote.
+ * @param {Object} doc - Instancia de PDFKit
+ * @param {Object} params - Parámetros del presupuesto
+ * @param {number|string} params.clienteId
+ * @param {string} params.clienteNombre
+ * @param {Object} params.presupuesto
+ * @param {boolean} [params.esPendienteCompra=false]
+ * @param {Array} [params.articulosEnFalta=[]]
+ * @param {string} params.fechaHoy
+ * @param {string} params.horaHoy
+ * @param {number} params.paginaActual
+ * @param {number} params.totalPaginas
+ */
+function renderizarPDFPresupuestoUnico(doc, {
+    clienteId,
+    clienteNombre,
+    presupuesto,
+    esPendienteCompra = false,
+    articulosEnFalta = [],
+    fechaHoy,
+    horaHoy,
+    paginaActual,
+    totalPaginas
+}) {
+    const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
+    
+    // Calcular datos para código de barras y total de artículos
+    const idPresupuesto = presupuesto._id_presupuesto || 0;
+    const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+    const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+    // CORRECCIÓN: Se usa .length para contar items distintos
+    const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
+    const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
+    
+    console.log(`📊 [BARCODE-PDF] Código: ${codigoBarras}, Total: ${totalArticulos}`);
+    
+    // ENCABEZADO
+    doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
+    
+    if (esPendienteCompra) {
+        // ORDEN EN ESPERA en lugar de R
+        doc.fillColor('#dc3545').strokeColor('#dc3545').lineWidth(2)
+           .roundedRect(130, 45, 120, 35, 3).stroke();
+        doc.fillColor('#fff3cd').rect(131, 46, 118, 33).fill();
+        doc.fillColor('#dc3545').fontSize(9).font('Helvetica-Bold')
+           .text('ORDEN EN ESPERA', 135, 57, { width: 110, align: 'center' });
+        doc.fillColor('black');
+    } else {
+        // R normal
+        doc.roundedRect(130, 45, 35, 35, 3).stroke();
+        doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
+    }
+    
+    doc.fontSize(10).font('Helvetica').fillColor('#666666')
+       .text(`${fechaHoy} - ${horaHoy}`, 420, 55);
+    doc.fillColor('black');
+    
+    doc.strokeColor('#cccccc').lineWidth(0.5)
+       .moveTo(50, 90).lineTo(545, 90).stroke()
+       .strokeColor('black').lineWidth(1);
+    
+    // DATOS DEL PEDIDO
+    doc.fontSize(11).font('Helvetica').text(`N° de Cliente:`, 50, 105);
+    doc.fontSize(24).font('Helvetica-Bold').fillColor('#2c3e50')
+       .text(`${clienteId}`, 140, 100);
+    doc.fontSize(11).font('Helvetica').fillColor('black')
+       .text(clienteNombre, 50, 125);
+    
+    // Código de presupuesto y fecha
+    doc.fontSize(9).font('Helvetica').fillColor('#7f8c8d')
+       .text(presupuesto.id_presupuesto_ext, 450, 105);
+    doc.fontSize(8).fillColor('#999999')
+       .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
+    
+    // TOTAL ARTÍCULOS
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#2c3e50')
+       .text(`Items Distintos: ${totalArticulos}`, 450, 130);
+    
+    // Indicador de modificación si corresponde
+    if (presupuesto._snapshot) {
+        const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                            presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+        
+        if (esModificado) {
+            const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+            const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
+            
+            // Centrar el texto "MODIFICADO" en el ancho de la página
+            doc.fontSize(12).font('Helvetica-Bold').fillColor('#dc3545')
+                .text(`MODIFICADO ${numeroModificacion}`, doc.page.margins.left, 60, {
+                   width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+                   align: 'center'
+                });
+            
+            // Centrar la fecha de modificación debajo
+            doc.fontSize(8).font('Helvetica').fillColor('#666')
+                .text(`Fecha de modificación: ${fechaModificacion}`, doc.page.margins.left, 75, {
+                   width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+                   align: 'center'
+                });
+
+            console.log(`[PRINT-MOD] PDF: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
+        }
+    }
+    
+    doc.fillColor('black');
+    
+    // TABLA DE ARTÍCULOS
+    const tablaY = 150;
+    const colWidths = [85, 340, 65];
+    const rowHeight = 22;
+    
+    // Encabezados
+    doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+    doc.fillColor('black').fontSize(9).font('Helvetica-Bold');
+    doc.rect(50, tablaY, colWidths[0], rowHeight).stroke();
+    doc.text('CÓDIGO', 55, tablaY + 8);
+    doc.rect(50 + colWidths[0], tablaY, colWidths[1], rowHeight).stroke();
+    doc.text('DESCRIPCIÓN DEL ARTÍCULO', 55 + colWidths[0], tablaY + 8);
+    doc.rect(50 + colWidths[0] + colWidths[1], tablaY, colWidths[2], rowHeight).stroke();
+    doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 8);
+    
+    // Artículos de ESTE presupuesto solamente
+    let currentY = tablaY + rowHeight;
+    
+    if (presupuesto.articulos && presupuesto.articulos.length > 0) {
+        const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
+        
+        // Si es pendiente de compra, separar artículos
+        if (esPendienteCompra && articulosEnFalta.length > 0) {
+            const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
+            const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
+            
+            // Artículos CON stock
+            if (articulosConStock.length > 0) {
+                // Título de sección
+                doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                doc.fillColor('#6c757d').fontSize(10).font('Helvetica-Bold')
+                   .text('ARTÍCULOS DISPONIBLES', 55, currentY + 7);
+                doc.fillColor('black');
+                currentY += rowHeight;
+                
+                articulosConStock.forEach((articulo, index) => {
+                    if (index % 2 === 1) {
+                        doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                    }
+                    doc.fillColor('black');
+                    
+                    // Bordes
+                    doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                    doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                    
+                    doc.fontSize(9).font('Helvetica').fillColor('#495057')
+                       .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
+                    
+                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                    
+                    let descripcion = articulo.descripcion;
+                    if (descripcion.length > 35) {
+                        descripcion = descripcion.substring(0, 32) + '...';
+                    }
+                    doc.fontSize(14).font('Helvetica').fillColor('black')
+                       .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                    
+                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                    
+                    doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
+                       .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
+                           width: colWidths[2] - 10, 
+                           align: 'center' 
+                       });
+                    
+                    currentY += rowHeight;
+                });
+            }
+            
+            // Artículos SIN stock (EN FALTA)
+            if (articulosSinStock.length > 0) {
+                // Título de sección
+                doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
+                   .text('ARTÍCULOS EN FALTA', 55, currentY + 7);
+                doc.fillColor('black');
+                currentY += rowHeight;
+                
+                articulosSinStock.forEach((articulo, index) => {
+                    // Fondo amarillo para artículos en falta
+                    doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                    doc.fillColor('black');
+                    
+                    // Borde izquierdo naranja
+                    doc.strokeColor('#ffc107').lineWidth(4)
+                       .moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
+                    doc.strokeColor('black').lineWidth(1);
+                    
+                    // Bordes normales
+                    doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                    doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                    
+                    doc.fontSize(9).font('Helvetica-Bold').fillColor('#856404')
+                       .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
+                    
+                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                    
+                    let descripcion = articulo.descripcion;
+                    if (descripcion.length > 35) {
+                        descripcion = descripcion.substring(0, 32) + '...';
+                    }
+                    doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
+                       .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                    
+                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                    
+                    doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
+                       .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
+                           width: colWidths[2] - 10, 
+                           align: 'center' 
+                       });
+                    
+                    currentY += rowHeight;
+                });
+            }
+        } else {
+            // Modo normal (sin pendientes de compra)
+            articulosSorted.forEach((articulo, index) => {
+                if (index % 2 === 1) {
+                    doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                }
+                doc.fillColor('black');
+                
+                // Bordes
+                doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
+                doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+                
+                doc.fontSize(9).font('Helvetica').fillColor('#495057')
+                   .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
+                
+                doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+                
+                let descripcion = articulo.descripcion;
+                if (descripcion.length > 35) {
+                    descripcion = descripcion.substring(0, 32) + '...';
+                }
+                doc.fontSize(14).font('Helvetica').fillColor('black')
+                   .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                
+                doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+                
+                doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
+                   .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
+                       width: colWidths[2] - 10, 
+                       align: 'center' 
+                   });
+                
+                currentY += rowHeight;
+            });
+        }
+    } else {
+        doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+        doc.fillColor('black');
+        doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
+        doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
+        doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
+        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+        doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
+        
+        doc.fontSize(12).font('Helvetica').fillColor('#6c757d')
+           .text('No hay artículos registrados', 55, currentY + 8, { 
+               width: colWidths[0] + colWidths[1] + colWidths[2] - 10, 
+               align: 'center' 
+           });
+        currentY += rowHeight;
+    }
+    
+    // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
+    if (presupuesto._snapshot) {
+        const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
+                           presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
+        
+        if (esModificado && presupuesto._snapshot.diferencias_detalles) {
+            const diferencias = presupuesto._snapshot.diferencias_detalles;
+            
+            // Filtrar solo diferencias relevantes
+            const diferenciasRelevantes = diferencias.filter(dif => {
+                if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
+                    return true;
+                }
+                if (dif.tipo_cambio === 'modificado') {
+                    const cantAntes = parseFloat(dif.cantidad_antes || 0);
+                    const cantDespues = parseFloat(dif.cantidad_despues || 0);
+                    return cantAntes !== cantDespues;
+                }
+                return false;
+            });
+            
+            if (diferenciasRelevantes.length > 0) {
+                currentY += 10;
+                
+                // Título del bloque
+                doc.strokeColor('#ffc107').lineWidth(2)
+                   .roundedRect(50, currentY, 490, 20 + (diferenciasRelevantes.length * 12), 3).stroke();
+                doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
+                doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
+                   .text('CAMBIOS:', 60, currentY + 6);
+                
+                currentY += 25;
+                
+                // Mostrar cada cambio
+                diferenciasRelevantes.forEach((dif, index) => {
+                    let textoCambio = '';
+                    let colorTexto = '#333333';
+                    
+                    if (dif.tipo_cambio === 'modificado') {
+                        textoCambio = `MODIFICADO: ${dif.descripcion} – cantidad: ${dif.cantidad_antes} → ${dif.cantidad_despues}`;
+                        colorTexto = '#0066cc';
+                    } else if (dif.tipo_cambio === 'agregado') {
+                        textoCambio = `AGREGADO: ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
+                        colorTexto = '#28a745';
+                    } else if (dif.tipo_cambio === 'eliminado') {
+                        textoCambio = `ELIMINADO: ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
+                        colorTexto = '#dc3545';
+                    }
+                    
+                    doc.fontSize(8).font('Helvetica').fillColor(colorTexto)
+                       .text(`• ${textoCambio}`, 60, currentY, { width: 480 });
+                    
+                    currentY += 12;
+                });
+                
+                currentY += 5;
+                
+                console.log(`[PRINT-MOD] PDF: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
+            }
+        }
+    }
+    
+    // CONTROL DE ENTREGA
+    const controlY = Math.min(currentY + 15, 720);
+    const controlHeight = 35;
+    
+    doc.fillColor('black').strokeColor('#dee2e6').lineWidth(1)
+       .roundedRect(50, controlY, 490, controlHeight, 3).stroke();
+    
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#495057')
+       .text('CONTROL DE ENTREGA', 50, controlY + 8, { width: 490, align: 'center' });
+    
+    const campoY = controlY + 22;
+    doc.fontSize(8).font('Helvetica').fillColor('#6c757d')
+       .text('Nombre legible de quien recibe:', 60, campoY);
+    doc.strokeColor('#dee2e6').lineWidth(0.5)
+       .moveTo(60, campoY + 8).lineTo(280, campoY + 8).stroke();
+    
+    doc.text('Firma (opcional):', 300, campoY);
+    doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
+    
+    // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
+    if (bufferCodigoBarras) {
+        try {
+            doc.image(bufferCodigoBarras, 200, controlY + 45, { width: 140, height: 35 });
+            console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie`);
+        } catch (imgError) {
+            console.error(`❌ [BARCODE-PDF] Error al insertar imagen:`, imgError.message);
+        }
+    }
+    
+    // PIE DE PÁGINA
+    const pieY = Math.min(controlY + controlHeight + 50, 780);
+    doc.fontSize(7).font('Helvetica').fillColor('#adb5bd')
+       .text(`Sistema LAMDA - Presupuesto ${paginaActual} de ${totalPaginas} - ${new Date().toLocaleString('es-AR')}`,
+             50, pieY, { width: 490, align: 'center' });
+    
+    doc.fillColor('black');
+}
+
+
+/**
+ * ==========================================
+ * FUNCIONES WRAPPER DE RENDERIZADO
+ * ==========================================
+ * Cada wrapper genera el esqueleto del documento (head/body para HTML, doc setup para PDF)
+ * e itera los presupuestos delegando el renderizado individual a las funciones compartidas.
+ */
+
+/**
+ * Genera HTML en formato remito rediseñado (Formato R) - Impresión individual por cliente
+ * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
+ * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
+ */
+function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = []) {
+    try {
+        const fechaHoy = new Date().toLocaleDateString('es-AR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        const horaHoy = new Date().toLocaleTimeString('es-AR', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        let html = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remito R - Cliente ${clienteData.cliente_id}</title>
+    <style>${generarCSSRemito()}</style>
+</head>
+<body>
+    <div class="remito-container">
+        <div class="header">
+            <div class="header-left">
+                <div class="logo-lamda">LAMDA</div>
+                <div class="letra-r">R</div>
+            </div>
+            <div class="fecha-emision">
+                ${fechaHoy} - ${horaHoy}
+            </div>
+        </div>
+        
+`;
+        
+        // Log de debug
+        console.log('🛒 [REMITO-R-HTML] esPendienteCompra:', esPendienteCompra);
+        console.log('🛒 [REMITO-R-HTML] articulosEnFalta:', articulosEnFalta);
+        console.log('🛒 [REMITO-R-HTML] articulosEnFalta.length:', articulosEnFalta.length);
+        
+        // Generar una página por cada presupuesto usando la función compartida
+        clienteData.presupuestos.forEach((presupuesto, presupIndex) => {
+            console.log(`🛒 [REMITO-R-HTML] Presupuesto ${presupIndex}: ${presupuesto.id_presupuesto_ext}`);
+            console.log(`🛒 [REMITO-R-HTML] Aplicando título: ${esPendienteCompra ? 'ORDEN EN ESPERA' : 'R'}`);
+            
+            html += generarHTMLPresupuestoUnico({
+                clienteId: clienteData.cliente_id,
+                clienteNombre: clienteData.cliente_nombre,
+                presupuesto,
+                esPendienteCompra,
+                articulosEnFalta,
+                fechaHoy,
+                horaHoy,
+                paginaActual: presupIndex + 1,
+                totalPaginas: clienteData.presupuestos.length,
+                agregarPageBreak: presupIndex < clienteData.presupuestos.length - 1
+            });
         });
         
         html += `
@@ -1474,8 +1921,7 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
 }
 
 /**
- * Genera PDF en formato remito rediseñado (Formato R)
- * REDISEÑO: Una página por presupuesto cuando hay múltiples
+ * Genera PDF en formato remito rediseñado (Formato R) - Impresión individual por cliente
  * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
  * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
@@ -1510,370 +1956,23 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
         
         doc.pipe(res);
         
-        // Generar una página por cada presupuesto
+        // Generar una página por cada presupuesto usando la función compartida
         clienteData.presupuestos.forEach((presupuesto, presupIndex) => {
             if (presupIndex > 0) {
-                doc.addPage(); // Nueva página para cada presupuesto después del primero
+                doc.addPage();
             }
             
-            const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
-            
-            // Calcular datos para código de barras y total de artículos
-            const idPresupuesto = presupuesto._id_presupuesto || 0;
-            const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
-            const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
-            // CORRECCIÓN: Se usa .length para contar items distintos
-            const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
-            const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
-            
-            console.log(`📊 [BARCODE-PDF] Código: ${codigoBarras}, Total: ${totalArticulos}`);
-            
-            // ENCABEZADO
-            doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
-            
-            if (esPendienteCompra) {
-                // ORDEN EN ESPERA en lugar de R
-                doc.fillColor('#dc3545').strokeColor('#dc3545').lineWidth(2)
-                   .roundedRect(130, 45, 120, 35, 3).stroke();
-                doc.fillColor('#fff3cd').rect(131, 46, 118, 33).fill();
-                doc.fillColor('#dc3545').fontSize(9).font('Helvetica-Bold')
-                   .text('ORDEN EN ESPERA', 135, 57, { width: 110, align: 'center' });
-                doc.fillColor('black');
-            } else {
-                // R normal
-                doc.roundedRect(130, 45, 35, 35, 3).stroke();
-                doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
-            }
-            
-            doc.fontSize(10).font('Helvetica').fillColor('#666666')
-               .text(`${fechaHoy} - ${horaHoy}`, 420, 55);
-            doc.fillColor('black');
-            
-            doc.strokeColor('#cccccc').lineWidth(0.5)
-               .moveTo(50, 90).lineTo(545, 90).stroke()
-               .strokeColor('black').lineWidth(1);
-            
-            // DATOS DEL PEDIDO
-            doc.fontSize(11).font('Helvetica').text(`N° de Cliente:`, 50, 105);
-            doc.fontSize(24).font('Helvetica-Bold').fillColor('#2c3e50')
-               .text(`${clienteData.cliente_id}`, 140, 100);
-            doc.fontSize(11).font('Helvetica').fillColor('black')
-               .text(clienteData.cliente_nombre, 50, 125);
-            
-            // Código de presupuesto y fecha
-            doc.fontSize(9).font('Helvetica').fillColor('#7f8c8d')
-               .text(presupuesto.id_presupuesto_ext, 450, 105);
-            doc.fontSize(8).fillColor('#999999')
-               .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
-            
-            // TOTAL ARTÍCULOS
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#2c3e50')
-               .text(`Items Distintos: ${totalArticulos}`, 450, 130);
-            
-            // Indicador de modificación si corresponde
-            let offsetTablaY = 0;
-            if (presupuesto._snapshot) {
-                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                
-                if (esModificado) {
-                    const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
-                    const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
-                    
-                    // Centrar el texto "MODIFICADO" en el ancho de la página
-                    doc.fontSize(12).font('Helvetica-Bold').fillColor('#dc3545')
-                        .text(`MODIFICADO ${numeroModificacion}`, doc.page.margins.left, 60, {
-                           width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-                           align: 'center'
-                        });
-                    
-                    // Centrar la fecha de modificación debajo
-                    doc.fontSize(8).font('Helvetica').fillColor('#666')
-                        .text(`Fecha de modificación: ${fechaModificacion}`, doc.page.margins.left, 75, {
-                           width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-                           align: 'center'
-                        });
-
-                    console.log(`[PRINT-MOD] PDF: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
-                }
-            }
-            
-            doc.fillColor('black');
-            
-            // TABLA DE ARTÍCULOS
-            const tablaY = 150; // Se elimina offsetTablaY porque el texto ya no interfiere
-            const colWidths = [85, 340, 65];
-            const rowHeight = 22;
-            
-            // Encabezados
-            doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-            doc.fillColor('black').fontSize(9).font('Helvetica-Bold');
-            doc.rect(50, tablaY, colWidths[0], rowHeight).stroke();
-            doc.text('CÓDIGO', 55, tablaY + 8);
-            doc.rect(50 + colWidths[0], tablaY, colWidths[1], rowHeight).stroke();
-            doc.text('DESCRIPCIÓN DEL ARTÍCULO', 55 + colWidths[0], tablaY + 8);
-            doc.rect(50 + colWidths[0] + colWidths[1], tablaY, colWidths[2], rowHeight).stroke();
-            doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 8);
-            
-            // Artículos de ESTE presupuesto solamente
-            let currentY = tablaY + rowHeight;
-            
-            if (presupuesto.articulos && presupuesto.articulos.length > 0) {
-                const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
-                
-                // Si es pendiente de compra, separar artículos
-                if (esPendienteCompra && articulosEnFalta.length > 0) {
-                    const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
-                    const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
-                    
-                    // Artículos CON stock
-                    if (articulosConStock.length > 0) {
-                        // Título de sección
-                        doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                        doc.fillColor('#6c757d').fontSize(10).font('Helvetica-Bold')
-                           .text('ARTÍCULOS DISPONIBLES', 55, currentY + 7);
-                        doc.fillColor('black');
-                        currentY += rowHeight;
-                        
-                        articulosConStock.forEach((articulo, index) => {
-                            if (index % 2 === 1) {
-                                doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                            }
-                            doc.fillColor('black');
-                            
-                            // Bordes
-                            doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                            doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                            
-                            doc.fontSize(9).font('Helvetica').fillColor('#495057')
-                               .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
-                            
-                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                            
-                            let descripcion = articulo.descripcion;
-                            if (descripcion.length > 35) {
-                                descripcion = descripcion.substring(0, 32) + '...';
-                            }
-                            doc.fontSize(14).font('Helvetica').fillColor('black')
-                               .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
-                            
-                            doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                            
-                            doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
-                               .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                                   width: colWidths[2] - 10, 
-                                   align: 'center' 
-                               });
-                            
-                            currentY += rowHeight;
-                        });
-                    }
-                    
-                    // Artículos SIN stock (EN FALTA)
-                    if (articulosSinStock.length > 0) {
-                        // Título de sección
-                        doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                        doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
-                           .text('ARTÍCULOS EN FALTA', 55, currentY + 7);
-                        doc.fillColor('black');
-                        currentY += rowHeight;
-                        
-                        articulosSinStock.forEach((articulo, index) => {
-                            // Fondo amarillo para artículos en falta
-                            doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                            doc.fillColor('black');
-                            
-                            // Borde izquierdo naranja
-                            doc.strokeColor('#ffc107').lineWidth(4)
-                               .moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-                            doc.strokeColor('black').lineWidth(1);
-                            
-                            // Bordes normales
-                            doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                            doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                            
-                            doc.fontSize(9).font('Helvetica-Bold').fillColor('#856404')
-                               .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
-                            
-                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                            
-                            let descripcion = articulo.descripcion;
-                            if (descripcion.length > 35) {
-                                descripcion = descripcion.substring(0, 32) + '...';
-                            }
-                            doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
-                               .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
-                            
-                            doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                            
-                            doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
-                               .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                                   width: colWidths[2] - 10, 
-                                   align: 'center' 
-                               });
-                            
-                            currentY += rowHeight;
-                        });
-                    }
-                } else {
-                    // Modo normal (sin pendientes de compra)
-                    articulosSorted.forEach((articulo, index) => {
-                        if (index % 2 === 1) {
-                            doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                        }
-                        doc.fillColor('black');
-                        
-                        // Bordes
-                        doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-                        doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                        doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                        
-                        doc.fontSize(9).font('Helvetica').fillColor('#495057')
-                           .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
-                        
-                        doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                        doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                        
-                        let descripcion = articulo.descripcion;
-                        if (descripcion.length > 35) {
-                            descripcion = descripcion.substring(0, 32) + '...';
-                        }
-                        doc.fontSize(14).font('Helvetica').fillColor('black')
-                           .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
-                        
-                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                        doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                        
-                        doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
-                           .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                               width: colWidths[2] - 10, 
-                               align: 'center' 
-                           });
-                        
-                        currentY += rowHeight;
-                    });
-                }
-            } else {
-                doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                doc.fillColor('black');
-                doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-                doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                
-                doc.fontSize(12).font('Helvetica').fillColor('#6c757d')
-                   .text('No hay artículos registrados', 55, currentY + 8, { 
-                       width: colWidths[0] + colWidths[1] + colWidths[2] - 10, 
-                       align: 'center' 
-                   });
-                currentY += rowHeight;
-            }
-            
-            // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
-            if (presupuesto._snapshot) {
-                const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                   presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                
-                if (esModificado && presupuesto._snapshot.diferencias_detalles) {
-                    const diferencias = presupuesto._snapshot.diferencias_detalles;
-                    
-                    // Filtrar solo diferencias relevantes
-                    const diferenciasRelevantes = diferencias.filter(dif => {
-                        if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
-                            return true;
-                        }
-                        if (dif.tipo_cambio === 'modificado') {
-                            const cantAntes = parseFloat(dif.cantidad_antes || 0);
-                            const cantDespues = parseFloat(dif.cantidad_despues || 0);
-                            return cantAntes !== cantDespues;
-                        }
-                        return false;
-                    });
-                    
-                    if (diferenciasRelevantes.length > 0) {
-                        currentY += 10;
-                        
-                        // Título del bloque
-                        doc.strokeColor('#ffc107').lineWidth(2)
-                           .roundedRect(50, currentY, 490, 20 + (diferenciasRelevantes.length * 12), 3).stroke(); // Ajuste dinámico de altura para el cuadro de cambios
-                        doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
-                        doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
-                           .text('CAMBIOS:', 60, currentY + 6);
-                        
-                        currentY += 25;
-                        
-                        // Mostrar cada cambio
-                        diferenciasRelevantes.forEach((dif, index) => {
-                            let textoCambio = '';
-                            let colorTexto = '#333333';
-                            
-                            if (dif.tipo_cambio === 'modificado') {
-                                textoCambio = `MODIFICADO: ${dif.descripcion} – cantidad: ${dif.cantidad_antes} → ${dif.cantidad_despues}`;
-                                colorTexto = '#0066cc';
-                            } else if (dif.tipo_cambio === 'agregado') {
-                                textoCambio = `AGREGADO: ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
-                                colorTexto = '#28a745';
-                            } else if (dif.tipo_cambio === 'eliminado') {
-                                textoCambio = `ELIMINADO: ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
-                                colorTexto = '#dc3545';
-                            }
-                            
-                            doc.fontSize(8).font('Helvetica').fillColor(colorTexto)
-                               .text(`• ${textoCambio}`, 60, currentY, { width: 480 });
-                            
-                            currentY += 12;
-                        });
-                        
-                        currentY += 5;
-                        
-                        console.log(`[PRINT-MOD] PDF Todos: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
-                    }
-                }
-            }
-            
-            // CONTROL DE ENTREGA
-            const controlY = Math.min(currentY + 15, 720);
-            const controlHeight = 35;
-            
-            doc.fillColor('black').strokeColor('#dee2e6').lineWidth(1)
-               .roundedRect(50, controlY, 490, controlHeight, 3).stroke();
-            
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#495057')
-               .text('CONTROL DE ENTREGA', 50, controlY + 8, { width: 490, align: 'center' });
-            
-            const campoY = controlY + 22;
-            doc.fontSize(8).font('Helvetica').fillColor('#6c757d')
-               .text('Nombre legible de quien recibe:', 60, campoY);
-            doc.strokeColor('#dee2e6').lineWidth(0.5)
-               .moveTo(60, campoY + 8).lineTo(280, campoY + 8).stroke();
-            
-            doc.text('Firma (opcional):', 300, campoY);
-            doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
-            
-            // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
-            if (bufferCodigoBarras) {
-                try {
-                    // Se dibuja debajo del cuadro de control (controlY + 45) y centrado (x=200 aprox)
-                    doc.image(bufferCodigoBarras, 200, controlY + 45, { width: 140, height: 35 });
-                    console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie`);
-                } catch (imgError) {
-                    console.error(`❌ [BARCODE-PDF] Error al insertar imagen:`, imgError.message);
-                }
-            }
-            
-            // PIE DE PÁGINA
-            const pieY = Math.min(controlY + controlHeight + 50, 780);
-            doc.fontSize(7).font('Helvetica').fillColor('#adb5bd')
-               .text(`Sistema LAMDA - Presupuesto ${presupIndex + 1} de ${clienteData.presupuestos.length} - ${new Date().toLocaleString('es-AR')}`,
-                     50, pieY, { width: 490, align: 'center' });
-            
-            doc.fillColor('black');
+            renderizarPDFPresupuestoUnico(doc, {
+                clienteId: clienteData.cliente_id,
+                clienteNombre: clienteData.cliente_nombre,
+                presupuesto,
+                esPendienteCompra,
+                articulosEnFalta,
+                fechaHoy,
+                horaHoy,
+                paginaActual: presupIndex + 1,
+                totalPaginas: clienteData.presupuestos.length
+            });
         });
         
         doc.end();
@@ -1892,7 +1991,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
 }
 
 /**
- * Genera HTML para TODOS los clientes (impresión general)
+ * Genera HTML para TODOS los clientes (impresión general / "Imprimir Todos")
  * Una hoja por cada presupuesto de cada cliente
  */
 function generarHTML_TodosLosClientes(res, clientesData, fecha) {
@@ -1914,272 +2013,7 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Remito R - Todos los Presupuestos</title>
-    <style>
-        @page {
-            size: A4;
-            margin: 1.5cm;
-        }
-        
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0; 
-            padding: 0;
-            line-height: 1.3; 
-            color: #000;
-            font-size: 11px;
-        }
-        
-        .remito-container {
-            max-width: 100%;
-            margin: 0 auto;
-            padding: 15px;
-        }
-        
-        .page-break {
-            page-break-after: always;
-        }
-        
-        .header { 
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px; 
-            border-bottom: 1px solid #333; 
-            padding-bottom: 12px; 
-        }
-        
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .logo-lamda { 
-            font-size: 24px; 
-            font-weight: 300; 
-            letter-spacing: 2px;
-            color: #000;
-        }
-        
-        .letra-r {
-            font-size: 36px;
-            font-weight: bold;
-            color: #000;
-            border: 2px solid #000;
-            width: 50px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-        }
-        
-        .fecha-emision { 
-            font-size: 10px; 
-            text-align: right;
-            color: #666;
-        }
-        
-        .datos-pedido { 
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 15px; 
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .numero-cliente {
-            font-size: 14px;
-            font-weight: bold;
-        }
-        
-        .nombre-cliente {
-            font-size: 12px;
-            color: #333;
-        }
-        
-        .codigo-presupuesto {
-            font-size: 11px;
-            font-family: monospace;
-            background: #f5f5f5;
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
-        
-        .articulos-tabla { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin: 10px 0; 
-            font-size: 10px;
-        }
-        
-        .articulos-tabla th { 
-            background-color: #f8f9fa; 
-            font-weight: 600; 
-            text-align: left;
-            padding: 6px 4px;
-            border: 1px solid #dee2e6;
-            font-size: 9px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .articulos-tabla td { 
-            padding: 4px; 
-            border: 1px solid #dee2e6; 
-            vertical-align: top;
-        }
-        
-        .articulos-tabla .col-codigo {
-            width: 20%;
-            font-family: monospace;
-            font-size: 9px;
-            background: #fafafa;
-        }
-        
-        .articulos-tabla .col-descripcion {
-            width: 65%;
-            word-wrap: break-word;
-        }
-        
-        .articulos-tabla .col-cantidad {
-            width: 15%;
-            text-align: center;
-            font-weight: 600;
-        }
-        
-        .control-entrega {
-            margin-top: 25px;
-            border: 1px solid #333;
-            padding: 12px;
-            background: #fafafa;
-        }
-        
-        .control-entrega h4 {
-            margin: 0 0 12px 0;
-            font-size: 11px;
-            text-align: center;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .campos-control {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 12px;
-        }
-        
-        .campo-firma {
-            border-bottom: 1px solid #333;
-            padding-bottom: 3px;
-            min-height: 20px;
-        }
-        
-        .campo-firma label {
-            font-size: 9px;
-            font-weight: 600;
-            color: #666;
-            text-transform: uppercase;
-        }
-        
-        .campo-entregado {
-            grid-column: 1 / -1;
-            border-bottom: 1px solid #333;
-            padding-bottom: 3px;
-            min-height: 20px;
-        }
-        
-        .nota-importante {
-            margin-top: 10px;
-            padding: 6px;
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 3px;
-            font-size: 8px;
-            text-align: justify;
-            color: #856404;
-        }
-        
-        /* BLOQUE DE CAMBIOS */
-        .bloque-cambios {
-            margin-top: 20px;
-            margin-bottom: 15px;
-            border: 2px solid #ffc107;
-            background: #fffbf0;
-            padding: 10px;
-            border-radius: 4px;
-        }
-        
-        .bloque-cambios h4 {
-            margin: 0 0 10px 0;
-            font-size: 11px;
-            font-weight: bold;
-            color: #856404;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .cambio-item {
-            font-size: 9px;
-            padding: 4px 0;
-            border-bottom: 1px dashed #ffeaa7;
-            color: #333;
-        }
-        
-        .cambio-item:last-child {
-            border-bottom: none;
-        }
-        
-        .cambio-tipo {
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-right: 5px;
-        }
-        
-        .cambio-tipo.modificado {
-            color: #0066cc;
-        }
-        
-        .cambio-tipo.agregado {
-            color: #28a745;
-        }
-        
-        .cambio-tipo.eliminado {
-            color: #dc3545;
-        }
-        
-        .pie-pagina {
-            margin-top: 15px;
-            text-align: center;
-            font-size: 8px;
-            color: #999;
-            border-top: 1px solid #eee;
-            padding-top: 8px;
-        }
-        
-        @media print {
-            body { 
-                margin: 0; 
-                font-size: 10px;
-            }
-            
-            .remito-container {
-                padding: 0;
-            }
-            
-            .header {
-                margin-bottom: 15px;
-                padding-bottom: 8px;
-            }
-            
-            .control-entrega {
-                page-break-inside: avoid;
-                margin-top: 20px;
-            }
-        }
-    </style>
+    <style>${generarCSSRemito()}</style>
 </head>
 <body>
 `;
@@ -2192,204 +2026,24 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
         
         let presupuestoGlobalIndex = 0;
         
-        // Iterar por cada cliente y cada presupuesto
+        // Iterar por cada cliente y cada presupuesto usando la función compartida
         clientesData.forEach((cliente, clienteIndex) => {
             cliente.presupuestos.forEach((presupuesto, presupIndex) => {
-                const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
+                presupuestoGlobalIndex++;
                 const esUltimo = (clienteIndex === clientesData.length - 1) && (presupIndex === cliente.presupuestos.length - 1);
                 
-                // Calcular datos para código de barras y total de artículos
-                const idPresupuesto = presupuesto._id_presupuesto || 0;
-                const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
-                const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
-                // CORRECCIÓN: Usar length
-                const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
-                const svgCodigoBarras = generarSVGCodigoBarras(codigoBarras);
-                
-                let modificacionInfo = "";
-                if (presupuesto._snapshot) {
-                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                    
-                    if (esModificado) {
-                        const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
-                        const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
-                        
-                        modificacionInfo = `
-                <div style="text-align: center;">
-                    <div style="font-size: 10px; color: #dc3545; font-weight: bold; margin-top: 4px;">
-                        📝 Modificado ${numeroModificacion}
-                    </div>
-                    <div style="font-size: 9px; color: #856404; margin-top: 2px;">
-                        Fecha modificación: ${fechaModificacion}
-                    </div>
-                </div>
-`;
-                    }
-                }
-
-                html += `
-    <div class="remito-container${!esUltimo ? ' page-break' : ''}">
-        <div class="header">
-            <div class="header-left">
-                <div class="logo-lamda">LAMDA</div>
-                <div class="letra-r">R</div>
-            </div>
-            ${modificacionInfo}
-            <div class="fecha-emision">
-                ${fechaHoy} - ${horaHoy}
-            </div>
-        </div>
-        
-        <div class="datos-pedido">
-            <div>
-                <div class="numero-cliente">N° de Cliente: ${cliente.cliente_id}</div>
-                <div class="nombre-cliente">${cliente.cliente_nombre}</div>
-            </div>
-            <div>
-                <div class="codigo-presupuesto">${presupuesto.id_presupuesto_ext}</div>
-                <div style="font-size: 10px; color: #666; margin-top: 4px;">Fecha: ${fechaPresupuesto}</div>
-                <div style="font-size: 11px; font-weight: bold; color: #2c3e50; margin-top: 8px;">
-                    Total Articulos: ${totalArticulos} unidades
-                </div>
-`;
-                
-                html += `
-            </div>
-        </div>
-        
-        <table class="articulos-tabla">
-            <thead>
-                <tr>
-                    <th class="col-codigo">Código</th>
-                    <th class="col-descripcion">Descripción del Artículo</th>
-                    <th class="col-cantidad">Cantidad</th>
-                </tr>
-            </thead>
-            <tbody>
-`;
-                
-                // Mostrar artículos de ESTE presupuesto
-                if (presupuesto.articulos && presupuesto.articulos.length > 0) {
-                    presupuesto.articulos
-                        .sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero))
-                        .forEach(articulo => {
-                            html += `
-                <tr>
-                    <td class="col-codigo">${articulo.articulo_numero}</td>
-                    <td class="col-descripcion">${articulo.descripcion}</td>
-                    <td class="col-cantidad">${articulo.cantidad}</td>
-                </tr>
-`;
-                        });
-                } else {
-                    html += `
-                <tr>
-                    <td colspan="3" style="text-align: center; font-style: italic; color: #666; padding: 15px;">
-                        No hay artículos
-                    </td>
-                </tr>
-`;
-                }
-                
-                presupuestoGlobalIndex++;
-                
-                html += `
-            </tbody>
-        </table>
-`;
-                
-                // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
-                if (presupuesto._snapshot) {
-                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                    
-                    if (esModificado && presupuesto._snapshot.diferencias_detalles) {
-                        const diferencias = presupuesto._snapshot.diferencias_detalles;
-                        
-                        // Filtrar solo diferencias relevantes (cambios de cantidad)
-                        const diferenciasRelevantes = diferencias.filter(dif => {
-                            if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
-                                return true;
-                            }
-                            if (dif.tipo_cambio === 'modificado') {
-                                const cantAntes = parseFloat(dif.cantidad_antes || 0);
-                                const cantDespues = parseFloat(dif.cantidad_despues || 0);
-                                return cantAntes !== cantDespues;
-                            }
-                            return false;
-                        });
-                        
-                        if (diferenciasRelevantes.length > 0) {
-                            console.log(`[PRINT-MOD] Bloque de cambios agregado a impresión "Todos" (${diferenciasRelevantes.length} diferencias relevantes)`);
-                            
-                            html += `
-        <!-- BLOQUE DE CAMBIOS -->
-        <div class="bloque-cambios">
-            <h4>📋 Cambios:</h4>
-`;
-                            
-                            diferenciasRelevantes.forEach(dif => {
-                                const tipoClase = dif.tipo_cambio.toLowerCase();
-                                let textoCambio = '';
-                                
-                                if (dif.tipo_cambio === 'modificado') {
-                                    textoCambio = `<span class="cambio-tipo ${tipoClase}">MODIFICADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}, cantidad después: ${dif.cantidad_despues}`;
-                                } else if (dif.tipo_cambio === 'agregado') {
-                                    textoCambio = `<span class="cambio-tipo ${tipoClase}">AGREGADO:</span> ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
-                                } else if (dif.tipo_cambio === 'eliminado') {
-                                    textoCambio = `<span class="cambio-tipo ${tipoClase}">ELIMINADO:</span> ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
-                                }
-                                
-                                html += `
-            <div class="cambio-item">${textoCambio}</div>
-`;
-                            });
-                            
-                            html += `
-        </div>
-`;
-                        } else {
-                            console.log(`[PRINT-MOD] Snapshot modificado sin diferencias relevantes -> no se muestra bloque de cambios`);
-                        }
-                    }
-                }
-                
-                html += `
-        
-        <div class="control-entrega">
-            <h4>Control de Entrega</h4>
-            
-            <div class="campos-control">
-                <div class="campo-firma">
-                    <label>Nombre legible de quien recibe</label>
-                </div>
-                
-                <div class="campo-firma">
-                    <label>Firma (opcional)</label>
-                </div>
-                
-                <div class="campo-entregado">
-                    <label>Entregado por</label>
-                </div>
-            </div>
-            
-            <div class="nota-importante">
-                <strong>IMPORTANTE:</strong> Este comprobante se usa para armar el pedido y controlarlo en destino. 
-                Al entregar, se puede sacar una foto del papel con el nombre escrito por quien recibe.
-            </div>
-        </div>
-        
-        <!-- CÓDIGO DE BARRAS AL FINAL -->
-        <div style="text-align: center; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-            ${svgCodigoBarras}
-        </div>
-
-        <div class="pie-pagina">
-            Sistema LAMDA - Presupuesto ${presupuestoGlobalIndex} de ${totalPresupuestos} - ${new Date().toLocaleString('es-AR')}
-        </div>
-    </div>
-`;
+                html += generarHTMLPresupuestoUnico({
+                    clienteId: cliente.cliente_id,
+                    clienteNombre: cliente.cliente_nombre,
+                    presupuesto,
+                    esPendienteCompra: false,
+                    articulosEnFalta: [],
+                    fechaHoy,
+                    horaHoy,
+                    paginaActual: presupuestoGlobalIndex,
+                    totalPaginas: totalPresupuestos,
+                    agregarPageBreak: !esUltimo
+                });
             });
         });
         
@@ -2414,7 +2068,7 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
 }
 
 /**
- * Genera PDF para TODOS los clientes (impresión general)
+ * Genera PDF para TODOS los clientes (impresión general / "Imprimir Todos")
  * Una página por cada presupuesto de cada cliente
  */
 function generarPDF_TodosLosClientes(res, clientesData, fecha) {
@@ -2456,249 +2110,26 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
         
         let presupuestoGlobalIndex = 0;
         
-        // Iterar por cada cliente y cada presupuesto - UNA PÁGINA POR PRESUPUESTO
+        // Iterar por cada cliente y cada presupuesto usando la función compartida
         clientesData.forEach((cliente, clienteIndex) => {
             cliente.presupuestos.forEach((presupuesto, presupIndex) => {
                 if (presupuestoGlobalIndex > 0) {
-                    doc.addPage(); // Nueva página para cada presupuesto
+                    doc.addPage();
                 }
                 
-                const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
-                
-                // Calcular datos para código de barras y total de artículos
-                const idPresupuesto = presupuesto._id_presupuesto || 0;
-                const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
-                const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
-                // CORRECCIÓN: Usar length
-                const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
-                const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
-                
-                console.log(`📊 [BARCODE-PDF-TODOS] Código: ${codigoBarras}, Total: ${totalArticulos.toFixed(2)}`);
-                
-                // ENCABEZADO
-                doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
-                doc.roundedRect(130, 45, 35, 35, 3).stroke();
-                doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
-                doc.fontSize(10).font('Helvetica').fillColor('#666666')
-                   .text(`${fechaHoy} - ${horaHoy}`, 420, 55);
-                doc.fillColor('black');
-                
-                doc.strokeColor('#cccccc').lineWidth(0.5)
-                   .moveTo(50, 90).lineTo(545, 90).stroke()
-                   .strokeColor('black').lineWidth(1);
-                
-                // DATOS DEL PEDIDO
-                doc.fontSize(11).font('Helvetica').text(`N° de Cliente:`, 50, 105);
-                doc.fontSize(24).font('Helvetica-Bold').fillColor('#2c3e50')
-                   .text(`${cliente.cliente_id}`, 140, 100);
-                doc.fontSize(11).font('Helvetica').fillColor('black')
-                   .text(cliente.cliente_nombre, 50, 125);
-                
-                // Código de presupuesto y fecha
-                doc.fontSize(9).font('Helvetica').fillColor('#7f8c8d')
-                   .text(presupuesto.id_presupuesto_ext, 450, 105);
-                doc.fontSize(8).fillColor('#999999')
-                   .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
-                
-                // TOTAL ARTÍCULOS
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('#2c3e50')
-                   .text(`📦 Total: ${totalArticulos.toFixed(2)} unidades`, 450, 130);
-                
-                // Indicador de modificación si corresponde
-                let offsetTablaY = 0;
-                if (presupuesto._snapshot) {
-                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                        presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                    
-                    if (esModificado) {
-                        const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
-                        const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
-                        
-                        doc.fontSize(9).font('Helvetica-Bold').fillColor('#dc3545')
-                           .text(`Modificado ${numeroModificacion}`, 450, 130);
-                        doc.fontSize(8).font('Helvetica').fillColor('#856404')
-                           .text(`Fecha modificación: ${fechaModificacion}`, 450, 142);
-                        
-                        offsetTablaY = 20; // Mover tabla más abajo
-                        
-                        console.log(`[PRINT-MOD] PDF Todos: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
-                    }
-                }
-                
-                doc.fillColor('black');
-                
-                // TABLA DE ARTÍCULOS
-                const tablaY = 150 + offsetTablaY;
-                const colWidths = [85, 340, 65];
-                const rowHeight = 22;
-                
-                // Encabezados
-                doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                doc.fillColor('black').fontSize(9).font('Helvetica-Bold');
-                doc.rect(50, tablaY, colWidths[0], rowHeight).stroke();
-                doc.text('CÓDIGO', 55, tablaY + 8);
-                doc.rect(50 + colWidths[0], tablaY, colWidths[1], rowHeight).stroke();
-                doc.text('DESCRIPCIÓN DEL ARTÍCULO', 55 + colWidths[0], tablaY + 8);
-                doc.rect(50 + colWidths[0] + colWidths[1], tablaY, colWidths[2], rowHeight).stroke();
-                doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 8);
-                
-                // Artículos de ESTE presupuesto
-                let currentY = tablaY + rowHeight;
-                
-                if (presupuesto.articulos && presupuesto.articulos.length > 0) {
-                    presupuesto.articulos
-                        .sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero))
-                        .forEach((articulo, index) => {
-                            if (index % 2 === 1) {
-                                doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                            }
-                            doc.fillColor('black');
-                            
-                            doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                            doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                            
-                            doc.fontSize(9).font('Helvetica').fillColor('#495057')
-                               .text(articulo.articulo_numero, 55, currentY + 7, { width: colWidths[0] - 10 });
-                            
-                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                            
-                            let descripcion = articulo.descripcion;
-                            if (descripcion.length > 35) {
-                                descripcion = descripcion.substring(0, 32) + '...';
-                            }
-                            doc.fontSize(14).font('Helvetica').fillColor('black')
-                               .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
-                            
-                            doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                            doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                            
-                            doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
-                               .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                                   width: colWidths[2] - 10, 
-                                   align: 'center' 
-                               });
-                            
-                            currentY += rowHeight;
-                        });
-                } else {
-                    doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
-                    doc.fillColor('black');
-                    doc.moveTo(50, currentY).lineTo(50, currentY + rowHeight).stroke();
-                    doc.moveTo(50 + colWidths[0], currentY).lineTo(50 + colWidths[0], currentY + rowHeight).stroke();
-                    doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
-                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                    doc.moveTo(50, currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
-                    
-                    doc.fontSize(12).font('Helvetica').fillColor('#6c757d')
-                       .text('No hay artículos registrados', 55, currentY + 8, { 
-                           width: colWidths[0] + colWidths[1] + colWidths[2] - 10, 
-                           align: 'center' 
-                       });
-                    currentY += rowHeight;
-                }
-                
-                // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
-                if (presupuesto._snapshot) {
-                    const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                                       presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-                    
-                    if (esModificado && presupuesto._snapshot.diferencias_detalles) {
-                        const diferencias = presupuesto._snapshot.diferencias_detalles;
-                        
-                        // Filtrar solo diferencias relevantes
-                        const diferenciasRelevantes = diferencias.filter(dif => {
-                            if (dif.tipo_cambio === 'agregado' || dif.tipo_cambio === 'eliminado') {
-                                return true;
-                            }
-                            if (dif.tipo_cambio === 'modificado') {
-                                const cantAntes = parseFloat(dif.cantidad_antes || 0);
-                                const cantDespues = parseFloat(dif.cantidad_despues || 0);
-                                return cantAntes !== cantDespues;
-                            }
-                            return false;
-                        });
-                        
-                        if (diferenciasRelevantes.length > 0) {
-                            currentY += 10;
-                            
-                            // Título del bloque
-                            doc.strokeColor('#ffc107').lineWidth(2)
-                               .roundedRect(50, currentY, 490, 20 + (diferenciasRelevantes.length * 12), 3).stroke(); // Ajuste dinámico de altura para el cuadro de cambios
-                            doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
-                            doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
-                               .text('CAMBIOS:', 60, currentY + 6);
-                            
-                            currentY += 25;
-                            
-                            // Mostrar cada cambio
-                            diferenciasRelevantes.forEach((dif, index) => {
-                                let textoCambio = '';
-                                let colorTexto = '#333333';
-                                
-                                if (dif.tipo_cambio === 'modificado') {
-                                    textoCambio = `MODIFICADO: ${dif.descripcion} – cantidad: ${dif.cantidad_antes} → ${dif.cantidad_despues}`;
-                                    colorTexto = '#0066cc';
-                                } else if (dif.tipo_cambio === 'agregado') {
-                                    textoCambio = `AGREGADO: ${dif.descripcion} – cantidad: ${dif.cantidad_despues}`;
-                                    colorTexto = '#28a745';
-                                } else if (dif.tipo_cambio === 'eliminado') {
-                                    textoCambio = `ELIMINADO: ${dif.descripcion} – cantidad antes: ${dif.cantidad_antes}`;
-                                    colorTexto = '#dc3545';
-                                }
-                                
-                                doc.fontSize(8).font('Helvetica').fillColor(colorTexto)
-                                   .text(`• ${textoCambio}`, 60, currentY, { width: 480 });
-                                
-                                currentY += 12;
-                            });
-                            
-                            currentY += 5;
-                            
-                            console.log(`[PRINT-MOD] PDF Todos: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
-                        }
-                    }
-                }
-                
-                // CONTROL DE ENTREGA
-                const controlY = Math.min(currentY + 15, 720);
-                const controlHeight = 35;
-                
-                doc.fillColor('black').strokeColor('#dee2e6').lineWidth(1)
-                   .roundedRect(50, controlY, 490, controlHeight, 3).stroke();
-                
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('#495057')
-                   .text('CONTROL DE ENTREGA', 50, controlY + 8, { width: 490, align: 'center' });
-                
-                const campoY = controlY + 22;
-                doc.fontSize(8).font('Helvetica').fillColor('#6c757d')
-                   .text('Nombre legible de quien recibe:', 60, campoY);
-                doc.strokeColor('#dee2e6').lineWidth(0.5)
-                   .moveTo(60, campoY + 8).lineTo(280, campoY + 8).stroke();
-                
-                doc.text('Firma (opcional):', 300, campoY);
-                doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
-                
-                // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
-                if (bufferCodigoBarras) {
-                    try {
-                        // Se dibuja debajo del cuadro de control (controlY + 45) y centrado (x=200 aprox)
-                        doc.image(bufferCodigoBarras, 200, controlY + 45, { width: 140, height: 35 });
-                        console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie`);
-                    } catch (imgError) {
-                        console.error(`❌ [BARCODE-PDF] Error al insertar imagen:`, imgError.message);
-                    }
-                }
-                
-                // PIE DE PÁGINA
                 presupuestoGlobalIndex++;
-                const pieY = Math.min(controlY + controlHeight + 50, 780);
-                doc.fontSize(7).font('Helvetica').fillColor('#adb5bd')
-                   .text(`Sistema LAMDA - Presupuesto ${presupuestoGlobalIndex} de ${totalPresupuestos} - ${new Date().toLocaleString('es-AR')}`,
-                         50, pieY, { width: 490, align: 'center' });
                 
-                doc.fillColor('black');
+                renderizarPDFPresupuestoUnico(doc, {
+                    clienteId: cliente.cliente_id,
+                    clienteNombre: cliente.cliente_nombre,
+                    presupuesto,
+                    esPendienteCompra: false,
+                    articulosEnFalta: [],
+                    fechaHoy,
+                    horaHoy,
+                    paginaActual: presupuestoGlobalIndex,
+                    totalPaginas: totalPresupuestos
+                });
             });
         });
         
