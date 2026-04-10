@@ -1528,6 +1528,88 @@
                 font-size: 10px;
             }
         }
+
+        /* ==========================================
+         * MENÚ CONTEXTUAL GENÉRICO (Modular / Reutilizable)
+         * ========================================== */
+        .context-menu {
+            position: fixed;
+            z-index: 10000;
+            min-width: 220px;
+            background: rgba(255, 255, 255, 0.97);
+            backdrop-filter: blur(12px);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+            padding: 6px 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            animation: contextMenuFadeIn 0.15s ease-out;
+        }
+
+        @keyframes contextMenuFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95) translateY(-4px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .context-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+            transition: background-color 0.15s ease, color 0.15s ease;
+            user-select: none;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .context-menu-item:hover {
+            background-color: #f0f4ff;
+            color: #0056b3;
+        }
+
+        .context-menu-item .context-menu-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+            width: 20px;
+            text-align: center;
+        }
+
+        .context-menu-item .context-menu-label {
+            flex: 1;
+            white-space: nowrap;
+        }
+
+        .context-menu-item.danger:hover {
+            background-color: #fff0f0;
+            color: #dc3545;
+        }
+
+        .context-menu-separator {
+            height: 1px;
+            background-color: #e9ecef;
+            margin: 4px 12px;
+        }
+
+        .context-menu-header {
+            padding: 6px 16px 4px;
+            font-size: 10px;
+            font-weight: 700;
+            color: #adb5bd;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            pointer-events: none;
+        }
     </style>
 </head>
 
@@ -2138,7 +2220,7 @@
         </div>
     </div>
 
-    <script src="/js/produccion.js?v=8.0"></script>
+    <script src="/js/produccion.js?v=8.1"></script>
     <script src="/js/produccion-resumen-expandible.js?v=18.2"></script>
     <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     <script src="/js/configurar-carros-ui.js?v=2.4"></script>
@@ -2839,6 +2921,8 @@
             console.log('[INIT] PASO 3         dal pack: usando busqueda dual (modal-pack-duav3.0)');
 
     </script>
+    <!-- Menú Contextual Genérico (contenedor dinámico) -->
+    <div id="context-menu" class="context-menu" style="display: none;"></div>
 </body>
 
 </html>

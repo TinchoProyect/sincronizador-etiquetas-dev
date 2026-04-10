@@ -464,6 +464,21 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     abrirModalArmarPedido(cliente.cliente_id, presupuesto.presupuesto_id);
                 });
                 botonesPresupuesto.appendChild(btnVerificarPresup);
+
+                // Menú contextual (clic derecho) para reversión de estado
+                presupuestoHeader.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    mostrarMenuContextualGenerico(e, [
+                        {
+                            label: 'Devolver a bandeja de impresión',
+                            icon: '🔙',
+                            action: () => revertirAImprimir(presupuesto.presupuesto_id, cliente.cliente_id)
+                        }
+                    ]);
+                });
+                // Indicador visual sutil de que el clic derecho está disponible
+                presupuestoHeader.title = 'Clic derecho para más opciones';
             }
 
             // NUEVO: Botón "Retira Depósito" (solo en acordeón "Pedido Listo")
@@ -2226,3 +2241,176 @@ async function marcarPresupuestoEntregado(presupuestoId, clienteId) {
 window.marcarPresupuestoEntregado = marcarPresupuestoEntregado;
 
 console.log('✅ [RETIRA-DEPOSITO] Módulo de "Retira por Depósito" cargado');
+
+// ==========================================
+// MENÚ CONTEXTUAL GENÉRICO (Modular / Escalable)
+// ==========================================
+
+/**
+ * Muestra un menú contextual personalizado en la posición del evento.
+ * Diseñado para ser reutilizable: acepta un array de items con label, icon, action y className opcionales.
+ * NOTA: Se usa el nombre 'mostrarMenuContextualGenerico' para evitar colisión con
+ * mostrarMenuContextual() de produccion-resumen-expandible.js (menú de artículos pack).
+ * @param {MouseEvent} event - Evento del clic derecho (contextmenu)
+ * @param {Array<{label: string, icon: string, action: Function, className?: string}>} items - Opciones del menú
+ */
+function mostrarMenuContextualGenerico(event, items) {
+    const menu = document.getElementById('context-menu');
+    if (!menu) {
+        console.error('❌ [CONTEXT-MENU] Contenedor #context-menu no encontrado en el DOM');
+        return;
+    }
+
+    // Construir contenido del menú
+    menu.innerHTML = '';
+
+    // Header opcional del menú
+    const header = document.createElement('div');
+    header.className = 'context-menu-header';
+    header.textContent = 'Acciones';
+    menu.appendChild(header);
+
+    items.forEach(item => {
+        const menuItem = document.createElement('button');
+        menuItem.className = `context-menu-item${item.className ? ' ' + item.className : ''}`;
+        menuItem.innerHTML = `
+            <span class="context-menu-icon">${item.icon || ''}</span>
+            <span class="context-menu-label">${item.label}</span>
+        `;
+        menuItem.addEventListener('click', () => {
+            cerrarMenuContextualGenerico();
+            if (typeof item.action === 'function') {
+                item.action();
+            }
+        });
+        menu.appendChild(menuItem);
+    });
+
+    // Posicionar el menú en las coordenadas del clic
+    menu.style.display = 'block';
+
+    // Ajustar posición para que no se salga de la pantalla
+    const menuRect = menu.getBoundingClientRect();
+    let posX = event.clientX;
+    let posY = event.clientY;
+
+    if (posX + menuRect.width > window.innerWidth) {
+        posX = window.innerWidth - menuRect.width - 8;
+    }
+    if (posY + menuRect.height > window.innerHeight) {
+        posY = window.innerHeight - menuRect.height - 8;
+    }
+
+    menu.style.left = `${posX}px`;
+    menu.style.top = `${posY}px`;
+
+    console.log(`📋 [CONTEXT-MENU] Menú mostrado en (${posX}, ${posY}) con ${items.length} opciones`);
+}
+
+/**
+ * Cierra el menú contextual activo.
+ */
+function cerrarMenuContextualGenerico() {
+    const menu = document.getElementById('context-menu');
+    if (menu) {
+        menu.style.display = 'none';
+        menu.innerHTML = '';
+    }
+}
+
+// Cerrar menú al hacer clic en cualquier lugar fuera de él
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('context-menu');
+    if (menu && menu.style.display !== 'none' && !menu.contains(e.target)) {
+        cerrarMenuContextualGenerico();
+    }
+});
+
+// Cerrar menú al presionar Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        cerrarMenuContextualGenerico();
+    }
+});
+
+// Cerrar menú al hacer scroll
+document.addEventListener('scroll', () => {
+    cerrarMenuContextualGenerico();
+}, true);
+
+// Exponer funciones globalmente para extensibilidad
+window.mostrarMenuContextualGenerico = mostrarMenuContextualGenerico;
+window.cerrarMenuContextualGenerico = cerrarMenuContextualGenerico;
+
+console.log('✅ [CONTEXT-MENU] Módulo de menú contextual cargado');
+
+// ==========================================
+// REVERSIÓN: ARMAR PEDIDO → IMPRIMIR
+// ==========================================
+
+/**
+ * Revierte un presupuesto de "Armar_Pedido" a "Imprimir".
+ * El presupuesto vuelve a la bandeja de impresión para ser reimpreso.
+ * Sigue el patrón establecido por revertirRetiraDeposito().
+ * @param {string} presupuestoId - ID externo del presupuesto (id_presupuesto_ext)
+ * @param {number} clienteId - ID del cliente (para expandir acordeón después)
+ */
+async function revertirAImprimir(presupuestoId, clienteId) {
+    console.log(`🔙 [REVERTIR-IMPRIMIR] Revirtiendo presupuesto ${presupuestoId} a "Imprimir"`);
+
+    // Confirmar acción con el usuario
+    if (!confirm(`¿Devolver el presupuesto ${presupuestoId} a la bandeja de impresión?\n\nEsto revertirá el estado del pedido para que pueda ser reimpreso.`)) {
+        console.log('🔙 [REVERTIR-IMPRIMIR] Acción cancelada por el usuario');
+        return;
+    }
+
+    try {
+        // Llamar al endpoint existente para actualizar secuencia
+        const response = await fetch(`${base}/actualizar-secuencia`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presupuestos_ids: [presupuestoId],
+                nueva_secuencia: 'Imprimir'
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            console.log(`✅ [REVERTIR-IMPRIMIR] Presupuesto ${presupuestoId} devuelto a "Imprimir" correctamente`);
+
+            // Mostrar mensaje de éxito
+            mostrarToast('✅ Presupuesto devuelto a la bandeja de impresión', 'success');
+
+            // Recargar datos para reflejar el cambio
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+
+                // Expandir sección "Imprimir" después de recargar
+                setTimeout(() => {
+                    console.log(`🔍 [REVERTIR-IMPRIMIR] Expandiendo sección "Imprimir"...`);
+                    forzarExpandirSeccion('pedidos-imprimir-section');
+
+                    // Expandir el cliente DENTRO de la sección "Imprimir"
+                    setTimeout(() => {
+                        abrirAcordeonEnSeccion(clienteId, 'pedidos-imprimir');
+                    }, 500);
+                }, 800);
+            }, 1000);
+        } else {
+            console.error('❌ [REVERTIR-IMPRIMIR] Error al actualizar secuencia:', data.error);
+            mostrarToast(`❌ Error: ${data.error || 'No se pudo devolver el presupuesto'}`, 'error');
+        }
+    } catch (error) {
+        console.error('❌ [REVERTIR-IMPRIMIR] Error al revertir:', error);
+        mostrarToast('❌ Error al devolver el presupuesto. Intente nuevamente.', 'error');
+    }
+}
+
+// Exponer función globalmente
+window.revertirAImprimir = revertirAImprimir;
+
+console.log('✅ [REVERTIR-IMPRIMIR] Módulo de reversión Armar→Imprimir cargado');
