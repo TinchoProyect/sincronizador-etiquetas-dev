@@ -8,16 +8,6 @@ const client = new Client({
     port: process.env.DB_PORT
 });
 client.connect()
-    .then(() => client.query("UPDATE ingredientes SET unidad_medida = 'Kilo' WHERE id = 154"))
-    .then(res => {
-        console.log('Update result:', res.rowCount);
-        return client.query('SELECT id, nombre, unidad_medida FROM ingredientes WHERE id = 154');
-    })
-    .then(res => {
-        console.log('Verification:', res.rows);
-        client.end();
-    })
-    .catch(err => {
-        console.error('DB ERROR:', err.message);
-        client.end();
-    });
+    .then(() => client.query("SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 'mantenimiento_movimientos' AND column_name = 'estado'"))
+    .then(res => { console.log('Estado default:', res.rows); client.end(); })
+    .catch(err => { console.error('DB:', err.message); client.end(); });

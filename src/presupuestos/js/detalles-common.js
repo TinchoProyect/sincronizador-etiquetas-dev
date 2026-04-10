@@ -120,8 +120,8 @@ function agregarDetalle() {
                         readonly>
                 </td>
 
-                <td>
-                    ${(typeof window.MODO_RETIRO !== 'undefined' && window.MODO_RETIRO) ? '' : `<button type="button" class="btn-sin-stock" onclick="window.Detalles.toggleSinStock(this)" title="Marcar artículo como Faltante">🚫</button><br>`}
+                <td style="white-space: nowrap;">
+                    ${(typeof window.MODO_RETIRO !== 'undefined' && window.MODO_RETIRO) ? '' : `<button type="button" class="btn-sin-stock" style="margin-right: 5px;" onclick="window.Detalles.toggleSinStock(this)" title="Marcar artículo como Faltante">🚫</button>`}
                     <button type="button" class="btn-remove-detalle"
                             onclick="window.Detalles.removerDetalle(${window.Detalles.detalleCounter})">
                     🗑️

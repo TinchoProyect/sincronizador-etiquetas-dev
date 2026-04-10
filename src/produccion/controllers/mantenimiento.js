@@ -1,6 +1,22 @@
 const pool = require('../config/database');
 
 /**
+ * Servicio modular de Higiene Visual para registros en Mantenimiento.
+ * @param {object} client - Cliente PostgreSQL transaccional
+ * @param {number|string} movimientoId - ID del registro original
+ * @param {string} reason - Motivo del cierre (ej: "Mantenimiento -> Ventas")
+ */
+const cleanUpMaintenanceRecord = async (client, movimientoId, reason) => {
+    const updateMov = `
+        UPDATE public.mantenimiento_movimientos
+        SET estado = 'FINALIZADO',
+            observaciones = COALESCE(observaciones, '') || $2
+        WHERE id = $1
+    `;
+    await client.query(updateMov, [movimientoId, ` [Limpieza: ${reason}]`]);
+};
+
+/**
  * Obtener stock actual en mantenimiento (Cuarentena)
  * Fuente: public.stock_real_consolidado
  */
@@ -678,13 +694,7 @@ async function liberarStock(req, res) {
         // Cierre Definitivo del Lote (HIGIENE):
         // Actualizamos estrictamente el lote transaccional a 'FINALIZADO'
         if (req.body.movimiento_id) {
-            const updateMov = `
-                UPDATE public.mantenimiento_movimientos
-                SET estado = 'FINALIZADO',
-                    observaciones = COALESCE(observaciones, '') || ' [Transferido Mantenimiento -> Ventas]'
-                WHERE id = $1
-            `;
-            await client.query(updateMov, [req.body.movimiento_id]);
+            await cleanUpMaintenanceRecord(client, req.body.movimiento_id, "Mantenimiento -> Ventas");
         }
         
         // Alta explícita en Ventas para el Destino
@@ -838,13 +848,7 @@ async function transferirAIngredientes(req, res) {
 
         // 5. HIGIENE DE BASE DATOS
         if (req.body.movimiento_id) {
-            const updateMovInterno = `
-                UPDATE public.mantenimiento_movimientos
-                SET estado = 'FINALIZADO',
-                    observaciones = COALESCE(observaciones, '') || ' [Transferido Mantenimiento -> Ingredientes]'
-                WHERE id = $1
-            `;
-            await client.query(updateMovInterno, [req.body.movimiento_id]);
+            await cleanUpMaintenanceRecord(client, req.body.movimiento_id, "Mantenimiento -> Ingredientes");
         }
 
         // Opcional: Registrar en historial de ingredientes si existe tabla. 
@@ -1991,6 +1995,11 @@ const retornarIngrediente = async (req, res) => {
         `, [ingrediente_id, pesoRetornoReal, obsAudit, stockActual]);
 
         // 3. Finalizar (Dar de baja) los registros en Mantenimiento preservando su observación original
+        if (req.body.movimiento_id) {
+            await cleanUpMaintenanceRecord(client, req.body.movimiento_id, "Retorno Ingrediente a Planta");
+        }
+
+        // Si no mandan movimiento_id (legacy fallback) finalizamos todo el stock pendiente de este ingrediente
         await client.query(`
             UPDATE public.mantenimiento_movimientos 
             SET estado = 'FINALIZADO'
@@ -2362,6 +2371,23 @@ const finalizarTratamiento = async (req, res) => {
     }
 };
 
+const limpiarRegistroAdministrativo = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { movimiento_id } = req.body;
+        if (!movimiento_id) throw new Error('ID de movimiento no proporcionado.');
+        
+        await cleanUpMaintenanceRecord(client, movimiento_id, "Administrativa Manual");
+        
+        res.json({ success: true, message: 'Registro ocultado exitosamente de la interfaz de activos.' });
+    } catch (error) {
+        console.error('❌ [MANTENIMIENTO] Error en limpieza administrativa:', error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -2387,5 +2413,6 @@ module.exports = {
     getTratamientosActivos,
     sellarTratamiento,
     abrirTratamiento,
-    finalizarTratamiento
+    finalizarTratamiento,
+    limpiarRegistroAdministrativo
 };

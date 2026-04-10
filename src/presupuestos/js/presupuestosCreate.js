@@ -324,8 +324,8 @@ function agregarDetalle() {
                         readonly>
                 </td>
 
-                <td>
-                    ${MODO_RETIRO ? '' : `<button type="button" class="btn-sin-stock" onclick="toggleSinStock(this)" title="Marcar artículo como Faltante">🚫</button><br>`}
+                <td style="white-space: nowrap;">
+                    ${MODO_RETIRO ? '' : `<button type="button" class="btn-sin-stock" style="margin-right: 5px;" onclick="toggleSinStock(this)" title="Marcar artículo como Faltante">🚫</button>`}
                     <button type="button" class="btn-remove-detalle"
                             onclick="removerDetalle(this)"
                             title="Eliminar línea">

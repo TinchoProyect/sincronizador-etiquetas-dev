@@ -2040,8 +2040,8 @@ function editarPresupuesto(presupuestoId) {
     let url = `/pages/editar-presupuesto.html?id=${presupuestoId}`;
 
     const presupuesto = appState.presupuestos.find(p => p.id === presupuestoId);
-    if (presupuesto && (presupuesto.estado === 'Orden de Retiro' || presupuesto.estado_logistico === 'PENDIENTE_ASIGNAR')) {
-        console.log('📦 [RUTEO] Detectado contexto de Retiro -> Activando modo retiro');
+    if (presupuesto && presupuesto.estado === 'Orden de Retiro') {
+        console.log('📦 [RUTEO] Detectado contexto de Retiro puro -> Activando modo retiro en URL');
         url += '&modo=retiro';
     }
 

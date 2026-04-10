@@ -185,8 +185,10 @@
 
         /* Modal y SweetAlerts personalizadas */
         .swal-wide-liberar {
-            max-width: 600px !important;
-            width: 90% !important;
+            max-width: 850px !important;
+            width: 95% !important;
+            padding: 2.5em 2em !important;
+            border-radius: 12px !important;
         }
 
         /* Buscador Inteligente Styles */
@@ -1114,11 +1116,14 @@
                     let dropInterno = '';
                     if (item.ingrediente_id) {
                         dropInterno += `
-                            <button onclick="abrirModalRetornoIngrediente('${item.ingrediente_id}', ${cantidad}, '${tituloPrincipal}')" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                            <button onclick="abrirModalRetornoIngrediente('${item.ingrediente_id}', ${cantidad}, '${tituloPrincipal}', ${item.id})" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 📦 Devolver a Ingredientes
                             </button>
                             <button onclick="window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 ↩️ Anular Movimiento Interno
+                            </button>
+                            <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.descripcion || item.ingrediente_id || ''}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                🧹 Limpiar Registro (Visual)
                             </button>
                         `;
                     } else {
@@ -1126,11 +1131,14 @@
                             <button onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}', ${item.id})" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 📦 Devolver a Ventas
                             </button>
-                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}')" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 🧪 Convertir a Ingredientes
                             </button>
                             <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 ↩️ Anular Traslado Interno
+                            </button>
+                            <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || item.ingrediente_id || 'Registro'}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                🧹 Limpiar Registro (Visual)
                             </button>
                         `;
                     }
@@ -1162,7 +1170,7 @@
                             <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}', ${item.id})">
                                 📦 Enviar a Ventas
                             </button>
-                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}')">
+                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})">
                                 🧪 Enviar a Ingredientes
                             </button>
                             ${esLomasoftOK ? `
@@ -1171,6 +1179,9 @@
                             </button>` : ''}
                             <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;" ${btnDisabled}>
                                 🗑️ Eliminar Recepción
+                            </button>
+                            <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || ''}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
+                                🧹 Limpiar Registro (Visual)
                             </button>
                         </div>
                     </div>
@@ -1331,8 +1342,8 @@
         async function liberarStock(clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId, movimientoId) {
             // Extraer nombre del articulo origen para UI amigable
             let nombreArtOrigen = '';
-            if (window.stockMantenimientoCache) {
-                const origenCache = window.stockMantenimientoCache.find(a => a.articulo_numero?.toString() === articuloActivo?.toString() || a.ingrediente_id?.toString() === articuloActivo?.toString());
+            if (window.mantenimientoStockData) {
+                const origenCache = window.mantenimientoStockData.find(a => a.articulo_numero?.toString() === articuloActivo?.toString() || a.ingrediente_id?.toString() === articuloActivo?.toString());
                 if (origenCache) nombreArtOrigen = origenCache.descripcion;
             }
 
@@ -1348,16 +1359,22 @@
             let articuloDestinoId = articuloActivo;
 
             const inputOpcionalHtml = `
-                    <div style="margin-top: 15px; text-align: left; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                        <label for="swal-buscador-art"><b>Reenvasar en (Buscar Destino Ventas):</b></label><br>
-                        <input type="text" id="swal-buscador-art" class="swal2-input" autocomplete="off" placeholder="Borrar para buscar Destino" value="${articuloActivo}" style="width: 100%; margin: 5px 0; font-size: 14px;">
-                        <ul id="swal-lista-articulos" style="list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 4px; display: none; text-align: left; position: absolute; width: 90%; z-index: 9999;"></ul>
-                        <div id="swal-destino-seleccionado" style="margin-top: 5px; font-weight: bold; color: #28a745; font-size: 13px;">Pre-seleccionado: Art. #${articuloActivo} (Original)</div>
+                    <div style="margin-top: 15px; text-align: left; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
+                        <label for="swal-buscador-art" style="font-size: 15px;"><b>Reenvasar en (Buscar Destino Ventas):</b></label><br>
+                        <input type="text" id="swal-buscador-art" class="swal2-input" autocomplete="off" placeholder="Borrar texto para buscar otro Destino..." value="${articuloActivo} ${nombreArtOrigen ? '- ' + nombreArtOrigen : ''}" style="width: 100%; margin: 8px 0; font-size: 15px; border-radius: 6px; box-sizing: border-box;">
+                        <ul id="swal-lista-articulos" style="list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 4px; display: none; text-align: left; position: absolute; width: 90%; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></ul>
+                        <div id="swal-destino-seleccionado" style="margin-top: 8px; font-weight: bold; color: #198754; font-size: 14px; background: #d1e7dd; padding: 6px 10px; border-radius: 4px; border: 1px solid #badbcc;">
+                            ✅ Pre-seleccionado: Art. #${articuloActivo} ${nombreArtOrigen ? '- ' + nombreArtOrigen : ''} (Original)
+                            <button type="button" style="margin-left:8px; padding:2px 5px; font-size:11px; background:red; color:white; border:none; border-radius:3px; cursor:pointer;"
+                                    onclick="event.stopPropagation(); window.swalDestinoLimpiado(this);">
+                                ❌ Limpiar Selección
+                            </button>
+                        </div>
                     </div>
 
-                    <div style="margin-top: 15px; text-align: left;">
+                    <div style="margin-top: 15px; text-align: left; width: 100%; box-sizing: border-box;">
                         <label for="swal-responsable"><b>Responsable de Salida:</b></label><br>
-                        <select id="swal-responsable" class="swal2-select" style="display: flex; width: 100%; font-size: 16px; margin-top: 5px; border-color: #dc3545;" required>
+                        <select id="swal-responsable" class="swal2-select" style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; font-size: 16px; border-color: #dc3545; padding: 10px;" required>
                             ${optionsHtml}
                         </select>
                     </div>
@@ -1429,9 +1446,9 @@
                                         
                                         // Función global atada a Window para ser visible por SweetAlert en DOM
                                         window.swalDestinoLimpiado = (btnElement) => {
-                                            articuloDestinoId = articuloActivo;
+                                            articuloDestinoId = null;
                                             document.getElementById('swal-buscador-art').value = '';
-                                            document.getElementById('swal-destino-seleccionado').innerHTML = `✅ Regresado al Artículo Original: <b>#${articuloActivo} ${nombreArtOrigen ? '- ' + nombreArtOrigen : ''}</b>`;
+                                            document.getElementById('swal-destino-seleccionado').innerHTML = `⚠️ <span style="color:#856404; background:#ffeeba; padding:3px 6px; border-radius:3px; border:1px solid #ffeeba;">Ningún destino seleccionado. Por favor, busque un artículo.</span>`;
                                         };
                                     });
                                     
@@ -1452,12 +1469,23 @@
                         if(e.target !== buscadorInput) {
                             listaResultados.style.display = 'none';
                         }
-                    });
+                    }); // <-- FIX: Restored closing brace/parenthesis
+                    
+                    // Y atamos el evento de limpiado pre-establecido (por si lo clickean de entrada)
+                    window.swalDestinoLimpiado = (btnElement) => {
+                        articuloDestinoId = null;
+                        document.getElementById('swal-buscador-art').value = '';
+                        document.getElementById('swal-destino-seleccionado').innerHTML = `⚠️ <span style="color:#856404; background:#ffeeba; padding:3px 6px; border-radius:3px; border:1px solid #ffeeba;">Ningún destino seleccionado. Por favor, busque un artículo.</span>`;
+                    };
                 },
                 preConfirm: () => {
                     const resp = document.getElementById('swal-responsable').value;
                     if (resp === '-1' || !resp) {
                         Swal.showValidationMessage('⚠️ Debe indicar quién es el operario Responsable.');
+                        return false;
+                    }
+                    if (!articuloDestinoId) {
+                        Swal.showValidationMessage('⚠️ Debe seleccionar un destino válido para el renvasado.');
                         return false;
                     }
                     return {
@@ -1539,12 +1567,22 @@
             }
         }
 
-        function abrirModalRetornoIngrediente(ingredienteId, cantidadOriginal, nombreIngrediente) {
+        function abrirModalRetornoIngrediente(ingredienteId, cantidadOriginal, nombreIngrediente, movimientoId = null) {
             document.getElementById('retorno-ingrediente-id').value = ingredienteId;
             const uiPesoOrig = document.getElementById('retorno-peso-orig');
             uiPesoOrig.textContent = parseFloat(cantidadOriginal).toFixed(3);
             uiPesoOrig.dataset.originalId = ingredienteId;
             uiPesoOrig.dataset.originalNombre = nombreIngrediente;
+            
+            // Requerimiento Higiene 
+            let reqMovId = document.getElementById('retorno-movimiento-id');
+            if(!reqMovId) {
+                reqMovId = document.createElement('input');
+                reqMovId.type = 'hidden';
+                reqMovId.id = 'retorno-movimiento-id';
+                document.getElementById('modal-retorno-ingrediente').appendChild(reqMovId);
+            }
+            reqMovId.value = movimientoId || '';
             
             document.getElementById('retorno-ingrediente-nombre').textContent = nombreIngrediente;
             document.getElementById('retorno-cantidad-real').value = parseFloat(cantidadOriginal).toFixed(3); // Por defecto mismo peso
@@ -1600,6 +1638,7 @@
 
             const cantidadReal = parseFloat(cantidadRealStr);
             const responsable = respSelect ? respSelect.value : null;
+            const movimientoId = document.getElementById('retorno-movimiento-id') ? document.getElementById('retorno-movimiento-id').value : '';
 
             try {
                 // Notifica al usuario que estamos procesando
@@ -1617,7 +1656,8 @@
                     body: JSON.stringify({ 
                         ingrediente_id: ingredienteId, 
                         cantidad_real: cantidadReal,
-                        responsable: responsable
+                        responsable: responsable,
+                        movimiento_id: movimientoId
                     })
                 });
 
@@ -1635,6 +1675,26 @@
             } catch (error) {
                 console.error(error);
                 Swal.fire('Error', 'Hubo un error al ejecutar el retorno: ' + error.message, 'error');
+            }
+        }
+
+        async function limpiarRegistroMantenimiento(idMovimiento, articulo) {
+            if(!confirm(`¿Está seguro de limpiar visualmente el registro de ${articulo} de la Mesa de Trabajo?\n\nLa limpieza es puramente visual (administrativa) y cerrará el ciclo del registro. El stock real continuará intacto si no ha sido consumido.`)) return;
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/limpiar-registro', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ movimiento_id: idMovimiento })
+                });
+                const data = await res.json();
+                if(data.success) {
+                    Swal.fire('Limpieza de Mesa', data.message, 'success');
+                    cargarStock();
+                } else {
+                    throw new Error(data.error); 
+                }
+            } catch(err) {
+                Swal.fire('Error', 'No se pudo retirar el registro: ' + err.message, 'error');
             }
         }
 
@@ -1974,7 +2034,7 @@
         // ==========================================
         // Modal Transferencia
         // ==========================================
-        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad, usuarioOriginalId, origenIngredienteId = null) {
+        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad, usuarioOriginalId, origenIngredienteId = null, movimientoId = null) {
             // Asegurar tipos numéricos
             const cantUnidades = parseFloat(unidades) || 0;
             const factorKilos = parseFloat(kilosPorUnidad) || 1;
@@ -2003,6 +2063,16 @@
                 document.getElementById('modal-body-transferencia').appendChild(reqIngOrig);
             }
             reqIngOrig.value = origenIngredienteId || '';
+
+            // Requerimiento Higiene 
+            let reqMovId = document.getElementById('transf-movimiento-id');
+            if(!reqMovId) {
+                reqMovId = document.createElement('input');
+                reqMovId.type = 'hidden';
+                reqMovId.id = 'transf-movimiento-id';
+                document.getElementById('modal-body-transferencia').appendChild(reqMovId);
+            }
+            reqMovId.value = movimientoId || '';
 
             const selectResp = document.getElementById('transf-responsable');
             if (selectResp) {
@@ -2066,6 +2136,7 @@
             const responsableSeleccionado = respVal === '-1' ? '' : respVal;
             const unidadesOrigen = document.getElementById('transf-unidades-origen').value;
             const origenIngredienteId = document.getElementById('transf-origen-ingrediente-id') ? document.getElementById('transf-origen-ingrediente-id').value : '';
+            const movimientoId = document.getElementById('transf-movimiento-id') ? document.getElementById('transf-movimiento-id').value : '';
 
             if (!ingredienteId || !cantidadReal) {
                 alert('⚠️ Por favor seleccione un ingrediente y la cantidad ingresada.');
@@ -2090,7 +2161,8 @@
                         observaciones: obs,
                         responsable: responsableSeleccionado,
                         unidades_origen: unidadesOrigen,
-                        origen_ingrediente_id: origenIngredienteId
+                        origen_ingrediente_id: origenIngredienteId,
+                        movimiento_id: movimientoId
                     })
                 });
 

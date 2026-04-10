@@ -150,15 +150,9 @@
             console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Input #fecha no encontrado; se enviarÄ‚Ä„ fecha del dÄ‚Â­a desde JS');
         }
 
-        // === MODO RETIRO: Detección por URL (Redundancia) ===
-        const modoRetiro = urlParams.get('modo') === 'retiro';
-        if (modoRetiro) {
-            console.log('📦 [EDIT] Modo retiro detectado por URL');
-            // Usar setTimeout para asegurar que la función esté definida
-            setTimeout(() => {
-                if (typeof activarModoRetiroEdicion === 'function') activarModoRetiroEdicion();
-            }, 100);
-        }
+        // === MODO RETIRO: La detección por URL ha sido depreciada por riesgo de contaminación. 
+        // El estado ahora se hidrata y define unívocamente vía backend en exp. presupuestoData.estado
+        // para garantizar comportamiento inmutable.
 
         // === 1.3 Defaults visibles (solo si corresponde) ===
         const tipoSel = document.getElementById('tipo_comprobante');

@@ -576,7 +576,7 @@ function renderizarFaltantes(detallesSinStock) {
                 <td>
                     <span class="articulo-descripcion" style="color:#d35400;">${escapeHtml(descripcion)}</span>
                 </td>
-                <td class="text-center" style="color:#d35400;">${formatearNumero(cantidad)}</td>
+                <td class="text-center" style="color:#d35400;">${cantidad}</td>
                 <td class="text-right" style="color:#7f8c8d; font-style: italic; font-size: 0.9em;">Sin disponibilidad</td>
             </tr>
         `;
