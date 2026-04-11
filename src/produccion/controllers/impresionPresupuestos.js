@@ -39,32 +39,43 @@ function generarBufferCodigoBarras(texto) {
 }
 
 /**
- * Generar string SVG del código de barras para HTML
- * @param {string} texto - Texto a codificar (ej: "12345-1")
- * @returns {string} String SVG
+ * Generar buffer de imagen PNG para Comandos Hardware ON/OFF Backend
+ * @param {string} texto - Texto a codificar
+ * @returns {Buffer} Buffer de imagen PNG
  */
+function generarBufferComando(texto) {
+    try {
+        const canvas = createCanvas();
+        JsBarcode(canvas, texto, {
+            format: "CODE128",
+            width: 2,
+            height: 60,
+            displayValue: false, // La etiqueta textual suplanta esto
+            margin: 0
+        });
+        return canvas.toBuffer('image/png');
+    } catch (error) {
+        console.error('❌ Error al generar barcode comando:', error);
+        return null;
+    }
+}
+
 function generarSVGCodigoBarras(texto) {
     try {
         const canvas = createCanvas();
         JsBarcode(canvas, texto, {
             format: "CODE128",
             width: 2,
-            height: 40, // Altura ajustada
+            height: 60, // Estandarizado al tamaño principal
             displayValue: true,
-            fontSize: 12,
-            margin: 5
+            fontSize: 14,
+            margin: 10
         });
         
-        // Convertir canvas a SVG string
-        const svgString = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="200" height="70" style="display: block; margin: 10px auto;">
-                <rect width="200" height="70" fill="white"/>
-                <image href="${canvas.toDataURL()}" width="200" height="70"/>
-            </svg>
-        `;
-        return svgString;
+        // Retornar directamente el tag img Base64 nativo, sin wrappers SVG que rompan el rendering
+        return `<img src="${canvas.toDataURL()}" style="display: block; margin: 0 auto; height: 80px;" alt="Código de Presupuesto"/>`;
     } catch (error) {
-        console.error('❌ Error al generar SVG código de barras:', error);
+        console.error('❌ Error al generar imagen código de barras HTML:', error);
         return '';
     }
 }
@@ -1495,8 +1506,10 @@ function renderizarPDFPresupuestoUnico(doc, {
     // CORRECCIÓN: Se usa .length para contar items distintos
     const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
     const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
+    const bufferComandoON = generarBufferComando('CMD-ON');
+    const bufferComandoOFF = generarBufferComando('CMD-OFF');
     
-    console.log(`📊 [BARCODE-PDF] Código: ${codigoBarras}, Total: ${totalArticulos}`);
+    console.log(`📊 [BARCODE-PDF] Código principal: ${codigoBarras}, Total: ${totalArticulos}, Comandos On/Off: Generados`);
     
     // ENCABEZADO
     doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
@@ -1830,20 +1843,60 @@ function renderizarPDFPresupuestoUnico(doc, {
     doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
     
     // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
+    // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
     if (bufferCodigoBarras) {
         try {
             doc.image(bufferCodigoBarras, 200, controlY + 45, { width: 140, height: 35 });
-            console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie`);
+            console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie central`);
         } catch (imgError) {
-            console.error(`❌ [BARCODE-PDF] Error al insertar imagen:`, imgError.message);
+            console.error(`❌ [BARCODE-PDF] Error al insertar imagen central:`, imgError.message);
         }
     }
-    
-    // PIE DE PÁGINA
+
+    // CÓDIGO DE BARRAS PRINCIPAL Y PIE DE PÁGINA (Aislados del resto del contenido)
     const pieY = Math.min(controlY + controlHeight + 50, 780);
+    
+    if (bufferCodigoBarras) {
+        try {
+            // El principal queda debajo del control de entrega pero siempre arriba del footer
+            doc.image(bufferCodigoBarras, 200, pieY - 35, { width: 140, height: 35 });
+            console.log(`✅ [BARCODE-PDF] Código de barras central reubicado`);
+        } catch (imgError) {
+            console.error(`❌ [BARCODE-PDF] Error al insertar imagen central:`, imgError.message);
+        }
+    }
+
     doc.fontSize(7).font('Helvetica').fillColor('#adb5bd')
        .text(`Sistema LAMDA - Presupuesto ${paginaActual} de ${totalPaginas} - ${new Date().toLocaleString('es-AR')}`,
-             50, pieY, { width: 490, align: 'center' });
+             50, pieY + 5, { width: 490, align: 'center' });
+             
+    // =========================================================
+    // INYECCIÓN INCÓGNITA HARDWARE (RELATIVA AL PIE DE CONTENIDO)
+    // =========================================================
+    // Posición Y basada en el barcode principal + margen
+    const bottomRelY = pieY - 5;
+    
+    // INYECCIÓN DE COMANDO START (LEFT)
+    if (bufferComandoON) {
+        try {
+            doc.image(bufferComandoON, 50, bottomRelY, { width: 70, height: 20 });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('black')
+               .text('ON', 50, bottomRelY + 22, { width: 70, align: 'center' });
+        } catch (imgError) {
+            console.error(`❌ [BARCODE-PDF] Error inyectando Comando ON:`, imgError.message);
+        }
+    }
+
+    // INYECCIÓN DE COMANDO STOP (RIGHT)
+    if (bufferComandoOFF) {
+        try {
+            doc.image(bufferComandoOFF, 475, bottomRelY, { width: 70, height: 20 });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('black')
+               .text('OFF', 475, bottomRelY + 22, { width: 70, align: 'center' });
+        } catch (imgError) {
+            console.error(`❌ [BARCODE-PDF] Error al insertar Comando OFF:`, imgError.message);
+        }
+    }
     
     doc.fillColor('black');
 }

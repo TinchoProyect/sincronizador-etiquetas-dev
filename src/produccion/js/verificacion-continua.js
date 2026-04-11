@@ -12,6 +12,12 @@ const ESTADOS_VC = {
     ESPERANDO_ARTICULOS: 'ESPERANDO_ARTICULOS'
 };
 
+// Códigos de hardware (comandos del sistema)
+const SYSTEM_COMMANDS = {
+    EXIT: 'CMD-OFF',
+    ENTER: 'CMD-ON'
+};
+
 const vc_estado_actual = {
     estado: ESTADOS_VC.ESPERANDO_PEDIDO, // Estado inicial
     cliente_id: null,
@@ -19,6 +25,7 @@ const vc_estado_actual = {
     presupuesto_id_local: null,
     presupuesto_id_ext: null,
     articulos: [],
+    errores: {}, // Contenedor persistente de fallos
     // Contadores
     total_pedidos: 0,
     total_escaneados: 0
@@ -131,6 +138,60 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// ==========================================
+// 3.B. LISTENER GLOBAL DE HARDWARE (ON COMMAND)
+// ==========================================
+let vc_globalScannerBuffer = '';
+let vc_globalScannerTimer = null;
+
+document.addEventListener('keydown', (e) => {
+    const modalVC = document.getElementById('modal-verificacion-continua');
+    const isModalOpen = modalVC && modalVC.style.display !== 'none';
+    
+    // Si el modal está abierto, su propio input maneja el escáner
+    if (isModalOpen) return;
+
+    if (e.key === 'Enter') {
+        console.log("[VC-GLOBAL] Escáner disparó Enter. Buffer actual:", JSON.stringify(vc_globalScannerBuffer));
+        
+        // Limpiamos saltos reales y también caracteres de puntuación conflictivos por teclados desconfigurados
+        const cleanBuffer = vc_globalScannerBuffer.toUpperCase().trim().replace(/['\-_\n\r\s]/g, '');
+        const targetEnter = SYSTEM_COMMANDS.ENTER.replace(/[-]/g, ''); // "CMDON"
+        
+        if (cleanBuffer.includes(targetEnter)) {
+            e.preventDefault();
+            e.stopPropagation(); // Aniquilar event bubbling
+            
+            // Destrucción Forzada del Foco (Blur)
+            if (document.activeElement) {
+                document.activeElement.blur();
+            }
+            
+            console.log(`[VC] COMANDO HARDWARE GLOBAL DETECTADO: INICIAR (${SYSTEM_COMMANDS.ENTER})`);
+            
+            vc_abrirModal();
+        }
+        vc_globalScannerBuffer = '';
+    } else if (e.key.length === 1) {
+        // Solo acumular si el escáner escribe rápido y el flag activo (ej. en 50ms)
+        vc_globalScannerBuffer += e.key;
+
+        const partialClean = vc_globalScannerBuffer.toUpperCase().trim().replace(/['\-_\n\r\s]/g, '');
+        const targetEnterPartial = SYSTEM_COMMANDS.ENTER.replace(/[-]/g, '');
+        // Aniquilar el foco si empezamos a matar un comando global (Protege frente a enters fantasmas)
+        if (partialClean && targetEnterPartial.startsWith(partialClean)) {
+            if (document.activeElement) {
+                document.activeElement.blur();
+            }
+        }
+
+        clearTimeout(vc_globalScannerTimer);
+        vc_globalScannerTimer = setTimeout(() => {
+            // El usuario tecleó manual, limpiamos el buffer
+            vc_globalScannerBuffer = '';
+        }, 50);
+    }
+}, true); // <- Fase de Captura (Event Capturing) en lugar de Bubbling
 
 // ==========================================
 // 4. LÓGICA DE TRANSICIÓN DE UI
@@ -197,6 +258,9 @@ function vc_actualizarUI_PorEstado() {
         estadoTexto.textContent = 'ESPERANDO ARTÍCULOS';
         scannerBox.style.borderColor = '#007bff';
         scannerBox.style.backgroundColor = '#e9f2ff';
+        scannerBox.style.padding = '10px'; // UI Compactada
+        scannerInput.style.padding = '10px'; // UI Compactada
+        scannerInput.style.fontSize = '18px'; // UI Compactada
         scannerLabel.textContent = 'Escanear Código de Barras de Artículo:';
         scannerLabel.style.color = '#0056b3';
         scannerInput.placeholder = 'Escanee los artículos del pedido...';
@@ -207,8 +271,14 @@ function vc_actualizarUI_PorEstado() {
         document.getElementById('vc-presupuesto-id-ext').textContent = vc_estado_actual.presupuesto_id_ext || 'N/A';
         
         infoPedidoContainer.style.display = 'flex';
+        infoPedidoContainer.style.padding = '10px 15px'; // UI Compactada
+        infoPedidoContainer.style.marginTop = '10px'; // UI Compactada
+        
         progresoSection.style.display = 'block';
+        progresoSection.style.marginTop = '10px'; // UI Compactada
+        
         tablaContainer.style.display = 'block';
+        tablaContainer.style.marginTop = '10px'; // UI Compactada
         
         vc_renderizarTablaArticulos();
         vc_actualizarBarraDeProgreso();
@@ -283,6 +353,15 @@ function vc_resetearMaquinaDeEstados() {
 }
 
 function vc_procesarEscaneo(codigo) {
+    // === GUARDA LÓGICA DE HARDWARE ===
+    if (codigo.toUpperCase() === SYSTEM_COMMANDS.EXIT) {
+        console.warn(`[VC] COMANDO HARDWARE DETECTADO: SALIR (${SYSTEM_COMMANDS.EXIT})`);
+        // Opcional: vc_beepVictory() o algún feedback audible?
+        if (typeof vc_beepSuccess === 'function') vc_beepSuccess(); // Usar beep de exito para salida limpia
+        window.cerrarVerificacionContinua();
+        return;
+    }
+
     if (vc_estado_actual.estado === ESTADOS_VC.ESPERANDO_PEDIDO) {
         vc_buscarYActivarPedido(codigo);
     } else if (vc_estado_actual.estado === ESTADOS_VC.ESPERANDO_ARTICULOS) {
@@ -375,6 +454,9 @@ function vc_buscarYActivarPedido(codigo_escaneado) {
     
     vc_estado_actual.total_pedidos = subtotalLineasPedidas;
     vc_estado_actual.total_escaneados = 0;
+    vc_estado_actual.errores = {}; // Reset de matriz de errores
+    window.rejectedScans = []; // Reset Inmutable
+    vc_renderizarErrores(); // Purga visual del modal
     
     vc_beepSuccess();
     
@@ -387,6 +469,10 @@ function vc_buscarYActivarPedido(codigo_escaneado) {
 function vc_procesarArticuloFisico(codigo_escaneado) {
     const term = codigo_escaneado.toString().trim().toLowerCase();
     console.log(`[VC] Evaluando código artículo: ${term}`);
+
+    // UI Compacta: Limpieza instantánea para escanear a máxima velocidad
+    const scannerInput = document.getElementById('vc-scanner-input');
+    if (scannerInput) scannerInput.value = '';
 
     // Buscar el artículo en el presupuesto cargado
     // Soporta esaneo nativo por código del sistema o por código de barras.
@@ -408,6 +494,26 @@ function vc_procesarArticuloFisico(codigo_escaneado) {
     if (!itemAsociado) {
         // EXCEPCIÓN 2: ARTÍCULO FORÁNEO
         vc_beepError();
+        
+        // Bloqueo Optimista: Registrar Foráneo Inmediato
+        vc_registrarError(term, 'Buscando descripción...', false, false);
+        
+        // Fetch background: Hidratar descripción real buscando en el stock general
+        fetch(`/api/produccion/articulos?codigo_barras=${encodeURIComponent(term)}`)
+            .then(res => res.json())
+            .then(data => {
+                let nombreReal = 'Artículo Desconocido';
+                if (data && data.success && data.data && data.data.length > 0) {
+                    nombreReal = data.data[0].descripcion || data.data[0].nombre;
+                }
+                const descripcionVisual = `${nombreReal} - Foráneo`;
+                // isUpdateInfo = true, actualiza descripción sin subir el contador
+                vc_registrarError(term, descripcionVisual, false, true); 
+            })
+            .catch(() => {
+                vc_registrarError(term, 'Artículo Desconocido / Foráneo', false, true);
+            });
+
         vc_mostrarFeedback(`ERROR LECTURA: El código "${codigo_escaneado}" NO pertenece a este pedido.`, "error");
         return;
     }
@@ -415,6 +521,7 @@ function vc_procesarArticuloFisico(codigo_escaneado) {
     // EXCEPCIÓN 1: OVERSCANNING
     if (itemAsociado.cantidad_escaneada >= itemAsociado.pedido_total) {
         vc_beepError();
+        vc_registrarError(itemAsociado.codigo_principal || term, itemAsociado.descripcion, true, false);
         vc_mostrarFeedback(`EXCESO (Overscan): El artículo "${itemAsociado.descripcion}" ya está completo (${itemAsociado.pedido_total}/${itemAsociado.pedido_total}).`, "error");
         return;
     }
@@ -440,6 +547,107 @@ function vc_procesarArticuloFisico(codigo_escaneado) {
     }
 }
 
+
+// === ESTADO INMUTABLE GLOBAL (Auditoría QA) ===
+window.rejectedScans = window.rejectedScans || [];
+
+function vc_registrarError(codigo, descripcion, isOverscan = false, isUpdateInfo = false) {
+    // Mutación Inmutable solicitada por QA
+    const prevScans = [...window.rejectedScans];
+    const index = prevScans.findIndex(s => s.codigo === codigo);
+    
+    if (index >= 0) {
+        // Actualizar datos sin acumular conteo si solo es hidratación de texto (isUpdateInfo)
+        const nuevaCantidad = isUpdateInfo ? prevScans[index].cantidad : prevScans[index].cantidad + 1;
+        const nuevaDesc = isUpdateInfo ? descripcion : prevScans[index].descripcion;
+        prevScans[index] = { ...prevScans[index], cantidad: nuevaCantidad, descripcion: nuevaDesc };
+        window.rejectedScans = prevScans;
+    } else {
+        window.rejectedScans = [...prevScans, { codigo: codigo, descripcion: descripcion, cantidad: 1, overscan: isOverscan }];
+    }
+    
+    vc_renderizarErrores();
+}
+
+function vc_renderizarErrores() {
+    // 1. Desbloqueo de Colapso CSS (Flexbox / Overflow)
+    // El modal body original tenía {overflow: hidden; flex: 1} lo que en pantallas chicas colapsaba
+    // el espacio sobrante a 0px de altura, ocultando toda la tabla dinámicamente.
+    const modalBody = document.querySelector('#modal-verificacion-continua .modal-body');
+    if (modalBody) {
+        modalBody.style.overflowY = 'auto'; // Habilitar scroll del modal en laptop/monitores chicos
+        modalBody.style.padding = '10px 15px'; // QA Fallo 1: Padding mas chico
+    }
+    
+    const tablaArticulos = document.getElementById('vc-articulos-container');
+    if (tablaArticulos) {
+        tablaArticulos.style.minHeight = '100px'; 
+        tablaArticulos.style.maxHeight = '28vh'; // QA Fallo 1: Bloquear expansión infinita, delegar en scroll interno
+        tablaArticulos.style.overflowY = 'auto'; // Habilitar scroll interno de tabla principal
+    }
+
+    // 2. Extender contenedor seguro en DOM
+    let container = document.getElementById('vc-errores-container-force');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'vc-errores-container-force';
+        container.style.marginTop = '15px';
+        container.style.border = '3px solid #dc3545';
+        container.style.borderRadius = '8px';
+        container.style.backgroundColor = '#fff8f8';
+        container.style.padding = '10px';
+        container.style.marginBottom = '15px';
+        container.style.flexShrink = '0';
+        
+        // Lo insertamos encima de la tabla principal para que los errores nunca se pierdan de vista
+        if (tablaArticulos && tablaArticulos.parentNode) {
+            tablaArticulos.parentNode.insertBefore(container, tablaArticulos);
+        } else if (modalBody) {
+            modalBody.appendChild(container);
+        }
+    }
+    
+    // 3. Renderizado Condicional
+    if (!window.rejectedScans || window.rejectedScans.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    // Activar vista
+    container.style.display = 'block';
+    
+    let html = `
+        <div style="background-color: #dc3545; color: white; padding: 4px 10px; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; justify-content: space-between; border-radius: 4px;">
+            <span>⚠️ Historial de Artículos Rechazados / Fuera de Pedido</span>
+            <span style="background: white; color: #dc3545; padding: 1px 6px; border-radius: 12px; font-size: 0.8em;">Total SKUs: ${window.rejectedScans.length}</span>
+        </div>
+        <table style="width: 100%; margin-top: 5px; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid #f5c6cb;">
+                    <th style="padding: 4px 6px; color: #dc3545; text-align: left; font-size: 0.85em;">Código Escaneado</th>
+                    <th style="padding: 4px 6px; color: #dc3545; text-align: left; font-size: 0.85em;">Descripción / Razón</th>
+                    <th style="padding: 4px 6px; color: #dc3545; text-align: center; font-size: 0.85em;">Cant.</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    window.rejectedScans.forEach(err => {
+        html += `
+            <tr style="border-bottom: 1px solid #f5c6cb;">
+                <td style="padding: 4px 6px; font-weight: bold; color: #dc3545; font-size: 0.9em;">${err.codigo}</td>
+                <td style="padding: 4px 6px; color: #dc3545; font-weight: 500; font-size: 0.9em;">
+                    ${err.descripcion} 
+                    ${err.overscan ? '<span style="font-size: 0.7em; background: #dc3545; color: white; padding: 1px 4px; border-radius: 3px; margin-left: 6px;">Exceso</span>' : ''}
+                </td>
+                <td style="padding: 4px 6px; text-align: center; font-weight: bold; font-size: 1em; color: #dc3545;">${err.cantidad}</td>
+            </tr>
+        `;
+    });
+    
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+}
 
 // ==========================================
 // 6. OPERACIONES FINALES Y RENDERIZADO DOM
@@ -523,8 +731,8 @@ function vc_actualizarBarraDeProgreso() {
     }
     
     barra.style.width = `${porcentaje}%`;
-    barra.textContent = `${Math.floor(porcentaje)}%`;
-    texto.textContent = `${vc_estado_actual.total_escaneados} de ${vc_estado_actual.total_pedidos} artículos totales verificados`;
+    barra.textContent = ``; // Quitamos el texto interno para que la barra de 10px no se desborde
+    texto.textContent = `${Math.floor(porcentaje)}% - ${vc_estado_actual.total_escaneados} de ${vc_estado_actual.total_pedidos} artículos totales`;
     
     if (porcentaje >= 100) {
         barra.style.backgroundColor = '#28a745';

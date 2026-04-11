@@ -426,7 +426,7 @@ function generarCodigoBarras(numeroPresupuesto) {
             return;
         }
 
-        // Generar código de barras CODE128
+        // Generar código de barras CODE128 (Principal del Presupuesto)
         JsBarcode(barcodeElement, String(numeroPresupuesto), {
             format: 'CODE128',
             width: 2,
@@ -437,6 +437,81 @@ function generarCodigoBarras(numeroPresupuesto) {
             background: '#ffffff',
             lineColor: '#000000'
         });
+        
+        // ==========================================
+        // INYECCIÓN RELATIVA HARDWARE (SIN ROMPER PAGINACIÓN)
+        // ==========================================
+        const barcodeContainer = barcodeElement.parentElement;
+        
+        // Evitar inyecciones duplicadas si la función se llama varias veces para el mismo remito
+        if (barcodeContainer && !barcodeContainer.parentElement.querySelector('.comandos-hardware-relativos')) {
+            const footerRelativo = document.createElement('div');
+            footerRelativo.className = 'comandos-hardware-relativos';
+            // Se incrementó 1cm extra a pedido de QA (Ahora 3cm total)
+            footerRelativo.style.marginTop = '3cm';
+            footerRelativo.style.display = 'flex';
+            footerRelativo.style.justifyContent = 'space-between';
+            footerRelativo.style.padding = '0 1cm';
+            footerRelativo.style.boxSizing = 'border-box';
+            footerRelativo.style.width = '100%';
+            footerRelativo.style.pageBreakInside = 'avoid';
+
+            // Contenedor IZQUIERDO (ON)
+            const wrapperON = document.createElement('div');
+            wrapperON.style.textAlign = 'center';
+            
+            const imgON = document.createElement('img');
+            imgON.style.height = '25px';
+            
+            const textON = document.createElement('div');
+            textON.textContent = 'ON';
+            textON.style.fontSize = '8pt';
+            textON.style.fontWeight = 'bold';
+
+            wrapperON.appendChild(imgON);
+            wrapperON.appendChild(textON);
+
+            // Contenedor DERECHO (OFF)
+            const wrapperOFF = document.createElement('div');
+            wrapperOFF.style.textAlign = 'center';
+            
+            const imgOFF = document.createElement('img');
+            imgOFF.style.height = '25px';
+            
+            const textOFF = document.createElement('div');
+            textOFF.textContent = 'OFF';
+            textOFF.style.fontSize = '8pt';
+            textOFF.style.fontWeight = 'bold';
+
+            wrapperOFF.appendChild(imgOFF);
+            wrapperOFF.appendChild(textOFF);
+
+            // Armar estructura
+            footerRelativo.appendChild(wrapperON);
+            footerRelativo.appendChild(wrapperOFF);
+            
+            // Inyectar justo después del contenedor del código de barras principal
+            barcodeContainer.parentElement.appendChild(footerRelativo);
+
+            // Renderizar Barcodes estandarizados a tamaño principal
+            JsBarcode(imgON, "CMD-ON", {
+                format: 'CODE128',
+                width: 2, 
+                height: 60, 
+                displayValue: false, 
+                margin: 0
+            });
+
+            JsBarcode(imgOFF, "CMD-OFF", {
+                format: 'CODE128',
+                width: 2, 
+                height: 60, 
+                displayValue: false, 
+                margin: 0
+            });
+            
+            console.log('✅ [IMPRIMIR-PRESUPUESTO] Footer relativo inyectado correctamente');
+        }
 
         console.log('✅ [IMPRIMIR-PRESUPUESTO] Código de barras generado correctamente');
 
@@ -780,10 +855,30 @@ function imprimirPresupuesto() {
         return;
     }
 
-    // Disparar diálogo de impresión del navegador
-    window.print();
+    // Delay controlado (500ms) para garantizar el dibujo y flush (Race-condition / batch fixes)
+    setTimeout(() => {
+        // --- VIGÍA DEPURADOR DE REDERIZADO DE COMANDOS (EVIDENCIA QA) ---
+        console.log('🔍 [VIGÍA DEPURADOR] ESTADO DEL DOM ANTES DE IMPRESIÓN');
+        
+        const header = document.querySelector('.empresa-header');
+        if (header) {
+            console.log('📌 HEADER (Comando ON):', header.innerHTML.substring(0, 300) + '...');
+            const imgStart = document.getElementById('barcode-cmd-iniciar');
+            console.log('   -> Imagen START Base64 (Validez):', imgStart ? (imgStart.src.startsWith('data:image') ? 'OK (Base64 Generado)' : 'FALLA (Mala fuente)') : 'NO EXISTE');
+        }
 
-    console.log('✅ [IMPRIMIR-PRESUPUESTO] Diálogo de impresión abierto');
+        const totalsContainer = document.querySelector('.totales-barcode-container .barcode-left');
+        if (totalsContainer) {
+            console.log('📌 FOOTER/TOTALES (Comando OFF):', totalsContainer.innerHTML.substring(0, 300) + '...');
+            const imgEnd = document.getElementById('barcode-cmd-finalizar');
+            console.log('   -> Imagen END Base64 (Validez):', imgEnd ? (imgEnd.src.startsWith('data:image') ? 'OK (Base64 Generado)' : 'FALLA (Mala fuente)') : 'NO EXISTE');
+        }
+        console.log('========================================================');
+
+        // Disparar diálogo de impresión del navegador
+        window.print();
+        console.log('✅ [IMPRIMIR-PRESUPUESTO] Diálogo de impresión abierto');
+    }, 500);
 }
 
 function volverALista() {

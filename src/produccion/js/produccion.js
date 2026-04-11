@@ -481,7 +481,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 presupuestoHeader.title = 'Clic derecho para más opciones';
             }
 
-            // NUEVO: Botón "Retira Depósito" (solo en acordeón "Pedido Listo")
+            // NUEVO: Botón "Retira Depósito" y Rolback QA (solo en acordeón "Pedido Listo")
             if (containerId === 'pedidos-listo') {
                 const btnRetiraDeposito = document.createElement('button');
                 btnRetiraDeposito.textContent = '🏪 Retira Depósito';
@@ -494,6 +494,20 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     await marcarComoRetiraDeposito(presupuesto.presupuesto_id, cliente.cliente_id);
                 });
                 botonesPresupuesto.appendChild(btnRetiraDeposito);
+
+                // Menú contextual (clic derecho) de Reversión (QA y Operativa)
+                presupuestoHeader.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    mostrarMenuContextualGenerico(e, [
+                        {
+                            label: 'Regresar a Armar Pedido (Reset)',
+                            icon: '🔄',
+                            action: () => revertirAArmarPedido(presupuesto.presupuesto_id, cliente.cliente_id)
+                        }
+                    ]);
+                });
+                presupuestoHeader.title = 'Clic derecho para reversión';
             }
 
             // NUEVO: Botón "Volver a Reparto" (solo en acordeón "Retira por Depósito")
@@ -2414,3 +2428,58 @@ async function revertirAImprimir(presupuestoId, clienteId) {
 window.revertirAImprimir = revertirAImprimir;
 
 console.log('✅ [REVERTIR-IMPRIMIR] Módulo de reversión Armar→Imprimir cargado');
+
+// ==========================================
+// REVERSIÓN: PEDIDO LISTO → ARMAR PEDIDO
+// ==========================================
+
+/**
+ * Revierte un presupuesto de "Pedido Listo" a "Armar_Pedido".
+ * Creado como vía de escape operativa manual para corregir cierres de QA o del escáner en Verificación Continua.
+ * El reset a 0 es implicíto en memoria ya que los arrays de lectura nacen estériles; sólo mutamos el documento central.
+ * @param {string} presupuestoId - ID base del presupuesto 
+ * @param {number} clienteId - ID del cliente para redibujar el state
+ */
+async function revertirAArmarPedido(presupuestoId, clienteId) {
+    console.log(`🔙 [REVERTIR-ARMAR] Revirtiendo presupuesto ${presupuestoId} a "Armar_Pedido"`);
+
+    if (!confirm(`¿Devolver el presupuesto ${presupuestoId} a la bandeja de Armar Pedido?\n\nTodo el progreso de empaque de este pedido se reseteará a cero (0).`)) {
+        console.log('🔙 [REVERTIR-ARMAR] Acción cancelada por el usuario');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${base}/actualizar-secuencia`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                presupuestos_ids: [presupuestoId],
+                nueva_secuencia: 'Armar_Pedido'
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            console.log(`✅ [REVERTIR-ARMAR] Presupuesto ${presupuestoId} purgado y devuelto a "Armar_Pedido" correctamente`);
+            mostrarToast('✅ Pedido purgado. Reenviado a la bandeja de Armado.', 'success');
+
+            setTimeout(() => {
+                cargarPedidosPorCliente();
+                setTimeout(() => {
+                    forzarExpandirSeccion('pedidos-armar-section');
+                    setTimeout(() => { abrirAcordeonEnSeccion(clienteId, 'pedidos-armar'); }, 500);
+                }, 800);
+            }, 1000);
+        } else {
+            console.error('❌ [REVERTIR-ARMAR] Error:', data.error);
+            mostrarToast(`❌ Error: ${data.error || 'Fallo de Reversión'}`, 'error');
+        }
+    } catch (error) {
+        console.error('❌ [REVERTIR-ARMAR] Error al revertir:', error);
+        mostrarToast('❌ Fallo de servidor al revertir el pedido.', 'error');
+    }
+}
+
+window.revertirAArmarPedido = revertirAArmarPedido;
+console.log('✅ [REVERTIR-ARMAR] Módulo de reversión QA Listo→Armar cargado');
