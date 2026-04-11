@@ -44,7 +44,7 @@ async function cargarPendientes() {
                                 <div class="entrega-badge badge-pendiente" style="background:${borderColor}; color:${iconColor};">${p.estado_logistico || 'Pendiente'}</div>
                             </div>
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
-                                <div class="entrega-cliente" style="font-size: 0.95rem;">👤 ${p.cliente_nombre}</div>
+                                <div class="entrega-cliente" style="font-size: 0.95rem;">👤 <strong>[#${p.cliente_id || 'S/N'}]</strong> ${p.cliente_nombre}</div>
                                 <button onclick="DomiciliosUI.abrirModalABM(${p.cliente_id})" style="background: #e2e8f0; color: #3b82f6; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">📍 Domicilios</button>
                             </div>
                             <div class="entrega-direccion" style="margin-bottom: 0; font-size: 0.85rem;">
@@ -98,10 +98,26 @@ async function abrirModalNuevaRuta() {
         if(result.success) {
             choferesHtml = '<option value="">Seleccione un chofer...</option>';
             result.data.forEach(c => {
-                choferesHtml += `<option value="${c.id}">${c.nombre_completo || c.usuario}</option>`;
+                // Pre-seleccionar al chofer que coincide con el usuario logueado (por ID de sesión)
+                // CRÍTICO: NO usar comparación por nombre, ya que puede haber homónimos con IDs distintos
+                const sesionActual = obtenerSesion();
+                const seleccionado = (sesionActual && String(c.id) === String(sesionActual.id)) ? 'selected' : '';
+                choferesHtml += `<option value="${c.id}" ${seleccionado}>${c.nombre_completo || c.usuario}</option>`;
             });
         }
     } catch(e) { console.error(e); }
+
+    // Generar nombre sugerido: "Logística - [Día] DD/MM/YYYY - HH:MM:SS"
+    const hoy = new Date();
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const diaSemana = diasSemana[hoy.getDay()];
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const yyyy = hoy.getFullYear();
+    const hh = String(hoy.getHours()).padStart(2, '0');
+    const min = String(hoy.getMinutes()).padStart(2, '0');
+    const ss = String(hoy.getSeconds()).padStart(2, '0');
+    const nombreSugerido = `Logística - ${diaSemana} ${dd}/${mm}/${yyyy} - ${hh}:${min}:${ss}`;
 
     const modalHtml = `
     <div id="modal-dinamico-ruta" class="modal-mobile" style="display: flex;">
@@ -112,7 +128,7 @@ async function abrirModalNuevaRuta() {
             </div>
             <div class="form-group">
                 <label style="font-weight:bold; margin-bottom:0.5rem; display:block;">Nombre de Ruta</label>
-                <input type="text" id="nueva-ruta-nombre" placeholder="Ej: Reparto Tarde CABA" class="form-control" style="width:100%; padding:0.75rem; border:1px solid #cbd5e1; border-radius:0.5rem; margin-bottom:1rem; font-size:1rem;">
+                <input type="text" id="nueva-ruta-nombre" value="${nombreSugerido}" placeholder="Ej: Reparto Tarde CABA" class="form-control" style="width:100%; padding:0.75rem; border:1px solid #cbd5e1; border-radius:0.5rem; margin-bottom:1rem; font-size:1rem;">
             </div>
             <div class="form-group">
                 <label style="font-weight:bold; margin-bottom:0.5rem; display:block;">Chofer Asignado</label>
@@ -129,6 +145,7 @@ async function abrirModalNuevaRuta() {
     </div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
+    // Pre-popular fecha de salida con la hora actual
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     document.getElementById('nueva-ruta-fecha').value = now.toISOString().slice(0,16);
@@ -158,12 +175,20 @@ async function ejecutarCrearRuta(event) {
         const result = await response.json();
         if(result.success) {
             document.getElementById('modal-dinamico-ruta').remove();
-            alert('¡Ruta creada exitosamente!');
-            cargarPendientes();
-            setTimeout(() => {
-                switchTab('ruta');
-                cargarRutaActiva();
-            }, 800);
+
+            // Notificar éxito con SweetAlert (no bloqueante)
+            await Swal.fire({
+                icon: 'success',
+                title: '¡Ruta creada!',
+                text: 'La ruta fue creada exitosamente.',
+                confirmButtonColor: '#2563eb',
+                timer: 2000,
+                timerProgressBar: true
+            });
+
+            // Navegar a Mi Ruta y forzar re-fetch del estado
+            switchTab('ruta');
+            await cargarRutaActiva();
         } else {
             alert(result.error || 'No se pudo crear la ruta.');
         }

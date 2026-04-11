@@ -117,7 +117,7 @@ async function iniciarSesion() {
 
             console.log('[LOGIN] Sesión iniciada exitosamente');
 
-            // Redirigir a ruta
+            // Redirigir a home
             window.location.href = 'home.html';
 
         } else {
@@ -168,10 +168,13 @@ function mostrarExito(mensaje) {
     alert('✅ ' + mensaje);
 }
 
-// ===== GESTIÓN DE RUTA ===== 
+// ===== GESTIÓN DE RUTA =====
 
 /**
- * Cargar ruta activa del chofer
+ * Cargar ruta activa del chofer desde el backend.
+ * Si no encuentra una ruta activa, muestra un empty state con
+ * un botón de "Crear Nueva Ruta" para eliminar la fricción de
+ * tener que navegar a la pestaña Pendientes.
  */
 async function cargarRutaActiva() {
     const container = document.getElementById('entregas-container');
@@ -189,8 +192,13 @@ async function cargarRutaActiva() {
             return;
         }
 
-        // Llamar a API de ruta activa
+        // Diagnóstico: mostrar ID del token para verificar coincidencia con id_chofer de la ruta
+        console.log('[RUTA] Token utilizado:', sesion.token);
+        console.log('[RUTA] ID sesión (user.id del login):', sesion.id);
+
+        // Llamar a API de ruta activa (cache: 'no-store' para evitar 304/caché del Service Worker)
         const response = await fetch(`${API_BASE_URL}/api/logistica/movil/ruta-activa`, {
+            cache: 'no-store',
             headers: {
                 'Authorization': `Bearer ${sesion.token}`
             }
@@ -202,10 +210,8 @@ async function cargarRutaActiva() {
             state.ruta = result.data.ruta;
             state.entregas = result.data.entregas || [];
 
-            // Actualizar header
+            // Actualizar header y renderizar entregas
             actualizarHeader();
-
-            // Renderizar entregas
             renderizarEntregas();
 
             console.log('[RUTA] Ruta cargada:', state.ruta.nombre_ruta);
@@ -218,20 +224,26 @@ async function cargarRutaActiva() {
     } catch (error) {
         console.error('[RUTA] Error al cargar ruta:', error);
 
-        // Mostrar estado vacío
+        // Resetear estado local
+        state.ruta = null;
+        state.entregas = [];
+
+        // Estado vacío con botón de creación directa (sin necesidad de ir a Pendientes)
         container.innerHTML = `
             <div class="empty-state">
                 <div class="empty-state-icon">📭</div>
                 <h2>Sin Ruta Asignada</h2>
                 <p>No tienes una ruta activa para hoy.</p>
-                <p class="mt-1">Contacta con el backoffice.</p>
+                <button onclick="abrirModalNuevaRuta()" style="margin-top: 1.5rem; padding: 14px 20px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; width: 100%; box-shadow: 0 4px 6px rgba(37,99,235,0.3);">
+                    🛣️ Crear Nueva Ruta
+                </button>
             </div>
         `;
     }
 }
 
 /**
- * Actualizar información del header
+ * Actualizar información del header (nombre del chofer, ruta y estadísticas)
  */
 function actualizarHeader() {
     const sesion = obtenerSesion();
@@ -263,25 +275,23 @@ function actualizarHeader() {
 }
 
 /**
- * Renderizar lista de entregas (Agrupadas por Parada)
+ * Renderizar lista de entregas (delegado a RutaActivaUI.js)
  */
 
 /**
- * Agrupar entregas por Cliente + Domicilio
+ * Agrupar entregas por Cliente + Domicilio (delegado a RutaActivaUI.js)
  */
 
 /**
- * Navegar a una entrega usando Google Maps
+ * Navegar a una entrega usando Google Maps (delegado a RutaActivaUI.js)
  */
 
 /**
- * Confirmar entrega
- * Delega a módulo de confirmación
+ * Confirmar entrega (delegado a módulo de confirmación)
  */
 
 /**
- * Refrescar ruta
- * Delega a módulo de ruta
+ * Refrescar ruta (delega a módulo de ruta)
  */
 async function refrescarRuta() {
     import('./modules/ruta.js').then(module => {
@@ -292,8 +302,7 @@ async function refrescarRuta() {
 }
 
 /**
- * Finalizar ruta del día
- * Delega a módulo de ruta
+ * Finalizar ruta del día (delegado a módulo de ruta)
  */
 
 /**
@@ -309,7 +318,7 @@ function cerrarModalEntrega() {
 // ===== UTILIDADES =====
 
 /**
- * Formatear fecha
+ * Formatear fecha en formato legible (español argentino)
  */
 function formatearFecha(fecha) {
     const date = new Date(fecha);
@@ -322,7 +331,7 @@ function formatearFecha(fecha) {
 }
 
 /**
- * Formatear hora
+ * Formatear hora en formato HH:MM
  */
 function formatearHora(fecha) {
     const date = new Date(fecha);
@@ -353,7 +362,6 @@ async function procesarAutologin() {
 
         // Ejecutar login automático
         try {
-            // Construir URL completa para debugging
             const loginUrl = `${API_BASE_URL}/api/logistica/movil/login`;
             console.log('[AUTOLOGIN] Llamando a:', loginUrl);
 
@@ -393,7 +401,7 @@ async function procesarAutologin() {
                 // Pequeño delay para que el usuario vea el éxito
                 await new Promise(resolve => setTimeout(resolve, 500));
 
-                // Redirigir a ruta
+                // Redirigir a home
                 window.location.href = 'home.html';
 
             } else {
@@ -586,26 +594,19 @@ function refrescarTabActual() {
 
 /**
  * Extrae y renderiza el listado global de Pedidos sin Asignar
+ * (Implementado en PendientesUI.js)
  */
 
 // ===== HISTORIAL =====
 
 /**
  * Extrae y renderiza el listado de Rutas Finalizadas por este Chofer
+ * (Implementado en HistorialUI.js)
  */
 
 // ==========================================
 // FUNCIONES CRUD DE RUTAS (APP GERENCIAL)
 // ==========================================
-
-
-
-
-
-
-
-
-
 
 /* ===== SIDEBAR / MENÚ GLOBAL ===== */
 window.abrirSidebar = () => {

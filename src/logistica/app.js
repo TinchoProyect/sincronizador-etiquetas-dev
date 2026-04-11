@@ -46,6 +46,12 @@ const allowedOrigins = [
     'http://127.0.0.1:3003',
     'http://127.0.0.1:3004',
     'http://127.0.0.1:3005',
+    // --- Acceso por IP local (dispositivos móviles en la misma red LAN) ---
+    'http://192.168.1.178:3000',
+    'http://192.168.1.178:3002',
+    'http://192.168.1.178:3003',
+    'http://192.168.1.178:3004',
+    'http://192.168.1.178:3005',
     // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',
     'https://lamda-logistica.tplinkdns.com:3005',

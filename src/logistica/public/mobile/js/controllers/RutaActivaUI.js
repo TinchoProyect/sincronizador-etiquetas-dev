@@ -10,7 +10,10 @@ function renderizarEntregas() {
                 <h2>Ruta Sin Entregas</h2>
                 <p>Esta ruta no tiene entregas asignadas.</p>
                 ${state.ruta ? `
-                <button onclick="window.eliminarRutaActiva()" style="margin-top: 1.5rem; padding: 12px 20px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; width: 100%; box-shadow: 0 4px 6px rgba(239,68,68,0.2);">
+                <button onclick="window.abrirModalAgregarPedidos()" style="margin-top: 1.5rem; padding: 12px 20px; background: #8b5cf6; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; width: 100%; box-shadow: 0 4px 6px rgba(139,92,246,0.2);">
+                    ➕ Agregar Pedidos
+                </button>
+                <button onclick="window.eliminarRutaActiva()" style="margin-top: 0.75rem; padding: 12px 20px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; width: 100%; box-shadow: 0 4px 6px rgba(239,68,68,0.2);">
                     🗑️ Eliminar Hoja de Ruta
                 </button>
                 ` : ''}
@@ -43,6 +46,9 @@ function renderizarEntregas() {
                     ${isArmando ? '🚀 Iniciar Ruta' : '⏸ Detener Ruta'}
                 </button>
                 ${isArmando ? `
+                <button onclick="window.abrirModalAgregarPedidos()" style="background: #8b5cf6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
+                    ➕ Agregar Pedidos
+                </button>
                 <button onclick="window.abrirModalAcomodar()" style="background: #3b82f6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
                     🗺️ Acomodar Ruta
                 </button>` : ''}
@@ -152,11 +158,8 @@ function renderizarEntregas() {
                 </div>
                 
                 <div class="entrega-cliente" style="margin-top: 0.75rem;">
-                    <div style="font-size: 1.25rem; font-weight: 800; color: #1e40af; margin-bottom: 0.25rem;">
-                        #${primerEntrega.cliente.id || 'S/N'}
-                    </div>
-                    <div style="font-size: 1.1rem; font-weight: 600; color: #1e293b;">
-                        ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
+                    <div style="font-size: 1.1rem; font-weight: 800; color: #1e40af; margin-bottom: 0.25rem;">
+                        [#${primerEntrega.cliente.id || 'S/N'}] ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
                     </div>
                     ${esRetiro ? '<div style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">RETIRAR</div>' : ''}
                 </div>
@@ -342,4 +345,153 @@ window.eliminarRutaActiva = async () => {
             window.location.reload(); // Hard reset
         } else alert("Error: " + data.error);
     } catch(err) { alert("Error de red."); }
+};
+
+// ==========================================
+// FEATURE: Agregar Pedidos desde Ruta Activa
+// Permite inyectar pedidos pendientes sin
+// abandonar la vista de la ruta actual.
+// ==========================================
+
+/**
+ * Abre un modal tipo slide-over con la lista de pedidos
+ * pendientes disponibles para asignar a la ruta activa.
+ * Reutiliza el endpoint GET /pedidos-pendientes y
+ * PUT /rutas/:id/asignar del backend.
+ */
+window.abrirModalAgregarPedidos = async () => {
+    if (!state.ruta) return alert('No hay una ruta activa para agregar pedidos.');
+
+    // Crear el modal de carga inmediatamente para feedback visual
+    const modalId = 'modal-agregar-pedidos';
+    const modalHtml = `
+    <div id="${modalId}" class="modal-mobile" style="display: flex;">
+        <div class="modal-content-mobile" style="padding: 0; max-height: 90vh; display: flex; flex-direction: column;">
+            <!-- Cabecera fija -->
+            <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                <h2 style="font-size: 1.15rem; margin: 0; color: #1e293b;">➕ Agregar Pedidos a Ruta</h2>
+                <button onclick="document.getElementById('${modalId}').remove()" style="background: none; border: none; font-size: 1.5rem; color: #64748b; cursor: pointer;">&times;</button>
+            </div>
+            <!-- Cuerpo scrollable -->
+            <div id="agregar-pedidos-lista" style="flex: 1; overflow-y: auto; padding: 1rem;">
+                <div class="loading-screen" style="padding: 2rem; text-align: center;"><div class="spinner"></div><p>Buscando pendientes...</p></div>
+            </div>
+            <!-- Pie fijo con botón de confirmar -->
+            <div style="padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; flex-shrink: 0; background: #f8fafc;">
+                <button id="btn-confirmar-agregar" onclick="window.ejecutarAgregarPedidos()" disabled style="width: 100%; padding: 0.875rem; background: #8b5cf6; color: white; border: none; border-radius: 0.5rem; font-weight: bold; font-size: 1rem; opacity: 0.5; box-shadow: 0 4px 6px -1px rgba(139, 92, 246, 0.2);">
+                    📌 Agregar Seleccionados (0)
+                </button>
+            </div>
+        </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Obtener pendientes del servidor
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/pedidos-pendientes`, {
+            headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+        });
+        const result = await response.json();
+        const listaContainer = document.getElementById('agregar-pedidos-lista');
+
+        if (result.success && result.data && result.data.length > 0) {
+            // Filtrar pedidos que ya están en la ruta activa
+            const idsEnRuta = new Set(state.entregas.map(e => parseInt(e.id_presupuesto)));
+            const disponibles = result.data.filter(p => !idsEnRuta.has(parseInt(p.id)));
+
+            if (disponibles.length === 0) {
+                listaContainer.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: #64748b;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">✅</div>
+                        <p>Todos los pedidos ya están asignados a esta ruta.</p>
+                    </div>`;
+                return;
+            }
+
+            listaContainer.innerHTML = disponibles.map(p => {
+                const esIngreso = p.estado === 'Orden de Retiro';
+                const iconColor = esIngreso ? '#dc2626' : '#2563eb';
+                return `
+                <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                    <input type="checkbox" class="chk-agregar-pedido" value="${p.id}" onchange="window.actualizarBtnAgregar()" style="width: 22px; height: 22px; accent-color: #8b5cf6; flex-shrink: 0;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 700; color: ${iconColor}; font-size: 0.95rem;">${esIngreso ? '↩️' : '📦'} Pedido #${p.id}</div>
+                        <div style="font-size: 0.9rem; color: #334155; margin-top: 2px;">👤 <strong>[#${p.cliente_id || 'S/N'}]</strong> ${p.cliente_nombre}</div>
+                        <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">📍 ${p.domicilio_direccion || 'Sin domicilio'}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            listaContainer.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #64748b;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">📭</div>
+                    <p>No hay pedidos pendientes disponibles.</p>
+                </div>`;
+        }
+    } catch (error) {
+        console.error('[AGREGAR] Error al obtener pendientes:', error);
+        document.getElementById('agregar-pedidos-lista').innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: #ef4444;">❌ Error de conexión</div>`;
+    }
+};
+
+/**
+ * Actualiza el texto y estado del botón "Agregar Seleccionados"
+ * según la cantidad de checkboxes tildados en el modal.
+ */
+window.actualizarBtnAgregar = () => {
+    const seleccionados = document.querySelectorAll('.chk-agregar-pedido:checked');
+    const btn = document.getElementById('btn-confirmar-agregar');
+    if (!btn) return;
+    if (seleccionados.length > 0) {
+        btn.innerHTML = `📌 Agregar Seleccionados (${seleccionados.length})`;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    } else {
+        btn.innerHTML = `📌 Agregar Seleccionados (0)`;
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+    }
+};
+
+/**
+ * Ejecuta la asignación de los pedidos seleccionados a la ruta activa.
+ * Llama al endpoint PUT /rutas/:id/asignar y recarga la vista.
+ */
+window.ejecutarAgregarPedidos = async () => {
+    const seleccionados = Array.from(document.querySelectorAll('.chk-agregar-pedido:checked')).map(cb => parseInt(cb.value));
+    if (seleccionados.length === 0) return;
+
+    const btn = document.getElementById('btn-confirmar-agregar');
+    const textoOriginal = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Asignando...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/asignar`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${state.sesion.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ids_presupuestos: seleccionados })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            // Cerrar modal y recargar la ruta activa con los nuevos pedidos
+            document.getElementById('modal-agregar-pedidos').remove();
+            alert(`✅ Se agregaron ${seleccionados.length} pedido(s) a la ruta.`);
+            cargarRutaActiva();
+        } else {
+            alert(result.error || 'No se pudieron asignar los pedidos.');
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+        }
+    } catch (error) {
+        console.error('[AGREGAR] Error al asignar:', error);
+        alert('Error de conexión al asignar pedidos.');
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
+    }
 };
