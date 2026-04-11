@@ -119,7 +119,7 @@
                 </div>
                 <div class="ticket-row" style="align-items: center; justify-content: space-between; margin: 0.5rem 0; font-weight:bold;">
                     <span style="color:#ea580c">Descuento %</span>
-                    <input type="number" id="descuento-input" class="wizard-input" style="width:100px; text-align:right; padding: 0.5rem; font-size:1rem; border-radius:0.5rem; border: 2px solid #cbd5e1" placeholder="0" min="0" max="100" oninput="WizardController.renderCheckout()">
+                    <input type="text" inputmode="decimal" id="descuento-input" class="wizard-input" style="width:100px; text-align:right; padding: 0.5rem; font-size:1rem; border-radius:0.5rem; border: 2px solid #cbd5e1" placeholder="0" oninput="WizardController.renderCheckout()">
                 </div>
                 <div class="ticket-row" id="row-subtotal-desc" style="display:none; font-weight:bold;">
                     <span>Subtotal c/Desc</span>

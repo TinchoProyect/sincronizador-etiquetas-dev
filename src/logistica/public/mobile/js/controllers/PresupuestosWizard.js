@@ -76,7 +76,10 @@ const WizardController = {
             if(dropEstado && cabecera.estado) dropEstado.value = cabecera.estado;
             
             const txtDescuento = document.getElementById('descuento-input');
-            if(txtDescuento && cabecera.descuento) txtDescuento.value = cabecera.descuento;
+            if(txtDescuento && cabecera.descuento) {
+                // BUGFIX: El backend devuelve en formato escalar (0.05), el UI espera porcentual (5)
+                txtDescuento.value = (parseFloat(cabecera.descuento) * 100).toString().replace('.', ',');
+            }
             
             // 5. Hidratar Artículos
             itemsArray.forEach(item => {
@@ -86,7 +89,8 @@ const WizardController = {
                     nombre: item.descripcion || item.descripcion_articulo || item.articulo,
                     precio: parseFloat(item.valor1 || 0), 
                     cantidad: Math.abs(parseFloat(item.cantidad || 0)),
-                    iva_pct: parseFloat(item.iva1) || 21 // Restauración segura de IVA desde base original
+                    // FIX BUG: item.iva1 contiene el MONTO del impuesto. Usamos camp2 (alícuota base o 0.21)
+                    iva_pct: item.camp2 ? (parseFloat(item.camp2) < 1 ? parseFloat(item.camp2) * 100 : parseFloat(item.camp2)) : 21 
                 };
             });
             
@@ -456,7 +460,9 @@ const WizardController = {
         let iva105Total = 0;
 
         // Leemos porcentaje de descuento para la distribución
-        const descInput = parseFloat(document.getElementById('descuento-input').value) || 0;
+        // BUGFIX Soporte Coma: reemplazar coma por punto previo al casteo
+        const descRaw = document.getElementById('descuento-input').value.replace(',', '.');
+        const descInput = parseFloat(descRaw) || 0;
         const descuentoDecimal = descInput / 100;
 
         for(let key in this.cart.items) {
@@ -544,7 +550,11 @@ const WizardController = {
         const isOrdenRetiro = false; // Parche Arquitectura: Este wizard ya es exclusivamente de Venta
         const obs = document.getElementById('observaciones-input').value.trim();
         const estadoSeleccionado = document.getElementById('estado-input').value;
-        const descuentoInputFormateado = parseFloat(document.getElementById('descuento-input').value) || 0;
+        
+        // BUGFIX: Parsear coma a punto, y luego dividir por 100 (conversión inversa) al grabar
+        const descuentoRaw = document.getElementById('descuento-input').value.replace(',', '.');
+        const descuentoVisual = parseFloat(descuentoRaw) || 0;
+        const descuentoInputFormateado = descuentoVisual / 100;
 
         // Armar Payload 100% Data-Parity con Desktop para evitar inserciones Null/Consumidor Final
         const hoy = new Date().toISOString().split('T')[0];
