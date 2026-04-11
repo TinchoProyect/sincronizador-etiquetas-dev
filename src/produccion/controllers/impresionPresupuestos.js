@@ -1,4 +1,4 @@
-﻿const pool = require('../config/database');
+const pool = require('../config/database');
 const JsBarcode = require('jsbarcode');
 const { createCanvas } = require('canvas');
 
@@ -953,7 +953,18 @@ function generarCSSRemito() {
             font-size: 10px; 
             text-align: right;
             color: #666;
+            white-space: nowrap;
+        }
+        
+        .header-right {
+            text-align: right;
             flex: 0 1 auto;
+        }
+        
+        .empresa-alias {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 4px;
             white-space: nowrap;
         }
         
@@ -1241,8 +1252,14 @@ function generarHTMLPresupuestoUnico({
             
             ${modificacionHtml}
 
-            <div class="fecha-emision">
-                ${fechaHoy} - ${horaHoy}
+            <div class="header-right">
+                <div class="empresa-alias">ALIAS: LAMDA.SER.MARTIN</div>
+                <div class="fecha-emision" style="margin-bottom: 2px;">
+                    ${fechaHoy} - ${horaHoy}
+                </div>
+                <div style="font-size: 10px; color: #666;">
+                    WhatsApp: 221 6615746
+                </div>
             </div>
         </div>
         
@@ -1255,7 +1272,7 @@ function generarHTMLPresupuestoUnico({
             <div>
                 <div class="codigo-presupuesto">${presupuesto.id_presupuesto_ext}</div>
                 <div style="font-size: 10px; color: #666; margin-top: 4px;">Fecha: ${fechaPresupuesto}</div>
-                <div style="font-size: 11px; font-weight: bold; color: #2c3e50; margin-top: 8px;">
+                <div style="font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px; text-align: right;">
                     Total Items Distintos: ${totalArticulos}
                 </div>
             </div>
@@ -1498,8 +1515,12 @@ function renderizarPDFPresupuestoUnico(doc, {
         doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
     }
     
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
+       .text('ALIAS: LAMDA.SER.MARTIN', 395, 40, { width: 150, align: 'right' });
     doc.fontSize(10).font('Helvetica').fillColor('#666666')
-       .text(`${fechaHoy} - ${horaHoy}`, 420, 55);
+       .text(`${fechaHoy} - ${horaHoy}`, 395, 55, { width: 150, align: 'right' });
+    doc.fontSize(10).font('Helvetica').fillColor('#666666')
+       .text('WhatsApp: 221 6615746', 395, 68, { width: 150, align: 'right' });
     doc.fillColor('black');
     
     doc.strokeColor('#cccccc').lineWidth(0.5)
@@ -1520,8 +1541,8 @@ function renderizarPDFPresupuestoUnico(doc, {
        .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
     
     // TOTAL ARTÍCULOS
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#2c3e50')
-       .text(`Items Distintos: ${totalArticulos}`, 450, 130);
+    doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
+       .text(`Items Distintos: ${totalArticulos}`, 395, 134, { width: 150, align: 'right' });
     
     // Indicador de modificación si corresponde
     if (presupuesto._snapshot) {

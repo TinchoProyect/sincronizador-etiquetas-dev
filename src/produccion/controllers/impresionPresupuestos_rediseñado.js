@@ -221,6 +221,18 @@ function generarHTML_Rediseñado(res, clienteData) {
             color: #666;
         }
         
+        .header-right {
+            text-align: right;
+            flex: 0 1 auto;
+        }
+        
+        .empresa-alias {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 4px;
+            white-space: nowrap;
+        }
+        
         /* DATOS DEL PEDIDO - COMPACTOS */
         .datos-pedido { 
             display: flex;
@@ -387,8 +399,14 @@ function generarHTML_Rediseñado(res, clienteData) {
                 <div class="logo-lamda">LAMDA</div>
                 <div class="letra-r">R</div>
             </div>
-            <div class="fecha-emision">
-                ${fechaHoy} - ${horaHoy}
+            <div class="header-right">
+                <div class="empresa-alias">ALIAS: LAMDA.SER.MARTIN</div>
+                <div class="fecha-emision" style="margin-bottom: 2px;">
+                    ${fechaHoy} - ${horaHoy}
+                </div>
+                <div style="font-size: 10px; color: #666;">
+                    WhatsApp: 221 6615746
+                </div>
             </div>
         </div>
         
@@ -566,8 +584,14 @@ function generarPDF_Rediseñado(res, clienteData) {
         doc.rect(120, 45, 30, 30).stroke();
         doc.fontSize(24).font('Helvetica-Bold').text('R', 130, 52);
         
-        // Fecha y hora
-        doc.fontSize(9).font('Helvetica').text(`${fechaHoy} - ${horaHoy}`, 450, 55);
+        // Fecha y hora y ALIAS y WhatsApp
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
+           .text('ALIAS: LAMDA.SER.MARTIN', 395, 40, { width: 150, align: 'right' });
+        doc.fontSize(9).font('Helvetica').fillColor('#666666')
+           .text(`${fechaHoy} - ${horaHoy}`, 395, 55, { width: 150, align: 'right' });
+        doc.fontSize(9).font('Helvetica').fillColor('#666666')
+           .text('WhatsApp: 221 6615746', 395, 68, { width: 150, align: 'right' });
+        doc.fillColor('black');
         
         // Línea separadora
         doc.moveTo(50, 85).lineTo(545, 85).stroke();
