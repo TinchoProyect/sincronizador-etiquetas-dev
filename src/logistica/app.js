@@ -15,10 +15,27 @@ const { dbMiddleware } = require('./config/database');
 console.log('[LOGISTICA] Configurando middleware...');
 
 /**
- * Configuración CORS
- * Permite comunicación explícita desde el dominio DDNS y localhosts (otros módulos)
+ * ==========================================
+ * CONFIGURACIÓN CORS — TOPOLOGÍA DE RED
+ * ==========================================
+ * 
+ * INFRAESTRUCTURA:
+ *   - El sistema LAMDA está desplegado detrás de un router TP-Link con DDNS habilitado.
+ *   - Dominio externo oficial: lamda-logistica.tplinkdns.com
+ *   - Puerto de salida público (Port Forwarding): 3005 -> IP local del host
+ *   - El host (app.listen) DEBE mantenerse siempre en '0.0.0.0' para aceptar
+ *     tráfico de todas las interfaces de red (LAN, Wi-Fi, WAN vía Port Forwarding).
+ *     NUNCA regresar a 'localhost' o '127.0.0.1', ya que bloquearía el acceso externo.
+ * 
+ * ORÍGENES PERMITIDOS:
+ *   - localhost:30XX  → Comunicación inter-módulos en el mismo host
+ *   - 127.0.0.1:30XX  → Alias loopback para módulos locales
+ *   - lamda-logistica.tplinkdns.com:3005 → Acceso externo vía DDNS (HTTP y HTTPS)
+ *   - lamda-logistica.tplinkdns.com (sin puerto) → Fallback si el router redirige al 80
+ * ==========================================
  */
 const allowedOrigins = [
+    // --- Módulos locales (inter-proceso en el mismo servidor) ---
     'http://localhost:3000',
     'http://localhost:3002',
     'http://localhost:3003',
@@ -29,6 +46,7 @@ const allowedOrigins = [
     'http://127.0.0.1:3003',
     'http://127.0.0.1:3004',
     'http://127.0.0.1:3005',
+    // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',
     'https://lamda-logistica.tplinkdns.com:3005',
     'http://lamda-logistica.tplinkdns.com'
@@ -36,6 +54,7 @@ const allowedOrigins = [
 
 const corsOptions = {
     origin: function (origin, callback) {
+        // Permitir requests sin origin (ej. apps móviles nativas, Postman, curl)
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -229,7 +248,19 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Iniciar servidor
+/**
+ * ==========================================
+ * INICIALIZACIÓN DEL SERVIDOR — BINDING DE RED
+ * ==========================================
+ * Host: '0.0.0.0' → Escucha en TODAS las interfaces de red del host.
+ * Esto es OBLIGATORIO porque el sistema está detrás de un router TP-Link
+ * con Port Forwarding (puerto 3005 → IP local del host) y DDNS habilitado
+ * en el dominio: lamda-logistica.tplinkdns.com
+ * 
+ * ⚠️ NUNCA cambiar '0.0.0.0' por 'localhost' o '127.0.0.1'.
+ *    Hacerlo bloquearía todo el tráfico externo (móviles, red LAN, WAN).
+ * ==========================================
+ */
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('[LOGISTICA] 🎉 ================================');
     console.log('[LOGISTICA] 🎉 SERVIDOR INICIADO EXITOSAMENTE');

@@ -3,8 +3,8 @@
  * Gestión de rutas y entregas
  */
 
-// Configuración (inyectada desde backend vía env-config.js)
-const API_BASE_URL = window.PUBLIC_BASE_URL || window.location.origin;
+// Eliminar dependencia de IP o DNS para asegurar acceso local (Hairpin NAT agnostic)
+const API_BASE_URL = "";
 
 // Estado global
 let state = {
@@ -16,11 +16,11 @@ let state = {
 // ===== GESTIÓN DE SESIÓN =====
 
 /**
- * Obtener sesión del localStorage
+ * Obtener sesión del localStorage o sessionStorage
  */
 function obtenerSesion() {
     try {
-        const sesionStr = localStorage.getItem('sesion_chofer');
+        const sesionStr = localStorage.getItem('sesion_chofer') || sessionStorage.getItem('sesion_chofer');
         return sesionStr ? JSON.parse(sesionStr) : null;
     } catch (error) {
         console.error('[SESION] Error al obtener sesión:', error);
@@ -29,13 +29,20 @@ function obtenerSesion() {
 }
 
 /**
- * Guardar sesión en localStorage
+ * Guardar sesión en el storage correspondiente
  */
-function guardarSesion(sesion) {
+function guardarSesion(sesion, persistente = true) {
     try {
-        localStorage.setItem('sesion_chofer', JSON.stringify(sesion));
+        const sesionStr = JSON.stringify(sesion);
+        if (persistente) {
+            localStorage.setItem('sesion_chofer', sesionStr);
+            sessionStorage.removeItem('sesion_chofer');
+        } else {
+            sessionStorage.setItem('sesion_chofer', sesionStr);
+            localStorage.removeItem('sesion_chofer');
+        }
         state.sesion = sesion;
-        console.log('[SESION] Sesión guardada:', sesion.usuario);
+        console.log(`[SESION] Sesión guardada (${persistente ? 'persistente' : 'volátil'}):`, sesion.usuario);
     } catch (error) {
         console.error('[SESION] Error al guardar sesión:', error);
     }
@@ -46,6 +53,7 @@ function guardarSesion(sesion) {
  */
 function limpiarSesion() {
     localStorage.removeItem('sesion_chofer');
+    sessionStorage.removeItem('sesion_chofer');
     state.sesion = null;
     console.log('[SESION] Sesión limpiada');
 }
@@ -94,18 +102,23 @@ async function iniciarSesion() {
         const result = await response.json();
 
         if (result.success && result.data) {
+            // Determinar si el usuario pidió mantener iniciada la sesión
+            const checkboxRecordarme = document.getElementById('recordarme');
+            // Por defecto true para mayor compatibilidad si el checkbox no existe (autologin QR)
+            const persistente = checkboxRecordarme ? checkboxRecordarme.checked : true;
+
             // Guardar sesión
             guardarSesion({
                 token: result.data.token || 'mock-token',
                 usuario: result.data.usuario || usuario,
                 nombre: result.data.nombre_completo || usuario,
                 id: result.data.id
-            });
+            }, persistente);
 
             console.log('[LOGIN] Sesión iniciada exitosamente');
 
             // Redirigir a ruta
-            window.location.href = 'ruta.html';
+            window.location.href = 'home.html';
 
         } else {
             throw new Error(result.error || 'Credenciales inválidas');
@@ -381,7 +394,7 @@ async function procesarAutologin() {
                 await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Redirigir a ruta
-                window.location.href = 'ruta.html';
+                window.location.href = 'home.html';
 
             } else {
                 throw new Error(result.error || 'Autologin falló: respuesta inválida');

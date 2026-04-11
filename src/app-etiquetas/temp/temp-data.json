@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "numero": "PTSx5",
-    "nombre": "Pistach/Tos/Sal x 5",
-    "codigo_barras": "2563635045"
-  },
-  "cantidad": "1.00"
+  "numero": "GDF10X200G",
+  "nombre": "Grana de Flor 10 x 200 g",
+  "codigo_barras": "3214878237",
+  "cantidad": 2
 }

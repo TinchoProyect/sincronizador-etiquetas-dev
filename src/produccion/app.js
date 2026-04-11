@@ -95,7 +95,15 @@ app.use('/api/produccion', produccionRoutes); // ← Registro completo sin manip
 // Otras rutas de usuarios
 app.use('/api', usuariosRoutes);
 
-// Middleware
+/**
+ * CONFIGURACIÓN CORS — TOPOLOGÍA DE RED
+ * Dominio externo oficial: lamda-logistica.tplinkdns.com (DDNS TP-Link)
+ * Puerto de salida público: 3005 (Port Forwarding en router)
+ * Host binding: 0.0.0.0 (NUNCA cambiar a localhost, bloquearía acceso externo)
+ * 
+ * NOTA: Este módulo usa cors() abierto porque recibe requests desde múltiples
+ * orígenes dinámicos (inventario móvil, WebSocket, módulos internos).
+ */
 app.use(cors());
 
 // Manejo de errores global
@@ -561,6 +569,6 @@ io.on('connection', (socket) => {
 // Puerto
 const PORT = process.env.PORT || 3002;
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor de producción corriendo en puerto ${PORT}`);
 });

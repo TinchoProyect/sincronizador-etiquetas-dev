@@ -1,8 +1,9 @@
 {
-  "name": "Logística LAMDA",
-  "short_name": "Logística LAMDA",
+  "name": "LAMDA",
+  "short_name": "LAMDA",
   "description": "App Gestional de Repartos y Ruteo para Despachantes",
-  "start_url": "/mobile/index.html",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#2563eb",
   "theme_color": "#2563eb",

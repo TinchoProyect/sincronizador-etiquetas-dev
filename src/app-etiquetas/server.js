@@ -7,9 +7,22 @@ const cors = require('cors');
 const app = express();
 const port = 3000;
 
-// Configuración CORS
+/**
+ * CONFIGURACIÓN CORS — TOPOLOGÍA DE RED
+ * Dominio externo oficial: lamda-logistica.tplinkdns.com (DDNS TP-Link)
+ * Puerto de salida público: 3005 (Port Forwarding en router)
+ * Host binding: 0.0.0.0 (NUNCA cambiar a localhost, bloquearía acceso externo)
+ */
 app.use(cors({
-  origin: ['http://localhost:3002', 'http://localhost:3005', 'http://127.0.0.1:3005'],
+  origin: [
+    'http://localhost:3002',
+    'http://localhost:3005',
+    'http://127.0.0.1:3005',
+    // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
+    'http://lamda-logistica.tplinkdns.com:3005',
+    'https://lamda-logistica.tplinkdns.com:3005',
+    'http://lamda-logistica.tplinkdns.com'
+  ],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));
@@ -291,6 +304,6 @@ app.use((req, res, next) => {
   res.status(404).send('Recurso no encontrado');
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
 });

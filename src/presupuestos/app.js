@@ -21,14 +21,23 @@ const gsheetsRoutes = require('./routes/gsheets');
 
 console.log('[PRESUPUESTOS-BACK] Configurando middleware...');
 
-// Configuración CORS para permitir comunicación con otros módulos del sistema
+/**
+ * CONFIGURACIÓN CORS — TOPOLOGÍA DE RED
+ * Dominio externo oficial: lamda-logistica.tplinkdns.com (DDNS TP-Link)
+ * Puerto de salida público: 3005 (Port Forwarding en router)
+ * Host binding: 0.0.0.0 (NUNCA cambiar a localhost, bloquearía acceso externo)
+ */
 const corsOptions = {
     origin: [
         'http://localhost:3000',  // Servidor principal de etiquetas
         'http://localhost:3002',  // Servidor de producción
         'http://localhost:3003',  // Este mismo servidor (para desarrollo)
         'http://localhost:3005',  // Logistica Front
-        'http://127.0.0.1:3005'
+        'http://127.0.0.1:3005',
+        // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
+        'http://lamda-logistica.tplinkdns.com:3005',
+        'https://lamda-logistica.tplinkdns.com:3005',
+        'http://lamda-logistica.tplinkdns.com'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -129,7 +138,7 @@ const inicializarServidor = async () => {
         console.log('[PRESUPUESTOS-BACK] ✅ Base de datos inicializada exitosamente:', dbResult);
         
         // Iniciar servidor DESPUÉS de inicializar BD
-        const server = app.listen(PORT, () => {
+        const server = app.listen(PORT, '0.0.0.0', () => {
             console.log('[PRESUPUESTOS-BACK] 🎉 ================================');
             console.log('[PRESUPUESTOS-BACK] 🎉 SERVIDOR PRINCIPAL CON LOGS INICIADO EXITOSAMENTE');
             console.log('[PRESUPUESTOS-BACK] 🎉 ================================');

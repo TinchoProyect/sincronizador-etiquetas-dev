@@ -27,13 +27,23 @@ const facturasRoutes = require('./routes/facturas');
 
 console.log('🔧 [FACTURACION] Configurando middleware...');
 
-// Configuración CORS
+/**
+ * CONFIGURACIÓN CORS — TOPOLOGÍA DE RED
+ * Dominio externo oficial: lamda-logistica.tplinkdns.com (DDNS TP-Link)
+ * Puerto de salida público: 3005 (Port Forwarding en router)
+ * Host binding: 0.0.0.0 (NUNCA cambiar a localhost, bloquearía acceso externo)
+ */
 const corsOptions = {
     origin: [
         'http://localhost:3000',  // Servidor principal de etiquetas
         'http://localhost:3002',  // Servidor de producción
         'http://localhost:3003',  // Servidor de presupuestos
-        'http://localhost:3004'   // Este mismo servidor
+        'http://localhost:3004',  // Este mismo servidor
+        'http://localhost:3005',  // Servidor de logística
+        // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
+        'http://lamda-logistica.tplinkdns.com:3005',
+        'https://lamda-logistica.tplinkdns.com:3005',
+        'http://lamda-logistica.tplinkdns.com'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -160,7 +170,7 @@ const inicializarServidor = async () => {
         console.log(`   - Timestamp: ${tzInfo.formatted}`);
         
         // 4. Iniciar servidor HTTP
-        const server = app.listen(PORT, () => {
+        const server = app.listen(PORT, '0.0.0.0', () => {
             console.log('🎉 [FACTURACION] =====================================');
             console.log('🎉 [FACTURACION] SERVIDOR INICIADO EXITOSAMENTE');
             console.log('🎉 [FACTURACION] =====================================');
