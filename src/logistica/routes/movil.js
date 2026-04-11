@@ -190,8 +190,70 @@ router.post('/login', async (req, res) => {
 });
 
 /**
+ * @route GET /api/logistica/movil/mis-rutas
+ * @desc Obtener listado compacto de TODAS las rutas no finalizadas del chofer.
+ *       Devuelve metadata para el selector de rutas (Context Switcher).
+ *       No incluye entregas, solo id, nombre, estado y count de entregas.
+ * @access Privado (requiere token)
+ */
+router.get('/mis-rutas', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta GET /mis-rutas - Listando rutas del chofer');
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ success: false, error: 'Token no proporcionado' });
+        }
+        const token = authHeader.substring(7);
+        let choferId;
+        try {
+            const decoded = Buffer.from(token, 'base64').toString('utf-8');
+            choferId = parseInt(decoded.split(':')[0]);
+        } catch (error) {
+            return res.status(401).json({ success: false, error: 'Token inválido' });
+        }
+
+        // Obtener todas las rutas activas (ARMANDO o EN_CAMINO) del chofer con conteo de entregas
+        const query = `
+            SELECT 
+                r.id,
+                r.nombre_ruta,
+                r.fecha_salida,
+                r.estado,
+                (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) as total_entregas
+            FROM rutas r
+            WHERE r.id_chofer = $1 
+              AND r.estado IN ('ARMANDO', 'EN_CAMINO')
+            ORDER BY 
+                CASE 
+                    WHEN r.estado = 'EN_CAMINO' THEN 1
+                    WHEN r.estado = 'ARMANDO' THEN 2
+                END ASC,
+                r.id DESC
+        `;
+        const result = await req.db.query(query, [choferId]);
+        console.log(`[MOVIL] ✅ ${result.rows.length} rutas encontradas para chofer ${choferId}`);
+
+        res.json({
+            success: true,
+            data: result.rows.map(r => ({
+                id: r.id,
+                nombre_ruta: r.nombre_ruta,
+                fecha_salida: r.fecha_salida,
+                estado: r.estado,
+                total_entregas: parseInt(r.total_entregas) || 0
+            }))
+        });
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al listar rutas:', error);
+        res.status(500).json({ success: false, error: 'Error al listar rutas', message: error.message });
+    }
+});
+
+/**
  * @route GET /api/logistica/movil/ruta-activa
- * @desc Obtener ruta activa del chofer autenticado
+ * @desc Obtener ruta activa del chofer autenticado.
+ *       Acepta query param ?id=X para cargar una ruta específica (multigestión).
+ *       Si no se envía ?id, devuelve la ruta de mayor prioridad (EN_CAMINO > ARMANDO).
  * @access Privado (requiere token)
  */
 router.get('/ruta-activa', async (req, res) => {
@@ -222,33 +284,60 @@ router.get('/ruta-activa', async (req, res) => {
             });
         }
 
-        console.log('[MOVIL] Buscando ruta activa para chofer ID:', choferId);
+        // Soporte multigestión: si se envía ?id=X, cargar esa ruta específica
+        const rutaIdSolicitada = req.query.id ? parseInt(req.query.id) : null;
+        console.log('[MOVIL] Buscando ruta para chofer ID:', choferId, rutaIdSolicitada ? `(ruta específica: ${rutaIdSolicitada})` : '(auto-prioridad)');
 
         // Buscar ruta activa del chofer
-        // Prioriza EN_CAMINO sobre ARMANDO (la que ya se envió a reparto)
-        // Si hay múltiples EN_CAMINO, toma la más reciente (mayor ID)
-        const queryRuta = `
-            SELECT 
-                r.id,
-                r.nombre_ruta,
-                r.fecha_salida,
-                r.estado,
-                r.id_vehiculo,
-                u.nombre_completo as chofer_nombre
-            FROM rutas r
-            INNER JOIN usuarios u ON r.id_chofer = u.id
-            WHERE r.id_chofer = $1 
-              AND r.estado IN ('ARMANDO', 'EN_CAMINO')
-            ORDER BY 
-                CASE 
-                    WHEN r.estado = 'EN_CAMINO' THEN 1
-                    WHEN r.estado = 'ARMANDO' THEN 2
-                END ASC,
-                r.id DESC
-            LIMIT 1
-        `;
+        // Si se envió ?id, filtrar por ese ID específico
+        // Si no, priorizar EN_CAMINO > ARMANDO, más reciente primero
+        let queryRuta;
+        let queryParams;
 
-        const resultRuta = await req.db.query(queryRuta, [choferId]);
+        if (rutaIdSolicitada) {
+            // Modo multigestión: cargar ruta específica (verificando que pertenezca al chofer)
+            queryRuta = `
+                SELECT 
+                    r.id,
+                    r.nombre_ruta,
+                    r.fecha_salida,
+                    r.estado,
+                    r.id_vehiculo,
+                    u.nombre_completo as chofer_nombre
+                FROM rutas r
+                INNER JOIN usuarios u ON r.id_chofer = u.id
+                WHERE r.id = $1 
+                  AND r.id_chofer = $2
+                  AND r.estado IN ('ARMANDO', 'EN_CAMINO')
+                LIMIT 1
+            `;
+            queryParams = [rutaIdSolicitada, choferId];
+        } else {
+            // Modo legacy: auto-seleccionar por prioridad
+            queryRuta = `
+                SELECT 
+                    r.id,
+                    r.nombre_ruta,
+                    r.fecha_salida,
+                    r.estado,
+                    r.id_vehiculo,
+                    u.nombre_completo as chofer_nombre
+                FROM rutas r
+                INNER JOIN usuarios u ON r.id_chofer = u.id
+                WHERE r.id_chofer = $1 
+                  AND r.estado IN ('ARMANDO', 'EN_CAMINO')
+                ORDER BY 
+                    CASE 
+                        WHEN r.estado = 'EN_CAMINO' THEN 1
+                        WHEN r.estado = 'ARMANDO' THEN 2
+                    END ASC,
+                    r.id DESC
+                LIMIT 1
+            `;
+            queryParams = [choferId];
+        }
+
+        const resultRuta = await req.db.query(queryRuta, queryParams);
 
         if (resultRuta.rows.length === 0) {
             console.log('[MOVIL] ⚠️ No hay ruta activa para chofer:', choferId);
@@ -998,7 +1087,8 @@ router.delete('/rutas/:id', validarTokenMovil, async (req, res) => {
 
 console.log('📋 [MOVIL] Rutas disponibles:');
 console.log('   - POST   /api/logistica/movil/login');
-console.log('   - GET    /api/logistica/movil/ruta-activa');
+console.log('   - GET    /api/logistica/movil/mis-rutas');
+console.log('   - GET    /api/logistica/movil/ruta-activa[?id=X]');
 console.log('   - GET    /api/logistica/movil/pedidos/:id/detalles');
 console.log('   - POST   /api/logistica/movil/entregas/confirmar');
 console.log('   - POST   /api/logistica/movil/rutas/finalizar');

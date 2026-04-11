@@ -25,13 +25,16 @@
             </button>
         </div>
         <div class="header-info" id="header-info">
-            <div class="chofer-info">
+            <div class="chofer-info" style="margin-bottom: 5px;">
                 <span class="icon">👤</span>
-                <span id="chofer-nombre">Cargando...</span>
+                <span id="chofer-nombre" style="font-weight: bold; font-size: 1.05rem;">Cargando...</span>
             </div>
-            <div class="ruta-info" id="info-ruta-activa">
-                <span class="icon">📅</span>
-                <span id="ruta-nombre">Cargando ruta...</span>
+            <!-- Contenedor del Selector de Rutas (Multigestión) -->
+            <div id="selector-ruta-container" style="width: 100%;">
+                <div class="ruta-info" id="info-ruta-activa">
+                    <span class="icon">📅</span>
+                    <span id="ruta-nombre">Cargando ruta...</span>
+                </div>
             </div>
         </div>
         <div class="header-stats" id="header-stats">
@@ -180,6 +183,7 @@
     <script src="js/mobile.js?v=12"></script>
     <script src="js/controllers/DomiciliosUI.js?v=3"></script>
     <script src="js/controllers/AcomodarRutaUI.js?v=12"></script>
+    <script src="js/controllers/SelectorRutaUI.js?v=1"></script>
     <script src="js/controllers/PendientesUI.js?v=12"></script>
     <script src="js/controllers/RutaActivaUI.js?v=12"></script>
     <script src="js/controllers/HistorialUI.js?v=12"></script>

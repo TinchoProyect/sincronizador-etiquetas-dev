@@ -186,9 +186,9 @@ async function ejecutarCrearRuta(event) {
                 timerProgressBar: true
             });
 
-            // Navegar a Mi Ruta y forzar re-fetch del estado
+            // Navegar a Mi Ruta y forzar re-fetch del estado con la nueva ruta
             switchTab('ruta');
-            await cargarRutaActiva();
+            await cargarRutaActiva(result.data.id);
         } else {
             alert(result.error || 'No se pudo crear la ruta.');
         }

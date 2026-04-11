@@ -6,11 +6,12 @@
 // Eliminar dependencia de IP o DNS para asegurar acceso local (Hairpin NAT agnostic)
 const API_BASE_URL = "";
 
-// Estado global
+// Estado global de la aplicación
 let state = {
     sesion: null,
-    ruta: null,
-    entregas: []
+    ruta: null,              // Ruta actualmente seleccionada
+    entregas: [],            // Entregas de la ruta seleccionada
+    rutasDisponibles: []     // Lista compacta de TODAS las rutas del chofer (para Context Switcher)
 };
 
 // ===== GESTIÓN DE SESIÓN =====
@@ -172,11 +173,15 @@ function mostrarExito(mensaje) {
 
 /**
  * Cargar ruta activa del chofer desde el backend.
- * Si no encuentra una ruta activa, muestra un empty state con
- * un botón de "Crear Nueva Ruta" para eliminar la fricción de
- * tener que navegar a la pestaña Pendientes.
+ * Flujo multigestión:
+ * 1) Fetch /mis-rutas → poblar state.rutasDisponibles (para el selector)
+ * 2) Determinar qué ruta cargar: activeRouteId (sessionStorage) o auto-prioridad
+ * 3) Fetch /ruta-activa?id=X → poblar state.ruta + state.entregas
+ * 4) Renderizar selector + entregas
+ *
+ * @param {number|null} rutaIdForzada - Si se pasa, fuerza la carga de esa ruta específica
  */
-async function cargarRutaActiva() {
+async function cargarRutaActiva(rutaIdForzada = null) {
     const container = document.getElementById('entregas-container');
 
     if (!container) {
@@ -192,29 +197,74 @@ async function cargarRutaActiva() {
             return;
         }
 
-        // Diagnóstico: mostrar ID del token para verificar coincidencia con id_chofer de la ruta
-        console.log('[RUTA] Token utilizado:', sesion.token);
-        console.log('[RUTA] ID sesión (user.id del login):', sesion.id);
-
-        // Llamar a API de ruta activa (cache: 'no-store' para evitar 304/caché del Service Worker)
-        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/ruta-activa`, {
+        // Paso 1: Obtener listado de TODAS las rutas activas del chofer
+        const resRutas = await fetch(`${API_BASE_URL}/api/logistica/movil/mis-rutas`, {
             cache: 'no-store',
-            headers: {
-                'Authorization': `Bearer ${sesion.token}`
-            }
+            headers: { 'Authorization': `Bearer ${sesion.token}` }
         });
+        const resultRutas = await resRutas.json();
 
+        if (resultRutas.success) {
+            state.rutasDisponibles = resultRutas.data || [];
+        } else {
+            state.rutasDisponibles = [];
+        }
+
+        console.log('[RUTA] Rutas disponibles:', state.rutasDisponibles.length);
+
+        // Paso 2: Determinar qué ruta cargar
+        // Prioridad: parámetro forzado > sessionStorage > auto (primera del array)
+        let rutaIdACargar = rutaIdForzada
+            || parseInt(sessionStorage.getItem('activeRouteId'))
+            || null;
+
+        // Validar que el ID almacenado siga existiendo en las rutas disponibles
+        if (rutaIdACargar && !state.rutasDisponibles.some(r => r.id === rutaIdACargar)) {
+            console.log('[RUTA] activeRouteId', rutaIdACargar, 'ya no existe, reseteando');
+            rutaIdACargar = null;
+            sessionStorage.removeItem('activeRouteId');
+        }
+
+        // Si no hay rutas disponibles, mostrar empty state
+        if (state.rutasDisponibles.length === 0 && !rutaIdACargar) {
+            state.ruta = null;
+            state.entregas = [];
+            // Renderizar selector vacío (mostrará solo el botón de crear)
+            if (typeof renderizarSelectorRuta === 'function') renderizarSelectorRuta();
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <h2>Sin Ruta Asignada</h2>
+                    <p>No tienes una ruta activa para hoy.</p>
+                    <button onclick="abrirModalNuevaRuta()" style="margin-top: 1.5rem; padding: 14px 20px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; width: 100%; box-shadow: 0 4px 6px rgba(37,99,235,0.3);">
+                        🛣️ Crear Nueva Ruta
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        // Paso 3: Fetch la ruta específica o la primera disponible
+        const queryParam = rutaIdACargar ? `?id=${rutaIdACargar}` : '';
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/ruta-activa${queryParam}`, {
+            cache: 'no-store',
+            headers: { 'Authorization': `Bearer ${sesion.token}` }
+        });
         const result = await response.json();
 
         if (result.success && result.data) {
             state.ruta = result.data.ruta;
             state.entregas = result.data.entregas || [];
 
-            // Actualizar header y renderizar entregas
+            // Persistir la ruta seleccionada para sobrevivir F5
+            sessionStorage.setItem('activeRouteId', state.ruta.id);
+
+            // Paso 4: Renderizar UI
+            if (typeof renderizarSelectorRuta === 'function') renderizarSelectorRuta();
             actualizarHeader();
             renderizarEntregas();
 
-            console.log('[RUTA] Ruta cargada:', state.ruta.nombre_ruta);
+            console.log('[RUTA] Ruta cargada:', state.ruta.nombre_ruta, '(ID:', state.ruta.id, ')');
             console.log('[RUTA] Entregas:', state.entregas.length);
 
         } else {
@@ -228,7 +278,10 @@ async function cargarRutaActiva() {
         state.ruta = null;
         state.entregas = [];
 
-        // Estado vacío con botón de creación directa (sin necesidad de ir a Pendientes)
+        // Renderizar selector (puede haber rutas disponibles aunque la seleccionada falló)
+        if (typeof renderizarSelectorRuta === 'function') renderizarSelectorRuta();
+
+        // Estado vacío con botón de creación directa
         container.innerHTML = `
             <div class="empty-state">
                 <div class="empty-state-icon">📭</div>
