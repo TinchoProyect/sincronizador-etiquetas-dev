@@ -1,0 +1,136 @@
+{
+  "success": true,
+  "data": [
+    {
+      "cliente_id": 504,
+      "cliente_nombre": "Florencia Zerro Logística y Distribución S.A.",
+      "total_articulos": "1",
+      "total_presupuestos": "1",
+      "articulos": [
+        {
+          "presupuesto_id": "mnug4sxk-ga8se",
+          "id_presupuesto_local": 8232813,
+          "presupuesto_fecha": "2026-04-11",
+          "secuencia": "Armar_Pedido",
+          "articulo_numero": "5824254685",
+          "descripcion": "Mani/Rep/Salado x 5 kg",
+          "pedido_total": 1,
+          "stock_disponible": 2,
+          "faltante": 0,
+          "snapshot_motivo": "primera_impresion",
+          "snapshot_numero_impresion": 1,
+          "snapshot_secuencia": "Armar_Pedido"
+        }
+      ],
+      "indicador_estado": "COMPLETO"
+    },
+    {
+      "cliente_id": 42,
+      "cliente_nombre": "La Alicia PRADA ANA VICTORIA",
+      "total_articulos": "2",
+      "total_presupuestos": "1",
+      "articulos": [
+        {
+          "presupuesto_id": "mnszpxex-8i2vk",
+          "id_presupuesto_local": 8232809,
+          "presupuesto_fecha": "2026-04-11",
+          "secuencia": "Armar_Pedido",
+          "articulo_numero": "2352647812",
+          "descripcion": "Mix/F/Secas 2 x 5",
+          "pedido_total": 1,
+          "stock_disponible": 2,
+          "faltante": 0,
+          "snapshot_motivo": "primera_impresion",
+          "snapshot_numero_impresion": 1,
+          "snapshot_secuencia": "Armar_Pedido"
+        },
+        {
+          "presupuesto_id": "mnszpxex-8i2vk",
+          "id_presupuesto_local": 8232809,
+          "presupuesto_fecha": "2026-04-11",
+          "secuencia": "Armar_Pedido",
+          "articulo_numero": "2563693528",
+          "descripcion": "Coco/Rall x 25",
+          "pedido_total": 1,
+          "stock_disponible": 3,
+          "faltante": 0,
+          "snapshot_motivo": "primera_impresion",
+          "snapshot_numero_impresion": 1,
+          "snapshot_secuencia": "Armar_Pedido"
+        }
+      ],
+      "indicador_estado": "COMPLETO"
+    },
+    {
+      "cliente_id": 13,
+      "cliente_nombre": "Tito TITO I SRL",
+      "total_articulos": "4",
+      "total_presupuestos": "1",
+      "articulos": [
+        {
+          "presupuesto_id": "mnszmmzf-ic69n",
+          "id_presupuesto_local": 8232808,
+          "presupuesto_fecha": "2026-04-10",
+          "secuencia": "Armar_Pedido",
+          "articulo_numero": "2352648721",
+          "descripcion": "Mix/F/Secas x 5",
+          "pedido_total": 1,
+          "stock_disponible": 4,
+          "faltante": 0,
+          "snapshot_motivo": "primera_impresion",
+          "snapshot_numero_impresion": 1,
+          "snapshot_secuencia": "Armar_Pedido"
+        },
+        {
+          "presupuesto_id": "mnszmmzf-ic69n",
+          "id_presupuesto_local": 8232808,
+          "presupuesto_fecha": "2026-04-10",
+          "secuencia": "Armar_Pedido",
+          "articulo_numero": "5269663577",
+          "descripcion": "Mani/Cas/Virg. x 5",
+          "pedido_total": 2,
+          "stock_disponible": 3,
+          "faltante": 0,
+          "snapshot_motivo": "primera_impresion",
+          "snapshot_numero_impresion": 1,
+          "snapshot_secuencia": "Armar_Pedido"
+        },
+        {
+          "presupuesto_id": "mnszmmzf-ic69n",
+          "id_presupuesto_local": 8232808,
+          "presupuesto_fecha": "2026-04-10",
+          "secuencia": "Armar_Pedido",
+          "articulo_numero": "5349211857",
+          "descripcion": "Pasa/Jumbo x 10",
+          "pedido_total": 1,
+          "stock_disponible": 11,
+          "faltante": 0,
+          "snapshot_motivo": "primera_impresion",
+          "snapshot_numero_impresion": 1,
+          "snapshot_secuencia": "Armar_Pedido"
+        },
+        {
+          "presupuesto_id": "mnszmmzf-ic69n",
+          "id_presupuesto_local": 8232808,
+          "presupuesto_fecha": "2026-04-10",
+          "secuencia": "Armar_Pedido",
+          "articulo_numero": "6458265698",
+          "descripcion": "Mix/Col/Tropical x 5",
+          "pedido_total": 1,
+          "stock_disponible": 16,
+          "faltante": 0,
+          "snapshot_motivo": "primera_impresion",
+          "snapshot_numero_impresion": 1,
+          "snapshot_secuencia": "Armar_Pedido"
+        }
+      ],
+      "indicador_estado": "COMPLETO"
+    }
+  ],
+  "total_clientes": 3,
+  "filtros": {
+    "fecha": "2026-04-11",
+    "estado": "presupuesto/orden"
+  },
+  "timestamp": "2026-04-11T18:47:46.391Z"
+}
