@@ -2072,7 +2072,7 @@ function verDetallesPresupuesto(presupuestoId) {
 function imprimirPresupuestoStandBy(presupuestoId) {
     console.log(`📄 [STANDBY] Imprimir presupuesto ${presupuestoId}`);
     // Redirigir a la página de impresión de presupuestos
-    window.open(`/pages/imprimir-presupuesto.html?id=${presupuestoId}`, '_blank');
+    window.open(`/pages/imprimir-presupuesto.html?id=${presupuestoId}&contexto=produccion`, '_blank');
 }
 
 /**
@@ -2506,7 +2506,7 @@ console.log('✅ [REVERTIR-ARMAR] Módulo de reversión QA Listo→Armar cargado
 // ==========================================
 // MÓDULO DE GESTIÓN DE PERFILES DE IMPRESIÓN
 // ==========================================
-window.gestionarPerfilImpresionCliente = function(clienteId, clienteNombre) {
+window.gestionarPerfilImpresionCliente = async function(clienteId, clienteNombre) {
     console.log(`[PERFILES] Gestionando perfil para: ${clienteNombre} (ID: ${clienteId})`);
     
     // Crear Overlay nativo
@@ -2523,22 +2523,64 @@ window.gestionarPerfilImpresionCliente = function(clienteId, clienteNombre) {
         width: '350px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', fontFamily: 'sans-serif'
     });
 
-    modal.innerHTML = `
-        <h3 style="margin-top:0; color:#333;">⚙️ Perfil de Impresión</h3>
-        <p style="font-size:14px; color:#555;">Cliente: <strong>${clienteNombre}</strong></p>
-        <select id="select-perfil" style="width:100%; padding:8px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px;">
-            <option value="DEFAULT">Plantilla Estándar (Default)</option>
-            <option value="PERFIL_PRECIO_KILO">Caso Emilio (Precio por Kilo)</option>
-            <option value="PERFIL_TOTAL_FACTURA">Caso Green Corner (Total Remito)</option>
-        </select>
-        <div style="display:flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
-            <button id="btn-cancel-perfil" style="padding:6px 12px; background:#ddd; border:none; border-radius:4px; cursor:pointer;">Cancelar</button>
-            <button id="btn-save-perfil" style="padding:6px 12px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Guardar Perfil</button>
-        </div>
-    `;
-
+    // Estado inicial de carga
+    modal.innerHTML = `<h3 style="margin-top:0; color:#333;">⚙️ Curioseando...</h3>`;
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+
+    const baseObj = (window.API_BASE || '/api') + '/produccion';
+    
+    // Nombres legibles para el UI state
+    const nombresPerfiles = {
+        'DEFAULT': 'Plantilla Estándar (Default)',
+        'PERFIL_PRECIO_KILO': 'Caso Emilio (Precio por Kilo)',
+        'PERFIL_TOTAL_FACTURA': 'Caso Green Corner (Total Remito)'
+    };
+    
+    try {
+        // Consultar el estado real de la base de datos de manera determinista (TICKET #2)
+        const response = await fetch(`${baseObj}/clientes/${clienteId}/perfil-impresion`);
+        const data = await response.json();
+        
+        let perfilAsignado = 'DEFAULT';
+        
+        if (data.success && data.perfil_id) {
+            perfilAsignado = data.perfil_id;
+        }
+
+        const nombreAmigable = nombresPerfiles[perfilAsignado] || perfilAsignado;
+
+        modal.innerHTML = `
+            <h3 style="margin-top:0; color:#333;">⚙️ Perfil de Impresión</h3>
+            <p style="font-size:14px; color:#555; margin-bottom: 5px;">Cliente: <strong>${clienteNombre}</strong></p>
+            
+            <div style="background-color: #e9ecef; border-left: 4px solid #007bff; padding: 10px; margin-bottom: 15px; border-radius: 2px;">
+                <span style="font-size: 13px; color: #495057;">Asignado actualmente:</span><br>
+                <strong>${nombreAmigable}</strong>
+            </div>
+
+            <select id="select-perfil" style="width:100%; padding:8px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px;">
+                <option value="DEFAULT">Plantilla Estándar (Default)</option>
+                <option value="PERFIL_PRECIO_KILO">Caso Emilio (Precio por Kilo)</option>
+                <option value="PERFIL_TOTAL_FACTURA">Caso Green Corner (Total Remito)</option>
+            </select>
+            <div style="display:flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                <button id="btn-cancel-perfil" style="padding:6px 12px; background:#ddd; border:none; border-radius:4px; cursor:pointer;">Cancelar</button>
+                <button id="btn-save-perfil" style="padding:6px 12px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Guardar Perfil</button>
+            </div>
+        `;
+
+        // Preseleccionar el perfil en el desplegable
+        document.getElementById('select-perfil').value = perfilAsignado;
+
+    } catch (err) {
+        console.error('❌ Error cargando perfil actual:', err);
+        // Fallback UI si falla
+        modal.innerHTML = `<h3 style="color:red;">❌ Error conectando servidor</h3>`;
+        setTimeout(() => overlay.remove(), 2000);
+        return;
+    }
+
 
     document.getElementById('btn-cancel-perfil').onclick = () => overlay.remove();
     document.getElementById('btn-save-perfil').onclick = async () => {

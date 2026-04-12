@@ -578,7 +578,7 @@
                 console.log(`✅ [IMPRIMIR] Presupuesto marcado como impreso`);
 
                 // Abrir ventana de impresión (reutilizar sistema existente)
-                const urlImpresion = `http://localhost:3003/pages/imprimir-presupuesto.html?id=${idPresupuestoLocal}`;
+                const urlImpresion = `http://localhost:3003/pages/imprimir-presupuesto.html?id=${idPresupuestoLocal}&contexto=produccion`;
                 window.open(urlImpresion, '_blank');
 
                 // Recargar acordeones

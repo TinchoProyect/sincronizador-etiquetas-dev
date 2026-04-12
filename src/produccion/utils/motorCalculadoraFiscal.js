@@ -59,6 +59,7 @@ function extraerCostoFinanciero(articulo, presupuestoGeneral = null) {
 
         // Paso C - Resultado Columna
         let precioPorKilo = (kilosTotalesArticulo > 0) ? (precioConIva / kilosTotalesArticulo) : null;
+        let precioUnidad = (unidadesEmpaque > 0) ? (precioConIva / unidadesEmpaque) : null;
 
         return {
             validez: true,
@@ -68,7 +69,8 @@ function extraerCostoFinanciero(articulo, presupuestoGeneral = null) {
             precioNetoReal: precioNetoReal,
             precioConIva: precioConIva,
             kilosTotales: kilosTotalesArticulo,
-            precioPorKilo: precioPorKilo 
+            precioPorKilo: precioPorKilo,
+            precioUnidad: precioUnidad
         };
     } catch (error) {
         console.error('❌ [CALC-FISCAL] Falla de cálculo en artículo:', articulo.articulo_numero, error);

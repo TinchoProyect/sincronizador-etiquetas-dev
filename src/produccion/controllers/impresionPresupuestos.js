@@ -82,6 +82,24 @@ function generarSVGCodigoBarras(texto) {
     }
 }
 
+function generarIMGComando(texto) {
+    try {
+        const canvas = createCanvas();
+        JsBarcode(canvas, texto, {
+            format: "CODE128",
+            width: 1.5,
+            height: 40, 
+            displayValue: false, // The HTML has a separate label beneath
+            margin: 5
+        });
+        
+        return `<img src="${canvas.toDataURL()}" style="display: block; margin: 0 auto; height: 35px;" alt="${texto}"/>`;
+    } catch (error) {
+        console.error('❌ Error al generar imagen comando HTML:', error);
+        return '';
+    }
+}
+
 /**
  * Guardar snapshot de presupuesto al imprimir
  * @param {number} id_presupuesto - ID interno del presupuesto
@@ -670,9 +688,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
             console.log('📸 [SNAPSHOT] Proceso de snapshots completado para "Imprimir Todos"');
             
             if (formato === 'pdf') {
-                return generarPDF_TodosLosClientes(res, clientesData, fecha);
+                return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
             } else {
-                return generarHTML_TodosLosClientes(res, clientesData, fecha);
+                return generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
             }
             
         } else {
@@ -838,7 +856,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             if (formato === 'pdf') {
                 return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
             } else {
-                return generarHTML_TodosLosClientes(res, clientesData, fecha);
+                return generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
             }
         }
         
@@ -1245,7 +1263,8 @@ function generarHTMLPresupuestoUnico({
     horaHoy,
     paginaActual,
     totalPaginas,
-    agregarPageBreak = false
+    agregarPageBreak = false,
+    esContextoProduccion = false
 }) {
     const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
     
@@ -1253,6 +1272,11 @@ function generarHTMLPresupuestoUnico({
     const idPresupuesto = presupuesto._id_presupuesto || 0;
     const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
     const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+    
+    // Configuración de Perfiles Activos Dinámicos
+    const esPerfilEmilio = (perfilId === 'PERFIL_EMILIO' || perfilId === 'PERFIL_PRECIO_KILO' || clienteId == 1 || clienteId === '001');
+    const esPerfilGreenCorner = (perfilId === 'TOTALIZADOR_MENS' || perfilId === 'PERFIL_GREEN_CORNER' || clienteId == 577 || clienteId === '577');
+
     // CORRECCIÓN: Se usa .length para contar items distintos
     const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
     const svgCodigoBarras = generarSVGCodigoBarras(codigoBarras);
@@ -1329,14 +1353,37 @@ function generarHTMLPresupuestoUnico({
             <thead>
                 <tr>
                     <th class="col-codigo">Código</th>
-                    <th class="col-descripcion" ${perfilId === 'PERFIL_PRECIO_KILO' ? 'style="width: 45%;"' : ''}>Descripción del Artículo</th>
-                    <th class="col-cantidad">Cantidad</th>
-                    ${perfilId === 'PERFIL_PRECIO_KILO' ? '<th style="width: 15%; text-align: center;">$/Kilo (Final)</th>' : ''}
+                    <th class="col-descripcion" ${esPerfilEmilio ? 'style="width: 35%;"' : ''}>Descripción del Artículo</th>
+                    <th class="col-cantidad" ${esPerfilEmilio ? 'style="width: 10%;"' : ''}>Cantidad</th>
+                    ${esPerfilEmilio ? `
+                    <th style="width: 15%; text-align: center;">$/UNID (FINAL)</th>
+                    <th style="width: 15%; text-align: center;">$/KILO (FINAL)</th>
+                    ` : ''}
                 </tr>
             </thead>
             <tbody>
 `;
     
+    // Función auxiliar para renderizar celdas extra de Emilio
+    const generarCeldasEmilio = (articulo) => {
+        if (!esPerfilEmilio) return '';
+        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+        let txtUnidad = '-';
+        let txtKilo = '-';
+        if (metricas.validez) {
+            if (metricas.precioUnidad !== null && metricas.precioUnidad > 0) {
+                txtUnidad = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioUnidad);
+            }
+            if (metricas.precioPorKilo !== null && metricas.precioPorKilo > 0) {
+                txtKilo = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+            }
+        }
+        return `
+            <td style="text-align: center; font-weight: bold;">${txtUnidad}</td>
+            <td style="text-align: center; font-weight: bold;">${txtKilo}</td>
+        `;
+    };
+
     // Mostrar artículos de ESTE presupuesto
     if (presupuesto.articulos && presupuesto.articulos.length > 0) {
         const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
@@ -1353,19 +1400,11 @@ function generarHTMLPresupuestoUnico({
             if (articulosConStock.length > 0) {
                 html += `
                 <tr>
-                    <td colspan="3" class="seccion-titulo">Artículos Disponibles</td>
+                    <td colspan="${esPerfilEmilio ? '5' : '3'}" class="seccion-titulo">Artículos Disponibles</td>
                 </tr>
 `;
                 articulosConStock.forEach(articulo => {
-                    let tdExtra = '';
-                    if (perfilId === 'PERFIL_PRECIO_KILO') {
-                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
-                        let txt = '-';
-                        if (metricas.validez && metricas.precioPorKilo !== null) {
-                            txt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
-                        }
-                        tdExtra = `<td style="text-align: center; font-weight: bold;">${txt}</td>`;
-                    }
+                    const tdExtra = generarCeldasEmilio(articulo);
                     html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
@@ -1381,19 +1420,11 @@ function generarHTMLPresupuestoUnico({
             if (articulosSinStock.length > 0) {
                 html += `
                 <tr>
-                    <td colspan="3" class="seccion-titulo en-falta">⚠️ Artículos en Falta</td>
+                    <td colspan="${esPerfilEmilio ? '5' : '3'}" class="seccion-titulo en-falta">⚠️ Artículos en Falta</td>
                 </tr>
 `;
                 articulosSinStock.forEach(articulo => {
-                    let tdExtra = '';
-                    if (perfilId === 'PERFIL_PRECIO_KILO') {
-                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
-                        let txt = '-';
-                        if (metricas.validez && metricas.precioPorKilo !== null) {
-                            txt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
-                        }
-                        tdExtra = `<td style="text-align: center; font-weight: bold; color: #856404;">${txt}</td>`;
-                    }
+                    const tdExtra = generarCeldasEmilio(articulo);
                     html += `
                 <tr class="articulo-en-falta">
                     <td class="col-codigo">${articulo.articulo_numero}</td>
@@ -1407,15 +1438,7 @@ function generarHTMLPresupuestoUnico({
         } else {
             // Modo normal (sin pendientes de compra)
             articulosSorted.forEach(articulo => {
-                let tdExtra = '';
-                if (perfilId === 'PERFIL_PRECIO_KILO') {
-                    let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
-                    let txt = '-';
-                    if (metricas.validez && metricas.precioPorKilo !== null) {
-                        txt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
-                    }
-                    tdExtra = `<td style="text-align: center; font-weight: bold;">${txt}</td>`;
-                }
+                const tdExtra = generarCeldasEmilio(articulo);
                 html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
@@ -1441,13 +1464,15 @@ function generarHTMLPresupuestoUnico({
         </table>
 `;
 
-    if (perfilId === 'PERFIL_TOTAL_FACTURA') {
+    if (perfilId === 'PERFIL_TOTAL_FACTURA' || esPerfilGreenCorner) {
         const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || []);
         const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
+        const txtTotal = esPerfilGreenCorner ? 'TOTAL A PAGAR:' : 'TOTAL REMITO NETO:';
+        
         html += `
         <div style="background: #f0f0f0; border: 1px solid #ccc; padding: 8px 15px; text-align: right; margin-top: 10px; border-radius: 4px;">
-            <span style="font-size: 11px; font-weight: bold; margin-right: 15px;">TOTAL REMITO NETO:</span>
-            <span style="font-size: 13px; font-weight: bold; color: #000;">${fmtTotal}</span>
+            <span style="font-size: 13px; font-weight: bold; margin-right: 15px; color: #333;">${txtTotal}</span>
+            <span style="font-size: 15px; font-weight: bold; color: #000;">${fmtTotal}</span>
         </div>
 `;
     }
@@ -1542,6 +1567,25 @@ function generarHTMLPresupuestoUnico({
         <div class="pie-pagina">
             Sistema LAMDA - Presupuesto ${paginaActual} de ${totalPaginas} - ${new Date().toLocaleString('es-AR')}
         </div>
+        
+        ${esContextoProduccion && !esPendienteCompra ? `
+        <!-- COMANDOS HARDWARE ON/OFF -->
+        <div style="display: flex; justify-content: space-between; padding: 0 40px; margin-top: 20px;">
+            <div style="text-align: center;">
+                <div style="height: 35px; overflow: hidden; display: flex; justify-content: center;">
+                    ${generarIMGComando('CMD-ON')}
+                </div>
+                <div style="font-size: 10px; font-weight: bold; margin-top: 5px; font-family: sans-serif;">ON</div>
+            </div>
+            
+            <div style="text-align: center;">
+                <div style="height: 35px; overflow: hidden; display: flex; justify-content: center;">
+                    ${generarIMGComando('CMD-OFF')}
+                </div>
+                <div style="font-size: 10px; font-weight: bold; margin-top: 5px; font-family: sans-serif;">OFF</div>
+            </div>
+        </div>
+        ` : ''}
     </div>
 `;
     
@@ -1677,16 +1721,19 @@ function renderizarPDFPresupuestoUnico(doc, {
     // TABLA DE ARTÍCULOS
     const tablaY = 150;
     
-    let hasPrecioKilo = (perfilId === 'PERFIL_PRECIO_KILO');
+    const esPerfilEmilio = (perfilId === 'PERFIL_EMILIO' || perfilId === 'PERFIL_PRECIO_KILO' || clienteId == 1 || clienteId === '001');
+    const esPerfilGreenCorner = (perfilId === 'TOTALIZADOR_MENS' || perfilId === 'PERFIL_GREEN_CORNER' || clienteId == 577 || clienteId === '577');
+    
+    let hasPrecioKilo = esPerfilEmilio;
     let colWidths = [85, 340, 65];
     if (hasPrecioKilo) {
-        colWidths = [85, 255, 55, 95];
+        colWidths = [65, 225, 50, 75, 75]; // Total 490
     }
     
     const rowHeight = 22;
     
     // Encabezados
-    doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths[0] + colWidths[1] + colWidths[2] + (hasPrecioKilo ? colWidths[3] : 0), rowHeight).fill();
+    doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths.reduce((a,b)=>a+b, 0), rowHeight).fill();
     doc.fillColor('black').fontSize(9).font('Helvetica-Bold');
     doc.rect(50, tablaY, colWidths[0], rowHeight).stroke();
     doc.text('CÓDIGO', 55, tablaY + 8);
@@ -1697,7 +1744,10 @@ function renderizarPDFPresupuestoUnico(doc, {
 
     if (hasPrecioKilo) {
         doc.rect(50 + colWidths[0] + colWidths[1] + colWidths[2], tablaY, colWidths[3], rowHeight).stroke();
-        doc.text('$/KILO (FINAL)', 55 + colWidths[0] + colWidths[1] + colWidths[2], tablaY + 8, { align: 'center', width: colWidths[3] });
+        doc.text('$/UNID (FINAL)', 55 + colWidths[0] + colWidths[1] + colWidths[2], tablaY + 8, { align: 'center', width: colWidths[3] });
+        
+        doc.rect(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], tablaY, colWidths[4], rowHeight).stroke();
+        doc.text('$/KILO (FINAL)', 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], tablaY + 8, { align: 'center', width: colWidths[4] });
     }
     
     // Artículos de ESTE presupuesto solamente
@@ -1758,14 +1808,32 @@ function renderizarPDFPresupuestoUnico(doc, {
                     if (hasPrecioKilo) {
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                        
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
+                        
                         let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
-                        let textoPrecio = '-';
-                        if (metricas.validez && metricas.precioPorKilo !== null) {
-                            textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        let txtUnidad = '-';
+                        let txtKilo = '-';
+                        if (metricas.validez) {
+                            if (metricas.precioUnidad !== null && metricas.precioUnidad > 0) {
+                                txtUnidad = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioUnidad);
+                            }
+                            if (metricas.precioPorKilo !== null && metricas.precioPorKilo > 0) {
+                                txtKilo = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                            }
                         }
-                        doc.fontSize(12).font('Helvetica-Bold').fillColor('black')
-                           .text(textoPrecio, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
+                        
+                        // Celda $/UNIDAD
+                        doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
+                           .text(txtUnidad, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
                                width: colWidths[3], align: 'center' 
+                           });
+                           
+                        // Celda $/KILO
+                        doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
+                           .text(txtKilo, 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + 6, { 
+                               width: colWidths[4], align: 'center' 
                            });
                     }
                     
@@ -1823,14 +1891,32 @@ function renderizarPDFPresupuestoUnico(doc, {
                     if (hasPrecioKilo) {
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                        
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
+                        
                         let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
-                        let textoPrecio = '-';
-                        if (metricas.validez && metricas.precioPorKilo !== null) {
-                            textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        let txtUnidad = '-';
+                        let txtKilo = '-';
+                        if (metricas.validez) {
+                            if (metricas.precioUnidad !== null && metricas.precioUnidad > 0) {
+                                txtUnidad = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioUnidad);
+                            }
+                            if (metricas.precioPorKilo !== null && metricas.precioPorKilo > 0) {
+                                txtKilo = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                            }
                         }
-                        doc.fontSize(12).font('Helvetica-Bold').fillColor('#856404')
-                           .text(textoPrecio, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
+                        
+                        // Celda $/UNIDAD
+                        doc.fontSize(10).font('Helvetica-Bold').fillColor('#856404')
+                           .text(txtUnidad, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
                                width: colWidths[3], align: 'center' 
+                           });
+                           
+                        // Celda $/KILO
+                        doc.fontSize(10).font('Helvetica-Bold').fillColor('#856404')
+                           .text(txtKilo, 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + 6, { 
+                               width: colWidths[4], align: 'center' 
                            });
                     }
                     
@@ -1877,14 +1963,32 @@ function renderizarPDFPresupuestoUnico(doc, {
                 if (hasPrecioKilo) {
                     doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
                     doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                    
+                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
+                    
                     let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
-                    let textoPrecio = '-';
-                    if (metricas.validez && metricas.precioPorKilo !== null) {
-                        textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                    let txtUnidad = '-';
+                    let txtKilo = '-';
+                    if (metricas.validez) {
+                        if (metricas.precioUnidad !== null && metricas.precioUnidad > 0) {
+                            txtUnidad = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioUnidad);
+                        }
+                        if (metricas.precioPorKilo !== null && metricas.precioPorKilo > 0) {
+                            txtKilo = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        }
                     }
-                    doc.fontSize(12).font('Helvetica-Bold').fillColor('black')
-                       .text(textoPrecio, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
+                    
+                    // Celda $/UNIDAD
+                    doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
+                       .text(txtUnidad, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
                            width: colWidths[3], align: 'center' 
+                       });
+                       
+                    // Celda $/KILO
+                    doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
+                       .text(txtKilo, 55 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + 6, { 
+                           width: colWidths[4], align: 'center' 
                        });
                 }
                 
@@ -1968,6 +2072,25 @@ function renderizarPDFPresupuestoUnico(doc, {
                 console.log(`[PRINT-MOD] PDF: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
             }
         }
+    }
+    
+    // Green Corner (Total al final de la tabla)
+    if (perfilId === 'PERFIL_TOTAL_FACTURA' || esPerfilGreenCorner) {
+        currentY += 10;
+        const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || []);
+        const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
+        const txtTotal = esPerfilGreenCorner ? 'TOTAL A PAGAR:' : 'TOTAL REMITO NETO:';
+        
+        doc.fillColor('#f0f0f0').roundedRect(240, currentY, 300, 25, 4).fill();
+        doc.strokeColor('#cccccc').roundedRect(240, currentY, 300, 25, 4).stroke();
+        
+        doc.fillColor('#333333').fontSize(11).font('Helvetica-Bold')
+           .text(txtTotal, 250, currentY + 7);
+        
+        doc.fillColor('black').fontSize(12).font('Helvetica-Bold')
+           .text(fmtTotal, 390, currentY + 6, { width: 140, align: 'right' });
+           
+        currentY += 35;
     }
     
     // CONTROL DE ENTREGA
@@ -2062,7 +2185,7 @@ function renderizarPDFPresupuestoUnico(doc, {
  * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
  * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
-function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = []) {
+function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false) {
     try {
         const fechaHoy = new Date().toLocaleDateString('es-AR', {
             year: 'numeric',
@@ -2118,7 +2241,8 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
                 horaHoy,
                 paginaActual: presupIndex + 1,
                 totalPaginas: clienteData.presupuestos.length,
-                agregarPageBreak: presupIndex < clienteData.presupuestos.length - 1
+                agregarPageBreak: presupIndex < clienteData.presupuestos.length - 1,
+                esContextoProduccion
             });
         });
         
@@ -2219,7 +2343,7 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
  * Genera HTML para TODOS los clientes (impresión general / "Imprimir Todos")
  * Una hoja por cada presupuesto de cada cliente
  */
-function generarHTML_TodosLosClientes(res, clientesData, fecha) {
+function generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false) {
     try {
         const fechaHoy = new Date().toLocaleDateString('es-AR', {
             year: 'numeric',

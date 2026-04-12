@@ -3474,6 +3474,34 @@ router.get('/informe/mensual', async (req, res) => {
 });
 
 /**
+ * Obtiene el perfil de impresión asignado al cliente.
+ * GET /api/produccion/clientes/:id/perfil-impresion
+ */
+router.get('/clientes/:id/perfil-impresion', async (req, res) => {
+    try {
+        const id_cliente_ext = req.params.id;
+        
+        const query = `
+            SELECT perfil_id 
+            FROM clientes_perfiles_impresion 
+            WHERE id_cliente_ext = $1
+        `;
+        
+        const result = await pool.query(query, [id_cliente_ext]);
+        
+        if (result.rows.length > 0) {
+            res.json({ success: true, perfil_id: result.rows[0].perfil_id });
+        } else {
+            // Devuelve DEFAULT si no hay asignación
+            res.json({ success: true, perfil_id: 'DEFAULT' });
+        }
+    } catch (error) {
+        console.error(`[API] Error obteniendo perfil de cliente ${req.params.id}:`, error);
+        res.status(500).json({ success: false, error: 'Error interno del servidor' });
+    }
+});
+
+/**
  * Asigna y persiste el perfil de impresión seleccionado por el cliente.
  * POST /api/produccion/clientes/:id/perfil-impresion
  */
