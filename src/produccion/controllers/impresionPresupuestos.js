@@ -2118,16 +2118,6 @@ function renderizarPDFPresupuestoUnico(doc, {
     doc.text('Firma (opcional):', 300, campoY);
     doc.moveTo(300, campoY + 8).lineTo(520, campoY + 8).stroke();
     
-    // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
-    // CORRECCIÓN: CÓDIGO DE BARRAS AL FINAL
-    if (bufferCodigoBarras) {
-        try {
-            doc.image(bufferCodigoBarras, 200, controlY + 45, { width: 140, height: 35 });
-            console.log(`✅ [BARCODE-PDF] Código de barras insertado en el pie central`);
-        } catch (imgError) {
-            console.error(`❌ [BARCODE-PDF] Error al insertar imagen central:`, imgError.message);
-        }
-    }
 
     // CÓDIGO DE BARRAS PRINCIPAL Y PIE DE PÁGINA (Aislados del resto del contenido)
     const pieY = Math.min(controlY + controlHeight + 50, 780);
