@@ -536,7 +536,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         p.id_presupuesto_ext,
                         p.id_cliente,
                         p.fecha,
-                        CAST(p.id_cliente AS integer) as cliente_id_int
+                        CAST(p.id_cliente AS integer) as cliente_id_int,
+                        COALESCE(p.descuento, 0) as descuento
                     FROM public.presupuestos p
                     WHERE p.activo = true 
                       AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden'
@@ -557,6 +558,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                     JSON_BUILD_OBJECT(
                                         'id_presupuesto_ext', pf2.id_presupuesto_ext,
                                         'fecha', pf2.fecha,
+                                        'descuento', pf2.descuento,
                                         'articulos', (
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
