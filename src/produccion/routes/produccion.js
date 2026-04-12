@@ -2719,6 +2719,69 @@ router.post('/asignar-faltantes', async (req, res) => {
 });
 
 /**
+ * Ruta para pre-validar impresión (Hard Fallback de Kilos)
+ */
+router.get('/validar-impresion', async (req, res) => {
+    try {
+        console.log('🔍 [VALIDAR-IMPRESION] Validando: ', req.query);
+        const { cliente_id, presupuesto_id, presupuestos_ext_ids, fecha } = req.query;
+        let whereConditions = ["p.activo = true", "REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden'"];
+        let params = [];
+
+        if (presupuestos_ext_ids) {
+            const idsList = presupuestos_ext_ids.split(',').map(id => id.trim()).filter(Boolean);
+            const placeholders = idsList.map((_, i) => `$${params.length + i + 1}`).join(',');
+            whereConditions.push(`p.id_presupuesto_ext IN (${placeholders})`);
+            params.push(...idsList);
+        } else if (cliente_id) {
+            whereConditions.push(`CAST(p.id_cliente AS integer) = $${params.length + 1}`);
+            params.push(parseInt(cliente_id));
+            if (presupuesto_id) {
+                whereConditions.push(`p.id_presupuesto_ext = $${params.length + 1}`);
+                params.push(presupuesto_id);
+            }
+            if (fecha) {
+                whereConditions.push(`p.fecha <= $${params.length + 1}`);
+                params.push(fecha);
+            }
+        } else if (fecha) {
+            whereConditions.push(`p.fecha::date <= $${params.length + 1}`);
+            params.push(fecha);
+        } else {
+            return res.json({ success: true, requireKilos: false });
+        }
+
+        const query = `
+            SELECT DISTINCT pd.articulo, COALESCE(NULLIF(TRIM(a.nombre), ''), pd.articulo) as descripcion
+            FROM public.presupuestos p
+            JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
+            JOIN public.clientes_perfiles_impresion cpi ON cpi.id_cliente_ext = CAST(p.id_cliente AS text)
+            LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = pd.articulo OR src.articulo_numero = pd.articulo)
+            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+            WHERE ${whereConditions.join(' AND ')}
+              AND TRIM(cpi.perfil_id) = 'PERFIL_PRECIO_KILO'
+              AND (src.kilos_unidad IS NULL OR src.kilos_unidad <= 0)
+        `;
+        
+        console.log('🔍 [VALIDAR-IMPRESION] QUERY SQL EXACTA:', { query, params });
+
+        const result = await pool.query(query, params);
+        
+        console.log('🔍 [VALIDAR-IMPRESION] ROW RESULT:', result.rows);
+
+        if (result.rows.length > 0) {
+            console.log('✅ [VALIDAR-IMPRESION] DETECTADOS LOS SIGUIENTES FATALES:', result.rows);
+            return res.json({ success: true, requireKilos: true, missing: result.rows });
+        }
+        console.log('🚫 [VALIDAR-IMPRESION] TODO OK. NO HAY FATALES.');
+        res.json({ success: true, requireKilos: false });
+    } catch (error) {
+        console.error('❌ Error en /validar-impresion:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * Ruta para impresión de presupuestos por cliente
  */
 router.get('/impresion-presupuesto', async (req, res) => {

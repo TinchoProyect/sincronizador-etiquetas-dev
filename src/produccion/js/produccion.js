@@ -465,6 +465,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 btnImprimirPresup.style.fontSize = '12px';
                 btnImprimirPresup.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    console.log(`[VIGÍA] Clic exacto en "Imprimir" para presupuesto: ${presupuesto.presupuesto_id} del cliente: ${cliente.cliente_id}`);
                     imprimirPresupuestoIndividual(cliente.cliente_id, presupuesto.presupuesto_id);
                 });
                 botonesPresupuesto.appendChild(btnImprimirPresup);
@@ -1123,39 +1124,127 @@ async function imprimirPresupuestoCliente(clienteId) {
     }
 }
 
+// NUEVA FUNCIÓN AÑADIDA: Hard Fallback
+async function preValidarImpresion(queryString) {
+    try {
+        const checkUrl = `${base}/validar-impresion?${queryString}`;
+        console.log(`[VIGÍA] FRONTEND - Iniciando preValidarImpresion`);
+        console.log(`[VIGÍA] FRONTEND - Payload Exacto enviado a API:`, queryString);
+        console.log(`[VIGÍA] FRONTEND - URI:`, checkUrl);
+        
+        const res = await fetch(checkUrl);
+        const data = await res.json();
+        
+        console.log(`[VIGÍA] FRONTEND - RAW RESPONSE de la validación:`, data);
+        
+        if (data.requireKilos && data.missing && data.missing.length > 0) {
+            console.log(`[VIGÍA] FRONTEND - CONDICIÓN IF EVALUADA: TRUE (Requiere Kilos) -> Abriendo Modal Swal`);
+            let htmlInputs = '';
+            data.missing.forEach((item, index) => {
+                htmlInputs += `
+                    <div style="margin-bottom: 10px; text-align: left;">
+                        <label style="font-weight: bold; font-size: 14px;">${item.articulo} - ${item.descripcion}</label>
+                        <input type="number" id="kilos_override_${index}" class="swal2-input" placeholder="Peso total en kg" style="margin-top: 5px;" step="0.01">
+                        <input type="hidden" id="kilos_articulo_${index}" value="${item.articulo}">
+                    </div>
+                `;
+            });
+            
+            const result = await Swal.fire({
+                title: 'Faltan Kilos en Artículos',
+                html: htmlInputs,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Guardar e Imprimir',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const overrides = {};
+                    let hasError = false;
+                    data.missing.forEach((item, index) => {
+                        const val = document.getElementById(`kilos_override_${index}`).value;
+                        if (!val || parseFloat(val) <= 0) {
+                            hasError = true;
+                        } else {
+                            overrides[item.articulo] = parseFloat(val);
+                        }
+                    });
+                    if (hasError) {
+                        Swal.showValidationMessage('Debe ingresar un peso válido mayor a 0 para todos los artículos listados.');
+                        return false;
+                    }
+                    return overrides;
+                }
+            });
+            
+            if (result.isConfirmed) {
+                console.log(`[VIGÍA] FRONTEND - Usuario Confirmó Kilos! Resolviendo con:`, result.value);
+                return result.value; // Resuelve con los overrides
+            } else {
+                console.log(`[VIGÍA] FRONTEND - Usuario CANCELÓ Modal! Bloqueando promesa.`);
+                return Promise.reject(new Error("USUARIO_CANCELO_MODAL"));
+            }
+        } else {
+            console.log(`[VIGÍA] FRONTEND - CONDICIÓN IF EVALUADA: FALSE (No requiere kilos o missing empty) -> Bypass OK`);
+            return null; // Todo validado correctamente, sin overrides
+        }
+    } catch (err) {
+        if (err.message === "USUARIO_CANCELO_MODAL") {
+            throw err;
+        }
+        console.error("Error pre-validando impresión", err);
+        // Fallback: si falla el chequeo de red, simplemente sigue por defecto
+        console.log(`[VIGÍA] FRONTEND - FALLO DE RED/CATCH -> Bypass por Fallback`);
+        return null;
+    }
+}
+
 // Función para imprimir un presupuesto individual
 async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     console.log(`📄 Imprimiendo presupuesto individual: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
 
-    // 1. Abrir impresión
-    const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf&contexto=produccion`;
-    const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html&contexto=produccion`;
+    const baseQueryString = `cliente_id=${clienteId}&presupuesto_id=${presupuestoId}`;
 
-    const win = window.open(urlPdf, '_blank');
+    try {
+        const kilosOverrides = await preValidarImpresion(baseQueryString);
+        
+        let overrideParam = kilosOverrides ? `&kilos_override=${encodeURIComponent(JSON.stringify(kilosOverrides))}` : '';
+        // 1. Abrir impresión
+        const urlPdf = `${base}/impresion-presupuesto?${baseQueryString}&formato=pdf&contexto=produccion${overrideParam}`;
+        const urlHtml = `${base}/impresion-presupuesto?${baseQueryString}&formato=html&contexto=produccion${overrideParam}`;
 
-    setTimeout(() => {
-        if (!win || win.closed || typeof win.closed == 'undefined') {
-            window.open(urlHtml, '_blank');
-        }
-    }, 2000);
+        const win = window.open(urlPdf, '_blank');
 
-    // 2. Actualizar secuencia a "Armar_Pedido"
-    const actualizado = await actualizarSecuenciaPresupuestos([presupuestoId]);
-    if (actualizado) {
-        // Recargar datos y expandir sección "Armar Pedido" + cliente
         setTimeout(() => {
-            cargarPedidosPorCliente();
+            if (!win || win.closed || typeof win.closed == 'undefined') {
+                window.open(urlHtml, '_blank');
+            }
+        }, 2000);
 
+        // 2. Actualizar secuencia a "Armar_Pedido"
+        const actualizado = await actualizarSecuenciaPresupuestos([presupuestoId]);
+        if (actualizado) {
+            // Recargar datos y expandir sección "Armar Pedido" + cliente
             setTimeout(() => {
-                console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
-                forzarExpandirSeccion('pedidos-armar-section');
+                cargarPedidosPorCliente();
 
-                // Expandir el cliente DENTRO de la sección "Armar Pedido"
                 setTimeout(() => {
-                    abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
-                }, 500);
-            }, 800);
-        }, 1000);
+                    console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
+                    forzarExpandirSeccion('pedidos-armar-section');
+
+                    // Expandir el cliente DENTRO de la sección "Armar Pedido"
+                    setTimeout(() => {
+                        abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
+                    }, 500);
+                }, 800);
+            }, 1000);
+        }
+    } catch (err) {
+        if (err.message === "USUARIO_CANCELO_MODAL") {
+            console.log("🚫 [REMITO-R] Impresión cancelada por validación de Kilos.");
+            return; // Bloqueo de ejecución
+        } else {
+            console.error(err);
+        }
     }
 }
 
@@ -1180,27 +1269,41 @@ async function imprimirTodosLosPresupuestos(fechaCorte) {
     // 3. Abrir impresión usando el MISMO FORMATO que el botón individual
     // El botón individual usa: cliente_id + presupuesto_id (id_presupuesto_ext)
     // Para "todos", usamos: fecha + presupuestos_ext_ids
-    const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=pdf&contexto=produccion`;
-    const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=html&contexto=produccion`;
+    const baseQueryString = `fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}`;
 
-    console.log(`🔗 [IMPRIMIR-TODOS] URL: ${urlHtml}`);
+    try {
+        const kilosOverrides = await preValidarImpresion(baseQueryString);
+        
+        let overrideParam = kilosOverrides ? `&kilos_override=${encodeURIComponent(JSON.stringify(kilosOverrides))}` : '';
+        const urlPdf = `${base}/impresion-presupuesto?${baseQueryString}&formato=pdf&contexto=produccion${overrideParam}`;
+        const urlHtml = `${base}/impresion-presupuesto?${baseQueryString}&formato=html&contexto=produccion${overrideParam}`;
 
-    const win = window.open(urlPdf, '_blank');
+        console.log(`🔗 [IMPRIMIR-TODOS] URL: ${urlHtml}`);
 
-    setTimeout(() => {
-        if (!win || win.closed || typeof win.closed == 'undefined') {
-            window.open(urlHtml, '_blank');
+        const win = window.open(urlPdf, '_blank');
+
+        setTimeout(() => {
+            if (!win || win.closed || typeof win.closed == 'undefined') {
+                window.open(urlHtml, '_blank');
+            }
+        }, 2000);
+
+        // 4. Actualizar secuencia a "Armar_Pedido" (usa IDs externos)
+        if (presupuestosIdsExternos.length > 0) {
+            const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIdsExternos);
+            if (actualizado) {
+                console.log(`✅ [IMPRIMIR-TODOS] Secuencia actualizada para ${presupuestosIdsExternos.length} presupuestos`);
+                setTimeout(() => {
+                    cargarPedidosPorCliente();
+                }, 1000);
+            }
         }
-    }, 2000);
-
-    // 4. Actualizar secuencia a "Armar_Pedido" (usa IDs externos)
-    if (presupuestosIdsExternos.length > 0) {
-        const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIdsExternos);
-        if (actualizado) {
-            console.log(`✅ [IMPRIMIR-TODOS] Secuencia actualizada para ${presupuestosIdsExternos.length} presupuestos`);
-            setTimeout(() => {
-                cargarPedidosPorCliente();
-            }, 1000);
+    } catch (err) {
+        if (err.message === "USUARIO_CANCELO_MODAL") {
+            console.log("🚫 [REMITO-R] Impresión en lote cancelada por validación de Kilos.");
+            return; // Bloquea la impresión
+        } else {
+            console.error(err);
         }
     }
 }

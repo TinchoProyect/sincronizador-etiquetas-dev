@@ -260,6 +260,34 @@ const imprimirPresupuestoCliente = async (req, res) => {
         const esPendienteCompra = pendiente_compra === 'true';
         const esContextoProduccion = contexto === 'produccion';
         
+        let kilosOverride = {};
+        if (req.query.kilos_override) {
+            try {
+                kilosOverride = JSON.parse(decodeURIComponent(req.query.kilos_override));
+                console.log('⚖️ [REMITO-R] Overrides de kilos detectados:', kilosOverride);
+            } catch (e) {
+                console.error('❌ [REMITO-R] Error parseando kilos_override:', e);
+            }
+        }
+        
+        const applyKilosOverrides = (clientesArray) => {
+            if (Object.keys(kilosOverride).length === 0) return;
+            clientesArray.forEach(cliente => {
+                if (cliente.presupuestos) {
+                    cliente.presupuestos.forEach(presupuesto => {
+                        if (presupuesto.articulos) {
+                            presupuesto.articulos.forEach(art => {
+                                const codeToMatch = art.articulo_numero || art.codigo_barras || art.articulo;
+                                if (kilosOverride[codeToMatch] !== undefined) {
+                                    art.kilos_unidad = kilosOverride[codeToMatch];
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        };
+
         if (esPendienteCompra) {
             console.log('🛒 [REMITO-R] MODO PENDIENTE DE COMPRA activado');
         }
@@ -516,6 +544,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
                 }
             }
             
+            // APLICAR OVERRIDES EFÍMEROS ANTES DE RENDERIZAR
+            applyKilosOverrides([clienteData]);
+            
             if (formato === 'pdf') {
                 return generarPDF_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta, esContextoProduccion);
             } else {
@@ -691,6 +722,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
             }
             console.log('📸 [SNAPSHOT] Proceso de snapshots completado para "Imprimir Todos"');
             
+            // APLICAR OVERRIDES EFÍMEROS ANTES DE RENDERIZAR
+            applyKilosOverrides(clientesData);
+            
             if (formato === 'pdf') {
                 return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
             } else {
@@ -858,6 +892,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
                 }
             }
             console.log('📸 [SNAPSHOT] Proceso de snapshots completado para impresión por fecha');
+            
+            // APLICAR OVERRIDES EFÍMEROS ANTES DE RENDERIZAR
+            applyKilosOverrides(clientesData);
             
             if (formato === 'pdf') {
                 return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);

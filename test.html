@@ -1,0 +1,486 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remito R - Cliente 1</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 0;
+            line-height: 1.3; 
+            color: #000;
+            font-size: 11px;
+        }
+        
+        .remito-container {
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 15px;
+        }
+        
+        .page-break {
+            page-break-after: always;
+        }
+        
+        /* ENCABEZADO MODERNO Y MINIMALISTA */
+        .header { 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px; 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 12px; 
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex: 0 1 auto;
+        }
+        
+        .modificacion-container {
+            flex: 1 1 auto;
+            text-align: center;
+        }
+
+        .modificacion-container h3 {
+            font-size: 14px;
+            color: #dc3545;
+            font-weight: bold;
+            margin: 0;
+            line-height: 1;
+        }
+        
+        .modificacion-container p {
+            font-size: 9px;
+            color: #666;
+            margin: 2px 0 0 0;
+        }
+        
+        .logo-lamda { 
+            font-size: 24px; 
+            font-weight: 300; 
+            letter-spacing: 2px;
+            color: #000;
+        }
+        
+        .letra-r {
+            font-size: 36px;
+            font-weight: bold;
+            color: #000;
+            border: 2px solid #000;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+        
+        /* ESTILOS PARA ORDEN EN ESPERA */
+        .orden-espera {
+            font-size: 9px;
+            font-weight: bold;
+            color: #dc3545;
+            border: 2px solid #dc3545;
+            background: #fff3cd;
+            padding: 6px 10px;
+            border-radius: 4px;
+            text-align: center;
+            line-height: 1.2;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Artículos en falta - fondo amarillo */
+        .articulo-en-falta {
+            background-color: #fff3cd !important;
+            border-left: 4px solid #ffc107 !important;
+        }
+        
+        .articulo-en-falta td {
+            font-weight: 600 !important;
+            color: #856404 !important;
+        }
+        
+        /* Separador de secciones */
+        .seccion-titulo {
+            background: #f8f9fa;
+            padding: 6px 8px;
+            margin: 12px 0 5px 0;
+            border-left: 4px solid #6c757d;
+            font-weight: bold;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        
+        .seccion-titulo.en-falta {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+        
+        .fecha-emision { 
+            font-size: 10px; 
+            text-align: right;
+            color: #666;
+            white-space: nowrap;
+        }
+        
+        .header-right {
+            text-align: right;
+            flex: 0 1 auto;
+        }
+        
+        .empresa-alias {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 4px;
+            white-space: nowrap;
+        }
+        
+        /* DATOS DEL PEDIDO - COMPACTOS */
+        .datos-pedido { 
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px; 
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .numero-cliente {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .nombre-cliente {
+            font-size: 12px;
+            color: #333;
+        }
+        
+        .codigo-presupuesto {
+            font-size: 11px;
+            font-family: monospace;
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        
+        /* TABLA DE ARTÍCULOS - COMPACTA */
+        .articulos-tabla { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 10px 0; 
+            font-size: 10px;
+        }
+        
+        .articulos-tabla th { 
+            background-color: #f8f9fa; 
+            font-weight: 600; 
+            text-align: left;
+            padding: 6px 4px;
+            border: 1px solid #dee2e6;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .articulos-tabla td { 
+            padding: 4px; 
+            border: 1px solid #dee2e6; 
+            vertical-align: top;
+        }
+        
+        .articulos-tabla .col-codigo {
+            width: 20%;
+            font-family: monospace;
+            font-size: 9px;
+            background: #fafafa;
+        }
+        
+        .articulos-tabla .col-descripcion {
+            width: 65%;
+            word-wrap: break-word;
+        }
+        
+        .articulos-tabla .col-cantidad {
+            width: 15%;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        /* CONTROL DE ENTREGA - REDISEÑADO */
+        .control-entrega {
+            margin-top: 25px;
+            border: 1px solid #333;
+            padding: 12px;
+            background: #fafafa;
+        }
+        
+        .control-entrega h4 {
+            margin: 0 0 12px 0;
+            font-size: 11px;
+            text-align: center;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .campos-control {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 12px;
+        }
+        
+        .campo-firma {
+            border-bottom: 1px solid #333;
+            padding-bottom: 3px;
+            min-height: 20px;
+        }
+        
+        .campo-firma label {
+            font-size: 9px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+        }
+        
+        .campo-entregado {
+            grid-column: 1 / -1;
+            border-bottom: 1px solid #333;
+            padding-bottom: 3px;
+            min-height: 20px;
+        }
+        
+        .nota-importante {
+            margin-top: 10px;
+            padding: 6px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 3px;
+            font-size: 8px;
+            text-align: justify;
+            color: #856404;
+        }
+        
+        /* BLOQUE DE CAMBIOS */
+        .bloque-cambios {
+            margin-top: 20px;
+            margin-bottom: 15px;
+            border: 2px solid #ffc107;
+            background: #fffbf0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .bloque-cambios h4 {
+            margin: 0 0 10px 0;
+            font-size: 11px;
+            font-weight: bold;
+            color: #856404;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .cambio-item {
+            font-size: 9px;
+            padding: 4px 0;
+            border-bottom: 1px dashed #ffeaa7;
+            color: #333;
+        }
+        
+        .cambio-item:last-child {
+            border-bottom: none;
+        }
+        
+        .cambio-tipo {
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-right: 5px;
+        }
+        
+        .cambio-tipo.modificado {
+            color: #0066cc;
+        }
+        
+        .cambio-tipo.agregado {
+            color: #28a745;
+        }
+        
+        .cambio-tipo.eliminado {
+            color: #dc3545;
+        }
+        
+        /* PIE DE PÁGINA MINIMALISTA */
+        .pie-pagina {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 8px;
+            color: #999;
+            border-top: 1px solid #eee;
+            padding-top: 8px;
+        }
+        
+        /* ESTILOS DE IMPRESIÓN */
+        @media print {
+            body { 
+                margin: 0; 
+                font-size: 10px;
+            }
+            
+            .remito-container {
+                padding: 0;
+            }
+            
+            .header {
+                margin-bottom: 15px;
+                padding-bottom: 8px;
+            }
+            
+            .control-entrega {
+                page-break-inside: avoid;
+                margin-top: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="remito-container">
+        <div class="header">
+            <div class="header-left">
+                <div class="logo-lamda">LAMDA</div>
+                <div class="letra-r">R</div>
+            </div>
+            <div class="fecha-emision">
+                12/04/2026 - 02:20 p. m.
+            </div>
+        </div>
+        
+
+    <div class="remito-container">
+        <!-- ENCABEZADO MODERNO -->
+        <div class="header">
+            <div class="header-left">
+                
+                    <div class="logo-lamda">LAMDA</div>
+                    <div class="letra-r">R</div>
+                    
+            </div>
+            
+            
+
+            <div class="header-right">
+                <div class="empresa-alias">ALIAS: LAMDA.SER.MARTIN</div>
+                <div class="fecha-emision" style="margin-bottom: 2px;">
+                    12/04/2026 - 02:20 p. m.
+                </div>
+                <div style="font-size: 10px; color: #666;">
+                    WhatsApp: 221 6615746
+                </div>
+            </div>
+        </div>
+        
+        <!-- DATOS DEL PEDIDO -->
+        <div class="datos-pedido">
+            <div>
+                <div class="numero-cliente">N° de Cliente: 1</div>
+                <div class="nombre-cliente">Don Emilio DEL GIOVANI NATALIA GISELA</div>
+            </div>
+            <div>
+                <div class="codigo-presupuesto">mnw063ln-cr9t4</div>
+                <div style="font-size: 10px; color: #666; margin-top: 4px;">Fecha: 11/4/2026</div>
+                <div style="font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px; text-align: right;">
+                    Total Items Distintos: 2
+                </div>
+            </div>
+        </div>
+        
+        </div>
+        
+        <!-- TABLA DE ARTÍCULOS -->
+        <table class="articulos-tabla">
+            <thead>
+                <tr>
+                    <th class="col-codigo">Código</th>
+                    <th class="col-descripcion" style="width: 35%;">Descripción del Artículo</th>
+                    <th class="col-cantidad" style="width: 10%;">Cantidad</th>
+                    
+                    <th style="width: 15%; text-align: center;">$/UNID (FINAL)</th>
+                    <th style="width: 15%; text-align: center;">$/KILO (FINAL)</th>
+                    
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr>
+                    <td class="col-codigo">6624441529</td>
+                    <td class="col-descripcion">Almend/Pel/Carmel 25/27 x 2</td>
+                    <td class="col-cantidad">1</td>
+                    
+            <td style="text-align: center; font-weight: bold;">-</td>
+            <td style="text-align: center; font-weight: bold;">-</td>
+        
+                </tr>
+
+                <tr>
+                    <td class="col-codigo">7575459535</td>
+                    <td class="col-descripcion">Nuez/Ma/Ext/Ch 2 x 5</td>
+                    <td class="col-cantidad">1</td>
+                    
+            <td style="text-align: center; font-weight: bold;">-</td>
+            <td style="text-align: center; font-weight: bold;">$ 22.132,40</td>
+        
+                </tr>
+
+            </tbody>
+        </table>
+
+        
+        <!-- CONTROL DE ENTREGA REDISEÑADO -->
+        <div class="control-entrega">
+            <h4>Control de Entrega</h4>
+            
+            <div class="campos-control">
+                <div class="campo-firma">
+                    <label>Nombre legible de quien recibe</label>
+                </div>
+                
+                <div class="campo-firma">
+                    <label>Firma (opcional)</label>
+                </div>
+                
+                <div class="campo-entregado">
+                    <label>Entregado por</label>
+                </div>
+            </div>
+            
+            <div class="nota-importante">
+                <strong>IMPORTANTE:</strong> Este comprobante se usa para armar el pedido y controlarlo en destino. 
+                Al entregar, se puede sacar una foto del papel con el nombre escrito por quien recibe.
+            </div>
+        </div>
+        
+        <!-- CÓDIGO DE BARRAS AL FINAL -->
+        <div style="text-align: center; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+            <img src="data:image/png;base64,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" style="display: block; margin: 0 auto; height: 80px;" alt="Código de Presupuesto"/>
+        </div>
+
+        <div class="pie-pagina">
+            Sistema LAMDA - Presupuesto 1 de 1 - 12/4/2026, 02:20:28
+        </div>
+        
+        
+    </div>
+
+</body>
+</html>
