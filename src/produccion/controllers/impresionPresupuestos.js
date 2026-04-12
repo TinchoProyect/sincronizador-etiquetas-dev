@@ -320,7 +320,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         p.id,
                         p.id_presupuesto_ext,
                         p.id_cliente,
-                        p.fecha
+                        p.fecha,
+                        COALESCE(p.descuento, 0) as descuento
                     FROM public.presupuestos p
                     WHERE p.activo = true 
                       AND CAST(p.id_cliente AS integer) = $1
@@ -340,6 +341,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         JSON_BUILD_OBJECT(
                             'id_presupuesto_ext', pf.id_presupuesto_ext,
                             'fecha', pf.fecha,
+                            'descuento', pf.descuento,
                             'articulos', (
                                 SELECT JSON_AGG(
                                     JSON_BUILD_OBJECT(
@@ -702,7 +704,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         p.id_presupuesto_ext,
                         p.id_cliente,
                         p.fecha,
-                        CAST(p.id_cliente AS integer) as cliente_id_int
+                        CAST(p.id_cliente AS integer) as cliente_id_int,
+                        COALESCE(p.descuento, 0) as descuento
                     FROM public.presupuestos p
                     WHERE p.activo = true 
                       AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden'
@@ -722,6 +725,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                     JSON_BUILD_OBJECT(
                                         'id_presupuesto_ext', pf2.id_presupuesto_ext,
                                         'fecha', pf2.fecha,
+                                        'descuento', pf2.descuento,
                                         'articulos', (
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
@@ -1465,7 +1469,7 @@ function generarHTMLPresupuestoUnico({
 `;
 
     if (perfilId === 'PERFIL_TOTAL_FACTURA' || esPerfilGreenCorner) {
-        const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || []);
+        const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || [], presupuesto);
         const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
         const txtTotal = esPerfilGreenCorner ? 'TOTAL A PAGAR:' : 'TOTAL REMITO NETO:';
         
@@ -2077,7 +2081,7 @@ function renderizarPDFPresupuestoUnico(doc, {
     // Green Corner (Total al final de la tabla)
     if (perfilId === 'PERFIL_TOTAL_FACTURA' || esPerfilGreenCorner) {
         currentY += 10;
-        const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || []);
+        const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || [], presupuesto);
         const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
         const txtTotal = esPerfilGreenCorner ? 'TOTAL A PAGAR:' : 'TOTAL REMITO NETO:';
         
