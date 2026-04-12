@@ -3473,4 +3473,44 @@ router.get('/informe/mensual', async (req, res) => {
     }
 });
 
+/**
+ * Asigna y persiste el perfil de impresión seleccionado por el cliente.
+ * POST /api/produccion/clientes/:id/perfil-impresion
+ */
+router.post('/clientes/:id/perfil-impresion', async (req, res) => {
+    try {
+        const id_cliente_ext = req.params.id;
+        const { perfil_id } = req.body;
+        
+        console.log(`[API] Guardando perfil dinámico ${perfil_id} para cliente ${id_cliente_ext}`);
+        
+        if (!id_cliente_ext || !perfil_id) {
+            return res.status(400).json({ success: false, error: 'Faltan parámetros id o perfil_id.' });
+        }
+        
+        const upsertQuery = `
+            INSERT INTO clientes_perfiles_impresion (id_cliente_ext, perfil_id)
+            VALUES ($1, $2)
+            ON CONFLICT (id_cliente_ext) 
+            DO UPDATE SET perfil_id = $2, updated_at = CURRENT_TIMESTAMP
+            RETURNING *;
+        `;
+        
+        const result = await pool.query(upsertQuery, [id_cliente_ext, perfil_id]);
+        
+        res.json({
+            success: true,
+            message: 'Perfil de impresión guardado con éxito',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('❌ [API] Fallo al inyectar perfil dinámico:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Incapacidad de resolver la base de datos externa para perfiles',
+            message: error.message
+        });
+    }
+});
+
 module.exports = router;

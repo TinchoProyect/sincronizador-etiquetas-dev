@@ -327,8 +327,27 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         const header = document.createElement('div');
         header.className = 'cliente-header';
         header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
+        header.title = 'Clic izquierdo para expandir | Clic derecho para Configurar Perfil';
+        
         // Pasar containerId para que toggleAcordeon busque en la sección correcta
         header.addEventListener('click', () => toggleAcordeon(cliente.cliente_id, containerId));
+        
+        // Asignat Perfil (Context Menu)
+        header.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof mostrarMenuContextualGenerico === 'function') {
+                mostrarMenuContextualGenerico(e, [
+                    {
+                        label: '⚙️ Asignar Perfil de Impresión',
+                        action: () => window.gestionarPerfilImpresionCliente(cliente.cliente_id, cliente.cliente_nombre)
+                    }
+                ]);
+            } else {
+                window.gestionarPerfilImpresionCliente(cliente.cliente_id, cliente.cliente_nombre);
+            }
+        });
+        
         clienteDiv.appendChild(header);
 
         const contenido = document.createElement('div');
@@ -1071,8 +1090,8 @@ async function imprimirPresupuestoCliente(clienteId) {
     console.log(`📋 Presupuestos a imprimir: ${presupuestosIds.length}`);
 
     // 2. Abrir impresión
-    const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=pdf`;
-    const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=html`;
+    const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=pdf&contexto=produccion`;
+    const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=html&contexto=produccion`;
 
     const win = window.open(urlPdf, '_blank');
 
@@ -1109,8 +1128,8 @@ async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
     console.log(`📄 Imprimiendo presupuesto individual: Cliente ${clienteId}, Presupuesto ${presupuestoId}`);
 
     // 1. Abrir impresión
-    const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf`;
-    const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html`;
+    const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=pdf&contexto=produccion`;
+    const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${presupuestoId}&formato=html&contexto=produccion`;
 
     const win = window.open(urlPdf, '_blank');
 
@@ -1161,8 +1180,8 @@ async function imprimirTodosLosPresupuestos(fechaCorte) {
     // 3. Abrir impresión usando el MISMO FORMATO que el botón individual
     // El botón individual usa: cliente_id + presupuesto_id (id_presupuesto_ext)
     // Para "todos", usamos: fecha + presupuestos_ext_ids
-    const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=pdf`;
-    const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=html`;
+    const urlPdf = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=pdf&contexto=produccion`;
+    const urlHtml = `${base}/impresion-presupuesto?fecha=${fechaCorte}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}&formato=html&contexto=produccion`;
 
     console.log(`🔗 [IMPRIMIR-TODOS] URL: ${urlHtml}`);
 
@@ -2483,3 +2502,77 @@ async function revertirAArmarPedido(presupuestoId, clienteId) {
 
 window.revertirAArmarPedido = revertirAArmarPedido;
 console.log('✅ [REVERTIR-ARMAR] Módulo de reversión QA Listo→Armar cargado');
+
+// ==========================================
+// MÓDULO DE GESTIÓN DE PERFILES DE IMPRESIÓN
+// ==========================================
+window.gestionarPerfilImpresionCliente = function(clienteId, clienteNombre) {
+    console.log(`[PERFILES] Gestionando perfil para: ${clienteNombre} (ID: ${clienteId})`);
+    
+    // Crear Overlay nativo
+    const overlay = document.createElement('div');
+    Object.assign(overlay.style, {
+        position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', 
+        backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', 
+        alignItems: 'center', zIndex: '9999'
+    });
+
+    const modal = document.createElement('div');
+    Object.assign(modal.style, {
+        backgroundColor: 'white', padding: '20px', borderRadius: '8px', 
+        width: '350px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', fontFamily: 'sans-serif'
+    });
+
+    modal.innerHTML = `
+        <h3 style="margin-top:0; color:#333;">⚙️ Perfil de Impresión</h3>
+        <p style="font-size:14px; color:#555;">Cliente: <strong>${clienteNombre}</strong></p>
+        <select id="select-perfil" style="width:100%; padding:8px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px;">
+            <option value="DEFAULT">Plantilla Estándar (Default)</option>
+            <option value="PERFIL_PRECIO_KILO">Caso Emilio (Precio por Kilo)</option>
+            <option value="PERFIL_TOTAL_FACTURA">Caso Green Corner (Total Remito)</option>
+        </select>
+        <div style="display:flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+            <button id="btn-cancel-perfil" style="padding:6px 12px; background:#ddd; border:none; border-radius:4px; cursor:pointer;">Cancelar</button>
+            <button id="btn-save-perfil" style="padding:6px 12px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Guardar Perfil</button>
+        </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    document.getElementById('btn-cancel-perfil').onclick = () => overlay.remove();
+    document.getElementById('btn-save-perfil').onclick = async () => {
+        const perfilSeleccionado = document.getElementById('select-perfil').value;
+        const btnSave = document.getElementById('btn-save-perfil');
+        btnSave.textContent = 'Guardando...';
+        btnSave.disabled = true;
+        
+        try {
+            const baseObj = (window.API_BASE || '/api') + '/produccion';
+            const response = await fetch(`${baseObj}/clientes/${clienteId}/perfil-impresion`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ perfil_id: perfilSeleccionado })
+            });
+
+            if (!response.ok) throw new Error('Error HTTP ' + response.status);
+            const data = await response.json();
+            
+            if (data.success) {
+                overlay.remove();
+                if (typeof window.mostrarToast === 'function') {
+                    window.mostrarToast('✅ Perfil de impresión guardado correctamente', 'success');
+                } else {
+                    alert('✅ Perfil guardado correctamente');
+                }
+            } else {
+                throw new Error(data.error || 'Error del servidor');
+            }
+        } catch (error) {
+            console.error('❌ Error guardando perfil:', error);
+            alert('Error al guardar: ' + error.message);
+            btnSave.textContent = 'Guardar Perfil';
+            btnSave.disabled = false;
+        }
+    };
+};

@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { extraerCostoFinanciero, calcularTotalRemitoAcumulado } = require('../utils/motorCalculadoraFiscal');
 
 /**
  * Genera impresión de presupuesto por cliente en formato remito rediseñado (PDF o HTML)
@@ -43,7 +44,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
         
         console.log('📋 [REMITO-R] Parámetros impresión:', { cliente_id, fecha_desde, fecha_hasta, formato });
         
-        // 🔧 CONSULTA MEJORADA: Obtener descripciones reales de artículos
+        // 🔧 CONSULTA MEJORADA: Traer perfil, kilos, precios y descuentos para calculadora fiscal
         const query = `
             WITH presupuestos_cliente AS (
                 SELECT 
@@ -63,6 +64,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     NULLIF(TRIM(c.nombre), ''),
                     'Cliente ' || c.cliente_id
                 ) as cliente_nombre,
+                COALESCE(cpi.perfil_id, 'DEFAULT') as perfil_id,
                 JSON_AGG(
                     JSON_BUILD_OBJECT(
                         'id_presupuesto_ext', pc.id_presupuesto_ext,
@@ -77,7 +79,12 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                         NULLIF(TRIM(src.descripcion), ''),
                                         'Artículo ' || pd.articulo
                                     ),
-                                    'cantidad', COALESCE(pd.cantidad, 0)
+                                    'cantidad', COALESCE(pd.cantidad, 0),
+                                    'precio1', pd.precio1,
+                                    'descuento', pd.camp4,
+                                    'kilos_unidad', src.kilos_unidad,
+                                    'es_pack', src.es_pack,
+                                    'pack_unidades', src.pack_unidades
                                 ) ORDER BY pd.articulo
                             )
                             FROM public.presupuestos_detalles pd
@@ -88,9 +95,10 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     ) ORDER BY pc.fecha DESC
                 ) as presupuestos
             FROM public.clientes c
+            LEFT JOIN public.clientes_perfiles_impresion cpi ON cpi.id_cliente_ext = c.cliente_id::text
             JOIN presupuestos_cliente pc ON true
             WHERE c.cliente_id = $1
-            GROUP BY c.cliente_id, c.nombre, c.apellido;
+            GROUP BY c.cliente_id, c.nombre, c.apellido, cpi.perfil_id;
         `;
         
         const params = [
@@ -428,13 +436,17 @@ function generarHTML_Rediseñado(res, clienteData) {
             </div>
         </div>
         
-        <!-- TABLA DE ARTÍCULOS -->
+        let hasPrecioKilo = (clienteData.perfil_id === 'PERFIL_PRECIO_KILO');
+        
+        // TABLA DE ARTÍCULOS
+        html += `
         <table class="articulos-tabla">
             <thead>
                 <tr>
                     <th class="col-codigo">Código</th>
-                    <th class="col-descripcion">Descripción del Artículo</th>
+                    <th class="col-descripcion" ${hasPrecioKilo ? 'style="width: 50%;"' : ''}>Descripción del Artículo</th>
                     <th class="col-cantidad">Cantidad</th>
+                    ${hasPrecioKilo ? '<th style="width: 15%; text-align: center;">$/Kilo (Final)</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -453,11 +465,7 @@ function generarHTML_Rediseñado(res, clienteData) {
                         existente.cantidad += articulo.cantidad;
                     } else {
                         // Agregar nuevo artículo
-                        articulosConsolidados.set(key, {
-                            articulo_numero: articulo.articulo_numero,
-                            descripcion: articulo.descripcion,
-                            cantidad: articulo.cantidad
-                        });
+                        articulosConsolidados.set(key, { ...articulo });
                     }
                 });
             }
@@ -468,18 +476,30 @@ function generarHTML_Rediseñado(res, clienteData) {
             Array.from(articulosConsolidados.values())
                 .sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero))
                 .forEach(articulo => {
+                    let tdAdicional = '';
+                    if (hasPrecioKilo) {
+                        let metricas = extraerCostoFinanciero(articulo);
+                        let textoPrecio = '-';
+                        if (metricas.validez && metricas.precioPorKilo !== null) {
+                            textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        }
+                        tdAdicional = `<td style="text-align: center; font-weight: bold;">${textoPrecio}</td>`;
+                    }
+
                     html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
                     <td class="col-descripcion">${articulo.descripcion}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
+                    ${tdAdicional}
                 </tr>
 `;
                 });
         } else {
+            let colspan = hasPrecioKilo ? 4 : 3;
             html += `
                 <tr>
-                    <td colspan="3" style="text-align: center; font-style: italic; color: #666; padding: 15px;">
+                    <td colspan="${colspan}" style="text-align: center; font-style: italic; color: #666; padding: 15px;">
                         No hay artículos registrados
                     </td>
                 </tr>
@@ -489,7 +509,22 @@ function generarHTML_Rediseñado(res, clienteData) {
         html += `
             </tbody>
         </table>
-        
+`;
+
+        if (clienteData.perfil_id === 'PERFIL_TOTAL_FACTURA') {
+            const arrArts = Array.from(articulosConsolidados.values());
+            const totalRemito = calcularTotalRemitoAcumulado(arrArts);
+            const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
+            
+            html += `
+        <div style="background: #f0f0f0; border: 1px solid #ccc; padding: 8px 15px; text-align: right; margin-top: 10px; border-radius: 4px;">
+            <span style="font-size: 11px; font-weight: bold; margin-right: 15px;">TOTAL REMITO NETO:</span>
+            <span style="font-size: 13px; font-weight: bold; color: #000;">${fmtTotal}</span>
+        </div>
+`;
+        }
+
+        html += `        
         <!-- CONTROL DE ENTREGA REDISEÑADO -->
         <div class="control-entrega">
             <h4>Control de Entrega</h4>
@@ -609,7 +644,14 @@ function generarPDF_Rediseñado(res, clienteData) {
         
         // TABLA DE ARTÍCULOS - COMPACTA
         const tablaY = 140;
-        const colWidths = [80, 350, 60]; // Código, Descripción, Cantidad
+        
+        let hasPrecioKilo = (clienteData.perfil_id === 'PERFIL_PRECIO_KILO');
+        let colWidths = [80, 350, 60]; // Código, Descripción, Cantidad
+        
+        if (hasPrecioKilo) {
+            colWidths = [70, 275, 50, 95]; // Ajuste de columnas para alojar $/KILO
+        }
+        
         const rowHeight = 15;
         
         // Encabezados
@@ -621,7 +663,12 @@ function generarPDF_Rediseñado(res, clienteData) {
         doc.text('DESCRIPCIÓN DEL ARTÍCULO', 55 + colWidths[0], tablaY + 4);
         
         doc.rect(50 + colWidths[0] + colWidths[1], tablaY, colWidths[2], rowHeight).stroke();
-        doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 4);
+        doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 4, { align: 'center' });
+
+        if (hasPrecioKilo) {
+            doc.rect(50 + colWidths[0] + colWidths[1] + colWidths[2], tablaY, colWidths[3], rowHeight).stroke();
+            doc.text('$/KILO (FINAL)', 55 + colWidths[0] + colWidths[1] + colWidths[2], tablaY + 4, { align: 'center', width: colWidths[3] });
+        }
         
         // Consolidar artículos
         const articulosConsolidados = new Map();
@@ -634,11 +681,7 @@ function generarPDF_Rediseñado(res, clienteData) {
                         const existente = articulosConsolidados.get(key);
                         existente.cantidad += articulo.cantidad;
                     } else {
-                        articulosConsolidados.set(key, {
-                            articulo_numero: articulo.articulo_numero,
-                            descripcion: articulo.descripcion,
-                            cantidad: articulo.cantidad
-                        });
+                        articulosConsolidados.set(key, { ...articulo });
                     }
                 });
             }
@@ -665,28 +708,61 @@ function generarPDF_Rediseñado(res, clienteData) {
                     // Descripción (truncar si es muy larga)
                     doc.rect(50 + colWidths[0], currentY, colWidths[1], rowHeight).stroke();
                     let descripcion = articulo.descripcion;
-                    if (descripcion.length > 70) {
-                        descripcion = descripcion.substring(0, 67) + '...';
+                    let descMaxLen = hasPrecioKilo ? 55 : 70;
+                    if (descripcion.length > descMaxLen) {
+                        descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
                     }
                     doc.text(descripcion, 55 + colWidths[0], currentY + 4, { width: colWidths[1] - 10 });
                     
                     // Cantidad
                     doc.rect(50 + colWidths[0] + colWidths[1], currentY, colWidths[2], rowHeight).stroke();
                     doc.text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                        width: colWidths[2] - 10, 
+                        width: colWidths[2], 
                         align: 'center' 
                     });
+
+                    // Precio Kilo (Si aplica)
+                    if (hasPrecioKilo) {
+                        doc.rect(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY, colWidths[3], rowHeight).stroke();
+                        let metricas = extraerCostoFinanciero(articulo);
+                        let textoPrecio = '-';
+                        if (metricas.validez && metricas.precioPorKilo !== null) {
+                            textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        }
+                        doc.text(textoPrecio, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 4, { 
+                            width: colWidths[3], align: 'center' 
+                        });
+                    }
                     
                     currentY += rowHeight;
                 });
         } else {
-            doc.rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).stroke();
+            let totalWidth = hasPrecioKilo ? (colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3]) : (colWidths[0] + colWidths[1] + colWidths[2]);
+            doc.rect(50, currentY, totalWidth, rowHeight).stroke();
             doc.text('No hay artículos registrados', 55, currentY + 4, { 
-                width: colWidths[0] + colWidths[1] + colWidths[2] - 10, 
+                width: totalWidth - 10, 
                 align: 'center' 
             });
             currentY += rowHeight;
         }
+
+        // ACUMULADO TOTAL REMITO
+        if (clienteData.perfil_id === 'PERFIL_TOTAL_FACTURA') {
+            const arrArts = Array.from(articulosConsolidados.values());
+            const totalRemito = calcularTotalRemitoAcumulado(arrArts);
+            
+            currentY += 5;
+            doc.rect(340, currentY, 200, 20).fillAndStroke('#f3f3f3', '#333');
+            doc.fillColor('#000');
+            doc.fontSize(9).font('Helvetica-Bold');
+            doc.text('TOTAL REMITO NETO:', 350, currentY + 6);
+            
+            const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
+            doc.fontSize(10).text(fmtTotal, 430, currentY + 5, { width: 100, align: 'right' });
+            
+            currentY += 30; // Agregar offset
+        }
+
         
         // CONTROL DE ENTREGA REDISEÑADO
         const controlY = currentY + 20;

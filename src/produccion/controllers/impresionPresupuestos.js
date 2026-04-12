@@ -1,6 +1,8 @@
 const pool = require('../config/database');
 const JsBarcode = require('jsbarcode');
 const { createCanvas } = require('canvas');
+const motorCalculadoraFiscal = require('../utils/motorCalculadoraFiscal');
+const inyectorVectorial = require('../utils/inyectorColumnasPDFKit');
 
 /**
  * Calcular el total de artículos sumando las cantidades
@@ -233,10 +235,12 @@ const imprimirPresupuestoCliente = async (req, res) => {
             fecha_desde, 
             fecha_hasta, 
             formato = 'html',
-            pendiente_compra = 'false'
+            pendiente_compra = 'false',
+            contexto = ''
         } = req.query;
         
         const esPendienteCompra = pendiente_compra === 'true';
+        const esContextoProduccion = contexto === 'produccion';
         
         if (esPendienteCompra) {
             console.log('🛒 [REMITO-R] MODO PENDIENTE DE COMPRA activado');
@@ -313,6 +317,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         NULLIF(TRIM(c.nombre), ''),
                         'Cliente ' || c.cliente_id
                     ) as cliente_nombre,
+                    COALESCE(cpi.perfil_id, 'DEFAULT') as perfil_id,
                     JSON_AGG(
                         JSON_BUILD_OBJECT(
                             'id_presupuesto_ext', pf.id_presupuesto_ext,
@@ -325,19 +330,28 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             NULLIF(TRIM(a.nombre), ''),
                                             pd.articulo
                                         ),
-                                        'cantidad', COALESCE(pd.cantidad, 0)
+                                        'cantidad', COALESCE(pd.cantidad, 0),
+                                        'precio1', pd.precio1,
+                                        'valor1', pd.valor1,
+                                        'descuento', pd.camp4,
+                                        'iva_tasa', pd.camp2,
+                                        'kilos_unidad', src.kilos_unidad,
+                                        'es_pack', src.es_pack,
+                                        'pack_unidades', src.pack_unidades
                                     ) ORDER BY pd.articulo
                                 )
                                 FROM public.presupuestos_detalles pd
                                 LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                                LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
                                 WHERE pd.id_presupuesto_ext = pf.id_presupuesto_ext
                             )
                         ) ORDER BY pf.fecha DESC
                     ) as presupuestos
                 FROM public.clientes c
+                LEFT JOIN clientes_perfiles_impresion cpi ON cpi.id_cliente_ext = c.cliente_id::text
                 CROSS JOIN presupuestos_filtrados pf
                 WHERE c.cliente_id = $1
-                GROUP BY c.cliente_id, c.nombre, c.apellido;
+                GROUP BY c.cliente_id, c.nombre, c.apellido, cpi.perfil_id;
             `;
             
             params = [
@@ -483,7 +497,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             }
             
             if (formato === 'pdf') {
-                return generarPDF_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta);
+                return generarPDF_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta, esContextoProduccion);
             } else {
                 return generarHTML_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta);
             }
@@ -517,6 +531,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 NULLIF(TRIM(c.nombre), ''),
                                 'Cliente ' || c.cliente_id
                             ),
+                            'perfil_id', COALESCE(cpi.perfil_id, 'DEFAULT'),
                             'presupuestos', (
                                 SELECT JSON_AGG(
                                     JSON_BUILD_OBJECT(
@@ -530,11 +545,19 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                         NULLIF(TRIM(a.nombre), ''),
                                                         pd.articulo
                                                     ),
-                                                    'cantidad', COALESCE(pd.cantidad, 0)
+                                                    'cantidad', COALESCE(pd.cantidad, 0),
+                                                    'precio1', pd.precio1,
+                                                    'valor1', pd.valor1,
+                                                    'descuento', pd.camp4,
+                                                    'iva_tasa', pd.camp2,
+                                                    'kilos_unidad', src.kilos_unidad,
+                                                    'es_pack', src.es_pack,
+                                                    'pack_unidades', src.pack_unidades
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
                                             LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                                            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
                                             WHERE pd.id_presupuesto_ext = pf2.id_presupuesto_ext
                                         )
                                     ) ORDER BY pf2.fecha DESC
@@ -545,6 +568,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         ) ORDER BY c.cliente_id
                     ) as clientes_data
                 FROM public.clientes c
+                LEFT JOIN clientes_perfiles_impresion cpi ON cpi.id_cliente_ext = c.cliente_id::text
                 WHERE EXISTS (
                     SELECT 1 FROM presupuestos_filtrados pf3
                     WHERE pf3.cliente_id_int = c.cliente_id
@@ -688,11 +712,19 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                         NULLIF(TRIM(a.nombre), ''),
                                                         pd.articulo
                                                     ),
-                                                    'cantidad', COALESCE(pd.cantidad, 0)
+                                                    'cantidad', COALESCE(pd.cantidad, 0),
+                                                    'precio1', pd.precio1,
+                                                    'valor1', pd.valor1,
+                                                    'descuento', pd.camp4,
+                                                    'iva_tasa', pd.camp2,
+                                                    'kilos_unidad', src.kilos_unidad,
+                                                    'es_pack', src.es_pack,
+                                                    'pack_unidades', src.pack_unidades
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
                                             LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                                            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
                                             WHERE pd.id_presupuesto_ext = pf2.id_presupuesto_ext
                                         )
                                     ) ORDER BY pf2.fecha DESC
@@ -804,7 +836,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             console.log('📸 [SNAPSHOT] Proceso de snapshots completado para impresión por fecha');
             
             if (formato === 'pdf') {
-                return generarPDF_TodosLosClientes(res, clientesData, fecha);
+                return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
             } else {
                 return generarHTML_TodosLosClientes(res, clientesData, fecha);
             }
@@ -1205,6 +1237,7 @@ function generarCSSRemito() {
 function generarHTMLPresupuestoUnico({
     clienteId,
     clienteNombre,
+    perfilId = 'DEFAULT',
     presupuesto,
     esPendienteCompra = false,
     articulosEnFalta = [],
@@ -1289,13 +1322,16 @@ function generarHTMLPresupuestoUnico({
             </div>
         </div>
         
+        </div>
+        
         <!-- TABLA DE ARTÍCULOS -->
         <table class="articulos-tabla">
             <thead>
                 <tr>
                     <th class="col-codigo">Código</th>
-                    <th class="col-descripcion">Descripción del Artículo</th>
+                    <th class="col-descripcion" ${perfilId === 'PERFIL_PRECIO_KILO' ? 'style="width: 45%;"' : ''}>Descripción del Artículo</th>
                     <th class="col-cantidad">Cantidad</th>
+                    ${perfilId === 'PERFIL_PRECIO_KILO' ? '<th style="width: 15%; text-align: center;">$/Kilo (Final)</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -1321,11 +1357,21 @@ function generarHTMLPresupuestoUnico({
                 </tr>
 `;
                 articulosConStock.forEach(articulo => {
+                    let tdExtra = '';
+                    if (perfilId === 'PERFIL_PRECIO_KILO') {
+                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                        let txt = '-';
+                        if (metricas.validez && metricas.precioPorKilo !== null) {
+                            txt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        }
+                        tdExtra = `<td style="text-align: center; font-weight: bold;">${txt}</td>`;
+                    }
                     html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
                     <td class="col-descripcion">${articulo.descripcion}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
+                    ${tdExtra}
                 </tr>
 `;
                 });
@@ -1339,11 +1385,21 @@ function generarHTMLPresupuestoUnico({
                 </tr>
 `;
                 articulosSinStock.forEach(articulo => {
+                    let tdExtra = '';
+                    if (perfilId === 'PERFIL_PRECIO_KILO') {
+                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                        let txt = '-';
+                        if (metricas.validez && metricas.precioPorKilo !== null) {
+                            txt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        }
+                        tdExtra = `<td style="text-align: center; font-weight: bold; color: #856404;">${txt}</td>`;
+                    }
                     html += `
                 <tr class="articulo-en-falta">
                     <td class="col-codigo">${articulo.articulo_numero}</td>
                     <td class="col-descripcion">${articulo.descripcion}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
+                    ${tdExtra}
                 </tr>
 `;
                 });
@@ -1351,11 +1407,21 @@ function generarHTMLPresupuestoUnico({
         } else {
             // Modo normal (sin pendientes de compra)
             articulosSorted.forEach(articulo => {
+                let tdExtra = '';
+                if (perfilId === 'PERFIL_PRECIO_KILO') {
+                    let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                    let txt = '-';
+                    if (metricas.validez && metricas.precioPorKilo !== null) {
+                        txt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                    }
+                    tdExtra = `<td style="text-align: center; font-weight: bold;">${txt}</td>`;
+                }
                 html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
                     <td class="col-descripcion">${articulo.descripcion}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
+                    ${tdExtra}
                 </tr>
 `;
             });
@@ -1363,7 +1429,7 @@ function generarHTMLPresupuestoUnico({
     } else {
         html += `
                 <tr>
-                    <td colspan="3" style="text-align: center; font-style: italic; color: #666; padding: 15px;">
+                    <td colspan="${perfilId === 'PERFIL_PRECIO_KILO' ? '4' : '3'}" style="text-align: center; font-style: italic; color: #666; padding: 15px;">
                         No hay artículos registrados
                     </td>
                 </tr>
@@ -1374,6 +1440,17 @@ function generarHTMLPresupuestoUnico({
             </tbody>
         </table>
 `;
+
+    if (perfilId === 'PERFIL_TOTAL_FACTURA') {
+        const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || []);
+        const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
+        html += `
+        <div style="background: #f0f0f0; border: 1px solid #ccc; padding: 8px 15px; text-align: right; margin-top: 10px; border-radius: 4px;">
+            <span style="font-size: 11px; font-weight: bold; margin-right: 15px;">TOTAL REMITO NETO:</span>
+            <span style="font-size: 13px; font-weight: bold; color: #000;">${fmtTotal}</span>
+        </div>
+`;
+    }
     
     // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
     if (presupuesto._snapshot) {
@@ -1489,13 +1566,15 @@ function generarHTMLPresupuestoUnico({
 function renderizarPDFPresupuestoUnico(doc, {
     clienteId,
     clienteNombre,
+    perfilId = 'DEFAULT',
     presupuesto,
     esPendienteCompra = false,
     articulosEnFalta = [],
     fechaHoy,
     horaHoy,
     paginaActual,
-    totalPaginas
+    totalPaginas,
+    esContextoProduccion = false
 }) {
     const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
     
@@ -1506,10 +1585,19 @@ function renderizarPDFPresupuestoUnico(doc, {
     // CORRECCIÓN: Se usa .length para contar items distintos
     const totalArticulos = calcularTotalArticulos(presupuesto.articulos || []);
     const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
-    const bufferComandoON = generarBufferComando('CMD-ON');
-    const bufferComandoOFF = generarBufferComando('CMD-OFF');
     
-    console.log(`📊 [BARCODE-PDF] Código principal: ${codigoBarras}, Total: ${totalArticulos}, Comandos On/Off: Generados`);
+    let bufferComandoON = null;
+    let bufferComandoOFF = null;
+    
+    // Solo generar e inyectar inyectores de hardware ON/OFF en contexto de Producción
+    // y si no es un "Pendiente de Compra"
+    if (esContextoProduccion && !esPendienteCompra) {
+        bufferComandoON = generarBufferComando('CMD-ON');
+        bufferComandoOFF = generarBufferComando('CMD-OFF');
+        console.log(`📊 [BARCODE-PDF] Código principal: ${codigoBarras}, Total: ${totalArticulos}, Comandos On/Off: Generados`);
+    } else {
+        console.log(`📊 [BARCODE-PDF] Código principal: ${codigoBarras}, Total: ${totalArticulos}, Comandos On/Off: OMITIDOS (Contexto Comercial)`);
+    }
     
     // ENCABEZADO
     doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
@@ -1588,18 +1676,29 @@ function renderizarPDFPresupuestoUnico(doc, {
     
     // TABLA DE ARTÍCULOS
     const tablaY = 150;
-    const colWidths = [85, 340, 65];
+    
+    let hasPrecioKilo = (perfilId === 'PERFIL_PRECIO_KILO');
+    let colWidths = [85, 340, 65];
+    if (hasPrecioKilo) {
+        colWidths = [85, 255, 55, 95];
+    }
+    
     const rowHeight = 22;
     
     // Encabezados
-    doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+    doc.fillColor('#f8f9fa').rect(50, tablaY, colWidths[0] + colWidths[1] + colWidths[2] + (hasPrecioKilo ? colWidths[3] : 0), rowHeight).fill();
     doc.fillColor('black').fontSize(9).font('Helvetica-Bold');
     doc.rect(50, tablaY, colWidths[0], rowHeight).stroke();
     doc.text('CÓDIGO', 55, tablaY + 8);
     doc.rect(50 + colWidths[0], tablaY, colWidths[1], rowHeight).stroke();
     doc.text('DESCRIPCIÓN DEL ARTÍCULO', 55 + colWidths[0], tablaY + 8);
     doc.rect(50 + colWidths[0] + colWidths[1], tablaY, colWidths[2], rowHeight).stroke();
-    doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 8);
+    doc.text('CANT.', 55 + colWidths[0] + colWidths[1], tablaY + 8, { align: 'center', width: colWidths[2] });
+
+    if (hasPrecioKilo) {
+        doc.rect(50 + colWidths[0] + colWidths[1] + colWidths[2], tablaY, colWidths[3], rowHeight).stroke();
+        doc.text('$/KILO (FINAL)', 55 + colWidths[0] + colWidths[1] + colWidths[2], tablaY + 8, { align: 'center', width: colWidths[3] });
+    }
     
     // Artículos de ESTE presupuesto solamente
     let currentY = tablaY + rowHeight;
@@ -1639,8 +1738,9 @@ function renderizarPDFPresupuestoUnico(doc, {
                     doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                     
                     let descripcion = articulo.descripcion;
-                    if (descripcion.length > 35) {
-                        descripcion = descripcion.substring(0, 32) + '...';
+                    let descMaxLen = hasPrecioKilo ? 32 : 35;
+                    if (descripcion.length > descMaxLen) {
+                        descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
                     }
                     doc.fontSize(14).font('Helvetica').fillColor('black')
                        .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
@@ -1650,9 +1750,24 @@ function renderizarPDFPresupuestoUnico(doc, {
                     
                     doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
                        .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                           width: colWidths[2] - 10, 
+                           width: colWidths[2], 
                            align: 'center' 
                        });
+
+                    // Columna especial Precio/Kilo
+                    if (hasPrecioKilo) {
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                        let textoPrecio = '-';
+                        if (metricas.validez && metricas.precioPorKilo !== null) {
+                            textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        }
+                        doc.fontSize(12).font('Helvetica-Bold').fillColor('black')
+                           .text(textoPrecio, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
+                               width: colWidths[3], align: 'center' 
+                           });
+                    }
                     
                     currentY += rowHeight;
                 });
@@ -1661,7 +1776,7 @@ function renderizarPDFPresupuestoUnico(doc, {
             // Artículos SIN stock (EN FALTA)
             if (articulosSinStock.length > 0) {
                 // Título de sección
-                doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                doc.fillColor('#fff3cd').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2] + (hasPrecioKilo ? colWidths[3] : 0), rowHeight).fill();
                 doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
                    .text('ARTÍCULOS EN FALTA', 55, currentY + 7);
                 doc.fillColor('black');
@@ -1688,8 +1803,9 @@ function renderizarPDFPresupuestoUnico(doc, {
                     doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                     
                     let descripcion = articulo.descripcion;
-                    if (descripcion.length > 35) {
-                        descripcion = descripcion.substring(0, 32) + '...';
+                    let descMaxLen = hasPrecioKilo ? 32 : 35;
+                    if (descripcion.length > descMaxLen) {
+                        descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
                     }
                     doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
                        .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
@@ -1699,9 +1815,24 @@ function renderizarPDFPresupuestoUnico(doc, {
                     
                     doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
                        .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                           width: colWidths[2] - 10, 
+                           width: colWidths[2], 
                            align: 'center' 
                        });
+
+                    // Columna especial Precio/Kilo
+                    if (hasPrecioKilo) {
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                        doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                        let textoPrecio = '-';
+                        if (metricas.validez && metricas.precioPorKilo !== null) {
+                            textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                        }
+                        doc.fontSize(12).font('Helvetica-Bold').fillColor('#856404')
+                           .text(textoPrecio, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
+                               width: colWidths[3], align: 'center' 
+                           });
+                    }
                     
                     currentY += rowHeight;
                 });
@@ -1710,7 +1841,7 @@ function renderizarPDFPresupuestoUnico(doc, {
             // Modo normal (sin pendientes de compra)
             articulosSorted.forEach((articulo, index) => {
                 if (index % 2 === 1) {
-                    doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2], rowHeight).fill();
+                    doc.fillColor('#f8f9fa').rect(50, currentY, colWidths[0] + colWidths[1] + colWidths[2] + (hasPrecioKilo ? colWidths[3] : 0), rowHeight).fill();
                 }
                 doc.fillColor('black');
                 
@@ -1726,8 +1857,9 @@ function renderizarPDFPresupuestoUnico(doc, {
                 doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                 
                 let descripcion = articulo.descripcion;
-                if (descripcion.length > 35) {
-                    descripcion = descripcion.substring(0, 32) + '...';
+                let descMaxLen = hasPrecioKilo ? 32 : 35;
+                if (descripcion.length > descMaxLen) {
+                    descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
                 }
                 doc.fontSize(14).font('Helvetica').fillColor('black')
                    .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
@@ -1737,9 +1869,24 @@ function renderizarPDFPresupuestoUnico(doc, {
                 
                 doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
                    .text(articulo.cantidad.toString(), 55 + colWidths[0] + colWidths[1], currentY + 4, { 
-                       width: colWidths[2] - 10, 
+                       width: colWidths[2], 
                        align: 'center' 
                    });
+
+                // Columna especial Precio/Kilo
+                if (hasPrecioKilo) {
+                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                    doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).stroke();
+                    let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                    let textoPrecio = '-';
+                    if (metricas.validez && metricas.precioPorKilo !== null) {
+                        textoPrecio = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(metricas.precioPorKilo);
+                    }
+                    doc.fontSize(12).font('Helvetica-Bold').fillColor('black')
+                       .text(textoPrecio, 55 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 6, { 
+                           width: colWidths[3], align: 'center' 
+                       });
+                }
                 
                 currentY += rowHeight;
             });
@@ -1963,6 +2110,7 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
             html += generarHTMLPresupuestoUnico({
                 clienteId: clienteData.cliente_id,
                 clienteNombre: clienteData.cliente_nombre,
+                perfilId: clienteData.perfil_id,
                 presupuesto,
                 esPendienteCompra,
                 articulosEnFalta,
@@ -1999,7 +2147,7 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
  * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
  * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
-function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = []) {
+function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false) {
     try {
         let PDFDocument;
         try {
@@ -2039,13 +2187,16 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
             renderizarPDFPresupuestoUnico(doc, {
                 clienteId: clienteData.cliente_id,
                 clienteNombre: clienteData.cliente_nombre,
+                perfilId: clienteData.perfil_id,
                 presupuesto,
                 esPendienteCompra,
                 articulosEnFalta,
                 fechaHoy,
+                fechaHoy,
                 horaHoy,
                 paginaActual: presupIndex + 1,
-                totalPaginas: clienteData.presupuestos.length
+                totalPaginas: clienteData.presupuestos.length,
+                esContextoProduccion
             });
         });
         
@@ -2109,6 +2260,7 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
                 html += generarHTMLPresupuestoUnico({
                     clienteId: cliente.cliente_id,
                     clienteNombre: cliente.cliente_nombre,
+                    perfilId: cliente.perfil_id,
                     presupuesto,
                     esPendienteCompra: false,
                     articulosEnFalta: [],
@@ -2116,7 +2268,8 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
                     horaHoy,
                     paginaActual: presupuestoGlobalIndex,
                     totalPaginas: totalPresupuestos,
-                    agregarPageBreak: !esUltimo
+                    agregarPageBreak: !esUltimo,
+                    esContextoProduccion
                 });
             });
         });
@@ -2145,7 +2298,7 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha) {
  * Genera PDF para TODOS los clientes (impresión general / "Imprimir Todos")
  * Una página por cada presupuesto de cada cliente
  */
-function generarPDF_TodosLosClientes(res, clientesData, fecha) {
+function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false) {
     try {
         let PDFDocument;
         try {
@@ -2196,13 +2349,15 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha) {
                 renderizarPDFPresupuestoUnico(doc, {
                     clienteId: cliente.cliente_id,
                     clienteNombre: cliente.cliente_nombre,
+                    perfilId: cliente.perfil_id,
                     presupuesto,
                     esPendienteCompra: false,
                     articulosEnFalta: [],
                     fechaHoy,
                     horaHoy,
                     paginaActual: presupuestoGlobalIndex,
-                    totalPaginas: totalPresupuestos
+                    totalPaginas: totalPresupuestos,
+                    esContextoProduccion
                 });
             });
         });

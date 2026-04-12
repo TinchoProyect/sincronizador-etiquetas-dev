@@ -447,70 +447,79 @@ function generarCodigoBarras(numeroPresupuesto) {
         if (barcodeContainer && !barcodeContainer.parentElement.querySelector('.comandos-hardware-relativos')) {
             const footerRelativo = document.createElement('div');
             footerRelativo.className = 'comandos-hardware-relativos';
-            // Se incrementó 1cm extra a pedido de QA (Ahora 3cm total)
-            footerRelativo.style.marginTop = '3cm';
-            footerRelativo.style.display = 'flex';
-            footerRelativo.style.justifyContent = 'space-between';
-            footerRelativo.style.padding = '0 1cm';
-            footerRelativo.style.boxSizing = 'border-box';
-            footerRelativo.style.width = '100%';
-            footerRelativo.style.pageBreakInside = 'avoid';
+            // Verificar contexto para inyectar comandos ON/OFF de hardware
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('contexto') === 'produccion') {
+                // Se incrementó 1cm extra a pedido de QA (Ahora 3cm total)
+                footerRelativo.style.marginTop = '3cm';
+                footerRelativo.style.display = 'flex';
+                footerRelativo.style.justifyContent = 'space-between';
+                footerRelativo.style.padding = '0 1cm';
+                footerRelativo.style.boxSizing = 'border-box';
+                footerRelativo.style.width = '100%';
+                footerRelativo.style.pageBreakInside = 'avoid';
 
-            // Contenedor IZQUIERDO (ON)
-            const wrapperON = document.createElement('div');
-            wrapperON.style.textAlign = 'center';
-            
-            const imgON = document.createElement('img');
-            imgON.style.height = '25px';
-            
-            const textON = document.createElement('div');
-            textON.textContent = 'ON';
-            textON.style.fontSize = '8pt';
-            textON.style.fontWeight = 'bold';
+                // Contenedor IZQUIERDO (ON)
+                const wrapperON = document.createElement('div');
+                wrapperON.style.textAlign = 'center';
+                
+                const imgON = document.createElement('img');
+                imgON.style.height = '25px';
+                imgON.id = 'barcode-cmd-iniciar'; // Vigía depurador
+                
+                const textON = document.createElement('div');
+                textON.textContent = 'ON';
+                textON.style.fontSize = '8pt';
+                textON.style.fontWeight = 'bold';
 
-            wrapperON.appendChild(imgON);
-            wrapperON.appendChild(textON);
+                wrapperON.appendChild(imgON);
+                wrapperON.appendChild(textON);
 
-            // Contenedor DERECHO (OFF)
-            const wrapperOFF = document.createElement('div');
-            wrapperOFF.style.textAlign = 'center';
-            
-            const imgOFF = document.createElement('img');
-            imgOFF.style.height = '25px';
-            
-            const textOFF = document.createElement('div');
-            textOFF.textContent = 'OFF';
-            textOFF.style.fontSize = '8pt';
-            textOFF.style.fontWeight = 'bold';
+                // Contenedor DERECHO (OFF)
+                const wrapperOFF = document.createElement('div');
+                wrapperOFF.style.textAlign = 'center';
+                
+                const imgOFF = document.createElement('img');
+                imgOFF.style.height = '25px';
+                imgOFF.id = 'barcode-cmd-finalizar'; // Vigía depurador
+                
+                const textOFF = document.createElement('div');
+                textOFF.textContent = 'OFF';
+                textOFF.style.fontSize = '8pt';
+                textOFF.style.fontWeight = 'bold';
 
-            wrapperOFF.appendChild(imgOFF);
-            wrapperOFF.appendChild(textOFF);
+                wrapperOFF.appendChild(imgOFF);
+                wrapperOFF.appendChild(textOFF);
 
-            // Armar estructura
-            footerRelativo.appendChild(wrapperON);
-            footerRelativo.appendChild(wrapperOFF);
-            
-            // Inyectar justo después del contenedor del código de barras principal
-            barcodeContainer.parentElement.appendChild(footerRelativo);
+                // Armar estructura
+                footerRelativo.appendChild(wrapperON);
+                footerRelativo.appendChild(wrapperOFF);
+                
+                // Inyectar justo después del contenedor del código de barras principal
+                barcodeContainer.parentElement.appendChild(footerRelativo);
 
-            // Renderizar Barcodes estandarizados a tamaño principal
-            JsBarcode(imgON, "CMD-ON", {
-                format: 'CODE128',
-                width: 2, 
-                height: 60, 
-                displayValue: false, 
-                margin: 0
-            });
+                // Renderizar Barcodes estandarizados a tamaño principal
+                JsBarcode(imgON, "CMD-ON", {
+                    format: 'CODE128',
+                    width: 2, 
+                    height: 60, 
+                    displayValue: false, 
+                    margin: 0
+                });
 
-            JsBarcode(imgOFF, "CMD-OFF", {
-                format: 'CODE128',
-                width: 2, 
-                height: 60, 
-                displayValue: false, 
-                margin: 0
-            });
-            
-            console.log('✅ [IMPRIMIR-PRESUPUESTO] Footer relativo inyectado correctamente');
+                JsBarcode(imgOFF, "CMD-OFF", {
+                    format: 'CODE128',
+                    width: 2, 
+                    height: 60, 
+                    displayValue: false, 
+                    margin: 0
+                });
+                
+                console.log('✅ [IMPRIMIR-PRESUPUESTO] Footer relativo inyectado correctamente');
+            } else {
+                console.log('✅ [IMPRIMIR-PRESUPUESTO] Footer de comandos omitido (No es contexto de Producción)');
+            }
+
         }
 
         console.log('✅ [IMPRIMIR-PRESUPUESTO] Código de barras generado correctamente');

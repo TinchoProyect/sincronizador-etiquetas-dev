@@ -780,8 +780,8 @@
                 }
 
                 // 2. Abrir ventana de impresión
-                const urlPdf = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=pdf&pendiente_compra=true`;
-                const urlHtml = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=html&pendiente_compra=true`;
+                const urlPdf = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=pdf&pendiente_compra=true&contexto=produccion`;
+                const urlHtml = `/api/produccion/impresion-presupuesto?cliente_id=${clienteId}&presupuesto_id=${idPresupuestoExt}&formato=html&pendiente_compra=true&contexto=produccion`;
 
                 const win = window.open(urlPdf, '_blank');
 
