@@ -149,7 +149,14 @@ class RutasModel {
                      FROM presupuestos_detalles pd
                      WHERE pd.id_presupuesto = p.id),
                     0
-                ) as total
+                ) as subtotal_bruto,
+                COALESCE(p.descuento, 0) as descuento_aplicado,
+                (COALESCE(
+                    (SELECT SUM(pd.cantidad * pd.precio1)
+                     FROM presupuestos_detalles pd
+                     WHERE pd.id_presupuesto = p.id),
+                    0
+                ) * (1 - COALESCE(p.descuento, 0))) as total
             FROM presupuestos p
             INNER JOIN clientes c ON p.id_cliente = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id

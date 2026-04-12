@@ -63,6 +63,14 @@ async function obtenerRutaPorId(req, res) {
         
         console.log(`[RUTAS] ✅ Ruta ${id} encontrada con ${ruta.total_presupuestos} presupuestos`);
         
+        // VIGÍA DE DEPURACIÓN (Ticket #8): Traza exacta de totales
+        if (ruta.presupuestos && ruta.presupuestos.length > 0) {
+            console.log(`[VIGÍA-FINANCIERO] TICKET #8 - TRAZA DE TOTALES EN LOGÍSTICA (RUTA ASIGNADA):`);
+            ruta.presupuestos.forEach(p => {
+                console.log(`  -> ID_Presupuesto: ${p.id_presupuesto_ext || p.numero_presupuesto || p.id} | Subtotal_Bruto_con_IVA: $${Number(p.subtotal_bruto).toFixed(2)} | Descuento_Detectado: ${Number(p.descuento_aplicado * 100).toFixed(2)}% | Total_Final_Enviado_a_UI: $${Number(p.total).toFixed(2)}`);
+            });
+        }
+        
         res.json({
             success: true,
             data: ruta
@@ -393,6 +401,14 @@ async function obtenerPresupuestosDisponibles(req, res) {
         const presupuestos = await presupuestosModel.obtenerPresupuestosDisponibles(req.db);
         
         console.log(`[RUTAS] ✅ ${presupuestos.length} presupuestos disponibles encontrados`);
+        
+        // VIGÍA DE DEPURACIÓN (Ticket #8): Traza exacta de totales
+        if (presupuestos.length > 0) {
+            console.log(`[VIGÍA-FINANCIERO] TICKET #8 - TRAZA DE TOTALES EN LOGÍSTICA (DISPONIBLES):`);
+            presupuestos.forEach(p => {
+                console.log(`  -> ID_Presupuesto: ${p.id_presupuesto_ext || p.numero_presupuesto || p.id} | Subtotal_Bruto_con_IVA: $${Number(p.subtotal_bruto).toFixed(2)} | Descuento_Detectado: ${Number(p.descuento_aplicado * 100).toFixed(2)}% | Total_Final_Enviado_a_UI: $${Number(p.total).toFixed(2)}`);
+            });
+        }
         
         res.json({
             success: true,

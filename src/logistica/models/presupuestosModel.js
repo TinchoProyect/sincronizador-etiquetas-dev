@@ -111,13 +111,20 @@ async function obtenerPresupuestosDisponibles(pool) {
             cd.longitud as domicilio_longitud,
             cd.coordenadas_validadas,
             
-            -- Calcular total desde presupuestos_detalles (cantidad * precio1)
+            -- Calcular totales resolviendo la ceguera de descuentos (Ticket #8)
             COALESCE(
                 (SELECT SUM(pd.cantidad * pd.precio1)
                  FROM presupuestos_detalles pd
                  WHERE pd.id_presupuesto = p.id),
                 0
-            ) as total,
+            ) as subtotal_bruto,
+            COALESCE(p.descuento, 0) as descuento_aplicado,
+            (COALESCE(
+                (SELECT SUM(pd.cantidad * pd.precio1)
+                 FROM presupuestos_detalles pd
+                 WHERE pd.id_presupuesto = p.id),
+                0
+            ) * (1 - COALESCE(p.descuento, 0))) as total,
             p.comprobante_lomasoft,
             p.id_factura_lomasoft
             
