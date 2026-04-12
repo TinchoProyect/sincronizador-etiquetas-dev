@@ -55,11 +55,13 @@ function extraerCostoFinanciero(articulo, presupuestoGeneral = null) {
         // 4. Métrica de Kilos
         let kilosBase = Number(articulo.kilos_unidad || 0);
         let unidadesEmpaque = (articulo.es_pack && articulo.pack_unidades) ? Number(articulo.pack_unidades) : 1;
-        let kilosTotalesArticulo = kilosBase * unidadesEmpaque;
+        // Empíricamente, la DB aloja el peso total del pack en kilos_unidad. 
+        // No multiplicar por unidades de empaque.
+        let kilosTotalesArticulo = kilosBase;
 
         // Paso C - Resultado Columna
         let precioPorKilo = (kilosTotalesArticulo > 0) ? (precioConIva / kilosTotalesArticulo) : null;
-        let precioUnidad = (unidadesEmpaque > 0) ? (precioConIva / unidadesEmpaque) : null;
+        let precioUnidad = (articulo.es_pack === true && unidadesEmpaque > 0) ? (precioConIva / unidadesEmpaque) : null;
 
         return {
             validez: true,

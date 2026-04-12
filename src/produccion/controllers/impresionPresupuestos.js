@@ -1371,7 +1371,7 @@ function generarHTMLPresupuestoUnico({
     // Función auxiliar para renderizar celdas extra de Emilio
     const generarCeldasEmilio = (articulo) => {
         if (!esPerfilEmilio) return '';
-        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo, presupuesto);
         let txtUnidad = '-';
         let txtKilo = '-';
         if (metricas.validez) {
@@ -1816,7 +1816,7 @@ function renderizarPDFPresupuestoUnico(doc, {
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
                         
-                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo, presupuesto);
                         let txtUnidad = '-';
                         let txtKilo = '-';
                         if (metricas.validez) {
@@ -1899,7 +1899,7 @@ function renderizarPDFPresupuestoUnico(doc, {
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
                         doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
                         
-                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                        let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo, presupuesto);
                         let txtUnidad = '-';
                         let txtKilo = '-';
                         if (metricas.validez) {
@@ -1971,7 +1971,7 @@ function renderizarPDFPresupuestoUnico(doc, {
                     doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
                     doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], currentY + rowHeight).stroke();
                     
-                    let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo);
+                    let metricas = motorCalculadoraFiscal.extraerCostoFinanciero(articulo, presupuesto);
                     let txtUnidad = '-';
                     let txtKilo = '-';
                     if (metricas.validez) {
