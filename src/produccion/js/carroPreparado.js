@@ -470,6 +470,7 @@ async function mostrarInformesIngredientesVinculados() {
                             <th>Stock General</th>
                             <th>Estado</th>
                             <th>Unidad</th>
+                            <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -505,6 +506,8 @@ async function mostrarInformesIngredientesVinculados() {
                     indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
                 }
 
+                const botonIngresoManual = `<button onclick="window.abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+
                 html += `
                     <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'} ingrediente-vinculado">
                         <td>${ing.nombre || 'Sin nombre'}</td>
@@ -512,6 +515,11 @@ async function mostrarInformesIngredientesVinculados() {
                         <td>${stockActual.toFixed(2)}</td>
                         <td>${indicadorEstado}</td>
                         <td>${ing.unidad_medida || ''}</td>
+                        <td>
+                            <div style="display: flex; gap: 8px; justify-content: center;">
+                                ${botonIngresoManual}
+                            </div>
+                        </td>
                     </tr>
                 `;
             });

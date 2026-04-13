@@ -728,6 +728,90 @@ window.toggleGrupoTemporal = function (indiceGrupo) {
 };
 
 // Hacer funciones disponibles globalmente para los botones HTML
+
+// ============================================================================
+// 🎯 TICKET #10: RENDERIZADO DEL DASHBOARD DE STOCK PERSONAL (PRODUCCIÓN EXTERNA)
+// ============================================================================
+function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizado, manualesPorIngrediente) {
+    if (!ingredientes || ingredientes.length === 0) {
+        return '<p style="text-align:center; padding: 20px; color: #6c757d;">No hay ingredientes asignados al stock personal.</p>';
+    }
+
+    // Ordenar por nombre
+    ingredientes.sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
+
+    let html = `<div class="dashboard-externo" style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">`;
+
+    ingredientes.forEach(ing => {
+        const cantidadNecesariaRaw = ing.cantidad;
+        let cantidadNecesaria = 0;
+        if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined) {
+            const parsed = parseFloat(cantidadNecesariaRaw);
+            cantidadNecesaria = isNaN(parsed) ? 0 : parsed;
+        }
+
+        let stockOriginal = 0;
+        let stockRestante = 0;
+        let consumo = cantidadNecesaria;
+
+        if (carroFinalizado) {
+            // Snapshot = Stock original disponible antes de cerrar
+            stockOriginal = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
+            stockRestante = stockOriginal - cantidadNecesaria;
+            // No restamos el ingresoManual aquí para el flujo de la barra visual principal
+        } else {
+            stockOriginal = parseFloat(ing.stock_actual || 0);
+            stockRestante = stockOriginal - cantidadNecesaria;
+        }
+
+        const tieneStock = stockRestante >= -0.01;
+        const porcentajeRestante = stockOriginal > 0 ? Math.max(0, (stockRestante / stockOriginal) * 100) : 0;
+        
+        let colorBarra = '#28a745'; // Verde
+        if (!tieneStock || porcentajeRestante < 20) {
+            colorBarra = '#dc3545'; // Rojo crítico
+        } else if (porcentajeRestante < 50) {
+            colorBarra = '#fd7e14'; // Naranja
+        }
+
+        // Acciones
+        let botonesAccion = '';
+        if (!carroFinalizado && estadoCarro === 'en_preparacion') {
+            const deshabilitado = (window.carroIdGlobal == null);
+            const botonAjusteRapido = deshabilitado
+                ? `<button disabled title="Seleccioná un carro primero" style="padding: 4px 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa;">✎ Ajuste Rápido</button>`
+                : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockOriginal}, window.carroIdGlobal)" style="padding: 4px 8px; font-size: 11px; border: 1px solid #17a2b8; border-radius: 4px; background: #e0f7fa; color: #006064; cursor: pointer;">✎ Ajuste Rápido</button>`;
+            
+            botonesAccion = `<div style="margin-top: 8px; text-align: right;">${botonAjusteRapido}</div>`;
+        }
+
+        html += `
+            <div style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <strong style="color: #343a40; font-size: 15px;">${ing.nombre || 'Desconocido'}</strong>
+                    <span style="font-weight: bold; font-size: 13px; color: ${tieneStock ? '#495057' : '#dc3545'};">
+                        Consumo: ${consumo.toFixed(2)} ${ing.unidad_medida} / Disponible: ${stockOriginal.toFixed(2)} ${ing.unidad_medida}
+                    </span>
+                </div>
+                
+                <div style="height: 12px; background-color: #e9ecef; border-radius: 6px; overflow: hidden; position: relative;">
+                    <div style="height: 100%; width: ${porcentajeRestante}%; background-color: ${colorBarra}; transition: width 0.5s ease;"></div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: #6c757d;">
+                    <span>Restante tras producción: <strong style="color: ${colorBarra};">${stockRestante.toFixed(2)} ${ing.unidad_medida} (${porcentajeRestante.toFixed(0)}%)</strong></span>
+                    ${!tieneStock ? `<span style="color: #dc3545; font-weight: bold;">⚠️ Stock Insuficiente (Faltan ${Math.abs(stockRestante).toFixed(2)})</span>` : ''}
+                </div>
+                
+                ${botonesAccion}
+            </div>
+        `;
+    });
+
+    html += `</div>`;
+    return html;
+}
+
 window.crearNuevoCarro = crearNuevoCarro;
 window.seleccionarCarro = seleccionarCarro;
 window.deseleccionarCarro = deseleccionarCarro;
@@ -1245,6 +1329,12 @@ export async function mostrarResumenIngredientes(ingredientes) {
 
     console.log(`📊 [TABLA-INGREDIENTES] Renderizando - Estado: ${estadoCarro}, Tipo: ${tipoCarro} (Vista: ${carroFinalizado ? 'SOLO LECTURA' : 'ACTIVA'})`);
 
+    // 🎯 TICKET #10: Modificar Título del Panel para Externa
+    const tituloSpan = document.querySelector('#resumen-ingredientes h3 span');
+    if (tituloSpan) {
+        tituloSpan.innerHTML = tipoCarro === 'externa' ? '🏠 Control de Stock Personal / Domicilio' : 'Resumen de Ingredientes Necesarios';
+    }
+
     // 📋 VISTA HISTÓRICA vs VISTA ACTIVA
     let html = '';
     let manualesPorIngrediente = {};
@@ -1302,13 +1392,43 @@ export async function mostrarResumenIngredientes(ingredientes) {
         `;
     }
 
-    // 📍 AGRUPACIÓN: Asegurar sector_letra y ordenar
+    // 📍 DEDUPLICACIÓN DE INGREDIENTES PARA EVITAR DUPLICIDAD EN LA UI (Ticket #9A)
+    const ingredientesUnicos = {};
     ingredientes.forEach(ing => {
         if (!ing.sector_letra) ing.sector_letra = 'Sin Sector';
+        
+        if (!ingredientesUnicos[ing.id]) {
+            ingredientesUnicos[ing.id] = { ...ing };
+        } else {
+            // Si el ingrediente ya existe, sumamos su cantidad
+            const cantidadExistente = parseFloat(ingredientesUnicos[ing.id].cantidad || 0);
+            const cantidadNueva = parseFloat(ing.cantidad || 0);
+            ingredientesUnicos[ing.id].cantidad = cantidadExistente + cantidadNueva;
+            
+            // Priorizamos marcarlo como vinculado si en alguna de sus instancias lo es
+            if (ing.es_de_articulo_vinculado) {
+                ingredientesUnicos[ing.id].es_de_articulo_vinculado = true;
+            }
+        }
     });
 
+    // Convertir de vuelta a array y proceder a la ordenación
+    let ingredientesFiltrados = Object.values(ingredientesUnicos);
+
+    // 🎯 TICKET #10: Limpieza de Ruido Visual para Carros Externos (Excluir Fase 3 del panel superior)
+    if (tipoCarro === 'externa') {
+        ingredientesFiltrados = ingredientesFiltrados.filter(ing => !ing.es_de_articulo_vinculado);
+    }
+
+    // 🎯 TICKET #10: Bifurcación Visual para Dashboard de Stock Personal
+    if (tipoCarro === 'externa') {
+        const dashboardHtml = generarDashboardStockPersonal(ingredientesFiltrados, estadoCarro, carroFinalizado, manualesPorIngrediente);
+        contenedor.innerHTML = dashboardHtml;
+        return; // Salimos prematuramente, ya que el dashboard reemplaza la tabla
+    }
+
     // Ordenar por sector_letra (Sin Sector al final), luego por nombre
-    ingredientes.sort((a, b) => {
+    ingredientesFiltrados.sort((a, b) => {
         if (a.sector_letra === 'Sin Sector' && b.sector_letra !== 'Sin Sector') return 1;
         if (a.sector_letra !== 'Sin Sector' && b.sector_letra === 'Sin Sector') return -1;
         if (a.sector_letra !== b.sector_letra) return String(a.sector_letra || '').localeCompare(String(b.sector_letra || ''));
@@ -1317,7 +1437,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
 
     let currentSector = null;
 
-    ingredientes.forEach((ing, index) => {
+    ingredientesFiltrados.forEach((ing, index) => {
         // Validación robusta
         const stockFinalRaw = ing.stock_actual; // En carro finalizado, esto es el "Stock Final" (post-producción)
         const cantidadNecesariaRaw = ing.cantidad;
@@ -1410,13 +1530,17 @@ export async function mostrarResumenIngredientes(ingredientes) {
                 indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
             }
 
-            // 🎯 LÓGICA DE PERMISOS PARA BOTONES DE ACCIÓN
+            // 🎯 LÓGICA DE PERMISOS PARA BOTONES DE ACCIÓN (Ticket #9B)
             const esIngredienteVinculado = ing.es_de_articulo_vinculado === true;
             let mostrarBotones = true;
 
             if (tipoCarro === 'externa') {
                 if (estadoCarro === 'en_preparacion') {
+                    // Fase 1 y 2: Se gestionan antes de enviar el carro
                     mostrarBotones = !esIngredienteVinculado;
+                } else if (estadoCarro === 'preparado') {
+                    // Fase 3 (Cierre de carro): Permitir a Matías reabastecer stock de Fase 3
+                    mostrarBotones = esIngredienteVinculado;
                 } else {
                     mostrarBotones = false;
                 }
@@ -1437,12 +1561,21 @@ export async function mostrarResumenIngredientes(ingredientes) {
                     ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
                     : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockFinal}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
 
-                botonesAccion = `
-                    <div style="display: flex; gap: 8px; justify-content: center;">
-                        ${botonIngresoManual}
-                        ${botonAjusteRapido}
-                    </div>
-                `;
+                if (tipoCarro === 'externa' && estadoCarro === 'preparado') {
+                    // Pantalla de cierre (externa): solo "Ingreso manual" para inyectar ingredientes (DRY)
+                    botonesAccion = `
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            ${botonIngresoManual}
+                        </div>
+                    `;
+                } else {
+                    botonesAccion = `
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            ${botonIngresoManual}
+                            ${botonAjusteRapido}
+                        </div>
+                    `;
+                }
             } else {
                 botonesAccion = `<span style="color: #6c757d; font-style: italic; font-size: 0.9em;">Solo lectura</span>`;
             }

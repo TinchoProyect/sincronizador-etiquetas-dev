@@ -876,7 +876,12 @@ async function confirmarIngreso() {
 
     console.log(`🔍 Tipo de carro detectado: ${tipoCarro || 'interna'}`);
 
-    if (tipoCarro === 'externa') {
+    const esCierreExterna = (tipoCarro === 'externa' && estadoCarro === 'preparado');
+
+    // 🎯 TICKET #9B: Si es externa pero estamos en la etapa de cierre ('preparado' - Fase 3),
+    // el stock sumado se debe inyectar EN FÁBRICA (ingredientes_movimientos), no en la camioneta,
+    // garantizando la deducción de 'artículos' e inyección a 'ingredientes' vía Trigger DB.
+    if (tipoCarro === 'externa' && !esCierreExterna) {
       // Verificar si el ingrediente es un mix (ingrediente compuesto)
       const esIngredienteCompuesto = await verificarSiEsIngredienteCompuesto(ingredienteSeleccionado);
 
@@ -1025,9 +1030,9 @@ async function confirmarIngreso() {
       await registrarMovimientoStockVentas(movimientoStock);
 
     } else {
-      console.log('🏭 PROCESANDO INGRESO MANUAL EN CARRO INTERNO');
+      console.log(`🏭 PROCESANDO INGRESO MANUAL EN CARRO ${esCierreExterna ? 'EXTERNO (FASE 3 - CIERRE)' : 'INTERNO'}`);
 
-      // 🔧 CORRECCIÓN CRÍTICA: Para carros internos, NO duplicar la multiplicación
+      // 🔧 CORRECCIÓN CRÍTICA: NO duplicar la multiplicación
       // El backend ya maneja la multiplicación por cantidad en el endpoint /ingredientes_movimientos
 
       const movimientoIngrediente = {
