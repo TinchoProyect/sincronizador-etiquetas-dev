@@ -100,7 +100,8 @@ async function obtenerSesion(req, res) {
             success: true,
             data: {
                 estado: sesion.estado_logistico,
-                cliente_nombre: sesion.nombre ? `${sesion.nombre} ${sesion.apellido || ''}`.trim() : 'Cliente Anónimo'
+                cliente_nombre: sesion.nombre ? `${sesion.nombre} ${sesion.apellido || ''}`.trim() : 'Cliente Anónimo',
+                detalles: sesion.detalles
             }
         });
     } catch(err) {

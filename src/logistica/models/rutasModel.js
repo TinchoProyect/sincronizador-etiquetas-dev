@@ -184,7 +184,9 @@ class RutasModel {
                 NULL as id_factura_lomasoft,
                 0 as subtotal_bruto,
                 0 as descuento_aplicado,
-                0 as total
+                0 as total,
+                p.codigo_qr_hash as hash,
+                EXISTS(SELECT 1 FROM ordenes_tratamiento_detalles otd WHERE otd.id_orden_tratamiento = p.id) as tiene_checkin
             FROM ordenes_tratamiento p
             LEFT JOIN clientes c ON p.id_cliente = c.cliente_id
             LEFT JOIN LATERAL (
