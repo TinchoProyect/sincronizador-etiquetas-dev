@@ -29,11 +29,9 @@ router.post('/precheckin/:hash', tratamientosController.procesarPreCheckin);
 
 
 /**
- * Fase 3 (Pendiente de implementación tras validar la base local)
- * Aquí irán:
- * - GET /pendientes/:id_ruta
- * - POST /validar-retiro/:id
- * - Integración con POST /rutas/finalizar
+ * Fase 3 (Flujo Híbrido Avanzado)
  */
+// 4. Chofer: Completar o modificar un check-in in-situ (Carga Contingente Dinámica)
+router.put('/chofer/checkin/:hash', auth.verificarTokenChofer, tratamientosController.checkInChofer);
 
 module.exports = router;

@@ -112,22 +112,68 @@ function renderizarEntregas() {
             const isReconciled = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
             const badgeLomasoft = isReconciled
                 ? `<span style="font-size: 0.70rem; color: white; background: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Lomasoft', 'Comprobante: ${entrega.comprobante_lomasoft || entrega.id_factura_lomasoft}', 'info')">✅ Lomasoft</span>`
-                : `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>`;
+                : (!esItemRetiro ? `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>` : '');
 
-            const textoBoton = completado ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado') : (esItemRetiro ? 'Retirar' : 'Entregar');
-            const backgroundBoton = completado ? '#dcfce7' : (esItemRetiro ? '#e67e22' : '#2563eb');
-            const colorTextoBoton = completado ? '#166534' : 'white';
+            let textoBoton = completado ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado') : (esItemRetiro ? 'Retirar' : 'Entregar');
+            let backgroundBoton = completado ? '#dcfce7' : (esItemRetiro ? '#e67e22' : '#2563eb');
+            let colorTextoBoton = completado ? '#166534' : 'white';
+            
+            let detalleRetiroHTML = '';
+            let btnCompletarCargaHTML = '';
+            let disableMainBtn = completado;
+
+            if (esItemRetiro) {
+                const tieneCheckin = entrega.detalles && entrega.detalles.length > 0;
+                
+                if (tieneCheckin) {
+                    const d = entrega.detalles[0]; // Aggregate array has the JSON payload
+                    detalleRetiroHTML = `
+                        <div style="font-size: 0.8rem; color: #15803d; background: #dcfce7; padding: 4px 8px; border-radius: 4px; margin-top: 4px; display: inline-block;">
+                            ✅ Check-in Completado: <span style="font-weight: normal;">${d.bultos} bulto(s) (${d.kilos}kg) de ${d.descripcion_externa}</span>
+                        </div>
+                    `;
+                    // Si ya está completado el retiro en sí, ocultamos el botón de Modificar Carga para evitar inconsistencias mutables post-retiro.
+                    if (!completado) {
+                        btnCompletarCargaHTML = `
+                            <button class="btn-confirmar-sm" 
+                                    onclick="window.abrirModalContingencia('${entrega.hash}', true)" 
+                                    style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                ✏️ Modificar
+                            </button>
+                        `;
+                    }
+                } else {
+                    detalleRetiroHTML = `
+                        <div style="font-size: 0.8rem; color: #b45309; background: #fef3c7; padding: 4px 8px; border-radius: 4px; margin-top: 4px; display: inline-block;">
+                            ⏳ Check-in Pendiente
+                        </div>
+                    `;
+                    btnCompletarCargaHTML = `
+                        <button class="btn-confirmar-sm" 
+                                onclick="window.abrirModalContingencia('${entrega.hash}', false)" 
+                                style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fef08a; color: #854d0e; border: 1px solid #fde047; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            📝 Completar Carga
+                        </button>
+                    `;
+                    // Bloquear botón de Retirar (Regla de Negocio)
+                    disableMainBtn = true;
+                    backgroundBoton = '#cbd5e1';
+                    colorTextoBoton = '#94a3b8';
+                }
+            }
 
             return `
                 <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
                     <div style="flex: 1; min-width: 140px;">
                         <div style="font-weight: 600; color: #475569; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
-                            <span>${esItemRetiro ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${entrega.id_presupuesto}</span>
+                            <span>${esItemRetiro ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${entrega.id_presupuesto.toString().replace('RT-', '')}</span>
                             ${badgeLomasoft}
                         </div>
                         ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669; margin-top: 4px;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
+                        ${detalleRetiroHTML}
                     </div>
-                    <div style="display: flex; gap: 6px;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;">
+                        ${btnCompletarCargaHTML}
                         <button class="btn-confirmar-sm" 
                                 onclick="window.quitarPedido('${entrega.id_presupuesto}')" 
                                 style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
@@ -135,7 +181,7 @@ function renderizarEntregas() {
                         </button>
                         <button class="btn-confirmar-sm" 
                                 onclick="confirmarEntrega('${entrega.id_presupuesto}', '${esItemRetiro ? 'retiro' : 'entrega'}')" 
-                                ${completado ? 'disabled' : ''}
+                                ${disableMainBtn ? 'disabled' : ''}
                                 style="padding: 0.5rem 1rem; font-weight: bold; border-radius: 0.5rem; background: ${backgroundBoton}; color: ${colorTextoBoton}; border: none; min-width: 100px;">
                             ${textoBoton}
                         </button>
@@ -697,4 +743,101 @@ window.generarQRChoferPayload = async (idCliente, nombreCliente) => {
             Swal.fire('Error', data.error, 'error');
         }
     } catch(err) { Swal.fire('Error', 'Fallo conexión con origen', 'error'); }
+};
+
+
+// --- Carga Contingente Dinámica (Check-in Chofer) ---
+
+window.abrirModalContingencia = async (hash, esEdicion) => {
+    try {
+        const modal = document.getElementById('modal-contingencia-checkin');
+        const form = document.getElementById('form-contingencia-checkin');
+        const hashInput = document.getElementById('checkin-hash');
+        
+        // Reset form
+        form.reset();
+        hashInput.value = hash;
+
+        if (esEdicion) {
+            Swal.fire({ title: 'Cargando datos...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            const response = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/sesion/${hash}`);
+            const data = await response.json();
+            
+            Swal.close();
+            
+            if (data.success && data.data && data.data.detalles) {
+                const det = data.data.detalles;
+                document.getElementById('checkin-descripcion').value = det.descripcion_externa || '';
+                document.getElementById('checkin-kilos').value = det.kilos || '';
+                document.getElementById('checkin-bultos').value = det.bultos || '';
+                document.getElementById('checkin-motivo').value = det.motivo || '';
+            }
+        }
+        
+        modal.style.display = 'flex';
+    } catch (error) {
+        Swal.fire('Error', 'Fallo al inicializar el modal de contingencia', 'error');
+    }
+};
+
+window.cerrarModalContingencia = () => {
+    document.getElementById('modal-contingencia-checkin').style.display = 'none';
+};
+
+window.guardarCheckinContingencia = async (event) => {
+    event.preventDefault();
+    const btnSubmit = document.getElementById('btn-submit-contingencia');
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Guardando...';
+
+    const hash = document.getElementById('checkin-hash').value;
+    
+    // Captura y Sanitización
+    const kilosRaw = document.getElementById('checkin-kilos').value.trim();
+    const kilosVal = parseFloat(kilosRaw.replace(',', '.'));
+    const bultosVal = parseInt(document.getElementById('checkin-bultos').value);
+
+    if (isNaN(kilosVal) || kilosVal <= 0) {
+        Swal.fire('Atención', 'Los Kilos deben ser expresados en valores numéricos mayores a 0', 'warning');
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Check-in';
+        return;
+    }
+
+    const payload = {
+        descripcion_externa: document.getElementById('checkin-descripcion').value.trim(),
+        kilos: kilosVal,
+        bultos: bultosVal,
+        motivo: document.getElementById('checkin-motivo').value.trim()
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/chofer/checkin/${hash}`, {
+            method: 'PUT',
+            headers: { 
+                'Authorization': `Bearer ${state.sesion.token}`,
+                'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            window.cerrarModalContingencia();
+            Swal.fire('¡Carga Completada!', 'El check-in se ha guardado exitosamente.', 'success');
+            
+            // Recargar Ruta Activa para refrescar visualmente las tarjetas y el estado de los botones
+            cargarRutaActiva();
+        } else {
+            throw new Error(data.error || 'Error al persistir contingencia');
+        }
+
+    } catch (error) {
+        Swal.fire('Falla de Red', error.message, 'error');
+    } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Check-in';
+    }
 };

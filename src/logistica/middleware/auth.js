@@ -54,7 +54,28 @@ function validateSession(req, res, next) {
     next();
 }
 
+/**
+ * Middleware para verificar token móvil de chofer (sin DB)
+ */
+function verificarTokenChofer(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, error: 'Token no proporcionado' });
+    }
+    const token = authHeader.substring(7);
+    try {
+        const decoded = Buffer.from(token, 'base64').toString('utf-8');
+        const choferId = parseInt(decoded.split(':')[0]);
+        if (isNaN(choferId)) throw new Error("ID inválido");
+        req.choferId = choferId;
+        next();
+    } catch (error) {
+        return res.status(401).json({ success: false, error: 'Token inválido' });
+    }
+}
+
 module.exports = {
     validatePermissions,
-    validateSession
+    validateSession,
+    verificarTokenChofer
 };

@@ -29,7 +29,14 @@ class TratamientosModel {
     static async obtenerInfoSesion(hash) {
         // Enlaza la orden efimera con el nombre de pila o razon social del cliente maestro.
         const query = `
-            SELECT o.id, o.estado_logistico, c.nombre, c.apellido 
+            SELECT o.id, o.estado_logistico, c.nombre, c.apellido,
+                (SELECT json_build_object(
+                    'articulo_numero', d.articulo_numero,
+                    'descripcion_externa', d.descripcion_externa,
+                    'kilos', d.kilos,
+                    'bultos', d.bultos,
+                    'motivo', d.motivo
+                ) FROM ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = o.id LIMIT 1) as detalles
             FROM ordenes_tratamiento o
             LEFT JOIN clientes c ON o.id_cliente = c.cliente_id
             WHERE o.codigo_qr_hash = $1
@@ -73,11 +80,66 @@ class TratamientosModel {
                 motivo
             ]);
 
-            // Actualiza estado de la transacción para el chofer
             await client.query(`UPDATE ordenes_tratamiento SET estado_logistico = 'PENDIENTE_VALIDACION' WHERE id = $1`, [orden.id]);
 
             await client.query('COMMIT');
             return { success: true, id_orden: orden.id };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * @param {string} hash
+     * @param {Object} formData
+     * @returns {Promise<Object>}
+     */
+    static async guardarCheckinChofer(hash, formData) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const getOrden = await client.query('SELECT id FROM ordenes_tratamiento WHERE codigo_qr_hash = $1 FOR UPDATE', [hash]);
+            if (getOrden.rowCount === 0) throw new Error('QR/Orden Inválido o inexistente');
+            
+            const orden = getOrden.rows[0];
+            const { articulo_numero, descripcion_externa, kilos, bultos, motivo } = formData;
+            
+            // Delete previously loaded details if any
+            await client.query('DELETE FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = $1', [orden.id]);
+
+            // Insert new driver-validated load details
+            const queryDetalle = `
+                INSERT INTO ordenes_tratamiento_detalles (
+                    id_orden_tratamiento, articulo_numero, descripcion_externa, kilos, bultos, motivo
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *
+            `;
+            const detalleReal = await client.query(queryDetalle, [
+                orden.id, 
+                articulo_numero || null, 
+                descripcion_externa || null, 
+                kilos, 
+                bultos, 
+                motivo
+            ]);
+
+            // Ensure the state pushes forward but doesn't override EN_CAMINO or RETIRADO if already picked up.
+            // PENDIENTE_VALIDACION means checkin is done, awaiting pickup. 
+            await client.query(`
+                UPDATE ordenes_tratamiento 
+                SET estado_logistico = CASE 
+                    WHEN estado_logistico = 'PENDIENTE_CLIENTE' THEN 'PENDIENTE_VALIDACION' 
+                    ELSE estado_logistico
+                END
+                WHERE id = $1
+            `, [orden.id]);
+
+            await client.query('COMMIT');
+            return { success: true, id_orden: orden.id, detalles: detalleReal.rows[0] };
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;

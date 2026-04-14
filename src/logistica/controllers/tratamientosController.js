@@ -161,10 +161,43 @@ async function procesarPreCheckin(req, res) {
     }
 }
 
+/**
+ * 4. Completar o Editar Check-in desde la App Móvil del Chofer
+ */
+async function checkInChofer(req, res) {
+    try {
+        const { hash } = req.params;
+        const formData = req.body;
+
+        if (!hash) {
+            return res.status(400).json({ success: false, error: 'Faltan parámetros' });
+        }
+
+        // Validate minimal data
+        if (!formData.kilos || formData.kilos <= 0) return res.status(400).json({ success: false, error: 'Kilos inválidos' });
+        if (!formData.bultos || formData.bultos < 1) return res.status(400).json({ success: false, error: 'Bultos inválidos' });
+        if (!formData.descripcion_externa) return res.status(400).json({ success: false, error: 'Descripción obligatoria' });
+        if (!formData.motivo) return res.status(400).json({ success: false, error: 'Motivo obligatorio' });
+
+        const localData = await TratamientosModel.guardarCheckinChofer(hash, formData);
+        
+        res.status(200).json({ 
+            success: true, 
+            message: 'Carga contingente registrada',
+            data: localData 
+        });
+
+    } catch (err) {
+        console.error('[TRATAMIENTOS] Error en checkInChofer:', err);
+        res.status(500).json({ success: false, error: err.message || 'Error registrando contingencia' });
+    }
+}
+
 module.exports = {
     generarQR,
     buscarClientes,
     generarQRChofer,
     obtenerSesion,
-    procesarPreCheckin
+    procesarPreCheckin,
+    checkInChofer
 };
