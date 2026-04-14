@@ -68,6 +68,110 @@ async function cargarPedidos() {
 }
 
 /**
+ * Descartar Orden de Tratamiento
+ */
+window.descartarRetiro = async (idOrden) => {
+    const idReal = String(idOrden).replace('RT-', '');
+    if (!confirm(`⚠️ ¿Está seguro que desea DESCARTAR la Orden de Tratamiento #${idReal}? Esta acción no se puede deshacer y eliminará permanentemente la recepción de mantenimiento.`)) return;
+    
+    try {
+        const response = await fetch(`/api/logistica/movil/retiros/${idReal}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            mostrarExito('Orden de Tratamiento descartada exitosamente.');
+            await cargarPedidos(); // Recargar la columna de asignación
+        } else {
+            throw new Error(data.error || 'Error al descartar la orden');
+        }
+    } catch (error) {
+        console.error('[DASHBOARD] Error descartarRetiro:', error);
+        mostrarError('Error descartando la orden: ' + error.message);
+    }
+}
+
+/**
+ * FEATURE FASE 3: Generar QR (Asistente en PC)
+ */
+window.abrirAsistenteInmunizacionOficina = () => {
+    let htmlContent = `
+        <div style="text-align: left;">
+            <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 1rem;">Busque al cliente para crear el registro de tratamiento/retiro y asignar a la cola.</p>
+            <input id="swal-cliente-search" class="swal2-input" placeholder="Nombre del Cliente, ID..." style="width: 100%; box-sizing: border-box; margin: 0 auto 10px auto;" autocomplete="off">
+            <div id="swal-cliente-results" style="max-height: 150px; overflow-y: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: left; position: relative;"></div>
+        </div>
+    `;
+
+    Swal.fire({
+        title: '🦠 Generar QR Tratamiento',
+        html: htmlContent,
+        showCancelButton: true,
+        showConfirmButton: false,
+        cancelButtonText: 'Cancelar',
+        didOpen: () => {
+            const inputElement = document.getElementById('swal-cliente-search');
+            let timeoutToken;
+            inputElement.addEventListener('input', (e) => {
+                clearTimeout(timeoutToken);
+                const query = e.target.value.trim();
+                if (query.length < 3) {
+                    document.getElementById('swal-cliente-results').innerHTML = '';
+                    return;
+                }
+                timeoutToken = setTimeout(async () => {
+                    const resultsBox = document.getElementById('swal-cliente-results');
+                    resultsBox.innerHTML = '<div style="padding: 10px; color:#64748b;">Buscando...</div>';
+                    try {
+                        const res = await fetch(`/api/logistica/tratamientos/clientes?q=${encodeURIComponent(query)}`);
+                        const data = await res.json();
+                        if (data.success && data.data.length > 0) {
+                            resultsBox.innerHTML = data.data.map(c => `
+                                <div onclick="window.generarQROficinaPayload(${c.id}, '${c.nombre.replace(/'/g, "\\'")}')" style="padding: 10px; border-bottom: 1px solid #e2e8f0; cursor: pointer; color:#1e293b; font-weight: bold;">
+                                    ${c.nombre} ${c.apellido || ''} <span style="font-size: 0.75rem; color:#64748b; font-weight: normal;">[#${c.id}]</span>
+                                </div>
+                            `).join('');
+                        } else {
+                            resultsBox.innerHTML = '<div style="padding: 10px; color:#64748b;">Sin resultados</div>';
+                        }
+                    } catch(err) {
+                        resultsBox.innerHTML = '<div style="padding: 10px; color:#ef4444;">Error de red</div>';
+                    }
+                }, 400);
+            });
+        }
+    });
+};
+
+window.generarQROficinaPayload = async (idCliente, nombreCliente) => {
+    Swal.close();
+    Swal.fire({ title: 'Generando registro...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+    try {
+        const response = await fetch('/api/logistica/tratamientos/generar-qr-chofer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_cliente: idCliente, id_ruta: null })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            Swal.fire({
+                title: 'Exito',
+                text: 'Orden de Tratamiento Creada',
+                icon: 'success'
+            }).then(() => {
+                if (window.cargarPedidos) window.cargarPedidos();
+            });
+        } else {
+            Swal.fire('Error', data.error || 'Ocurrió un error', 'error');
+        }
+    } catch (error) {
+        Swal.fire('Error', 'No se pudo generar el registro', 'error');
+    }
+};
+
+/**
  * Cargar rutas del día
  */
 async function cargarRutas() {
@@ -211,8 +315,8 @@ function renderizarPedidos() {
 
     // ORDENAMIENTO: Retiros primero, luego por fecha/id (implícito)
     const pedidosOrdenados = [...state.pedidos].sort((a, b) => {
-        const aEsRetiro = a.estado === 'Orden de Retiro';
-        const bEsRetiro = b.estado === 'Orden de Retiro';
+        const aEsRetiro = a.estado === 'Orden de Tratamiento';
+        const bEsRetiro = b.estado === 'Orden de Tratamiento';
         if (aEsRetiro && !bEsRetiro) return -1;
         if (!aEsRetiro && bEsRetiro) return 1;
         return 0;
@@ -221,7 +325,7 @@ function renderizarPedidos() {
     container.innerHTML = pedidosOrdenados.map(pedido => {
         const tieneDomicilio = pedido.id_domicilio_entrega && pedido.domicilio_direccion;
         const pedidoJson = JSON.stringify(pedido).replace(/'/g, "\\'");
-        const esRetiro = pedido.estado === 'Orden de Retiro';
+        const esRetiro = pedido.estado === 'Orden de Tratamiento';
 
         // Estilos específicos para Retiro
         const estiloCard = esRetiro
@@ -246,9 +350,14 @@ function renderizarPedidos() {
                  style="${estiloCard}">
                 
                 <!-- Indicador visual de domicilio -->
+                ${!esRetiro ? `
                 <div class="pedido-domicilio-indicator ${tieneDomicilio ? 'tiene-domicilio' : ''}" 
                      title="${tieneDomicilio ? 'Tiene domicilio asignado' : 'Sin domicilio asignado'}">
                 </div>
+                ` : `
+                <div class="pedido-domicilio-indicator" style="background-color: #f59e0b;" title="Orden de Tratamiento (Sujeto a verificación en check-in)">
+                </div>
+                `}
                 
                 <!-- NUEVA JERARQUÍA: Cliente primero -->
                 <div class="pedido-header">
@@ -266,7 +375,7 @@ function renderizarPedidos() {
                     </div>
                 </div>
 
-                ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 ORDEN DE RETIRO</div>` : ''}
+                ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 Orden de Tratamiento</div>` : ''}
 
                 <div class="pedido-cliente-nombre" style="font-weight: 600; margin-top: 0.25rem; color: #1e293b;">
                     ${clienteNombre}
@@ -280,7 +389,8 @@ function renderizarPedidos() {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
                     ${pedido.total ? `<div class="pedido-monto" style="font-weight:bold; color:#059669;">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : '<div></div>'}
                     <div style="display:flex; gap:0.25rem;">
-                        ${!pedido.comprobante_lomasoft ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${pedido.id})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
+                        ${!pedido.comprobante_lomasoft && !esRetiro ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
+                        ${esRetiro ? `<button onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-sm btn-danger" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ef4444; color:white; border:none; border-radius:3px; cursor:pointer;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
                         <button onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #3b82f6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
                     </div>
                 </div>
@@ -649,7 +759,7 @@ function renderizarTarjetaRuta(ruta) {
 
             // DETECTAR SI ES RETIRO (O SI EL GRUPO CONTIENE UN RETIRO)
             // Asumimos que si agrupa por parada, todos son del mismo tipo o al menos mostramos estilo si el primero lo es.
-            const esRetiro = primerPedido.estado === 'Orden de Retiro';
+            const esRetiro = primerPedido.estado === 'Orden de Tratamiento';
 
             // Estilos Austeros para Retiro en Ruta
             const estiloItem = esRetiro
@@ -716,14 +826,14 @@ function renderizarTarjetaRuta(ruta) {
                                 ${parada.presupuestos.map(p => `
                                     <div style="display:flex; gap:2px; align-items:center;">
                                         <button class="btn-icon-danger" 
-                                                onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, ${p.id})"
+                                                onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, '${p.id}')"
                                                 title="Quitar pedido #${p.id}"
                                                 style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.8;">
                                             🗑️ #${p.id}
                                         </button>
                                         ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
                                             ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
-                                            : `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
+                                            : `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${p.id}')" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
                                         }
                                         <button class="btn-icon-lamda" 
                                                 onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
@@ -740,7 +850,7 @@ function renderizarTarjetaRuta(ruta) {
                                     <div style="display:flex; gap:2px; align-items:center;">
                                         ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
                                             ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
-                                            : `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft(${p.id})" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
+                                            : `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${p.id}')" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
                                         }
                                         <button class="btn-icon-lamda" 
                                                 onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
@@ -1586,7 +1696,7 @@ async function handleDrop(event, rutaId) {
         const response = await fetch(`/api/logistica/rutas/${rutaId}/asignar`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids_presupuestos: [parseInt(draggedPedidoId)] })
+            body: JSON.stringify({ ids_presupuestos: [String(draggedPedidoId).startsWith('RT-') ? draggedPedidoId : parseInt(draggedPedidoId)] })
         });
 
         const result = await response.json();
@@ -1594,7 +1704,7 @@ async function handleDrop(event, rutaId) {
         if (result.success) {
             // Feedback contextual según el tipo (usando variable local segura)
             const mensaje = tipoPedidoActual === 'retiro'
-                ? '✅ Orden de Retiro asignada exitosamente'
+                ? '✅ Orden de Tratamiento asignada exitosamente'
                 : 'Pedido asignado exitosamente';
 
             mostrarExito(mensaje);

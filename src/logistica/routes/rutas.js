@@ -156,14 +156,30 @@ router.put('/:id/reordenar', async (req, res) => {
                 throw new Error('Solo se puede reordenar rutas en estado ARMANDO');
             }
             
-            // Actualizar orden_entrega de cada presupuesto
+            // Actualizar orden_entrega discriminando tipo de entidad híbrida (Pedidos vs Tratamientos)
             for (let i = 0; i < orden.length; i++) {
-                await client.query(
-                    `UPDATE presupuestos 
-                     SET orden_entrega = $1
-                     WHERE id = $2 AND id_ruta = $3`,
-                    [i + 1, orden[i], id]
-                );
+                const item = orden[i];
+                if (typeof item === 'string' && item.toUpperCase().startsWith('RT-')) {
+                    const idTrat = parseInt(item.toUpperCase().replace('RT-', ''));
+                    if (!isNaN(idTrat)) {
+                        await client.query(
+                            `UPDATE ordenes_tratamiento 
+                             SET orden_entrega = $1
+                             WHERE id = $2 AND id_ruta = $3`,
+                            [i + 1, idTrat, id]
+                        );
+                    }
+                } else {
+                    const idPresu = parseInt(item);
+                    if (!isNaN(idPresu)) {
+                        await client.query(
+                            `UPDATE presupuestos 
+                             SET orden_entrega = $1
+                             WHERE id = $2 AND id_ruta = $3`,
+                            [i + 1, idPresu, id]
+                        );
+                    }
+                }
             }
             
             await client.query('COMMIT');
@@ -221,17 +237,27 @@ router.delete('/:id/presupuestos/:presupuestoId', async (req, res) => {
                 throw new Error('Solo se pueden quitar presupuestos de rutas en estado ARMANDO');
             }
             
-            // Desasignar presupuesto y restaurar secuencia
-            await client.query(
-                `UPDATE presupuestos 
-                 SET id_ruta = NULL,
-                     estado_logistico = 'PENDIENTE_ASIGNAR',
-                     secuencia = 'Pedido_Listo',
-                     orden_entrega = NULL,
-                     fecha_asignacion_ruta = NULL
-                 WHERE id = $1 AND id_ruta = $2`,
-                [presupuestoId, id]
-            );
+            // Desasignar presupuesto o retiro de inmunización
+            if (String(presupuestoId).startsWith('RT-')) {
+                const idOrden = presupuestoId.replace('RT-', '');
+                await client.query(
+                    `UPDATE ordenes_tratamiento
+                     SET id_ruta = NULL
+                     WHERE id = $1 AND id_ruta = $2`,
+                    [idOrden, id]
+                );
+            } else {
+                await client.query(
+                    `UPDATE presupuestos 
+                     SET id_ruta = NULL,
+                         estado_logistico = 'PENDIENTE_ASIGNAR',
+                         secuencia = 'Pedido_Listo',
+                         orden_entrega = NULL,
+                         fecha_asignacion_ruta = NULL
+                     WHERE id = $1 AND id_ruta = $2`,
+                    [presupuestoId, id]
+                );
+            }
             
             await client.query('COMMIT');
             

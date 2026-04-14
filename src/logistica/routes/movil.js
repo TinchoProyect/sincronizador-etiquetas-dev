@@ -428,13 +428,73 @@ router.get('/ruta-activa', async (req, res) => {
             domicilios_alternativos: e.domicilios_alternativos
         }));
 
-        console.log(`[MOVIL] ✅ Ruta activa encontrada: ${ruta.nombre_ruta} con ${entregas.length} entregas`);
+        console.log(`[MOVIL] ✅ Ruta activa encontrada: ${ruta.nombre_ruta} con ${entregas.length} entregas comerciales`);
+
+        // INYECCIÓN DE RETIROS DE MANTENIMIENTO (FASE 3)
+        const queryRetiros = `
+            SELECT 
+                o.id as id_orden,
+                o.estado_logistico,
+                o.codigo_qr_hash,
+                o.fecha_creacion,
+                c.cliente_id,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
+                c.telefono as cliente_telefono,
+                cd.id as domicilio_id,
+                COALESCE(cd.direccion, 'Retiro en Cliente') as domicilio_direccion,
+                COALESCE(cd.localidad, c.localidad) as domicilio_localidad,
+                cd.latitud as domicilio_latitud,
+                cd.longitud as domicilio_longitud,
+                (SELECT json_agg(json_build_object(
+                    'articulo_numero', d.articulo_numero,
+                    'descripcion_externa', d.descripcion_externa,
+                    'kilos', d.kilos,
+                    'bultos', d.bultos
+                )) FROM ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = o.id) as detalles
+            FROM ordenes_tratamiento o
+            LEFT JOIN clientes c ON o.id_cliente = c.cliente_id
+            LEFT JOIN LATERAL (
+                SELECT id, direccion, localidad, latitud, longitud
+                FROM clientes_domicilios 
+                WHERE id_cliente = c.id AND activo = true
+                ORDER BY es_predeterminado DESC, id ASC
+                LIMIT 1
+            ) cd ON true
+            WHERE o.id_ruta = $1
+            AND o.estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION', 'EN_CAMINO')
+            ORDER BY o.id ASC
+        `;
+        const resultRetiros = await req.db.query(queryRetiros, [ruta.id]);
+        
+        const retirosMantenimiento = resultRetiros.rows.map(r => ({
+            id_orden: r.id_orden,
+            es_retiro_tratamiento: true,
+            estado_logistico: r.estado_logistico,
+            hash: r.codigo_qr_hash,
+            fecha_creacion: r.fecha_creacion,
+            cliente: {
+                id: r.cliente_id,
+                nombre: r.cliente_nombre,
+                telefono: r.cliente_telefono
+            },
+            domicilio: {
+                id: r.domicilio_id,
+                direccion: r.domicilio_direccion,
+                localidad: r.domicilio_localidad,
+                latitud: r.domicilio_latitud,
+                longitud: r.domicilio_longitud
+            },
+            detalles: r.detalles || []
+        }));
+
+        console.log(`[MOVIL] ✅ Retiros de Mantenimiento encontrados: ${retirosMantenimiento.length}`);
 
         res.json({
             success: true,
             data: {
                 ruta: ruta,
-                entregas: entregas
+                entregas: entregas,
+                retiros: retirosMantenimiento
             }
         });
 
@@ -617,6 +677,89 @@ router.post('/entregas/confirmar', async (req, res) => {
 });
 
 /**
+ * =========================================================
+ * ENDPOINTS FASE 3: RETIROS DE MANTENIMIENTO
+ * =========================================================
+ */
+
+/**
+ * @route POST /api/logistica/movil/retiros/:id/validar
+ * @desc El Chofer confirma la lectura e integración del retiro a su camioneta
+ */
+router.post('/retiros/:id/validar', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // Verificamos que esté en PENDIENTE_VALIDACION (PWA ya hecha)
+            const getOrden = await client.query(`SELECT id, estado_logistico FROM ordenes_tratamiento WHERE id = $1 FOR UPDATE`, [id]);
+            if (getOrden.rowCount === 0) throw new Error('Orden no encontrada');
+            
+            await client.query(`
+                UPDATE ordenes_tratamiento 
+                SET estado_logistico = 'EN_CAMINO', fecha_validacion_chofer = NOW()
+                WHERE id = $1
+            `, [id]);
+            
+            await client.query('COMMIT');
+            res.json({ success: true, message: 'Validación exitosa (EN_CAMINO)' });
+        } catch(err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('❌ [MOVIL] Error Validar Retiro:', error);
+        res.status(500).json({ success: false, error: 'Error al validar retiro' });
+    }
+});
+
+/**
+ * @route POST /api/logistica/movil/retiros/:id/contingencia
+ * @desc El Chofer carga a mano los datos saltándose el pre-checkin del cliente
+ */
+router.post('/retiros/:id/contingencia', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { descripcion_externa, kilos, bultos, motivo } = req.body;
+        if (!kilos || !bultos) return res.status(400).json({ success: false, error: 'Kilos y Bultos son obligatorios' });
+
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            // Agregamos detalle (Contingencia)
+            await client.query(`
+                INSERT INTO ordenes_tratamiento_detalles (
+                    id_orden_tratamiento, descripcion_externa, kilos, bultos, motivo
+                ) VALUES ($1, $2, $3, $4, $5)
+            `, [id, descripcion_externa, kilos, bultos, motivo || 'Retiro Mantenimiento (Carga Manual)'] );
+
+            // Validamos salto
+            await client.query(`
+                UPDATE ordenes_tratamiento 
+                SET estado_logistico = 'EN_CAMINO', fecha_validacion_chofer = NOW()
+                WHERE id = $1
+            `, [id]);
+            
+            await client.query('COMMIT');
+            res.json({ success: true, message: 'Carga manual de contingencia exitosa' });
+        } catch(err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('❌ [MOVIL] Error Contingencia Retiro:', error);
+        res.status(500).json({ success: false, error: 'Error Contingencia' });
+    }
+});
+
+
+/**
  * @route POST /api/logistica/movil/rutas/finalizar
  * @desc Finalizar ruta del día
  * @access Privado (requiere token)
@@ -689,89 +832,15 @@ router.post('/rutas/finalizar', async (req, res) => {
             const pendientesResult = await client.query(pendientesQuery, [ruta.id]);
             const pendientes = parseInt(pendientesResult.rows[0].pendientes);
 
-            // 2. PROCESAR RETIROS: Impactar Stock de Mantenimiento
-            console.log(`[MOVIL] Procesando retiros para ruta ${ruta.id}...`);
+            // 2. PROCESAR ÓRDENES DE TRATAMIENTO (Integración Fase 3)
+            // Marcar todas las ordenes_tratamiento que estaban en esta ruta y fueron validadas como "INGRESADO_LOCAL"
+            await client.query(`
+                UPDATE ordenes_tratamiento
+                SET estado_logistico = 'INGRESADO_LOCAL',
+                    fecha_ingreso_mantenimiento = NOW()
+                WHERE id_ruta = $1 AND estado_logistico != 'PENDIENTE_CLIENTE'
+            `, [ruta.id]);
 
-            // Obtener todos los pedidos marcados como RETIRADO en esta ruta
-            const retirosQuery = `
-                SELECT p.id, p.id_presupuesto_ext
-                FROM presupuestos p
-                WHERE p.id_ruta = $1
-                  AND p.estado_logistico = 'RETIRADO'
-            `;
-            const retirosResult = await client.query(retirosQuery, [ruta.id]);
-
-            console.log(`[MOVIL] Encontradas ${retirosResult.rows.length} órdenes de retiro para procesar.`);
-
-            for (const retiro of retirosResult.rows) {
-                // Obtener detalles (ítems) del retiro con su número de artículo asociado
-                const itemsQuery = `
-                    SELECT 
-                        pd.articulo as codigo_barras, 
-                        pd.cantidad, 
-                        a.numero as articulo_numero, 
-                        a.nombre
-                    FROM presupuestos_detalles pd
-                    LEFT JOIN articulos a ON a.codigo_barras = pd.articulo
-                    WHERE pd.id_presupuesto_ext = $1
-                `;
-                const itemsResult = await client.query(itemsQuery, [retiro.id_presupuesto_ext]);
-
-                for (const item of itemsResult.rows) {
-                    const articuloNumero = item.articulo_numero;
-                    // Si no tiene número de artículo (no mapeado), usamos el código de barras o 'UNKNOWN'
-                    const artAudit = articuloNumero || item.codigo_barras || 'UNKNOWN';
-
-                    // A. Insertar en Auditoría de Mantenimiento
-                    await client.query(`
-                        INSERT INTO mantenimiento_movimientos
-                        (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
-                        VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
-                    `, [
-                        artAudit,
-                        item.cantidad,
-                        retiro.id,
-                        `Chofer ID: ${choferId}`,
-                        `Ingreso por Retiro Ruta #${ruta.id} - Pendiente de Conciliación`
-                    ]);
-
-                    // B. Actualizar Stock Consolidado (Columna Específica de Mantenimiento)
-                    if (articuloNumero) {
-                        // Verificar si existe registro en stock_real_consolidado
-                        const stockCheck = await client.query(
-                            'SELECT 1 FROM stock_real_consolidado WHERE articulo_numero = $1',
-                            [articuloNumero]
-                        );
-
-                        if (stockCheck.rowCount > 0) {
-                            await client.query(`
-                                UPDATE stock_real_consolidado
-                                SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1,
-                                    ultima_actualizacion = NOW()
-                                WHERE articulo_numero = $2
-                            `, [item.cantidad, articuloNumero]);
-                        } else {
-                            // Si no existe, lo creamos (Edge case raro si sync funciona bien)
-                            console.warn(`[MOVIL] ⚠️ Artículo ${articuloNumero} no existe en stock_consolidado. Creando...`);
-                            await client.query(`
-                                INSERT INTO stock_real_consolidado 
-                                (articulo_numero, descripcion, codigo_barras, stock_consolidado, stock_mantenimiento, ultima_actualizacion, no_producido_por_lambda, solo_produccion_externa)
-                                VALUES ($1, $2, $3, 0, $4, NOW(), false, false)
-                            `, [articuloNumero, item.nombre, item.codigo_barras, item.cantidad]);
-                        }
-                    } else {
-                        console.warn(`[MOVIL] ⚠️ No se pudo impactar stock para el artículo ${item.codigo_barras} (No se encontró número interno)`);
-                    }
-                }
-
-                // C. Actualizar estado logístico de la orden para que Mantenimiento y Presupuestos la reconozcan
-                await client.query(`
-                    UPDATE presupuestos
-                    SET estado_logistico = 'INGRESADO_LOCAL',
-                        fecha_actualizacion = NOW()
-                    WHERE id = $1
-                `, [retiro.id]);
-            }
 
             // 3. Actualizar estado de ruta
             await client.query(
@@ -814,6 +883,41 @@ router.post('/rutas/finalizar', async (req, res) => {
 });
 
 console.log('✅ [MOVIL] Rutas configuradas exitosamente');
+
+/**
+ * @route DELETE /api/logistica/movil/retiros/:id
+ * @desc Eliminar una orden de tratamiento atómicamente
+ * @access Privado (requiere token)
+ */
+router.delete('/retiros/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            
+            const verify = await client.query('SELECT estado_logistico FROM ordenes_tratamiento WHERE id = $1', [id]);
+            if (verify.rowCount === 0) throw new Error('Orden no encontrada');
+            if (verify.rows[0].estado_logistico !== 'PENDIENTE_CLIENTE' && verify.rows[0].estado_logistico !== 'PENDIENTE_VALIDACION') {
+                throw new Error('Solo se pueden descartar órdenes pendientes.');
+            }
+            
+            await client.query('DELETE FROM ordenes_tratamiento WHERE id = $1', [id]);
+            
+            await client.query('COMMIT');
+            console.log(`[MOVIL] 🗑️ Orden de Tratamiento #${id} descartada exitosamente.`);
+            res.json({ success: true, message: 'Orden descartada exitosamente.' });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al descartar retiro:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 /**
  * @route GET /api/logistica/movil/rutas-historial
@@ -1059,12 +1163,22 @@ router.put('/rutas/:id/estado', validarTokenMovil, async (req, res) => {
 router.delete('/rutas/:id/pedidos/:presupuestoId', validarTokenMovil, async (req, res) => {
     const { id, presupuestoId } = req.params;
     try {
-        await req.db.query(
-            `UPDATE presupuestos 
-             SET id_ruta = NULL, estado_logistico = 'PENDIENTE_ASIGNAR', secuencia = 'Pedido_Listo', orden_entrega = NULL, fecha_asignacion_ruta = NULL 
-             WHERE id = $1 AND id_ruta = $2`,
-            [presupuestoId, id]
-        );
+        if (String(presupuestoId).startsWith('RT-')) {
+            const idOrden = presupuestoId.replace('RT-', '');
+            await req.db.query(
+                `UPDATE ordenes_tratamiento 
+                 SET id_ruta = NULL
+                 WHERE id = $1 AND id_ruta = $2`,
+                [idOrden, id]
+            );
+        } else {
+            await req.db.query(
+                `UPDATE presupuestos 
+                 SET id_ruta = NULL, estado_logistico = 'PENDIENTE_ASIGNAR', secuencia = 'Pedido_Listo', orden_entrega = NULL, fecha_asignacion_ruta = NULL 
+                 WHERE id = $1 AND id_ruta = $2`,
+                [presupuestoId, id]
+            );
+        }
         res.json({ success: true, message: 'Excepción de calle: Pedido desvinculado hacia Pendientes' });
     } catch(err) { res.status(500).json({ success: false, error: err.message }); }
 });

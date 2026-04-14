@@ -256,6 +256,23 @@ async function cargarRutaActiva(rutaIdForzada = null) {
             state.ruta = result.data.ruta;
             state.entregas = result.data.entregas || [];
 
+            // FASE 3: Mezclar Retiros de Mantenimiento como entregas especiales
+            if (result.data.retiros && result.data.retiros.length > 0) {
+                const retirosAdaptados = result.data.retiros.map(r => ({
+                    id_presupuesto: `RT-${r.id_orden}`,
+                    es_retiro_tratamiento: true,
+                    hash: r.hash,
+                    id_orden_real: r.id_orden,
+                    estado: 'Orden de Tratamiento',
+                    estado_logistico: r.estado_logistico === 'EN_CAMINO' ? 'RETIRADO' : r.estado_logistico, // EN_CAMINO en el server es que ya viaja en camión, ergo RETIRADO visualmente.
+                    total: 0,
+                    cliente: r.cliente,
+                    domicilio: r.domicilio,
+                    detalles: r.detalles 
+                }));
+                state.entregas = [...state.entregas, ...retirosAdaptados];
+            }
+
             // Persistir la ruta seleccionada para sobrevivir F5
             sessionStorage.setItem('activeRouteId', state.ruta.id);
 

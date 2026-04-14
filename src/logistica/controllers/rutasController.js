@@ -263,12 +263,18 @@ async function asignarPresupuestos(req, res) {
             });
         }
         
-        // Validar que todos los IDs sean números
-        const idsValidos = ids_presupuestos.every(id => Number.isInteger(id) && id > 0);
+        // Validar que todos los IDs sean enteros positivos o strings numéricos, o strings tipo 'RT-XX'
+        const idsValidos = ids_presupuestos.every(id => {
+            if (Number.isInteger(id) && id > 0) return true;
+            if (typeof id === 'string' && !isNaN(id) && Number.isInteger(Number(id)) && Number(id) > 0) return true;
+            if (typeof id === 'string' && id.toUpperCase().startsWith('RT-') && !isNaN(parseInt(id.toUpperCase().replace('RT-', '')))) return true;
+            return false;
+        });
+        
         if (!idsValidos) {
             return res.status(400).json({
                 success: false,
-                error: 'Todos los IDs de presupuestos deben ser números enteros positivos'
+                error: 'Todos los IDs deben ser numéricos o retiros válidos (RT-)'
             });
         }
         

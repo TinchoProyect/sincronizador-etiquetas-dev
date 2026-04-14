@@ -197,6 +197,11 @@ console.log('[LOGISTICA] ✅ Rutas de Móvil montadas en /api/logistica/movil');
 app.use('/api/logistica/diagnostico', require('./routes/diagnostico-secuencia'));
 console.log('[LOGISTICA] ✅ Rutas de Diagnóstico montadas en /api/logistica/diagnostico');
 
+// Rutas de Tratamientos e Inmunización (Retiros Fase 1 y 2)
+app.use('/api/logistica/tratamientos', require('./routes/tratamientos'));
+console.log('[LOGISTICA] ✅ Rutas de Tratamientos montadas en /api/logistica/tratamientos');
+
+
 // Ruta de health check
 app.get('/health', (req, res) => {
     console.log('[LOGISTICA] Health check del servidor');

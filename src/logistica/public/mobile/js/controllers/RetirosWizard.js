@@ -154,8 +154,8 @@ const WizardController = {
             if (data.success && data.data && data.data.length > 0) {
                 contenedor.innerHTML = '';
                 data.data.forEach(f => {
-                    // Filtrar que no sea una orden de retiro ya de por sï
-                    if(f.tipo_comprobante === 'Orden de Retiro' || f.estado === 'Orden de Retiro') return;
+                    // Filtrar que no sea una orden de tratamiento ya de por sï
+                    if(f.tipo_comprobante === 'Orden de Tratamiento' || f.estado === 'Orden de Tratamiento') return;
 
                     const dateDesc = new Date(f.fecha_registro).toLocaleDateString('es-AR');
                     const badgeClass = f.estado === 'Entregado' ? 'background: #10b981;' : 'background: #64748b;';
@@ -342,8 +342,8 @@ const WizardController = {
             fecha: hoy,
             fecha_entrega: hoy,
             agente: state.sesion.usuario || 'Cajero Móvil',
-            tipo_comprobante: 'Orden de Retiro',
-            estado: 'Orden de Retiro',
+            tipo_comprobante: 'Orden de Tratamiento',
+            estado: 'Orden de Tratamiento',
             estado_logistico: 'ESPERANDO_MOSTRADOR',
             informe_generado: 'Pendiente',
             nota: obsRef,
@@ -384,7 +384,7 @@ const WizardController = {
                 Swal.fire({
                     icon: 'success',
                     title: 'Retiro Registrado',
-                    text: `La orden de retiro fue ingresada bajo el N° ${data.presupuestoId || data.id}`,
+                    text: `La orden de tratamiento fue ingresada bajo el N° ${data.presupuestoId || data.id}`,
                     confirmButtonText: 'Aceptar',
                     confirmButtonColor: '#ea580c'
                 }).then(() => {

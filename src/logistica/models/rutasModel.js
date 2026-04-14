@@ -29,11 +29,12 @@ class RutasModel {
                 r.fecha_creacion,
                 r.fecha_finalizacion,
                 r.usuario_creador_id,
-                COUNT(p.id) as cantidad_presupuestos,
-                SUM(CASE WHEN p.estado_logistico = 'ENTREGADO' THEN 1 ELSE 0 END) as presupuestos_entregados
+                (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) + 
+                (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id) as cantidad_presupuestos,
+                (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id AND p.estado_logistico IN ('ENTREGADO', 'RETIRADO')) +
+                (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id AND t.estado_logistico IN ('ENTREGADO', 'RETIRADO')) as presupuestos_entregados
             FROM rutas r
             LEFT JOIN usuarios u ON r.id_chofer = u.id
-            LEFT JOIN presupuestos p ON p.id_ruta = r.id
             WHERE 1=1
         `;
 
@@ -81,10 +82,7 @@ class RutasModel {
             paramIndex++;
         }
 
-        query += ` GROUP BY r.id, r.nombre_ruta, r.fecha_salida, r.id_chofer, u.nombre_completo, 
-                   r.id_vehiculo, r.estado, r.distancia_total_km, r.tiempo_estimado_min,
-                   r.fecha_creacion, r.fecha_finalizacion, r.usuario_creador_id
-                   ORDER BY r.fecha_salida DESC, r.id DESC`;
+        query += ` ORDER BY r.fecha_salida DESC, r.id DESC`;
 
         const resultado = await pool.query(query, params);
         return resultado.rows;
@@ -165,9 +163,54 @@ class RutasModel {
         `;
 
         const resultadoPresupuestos = await pool.query(queryPresupuestos, [id]);
+        
+        const queryTratamientos = `
+            SELECT 
+                'RT-' || p.id as id,
+                p.id as id_presupuesto_ext,
+                'Orden de Tratamiento' as estado,
+                p.id_cliente::text as id_cliente,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
+                cd.id as id_domicilio_entrega,
+                'Domicilio Cliente' as domicilio_alias,
+                COALESCE(cd.direccion, 'Retiro Mantenimiento') as domicilio_direccion,
+                cd.latitud,
+                cd.longitud,
+                p.orden_entrega,
+                p.estado_logistico,
+                false as bloqueo_entrega,
+                p.fecha_creacion as fecha_asignacion_ruta,
+                NULL as comprobante_lomasoft,
+                NULL as id_factura_lomasoft,
+                0 as subtotal_bruto,
+                0 as descuento_aplicado,
+                0 as total
+            FROM ordenes_tratamiento p
+            LEFT JOIN clientes c ON p.id_cliente = c.cliente_id
+            LEFT JOIN LATERAL (
+                SELECT id, direccion, latitud, longitud
+                FROM clientes_domicilios 
+                WHERE id_cliente = c.id AND activo = true
+                ORDER BY es_predeterminado DESC, id ASC
+                LIMIT 1
+            ) cd ON true
+            WHERE p.id_ruta = $1
+            ORDER BY id ASC
+        `;
 
-        ruta.presupuestos = resultadoPresupuestos.rows;
-        ruta.total_presupuestos = resultadoPresupuestos.rows.length;
+        const resultadoTratamientos = await pool.query(queryTratamientos, [id]);
+
+        // Sort them together in memory by their synchronized orden_entrega
+        const presupuestosHibridos = [...resultadoPresupuestos.rows, ...resultadoTratamientos.rows];
+        presupuestosHibridos.sort((a, b) => {
+            const ordenA = a.orden_entrega ?? 999;
+            const ordenB = b.orden_entrega ?? 999;
+            if (ordenA === ordenB) return a.id < b.id ? -1 : 1;
+            return ordenA - ordenB;
+        });
+
+        ruta.presupuestos = presupuestosHibridos;
+        ruta.total_presupuestos = ruta.presupuestos.length;
 
         return ruta;
     }
@@ -294,80 +337,89 @@ class RutasModel {
                 throw new Error('Solo se pueden asignar presupuestos a rutas en estado ARMANDO');
             }
 
-            // Validar que los presupuestos existen y están disponibles
-            const presupuestosQuery = await client.query(
-                `SELECT id, id_ruta, id_domicilio_entrega, bloqueo_entrega, estado_logistico
-                 FROM presupuestos 
-                 WHERE id = ANY($1::int[])
-                 FOR UPDATE`,
-                [ids_presupuestos]
-            );
+            const idsNormales = ids_presupuestos.filter(id => Number.isInteger(id) || !String(id).toUpperCase().startsWith('RT-')).map(id => parseInt(id));
+            const idsRetiros = ids_presupuestos.filter(id => String(id).toUpperCase().startsWith('RT-')).map(id => parseInt(String(id).toUpperCase().replace('RT-', '')));
 
-            if (presupuestosQuery.rows.length !== ids_presupuestos.length) {
-                throw new Error('Algunos presupuestos no existen');
-            }
-
-            // Validar cada presupuesto
-            for (const p of presupuestosQuery.rows) {
-                if (p.id_ruta && p.id_ruta !== id_ruta) {
-                    throw new Error(`Presupuesto ${p.id} ya está asignado a otra ruta`);
-                }
-
-                if (!p.id_domicilio_entrega) {
-                    throw new Error(`Presupuesto ${p.id} no tiene domicilio de entrega`);
-                }
-
-                if (p.bloqueo_entrega) {
-                    throw new Error(`Presupuesto ${p.id} tiene bloqueo de entrega (pago pendiente)`);
-                }
-            }
-
-            // Validar que los domicilios tienen coordenadas
-            const domiciliosQuery = await client.query(
-                `SELECT cd.id, cd.latitud, cd.longitud
-                 FROM clientes_domicilios cd
-                 INNER JOIN presupuestos p ON p.id_domicilio_entrega = cd.id
-                 WHERE p.id = ANY($1::int[])`,
-                [ids_presupuestos]
-            );
-
-            for (const d of domiciliosQuery.rows) {
-                if (!d.latitud || !d.longitud) {
-                    throw new Error(`Domicilio ${d.id} no tiene coordenadas`);
-                }
-            }
-
-            // Asignar presupuestos a la ruta
-            await client.query(
-                `UPDATE presupuestos 
-                 SET id_ruta = $1,
-                     estado_logistico = 'ASIGNADO',
-                     secuencia = 'Asignado_Ruta',
-                     fecha_asignacion_ruta = NOW()
-                 WHERE id = ANY($2::int[])`,
-                [id_ruta, ids_presupuestos]
-            );
-
-            // Registrar en historial de estados
-            // Sanitizar usuario_id para evitar NaN
-            const usuario_id_sanitizado = (usuario_id && parseInt(usuario_id)) || 1;
-
-            console.log('[RUTAS-MODEL] usuario_id_sanitizado:', usuario_id_sanitizado, 'tipo:', typeof usuario_id_sanitizado);
-
-            for (const id_presupuesto of ids_presupuestos) {
-                console.log('[RUTAS-MODEL] Insertando historial para presupuesto:', id_presupuesto);
-                console.log('  Parámetros INSERT:', [id_presupuesto, JSON.stringify({ id_ruta }), usuario_id_sanitizado]);
-
+            // FASE 3: Asignar Retiros de Inmunización (Sin validación de coordenadas estrictas)
+            if (idsRetiros.length > 0) {
                 await client.query(
-                    `INSERT INTO presupuestos_estados_historial 
-                     (id_presupuesto, estado_anterior, estado_nuevo, metadata, usuario_id, fecha_cambio)
-                     VALUES ($1, 'PENDIENTE_ASIGNAR', 'ASIGNADO', $2, $3, NOW())`,
-                    [
-                        id_presupuesto,
-                        JSON.stringify({ id_ruta }),
-                        usuario_id_sanitizado
-                    ]
+                    `UPDATE ordenes_tratamiento 
+                     SET id_ruta = $1
+                     WHERE id = ANY($2::int[])`,
+                    [id_ruta, idsRetiros]
                 );
+            }
+
+            if (idsNormales.length > 0) {
+                // Validar que los presupuestos existen y están disponibles
+                const presupuestosQuery = await client.query(
+                    `SELECT id, id_ruta, id_domicilio_entrega, bloqueo_entrega, estado_logistico
+                     FROM presupuestos 
+                     WHERE id = ANY($1::int[])
+                     FOR UPDATE`,
+                    [idsNormales]
+                );
+
+                if (presupuestosQuery.rows.length !== idsNormales.length) {
+                    throw new Error('Algunos presupuestos no existen');
+                }
+
+                // Validar cada presupuesto
+                for (const p of presupuestosQuery.rows) {
+                    if (p.id_ruta && p.id_ruta !== id_ruta) {
+                        throw new Error(`Presupuesto ${p.id} ya está asignado a otra ruta`);
+                    }
+
+                    if (!p.id_domicilio_entrega) {
+                        throw new Error(`Presupuesto ${p.id} no tiene domicilio de entrega`);
+                    }
+
+                    if (p.bloqueo_entrega) {
+                        throw new Error(`Presupuesto ${p.id} tiene bloqueo de entrega (pago pendiente)`);
+                    }
+                }
+
+                // Validar que los domicilios tienen coordenadas
+                const domiciliosQuery = await client.query(
+                    `SELECT cd.id, cd.latitud, cd.longitud
+                     FROM clientes_domicilios cd
+                     INNER JOIN presupuestos p ON p.id_domicilio_entrega = cd.id
+                     WHERE p.id = ANY($1::int[])`,
+                    [idsNormales]
+                );
+
+                for (const d of domiciliosQuery.rows) {
+                    if (!d.latitud || !d.longitud) {
+                        throw new Error(`Domicilio ${d.id} no tiene coordenadas`);
+                    }
+                }
+
+                // Asignar presupuestos a la ruta
+                await client.query(
+                    `UPDATE presupuestos 
+                     SET id_ruta = $1,
+                         estado_logistico = 'ASIGNADO',
+                         secuencia = 'Asignado_Ruta',
+                         fecha_asignacion_ruta = NOW()
+                     WHERE id = ANY($2::int[])`,
+                    [id_ruta, idsNormales]
+                );
+
+                // Registrar en historial de estados
+                const usuario_id_sanitizado = (usuario_id && parseInt(usuario_id)) || 1;
+
+                for (const id_presupuesto of idsNormales) {
+                    await client.query(
+                        `INSERT INTO presupuestos_estados_historial 
+                         (id_presupuesto, estado_anterior, estado_nuevo, metadata, usuario_id, fecha_cambio)
+                         VALUES ($1, 'PENDIENTE_ASIGNAR', 'ASIGNADO', $2, $3, NOW())`,
+                        [
+                            id_presupuesto,
+                            JSON.stringify({ id_ruta }),
+                            usuario_id_sanitizado
+                        ]
+                    );
+                }
             }
 
             await client.query('COMMIT');

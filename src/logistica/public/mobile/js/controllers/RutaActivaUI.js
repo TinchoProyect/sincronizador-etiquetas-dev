@@ -80,7 +80,7 @@ function renderizarEntregas() {
     container.innerHTML = routeHeaderHTML + paradas.map((parada, index) => {
         const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO');
         const primerEntrega = parada.entregas[0];
-        const esRetiro = primerEntrega.estado === 'Orden de Retiro';
+        const esRetiro = primerEntrega.estado === 'Orden de Tratamiento';
 
         const claseCard = esCompletadaTotal ? 'entrega-card completada' : 'entrega-card';
         const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO' && e.estado_logistico !== 'RETIRADO').length;
@@ -106,7 +106,7 @@ function renderizarEntregas() {
         }
 
         const pedidosListHTML = parada.entregas.map(entrega => {
-            const esItemRetiro = entrega.estado === 'Orden de Retiro';
+            const esItemRetiro = entrega.estado === 'Orden de Tratamiento';
             const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
             
             const isReconciled = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
@@ -122,19 +122,19 @@ function renderizarEntregas() {
                 <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
                     <div style="flex: 1; min-width: 140px;">
                         <div style="font-weight: 600; color: #475569; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
-                            <span>${esItemRetiro ? '↩️' : ''} Pedido #${entrega.id_presupuesto}</span>
+                            <span>${esItemRetiro ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${entrega.id_presupuesto}</span>
                             ${badgeLomasoft}
                         </div>
                         ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669; margin-top: 4px;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px;">
                         <button class="btn-confirmar-sm" 
-                                onclick="window.quitarPedido(${entrega.id_presupuesto})" 
+                                onclick="window.quitarPedido('${entrega.id_presupuesto}')" 
                                 style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                             ❌ Quitar
                         </button>
                         <button class="btn-confirmar-sm" 
-                                onclick="confirmarEntrega(${entrega.id_presupuesto}, '${esItemRetiro ? 'retiro' : 'entrega'}')" 
+                                onclick="confirmarEntrega('${entrega.id_presupuesto}', '${esItemRetiro ? 'retiro' : 'entrega'}')" 
                                 ${completado ? 'disabled' : ''}
                                 style="padding: 0.5rem 1rem; font-weight: bold; border-radius: 0.5rem; background: ${backgroundBoton}; color: ${colorTextoBoton}; border: none; min-width: 100px;">
                             ${textoBoton}
@@ -278,6 +278,22 @@ function navegarAEntrega(latitud, longitud, direccion) {
 function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
     console.log('[ENTREGA] Confirmar', tipoPedido, 'de presupuesto:', presupuestoId);
 
+    // FASE 3 Intercepción: Retiros de Mantenimiento
+    if (tipoPedido === 'retiro' && String(presupuestoId).startsWith('RT-')) {
+        const idOrden = presupuestoId.replace('RT-', '');
+        const ordenData = state.entregas.find(e => e.id_presupuesto === presupuestoId);
+        
+        if (ordenData.estado_logistico === 'PENDIENTE_CLIENTE') {
+            // Carga Manual (Contingencia)
+            window.abrirContingenciaRetiro(idOrden, ordenData);
+            return;
+        } else if (ordenData.estado_logistico === 'PENDIENTE_VALIDACION') {
+            // Validar Visualmente
+            window.abrirValidarRetiro(idOrden, ordenData);
+            return;
+        }
+    }
+
     import('../modules/confirmacion.js').then(module => {
         module.mostrarModalOpciones(presupuestoId, tipoPedido);
     }).catch(error => {
@@ -396,8 +412,8 @@ window.abrirModalAgregarPedidos = async () => {
 
         if (result.success && result.data && result.data.length > 0) {
             // Filtrar pedidos que ya están en la ruta activa
-            const idsEnRuta = new Set(state.entregas.map(e => parseInt(e.id_presupuesto)));
-            const disponibles = result.data.filter(p => !idsEnRuta.has(parseInt(p.id)));
+            const idsEnRuta = new Set(state.entregas.map(e => String(e.id_presupuesto)));
+            const disponibles = result.data.filter(p => !idsEnRuta.has(String(p.id)));
 
             if (disponibles.length === 0) {
                 listaContainer.innerHTML = `
@@ -409,13 +425,13 @@ window.abrirModalAgregarPedidos = async () => {
             }
 
             listaContainer.innerHTML = disponibles.map(p => {
-                const esIngreso = p.estado === 'Orden de Retiro';
+                const esIngreso = p.estado === 'Orden de Tratamiento';
                 const iconColor = esIngreso ? '#dc2626' : '#2563eb';
                 return `
                 <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f1f5f9;">
                     <input type="checkbox" class="chk-agregar-pedido" value="${p.id}" onchange="window.actualizarBtnAgregar()" style="width: 22px; height: 22px; accent-color: #8b5cf6; flex-shrink: 0;">
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-weight: 700; color: ${iconColor}; font-size: 0.95rem;">${esIngreso ? '↩️' : '📦'} Pedido #${p.id}</div>
+                        <div style="font-weight: 700; color: ${iconColor}; font-size: 0.95rem;">${esIngreso ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${p.id}</div>
                         <div style="font-size: 0.9rem; color: #334155; margin-top: 2px;">👤 <strong>[#${p.cliente_id || 'S/N'}]</strong> ${p.cliente_nombre}</div>
                         <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">📍 ${p.domicilio_direccion || 'Sin domicilio'}</div>
                     </div>
@@ -459,7 +475,7 @@ window.actualizarBtnAgregar = () => {
  * Llama al endpoint PUT /rutas/:id/asignar y recarga la vista.
  */
 window.ejecutarAgregarPedidos = async () => {
-    const seleccionados = Array.from(document.querySelectorAll('.chk-agregar-pedido:checked')).map(cb => parseInt(cb.value));
+    const seleccionados = Array.from(document.querySelectorAll('.chk-agregar-pedido:checked')).map(cb => String(cb.value).startsWith('RT-') ? cb.value : parseInt(cb.value));
     if (seleccionados.length === 0) return;
 
     const btn = document.getElementById('btn-confirmar-agregar');
@@ -494,4 +510,191 @@ window.ejecutarAgregarPedidos = async () => {
         btn.disabled = false;
         btn.innerHTML = textoOriginal;
     }
+};
+
+// ==========================================
+// FEATURE FASE 3: RETIROS DE MANTENIMIENTO
+// ==========================================
+
+window.abrirValidarRetiro = (idOrden, ordenData) => {
+    let htmlDetalles = '<div style="margin-bottom: 1rem; color: #64748b; font-size: 0.9rem;">No hay detalles pre-cargados por el cliente. Deberá usar contingencia.</div>';
+    
+    if (ordenData.detalles && ordenData.detalles.length > 0) {
+        htmlDetalles = ordenData.detalles.map(d => `
+            <div style="background: #f8fafc; padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #3b82f6;">
+                <div style="font-weight: bold; color: #1e293b;">${d.descripcion_externa}</div>
+                <div style="color: #64748b; font-size: 0.85rem; margin-top: 4px;">⚖️ ${d.kilos} Kg &nbsp;|&nbsp; 📦 ${d.bultos} Bultos</div>
+            </div>
+        `).join('');
+    }
+
+    Swal.fire({
+        title: '✔️ Validar Retiro',
+        html: `
+            <div style="text-align: left;">
+                <p><strong>Cliente:</strong> ${ordenData.cliente.nombre}</p>
+                <div style="margin-top: 15px;">
+                    <strong style="color: #475569; display: block; margin-bottom: 8px;">Mercadería a Retirar:</strong>
+                    ${htmlDetalles}
+                </div>
+            </div>
+        `,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#059669',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Validar y Retirar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.ejecutarValidacionRetiro(idOrden);
+        }
+    });
+};
+
+window.ejecutarValidacionRetiro = async (idOrden) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/retiros/${idOrden}/validar`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+        });
+        const data = await response.json();
+        if (data.success) {
+            Swal.fire('✅ ¡Retirado!', 'El retiro ha sido marcado como EN CAMINO.', 'success');
+            cargarRutaActiva();
+        } else alert('Error: ' + data.error);
+    } catch(err) { alert('Error de Red'); }
+};
+
+window.abrirContingenciaRetiro = (idOrden, ordenData) => {
+    Swal.fire({
+        title: '⚠️ Carga Contingencia (Manual)',
+        html: `
+            <div style="text-align: left;">
+                <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 1rem;">El cliente no completó el Pre-Checkin. Ingrese los bultos percibidos.</p>
+                <input id="swal-desc" class="swal2-input" placeholder="Descripción de la mercancía" style="width: 80%; display: flex; box-sizing: border-box; margin: 0 auto 10px auto;">
+                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                    <input id="swal-kilos" type="number" class="swal2-input" placeholder="Kilos (Ej: 21.5)" step="0.1" style="width: 45%; margin:0;">
+                    <input id="swal-bultos" type="number" class="swal2-input" placeholder="Bultos" style="width: 45%; margin:0;">
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar y Retirar',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            return {
+                desc: document.getElementById('swal-desc').value,
+                kilos: document.getElementById('swal-kilos').value.replace(',', '.'),
+                bultos: document.getElementById('swal-bultos').value
+            }
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const val = result.value;
+            if (!val.kilos || !val.bultos) return Swal.fire('Error', 'Debe especificar Kilos y Bultos', 'error');
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/logistica/movil/retiros/${idOrden}/contingencia`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ descripcion_externa: val.desc || 'S/D', kilos: parseFloat(val.kilos), bultos: parseFloat(val.bultos) })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    Swal.fire('✅ Contingencia Exitosa', 'El retiro subió al camión.', 'success');
+                    cargarRutaActiva();
+                } else Swal.fire('Error', data.error, 'error');
+            } catch(err) { Swal.fire('Error de Red', err.toString(), 'error'); }
+        }
+    });
+};
+
+// ==========================================
+// FEATURE FASE 3: GENERAR QR (ASISTENTE)
+// ==========================================
+
+window.abrirAsistenteInmunizacionChofer = () => {
+    window.cerrarSidebar();
+    
+    let htmlContent = `
+        <div style="text-align: left;">
+            <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 1rem;">Busque al cliente para crear el registro y enviarle el panel de Check-In a su celular.</p>
+            <input id="swal-cliente-search" class="swal2-input" placeholder="Nombre del Cliente" style="width: 100%; box-sizing: border-box; margin: 0 auto 10px auto;" autocomplete="off">
+            <div id="swal-cliente-results" style="max-height: 150px; overflow-y: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: left; position: relative;"></div>
+        </div>
+    `;
+
+    Swal.fire({
+        title: '🦠 Generar QR Tratamiento',
+        html: htmlContent,
+        showCancelButton: true,
+        showConfirmButton: false, // The user selects from the list directly
+        cancelButtonText: 'Cancelar',
+        didOpen: () => {
+            const inputElement = document.getElementById('swal-cliente-search');
+            let timeoutToken;
+            inputElement.addEventListener('input', (e) => {
+                clearTimeout(timeoutToken);
+                const query = e.target.value.trim();
+                if (query.length < 3) {
+                    document.getElementById('swal-cliente-results').innerHTML = '';
+                    return;
+                }
+                timeoutToken = setTimeout(async () => {
+                    const resultsBox = document.getElementById('swal-cliente-results');
+                    resultsBox.innerHTML = '<div style="padding: 10px; color:#64748b;">Buscando...</div>';
+                    try {
+                        const res = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/clientes?q=${encodeURIComponent(query)}`);
+                        const data = await res.json();
+                        if (data.success && data.data.length > 0) {
+                            resultsBox.innerHTML = data.data.map(c => `
+                                <div onclick="window.generarQRChoferPayload(${c.id}, '${c.nombre.replace(/'/g, "\\'")}')" style="padding: 10px; border-bottom: 1px solid #e2e8f0; cursor: pointer; color:#1e293b; font-weight: bold;">
+                                    ${c.nombre} ${c.apellido || ''} <span style="font-size: 0.75rem; color:#64748b; font-weight: normal;">[#${c.id}]</span>
+                                </div>
+                            `).join('');
+                        } else {
+                            resultsBox.innerHTML = '<div style="padding: 10px; color:#64748b;">Sin resultados</div>';
+                        }
+                    } catch(err) {
+                        resultsBox.innerHTML = '<div style="padding: 10px; color:#ef4444;">Error de red</div>';
+                    }
+                }, 400);
+            });
+        }
+    });
+};
+
+window.generarQRChoferPayload = async (idCliente, nombreCliente) => {
+    Swal.close();
+    Swal.fire({ title: 'Generando registro...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/generar-qr-chofer`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_cliente: idCliente, id_ruta: state.ruta ? state.ruta.id : null })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            Swal.fire({
+                title: '⚡ ¡Link Generado!',
+                icon: 'success',
+                html: `
+                    <div style="font-size: 1rem; color: #1e293b;">La sesión para <b>${nombreCliente}</b> está abierta.</div>
+                    <div style="margin-top: 15px;">
+                        <a href="https://api.whatsapp.com/send?text=${encodeURIComponent(`Hola! Por favor confirma los datos de tu retiro de mercadería aquí: ${data.data.url}`)}" 
+                           target="_blank" style="display:inline-block; padding: 10px 20px; background: #25d366; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; width: 80%;">
+                           📱 Enviar por WhatsApp
+                        </a>
+                    </div>
+                `,
+                confirmButtonText: 'Cerrar'
+            }).then(() => {
+                cargarRutaActiva(); // Reload the route immediately so the new PENDIENTE_CLIENTE item shows up visually
+            });
+        } else {
+            Swal.fire('Error', data.error, 'error');
+        }
+    } catch(err) { Swal.fire('Error', 'Fallo conexión con origen', 'error'); }
 };

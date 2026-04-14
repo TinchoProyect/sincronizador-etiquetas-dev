@@ -1,6 +1,8 @@
 {
-  "numero": "SBX5",
-  "nombre": "Sesamo Blanco x 5",
-  "codigo_barras": "256362258",
-  "cantidad": 2
+  "articulo": {
+    "numero": "MCVX2",
+    "nombre": "Mani/Cas/Virg. x 2",
+    "codigo_barras": "5484455697"
+  },
+  "cantidad": "1.00"
 }

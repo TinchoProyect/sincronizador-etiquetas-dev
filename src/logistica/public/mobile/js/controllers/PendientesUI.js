@@ -19,7 +19,7 @@ async function cargarPendientes() {
                     <button onclick="asignarSeleccionados()" id="btn-asignar-sel" style="background:#10b981; color:white; padding:0.75rem 0.5rem; border:none; border-radius:0.5rem; font-weight:bold; flex:1; opacity:0.5; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);" disabled>📌 Asignar (0)</button>
                 </div>
                 ${result.data.map(p => {
-                    const esIngreso = p.estado === 'Orden de Retiro';
+                    const esIngreso = p.estado === 'Orden de Tratamiento';
                     const iconColor = esIngreso ? '#dc2626' : '#2563eb';
                     const borderColor = esIngreso ? '#fca5a5' : '#bfdbfe';
                     
@@ -40,12 +40,15 @@ async function cargarPendientes() {
                         </div>
                         <div style="flex: 1;">
                             <div class="entrega-header" style="margin-bottom: 0.5rem;">
-                                <div style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">${esIngreso?'↩️':''} Pedido #${p.id}</div>
+                                <div style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">${esIngreso ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${p.id}</div>
                                 <div class="entrega-badge badge-pendiente" style="background:${borderColor}; color:${iconColor};">${p.estado_logistico || 'Pendiente'}</div>
                             </div>
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
                                 <div class="entrega-cliente" style="font-size: 0.95rem;">👤 <strong>[#${p.cliente_id || 'S/N'}]</strong> ${p.cliente_nombre}</div>
-                                <button onclick="DomiciliosUI.abrirModalABM(${p.cliente_id})" style="background: #e2e8f0; color: #3b82f6; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">📍 Domicilios</button>
+                                <div style="display: flex; gap: 8px;">
+                                    ${esIngreso ? `<button type="button" onclick="event.preventDefault(); event.stopPropagation(); window.descartarRetiro('${p.id}')" style="background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">🗑️ Descartar</button>` : ''}
+                                    <button type="button" onclick="event.preventDefault(); event.stopPropagation(); DomiciliosUI.abrirModalABM(${p.cliente_id})" style="background: #e2e8f0; color: #3b82f6; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">📍 Domicilios</button>
+                                </div>
                             </div>
                             <div class="entrega-direccion" style="margin-bottom: 0; font-size: 0.85rem;">
                                 📍 ${p.domicilio_direccion || 'Sin domicilio'} <br>
@@ -203,7 +206,7 @@ async function ejecutarCrearRuta(event) {
 }
 
 async function asignarSeleccionados() {
-    const seleccionados = Array.from(document.querySelectorAll('.chk-pedido:checked')).map(cb => parseInt(cb.value));
+    const seleccionados = Array.from(document.querySelectorAll('.chk-pedido:checked')).map(cb => String(cb.value).startsWith('RT-') ? cb.value : parseInt(cb.value));
     if(seleccionados.length === 0) return;
     
     let rutasHtml = '<option value="">Investigando rutas activas...</option>';
@@ -276,3 +279,34 @@ async function ejecutarAsignarRuta(ids_presupuestos, event) {
         }
     }
 }
+
+window.descartarRetiro = async (idOrden) => {
+    const idReal = String(idOrden).toUpperCase().replace('RT-', '');
+    if(!confirm(`⚠️ ¿Está seguro que desea DESCARTAR la Orden de Tratamiento #${idReal}? Esta acción no se puede deshacer.`)) return;
+    
+    const container = document.getElementById('pendientes-container');
+    if (container) {
+        container.innerHTML = '<div class="loading-screen"><div class="spinner"></div><p>Descartando orden...</p></div>';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/retiros/${idReal}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            alert('Orden descartada exitosamente.');
+        } else {
+            alert(data.error || 'Error descartando la orden');
+        }
+    } catch (err) {
+        console.error('[MOVIL] Falla destructiva:', err);
+        alert('Error de conexión o red.');
+    } finally {
+        cargarPendientes();
+    }
+};
+

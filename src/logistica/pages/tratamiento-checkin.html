@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LAMDA - Tratamiento Inmunización</title>
+    <link rel="stylesheet" href="/css/tratamiento-checkin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/env-config.js"></script>
+</head>
+<body>
+    <div class="mobile-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="header-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+            </div>
+            <h1>Check-in de Retiro</h1>
+            <p class="subtitle">Tratamiento e Inmunización Logística</p>
+        </header>
+
+        <!-- MAIN CARD -->
+        <main class="card form-card" id="mainCard">
+            <div class="status-banner" id="statusBanner">
+                Cargando sesión segura...
+            </div>
+            
+            <div id="clientInfoPanel" class="hidden">
+                 <h3 style="margin-top: 0; color: var(--primary-color); border-bottom: 2px solid var(--border-color); padding-bottom: 0.5rem;">
+                    Cliente: <span id="nombreClienteText">Cargando...</span>
+                 </h3>
+            </div>
+
+            <!-- FORMULARIO -->
+            <form id="checkinForm" class="hidden">
+                <div class="form-group">
+                    <label for="descripcion">Descripción del artículo <span class="required">*</span></label>
+                    <input type="text" id="descripcion" name="descripcion" placeholder="Ej: semilla, dátil, harina" required>
+                    <div class="help-text">Indique qué mercadería entrega al chofer.</div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="kilos">Kilos Totales Brutos <span class="required">*</span></label>
+                        <input type="text" inputmode="decimal" id="kilos" name="kilos" placeholder="0.00" required>
+                        <div class="help-text" style="font-size:0.65rem">(mercadería + envase)</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="bultos">Distribución de Bultos <span class="required">*</span></label>
+                        <input type="number" id="bultos" name="bultos" placeholder="0" min="1" step="1" required>
+                        <div class="help-text" style="font-size:0.65rem">(cantidad física, Ej: 15 bandejas)</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="motivo">Motivo / Problema a Tratar <span class="required">*</span></label>
+                    <textarea id="motivo" name="motivo" rows="3" placeholder="Describa el servicio requerido, problema o instrucción..." required></textarea>
+                </div>
+
+                <button type="submit" class="btn-primary btn-block" id="btnSubmit">
+                    <span class="btn-text">Confirmar Datos al Chofer</span>
+                    <div class="spinner hidden" id="loadingSpinner"></div>
+                </button>
+            </form>
+
+            <!-- PANTALLA ÉXITO -->
+            <div id="successPanel" class="result-panel hidden">
+                <div class="success-icon">
+                    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                </div>
+                <h2>¡Check-in Completado!</h2>
+                <p>La información fue registrada de forma segura en LAMDA. Aguarde a que el chofer lo valide físicamente mediante su dispositivo.</p>
+            </div>
+            
+            <!-- PANTALLA ERROR -->
+            <div id="errorPanel" class="result-panel hidden">
+                <div class="error-icon">
+                     <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                    </svg>
+                </div>
+                <h2>Enlace Inválido</h2>
+                <p id="errorText">El código QR escaneado ya no es válido o ha expirado. Si cree que es un error, contacte al chofer.</p>
+            </div>
+        </main>
+    </div>
+    <script src="/js/tratamiento-checkin.js"></script>
+</body>
+</html>

@@ -22,7 +22,7 @@ async function autoAsignarDomicilios(pool) {
                 INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
                 WHERE 
                     p.secuencia = 'Pedido_Listo'
-                    AND p.estado IN ('Presupuesto/Orden', 'Orden de Retiro')
+                    AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento')
                     AND p.activo = true
                     AND p.id_domicilio_entrega IS NULL
             ),
@@ -141,7 +141,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             p.secuencia = 'Pedido_Listo'
             
             -- Filtro 2: Estado exacto (Whitelisting de estados válidos para reparto)
-            AND p.estado IN ('Presupuesto/Orden', 'Orden de Retiro')
+            AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento')
             
             -- Filtro 3: Solo activos
             AND p.activo = true
@@ -157,7 +157,51 @@ async function obtenerPresupuestosDisponibles(pool) {
     `;
 
     const result = await pool.query(query);
-    return result.rows;
+
+    // FASE 3: Anexar Retiros de Tratamiento Huérfanos
+    const queryTreatments = `
+        SELECT 
+            'RT-' || p.id as id,
+            p.id as id_presupuesto_ext,
+            p.fecha_creacion as fecha,
+            NULL as fecha_entrega,
+            'Orden de Tratamiento' as estado,
+            p.estado_logistico,
+            'Pedido_Listo' as secuencia,
+            NULL as id_domicilio_entrega,
+            false as bloqueo_entrega,
+            p.id_cliente,
+            NULL as agente,
+            'Retiro de Mantenimiento' as nota,
+            c.cliente_id,
+            COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
+            c.telefono as cliente_telefono,
+            COALESCE(cd.direccion, 'Retiro Mantenimiento') as domicilio_direccion,
+            COALESCE(cd.localidad, c.localidad) as domicilio_localidad,
+            '' as domicilio_provincia,
+            cd.latitud as domicilio_latitud,
+            cd.longitud as domicilio_longitud,
+            false as coordenadas_validadas,
+            0 as subtotal_bruto,
+            0 as descuento_aplicado,
+            0 as total,
+            NULL as comprobante_lomasoft,
+            NULL as id_factura_lomasoft
+        FROM ordenes_tratamiento p
+        LEFT JOIN clientes c ON p.id_cliente = c.cliente_id
+        LEFT JOIN LATERAL (
+            SELECT direccion, localidad, latitud, longitud
+            FROM clientes_domicilios 
+            WHERE id_cliente = c.id AND activo = true
+            ORDER BY es_predeterminado DESC, id ASC
+            LIMIT 1
+        ) cd ON true
+        WHERE p.id_ruta IS NULL 
+        AND p.estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION')
+    `;
+    const treatResult = await pool.query(queryTreatments);
+
+    return [...result.rows, ...treatResult.rows];
 }
 
 /**
@@ -203,7 +247,49 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
     `;
 
     const result = await pool.query(query, [rutaId]);
-    return result.rows;
+
+    // FASE 3: Anexar Retiros Asignados a la Ruta
+    const queryTreatments = `
+        SELECT 
+            'RT-' || p.id as id,
+            p.id::text as numero_presupuesto,
+            p.fecha_creacion as fecha,
+            0 as total,
+            'Orden de Tratamiento' as estado,
+            p.estado_logistico,
+            p.orden_entrega,
+            NULL as comprobante_lomasoft,
+            NULL as id_factura_lomasoft,
+            c.cliente_id,
+            COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
+            c.telefono as cliente_telefono,
+            COALESCE(cd.direccion, 'Retiro Mantenimiento') as domicilio_direccion,
+            COALESCE(cd.localidad, c.localidad) as domicilio_localidad,
+            '' as domicilio_provincia,
+            cd.latitud as domicilio_latitud,
+            cd.longitud as domicilio_longitud
+        FROM ordenes_tratamiento p
+        LEFT JOIN clientes c ON p.id_cliente = c.cliente_id
+        LEFT JOIN LATERAL (
+            SELECT direccion, localidad, latitud, longitud
+            FROM clientes_domicilios 
+            WHERE id_cliente = c.id AND activo = true
+            ORDER BY es_predeterminado DESC, id ASC
+            LIMIT 1
+        ) cd ON true
+        WHERE p.id_ruta = $1
+    `;
+    const treatResult = await pool.query(queryTreatments, [rutaId]);
+
+    const presupuestosHibridos = [...result.rows, ...treatResult.rows];
+    presupuestosHibridos.sort((a, b) => {
+        const ordenA = a.orden_entrega ?? 999;
+        const ordenB = b.orden_entrega ?? 999;
+        if (ordenA === ordenB) return a.id < b.id ? -1 : 1;
+        return ordenA - ordenB;
+    });
+
+    return presupuestosHibridos;
 }
 
 /**
