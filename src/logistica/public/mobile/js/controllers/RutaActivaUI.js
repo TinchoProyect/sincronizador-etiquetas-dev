@@ -363,29 +363,22 @@ function finalizarRutaDelDia() {
 
 window.toggleEstadoRuta = async (nuevoEstado) => {
     if (!state.ruta) return;
+    if (!confirm(`¿Confirmar cambio de estado a ${nuevoEstado === 'EN_CAMINO' ? 'INICIAR RUTA' : 'DETENER RUTA'}?`)) return;
     try {
-        const payload = {
-            descripcion_externa: document.getElementById('checkin-descripcion').value.trim(),
-            kilos: kilosVal,
-            bultos: bultosVal,
-            motivo: document.getElementById('checkin-motivo').value.trim(),
-            responsable_nombre: document.getElementById('checkin-responsable-nombre').value.trim(),
-            responsable_apellido: document.getElementById('checkin-responsable-apellido').value.trim(),
-            responsable_celular: document.getElementById('checkin-responsable-celular').value.trim(),
-            chofer_nombre: document.getElementById('checkin-chofer-nombre').value.trim(),
-            fecha_evento: document.getElementById('checkin-fecha').value
-        };
         const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/estado`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ estado: nuevoEstado })
         });
         const data = await res.json();
         if (data.success) {
             state.ruta.estado = nuevoEstado;
             renderizarEntregas(); 
-        } else alert("Error: " + data.error);
-    } catch(err) { alert("Error de red."); }
+        } else Swal.fire('Error', data.error || 'No se pudo cambiar el estado', 'error');
+    } catch(err) {
+        console.error('[TOGGLE ESTADO] Error de red:', err);
+        Swal.fire('Error de Red', 'No se pudo conectar con el servidor. Verifique su conexión.', 'error');
+    }
 };
 
 window.quitarPedido = async (idPresupuesto) => {
@@ -777,16 +770,7 @@ window.abrirModalContingencia = async (hash, esEdicion) => {
             return;
         }
         
-        // Reset form and set hash
-        form.reset();
-        hashInput.value = hash;
-
-        // Set default datetime to now
-        const ahora = new Date();
-        ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
-        document.getElementById('checkin-fecha').value = ahora.toISOString().slice(0,16);
-
-        // ALWAYS load chofer dropdown (both for new check-in and edit)
+        // ALWAYS load chofer dropdown first (before reset to avoid visual flash)
         const selectChofer = document.getElementById('checkin-chofer-nombre');
         try {
             if (!state.choferes || state.choferes.length === 0) {
@@ -800,15 +784,11 @@ window.abrirModalContingencia = async (hash, esEdicion) => {
             if (state.choferes && state.choferes.length > 0) {
                 selectChofer.innerHTML = '<option value="">Seleccione Chofer</option>' +
                     state.choferes.map(c => `<option value="${c.nombre_completo}">${c.nombre_completo}</option>`).join('');
-                // Pre-select the route's assigned chofer for new check-ins
-                if (!esEdicion && state.ruta && state.ruta.chofer) {
-                    selectChofer.value = state.ruta.chofer.nombre_completo;
-                }
             }
         } catch(e) { console.error('[MODAL] Error cargando dropdown choferes:', e); }
 
-        // If editing, fetch and prefill existing data
         if (esEdicion) {
+            // EDIT MODE: fetch saved data first, then populate (no form.reset())
             Swal.fire({ title: 'Cargando datos...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             
             const response = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/sesion/${hash}`);
@@ -819,6 +799,8 @@ window.abrirModalContingencia = async (hash, esEdicion) => {
             if (data.success && data.data) {
                 const d = data.data;
                 const det = d.detalles || {};
+                // Populate all fields with saved values
+                hashInput.value = hash;
                 document.getElementById('checkin-descripcion').value = det.descripcion_externa || '';
                 document.getElementById('checkin-kilos').value = det.kilos || '';
                 document.getElementById('checkin-bultos').value = det.bultos || '';
@@ -826,14 +808,36 @@ window.abrirModalContingencia = async (hash, esEdicion) => {
                 document.getElementById('checkin-responsable-nombre').value = d.responsable_nombre || '';
                 document.getElementById('checkin-responsable-apellido').value = d.responsable_apellido || '';
                 document.getElementById('checkin-responsable-celular').value = d.responsable_celular || '';
-                // Set chofer in dropdown (already populated above)
+                // Set chofer in dropdown
                 if (d.chofer_nombre) selectChofer.value = d.chofer_nombre;
-                // Override datetime with saved value
+                // Set datetime from saved value, fallback to now
                 if (d.fecha_validacion_chofer) {
                     const fd = new Date(d.fecha_validacion_chofer);
                     fd.setMinutes(fd.getMinutes() - fd.getTimezoneOffset());
                     document.getElementById('checkin-fecha').value = fd.toISOString().slice(0,16);
+                } else {
+                    const ahora = new Date();
+                    ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+                    document.getElementById('checkin-fecha').value = ahora.toISOString().slice(0,16);
                 }
+            } else {
+                // Fetch failed — reset and open blank for manual entry
+                form.reset();
+                hashInput.value = hash;
+                const ahora = new Date();
+                ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+                document.getElementById('checkin-fecha').value = ahora.toISOString().slice(0,16);
+            }
+        } else {
+            // NEW CHECK-IN MODE: reset form, set defaults
+            form.reset();
+            hashInput.value = hash;
+            const ahora = new Date();
+            ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+            document.getElementById('checkin-fecha').value = ahora.toISOString().slice(0,16);
+            // Pre-select the route's assigned chofer
+            if (state.ruta && state.ruta.chofer) {
+                selectChofer.value = state.ruta.chofer.nombre_completo;
             }
         }
         

@@ -101,7 +101,13 @@ async function obtenerSesion(req, res) {
             data: {
                 estado: sesion.estado_logistico,
                 cliente_nombre: sesion.nombre ? `${sesion.nombre} ${sesion.apellido || ''}`.trim() : 'Cliente Anónimo',
-                detalles: sesion.detalles
+                detalles: sesion.detalles,
+                // Campos de trazabilidad del chofer (requeridos para pre-populación del modal de edición)
+                responsable_nombre: sesion.responsable_nombre || null,
+                responsable_apellido: sesion.responsable_apellido || null,
+                responsable_celular: sesion.responsable_celular || null,
+                chofer_nombre: sesion.chofer_nombre || null,
+                fecha_validacion_chofer: sesion.fecha_validacion_chofer || null
             }
         });
     } catch(err) {
