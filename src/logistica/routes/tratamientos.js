@@ -28,10 +28,18 @@ router.get('/sesion/:hash', tratamientosController.obtenerSesion);
 router.post('/precheckin/:hash', tratamientosController.procesarPreCheckin);
 
 
+const pdfTratamientosController = require('../controllers/pdfTratamientosController');
+
 /**
  * Fase 3 (Flujo Híbrido Avanzado)
  */
-// 4. Chofer: Completar o modificar un check-in in-situ (Carga Contingente Dinámica)
+// 4. Chofer (Móvil): Completar o modificar un check-in in-situ — requiere token JWT de chofer
 router.put('/chofer/checkin/:hash', auth.verificarTokenChofer, tratamientosController.checkInChofer);
+
+// 4b. Dashboard (PC): Misma operación — usa validateSession (sin token Bearer de chofer)
+router.put('/dashboard/checkin/:hash', auth.validateSession, tratamientosController.checkInChofer);
+
+// 5. Trazabilidad: Exportación a PDF de la Orden de Tratamiento
+router.get('/print/:hash', pdfTratamientosController.imprimirPDF);
 
 module.exports = router;

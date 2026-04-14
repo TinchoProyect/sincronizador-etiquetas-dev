@@ -512,6 +512,28 @@ class RutasModel {
                 console.log('[RUTAS-MODEL] ✅ Presupuestos restaurados:', cantidadPresupuestos);
             }
 
+            // 2b. Restaurar ordenes de tratamiento (desvincular de la ruta eliminada)
+            const countTratamientos = await client.query(
+                'SELECT COUNT(*) as total FROM ordenes_tratamiento WHERE id_ruta = $1',
+                [id]
+            );
+            const cantidadTratamientos = parseInt(countTratamientos.rows[0].total);
+
+            if (cantidadTratamientos > 0) {
+                await client.query(
+                    `UPDATE ordenes_tratamiento 
+                     SET id_ruta = NULL,
+                         estado_logistico = CASE 
+                             WHEN estado_logistico IN ('EN_CAMINO', 'PENDIENTE_VALIDACION') THEN 'PENDIENTE_CLIENTE'
+                             ELSE estado_logistico
+                         END,
+                         orden_entrega = 999
+                     WHERE id_ruta = $1`,
+                    [id]
+                );
+                console.log('[RUTAS-MODEL] ✅ Órdenes de tratamiento restauradas:', cantidadTratamientos);
+            }
+
             // 3. Eliminar la ruta
             const deleteQuery = await client.query(
                 'DELETE FROM rutas WHERE id = $1 RETURNING *',

@@ -364,7 +364,17 @@ function finalizarRutaDelDia() {
 window.toggleEstadoRuta = async (nuevoEstado) => {
     if (!state.ruta) return;
     try {
-        const payload = { estado: nuevoEstado };
+        const payload = {
+            descripcion_externa: document.getElementById('checkin-descripcion').value.trim(),
+            kilos: kilosVal,
+            bultos: bultosVal,
+            motivo: document.getElementById('checkin-motivo').value.trim(),
+            responsable_nombre: document.getElementById('checkin-responsable-nombre').value.trim(),
+            responsable_apellido: document.getElementById('checkin-responsable-apellido').value.trim(),
+            responsable_celular: document.getElementById('checkin-responsable-celular').value.trim(),
+            chofer_nombre: document.getElementById('checkin-chofer-nombre').value.trim(),
+            fecha_evento: document.getElementById('checkin-fecha').value
+        };
         const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/estado`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
@@ -750,14 +760,54 @@ window.generarQRChoferPayload = async (idCliente, nombreCliente) => {
 
 window.abrirModalContingencia = async (hash, esEdicion) => {
     try {
+        // Guard: validate hash
+        if (!hash || hash === 'null' || hash === 'undefined') {
+            Swal.fire('Error de Datos', 'Esta orden no tiene un código QR/hash asociado. Contacte al administrador para regenerarlo.', 'error');
+            return;
+        }
+
         const modal = document.getElementById('modal-contingencia-checkin');
         const form = document.getElementById('form-contingencia-checkin');
         const hashInput = document.getElementById('checkin-hash');
+
+        // Guard: DOM elements must exist
+        if (!modal || !form || !hashInput) {
+            console.error('[MODAL] Elemento(s) del modal no encontrado(s) en el DOM:', { modal: !!modal, form: !!form, hashInput: !!hashInput });
+            Swal.fire('Error de UI', 'El formulario de Check-in no está disponible en esta vista.', 'error');
+            return;
+        }
         
-        // Reset form
+        // Reset form and set hash
         form.reset();
         hashInput.value = hash;
 
+        // Set default datetime to now
+        const ahora = new Date();
+        ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+        document.getElementById('checkin-fecha').value = ahora.toISOString().slice(0,16);
+
+        // ALWAYS load chofer dropdown (both for new check-in and edit)
+        const selectChofer = document.getElementById('checkin-chofer-nombre');
+        try {
+            if (!state.choferes || state.choferes.length === 0) {
+                const sesion = JSON.parse(localStorage.getItem('sesion_chofer') || '{}');
+                const resChoferes = await fetch(`${API_BASE_URL}/api/logistica/usuarios/choferes`, {
+                    headers: sesion.token ? { 'Authorization': `Bearer ${sesion.token}` } : {}
+                });
+                const dataChoferes = await resChoferes.json();
+                if (dataChoferes.success) state.choferes = dataChoferes.data;
+            }
+            if (state.choferes && state.choferes.length > 0) {
+                selectChofer.innerHTML = '<option value="">Seleccione Chofer</option>' +
+                    state.choferes.map(c => `<option value="${c.nombre_completo}">${c.nombre_completo}</option>`).join('');
+                // Pre-select the route's assigned chofer for new check-ins
+                if (!esEdicion && state.ruta && state.ruta.chofer) {
+                    selectChofer.value = state.ruta.chofer.nombre_completo;
+                }
+            }
+        } catch(e) { console.error('[MODAL] Error cargando dropdown choferes:', e); }
+
+        // If editing, fetch and prefill existing data
         if (esEdicion) {
             Swal.fire({ title: 'Cargando datos...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             
@@ -766,12 +816,24 @@ window.abrirModalContingencia = async (hash, esEdicion) => {
             
             Swal.close();
             
-            if (data.success && data.data && data.data.detalles) {
-                const det = data.data.detalles;
+            if (data.success && data.data) {
+                const d = data.data;
+                const det = d.detalles || {};
                 document.getElementById('checkin-descripcion').value = det.descripcion_externa || '';
                 document.getElementById('checkin-kilos').value = det.kilos || '';
                 document.getElementById('checkin-bultos').value = det.bultos || '';
                 document.getElementById('checkin-motivo').value = det.motivo || '';
+                document.getElementById('checkin-responsable-nombre').value = d.responsable_nombre || '';
+                document.getElementById('checkin-responsable-apellido').value = d.responsable_apellido || '';
+                document.getElementById('checkin-responsable-celular').value = d.responsable_celular || '';
+                // Set chofer in dropdown (already populated above)
+                if (d.chofer_nombre) selectChofer.value = d.chofer_nombre;
+                // Override datetime with saved value
+                if (d.fecha_validacion_chofer) {
+                    const fd = new Date(d.fecha_validacion_chofer);
+                    fd.setMinutes(fd.getMinutes() - fd.getTimezoneOffset());
+                    document.getElementById('checkin-fecha').value = fd.toISOString().slice(0,16);
+                }
             }
         }
         
@@ -809,7 +871,12 @@ window.guardarCheckinContingencia = async (event) => {
         descripcion_externa: document.getElementById('checkin-descripcion').value.trim(),
         kilos: kilosVal,
         bultos: bultosVal,
-        motivo: document.getElementById('checkin-motivo').value.trim()
+        motivo: document.getElementById('checkin-motivo').value.trim(),
+        responsable_nombre: document.getElementById('checkin-responsable-nombre').value.trim(),
+        responsable_apellido: document.getElementById('checkin-responsable-apellido').value.trim(),
+        responsable_celular: document.getElementById('checkin-responsable-celular').value.trim(),
+        chofer_nombre: document.getElementById('checkin-chofer-nombre').value.trim(),
+        fecha_evento: document.getElementById('checkin-fecha').value
     };
 
     try {

@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS ordenes_tratamiento (
     estado_logistico VARCHAR(50) DEFAULT 'PENDIENTE_CLIENTE',
     orden_entrega INTEGER DEFAULT 999,
     codigo_qr_hash VARCHAR(128) UNIQUE,
+    responsable_nombre VARCHAR(100),
+    responsable_apellido VARCHAR(100),
+    responsable_celular VARCHAR(50),
+    chofer_nombre VARCHAR(100),
     fecha_creacion TIMESTAMP DEFAULT NOW(),
     fecha_validacion_chofer TIMESTAMP,
     fecha_ingreso_mantenimiento TIMESTAMP

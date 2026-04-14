@@ -388,6 +388,7 @@ function renderizarPedidos() {
                     <div style="display:flex; gap:0.25rem;">
                         ${!pedido.comprobante_lomasoft && !esRetiro ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
                         ${esRetiro ? `<button onclick="event.stopPropagation(); window.abrirModalContingencia('${pedido.hash}', ${pedido.tiene_checkin})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #f59e0b; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Consultar o Completar Datos del Tratamiento">✏️ ${pedido.tiene_checkin ? 'Modificar' : 'Check-in'}</button>` : ''}
+                        ${esRetiro && pedido.tiene_checkin ? `<button onclick="event.stopPropagation(); window.open(\`/api/logistica/tratamientos/print/${pedido.hash}\`, '_blank')" class="btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background-color: #2563eb; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Ver Reporte PDF">🖨️ PDF</button>` : ''}
                         ${esRetiro ? `<button onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-sm btn-danger" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ef4444; color:white; border:none; border-radius:3px; cursor:pointer;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
                         <button onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #3b82f6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
                     </div>
@@ -2540,6 +2541,128 @@ window.seleccionarCandidataLomasoft = async function(presupuestoId, candidataInd
         Swal.fire('Error al conciliar', error.message, 'error');
     }
 }
+
+// =====================================================================
+// MÓDULO CHECK-IN CONTINGENTE (PC Dashboard) - FASE 3
+// =====================================================================
+
+window.abrirModalContingencia = async function(hash, esEdicion) {
+    const modal = document.getElementById('modal-contingencia-checkin');
+    if (!modal) { console.error('[DASHBOARD] No existe modal-contingencia-checkin en el DOM'); return; }
+
+    const form = document.getElementById('form-contingencia-checkin');
+    form.reset();
+    document.getElementById('checkin-hash').value = hash;
+
+    // Set default datetime to now
+    const ahora = new Date();
+    ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+    document.getElementById('checkin-fecha').value = ahora.toISOString().slice(0,16);
+
+    // Populate chofer dropdown from already-loaded state
+    const selectChofer = document.getElementById('checkin-chofer-nombre');
+    if (state.choferes && state.choferes.length > 0) {
+        selectChofer.innerHTML = '<option value="">Seleccione Chofer</option>' +
+            state.choferes.map(c => `<option value="${c.nombre_completo}">${c.nombre_completo}</option>`).join('');
+    }
+
+    // If editing an existing check-in, prefill with saved data
+    if (esEdicion) {
+        try {
+            const res = await fetch(`/api/logistica/tratamientos/sesion/${hash}`);
+            const data = await res.json();
+            if (data.success && data.data) {
+                const d = data.data;
+                const det = d.detalles || {};
+                document.getElementById('checkin-descripcion').value = det.descripcion_externa || '';
+                document.getElementById('checkin-kilos').value = det.kilos || '';
+                document.getElementById('checkin-bultos').value = det.bultos || '';
+                document.getElementById('checkin-motivo').value = det.motivo || '';
+                document.getElementById('checkin-responsable-nombre').value = d.responsable_nombre || '';
+                document.getElementById('checkin-responsable-apellido').value = d.responsable_apellido || '';
+                document.getElementById('checkin-responsable-celular').value = d.responsable_celular || '';
+                // Set chofer in dropdown
+                if (d.chofer_nombre) selectChofer.value = d.chofer_nombre;
+                // Set datetime
+                if (d.fecha_validacion_chofer) {
+                    const fd = new Date(d.fecha_validacion_chofer);
+                    fd.setMinutes(fd.getMinutes() - fd.getTimezoneOffset());
+                    document.getElementById('checkin-fecha').value = fd.toISOString().slice(0,16);
+                }
+            }
+        } catch(e) {
+            console.error('[DASHBOARD] Error al cargar datos del check-in:', e);
+        }
+    }
+
+    modal.style.display = 'flex';
+};
+
+window.cerrarModalContingencia = function() {
+    const modal = document.getElementById('modal-contingencia-checkin');
+    if (modal) modal.style.display = 'none';
+};
+
+window.guardarCheckinContingencia = async function(event) {
+    event.preventDefault();
+    const btnSubmit = document.getElementById('btn-submit-contingencia');
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Guardando...';
+
+    const hash = document.getElementById('checkin-hash').value;
+
+    const kilosRaw = document.getElementById('checkin-kilos').value.trim();
+    const kilosVal = parseFloat(kilosRaw.replace(',', '.'));
+    const bultosVal = parseInt(document.getElementById('checkin-bultos').value);
+    const responsableNombre = document.getElementById('checkin-responsable-nombre').value.trim();
+
+    if (!responsableNombre) {
+        Swal.fire('Campo Obligatorio', 'El Nombre del Responsable es obligatorio para la trazabilidad.', 'warning');
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Check-in';
+        return;
+    }
+    if (isNaN(kilosVal) || kilosVal <= 0) {
+        Swal.fire('Atención', 'Los Kilos deben ser un valor numérico mayor a 0', 'warning');
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Check-in';
+        return;
+    }
+
+    const payload = {
+        descripcion_externa: document.getElementById('checkin-descripcion').value.trim(),
+        kilos: kilosVal,
+        bultos: bultosVal,
+        motivo: document.getElementById('checkin-motivo').value.trim(),
+        responsable_nombre: responsableNombre,
+        responsable_apellido: document.getElementById('checkin-responsable-apellido').value.trim(),
+        responsable_celular: document.getElementById('checkin-responsable-celular').value.trim(),
+        chofer_nombre: document.getElementById('checkin-chofer-nombre').value.trim(),
+        fecha_evento: document.getElementById('checkin-fecha').value
+    };
+
+    try {
+        const res = await fetch(`/api/logistica/tratamientos/dashboard/checkin/${hash}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.cerrarModalContingencia();
+            Swal.fire('✅ Check-in Guardado', 'La trazabilidad fue registrada exitosamente.', 'success');
+            await cargarPedidos();
+            await cargarRutas();
+        } else {
+            throw new Error(data.error || 'Error al guardar check-in');
+        }
+    } catch(e) {
+        Swal.fire('Error', e.message, 'error');
+    } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Confirmar Check-in';
+    }
+};
 
 window.imprimirEtiquetaLamda = async function() {
     const datos = {

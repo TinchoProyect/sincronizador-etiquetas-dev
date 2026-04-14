@@ -175,6 +175,9 @@ async function checkInChofer(req, res) {
         }
 
         // Validate minimal data
+        if (!formData.responsable_nombre || formData.responsable_nombre.trim() === '') {
+            return res.status(400).json({ success: false, error: 'El Nombre del Responsable es obligatorio para la trazabilidad.' });
+        }
         if (!formData.kilos || formData.kilos <= 0) return res.status(400).json({ success: false, error: 'Kilos inválidos' });
         if (!formData.bultos || formData.bultos < 1) return res.status(400).json({ success: false, error: 'Bultos inválidos' });
         if (!formData.descripcion_externa) return res.status(400).json({ success: false, error: 'Descripción obligatoria' });

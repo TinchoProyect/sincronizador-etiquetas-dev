@@ -30,6 +30,8 @@ class TratamientosModel {
         // Enlaza la orden efimera con el nombre de pila o razon social del cliente maestro.
         const query = `
             SELECT o.id, o.estado_logistico, c.nombre, c.apellido,
+                o.responsable_nombre, o.responsable_apellido, o.responsable_celular,
+                o.chofer_nombre, o.fecha_validacion_chofer,
                 (SELECT json_build_object(
                     'articulo_numero', d.articulo_numero,
                     'descripcion_externa', d.descripcion_externa,
@@ -106,7 +108,10 @@ class TratamientosModel {
             if (getOrden.rowCount === 0) throw new Error('QR/Orden Inválido o inexistente');
             
             const orden = getOrden.rows[0];
-            const { articulo_numero, descripcion_externa, kilos, bultos, motivo } = formData;
+            const { 
+                articulo_numero, descripcion_externa, kilos, bultos, motivo,
+                responsable_nombre, responsable_apellido, responsable_celular, chofer_nombre, fecha_evento
+            } = formData;
             
             // Delete previously loaded details if any
             await client.query('DELETE FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = $1', [orden.id]);
@@ -132,11 +137,24 @@ class TratamientosModel {
             await client.query(`
                 UPDATE ordenes_tratamiento 
                 SET estado_logistico = CASE 
-                    WHEN estado_logistico = 'PENDIENTE_CLIENTE' THEN 'PENDIENTE_VALIDACION' 
-                    ELSE estado_logistico
-                END
+                        WHEN estado_logistico = 'PENDIENTE_CLIENTE' THEN 'PENDIENTE_VALIDACION' 
+                        ELSE estado_logistico
+                    END,
+                    responsable_nombre = $2,
+                    responsable_apellido = $3,
+                    responsable_celular = $4,
+                    chofer_nombre = $5,
+                    fecha_validacion_chofer = COALESCE($6::timestamp, NOW())
                 WHERE id = $1
-            `, [orden.id]);
+            `, [
+                orden.id,
+                responsable_nombre || null,
+                responsable_apellido || null,
+                responsable_celular || null,
+                chofer_nombre || null,
+                fecha_evento || null
+            ]);
+
 
             await client.query('COMMIT');
             return { success: true, id_orden: orden.id, detalles: detalleReal.rows[0] };
