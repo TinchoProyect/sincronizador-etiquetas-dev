@@ -199,7 +199,13 @@ async function ejecutarCrearRuta(event) {
         alert('Error de conexión.');
     } finally {
         if(document.getElementById('modal-dinamico-ruta')) {
-            btn.disabled = falasync function asignarSeleccionados() {
+            btn.disabled = false;
+            btn.innerHTML = spanOriginal;
+        }
+    }
+}
+
+async function asignarSeleccionados() {
     const seleccionados = Array.from(document.querySelectorAll('.chk-pedido:checked')).map(cb => String(cb.value).startsWith('RT-') ? cb.value : parseInt(cb.value));
     if(seleccionados.length === 0) return;
     
@@ -251,8 +257,6 @@ async function ejecutarCrearRuta(event) {
         const selector = document.getElementById('select-ruta-destino');
         if (selector) selector.innerHTML = '<option value="">Error al cargar rutas</option>';
     }
-}div>`;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 async function ejecutarAsignarRuta(ids_presupuestos, event) {
