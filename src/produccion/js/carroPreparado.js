@@ -287,18 +287,19 @@ async function activarModoArticulosSecundarios() {
         });
         console.log(`✅ ${articulosPadres.length} artículos padres atenuados`);
 
-        // 2. Minimizar informes de ingredientes padres
+        // 2. Mantener informes de ingredientes padres y mixes visibles horizontalmente sin minimizar
         const resumenIngredientes = document.getElementById('resumen-ingredientes');
         const resumenMixes = document.getElementById('resumen-mixes');
 
         if (resumenIngredientes) {
-            resumenIngredientes.classList.add('minimizado');
-            console.log('✅ Resumen de ingredientes minimizado');
+            // Removida la opacidad/minimizado a pedido de QA (Mantiene Stock Domicilio a la vista)
+            resumenIngredientes.classList.remove('minimizado');
+            console.log('✅ Resumen de ingredientes mantenido activo');
         }
 
         if (resumenMixes) {
-            resumenMixes.classList.add('minimizado');
-            console.log('✅ Resumen de mixes minimizado');
+            resumenMixes.classList.remove('minimizado');
+            console.log('✅ Resumen de mixes mantenido activo');
         }
 
         // 3. Activar sección de artículos secundarios
@@ -340,11 +341,6 @@ async function mostrarArticulosSecundariosEditables() {
         const articulosVinculados = await response.json();
         console.log(`🔗 Artículos vinculados encontrados: ${articulosVinculados.length}`);
 
-        if (articulosVinculados.length === 0) {
-            console.log('ℹ️ No hay artículos vinculados para mostrar');
-            return;
-        }
-
         // Crear o actualizar sección de artículos secundarios
         let seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
         if (!seccionSecundarios) {
@@ -368,33 +364,64 @@ async function mostrarArticulosSecundariosEditables() {
             <div class="lista-articulos-secundarios">
         `;
 
-        articulosVinculados.forEach(vinculo => {
-            const multiplicador = vinculo.multiplicador_ingredientes || 1;
-            const multiplicadorTexto = multiplicador === 1 ? '' : ` (×${multiplicador})`;
+        // Iterar sobre los artículos padre del DOM para asegurar que mostremos botón de "Vincular" si falta
+        const articulosPadresElementos = document.querySelectorAll('.articulo-container');
+        if (articulosPadresElementos.length === 0 && articulosVinculados.length === 0) {
+             console.log('ℹ️ No hay artículos vinculados ni padres para mostrar');
+             return;
+        }
 
-            html += `
-                <div class="articulo-secundario-editable" data-relacion-id="${vinculo.id}">
-                    <div class="articulo-info">
-                        <span class="vinculo-icono">🔗</span>
-                        <span class="articulo-codigo">${vinculo.articulo_kilo_codigo}</span>
-                        <span class="articulo-descripcion" title="${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}">${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}</span>
-                        ${vinculo.articulo_kilo_codigo_barras ? `<span class="codigo-barras" title="Código de barras: ${vinculo.articulo_kilo_codigo_barras}">📊 ${vinculo.articulo_kilo_codigo_barras}</span>` : ''}
-                        <span class="vinculo-etiqueta">Vinculado a: ${vinculo.articulo_produccion_codigo}${multiplicadorTexto}</span>
+        articulosPadresElementos.forEach(padreEl => {
+            const numeroPadre = padreEl.getAttribute('data-numero');
+            const descripcionPadreElement = padreEl.querySelector('.articulo-descripcion');
+            const descripcionPadre = descripcionPadreElement ? descripcionPadreElement.textContent : 'Artículo Padre';
+
+            // Buscar si tiene vínculo
+            const vinculo = articulosVinculados.find(v => v.articulo_produccion_codigo === numeroPadre);
+
+            if (vinculo) {
+                html += `
+                    <div class="articulo-secundario-editable" data-relacion-id="${vinculo.id}">
+                        <div class="articulo-info">
+                            <span class="vinculo-icono">🔗</span>
+                            <span class="articulo-codigo">${vinculo.articulo_kilo_codigo}</span>
+                            <span class="articulo-descripcion" title="${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}">${vinculo.articulo_kilo_nombre || 'Artículo vinculado'}</span>
+                            ${vinculo.articulo_kilo_codigo_barras ? `<span class="codigo-barras" title="Código de barras: ${vinculo.articulo_kilo_codigo_barras}">📊 ${vinculo.articulo_kilo_codigo_barras}</span>` : ''}
+                            <span class="vinculo-etiqueta">Vinculado a: ${vinculo.articulo_produccion_codigo}</span>
+                        </div>
+                        <div class="articulo-actions">
+                            <button class="btn-editar-vinculo-secundario" 
+                                    data-relacion-id="${vinculo.id}"
+                                    data-articulo-padre="${vinculo.articulo_produccion_codigo}">
+                                ✏️ Editar vínculo
+                            </button>
+                            <button class="btn-eliminar-vinculo-secundario" 
+                                    data-relacion-id="${vinculo.id}"
+                                    data-articulo-padre="${vinculo.articulo_produccion_codigo}">
+                                🗑️ Eliminar vínculo
+                            </button>
+                        </div>
                     </div>
-                    <div class="articulo-actions">
-                        <button class="btn-editar-vinculo-secundario" 
-                                data-relacion-id="${vinculo.id}"
-                                data-articulo-padre="${vinculo.articulo_produccion_codigo}">
-                            ✏️ Editar vínculo
-                        </button>
-                        <button class="btn-eliminar-vinculo-secundario" 
-                                data-relacion-id="${vinculo.id}"
-                                data-articulo-padre="${vinculo.articulo_produccion_codigo}">
-                            🗑️ Eliminar vínculo
-                        </button>
+                `;
+            } else {
+                html += `
+                    <div class="articulo-secundario-editable" style="background-color: #fff3cd; border-left-color: #ffc107;">
+                        <div class="articulo-info">
+                            <span class="vinculo-icono" style="opacity: 0.5;">⚠️</span>
+                            <span class="articulo-codigo" style="color: #666;">Falta relacionar</span>
+                            <span class="articulo-descripcion" style="color: #666;">El artículo de cocina precisa vínculo final</span>
+                            <span class="vinculo-etiqueta" style="color: #856404; background-color: #ffeeba;">Padre crudo: ${numeroPadre}</span>
+                        </div>
+                        <div class="articulo-actions">
+                            <button class="btn-vincular-articulo" 
+                                    data-articulo="${numeroPadre}"
+                                    title="Vincular con artículo por kilo">
+                                ➕ Vincular artículo final
+                            </button>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
         });
 
         html += `</div>`;
@@ -425,16 +452,23 @@ async function mostrarInformesIngredientesVinculados() {
 
         const colaborador = JSON.parse(colaboradorData);
 
+        console.group('🕵️‍♂️ VIGÍA DEPURADOR: Flujo de Ingredientes Locales (Secundarios)');
+        console.log(`[Petición] Consultando API -> /api/produccion/carro/${carroId}/ingredientes-vinculados`);
+        
         // Obtener ingredientes de artículos vinculados
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${colaborador.id}`);
 
         if (!response.ok) {
-            console.warn('⚠️ No se pudieron obtener ingredientes vinculados');
+            console.error(`❌ [FALLA API] HTTP Error: ${response.status} - El endpoint de ingredientes vinculados colapsó o no encontró datos.`);
+            alert(`Error de Sistema: No se pudieron cargar los ingredientes locales. Código: ${response.status}. Por favor contactar a soporte técnico.`);
+            console.groupEnd();
             return;
         }
 
         const ingredientesVinculados = await response.json();
-        console.log(`🔗 Ingredientes vinculados encontrados: ${ingredientesVinculados.length}`);
+        console.log(`✅ [VIGÍA A] Payload crudo recibido del Backend:`);
+        console.table(ingredientesVinculados);
+        console.groupEnd();
 
         // Crear o actualizar sección de informes vinculados
         let seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
@@ -443,10 +477,19 @@ async function mostrarInformesIngredientesVinculados() {
             seccionInformesVinculados.id = 'resumen-ingredientes-vinculados';
             seccionInformesVinculados.className = 'seccion-resumen';
 
-            // Insertar en el área derecha después de los informes principales
-            const workspaceRight = document.querySelector('.workspace-right');
-            if (workspaceRight) {
-                workspaceRight.appendChild(seccionInformesVinculados);
+            // Insertar debajo de los artículos secundarios o de la lista de artículos principal
+            const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
+            const listaArticulos = document.getElementById('lista-articulos');
+            
+            if (seccionSecundarios && seccionSecundarios.parentNode) {
+                seccionSecundarios.parentNode.insertBefore(seccionInformesVinculados, seccionSecundarios.nextSibling);
+            } else if (listaArticulos && listaArticulos.parentNode) {
+                listaArticulos.parentNode.insertBefore(seccionInformesVinculados, listaArticulos.nextSibling);
+            } else {
+                const workspaceLeft = document.querySelector('.workspace-left');
+                if (workspaceLeft) {
+                    workspaceLeft.appendChild(seccionInformesVinculados);
+                }
             }
         }
 
@@ -466,6 +509,7 @@ async function mostrarInformesIngredientesVinculados() {
                     <thead>
                         <tr>
                             <th>Ingrediente</th>
+                            <th>Proporción (por kilo)</th>
                             <th>Cantidad Necesaria</th>
                             <th>Stock General</th>
                             <th>Estado</th>
@@ -477,47 +521,23 @@ async function mostrarInformesIngredientesVinculados() {
             `;
 
             ingredientesVinculados.forEach(ing => {
-                // Validación robusta para evitar errores con .toFixed()
-                const stockActualRaw = ing.stock_actual;
-                const cantidadNecesariaRaw = ing.cantidad;
-
                 // Convertir a números de forma segura
-                let stockActual = 0;
-                let cantidadNecesaria = 0;
-
-                if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
-                    const stockParsed = parseFloat(stockActualRaw);
-                    stockActual = isNaN(stockParsed) ? 0 : stockParsed;
-                }
-
-                if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
-                    const cantidadParsed = parseFloat(cantidadNecesariaRaw);
-                    cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
-                }
-
-                const diferencia = stockActual - cantidadNecesaria;
-                const tieneStock = diferencia >= -0.01;
-                const faltante = tieneStock ? 0 : Math.abs(diferencia);
-
-                let indicadorEstado = '';
-                if (tieneStock) {
-                    indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
-                } else {
-                    indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
-                }
-
-                const botonIngresoManual = `<button onclick="window.abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+                let stockActual = parseFloat(ing.stock_actual) || 0;
+                let cantidadBase = parseFloat(ing.cantidad_base_por_kilo) || parseFloat(ing.cantidad) || 0;
+                
+                console.log(`✅ [VIGÍA B] Estado almacenado antes de renderizar para ${ing.nombre}: Base=${cantidadBase}, Stock=${stockActual}`);
 
                 html += `
-                    <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'} ingrediente-vinculado">
+                    <tr class="ingrediente-vinculado" data-base-kilo="${cantidadBase}" data-stock="${stockActual}" data-unidad="${ing.unidad_medida || ''}" data-id="${ing.id}">
                         <td>${ing.nombre || 'Sin nombre'}</td>
-                        <td>${cantidadNecesaria.toFixed(2)}</td>
+                        <td class="cell-proporcion font-weight-bold" style="color: #17a2b8;">${cantidadBase.toFixed(3)}</td>
+                        <td class="cell-requerido font-weight-bold" style="color: #6c757d;">0.000 <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #5d6d7e;">${ing.unidad_medida || 'kg'}</span></td>
                         <td>${stockActual.toFixed(2)}</td>
-                        <td>${indicadorEstado}</td>
+                        <td class="cell-estado">-</td>
                         <td>${ing.unidad_medida || ''}</td>
                         <td>
                             <div style="display: flex; gap: 8px; justify-content: center;">
-                                ${botonIngresoManual}
+                                <button onclick="window.abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>
                             </div>
                         </td>
                     </tr>
@@ -528,6 +548,62 @@ async function mostrarInformesIngredientesVinculados() {
                     </tbody>
                 </table>
             `;
+            
+            // Instalar el recalculador en tiempo real si el input existe
+            setTimeout(() => {
+                const inputKilos = document.getElementById('kilos-producidos');
+                if (inputKilos) {
+                    // Remover listeners viejos para evitar duplicación
+                    inputKilos.removeEventListener('input', window._recalcularVinculados);
+                    window._recalcularVinculados = function() {
+                        const kilos = parseFloat(this.value) || 0;
+                        const filas = document.querySelectorAll('.ingrediente-vinculado');
+                        
+                        filas.forEach(fila => {
+                            const baseKilo = parseFloat(fila.dataset.baseKilo) || 0;
+                            const stockActual = parseFloat(fila.dataset.stock) || 0;
+                            const unidad = fila.dataset.unidad || '';
+                            
+                            const cellRequerido = fila.querySelector('.cell-requerido');
+                            const cellEstado = fila.querySelector('.cell-estado');
+                            
+                            if (kilos <= 0) {
+                                cellRequerido.innerHTML = `0.000 <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #5d6d7e;">${unidad || 'kg'}</span>`;
+                                cellRequerido.style.color = '#6c757d';
+                                cellEstado.innerHTML = '-';
+                                fila.className = 'ingrediente-vinculado';
+                                return;
+                            }
+                            
+                            console.log(`✅ [VIGÍA C] Mapeo de tabla en tiempo real: Kilos Producidos=${kilos}, Base/Kilo=${baseKilo}`);
+                            
+                            const cantidadNecesaria = baseKilo * kilos;
+                            console.log(`✅ [VIGÍA D] Valor inyectado en celda de DOM (Requerido): ${cantidadNecesaria}`);
+                            
+                            cellRequerido.innerHTML = `${cantidadNecesaria.toFixed(3)} <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #555;">${unidad || 'kg'}</span>`;
+                            cellRequerido.style.color = '';
+                            
+                            const diferencia = stockActual - cantidadNecesaria;
+                            const tieneStock = diferencia >= -0.01;
+                            const faltante = tieneStock ? 0 : Math.abs(diferencia);
+                            
+                            if (tieneStock) {
+                                cellEstado.innerHTML = `<span class="stock-suficiente">✅ Suficiente</span>`;
+                                fila.className = 'ingrediente-vinculado stock-ok';
+                            } else {
+                                cellEstado.innerHTML = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${unidad}</span>`;
+                                fila.className = 'ingrediente-vinculado stock-faltante';
+                            }
+                        });
+                    };
+                    inputKilos.addEventListener('input', window._recalcularVinculados);
+                    
+                    // Disparar inmediatamente por si ya hay un valor
+                    if (inputKilos.value) {
+                        window._recalcularVinculados.call(inputKilos);
+                    }
+                }
+            }, 100);
         }
 
         seccionInformesVinculados.innerHTML = html;

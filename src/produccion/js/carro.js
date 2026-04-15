@@ -86,6 +86,25 @@ export async function actualizarEstadoCarro() {
         // Ordenar carros por fecha (más reciente primero)
         carros = carros.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
 
+        // INMERSIÓN VISUAL: Activar atmósfera si el carro activo es externo
+        const workspaceContainer = document.getElementById('workspace-container');
+        const topbarTitulo = document.querySelector('.topbar-titulo');
+        const carroActivoObj = carros.find(c => c.id.toString() === carroId);
+        
+        if (carroActivoObj && carroActivoObj.tipo_carro === 'externa') {
+            document.body.classList.add('contexto-externo');
+            if (workspaceContainer) workspaceContainer.classList.add('theme-externo');
+            if (topbarTitulo) {
+                topbarTitulo.innerHTML = '🚚 Producción <span class="badge-externo">MODO EXTERNO</span>';
+            }
+        } else {
+            document.body.classList.remove('contexto-externo');
+            if (workspaceContainer) workspaceContainer.classList.remove('theme-externo');
+            if (topbarTitulo) {
+                topbarTitulo.innerHTML = '🏭 Producción';
+            }
+        }
+
         if (carros.length === 0) {
             carroInfo.innerHTML = `
                 <div class="no-carros">
@@ -96,8 +115,7 @@ export async function actualizarEstadoCarro() {
             return;
         }
 
-        // Verificar permisos para mostrar botón de producción externa
-        let botonProduccionExterna = '';
+        // Verificar permisos para mostrar opción de producción externa en el modal global
         try {
             if (colaborador.rol_id != null) {
                 const respPerm = await fetch(
@@ -108,12 +126,9 @@ export async function actualizarEstadoCarro() {
                     const tienePermisoExterno = Array.isArray(permisos) &&
                         permisos.some(p => p.nombre === 'ProduccionesExternas');
 
-                    if (tienePermisoExterno) {
-                        botonProduccionExterna = `
-                    <button onclick="crearNuevoCarro('externa')" class="btn btn-primary" style="margin-left: 10px;">
-                        🚚 Crear Carro de Producción Externa
-                    </button>
-                    `;
+                    const btnOpExterna = document.getElementById('btn-opcion-externa');
+                    if (btnOpExterna) {
+                        btnOpExterna.style.display = tienePermisoExterno ? 'flex' : 'none';
                     }
                 } else {
                     console.debug('[ROLES] permisos HTTP', respPerm.status);
@@ -125,7 +140,6 @@ export async function actualizarEstadoCarro() {
             console.debug('[ROLES] error obteniendo permisos:', error);
         }
 
-
         // Agrupar carros por semanas y meses (nueva funcionalidad mixta)
         const gruposMixtos = agruparCarrosPorSemanasYMeses(carros);
 
@@ -133,9 +147,6 @@ export async function actualizarEstadoCarro() {
         let html = `
             <div class="carros-lista">
                 <h3>Tus carros de producción</h3>
-                <div class="botones-crear-carro" style="margin-bottom: 20px;">
-                    ${botonProduccionExterna}
-                </div>
         `;
 
         gruposMixtos.forEach((grupo, indiceGrupo) => {
@@ -1397,17 +1408,22 @@ export async function mostrarResumenIngredientes(ingredientes) {
     ingredientes.forEach(ing => {
         if (!ing.sector_letra) ing.sector_letra = 'Sin Sector';
         
+        // Normalizamos explícitamente la procedencia
+        const esVinculado = !!ing.es_de_articulo_vinculado;
+        
         if (!ingredientesUnicos[ing.id]) {
-            ingredientesUnicos[ing.id] = { ...ing };
+            ingredientesUnicos[ing.id] = { ...ing, es_de_articulo_vinculado: esVinculado };
         } else {
             // Si el ingrediente ya existe, sumamos su cantidad
             const cantidadExistente = parseFloat(ingredientesUnicos[ing.id].cantidad || 0);
             const cantidadNueva = parseFloat(ing.cantidad || 0);
             ingredientesUnicos[ing.id].cantidad = cantidadExistente + cantidadNueva;
             
-            // Priorizamos marcarlo como vinculado si en alguna de sus instancias lo es
-            if (ing.es_de_articulo_vinculado) {
-                ingredientesUnicos[ing.id].es_de_articulo_vinculado = true;
+            // 🎯 CORRECCIÓN TICKET #10 RE-OPEN: Salvaguarda para Stock Personal
+            // Solo es estrictamente secundario si TODAS sus instancias lo son.
+            // Si esta instancia o la anterior proceden del stock civil (base), queda como falso.
+            if (!esVinculado) {
+                ingredientesUnicos[ing.id].es_de_articulo_vinculado = false;
             }
         }
     });
@@ -1845,7 +1861,7 @@ async function obtenerArticulosDeRecetas(carroId, usuarioId) {
 async function obtenerIngredientesExpandidos(numeroArticulo) {
     try {
         const numeroArticuloEncoded = encodeURIComponent(numeroArticulo);
-        const response = await fetch(`http://localhost:3002/api/produccion/recetas/${numeroArticuloEncoded}/ingredientes-expandido`);
+        const response = await fetch(`http://localhost:3002/api/produccion/receta-expandida?codigo=${numeroArticuloEncoded}`);
         if (!response.ok) throw new Error('No se encontraron ingredientes');
         const ingredientes = await response.json();
 
@@ -1968,7 +1984,6 @@ export async function mostrarArticulosDelCarro() {
                     </div>
                     <div class="articulo-controls">
                         <button class="toggle-ingredientes">Ver</button>
-                        ${tipoCarro === 'externa' ? generarBotonesRelacion(art.numero, tieneRelacion, relacion) : ''}
                     </div>
 
                 </div>
@@ -2030,10 +2045,6 @@ export async function mostrarArticulosDelCarro() {
                 `;
             }
 
-            // Si hay relación, agregar fila del artículo vinculado
-            if (tieneRelacion && relacion.articulo_kilo_codigo) {
-                html += generarFilaArticuloVinculado(art.numero, relacion);
-            }
         }
 
         html += `</div>`; // cerrar seccion-articulos
@@ -2098,10 +2109,6 @@ function generarBotonesRelacion(articuloCodigo, tieneRelacion, relacion) {
  * @returns {string} HTML de la fila del artículo vinculado
  */
 function generarFilaArticuloVinculado(articuloProduccionCodigo, relacion) {
-    // Obtener el multiplicador, por defecto 1 si no existe
-    const multiplicador = relacion.multiplicador_ingredientes || 1;
-    const multiplicadorTexto = multiplicador === 1 ? '' : ` (×${multiplicador})`;
-
     // Obtener descripción y código de barras del artículo vinculado
     const descripcionVinculado = relacion.articulo_kilo_nombre || 'Artículo vinculado por kilo';
     const codigoBarrasVinculado = relacion.articulo_kilo_codigo_barras || '';
@@ -2113,11 +2120,10 @@ function generarFilaArticuloVinculado(articuloProduccionCodigo, relacion) {
                 <span class="articulo-codigo">${relacion.articulo_kilo_codigo}</span>
                 <span class="articulo-descripcion" title="${descripcionVinculado}">${descripcionVinculado}</span>
                 ${codigoBarrasVinculado ? `<span class="codigo-barras" title="Código de barras: ${codigoBarrasVinculado}">📊 ${codigoBarrasVinculado}</span>` : ''}
-                <span class="vinculo-etiqueta">Artículo vinculado${multiplicadorTexto}</span>
+                <span class="vinculo-etiqueta">Artículo vinculado</span>
             </div>
             <div class="articulo-actions">
                 <span class="cantidad-vinculada">Cantidad automática</span>
-                ${multiplicador !== 1 ? `<span class="multiplicador-info" title="Multiplicador de ingredientes">🔢 ${multiplicador}x</span>` : ''}
             </div>
             <div class="articulo-controls">
                 <button class="btn-editar-relacion-simple" 
@@ -2258,10 +2264,10 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
             console.log(`\n🔍 DEPURACIÓN CARGA DE RELACIÓN EXISTENTE:`);
             console.log('===============================================');
             console.log('- relacionId:', relacionId, typeof relacionId);
-            console.log('- URL a consultar:', `http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
+            console.log('- URL a consultar:', `http://localhost:3002/api/produccion/relacion-articulo/${encodeURIComponent(articuloCodigo)}`);
 
             try {
-                const response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
+                const response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${encodeURIComponent(articuloCodigo)}`);
                 console.log('- Response status:', response.status);
                 console.log('- Response ok:', response.ok);
 
@@ -2270,15 +2276,10 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
                     console.log('⚠️ Relación no encontrada (404) - tratando como nueva relación');
                     console.log('🔄 Limpiando campos para permitir crear relación desde cero');
 
-                    // Limpiar selector y multiplicador para modo "crear"
+                    // Limpiar selector para modo "crear"
                     const selector = document.getElementById('selector-articulo-vinculo');
                     if (selector) {
-                        selector.selectedIndex = 0; // Volver a "Seleccione un artículo..."
-                    }
-
-                    const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
-                    if (inputMultiplicador) {
-                        inputMultiplicador.value = 1; // Valor por defecto
+                        selector.selectedIndex = 0;
                     }
 
                     // Cambiar el modo del modal a "crear"
@@ -2290,7 +2291,6 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
                     console.log(`\n📋 DATOS DE RELACIÓN RECIBIDOS DEL SERVIDOR:`);
                     console.log('- Objeto completo:', JSON.stringify(relacion, null, 2));
                     console.log('- articulo_kilo_codigo:', relacion.articulo_kilo_codigo);
-                    console.log('- multiplicador_ingredientes RAW:', relacion.multiplicador_ingredientes, typeof relacion.multiplicador_ingredientes);
 
                     // Guardar artículo actualmente vinculado para resaltarlo
                     articuloActualmenteVinculado = relacion.articulo_kilo_codigo;
@@ -2300,27 +2300,11 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
                     if (selector && relacion.articulo_kilo_codigo) {
                         selector.value = relacion.articulo_kilo_codigo;
                         console.log('✅ Artículo preseleccionado en selector:', relacion.articulo_kilo_codigo);
-
-                        // 🎨 RESALTAR ARTÍCULO SELECCIONADO: Agregar indicador visual
-                        resaltarArticuloSeleccionado(relacion.articulo_kilo_codigo);
                     } else {
                         console.log('⚠️ No se pudo preseleccionar artículo - selector:', !!selector, 'codigo:', relacion.articulo_kilo_codigo);
                     }
 
-                    // Cargar el multiplicador existente
-                    const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
-                    console.log('\n🔢 PROCESANDO MULTIPLICADOR:');
-                    console.log('- Input multiplicador encontrado:', !!inputMultiplicador);
 
-                    if (inputMultiplicador) {
-                        const valorMultiplicador = relacion.multiplicador_ingredientes || 1;
-                        inputMultiplicador.value = valorMultiplicador;
-                        console.log('- Valor asignado al input:', valorMultiplicador);
-                        console.log('- Valor actual del input después de asignar:', inputMultiplicador.value);
-                        console.log('✅ Multiplicador cargado en el input');
-                    } else {
-                        console.log('❌ No se encontró el input multiplicador-ingredientes');
-                    }
                 } else {
                     const errorText = await response.text();
                     console.warn('⚠️ Error al cargar relación (no 404)');
@@ -2331,56 +2315,57 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
                 console.error('❌ Error al cargar datos de relación:', error);
                 console.error('- Error completo:', error.message);
             }
-        } else {
-            console.log(`\n🔢 ESTABLECIENDO MULTIPLICADOR POR DEFECTO:`);
-            console.log('- relacionId es null/undefined, estableciendo valor por defecto');
-
-            // Para nuevas relaciones, establecer valor por defecto
-            const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
-            if (inputMultiplicador) {
-                inputMultiplicador.value = 1;
-                console.log('✅ Multiplicador establecido por defecto: 1');
-                console.log('- Valor actual del input:', inputMultiplicador.value);
-            } else {
-                console.log('❌ No se encontró el input multiplicador-ingredientes para valor por defecto');
-            }
         }
 
-        // 🎯 OCULTAR MULTIPLICADOR COMPLETO: Simplificación UX
-        const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
+        // Elementos de estado visual (Estado A: Existente, Estado B: Búsqueda)
+        const vinculoExistenteSection = document.getElementById('vinculo-existente-section');
+        const selectorVinculoSection = document.getElementById('selector-vinculo-section');
+        const btnCambiarVinculo = document.getElementById('btn-cambiar-vinculo');
+        
+        // Reset inicial de visibilidad (Modo Búsqueda por defecto)
+        if (vinculoExistenteSection) vinculoExistenteSection.style.display = 'none';
+        if (selectorVinculoSection) selectorVinculoSection.style.display = 'block';
 
-        if (inputMultiplicador) {
-            inputMultiplicador.value = 1; // Siempre forzar a 1
-
-            // Buscar la sección completa del multiplicador (incluye el h3 con el título)
-            const seccionMultiplicador = inputMultiplicador.closest('.multiplicador-section');
-
-            if (seccionMultiplicador) {
-                seccionMultiplicador.style.display = 'none'; // Ocultar sección completa con título
-                console.log('🎯 [UX-OPTIMIZADA] Sección completa del multiplicador ocultada (incluye título)');
-            } else {
-                // Fallback: intentar ocultar form-group
-                const contenedorCompleto = inputMultiplicador.closest('.form-group') ||
-                    inputMultiplicador.closest('div') ||
-                    inputMultiplicador.parentElement;
-
-                if (contenedorCompleto) {
-                    contenedorCompleto.style.display = 'none';
-                    console.log('🎯 [UX-OPTIMIZADA] Contenedor del multiplicador ocultado (fallback)');
-                } else {
-                    inputMultiplicador.style.display = 'none';
-                    console.log('🎯 [UX-OPTIMIZADA] Solo input ocultado (fallback final)');
+        // 🎯 Si se está editando una relación existente, cambiar a Estado A
+        if (articuloActualmenteVinculado) {
+            // La receta se cargará automáticamente vía el evento 'change' disparado por cargarArticulosParaVinculo
+            
+            if (vinculoExistenteSection && selectorVinculoSection) {
+                vinculoExistenteSection.style.display = 'block';
+                selectorVinculoSection.style.display = 'none';
+                
+                // Setear información visual del vínculo actual extraída del array general
+                const codigoArt = modal.querySelector('#vinculo-existente-section .articulo-codigo-padre');
+                const descArt = modal.querySelector('#vinculo-existente-section .articulo-descripcion-padre');
+                
+                if (codigoArt) codigoArt.textContent = articuloActualmenteVinculado;
+                
+                // Buscar nombre
+                const selector = document.getElementById('selector-articulo-vinculo');
+                if (selector) {
+                    const opcion = selector.querySelector(`option[value="${articuloActualmenteVinculado}"]`);
+                    if (opcion && descArt) {
+                        descArt.textContent = opcion.dataset.nombre || 'Artículo vinculado';
+                    }
+                }
+                
+                // Configurar el botón de cambio
+                if (btnCambiarVinculo) {
+                    btnCambiarVinculo.onclick = (e) => {
+                        e.preventDefault();
+                        vinculoExistenteSection.style.display = 'none';
+                        selectorVinculoSection.style.display = 'block';
+                        // Limpiar selection actual en el desplegable y receta para obligar nueva búsqueda
+                        selector.value = '';
+                        document.getElementById('preview-receta-vinculo').style.display = 'none';
+                    };
                 }
             }
         }
-        console.log('🎯 [UX-OPTIMIZADA] Multiplicador forzado a 1 y ocultado completamente');
 
         // Configurar datos del modal
         modal.dataset.articuloCodigo = articuloCodigo;
         modal.dataset.relacionId = relacionId;
-
-        // 🖱️ HACER MODAL DRAGGABLE: Permitir moverlo por la pantalla
-        hacerModalDraggable(modal);
 
         // Mostrar el modal
         modal.style.display = 'block';
@@ -2392,118 +2377,6 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
         console.error('Error al abrir modal simplificado:', error);
         mostrarError(error.message);
     }
-}
-
-/**
- * Hace un modal draggable (arrastrable) desde su encabezado
- * @param {HTMLElement} modal - El elemento modal a hacer draggable
- */
-function hacerModalDraggable(modal) {
-    if (!modal) return;
-
-    // Buscar el encabezado del modal (h2, h3, o .modal-header)
-    const header = modal.querySelector('h2') || modal.querySelector('h3') || modal.querySelector('.modal-header');
-
-    if (!header) {
-        console.warn('⚠️ No se encontró encabezado para hacer el modal draggable');
-        return;
-    }
-
-    // Cambiar cursor para indicar que es arrastrable
-    header.style.cursor = 'move';
-    header.title = 'Arrastra para mover el modal';
-
-    let isDragging = false;
-    let currentX;
-    let currentY;
-    let initialX;
-    let initialY;
-    let xOffset = 0;
-    let yOffset = 0;
-
-    // Obtener el contenedor del modal (modal-content)
-    const modalContent = modal.querySelector('.modal-content') || modal;
-
-    header.addEventListener('mousedown', dragStart);
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('mouseup', dragEnd);
-
-    function dragStart(e) {
-        initialX = e.clientX - xOffset;
-        initialY = e.clientY - yOffset;
-
-        if (e.target === header || header.contains(e.target)) {
-            isDragging = true;
-            modalContent.style.transition = 'none'; // Desactivar transiciones durante el arrastre
-        }
-    }
-
-    function drag(e) {
-        if (isDragging) {
-            e.preventDefault();
-
-            currentX = e.clientX - initialX;
-            currentY = e.clientY - initialY;
-
-            xOffset = currentX;
-            yOffset = currentY;
-
-            setTranslate(currentX, currentY, modalContent);
-        }
-    }
-
-    function dragEnd(e) {
-        if (isDragging) {
-            initialX = currentX;
-            initialY = currentY;
-            isDragging = false;
-            modalContent.style.transition = ''; // Restaurar transiciones
-        }
-    }
-
-    function setTranslate(xPos, yPos, el) {
-        el.style.transform = `translate(${xPos}px, ${yPos}px)`;
-    }
-
-    console.log('🖱️ [DRAGGABLE] Modal configurado como draggable desde el encabezado');
-}
-
-/**
- * Resalta visualmente el artículo actualmente seleccionado en el selector
- * @param {string} articuloCodigo - Código del artículo a resaltar
- */
-function resaltarArticuloSeleccionado(articuloCodigo) {
-    if (!articuloCodigo) return;
-
-    // Esperar un momento para que el selector esté completamente renderizado
-    setTimeout(() => {
-        const selector = document.getElementById('selector-articulo-vinculo');
-        if (!selector) return;
-
-        // Buscar la opción correspondiente
-        const opciones = selector.querySelectorAll('option');
-        opciones.forEach(opcion => {
-            if (opcion.value === articuloCodigo) {
-                // Agregar indicador visual en el texto
-                const textoOriginal = opcion.textContent;
-                if (!textoOriginal.includes('✅ VINCULADO')) {
-                    opcion.textContent = `✅ VINCULADO ACTUALMENTE - ${textoOriginal}`;
-                    opcion.style.backgroundColor = '#e8f5e9';
-                    opcion.style.fontWeight = 'bold';
-                    opcion.style.color = '#2e7d32';
-                }
-                console.log('🎨 [RESALTADO] Artículo actualmente vinculado resaltado:', articuloCodigo);
-            }
-        });
-
-        // Hacer scroll al artículo seleccionado
-        if (selector.value === articuloCodigo) {
-            const opcionSeleccionada = selector.querySelector(`option[value="${articuloCodigo}"]`);
-            if (opcionSeleccionada) {
-                opcionSeleccionada.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            }
-        }
-    }, 100);
 }
 
 /**
@@ -2535,13 +2408,8 @@ async function cargarArticulosParaVinculo() {
         // 🎯 FILTRADO INTELIGENTE: Solo artículos fraccionables (por kilo)
         const articulosFraccionables = lista.filter(art => {
             const nombreLower = (art.nombre || '').toLowerCase();
-            const unidadMedida = (art.unidad_medida || '').toLowerCase();
-
-            return nombreLower.includes('por kilo') ||
-                nombreLower.includes('x kilo') ||
-                nombreLower.includes('x kg') ||
-                nombreLower.includes('xkg') ||
-                unidadMedida === 'kilo';
+            // Buscar "x kilo" o "xkilo" o "x  kilo" (insensible a mayúsculas)
+            return /x\s*kilo/i.test(nombreLower);
         });
 
         console.log(`🎯 [FILTRO-VINCULO] Artículos totales: ${lista.length}, Fraccionables: ${articulosFraccionables.length}`);
@@ -2568,6 +2436,18 @@ async function cargarArticulosParaVinculo() {
         // Configurar búsqueda en tiempo real con lista filtrada
         configurarBusquedaVinculo(articulosFraccionables);
 
+        // 🎯 EVENT LISTENER ÚNICO: Al seleccionar artículo, cargar preview de receta (usamos onchange para evitar multiplicar listeners al reabrir el modal)
+        selector.onchange = (e) => {
+            const codigoSeleccionado = e.target.value;
+            if (codigoSeleccionado) {
+                cargarPreviewReceta(codigoSeleccionado);
+            } else {
+                // Ocultar preview si se deselecciona
+                const previewSection = document.getElementById('preview-receta-vinculo');
+                if (previewSection) previewSection.style.display = 'none';
+            }
+        };
+
     } catch (error) {
         console.error('Error al cargar artículos:', error);
         const selector = document.getElementById('selector-articulo-vinculo');
@@ -2593,11 +2473,12 @@ function configurarBusquedaVinculo(articulos) {
         // Limpiar selector
         selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
 
-        // Filtrar artículos
-        const articulosFiltrados = articulos.filter(articulo =>
-            articulo.numero.toLowerCase().includes(termino) ||
-            articulo.nombre.toLowerCase().includes(termino)
-        );
+        // 🎯 Filtrado Inteligente Multitérmino
+        const terminos = termino.split(/\s+/).filter(t => t.length > 0);
+        const articulosFiltrados = articulos.filter(articulo => {
+            const indexCorpus = `${articulo.numero} ${articulo.nombre}`.toLowerCase();
+            return terminos.every(t => indexCorpus.includes(t));
+        });
 
         // Agregar opciones filtradas
         articulosFiltrados.forEach(articulo => {
@@ -2608,6 +2489,160 @@ function configurarBusquedaVinculo(articulos) {
             selector.appendChild(option);
         });
     });
+}
+
+/**
+ * Carga y renderiza la preview de receta del artículo vinculado seleccionado.
+ * Consulta la API de ingredientes expandidos y muestra la tabla dinámica.
+ * @param {string} articuloKiloCodigo - Código del artículo por kilo seleccionado
+ */
+async function cargarPreviewReceta(articuloKiloCodigo) {
+    const previewSection = document.getElementById('preview-receta-vinculo');
+    const loadingDiv = document.getElementById('preview-receta-loading');
+    const emptyDiv = document.getElementById('preview-receta-empty');
+    const tabla = document.getElementById('preview-receta-tabla');
+    const tbody = document.getElementById('preview-receta-tbody');
+
+    if (!previewSection || !tbody) {
+        console.warn('⚠️ [PREVIEW-RECETA] Elementos del DOM no encontrados');
+        return;
+    }
+
+    // Mostrar sección con estado de carga
+    previewSection.style.display = 'block';
+    if (loadingDiv) loadingDiv.style.display = 'flex';
+    if (emptyDiv) emptyDiv.style.display = 'none';
+    if (tabla) tabla.style.display = 'none';
+    tbody.innerHTML = '';
+
+    try {
+        console.log(`📋 [PREVIEW-RECETA] Consultando receta expandida para: ${articuloKiloCodigo}`);
+
+        const codigoCodificado = encodeURIComponent(articuloKiloCodigo);
+        const response = await fetch(`http://localhost:3002/api/produccion/receta-expandida?codigo=${codigoCodificado}`);
+
+        // Ocultar loading
+        if (loadingDiv) loadingDiv.style.display = 'none';
+
+        if (response.status === 404) {
+            // Artículo sin receta - permitir que agregue ingredientes
+            console.log(`⚠️ [PREVIEW-RECETA] Artículo ${articuloKiloCodigo} no tiene receta`);
+            if (emptyDiv) emptyDiv.style.display = 'flex';
+            
+            // Mostrar controles de todos modos
+            if (tabla) tabla.style.display = 'table';
+            const btnGuardar = document.getElementById('btn-guardar-receta-inline');
+            if (btnGuardar) {
+                btnGuardar.style.display = 'block';
+                btnGuardar.dataset.articuloCodigo = encodeURIComponent(articuloKiloCodigo);
+                btnGuardar.dataset.esNueva = 'true';
+            }
+            const addRow = document.getElementById('agregar-ingrediente-vinculo-row');
+            if (addRow) addRow.style.display = 'flex';
+            
+            // Si no hay receta previa, limpiar pero mostrar tabla para que agregue
+            tbody.innerHTML = '';
+            configurarBuscadorIngredientesVinculo();
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(`Error del servidor: ${response.status}`);
+        }
+
+        const ingredientes = await response.json();
+        console.log(`✅ [PREVIEW-RECETA] ${ingredientes.length} ingredientes obtenidos`);
+
+        if (!Array.isArray(ingredientes) || ingredientes.length === 0) {
+            // Receta vacía
+            if (emptyDiv) emptyDiv.style.display = 'flex';
+            return;
+        }
+
+        // 🎯 INTERCEPCIÓN VITAL: Recuperar ingredientes customizados guardados (override a la global)
+        const modal = document.getElementById('modal-editar-vinculo');
+        const relacionId = modal.dataset.relacionId;
+        const articuloCodigo = modal.dataset.articuloCodigo;
+        
+        if (relacionId && relacionId !== 'undefined' && relacionId !== 'null' && articuloCodigo) {
+            try {
+                const relResponse = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${encodeURIComponent(articuloCodigo)}`);
+                if (relResponse.ok) {
+                    const relacion = await relResponse.json();
+                    if (relacion && relacion.ingredientes_custom && Array.isArray(relacion.ingredientes_custom)) {
+                        console.log('🔄 [PERSISTENCIA] Inyectando receta customizada guardada en la tabla...');
+                        relacion.ingredientes_custom.forEach(custom => {
+                            const baseItem = ingredientes.find(ing => (ing.id == custom.ingrediente_id) || (ing.ingrediente_id == custom.ingrediente_id));
+                            if (baseItem) {
+                                baseItem.cantidad = custom.cantidad; // Sobrescribir con la cantidad editada y persistida
+                            } else {
+                                // Reinyectar adiciones manuales que no estaban en la receta origen
+                                ingredientes.push({
+                                    id: custom.ingrediente_id,
+                                    ingrediente_id: custom.ingrediente_id,
+                                    nombre_ingrediente: custom.nombre_ingrediente || 'Ingrediente Extra',
+                                    unidad_medida: custom.unidad_medida || 'kg',
+                                    cantidad: custom.cantidad
+                                });
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('Error al intentar recuperar receta custom', e);
+            }
+        }
+
+        // Renderizar tabla de ingredientes
+        ingredientes.forEach(ing => {
+            const tr = document.createElement('tr');
+            const cantidadBase = parseFloat(ing.cantidad);
+            const cantidadFormateada = cantidadBase.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+
+            tr.innerHTML = `
+                <td>${ing.nombre || ing.nombre_ingrediente || '-'}</td>
+                <td>
+                    <input type="text" inputmode="decimal" class="input-receta-inline" 
+                           data-ing-id="${ing.id || ing.ingrediente_id}" 
+                           data-nombre="${ing.nombre || ing.nombre_ingrediente || ''}" 
+                           data-unidad="${ing.unidad_medida || 'kg'}" 
+                           value="${cantidadFormateada}" 
+                           min="0" step="0.0001" 
+                           style="width: 80px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
+                </td>
+                <td>${ing.unidad_medida || 'kg'}</td>
+                <td>
+                    <button class="btn-eliminar-ing-inline" onclick="this.closest('tr').remove()" title="Quitar ingrediente">🗑️</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Habilitar agregados manuales
+        const addRow = document.getElementById('agregar-ingrediente-vinculo-row');
+        if (addRow) addRow.style.display = 'flex';
+        configurarBuscadorIngredientesVinculo();
+
+        // Mostrar tabla y botón de guardado
+        if (tabla) tabla.style.display = 'table';
+        const btnGuardar = document.getElementById('btn-guardar-receta-inline');
+        if (btnGuardar) {
+            btnGuardar.style.display = 'block';
+            // Guardar en el botón a qué artículo pertenece la receta
+            btnGuardar.dataset.articuloCodigo = encodeURIComponent(articuloKiloCodigo);
+            btnGuardar.dataset.esNueva = 'false';
+        }
+        
+        console.log(`✅ [PREVIEW-RECETA] Tabla renderizada con ${ingredientes.length} filas`);
+
+    } catch (error) {
+        console.error('❌ [PREVIEW-RECETA] Error al cargar receta:', error);
+        if (loadingDiv) loadingDiv.style.display = 'none';
+        if (emptyDiv) {
+            emptyDiv.querySelector('span:last-child').textContent = 'Error al cargar la receta. Intente de nuevo.';
+            emptyDiv.style.display = 'flex';
+        }
+    }
 }
 
 /**
@@ -2631,7 +2666,143 @@ function cerrarModalEditarVinculo() {
 
         if (inputBusqueda) inputBusqueda.value = '';
         if (selector) selector.selectedIndex = 0;
+
+        // 🎯 Limpiar panel de preview de receta
+        const previewSection = document.getElementById('preview-receta-vinculo');
+        const previewTbody = document.getElementById('preview-receta-tbody');
+        const addRow = document.getElementById('agregar-ingrediente-vinculo-row');
+        
+        if (previewSection) previewSection.style.display = 'none';
+        if (previewTbody) previewTbody.innerHTML = '';
+        if (addRow) addRow.style.display = 'none';
     }
+}
+
+/**
+ * Configura la búsqueda y agregado de ingredientes manuales en el modal de vínculo
+ */
+async function configurarBuscadorIngredientesVinculo() {
+    const inputBuscar = document.getElementById('buscar-ingrediente-vinculo');
+    const inputCantidad = document.getElementById('cantidad-ingrediente-vinculo');
+    const ulResultados = document.getElementById('lista-resultados-vinculo');
+    const btnAgregar = document.getElementById('btn-agregar-a-vinculo');
+    const tbody = document.getElementById('preview-receta-tbody');
+    const emptyDiv = document.getElementById('preview-receta-empty');
+    let ingredienteSeleccionado = null;
+
+    if (!inputBuscar || !ulResultados || !btnAgregar || !tbody) return;
+
+    // Solo configurar una vez
+    if (inputBuscar.dataset.configurado === 'true') return;
+    inputBuscar.dataset.configurado = 'true';
+
+    // Cargar ingredientes si no existen
+    if (!window.ingredientesLista || window.ingredientesLista.length === 0) {
+        try {
+            const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+            if (response.ok) {
+                window.ingredientesLista = await response.json();
+            } else {
+                window.ingredientesLista = [];
+            }
+        } catch (e) {
+            console.error('Error al cargar lista de ingredientes', e);
+            window.ingredientesLista = [];
+        }
+    }
+
+    inputBuscar.addEventListener('input', function() {
+        const termino = this.value.toLowerCase().trim();
+        ulResultados.innerHTML = '';
+        ingredienteSeleccionado = null;
+
+        if (termino.length < 2) {
+            ulResultados.style.display = 'none';
+            return;
+        }
+
+        // 🎯 Filtrado Inteligente Multitérmino
+        const terminos = termino.split(/\s+/).filter(t => t.length > 0);
+        const filtrados = window.ingredientesLista.filter(ing => {
+            const indexCorpus = `${ing.id || ''} ${ing.nombre}`.toLowerCase();
+            return terminos.every(t => indexCorpus.includes(t));
+        });
+
+        if (filtrados.length > 0) {
+            filtrados.forEach(ing => {
+                const li = document.createElement('li');
+                li.textContent = `${ing.nombre} (${ing.unidad_medida})`;
+                li.addEventListener('click', () => {
+                    inputBuscar.value = ing.nombre;
+                    ingredienteSeleccionado = ing;
+                    ulResultados.style.display = 'none';
+                    inputCantidad.focus();
+                });
+                ulResultados.appendChild(li);
+            });
+            ulResultados.style.display = 'block';
+        } else {
+            ulResultados.style.display = 'none';
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target !== inputBuscar && e.target !== ulResultados) {
+            ulResultados.style.display = 'none';
+        }
+    });
+
+    btnAgregar.addEventListener('click', (e) => {
+        e.preventDefault();
+        const cantidad = parseFloat(inputCantidad.value);
+
+        if (!ingredienteSeleccionado) {
+            alert('Por favor, busque y seleccione un ingrediente de la lista.');
+            return;
+        }
+        if (isNaN(cantidad) || cantidad <= 0) {
+            alert('Por favor, ingrese una cantidad válida mayor a 0.');
+            return;
+        }
+
+        // Revisar si ya existe
+        const existentes = tbody.querySelectorAll('.input-receta-inline');
+        for (const input of existentes) {
+            if (parseInt(input.dataset.ingId) === ingredienteSeleccionado.id) {
+                alert('Este ingrediente ya está en la receta.');
+                return;
+            }
+        }
+
+        // Remover cartel vacío si estaba
+        if (emptyDiv) emptyDiv.style.display = 'none';
+        const tabla = document.getElementById('preview-receta-tabla');
+        if (tabla) tabla.style.display = 'table';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${ingredienteSeleccionado.nombre}</td>
+            <td>
+                <input type="number" class="input-receta-inline" 
+                       data-ing-id="${ingredienteSeleccionado.id}" 
+                       data-nombre="${ingredienteSeleccionado.nombre}" 
+                       data-unidad="${ingredienteSeleccionado.unidad_medida}" 
+                       value="${cantidad.toFixed(4)}" 
+                       min="0" step="0.0001" 
+                       style="width: 80px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
+            </td>
+            <td>${ingredienteSeleccionado.unidad_medida}</td>
+            <td>
+                <button class="btn-eliminar-ing-inline" onclick="this.closest('tr').remove()" title="Quitar ingrediente">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+
+        // Limpiar inputs
+        inputBuscar.value = '';
+        inputCantidad.value = '';
+        ingredienteSeleccionado = null;
+    });
 }
 
 /**
@@ -2639,20 +2810,10 @@ function cerrarModalEditarVinculo() {
  */
 async function procesarGuardadoVinculo() {
     try {
-        console.log('\n🔍 DEPURACIÓN FRONTEND - procesarGuardadoVinculo():');
-        console.log('=======================================================');
-
         const modal = document.getElementById('modal-editar-vinculo');
         const selector = document.getElementById('selector-articulo-vinculo');
-        const inputMultiplicador = document.getElementById('multiplicador-ingredientes');
-
-        console.log('\n📋 ELEMENTOS DEL MODAL:');
-        console.log('- modal encontrado:', !!modal);
-        console.log('- selector encontrado:', !!selector);
-        console.log('- inputMultiplicador encontrado:', !!inputMultiplicador);
 
         if (!modal || !selector) {
-            console.log('❌ ERROR: No se encontraron los elementos del modal');
             throw new Error('No se encontraron los elementos del modal');
         }
 
@@ -2660,14 +2821,8 @@ async function procesarGuardadoVinculo() {
         const relacionId = modal.dataset.relacionId;
         const articuloKiloCodigo = selector.value;
 
-        // 🎯 FORZAR MULTIPLICADOR A 1: Simplificación UX
-        const multiplicadorIngredientes = 1;
-
-        console.log('\n📋 VALORES EXTRAÍDOS DEL MODAL:');
-        console.log('- articuloCodigo:', articuloCodigo);
-        console.log('- relacionId:', relacionId);
-        console.log('- articuloKiloCodigo:', articuloKiloCodigo);
-        console.log('- multiplicadorIngredientes: 1 (FORZADO)');
+        console.log(`\n🕵️‍♂️ VIGÍA DEPURADOR: Iniciando handleSaveLink (procesarGuardadoVinculo)`);
+        console.log(`🔗 Guardando vínculo: ${articuloCodigo} → ${articuloKiloCodigo} (modo: ${relacionId ? 'editar' : 'crear'})`);
 
         if (!articuloCodigo) {
             console.log('❌ ERROR: Código de artículo de producción no válido');
@@ -2680,25 +2835,53 @@ async function procesarGuardadoVinculo() {
             return;
         }
 
-        console.log(`\n🔗 PROCESANDO VÍNCULO: ${articuloCodigo} -> ${articuloKiloCodigo}`);
-        console.log(`🔢 MULTIPLICADOR FINAL: 1 (FORZADO)`);
-        console.log(`📋 MODO: ${relacionId ? 'editar' : 'crear'} | RelacionId: ${relacionId}`);
+
 
         let response;
         let mensaje;
         let requestBody;
 
+        // 1. Recolectar ingredientes custom de los inputs inline (si existen y fueron modificados)
+        let ingredientesCustom = [];
+        console.log('🔍 [VIGÍA] Capturando inputs de la tabla del modal...');
+        const inputsInline = document.querySelectorAll('.input-receta-inline');
+        if (inputsInline.length > 0) {
+            inputsInline.forEach(input => {
+                const ingrediente_id = parseInt(input.dataset.ingId);
+                const cantidadRaw = input.value || '';
+                // Transformación defensiva de origen: convertir coma europea a punto primitivo
+                const cantidadParsed = parseFloat(cantidadRaw.replace(',', '.'));
+                
+                const idSeguro = isNaN(ingrediente_id) ? null : ingrediente_id;
+                
+                console.log(`  ➡️ [PARSE] Ingrediente ID ${idSeguro} | Input Txt: "${cantidadRaw}" -> Float nativo: ${cantidadParsed}`);
+                
+                const nombre_ingrediente = input.dataset.nombre || null;
+                const unidad_medida = input.dataset.unidad || 'kg';
+                
+                if (!isNaN(cantidadParsed) && cantidadParsed > 0) {
+                    ingredientesCustom.push({ 
+                        ingrediente_id: idSeguro, 
+                        cantidad: cantidadParsed, 
+                        nombre_ingrediente,
+                        unidad_medida
+                    });
+                } else {
+                    console.warn(`  ⚠️ DATO IGNORADO: cantidad inválida=${cantidadParsed} para ingrediente ${nombre_ingrediente}`);
+                }
+            });
+        }
+        
+        console.log(`📦 [VIGÍA] Array JSON final (ingredientes_custom) a persistir:`, ingredientesCustom);
+
         if (relacionId && relacionId !== 'undefined' && relacionId !== 'null') {
             // Editar relación existente
             requestBody = {
                 articulo_kilo_codigo: articuloKiloCodigo,
-                multiplicador_ingredientes: multiplicadorIngredientes
+                ingredientes_custom: ingredientesCustom.length > 0 ? ingredientesCustom : null
             };
 
-            console.log(`\n✏️ EDITANDO RELACIÓN EXISTENTE:`);
-            console.log('- URL:', `http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`);
-            console.log('- Method: PUT');
-            console.log('- Body:', JSON.stringify(requestBody, null, 2));
+            console.log(`✏️ Editando relación ${relacionId}: PUT /relacion-articulo/${relacionId}`);
 
             response = await fetch(`http://localhost:3002/api/produccion/relacion-articulo/${relacionId}`, {
                 method: 'PUT',
@@ -2713,13 +2896,10 @@ async function procesarGuardadoVinculo() {
             requestBody = {
                 articulo_produccion_codigo: articuloCodigo,
                 articulo_kilo_codigo: articuloKiloCodigo,
-                multiplicador_ingredientes: multiplicadorIngredientes
+                ingredientes_custom: ingredientesCustom.length > 0 ? ingredientesCustom : null
             };
 
-            console.log(`\n➕ CREANDO NUEVA RELACIÓN:`);
-            console.log('- URL:', 'http://localhost:3002/api/produccion/relacion-articulo');
-            console.log('- Method: POST');
-            console.log('- Body:', JSON.stringify(requestBody, null, 2));
+            console.log(`➕ Creando nueva relación: POST /relacion-articulo`);
 
             response = await fetch('http://localhost:3002/api/produccion/relacion-articulo', {
                 method: 'POST',
@@ -2731,18 +2911,13 @@ async function procesarGuardadoVinculo() {
             mensaje = 'Vínculo creado correctamente';
         }
 
-        console.log('\n📡 RESPUESTA DEL SERVIDOR:');
-        console.log('- Status:', response.status);
-        console.log('- OK:', response.ok);
-
         if (!response.ok) {
             const errorData = await response.json();
-            console.log('❌ ERROR EN RESPUESTA:', errorData);
             throw new Error(errorData.error || 'Error al procesar la relación');
         }
 
         const resultado = await response.json();
-        console.log('✅ VÍNCULO PROCESADO EXITOSAMENTE:', JSON.stringify(resultado, null, 2));
+        console.log(`✅ Vínculo procesado: ${resultado.id || 'OK'}`);
 
         // Mostrar notificación de éxito
         mostrarNotificacionExito(mensaje);
@@ -3073,11 +3248,105 @@ document.addEventListener('click', async (e) => {
         const articuloKiloNombre = e.target.dataset.nombre;
         await procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNombre);
     }
+
+    if (e.target.id === 'btn-guardar-receta-inline') {
+        window.guardarRecetaInline();
+    }
 });
 
 // Hacer funciones disponibles globalmente para reactividad
 window.obtenerResumenIngredientesCarro = obtenerResumenIngredientesCarro;
 window.mostrarResumenIngredientes = mostrarResumenIngredientes;
+
+window.guardarRecetaInline = async function() {
+    console.log('\n🕵️‍♂️ VIGÍA DEPURADOR: Iniciando handleSaveRecipe (guardarRecetaInline)');
+    try {
+        const btnGuardar = document.getElementById('btn-guardar-receta-inline');
+        if (!btnGuardar) throw new Error('No se encontró el botón de guardado');
+        const articuloCodigo = decodeURIComponent(btnGuardar.dataset.articuloCodigo);
+        if (!articuloCodigo || articuloCodigo === 'undefined') throw new Error('Código de artículo no válido');
+
+        // 1. Recolectar ingredientes
+        let ingredientes = [];
+        console.log('🔍 [VIGÍA] Capturando inputs de receta inline para receta BASE (global)...');
+        const inputsInline = document.querySelectorAll('.input-receta-inline');
+        inputsInline.forEach(input => {
+            const ingrediente_id = parseInt(input.dataset.ingId);
+            const cantidadRaw = input.value || '';
+            const cantidadParsed = parseFloat(cantidadRaw.replace(',', '.'));
+            
+            const idSeguro = isNaN(ingrediente_id) ? null : ingrediente_id;
+            
+            console.log(`  ➡️ [PARSE] Ingrediente ID ${idSeguro} | Input Txt: "${cantidadRaw}" -> Float nativo: ${cantidadParsed}`);
+            
+            if (!isNaN(cantidadParsed) && cantidadParsed > 0) {
+                ingredientes.push({
+                    ingrediente_id: idSeguro,
+                    cantidad: cantidadParsed,
+                    nombre_ingrediente: input.dataset.nombre,
+                    unidad_medida: input.dataset.unidad || 'kg'
+                });
+            } else {
+                console.warn(`  ⚠️ DATO IGNORADO: cantidad inválida=${cantidadParsed} para ingrediente ${input.dataset.nombre}`);
+            }
+        });
+
+        console.log(`📦 [VIGÍA] Array JSON a depositar en BD Recetas Global:`, ingredientes);
+
+        if (ingredientes.length === 0) {
+            alert('Debe agregar al menos un ingrediente válido mayor a 0');
+            return;
+        }
+
+        const requestBody = {
+            articulo_numero: articuloCodigo,
+            descripcion: `Receta de ${articuloCodigo}`,
+            ingredientes: ingredientes,
+            articulos: [],
+            esProduccionExternaConArticuloPrincipal: false
+        };
+
+        const esNueva = btnGuardar.dataset.esNueva === 'true';
+        const finalMethod = esNueva ? 'POST' : 'PUT';
+        const url = esNueva 
+            ? 'http://localhost:3002/api/produccion/recetas' 
+            : `http://localhost:3002/api/produccion/recetas/${articuloCodigo}`;
+
+        console.log(`🚀 [VIGÍA] Ejecutando ${finalMethod} a ${url}...`);
+        console.log('- Payload JSON:', JSON.stringify(requestBody));
+
+        const response = await fetch(url, {
+            method: finalMethod,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Status ${response.status}: ${errText}`);
+        }
+
+        console.log('✅ [VIGÍA] Status 200/201 alcanzado - Receta global depositada c/éxito.');
+        
+        // Efecto UX de éxito
+        const emptyDiv = document.getElementById('preview-receta-empty');
+        if (emptyDiv) emptyDiv.style.display = 'none';
+        
+        btnGuardar.classList.remove('btn-primary');
+        btnGuardar.classList.add('btn-success');
+        btnGuardar.textContent = '✅ Guardada';
+        setTimeout(() => {
+            btnGuardar.classList.remove('btn-success');
+            btnGuardar.classList.add('btn-primary');
+            btnGuardar.textContent = '💾 Guardar Receta';
+            btnGuardar.style.display = 'none'; // Se oculta porque legalmente ya existe
+        }, 3000);
+
+    } catch (e) {
+        console.error('❌ [VIGÍA] Error crítico (Unhandled Exception atrapada) en handleSaveRecipe:\n', e);
+        alert(`Error al guardar receta: ${e.message}`);
+    }
+};
 
 // ==========================================
 // FUNCIONES PARA ACORDEONES Y UI CONTEXTUAL

@@ -249,16 +249,6 @@ export const estilosTablaCarros = `
         background-color: #e8f5e9;
     }
 
-    .carro-externo {
-        background-color: #fff3cd;
-        border-left: 4px solid #ffc107;
-    }
-
-    .carro-externo.carro-activo {
-        background-color: #d4edda;
-        border-left: 4px solid #28a745;
-    }
-
     .carro-finalizado {
         background-color: #f8f9fa !important;
         opacity: 0.7;
@@ -273,6 +263,62 @@ export const estilosTablaCarros = `
         background-color: #e9ecef !important;
         opacity: 0.8;
     }
+
+    /* ---------------------------------------------------
+       IDENTIDAD VISUAL EXCLUSIVA: PRODUCCIÓN EXTERNA
+       --------------------------------------------------- */
+       
+    /* 1. Estado Inicial (Azul Tenue) y Tipografía */
+    .carro-externo {
+        background-color: #f1f5f9;
+        border-left: 4px solid #3b82f6;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        letter-spacing: 0.4px;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .carro-externo td {
+        font-weight: 500;
+        color: #1e293b;
+    }
+
+    /* 2. Estado Listo para Producir / Activo (Azul Medio) */
+    .carro-externo.carro-activo {
+        background-color: #dbeafe !important;
+        border-left: 4px solid #2563eb !important;
+        box-shadow: inset 0 0 10px rgba(37, 99, 235, 0.05);
+    }
+
+    /* 3. Estado Asentado / Finalizado (Azul Oscuro/Slate) */
+    .carro-externo.carro-finalizado {
+        background-color: #1e293b !important;
+        border-left: 4px solid #0f172a !important;
+        opacity: 1 !important;
+    }
+
+    .carro-externo.carro-finalizado td {
+        color: #f8fafc !important;
+        font-style: normal; /* Remueve italic interno */
+        font-weight: 500;
+    }
+    
+    /* Contraste en Botones para Estado Finalizado Oscuro */
+    .carro-externo.carro-finalizado .btn-eliminar {
+        background-color: #ef4444;
+        opacity: 0.9;
+        border: 1px solid #7f1d1d;
+    }
+    
+    /* Icono o Emocionador sutil externo */
+    .carro-externo td:nth-child(4) {
+        font-weight: 600;
+        color: #2563eb;
+    }
+    .carro-externo.carro-finalizado td:nth-child(4) {
+        color: #93c5fd;
+    }
+
+    /* --------------------------------------------------- */
 
     .btn-group {
         display: flex;

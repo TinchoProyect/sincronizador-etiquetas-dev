@@ -90,9 +90,10 @@ async function obtenerRelacionesPorArticulos(articuloCodigos) {
  * @param {string} articuloProduccionCodigo 
  * @param {string} articuloKiloCodigo 
  * @param {number} multiplicadorIngredientes - Multiplicador para ingredientes (default: 1)
+ * @param {Array} ingredientesCustom - Ingredientes personalizados (opcional)
  * @returns {Promise<Object>}
  */
-async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multiplicadorIngredientes = 1) {
+async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multiplicadorIngredientes = 1, ingredientesCustom = null) {
     try {
         console.log(`🔗 Creando relación: ${articuloProduccionCodigo} -> ${articuloKiloCodigo} (multiplicador: ${multiplicadorIngredientes})`);
         
@@ -108,12 +109,13 @@ async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multi
         // Insertar nueva relación limpia
         const insertQuery = `
             INSERT INTO articulos_produccion_externa_relacion
-            (articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes)
-            VALUES ($1, $2, $3)
+            (articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes, ingredientes_custom)
+            VALUES ($1, $2, $3, $4)
             RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo, 
-                     COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
+                     COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes,
+                     ingredientes_custom
         `;
-        const result = await pool.query(insertQuery, [articuloProduccionCodigo, articuloKiloCodigo, multiplicadorIngredientes]);
+        const result = await pool.query(insertQuery, [articuloProduccionCodigo, articuloKiloCodigo, multiplicadorIngredientes, ingredientesCustom ? JSON.stringify(ingredientesCustom) : null]);
         console.log(`✅ Relación creada con ID: ${result.rows[0].id}`);
         return result.rows[0];
     } catch (error) {
@@ -127,9 +129,10 @@ async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multi
  * @param {number} relacionId 
  * @param {string} articuloKiloCodigo 
  * @param {number} multiplicadorIngredientes - Multiplicador para ingredientes (opcional)
+ * @param {Array} ingredientesCustom - Ingredientes personalizados (opcional)
  * @returns {Promise<Object>}
  */
-async function actualizarRelacion(relacionId, articuloKiloCodigo, multiplicadorIngredientes = null) {
+async function actualizarRelacion(relacionId, articuloKiloCodigo, multiplicadorIngredientes = null, ingredientesCustom = null) {
     try {
         console.log(`✏️ Actualizando relación ${relacionId}: ${articuloKiloCodigo} (multiplicador: ${multiplicadorIngredientes})`);
         
@@ -138,12 +141,24 @@ async function actualizarRelacion(relacionId, articuloKiloCodigo, multiplicadorI
         if (multiplicadorIngredientes !== null) {
             updateQuery = `
                 UPDATE articulos_produccion_externa_relacion
-                SET articulo_kilo_codigo = $1, multiplicador_ingredientes = $2
+                SET articulo_kilo_codigo = $1, multiplicador_ingredientes = $2, ingredientes_custom = COALESCE($4, ingredientes_custom)
                 WHERE id = $3
                 RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo,
-                         COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
+                         COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes,
+                         ingredientes_custom
             `;
-            params = [articuloKiloCodigo, multiplicadorIngredientes, relacionId];
+            params = [articuloKiloCodigo, multiplicadorIngredientes, relacionId, ingredientesCustom ? JSON.stringify(ingredientesCustom) : null];
+        } else {
+        if (ingredientesCustom !== null) {
+            updateQuery = `
+                UPDATE articulos_produccion_externa_relacion
+                SET articulo_kilo_codigo = $1, ingredientes_custom = $3
+                WHERE id = $2
+                RETURNING id, articulo_produccion_codigo, articulo_kilo_codigo,
+                         COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes,
+                         ingredientes_custom
+            `;
+            params = [articuloKiloCodigo, relacionId, JSON.stringify(ingredientesCustom)];
         } else {
             updateQuery = `
                 UPDATE articulos_produccion_externa_relacion
@@ -153,6 +168,7 @@ async function actualizarRelacion(relacionId, articuloKiloCodigo, multiplicadorI
                          COALESCE(multiplicador_ingredientes, 1) as multiplicador_ingredientes
             `;
             params = [articuloKiloCodigo, relacionId];
+        }
         }
         
         const result = await pool.query(updateQuery, params);

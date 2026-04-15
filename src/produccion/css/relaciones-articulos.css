@@ -1,4 +1,9 @@
-/* Estilos para botones de relación de artículos */
+/* ==========================================
+   Estilos para Relaciones de Artículos
+   Producción Externa - Vínculos y Mermas
+   ========================================== */
+
+/* ---------- Botones de Relación ---------- */
 .botones-relacion {
     display: flex;
     gap: 8px;
@@ -9,51 +14,69 @@
 .btn-editar-relacion,
 .btn-editar-relacion-simple,
 .btn-eliminar-relacion {
-    padding: 4px 8px;
+    padding: 5px 10px;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 12px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }
 
 .btn-vincular-articulo {
     background-color: #28a745;
     color: white;
+    box-shadow: 0 1px 3px rgba(40, 167, 69, 0.3);
 }
 
 .btn-vincular-articulo:hover {
     background-color: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.4);
 }
 
 .btn-editar-relacion,
 .btn-editar-relacion-simple {
     background-color: #007bff;
     color: white;
+    box-shadow: 0 1px 3px rgba(0, 123, 255, 0.3);
 }
 
 .btn-editar-relacion:hover,
 .btn-editar-relacion-simple:hover {
     background-color: #0056b3;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 123, 255, 0.4);
 }
 
 .btn-eliminar-relacion {
     background-color: #dc3545;
     color: white;
+    box-shadow: 0 1px 3px rgba(220, 53, 69, 0.3);
 }
 
 .btn-eliminar-relacion:hover {
     background-color: #c82333;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(220, 53, 69, 0.4);
 }
 
-/* Estilos para artículos vinculados */
+/* ---------- Artículos Vinculados ---------- */
 .articulo-vinculado {
-    background-color: #f8f9fa;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 8px;
+    border-left: 4px solid #6c757d;
+    border-radius: 6px;
+    padding: 10px 12px;
     margin-top: 4px;
-    opacity: 0.8;
+    opacity: 0.9;
+    transition: opacity 0.2s, border-left-color 0.2s;
+}
+
+.articulo-vinculado:hover {
+    opacity: 1;
+    border-left-color: #007bff;
 }
 
 .vinculo-icono {
@@ -73,63 +96,545 @@
     font-style: italic;
 }
 
-/* Modal de edición de vínculos */
-#modal-editar-vinculo .modal-content {
-    max-width: 600px;
+.multiplicador-info {
+    font-size: 12px;
+    color: #007bff;
+    font-weight: 600;
+    background: rgba(0, 123, 255, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
 }
 
+/* ---------- Tabla de Ingredientes Vinculados (Workspace) ---------- */
+.tabla-vinculados {
+    font-size: 15px;
+}
+
+.tabla-vinculados td {
+    padding: 12px 10px;
+}
+
+/* Nombres de los ingredientes */
+.tabla-vinculados td:first-child {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 16px;
+}
+
+/* Columna de "Cantidad Necesaria" (Crítica) */
+.tabla-vinculados td.cell-requerido {
+    font-size: 20px;
+    font-weight: 800;
+    background-color: #fff3cd; /* Fondo amarillo highlight */
+    color: #856404 !important; /* Texto oscuro contrastante */
+    border: 2px solid #ffeeba;
+    text-align: center;
+    box-shadow: inset 0 0 8px rgba(255, 193, 7, 0.4);
+    letter-spacing: 0.5px;
+}
+
+/* Header correspondiente a Cantidad Necesaria */
+.tabla-vinculados th:nth-child(3) {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+    font-weight: 800;
+    font-size: 13px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 3px solid #d39e00;
+}
+
+/* ==========================================
+   Modal de Edición de Vínculos
+   ========================================== */
+
+#modal-editar-vinculo .modal-content {
+    max-width: 700px;
+    max-height: 85vh; /* Evitar corte vertical en pantallas pequeñas (Plan UX) */
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+#modal-editar-vinculo .modal-header {
+    background: linear-gradient(135deg, #1a5276 0%, #2e86c1 100%);
+    padding: 16px 20px;
+}
+
+#modal-editar-vinculo .modal-header h2 {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.3px;
+}
+
+#modal-editar-vinculo .modal-header .close-modal {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 22px;
+}
+
+#modal-editar-vinculo .modal-header .close-modal:hover {
+    color: #fff;
+}
+
+#modal-editar-vinculo .modal-body {
+    padding: 20px;
+    overflow-y: auto; /* Habilitar scroll del cuerpo del modal (Plan UX) */
+    flex-grow: 1; /* Ocupar el espacio restante */
+}
+
+/* ---------- Sección Info del Artículo Padre ---------- */
+
 .vinculo-info-section {
-    background-color: #f8f9fa;
-    padding: 12px;
-    border-radius: 4px;
-    margin-bottom: 16px;
+    background: linear-gradient(135deg, #eaf2f8 0%, #d6eaf8 100%);
+    padding: 14px 16px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    border: 1px solid #b8d4e3;
+}
+
+.vinculo-info-section h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #5d6d7e;
+    margin: 0 0 8px 0;
+    font-weight: 600;
 }
 
 .articulo-padre-info {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .articulo-codigo-padre {
-    font-weight: bold;
-    color: #495057;
+    font-weight: 700;
+    color: #1a5276;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 3px 8px;
+    border-radius: 4px;
 }
 
 .articulo-descripcion-padre {
-    color: #6c757d;
+    color: #2c3e50;
+    font-size: 13px;
 }
 
 .badge-readonly {
-    background-color: #6c757d;
+    background-color: #5d6d7e;
     color: white;
-    padding: 2px 6px;
-    border-radius: 3px;
+    padding: 2px 8px;
+    border-radius: 10px;
     font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
 }
 
+/* ---------- Selector de Artículo por Kilo ---------- */
+
 .selector-vinculo-section {
-    margin-bottom: 16px;
+    margin-bottom: 18px;
+}
+
+.selector-vinculo-section h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0 0 10px 0;
 }
 
 .selector-vinculo-section .form-group {
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .selector-vinculo-section label {
     display: block;
     margin-bottom: 4px;
     font-weight: 500;
+    font-size: 12px;
+    color: #5d6d7e;
 }
 
-.selector-vinculo-section input,
+.selector-vinculo-section input[type="text"] {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 13px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+.selector-vinculo-section input[type="text"]:focus {
+    border-color: #2e86c1;
+    box-shadow: 0 0 0 3px rgba(46, 134, 193, 0.15);
+    outline: none;
+}
+
 .selector-vinculo-section select {
     width: 100%;
-    padding: 8px;
+    padding: 6px 8px;
     border: 1px solid #ced4da;
-    border-radius: 4px;
+    border-radius: 6px;
+    height: 130px;
+    font-size: 12px;
+    background-color: #fff;
+    box-sizing: border-box;
 }
 
-.selector-vinculo-section select {
-    height: 120px;
+.selector-vinculo-section select:focus {
+    border-color: #2e86c1;
+    box-shadow: 0 0 0 3px rgba(46, 134, 193, 0.15);
+    outline: none;
+}
+
+/* ---------- Preview de Receta ---------- */
+
+.preview-receta-section {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+/* ==========================================
+   Multiplicador de Ingredientes
+   ========================================== */
+
+.multiplicador-section {
+    background: linear-gradient(135deg, #fdf2e9 0%, #fdebd0 100%);
+    border: 1px solid #f0c27a;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    animation: fadeInPreview 0.3s ease-out;
+}
+
+.multiplicador-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.multiplicador-header h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #7d5a00;
+}
+
+.multiplicador-tooltip {
+    cursor: help;
+    font-size: 14px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.multiplicador-tooltip:hover {
+    opacity: 1;
+}
+
+.multiplicador-input-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.multiplicador-input-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #7d5a00;
+    white-space: nowrap;
+    min-width: 42px;
+}
+
+.multiplicador-input-group input[type="number"] {
+    width: 100px;
+    padding: 7px 10px;
+    border: 2px solid #f0c27a;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #7d5a00;
+    background: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.multiplicador-input-group input[type="number"]:focus {
+    border-color: #e67e22;
+    box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.15);
+    outline: none;
+}
+
+.multiplicador-unidad {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e67e22;
+}
+
+.multiplicador-nota {
+    display: block;
+    font-size: 11px;
+    color: #9a7d0a;
+    line-height: 1.4;
+}
+
+/* ==========================================
+   Panel de Preview de Receta del Vínculo
+   ========================================== */
+
+.preview-receta-section {
+    background: linear-gradient(135deg, #f0f7ff 0%, #e8f4f8 100%);
+    border: 1px solid #b8d4e3;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    animation: fadeInPreview 0.3s ease-out;
+}
+
+@keyframes fadeInPreview {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.preview-receta-section h3 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    color: #1a5276;
+    font-weight: 600;
+}
+
+.preview-receta-subtitulo {
+    margin: 0 0 12px 0;
+    font-size: 12px;
+    color: #5d6d7e;
+    font-style: italic;
+}
+
+/* Spinner de carga */
+.preview-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    color: #5d6d7e;
+    font-size: 13px;
+}
+
+.preview-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #b8d4e3;
+    border-top-color: #2e86c1;
+    border-radius: 50%;
+    animation: spinPreview 0.6s linear infinite;
+}
+
+@keyframes spinPreview {
+    to { transform: rotate(360deg); }
+}
+
+/* Estado vacío */
+.preview-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background-color: #fef9e7;
+    border: 1px solid #f9e79f;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #7d6608;
+}
+
+.preview-empty-icon {
+    font-size: 16px;
+}
+
+/* Tabla de ingredientes */
+.preview-receta-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.preview-receta-tabla thead th {
+    background-color: #2e86c1;
+    color: white;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.preview-receta-tabla tbody td {
+    padding: 7px 12px;
+    border-bottom: 1px solid #d6eaf8;
+    color: #2c3e50;
+}
+
+.preview-receta-tabla tbody tr:nth-child(even) {
+    background-color: rgba(46, 134, 193, 0.06);
+}
+
+.preview-receta-tabla tbody tr:hover {
+    background-color: rgba(46, 134, 193, 0.12);
+}
+
+.preview-receta-tabla tbody td:nth-child(2) {
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    color: #1a5276;
+}
+
+/* Nota informativa */
+.preview-receta-nota {
+    display: block;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #7f8c8d;
+    line-height: 1.4;
+}
+
+/* ==========================================
+   Acciones del Modal
+   ========================================== */
+
+#modal-editar-vinculo .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+    margin-top: 8px;
+}
+
+#modal-editar-vinculo .modal-actions .btn {
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+#modal-editar-vinculo .modal-actions .btn-success {
+    background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+}
+
+#modal-editar-vinculo .modal-actions .btn-success:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(40, 167, 69, 0.4);
+}
+
+/* =========================================================
+   ATMÓSFERA INMERSIVA: PRODUCCIÓN EXTERNA (WATERMARK & THEME)
+   ========================================================= */
+
+/* Expansión del Theme al Body Completo (Abandono del Blanco Puro) */
+body {
+    transition: background-color 0.4s ease;
+}
+
+body.contexto-externo,
+body.contexto-externo main,
+body.contexto-externo .container {
+    background-color: #eaf2fc !important; /* Celeste / Lavanda Pastel, muy profesional */
+}
+
+/* Animación y Setup Base del Container */
+#workspace-container {
+    transition: background 0.4s ease, box-shadow 0.4s ease;
+    position: relative;
+    overflow: hidden; /* Garantiza que el watermark no desborde */
+}
+
+/* Tema Principal: Flujo transparente sobre el celeste maestro */
+#workspace-container.theme-externo {
+    background: transparent;
+    box-shadow: inset 0 0 40px rgba(59, 130, 246, 0.06); /* Glow azul interno más amplio */
+    border-radius: 12px;
+}
+
+/* Marca de Agua (Watermark) Dinámica */
+#workspace-container.theme-externo::before {
+    content: "EXTERNO";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    font-size: 15vw; /* Escala relativa al viewport */
+    font-weight: 900;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: rgba(59, 130, 246, 0.04); /* Altamente sutil */
+    text-transform: uppercase;
+    pointer-events: none; /* Inmune a clics */
+    z-index: 0;
+    user-select: none;
+    letter-spacing: 5px;
+    white-space: nowrap;
+}
+
+/* Preservación de Capas para Elementos Interactivos */
+#workspace-container.theme-externo > * {
+    position: relative;
+    z-index: 1; /* Posiciona Data/UI encima de la marca de agua */
+}
+
+/* Badge de Topbar */
+.badge-externo {
+    font-size: 13px;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 8px;
+    margin-left: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+}
+
+/* Paneles de Contenido (Abandonando el Blanco Puro) */
+#workspace-container.theme-externo .seccion-articulos,
+#workspace-container.theme-externo .seccion-carros,
+#workspace-container.theme-externo .seccion-resumen,
+#workspace-container.theme-externo .seccion-articulos-secundarios {
+    background-color: #f8fafc; /* Gris Slate con leve tinte azul (Tailwind Slate-50) */
+    border: 1px solid #e2e8f0; /* Borde sutil */
+    border-top: 4px solid #3b82f6; /* Acento del borde contenedor azul intenso */
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.05); /* Sombra teñida */
+    transition: background-color 0.4s ease, border-top 0.4s ease;
+}
+
+/* Diferenciación visual de los items internos frente al fondo gris azulado */
+#workspace-container.theme-externo .articulo-container {
+    background-color: #ffffff; /* Los artículos físicos resaltan en blanco ahora */
+    border-color: #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
 }

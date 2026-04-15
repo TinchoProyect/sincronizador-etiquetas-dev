@@ -28,19 +28,13 @@ class ModalDraggable {
     }
 
     init() {
-        // CRÍTICO: Configurar backdrop estático
-        this.modal.style.pointerEvents = 'auto';
+        // CRÍTICO: Permitir interacción y scroll con el fondo (Workspace) mientras el modal flota
+        this.modal.style.pointerEvents = 'none';
         
-        // Prevenir cierre al hacer clic en el backdrop
-        this.modal.addEventListener('mousedown', (e) => {
-            if (e.target === this.modal) {
-                e.preventDefault();
-                e.stopPropagation();
-                // No hacer nada - el modal permanece abierto
-            }
-        });
+        // Garantizar que el contenido del modal sí capture eventos
+        this.modalContent.style.pointerEvents = 'auto';
 
-        // Prevenir cierre con tecla ESC
+        // Prevenir cierre con tecla ESC si el usuario está trabajando en el modal
         this.modal.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
@@ -51,10 +45,9 @@ class ModalDraggable {
         // Configurar modal-content para posicionamiento absoluto
         this.modalContent.style.position = 'fixed';
         this.modalContent.style.margin = '0';
-        this.modalContent.style.transform = 'none';
         
         // Buscar el header del modal (zona de arrastre)
-        const header = this.modalContent.querySelector('h2');
+        const header = this.modalContent.querySelector('.modal-header') || this.modalContent.querySelector('h2');
         if (header) {
             this.setupDraggable(header);
         }
@@ -80,8 +73,13 @@ class ModalDraggable {
     }
 
     onMouseDown(e) {
-        // Solo iniciar arrastre si se hace clic en el header
-        if (e.target.tagName !== 'H2' && !e.target.closest('h2')) {
+        // Solo iniciar arrastre si se hace clic en el header o en sus hijos (excepto botones)
+        if (!e.target.closest('.modal-header') && !e.target.closest('h2')) {
+            return;
+        }
+
+        // No arrastrar si presiona un botón (como X para cerrar)
+        if (e.target.tagName === 'BUTTON' || e.target.classList.contains('close-modal')) {
             return;
         }
 
@@ -91,11 +89,19 @@ class ModalDraggable {
         document.body.style.cursor = 'grabbing';
         e.target.style.cursor = 'grabbing';
         
+        // 🎯 Si el modal está centrado con transform: translate(-50%, -50%), hornear las coordenadas relativas a posiciones absolutas antes de arrastrar
+        if (window.getComputedStyle(this.modalContent).transform !== 'none' || this.modalContent.style.transform.includes('translate')) {
+            const rect = this.modalContent.getBoundingClientRect();
+            this.modalContent.style.transform = 'none';
+            this.modalContent.style.top = `${rect.top}px`;
+            this.modalContent.style.left = `${rect.left}px`;
+        }
+        
         // Guardar posición inicial del mouse
         this.startX = e.clientX;
         this.startY = e.clientY;
         
-        // Obtener posición actual del modal
+        // Obtener posición actual del modal (ya con top/left absolutos correctos)
         const rect = this.modalContent.getBoundingClientRect();
         this.startTop = rect.top;
         this.startLeft = rect.left;
@@ -151,8 +157,7 @@ class ModalDraggable {
             header.style.cursor = 'move';
         }
         
-        // Restaurar transiciones
-        this.modalContent.style.transition = '';
+        // Las transiciones no deben restaurarse para evitar que reglas CSS de transform intenten interpolar las coordenadas fijadas por JS
     }
 
     makeResizable() {
@@ -225,16 +230,10 @@ class ModalDraggable {
     }
 
     centerModal() {
-        // Centrar el modal en la pantalla
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const rect = this.modalContent.getBoundingClientRect();
-        
-        const left = (viewportWidth - rect.width) / 2;
-        const top = (viewportHeight - rect.height) / 2;
-        
-        this.modalContent.style.top = `${Math.max(0, top)}px`;
-        this.modalContent.style.left = `${Math.max(0, left)}px`;
+        // Centrar usando CSS puro para que se autoajuste si el contenido crece de forma asíncrona
+        this.modalContent.style.top = '50%';
+        this.modalContent.style.left = '50%';
+        this.modalContent.style.transform = 'translate(-50%, -50%)';
     }
 
     reset() {
@@ -253,35 +252,52 @@ class ModalDraggable {
 
 // Inicializar modales arrastrables cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
-    // Modal de artículos
-    const modalArticulos = new ModalDraggable('modal-articulos');
+    // 🪟 Modales arrastrables instanciados
+    const modalesParaArrastrar = ['modal-articulos', 'modal-editar-vinculo', 'modal-receta'];
+    const instancias = {};
 
-    // Resetear posición cuando se abre el modal
-    const modalArticulosElement = document.getElementById('modal-articulos');
-    if (modalArticulosElement) {
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.attributeName === 'style') {
-                    const display = modalArticulosElement.style.display;
-                    if (display === 'block') {
-                        // Modal se acaba de abrir, resetear y centrar
-                        setTimeout(() => {
-                            if (modalArticulos) {
-                                modalArticulos.reset();
+    modalesParaArrastrar.forEach(id => {
+        const elemento = document.getElementById(id);
+        if (elemento) {
+            instancias[id] = new ModalDraggable(id);
+            
+            // 🎯 PREVENCIÓN DE SCROLL CHAINING: Bloquear fondo, resetear offsets al abrir
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.attributeName === 'style' || mutation.attributeName === 'class') {
+                        const styleDisplay = window.getComputedStyle(elemento).display;
+                        const hasShowClass = elemento.classList.contains('show');
+                        
+                        if (styleDisplay === 'block' || styleDisplay === 'flex' || hasShowClass) {
+                            // Detener dragchaining (Scroll inhabilitado globalmente)
+                            document.body.style.overflow = 'hidden';
+                            
+                            // Resetear
+                            if (instancias[id]) {
+                                setTimeout(() => instancias[id].reset(), 100);
                             }
-                        }, 100);
+                        } else {
+                            // Liberar scroll del monitor principal solo si todos los modales están cerrados
+                            const anyOpen = modalesParaArrastrar.some(mId => {
+                                const mEl = document.getElementById(mId);
+                                return mEl && (mEl.style.display === 'block' || mEl.classList.contains('show'));
+                            });
+                            if (!anyOpen) {
+                                document.body.style.overflow = '';
+                            }
+                        }
                     }
-                }
+                });
             });
-        });
 
-        observer.observe(modalArticulosElement, {
-            attributes: true,
-            attributeFilter: ['style']
-        });
-    }
+            observer.observe(elemento, {
+                attributes: true,
+                attributeFilter: ['style', 'class']
+            });
+        }
+    });
 
-    console.log('✅ Sistema de modales arrastrables inicializado (backdrop estático)');
+    console.log('✅ Sistema de modales arrastrables y Anti-ScrollChaining inicializado');
 });
 
 // Exportar para uso en otros módulos si es necesario

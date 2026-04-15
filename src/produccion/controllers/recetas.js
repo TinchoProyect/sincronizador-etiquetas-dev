@@ -490,6 +490,7 @@ async function expandirIngredientes(numeroArticulo, cantidadBase = 1, procesados
             } catch (error) {
                 // Si no es un mix, agregar como ingrediente base
                 ingredientesExpandidos.push({
+                    ingrediente_id: ingrediente.ingrediente_id,
                     nombre: ingrediente.nombre_ingrediente,
                     cantidad: cantidadTotal,
                     unidad_medida: ingrediente.unidad_medida
@@ -520,7 +521,7 @@ async function expandirIngredientes(numeroArticulo, cantidadBase = 1, procesados
  */
 async function obtenerIngredientesExpandidos(req, res) {
     try {
-        const { numero_articulo } = req.params;
+        const numero_articulo = req.params.numero_articulo || req.query.codigo;
         
         // 🔧 CORRECCIÓN: Verificar primero si el artículo existe en la base de datos
         const articuloQuery = `

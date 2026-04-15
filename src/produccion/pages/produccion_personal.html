@@ -352,59 +352,82 @@
         </footer>
     </div>
 
+    <!-- Modal Tipos de Carro (Unificación UX) -->
+    <div id="modal-tipo-carro" class="modal" style="display: none; align-items: center; justify-content: center; z-index: 2000; background-color: rgba(0,0,0,0.5); opacity: 1; visibility: visible;">
+        <div class="modal-content minimalist" style="max-width: 400px; padding: 30px; text-align: center; border-radius: 12px; box-shadow: 0px 10px 40px rgba(0,0,0,0.2);">
+            <h2 style="font-size: 20px; margin: 0 0 25px 0; color: #1e293b; font-weight: 600; letter-spacing: -0.5px;">¿Qué tipo de carro desea crear?</h2>
+            
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <!-- Botón: Producción Interna -->
+                <button id="btn-opcion-interna" onclick="window.ejecutarCreacionCarro('interna')" style="padding: 16px; background: #f8f9fa; border: 2px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 16px; outline: none;" onmouseover="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#f8f9fa';" onfocus="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.2)';" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#f8f9fa'; this.style.boxShadow='none';">
+                    <span style="font-size: 28px;">🏭</span>
+                    <div>
+                        <div style="font-weight: 600; font-size: 16px; color: #1e293b;">Producción Interna</div>
+                        <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Flujo estándar de trabajo y mezclas.</div>
+                    </div>
+                </button>
+                
+                <!-- Botón: Producción Externa (Oculto por defecto, revelado por carro.js) -->
+                <button id="btn-opcion-externa" onclick="window.ejecutarCreacionCarro('externa')" style="padding: 16px; background: #f1f5f9; border: 2px solid #94a3b8; border-radius: 10px; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 16px; display: none;" onmouseover="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#eff6ff';" onmouseout="this.style.borderColor='#94a3b8'; this.style.backgroundColor='#f1f5f9';">
+                    <span style="font-size: 28px;">🚚</span>
+                    <div>
+                        <div style="font-weight: 600; font-size: 16px; color: #1d4ed8;">Producción Externa</div>
+                        <div style="font-size: 13px; color: #3b82f6; margin-top: 4px;">Gestión de ingredientes y despacho.</div>
+                    </div>
+                </button>
+            </div>
+            
+            <button onclick="document.getElementById('modal-tipo-carro').style.display='none'" style="margin-top: 25px; background: none; border: none; color: #64748b; font-size: 14px; font-weight: 500; cursor: pointer; text-decoration: underline; transition: color 0.2s;" onmouseover="this.style.color='#1e293b';" onmouseout="this.style.color='#64748b';">Cancelar</button>
+        </div>
+    </div>
+
     <!-- Modal de selección de artículos -->
     <div id="modal-articulos" class="modal modal-articulos">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2>Seleccionar artículos producción interna</h2>
+        <div class="modal-content minimalist">
+            <div class="modal-header">
+                <h2>Seleccionar artículos</h2>
+                <span class="close-modal">&times;</span>
+            </div>
 
-            <!-- Toolbar Compacto -->
-            <div class="modal-toolbar">
-                <!-- Fila principal de controles -->
-                <div class="toolbar-row">
-                    <!-- Búsqueda Inteligente (elemento principal) -->
-                    <div class="toolbar-search-main">
-                        <input type="text" id="busqueda-inteligente"
-                            placeholder="🔍 Buscar artículo (ej: mix fruto seco)..." autocomplete="off">
-                    </div>
-
-                    <!-- Código de Barras -->
-                    <div class="toolbar-barcode">
-                        <input type="text" id="codigo-barras" placeholder="📷 Código de barras">
-                    </div>
-
-                    <!-- Checkbox de filtro -->
-                    <div class="toolbar-checkbox">
-                        <label for="filtroProduccionSwitch">
-                            <input type="checkbox" id="filtroProduccionSwitch">
-                            <span>Solo producción</span>
-                        </label>
-                    </div>
-
-                    <!-- Botón de acción -->
-                    <div class="toolbar-action">
-                        <button id="btn-agregar-multiples" class="btn-agregar-toolbar modal-articulos-interna-multiple"
-                            style="display: none;" onclick="agregarMultiplesAlCarroInterno()">
-                            ➕ Agregar al carro
-                        </button>
-                    </div>
+            <!-- Toolbar Minimalista -->
+            <div class="modal-toolbar-minimalist">
+                <div class="toolbar-search-group">
+                    <div class="search-icon">🔍</div>
+                    <input type="text" id="busqueda-inteligente" placeholder="Buscar artículo (ej: mix fruto seco)..." autocomplete="off">
                 </div>
+
+                <div class="toolbar-barcode-group">
+                    <div class="search-icon">📷</div>
+                    <input type="text" id="codigo-barras" placeholder="Código de barras" autocomplete="off">
+                </div>
+
+                <label class="toggle-switch-modern" for="filtroProduccionSwitch">
+                    <input type="checkbox" id="filtroProduccionSwitch">
+                    <div class="toggle-slider"></div>
+                    <span>Solo producción</span>
+                </label>
+
+                <button id="btn-agregar-multiples" class="btn-primary modal-articulos-interna-multiple" style="display: none;" onclick="agregarMultiplesAlCarroInterno()">
+                    Agregar Seleccionados
+                </button>
             </div>
 
             <!-- Tabla de artículos -->
-            <table class="tabla-articulos">
-                <thead>
-                    <tr id="tabla-articulos-header">
-                        <th>Código</th>
-                        <th>Descripción</th>
-                        <th>Stock</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="tabla-articulos-body">
-                    <!-- Los artículos se cargarán dinámicamente aquí -->
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table class="tabla-minimalista tabla-articulos">
+                    <thead>
+                        <tr id="tabla-articulos-header">
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th style="text-align: center;">Stock</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-articulos-body">
+                        <!-- Los artículos se cargarán dinámicamente aquí -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -663,17 +686,21 @@
                 <span class="close-modal">&times;</span>
             </div>
             <div class="modal-body">
-                <div class="vinculo-info-section">
-                    <h3>Artículo de Producción Externa</h3>
-                    <div class="articulo-padre-info">
-                        <span class="articulo-codigo-padre"></span>
-                        <span class="articulo-descripcion-padre"></span>
-                        <span class="badge-readonly">Solo lectura</span>
+                <div id="vinculo-existente-section" class="vinculo-info-section" style="display: none; background: #e8f5e9; padding: 15px; border-radius: 6px; border: 1px solid #c8e6c9; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <h3 style="color: #2e7d32; margin-top: 0;">✅ Vínculo Actual Establecido</h3>
+                            <div class="articulo-padre-info" style="font-size: 1.1em; font-weight: bold; margin-top: 5px;">
+                                <span class="articulo-codigo-padre" style="background: #fff; padding: 2px 6px; border-radius: 4px; border: 1px solid #ccc;"></span>
+                                <span class="articulo-descripcion-padre"></span>
+                            </div>
+                        </div>
+                        <button id="btn-cambiar-vinculo" class="btn btn-warning btn-sm" style="padding: 6px 12px; font-size: 0.9em;">🔄 Cambiar Destino</button>
                     </div>
                 </div>
 
-                <div class="selector-vinculo-section">
-                    <h3>Seleccionar Artículo por Kilo</h3>
+                <div id="selector-vinculo-section" class="selector-vinculo-section">
+                    <h3>Seleccionar / Cambiar Artículo por Kilo</h3>
                     <div class="form-group">
                         <label for="buscar-articulo-vinculo">Buscar artículo:</label>
                         <input type="text" id="buscar-articulo-vinculo" placeholder="Escriba para buscar..."
@@ -681,23 +708,54 @@
                     </div>
                     <div class="form-group">
                         <label for="selector-articulo-vinculo">Artículo por kilo:</label>
-                        <select id="selector-articulo-vinculo" size="8">
+                        <select id="selector-articulo-vinculo" size="6" style="min-height: 120px;">
                             <option value="">Cargando artículos...</option>
                         </select>
                     </div>
                 </div>
 
-                <div class="multiplicador-section">
-                    <h3>🔢 Multiplicador de Ingredientes</h3>
-                    <div class="form-group">
-                        <label for="multiplicador-ingredientes">Multiplicador:</label>
-                        <input type="number" id="multiplicador-ingredientes" min="0.01" step="0.01" value="1"
-                            placeholder="Ej: 96 para 96 unidades por producción">
-                        <small class="help-text">
-                            💡 Cantidad de unidades que se producen por cada artículo padre.<br>
-                            Ejemplo: Si 1 producción genera 96 unidades, ingrese 96.
-                        </small>
+
+                <!-- Panel dinámico: Preview de receta del artículo vinculado -->
+                <div id="preview-receta-vinculo" class="preview-receta-section" style="display:none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>📋 Receta del Artículo Vinculado</h3>
+                        <button id="btn-guardar-receta-inline" class="btn btn-primary btn-sm" style="display: none; padding: 4px 8px; font-size: 0.9em;">💾 Guardar Receta</button>
                     </div>
+                    <p class="preview-receta-subtitulo">
+                        Proporciones de ingredientes locales que se consumirán por kilo producido. Modifique los valores y guarde para actualizar la receta global.
+                    </p>
+                    <div id="preview-receta-loading" class="preview-loading" style="display:none;">
+                        <span class="preview-spinner"></span> Cargando receta...
+                    </div>
+                    <div id="preview-receta-empty" class="preview-empty" style="display:none;">
+                        <span class="preview-empty-icon">⚠️</span>
+                        <span>Este artículo no tiene receta configurada. Podrá configurar sus proporciones a continuación.</span>
+                    </div>
+                    
+                    <div class="agregar-ingrediente-row" id="agregar-ingrediente-vinculo-row" style="display: none; margin-bottom: 10px;">
+                        <div class="input-ingrediente-wrapper">
+                            <input type="text" id="buscar-ingrediente-vinculo" placeholder="Buscar ingrediente extra..." autocomplete="off">
+                            <ul id="lista-resultados-vinculo" class="lista-resultados-mix"></ul>
+                        </div>
+                        <input type="number" id="cantidad-ingrediente-vinculo" placeholder="kg" step="0.001" min="0.001">
+                        <button id="btn-agregar-a-vinculo" class="btn-agregar-inline" title="Agregar a receta">+</button>
+                    </div>
+
+                    <table id="preview-receta-tabla" class="preview-receta-tabla" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Ingrediente</th>
+                                <th>Cantidad / kg</th>
+                                <th>Unidad</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="preview-receta-tbody">
+                        </tbody>
+                    </table>
+                    <small class="preview-receta-nota">
+                        💡 Las cantidades se multiplican por los kilos reales declarados al momento del asentado.
+                    </small>
                 </div>
 
                 <div class="modal-actions">

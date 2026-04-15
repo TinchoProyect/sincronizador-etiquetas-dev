@@ -48,6 +48,26 @@ console.log('🔍 [DIAGNÓSTICO] Función abrirModalGuardadoIngredientes disponi
 window.abrirModalGuardadoIngredientes = abrirModalGuardadoIngredientes;
 window.abrirModalSalvavidas = abrirModalSalvavidas;
 
+// === NUEVO: Ejecutor Unificado de Creación de Carros ===
+window.ejecutarCreacionCarro = async function(tipoCarro) {
+    try {
+        const modal = document.getElementById('modal-tipo-carro');
+        if (modal) modal.style.display = 'none';
+
+        // Primero deseleccionar el carro actual
+        await deseleccionarCarro();
+        // Luego crear el nuevo carro con el tipo elegido
+        await crearNuevoCarro(tipoCarro);
+        // Finalmente mostrar los artículos
+        await mostrarArticulosDelCarro();
+
+        window.carroIdGlobal = localStorage.getItem('carroActivo');
+        // Cargar y mostrar resumen de ingredientes y mixes
+        await cargarResumenIngredientes();
+    } catch (error) {
+        console.error('Error al ejecutar creación unificada de carro:', error);
+    }
+};
 // 🚀 [DIAGNÓSTICO] Verificar después de asignar
 console.log('🔍 [DIAGNÓSTICO] Función asignada correctamente:', typeof window.abrirModalGuardadoIngredientes);
 
@@ -197,20 +217,19 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleCantidadField();
     }
 
-    // Agregar evento al botón de crear carro
+    // Agregar evento al botón principal de Crear Carro (Abre el Modal Selector)
     const btnCrearCarro = document.getElementById('crear-carro');
     if (btnCrearCarro) {
-        btnCrearCarro.addEventListener('click', async () => {
-            // Primero deseleccionar el carro actual
-            await deseleccionarCarro();
-            // Luego crear el nuevo carro
-            await crearNuevoCarro();
-            // Finalmente mostrar los artículos
-            await mostrarArticulosDelCarro();
-
-            window.carroIdGlobal = localStorage.getItem('carroActivo');
-            // Cargar y mostrar resumen de ingredientes y mixes
-            await cargarResumenIngredientes();
+        btnCrearCarro.addEventListener('click', () => {
+            const modal = document.getElementById('modal-tipo-carro');
+            if (modal) {
+                modal.style.display = 'flex';
+                // User Efficiency: Foco predeterminado en Producción Interna
+                setTimeout(() => {
+                    const btnInterna = document.getElementById('btn-opcion-interna');
+                    if (btnInterna) btnInterna.focus();
+                }, 50); // Mínimo retardo para garantizar el reflow del display:flex
+            }
         });
     }
 

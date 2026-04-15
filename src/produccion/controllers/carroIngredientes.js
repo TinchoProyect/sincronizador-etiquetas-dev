@@ -360,20 +360,10 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
             const ingredientesHistoricos = await obtenerIngredientesHistoricos(carroId, tipoCarro);
 
             if (tipoCarro === 'externa') {
-                console.log(`🚚 CARRO EXTERNO PREPARADO: Fusionando ingredientes históricos (base) con vinculados (receta)`);
-                // Para carros externos, los ingredientes vinculados (deferred) no están en el historial hasta 'Asentar Producción'
-                // Por lo tanto, debemos obtenerlos de la receta para que no desaparezcan de la vista
-                const ingredientesVinculados = await obtenerIngredientesArticulosVinculados(carroId, usuarioId);
-
-                // Filtrar vinculados que ya estén en históricos (para evitar duplicados si ya se asentaron)
-                const idsHistoricos = new Set(ingredientesHistoricos.map(i => i.id));
-                const vinculadosFaltantes = ingredientesVinculados.filter(i => {
-                    // Si no tiene ID o su ID no está en históricos, lo agregamos
-                    return !i.id || !idsHistoricos.has(i.id);
-                });
-
-                console.log(`🔗 Fusionando: ${ingredientesHistoricos.length} históricos + ${vinculadosFaltantes.length} vinculados faltantes`);
-                return [...ingredientesHistoricos, ...vinculadosFaltantes];
+                console.log(`🚚 CARRO EXTERNO PREPARADO: Retornando base histórica`);
+                // En Fase 2 (Carro asimilado), los vinculados se cargan asincrónicamente por la UI.
+                // Si los concatenamos aquí provocaríamos una duplicación matemática en la tabla (Regression #1).
+                return ingredientesHistoricos;
             }
 
             return ingredientesHistoricos;
@@ -850,10 +840,15 @@ async function obtenerMixesCarro(carroId, usuarioId) {
  * @param {number} usuarioId - ID del usuario que solicita los ingredientes
  * @returns {Promise<Array>} Lista de ingredientes de artículos vinculados consolidados
  */
-async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
+async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosRealesDeclarados = null) {
     try {
         console.log(`\n🔗 INICIANDO ANÁLISIS DE INGREDIENTES VINCULADOS DEL CARRO ${carroId} `);
         console.log(`=============================================== `);
+        if (kilosRealesDeclarados !== null) {
+            console.log(`📊 MODO ASENTADO: Usando kilos reales declarados = ${kilosRealesDeclarados} kg`);
+        } else {
+            console.log(`📊 MODO VISUALIZACIÓN: Usando cantidad estática del carro`);
+        }
 
         // Validar que el carro pertenece al usuario
         const esValido = await validarPropiedadCarro(carroId, usuarioId);
@@ -882,6 +877,7 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
         ca.articulo_numero,
             ca.cantidad,
             rel.articulo_kilo_codigo,
+            rel.ingredientes_custom,
             COALESCE(rel.multiplicador_ingredientes, 1) as multiplicador_ingredientes
             FROM carros_articulos ca
             INNER JOIN articulos_produccion_externa_relacion rel 
@@ -904,36 +900,60 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
             console.log(`\n🔍 PROCESANDO ARTÍCULO VINCULADO: ${articuloVinculado.articulo_kilo_codigo} `);
             console.log(`Cantidad del artículo padre: ${articuloVinculado.cantidad} `);
 
-            // Obtener la receta del artículo vinculado
-            const queryRecetaVinculado = `
-        SELECT
-        ri.ingrediente_id,
-            CAST(ri.cantidad AS DECIMAL(20, 10)) as cantidad,
-            COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
-            COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
-                FROM recetas r
-                JOIN receta_ingredientes ri ON r.id = ri.receta_id
-                LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id
-                WHERE r.articulo_numero = $1
-            `;
-            const recetaVinculadoResult = await pool.query(queryRecetaVinculado, [articuloVinculado.articulo_kilo_codigo]);
+            let ingredientesBase = [];
+            
+            let esRecetaGlobal = true;
+            if (articuloVinculado.ingredientes_custom && Array.isArray(articuloVinculado.ingredientes_custom) && articuloVinculado.ingredientes_custom.length > 0) {
+                ingredientesBase = articuloVinculado.ingredientes_custom;
+                esRecetaGlobal = false;
+                console.log(`🔎 Usando receta CUSTOM OVERRIDE con ${ingredientesBase.length} ingredientes.`);
+            } else {
+                // Obtener la receta global del artículo vinculado si no hay override
+                const queryRecetaVinculado = `
+            SELECT
+            ri.ingrediente_id,
+                CAST(ri.cantidad AS DECIMAL(20, 10)) as cantidad,
+                COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
+                COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
+                    FROM recetas r
+                    JOIN receta_ingredientes ri ON r.id = ri.receta_id
+                    LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id
+                    WHERE r.articulo_numero = $1
+                `;
+                const recetaVinculadoResult = await pool.query(queryRecetaVinculado, [articuloVinculado.articulo_kilo_codigo]);
+                ingredientesBase = recetaVinculadoResult.rows;
+                console.log(`🔎 Ingredientes en receta vinculada global: ${ingredientesBase.length} `);
+            }
 
-            console.log(`🔎 Ingredientes en receta vinculada: ${recetaVinculadoResult.rows.length} `);
-
-            // Por cada ingrediente en la receta del artículo vinculado
-            for (const ing of recetaVinculadoResult.rows) {
-                // Aplicar multiplicador de ingredientes para artículos vinculados
+            // Por cada ingrediente en la receta base o custom
+            for (const ing of ingredientesBase) {
                 const multiplicador = articuloVinculado.multiplicador_ingredientes || 1;
-                const cantidadTotal = Number((ing.cantidad * articuloVinculado.cantidad * multiplicador).toPrecision(10));
-
+                
+                // 🎯 NUEVO MOTOR MATEMÁTICO:
+                let cantidadBasePorKilo;
+                
+                if (esRecetaGlobal) {
+                    // Histórico: Las recetas globales en la BD guardan el peso para la canasta completa (ej 10.2 kg).
+                    // Para estandarizar a la vista (por kilo), se divide por el multiplicador de la relación.
+                    cantidadBasePorKilo = ing.cantidad / multiplicador;
+                } else {
+                    // Custom Editado: En el modal, el operario ya editó directamente la proporción (por kilo).
+                    // Viene pura desde el front-end (ej: 0.125), no debe someterse a divisiones ni multiplicaciones inversas.
+                    cantidadBasePorKilo = ing.cantidad;
+                }
+                
+                const factorCantidad = kilosRealesDeclarados !== null ? kilosRealesDeclarados : articuloVinculado.cantidad;
+                const cantidadTotal = Number((cantidadBasePorKilo * factorCantidad).toPrecision(10));
+                
                 console.log(`\n🔍 ANÁLISIS DE CANTIDADES VINCULADAS - ${articuloVinculado.articulo_kilo_codigo} `);
                 console.log(`===================================================== `);
                 console.log(`1️⃣ DATOS DE ENTRADA: `);
-                console.log(`- Cantidad en receta vinculada: ${ing.cantidad} kg`);
-                console.log(`- Unidades del artículo padre: ${articuloVinculado.cantidad} `);
-                console.log(`- Multiplicador de ingredientes: ${multiplicador} `);
-                console.log(`2️⃣ CÁLCULO CON MULTIPLICADOR: `);
-                console.log(`${ing.cantidad} × ${articuloVinculado.cantidad} × ${multiplicador} = ${cantidadTotal} kg`);
+                console.log(`- Fuente: ${esRecetaGlobal ? 'Global (de BD Recetas)' : 'Custom Override (de UI Modal)'}`);
+                console.log(`- Valor Puro Recibido (ing.cantidad): ${ing.cantidad}`);
+                console.log(`- Factor Kilos Asentados: ${factorCantidad} `);
+                console.log(`2️⃣ CÁLCULO DE NORMALIZACIÓN (POR KILO): `);
+                console.log(`- Tasa Base Consolidada: ${cantidadBasePorKilo} kg (por cada 1 kg de producto final)`);
+                console.log(`- Cantidad Total Resultante: ${cantidadBasePorKilo} * ${factorCantidad} = ${cantidadTotal}`);
                 console.log(`=====================================================\n`);
 
                 let ingredienteIdParaExpandir = ing.ingrediente_id;
@@ -974,7 +994,8 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
                             id: ingredienteIdParaExpandir,
                             nombre: ing.nombre_ingrediente,
                             unidad_medida: ing.unidad_medida,
-                            cantidad: cantidadTotal
+                            cantidad: cantidadTotal,
+                            cantidad_base_por_kilo: cantidadBasePorKilo
                         });
                     }
                 } else {
@@ -984,13 +1005,14 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
                         id: null,
                         nombre: ing.nombre_ingrediente,
                         unidad_medida: ing.unidad_medida,
-                        cantidad: cantidadTotal
+                        cantidad: cantidadTotal,
+                        cantidad_base_por_kilo: cantidadBasePorKilo
                     });
                 }
             }
 
             // Si el artículo vinculado no tiene receta, verificar si es un mix o ingrediente primario
-            if (recetaVinculadoResult.rows.length === 0) {
+            if (ingredientesBase.length === 0) {
                 console.log(`📦 Artículo vinculado ${articuloVinculado.articulo_kilo_codigo} sin receta - verificando tipo`);
                 const queryIngredientePrimario = `
                     SELECT id, nombre, unidad_medida
@@ -1020,7 +1042,8 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
                             id: ingredienteId,
                             nombre: ingredientePrimario.rows[0].nombre,
                             unidad_medida: ingredientePrimario.rows[0].unidad_medida,
-                            cantidad: articuloVinculado.cantidad
+                            cantidad: articuloVinculado.cantidad,
+                            cantidad_base_por_kilo: 1
                         });
                     }
                 } else {
@@ -1036,10 +1059,13 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId) {
         console.log(`\n🔍 INICIANDO PROCESO DE OBTENCIÓN DE STOCK PARA INGREDIENTES VINCULADOS`);
         console.log(`Total de ingredientes vinculados consolidados: ${ingredientesVinculadosConsolidados.length} `);
 
+
+
         const ingredientesVinculadosConStock = await Promise.all(
             ingredientesVinculadosConsolidados.map(async (ingrediente, index) => {
-                // 🛑 Si el carro estamos preparado, simular stock suficiente (congelado)
-                if (fechaPreparado) {
+                // 🛑 Si el carro estamos preparado (y es interno), simular stock suficiente (congelado)
+                // EXPERIMENTAL: Para producción externa, los ingredientes de artículos vinculados (locales) SIEMPRE deben mostrar el stock real
+                if (fechaPreparado && tipoCarro !== 'externa') {
                     return {
                         ...ingrediente,
                         stock_actual: Number(ingrediente.cantidad.toPrecision(10)),

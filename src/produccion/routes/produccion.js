@@ -815,8 +815,11 @@ router.get('/recetas/:numero_articulo', async (req, res) => {
     }
 });
 
-// Ruta para obtener ingredientes expandidos de una receta
+// Ruta para obtener ingredientes expandidos de una receta (Mantenida por retrocompatibilidad)
 router.get('/recetas/:numero_articulo/ingredientes-expandido', obtenerIngredientesExpandidos);
+
+// Ruta robusta para obtener ingredientes expandidos a través de query params (previene errores de slash %2F)
+router.get('/receta-expandida', obtenerIngredientesExpandidos);
 
 // Ruta para actualizar una receta existente
 router.put('/recetas/:numero_articulo', validarReceta, async (req, res) => {
@@ -2526,12 +2529,13 @@ router.post('/relacion-articulo', async (req, res) => {
         console.log('===========================================');
         console.log('📥 PAYLOAD COMPLETO RECIBIDO:', JSON.stringify(req.body, null, 2));
 
-        const { articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes } = req.body;
+        const { articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes, ingredientes_custom } = req.body;
 
         console.log('\n📋 CAMPOS EXTRAÍDOS:');
         console.log('- articulo_produccion_codigo:', articulo_produccion_codigo);
         console.log('- articulo_kilo_codigo:', articulo_kilo_codigo);
         console.log('- multiplicador_ingredientes:', multiplicador_ingredientes, typeof multiplicador_ingredientes);
+        console.log('- ingredientes_custom:', ingredientes_custom ? `${ingredientes_custom.length} items` : 'No');
 
         if (!articulo_produccion_codigo || !articulo_kilo_codigo) {
             console.log('❌ ERROR: Faltan códigos requeridos');
@@ -2545,7 +2549,7 @@ router.post('/relacion-articulo', async (req, res) => {
         console.log('🔢 MULTIPLICADOR PROCESADO:', multiplicador);
 
         console.log(`➕ Creando relación: ${articulo_produccion_codigo} -> ${articulo_kilo_codigo} (multiplicador: ${multiplicador})`);
-        const nuevaRelacion = await crearRelacion(articulo_produccion_codigo, articulo_kilo_codigo, multiplicador);
+        const nuevaRelacion = await crearRelacion(articulo_produccion_codigo, articulo_kilo_codigo, multiplicador, ingredientes_custom);
 
         console.log('✅ RELACIÓN CREADA:', JSON.stringify(nuevaRelacion, null, 2));
 
@@ -2574,7 +2578,7 @@ router.put('/relacion-articulo/:id', async (req, res) => {
         console.log('📋 ID DE RELACIÓN:', req.params.id);
 
         const relacionId = parseInt(req.params.id);
-        const { articulo_kilo_codigo, multiplicador_ingredientes } = req.body;
+        const { articulo_kilo_codigo, multiplicador_ingredientes, ingredientes_custom } = req.body;
 
         console.log('\n📋 CAMPOS EXTRAÍDOS:');
         console.log('- relacionId:', relacionId);
@@ -2596,7 +2600,7 @@ router.put('/relacion-articulo/:id', async (req, res) => {
         console.log('🔢 MULTIPLICADOR PROCESADO:', multiplicador);
 
         console.log(`✏️ Actualizando relación ${relacionId} con artículo: ${articulo_kilo_codigo} y multiplicador: ${multiplicador}`);
-        const relacionActualizada = await actualizarRelacion(relacionId, articulo_kilo_codigo, multiplicador);
+        const relacionActualizada = await actualizarRelacion(relacionId, articulo_kilo_codigo, multiplicador, ingredientes_custom);
 
         console.log('✅ RELACIÓN ACTUALIZADA:', JSON.stringify(relacionActualizada, null, 2));
 
