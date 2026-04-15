@@ -13,18 +13,20 @@ async function imprimirPDF(req, res) {
         }
 
         // Initialize PDFKit
+        // Determinar contexto de nomenclatura según el módulo que solicita el PDF
+        const contexto = req.query.ctx === 'mantenimiento' ? 'mantenimiento' : 'tratamiento';
         const numCliente = data.cliente_id || 'SF';
         const strNombre = `${data.nombre || ''} ${data.apellido || ''}`.trim() || 'Sin_Nombre';
         const sanitizeNombre = strNombre.replace(/[^a-zA-Z0-9\s]/g, '').trim();
         const hoyFmt = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
-        const dynamicFilename = `${numCliente} ${sanitizeNombre} mercaderia tratamiento ${hoyFmt}.pdf`;
+        const dynamicFilename = `${numCliente} ${sanitizeNombre} mercaderia ${contexto} ${hoyFmt}.pdf`;
 
         // Setting info: Title will force Chrome's Print mechanism to suggest the correct name.
         const doc = new PDFDocument({ margin: 50, size: 'A4', info: { Title: dynamicFilename } });
 
         // Configuration HTTP para que el browser o whatsapp asimile el PDF.
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${dynamicFilename}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${dynamicFilename}"`);
 
         doc.pipe(res);
 

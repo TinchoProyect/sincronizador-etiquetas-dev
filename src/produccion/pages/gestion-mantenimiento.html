@@ -1007,16 +1007,33 @@
 
             try {
                 const urlBase = window.location.origin;
-                const response = await fetch(`${urlBase}/api/logistica/tratamientos/print/${hash}`);
+                const response = await fetch(`${urlBase}/api/logistica/tratamientos/print/${hash}?ctx=mantenimiento`);
                 
                 if (!response.ok) {
                     const text = await response.text();
                     throw new Error(text || 'Error desconocido al generar PDF');
                 }
                 
+                // Extraer nombre de archivo del Content-Disposition del servidor
+                const disposition = response.headers.get('Content-Disposition');
+                let filename = 'comprobante_mantenimiento.pdf';
+                if (disposition && disposition.includes('filename=')) {
+                    const match = disposition.match(/filename="?([^";\n]+)"?/);
+                    if (match && match[1]) filename = match[1];
+                }
+                
+                // Forzar descarga directa mediante anchor oculto
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = blobUrl;
+                anchor.download = filename;
+                document.body.appendChild(anchor);
+                anchor.click();
+                document.body.removeChild(anchor);
+                window.URL.revokeObjectURL(blobUrl);
+                
                 Swal.close();
-                // Abrimos la ruta nativa directamente para inyectar correctamente el Content-Disposition (Nombre de archivo) a Chrome
-                window.open(`${urlBase}/api/logistica/tratamientos/print/${hash}`, '_blank');
             } catch (err) {
                 console.error('Error obteniendo PDF de trazabilidad:', err);
                 Swal.fire('Atención', err.message, 'warning');
