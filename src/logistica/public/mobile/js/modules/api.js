@@ -77,6 +77,16 @@ export async function confirmarEntrega(datos) {
 }
 
 /**
+ * API de Confirmar Entrega de Tratamiento
+ */
+export async function confirmarEntregaTratamiento(idOrden, datos) {
+    return fetchConAuth(`${API_BASE_URL}/api/logistica/movil/retiros/${idOrden}/entregar`, {
+        method: 'POST',
+        body: JSON.stringify(datos)
+    });
+}
+
+/**
  * API de Finalizar Ruta
  */
 export async function finalizarRuta() {

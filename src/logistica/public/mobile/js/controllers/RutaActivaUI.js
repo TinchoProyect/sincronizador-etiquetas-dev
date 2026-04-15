@@ -106,13 +106,15 @@ function renderizarEntregas() {
         }
 
         const pedidosListHTML = parada.entregas.map(entrega => {
-            const esItemRetiro = entrega.estado === 'Orden de Tratamiento';
+            const esOrdenTratamiento = entrega.estado === 'Orden de Tratamiento';
+            const esEntregaTratamiento = esOrdenTratamiento && entrega.estado_tratamiento === 'COMPLETADO';
+            const esItemRetiro = esOrdenTratamiento && !esEntregaTratamiento;
             const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
             
             const isReconciled = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
             const badgeLomasoft = isReconciled
                 ? `<span style="font-size: 0.70rem; color: white; background: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Lomasoft', 'Comprobante: ${entrega.comprobante_lomasoft || entrega.id_factura_lomasoft}', 'info')">✅ Lomasoft</span>`
-                : (!esItemRetiro ? `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>` : '');
+                : (!esOrdenTratamiento ? `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>` : '');
 
             let textoBoton = completado ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado') : (esItemRetiro ? 'Retirar' : 'Entregar');
             let backgroundBoton = completado ? '#dcfce7' : (esItemRetiro ? '#e67e22' : '#2563eb');
@@ -122,18 +124,18 @@ function renderizarEntregas() {
             let btnCompletarCargaHTML = '';
             let disableMainBtn = completado;
 
-            if (esItemRetiro) {
+            if (esOrdenTratamiento) {
                 const tieneCheckin = entrega.detalles && entrega.detalles.length > 0;
                 
                 if (tieneCheckin) {
                     const d = entrega.detalles[0]; // Aggregate array has the JSON payload
                     detalleRetiroHTML = `
-                        <div style="font-size: 0.8rem; color: #15803d; background: #dcfce7; padding: 4px 8px; border-radius: 4px; margin-top: 4px; display: inline-block;">
-                            ✅ Check-in Completado: <span style="font-weight: normal;">${d.bultos} bulto(s) (${d.kilos}kg) de ${d.descripcion_externa}</span>
+                        <div style="font-size: 0.8rem; color: ${esEntregaTratamiento ? '#1e40af' : '#15803d'}; background: ${esEntregaTratamiento ? '#dbeafe' : '#dcfce7'}; padding: 4px 8px; border-radius: 4px; margin-top: 4px; display: inline-block;">
+                            ${esEntregaTratamiento ? '📦 Entrega de Tratamiento' : '✅ Check-in Completado'}: <span style="font-weight: normal;">${d.bultos} bulto(s) (${d.kilos}kg) de ${d.descripcion_externa}</span>
                         </div>
                     `;
-                    // Si ya está completado el retiro en sí, ocultamos el botón de Modificar Carga para evitar inconsistencias mutables post-retiro.
-                    if (!completado) {
+                    // Si ya está completado el retiro, o es un ciclo de entrega, ocultamos el botón de Modificar Carga para evitar inconsistencias mutables post-retiro.
+                    if (!completado && !esEntregaTratamiento) {
                         btnCompletarCargaHTML = `
                             <button class="btn-confirmar-sm" 
                                     onclick="window.abrirModalContingencia('${entrega.hash}', true)" 
@@ -166,7 +168,7 @@ function renderizarEntregas() {
                 <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
                     <div style="flex: 1; min-width: 140px;">
                         <div style="font-weight: 600; color: #475569; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
-                            <span>${esItemRetiro ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${entrega.id_presupuesto.toString().replace('RT-', '')}</span>
+                            <span>${esOrdenTratamiento ? (esEntregaTratamiento ? '📦 Entrega de Tratamiento #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${entrega.id_presupuesto.toString().replace('RT-', '')}</span>
                             ${badgeLomasoft}
                         </div>
                         ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669; margin-top: 4px;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
@@ -180,7 +182,7 @@ function renderizarEntregas() {
                             ❌ Quitar
                         </button>
                         <button class="btn-confirmar-sm" 
-                                onclick="confirmarEntrega('${entrega.id_presupuesto}', '${esItemRetiro ? 'retiro' : 'entrega'}')" 
+                                onclick="confirmarEntrega('${entrega.id_presupuesto}', '${esOrdenTratamiento ? (esItemRetiro ? 'retiro' : 'entrega_tratamiento') : 'entrega'}')" 
                                 ${disableMainBtn ? 'disabled' : ''}
                                 style="padding: 0.5rem 1rem; font-weight: bold; border-radius: 0.5rem; background: ${backgroundBoton}; color: ${colorTextoBoton}; border: none; min-width: 100px;">
                             ${textoBoton}
@@ -565,6 +567,62 @@ window.ejecutarAgregarPedidos = async () => {
 // FEATURE FASE 3: RETIROS DE MANTENIMIENTO
 // ==========================================
 
+window.descargarYCompartirPDF = async (hash, isShareContext = false) => {
+    let btnId = isShareContext ? `btn-pdf-share-${hash}` : `btn-pdf-view-${hash}`;
+    let btn = document.getElementById(btnId);
+    let originalText = btn ? btn.innerHTML : '';
+    
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Generando documento...';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/print/${hash}`);
+        if (!response.ok) throw new Error('Fallo al obtener el documento PDF');
+        
+        const blob = await response.blob();
+        const file = new File([blob], `Tratamiento_${hash}.pdf`, { type: 'application/pdf' });
+
+        if (isShareContext) {
+            // Contexto: Compartir vía WhatsApp o mail usando Web Share API
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: `Certificado de Retiro/Entrega`,
+                    text: `Adjunto el informe de la Orden de Tratamiento referenciado.`
+                });
+            } else {
+                // Fallback para navs sin soporte a Web Share con archivos
+                Swal.fire({
+                    title: 'Aviso',
+                    text: 'Su navegador no soporta adjuntar archivos directamente a WhatsApp. Le descargaremos el PDF para que pueda enviarlo manualmente.',
+                    icon: 'info'
+                });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Tratamiento_${hash}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+        } else {
+            // Contexto: Generar y ver
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        }
+    } catch (e) {
+        Swal.fire('Error', 'No se pudo generar o compartir el informe. Verifique su red.', 'error');
+        console.error(e);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+};
+
 window.abrirValidarRetiro = (idOrden, ordenData) => {
     let htmlDetalles = '<div style="margin-bottom: 1rem; color: #64748b; font-size: 0.9rem;">No hay detalles pre-cargados por el cliente. Deberá usar contingencia.</div>';
     
@@ -596,12 +654,12 @@ window.abrirValidarRetiro = (idOrden, ordenData) => {
         cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.ejecutarValidacionRetiro(idOrden);
+            window.ejecutarValidacionRetiro(idOrden, ordenData.hash);
         }
     });
 };
 
-window.ejecutarValidacionRetiro = async (idOrden) => {
+window.ejecutarValidacionRetiro = async (idOrden, hash) => {
     try {
         const response = await fetch(`${API_BASE_URL}/api/logistica/movil/retiros/${idOrden}/validar`, {
             method: 'POST',
@@ -609,10 +667,28 @@ window.ejecutarValidacionRetiro = async (idOrden) => {
         });
         const data = await response.json();
         if (data.success) {
-            Swal.fire('✅ ¡Retirado!', 'El retiro ha sido marcado como EN CAMINO.', 'success');
+            await Swal.fire({
+                title: '✅ ¡Retirado!',
+                html: `
+                    <p style="margin-bottom: 20px;">El retiro ha sido marcado como EN CAMINO.</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <button onclick="descargarYCompartirPDF('${hash}', false)" id="btn-pdf-view-${hash}"
+                                style="padding: 12px; background: #dc2626; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            📄 Generar Informe PDF
+                        </button>
+                        <button onclick="descargarYCompartirPDF('${hash}', true)" id="btn-pdf-share-${hash}"
+                                style="padding: 12px; background: #25D366; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                            💬 Compartir Archivo por WhatsApp
+                        </button>
+                    </div>
+                `,
+                icon: 'success',
+                showConfirmButton: true,
+                confirmButtonText: 'Cerrar'
+            });
             cargarRutaActiva();
-        } else alert('Error: ' + data.error);
-    } catch(err) { alert('Error de Red'); }
+        } else Swal.fire('Error', data.error || 'No se pudo validar el retiro', 'error');
+    } catch(err) { Swal.fire('Error', 'Falla de conexión de Red', 'error'); }
 };
 
 window.abrirContingenciaRetiro = (idOrden, ordenData) => {

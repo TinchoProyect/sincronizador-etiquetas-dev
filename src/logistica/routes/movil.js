@@ -435,6 +435,7 @@ router.get('/ruta-activa', async (req, res) => {
             SELECT 
                 o.id as id_orden,
                 o.estado_logistico,
+                o.estado_tratamiento,
                 o.codigo_qr_hash,
                 o.fecha_creacion,
                 c.cliente_id,
@@ -470,6 +471,7 @@ router.get('/ruta-activa', async (req, res) => {
             id_orden: r.id_orden,
             es_retiro_tratamiento: true,
             estado_logistico: r.estado_logistico,
+            estado_tratamiento: r.estado_tratamiento,
             hash: r.codigo_qr_hash,
             fecha_creacion: r.fecha_creacion,
             cliente: {
@@ -758,6 +760,58 @@ router.post('/retiros/:id/contingencia', async (req, res) => {
     }
 });
 
+/**
+ * @route POST /api/logistica/movil/retiros/:id/entregar
+ * @desc El Chofer confirma la entrega al cliente del tratamiento completado, cerrando el ciclo.
+ */
+router.post('/retiros/:id/entregar', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { firma_digital, receptor_nombre } = req.body;
+        
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+            
+            const getOrden = await client.query(`SELECT id, estado_logistico, estado_tratamiento FROM ordenes_tratamiento WHERE id = $1 FOR UPDATE`, [id]);
+            if (getOrden.rowCount === 0) throw new Error('Orden no encontrada');
+            
+            if (getOrden.rows[0].estado_tratamiento !== 'COMPLETADO') {
+                throw new Error('La orden de tratamiento aún no ha sido completada en planta.');
+            }
+
+            // Cambiamos a ENTREGADO
+            await client.query(`
+                UPDATE ordenes_tratamiento 
+                SET estado_logistico = 'ENTREGADO', 
+                    responsable_nombre = COALESCE($2, responsable_nombre)
+                WHERE id = $1
+            `, [id, receptor_nombre]);
+
+            if (firma_digital) {
+                // Registrar evento de entrega para historial/pdf
+                await client.query(
+                    `INSERT INTO entregas_eventos 
+                     (id_orden_tratamiento, receptor_nombre, firma_digital, fecha_entrega, observaciones)
+                     VALUES ($1, $2, $3, NOW(), 'Entrega Tratamiento Terminada')`,
+                    [id, receptor_nombre, firma_digital]
+                );
+            }
+            
+            await client.query('COMMIT');
+            res.json({ success: true, message: 'Entrega de tratamiento registrada exitosamente.' });
+        } catch(err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('❌ [MOVIL] Error en entregar tratamiento:', error);
+        res.status(500).json({ success: false, error: 'Error al registrar entrega.' });
+    }
+});
+
 
 /**
  * @route POST /api/logistica/movil/rutas/finalizar
@@ -832,14 +886,42 @@ router.post('/rutas/finalizar', async (req, res) => {
             const pendientesResult = await client.query(pendientesQuery, [ruta.id]);
             const pendientes = parseInt(pendientesResult.rows[0].pendientes);
 
-            // 2. PROCESAR ÓRDENES DE TRATAMIENTO (Integración Fase 3)
-            // Marcar todas las ordenes_tratamiento que estaban en esta ruta y fueron validadas como "INGRESADO_LOCAL"
-            await client.query(`
+            // 2. PROCESAR ÓRDENES DE TRATAMIENTO (Integración Fase 3 y 4)
+            // Marcar todas las ordenes_tratamiento que estaban en la ruta como "INGRESADO_LOCAL"
+            const updatedTR = await client.query(`
                 UPDATE ordenes_tratamiento
                 SET estado_logistico = 'INGRESADO_LOCAL',
                     fecha_ingreso_mantenimiento = NOW()
                 WHERE id_ruta = $1 AND estado_logistico != 'PENDIENTE_CLIENTE'
+                RETURNING id, chofer_nombre
             `, [ruta.id]);
+
+            // 2b. Inyección Atómica en Mantenimiento (Cuarentena)
+            if (updatedTR.rows.length > 0) {
+                const ids = updatedTR.rows.map(r => r.id);
+                await client.query(`
+                    INSERT INTO mantenimiento_movimientos (
+                        id_orden_tratamiento,
+                        cantidad,
+                        usuario,
+                        tipo_movimiento,
+                        observaciones,
+                        fecha_movimiento,
+                        estado
+                    )
+                    SELECT 
+                        ot.id,
+                        COALESCE((SELECT SUM(kilos) FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), 0),
+                        ot.chofer_nombre,
+                        'RETIRO_TRATAMIENTO',
+                        (SELECT json_agg(json_build_object('desc', descripcion_externa, 'kilos', kilos, 'bultos', bultos, 'motivo', motivo))::text 
+                         FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id),
+                        NOW(),
+                        'PENDIENTE'
+                    FROM ordenes_tratamiento ot
+                    WHERE ot.id = ANY($1::int[])
+                `, [ids]);
+            }
 
 
             // 3. Actualizar estado de ruta
@@ -902,10 +984,31 @@ router.delete('/retiros/:id', async (req, res) => {
                 throw new Error('Solo se pueden descartar órdenes pendientes.');
             }
             
-            await client.query('DELETE FROM ordenes_tratamiento WHERE id = $1', [id]);
+            // Evaluamos si usamos Soft Delete basado en la integridad histórica (Hijos en Mantenimiento)
+            const historialCheck = await client.query('SELECT 1 FROM mantenimiento_movimientos WHERE id_orden_tratamiento = $1 LIMIT 1', [id]);
+            
+            if (historialCheck.rowCount > 0) {
+                // Existe historial. Usar Soft Delete (ANULADO) para no quebrar la llave foránea
+                console.log(`[MOVIL] ⚠️ Orden #${id} tiene historial en mantenimiento. Aplicando Soft Delete (ANULADO).`);
+                await client.query(`
+                    UPDATE ordenes_tratamiento 
+                    SET estado_logistico = 'ANULADO', 
+                        estado_tratamiento = 'ANULADO',
+                        id_ruta = NULL
+                    WHERE id = $1
+                `, [id]);
+                await client.query(`
+                    UPDATE mantenimiento_movimientos
+                    SET estado = 'ANULADO'
+                    WHERE id_orden_tratamiento = $1
+                `, [id]);
+            } else {
+                // No hay hijos. Borrado físico limpio.
+                await client.query('DELETE FROM ordenes_tratamiento WHERE id = $1', [id]);
+                console.log(`[MOVIL] 🗑️ Orden de Tratamiento #${id} eliminada físicamente.`);
+            }
             
             await client.query('COMMIT');
-            console.log(`[MOVIL] 🗑️ Orden de Tratamiento #${id} descartada exitosamente.`);
             res.json({ success: true, message: 'Orden descartada exitosamente.' });
         } catch (err) {
             await client.query('ROLLBACK');

@@ -29,6 +29,13 @@ app.use('/api/presupuestos', createProxyMiddleware({
     logLevel: 'debug'
 }));
 
+// Proxy hacia el módulo de logística
+app.use('/api/logistica', createProxyMiddleware({
+    target: 'http://localhost:3005/api/logistica',
+    changeOrigin: true,
+    logLevel: 'debug'
+}));
+
 app.use(express.json());
 
 //Temporizacion -Mari

@@ -3,7 +3,7 @@
  * Maneja toda la lógica de confirmación rápida y detallada
  */
 
-import { obtenerDetallesPedido, confirmarEntrega } from './api.js';
+import { obtenerDetallesPedido, confirmarEntrega, confirmarEntregaTratamiento } from './api.js';
 
 // Estado del módulo
 let estadoConfirmacion = {
@@ -97,14 +97,25 @@ export async function iniciarConfirmacionRapida() {
         // Obtener coordenadas actuales
         const coords = await obtenerCoordenadas();
 
-        // Enviar confirmación
-        const resultado = await confirmarEntrega({
-            id_presupuesto: estadoConfirmacion.presupuestoId,
-            tipo_confirmacion: 'rapida',
-            nuevo_estado: esRetiro ? 'RETIRADO' : 'ENTREGADO', // ESTADO DINÁMICO
-            latitud: coords?.latitude || null,
-            longitud: coords?.longitude || null
-        });
+        let resultado;
+        if (estadoConfirmacion.tipoPedido === 'entrega_tratamiento') {
+            const idOrden = estadoConfirmacion.presupuestoId.replace('RT-', '');
+            resultado = await confirmarEntregaTratamiento(idOrden, {
+                tipo_confirmacion: 'rapida',
+                nuevo_estado: 'ENTREGADO',
+                latitud: coords?.latitude || null,
+                longitud: coords?.longitude || null
+            });
+        } else {
+            // Enviar confirmación estándar
+            resultado = await confirmarEntrega({
+                id_presupuesto: estadoConfirmacion.presupuestoId,
+                tipo_confirmacion: 'rapida',
+                nuevo_estado: esRetiro ? 'RETIRADO' : 'ENTREGADO', // ESTADO DINÁMICO
+                latitud: coords?.latitude || null,
+                longitud: coords?.longitude || null
+            });
+        }
 
         if (resultado.success) {
             alert(esRetiro ? '✅ Retiro confirmado correctamente' : '✅ Entrega confirmada correctamente');
@@ -130,6 +141,14 @@ export async function iniciarConfirmacionDetallada() {
     cerrarModalOpciones();
 
     try {
+        if (estadoConfirmacion.tipoPedido === 'entrega_tratamiento') {
+            // No details fetch needed for return treatment. Pass thru check-in natively
+            estadoConfirmacion.detalles = []; 
+            estadoConfirmacion.tipo = 'detallada';
+            mostrarModalDetallado();
+            return;
+        }
+
         // Obtener detalles del pedido
         const resultado = await obtenerDetallesPedido(estadoConfirmacion.presupuestoId);
 
@@ -400,6 +419,7 @@ export async function enviarConfirmacionDetallada() {
 
         // Preparar datos
         const esRetiro = estadoConfirmacion.tipoPedido === 'retiro';
+        const esEntregaTratamiento = estadoConfirmacion.tipoPedido === 'entrega_tratamiento';
 
         const datos = {
             id_presupuesto: estadoConfirmacion.presupuestoId,
@@ -416,8 +436,14 @@ export async function enviarConfirmacionDetallada() {
 
         console.log('[CONFIRMACION] Enviando confirmación detallada...');
 
-        // Enviar al servidor
-        const resultado = await confirmarEntrega(datos);
+        let resultado;
+        if (esEntregaTratamiento) {
+            const idOrden = estadoConfirmacion.presupuestoId.replace('RT-', '');
+            resultado = await confirmarEntregaTratamiento(idOrden, datos);
+        } else {
+            // Enviar al servidor estándar
+            resultado = await confirmarEntrega(datos);
+        }
 
         if (resultado.success) {
             cerrarModalDetallado();

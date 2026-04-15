@@ -29,7 +29,8 @@ class TratamientosModel {
     static async obtenerInfoSesion(hash) {
         // Enlaza la orden efimera con el nombre de pila o razon social del cliente maestro.
         const query = `
-            SELECT o.id, o.estado_logistico, c.nombre, c.apellido,
+            SELECT 
+                o.id, o.estado_logistico, o.estado_tratamiento, c.nombre, c.apellido, c.cliente_id,
                 o.responsable_nombre, o.responsable_apellido, o.responsable_celular,
                 o.chofer_nombre, o.fecha_validacion_chofer,
                 (SELECT json_build_object(
@@ -38,7 +39,23 @@ class TratamientosModel {
                     'kilos', d.kilos,
                     'bultos', d.bultos,
                     'motivo', d.motivo
-                ) FROM ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = o.id LIMIT 1) as detalles
+                ) FROM ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = o.id LIMIT 1) as detalles,
+                
+                (SELECT json_build_object(
+                    'operario', m.usuario,
+                    'kilos_resultantes', m.cantidad,
+                    'observaciones', m.observaciones,
+                    'fecha', m.fecha_movimiento
+                ) FROM mantenimiento_movimientos m WHERE m.id_orden_tratamiento = o.id AND m.tipo_movimiento = 'RETORNO_TRATAMIENTO' ORDER BY m.id DESC LIMIT 1) as planta,
+                
+                (SELECT json_build_object(
+                    'receptor', e.receptor_nombre,
+                    'firma_digital', e.firma_digital,
+                    'fecha', e.fecha_entrega
+                ) FROM entregas_eventos e WHERE e.id_orden_tratamiento = o.id ORDER BY e.id DESC LIMIT 1) as entrega,
+                
+                (SELECT m.estado FROM mantenimiento_movimientos m WHERE m.id_orden_tratamiento = o.id ORDER BY m.id DESC LIMIT 1) as inventario_estado
+                
             FROM ordenes_tratamiento o
             LEFT JOIN clientes c ON o.id_cliente = c.cliente_id
             WHERE o.codigo_qr_hash = $1

@@ -311,6 +311,8 @@
                             <span id="externo-filters-icon">▼</span>
                         </div>
                         <div class="accordion-content" id="externo-filters" style="display:block; padding:10px; border-bottom:1px solid #ddd;">
+                            <label><input type="checkbox" id="chk-externo-tratamientos" checked onchange="aplicarFiltrosStock()"> 🧪 Órdenes de Tratamiento (Chofer)</label>
+                            <br>
                             <label><input type="checkbox" id="chk-externo-mostrador" checked onchange="aplicarFiltrosStock()"> 🧍‍♂️ Por Mostrador (Local)</label>
                             <br>
                             <label><input type="checkbox" id="chk-externo-chofer" checked onchange="aplicarFiltrosStock()"> 🚐 Por Hoja de Ruta (Chofer)</label>
@@ -788,8 +790,8 @@
             
             // 2. Vincular auto-guardado a los checkboxes fijos
             const checkboxes = [
-                'chk-interno-articulos', 'chk-interno-ingredientes',
-                'chk-externo-mostrador', 'chk-externo-chofer',
+                'chk-interno-articulos', 'chk-interno-ingredientes', 'chk-interno-tratamientos',
+                'chk-externo-tratamientos', 'chk-externo-mostrador', 'chk-externo-chofer',
                 'chk-mostrar-historial', 'chk-ocultar-anulados'
             ];
             checkboxes.forEach(id => {
@@ -994,6 +996,33 @@
 
         window.mantenimientoStockData = [];
         
+        async function descargarPDFTratamiento(hash) {
+            Swal.fire({
+                title: 'Generando PDF',
+                text: 'Consultando datos de trazabilidad...',
+                allowEscapeKey: false,
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            try {
+                const urlBase = window.location.origin;
+                const response = await fetch(`${urlBase}/api/logistica/tratamientos/print/${hash}`);
+                
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || 'Error desconocido al generar PDF');
+                }
+                
+                Swal.close();
+                // Abrimos la ruta nativa directamente para inyectar correctamente el Content-Disposition (Nombre de archivo) a Chrome
+                window.open(`${urlBase}/api/logistica/tratamientos/print/${hash}`, '_blank');
+            } catch (err) {
+                console.error('Error obteniendo PDF de trazabilidad:', err);
+                Swal.fire('Atención', err.message, 'warning');
+            }
+        }
+        
         async function cargarStock() {
             const tbody = document.getElementById('tbody-stock');
             tbody.innerHTML = '<tr><td colspan="6" class="text-center">⏳ Cargando datos...</td></tr>';
@@ -1028,6 +1057,7 @@
             const chkInternoArticulos = document.getElementById('chk-interno-articulos')?.checked ?? true;
             const chkInternoIngredientes = document.getElementById('chk-interno-ingredientes')?.checked ?? true;
             const chkInternoTratamientos = document.getElementById('chk-interno-tratamientos')?.checked ?? true;
+            const chkExternoTratamientos = document.getElementById('chk-externo-tratamientos')?.checked ?? true;
             const chkExternoMostrador = document.getElementById('chk-externo-mostrador')?.checked ?? true;
             const chkExternoChofer = document.getElementById('chk-externo-chofer')?.checked ?? true;
 
@@ -1035,12 +1065,14 @@
                 let historialParsed = [];
                 try { if (item.historial_tratamientos) historialParsed = JSON.parse(item.historial_tratamientos); } catch(e) {}
                 const esTratamiento = Array.isArray(historialParsed) && historialParsed.length > 0;
+                
+                const esOrdenTratamiento = item.tipo_movimiento === 'RETIRO_TRATAMIENTO';
 
-                const esInternoGranel = (item.ingrediente_id != null) && !esTratamiento;
-                const esInternoArticulo = (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))) && item.ingrediente_id == null && !esTratamiento;
+                const esInternoGranel = (item.ingrediente_id != null) && !esTratamiento && !esOrdenTratamiento;
+                const esInternoArticulo = (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))) && item.ingrediente_id == null && !esTratamiento && !esOrdenTratamiento;
 
                 const esInterno = esInternoGranel || esInternoArticulo || esTratamiento;
-                const esExterno = !esInterno && !esTratamiento; // Aseguramos exclusion real
+                const esExterno = !esInterno && !esTratamiento && !esOrdenTratamiento; // Aseguramos exclusion real
                 
                 const esHojaDeRuta = esExterno && (item.origen_ruta_id != null);
                 const esMostrador = esExterno && (item.origen_ruta_id == null);
@@ -1049,6 +1081,8 @@
                 if (esInternoArticulo && chkInternoArticulos) passedType = true;
                 if (esInternoGranel && chkInternoIngredientes) passedType = true;
                 if (esTratamiento && chkInternoTratamientos) passedType = true;
+                
+                if (esOrdenTratamiento && chkExternoTratamientos) passedType = true;
                 if (esMostrador && chkExternoMostrador) passedType = true;
                 if (esHojaDeRuta && chkExternoChofer) passedType = true;
                 
@@ -1102,17 +1136,37 @@
                 const kilosUnidad = parseFloat(item.kilos_unidad) || 1;
                 const pesoTotal = cantidad * kilosUnidad;
 
-                const tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
+                let tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
+                let nombreMapeadoLocal = '';
+                let labelBultosLocal = '';
 
                 // Determinar contenido de la celda de acción
                 const esLomasoftOK = (item.estado === 'CONCILIADO');
                 const esArcaOK = (item.estado_nc === 'COMPLETADO');
                 const esArcaBorrador = (item.estado_nc === 'BORRADOR');
-                const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado'))));
+                const esRetornoLogistica = (item.tipo_movimiento === 'RETORNO_TRATAMIENTO' && item.id_orden_tratamiento != null);
+                const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) && !esRetornoLogistica;
 
                 let actionCell = '';
 
-                if (esInterno) {
+                if (esRetornoLogistica) {
+                    actionCell = `
+                    <div class="dropdown">
+                         <button class="btn-accion" style="background-color: #17a2b8;">⚡ Acciones ▼</button>
+                         <div class="dropdown-content">
+                             <button onclick="enviarALogistica(${item.id}, ${item.id_orden_tratamiento})" style="color: #fff; background-color: #28a745; font-weight: bold; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                 📦 Enviar a Logística (Pendientes)
+                             </button>
+                             <button onclick="limpiarRegistroMantenimiento(${item.id}, 'Retorno')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                 🧹 Limpiar Registro (Visual)
+                             </button>
+                         </div>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        <span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[✅ TRATAMIENTO CERRADO]</span>
+                    </div>
+                    `;
+                } else if (esInterno) {
                     let dropInterno = '';
                     if (item.ingrediente_id) {
                         dropInterno += `
@@ -1152,6 +1206,38 @@
                         ${item.ingrediente_id ? 
                             '<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[⚖️ GRANEL]</span>' : 
                             '<span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[📦 PAQUETE]</span>'}
+                    </div>
+                    `;
+                } else if (item.tipo_movimiento === 'RETIRO_TRATAMIENTO') {
+                    // Módulo Logística Fase 4
+                    let detalles = 'Tratamiento logístico';
+                    let nombreMapeado = '📌 Orden de Tratamiento';
+                    try {
+                        let parsed = JSON.parse(item.observaciones);
+                        if(Array.isArray(parsed) && parsed.length > 0) {
+                            nombreMapeado = `RT-${item.id_orden_tratamiento || '??'} - ` + parsed[0].desc; // Modificado por requerimiento
+                            labelBultosLocal = parsed[0].bultos + ' bultos';
+                            nombreMapeadoLocal = nombreMapeado;
+                            detalles = parsed.map(d => `<span>- ${d.desc} (${d.kilos}kg - ${d.bultos} bultos)</span><br><small style="color:#666;"><i>Motivo: ${d.motivo}</i></small><br><small style="color:#333;"><i>Chofer: ${d.chofer || 'N/A'} | R. Carga: ${d.responsable || 'N/A'}</i></small>`).join('<br>');
+                        }
+                    } catch(e) {}
+                    
+                    tituloPrincipal = `<b style="font-size:1.05em; color:#0e6cc4;">${nombreMapeado}</b><br>${detalles}`;
+                    
+                    actionCell = `
+                    <div class="dropdown">
+                         <button class="btn-accion" style="background-color: #28a745;">⚡ Acciones ▼</button>
+                         <div class="dropdown-content">
+                             <button style="color: #6c757d; font-weight: normal; text-align: left; padding: 10px; width: 100%; border:none; background:none; cursor:default;">
+                                 [Ingresado vía App Chofer]
+                             </button>
+                             <button onclick="enviarInmediatoTratamientoDirecto(${item.id}, ${cantidad}, '${item.cliente_id || ''}', decodeURIComponent('${encodeURIComponent(nombreMapeado)}'))" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 ⛺ Enviar a Tratamiento
+                             </button>
+                         </div>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        <span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[🏕️ AGUARDA CARPA]</span>
                     </div>
                     `;
                 } else if (esLomasoftOK || esArcaOK) {
@@ -1217,10 +1303,18 @@
                         }
                     }
 
+                    let pdfActionHtml = '';
+                    if (item.hash) {
+                        pdfActionHtml = `<button class="btn-accion" style="background-color: #dc2626; color: white; border: none; margin-top: 5px;" onclick="descargarPDFTratamiento('${item.hash}')">
+                            📄 Imprimir PDF Trazabilidad
+                        </button>`;
+                    }
+
                     actionCell = `
                     <div style="display: flex; gap: 5px; flex-direction: column;">
                         ${lomasoftBtnHtml}
                         ${ncActionHtml}
+                        ${pdfActionHtml}
                         <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" ${eliminarDisabled}>
                             🗑️ Eliminar Recepción
                         </button>
@@ -1282,6 +1376,7 @@
                     actionCell = `<div style="text-align: center; color: #856404; font-size: 0.9em; font-weight: bold;">
                         🔒 Bloqueado Físicamente
                         <br><small>Asignado al Tratamiento: ${item.tipo_tratamiento || '⛺'}</small>
+                        ${item.hash ? `<br><button onclick="descargarPDFTratamiento('${item.hash}')" style="background:#dc2626; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.9em; margin-top:8px;" title="Certificado de Retiro/Tratamiento">📄 PDF Trazabilidad</button>` : ''}
                     </div>`;
                 }
                 
@@ -1291,7 +1386,7 @@
                 
                 row.innerHTML = `
                 <td style="text-align: center;">
-                    <input type="checkbox" class="chk-item-stock" ${disabled} onchange="evaluarSeleccionTratamiento()" data-articulo="${item.articulo_numero || ''}" data-ingrediente="${item.ingrediente_id || ''}" data-cliente="${item.cliente_id || ''}" data-kilos="${pesoTotal}" data-id="${rowId}">
+                    <input type="checkbox" class="chk-item-stock" ${disabled} onchange="evaluarSeleccionTratamiento()" data-articulo="${item.articulo_numero || ''}" data-ingrediente="${item.ingrediente_id || ''}" data-cliente="${item.cliente_id || ''}" data-cliente-nombre="${encodeURIComponent(item.cliente_nombre || '')}" data-tratamiento-logistico="${encodeURIComponent(nombreMapeadoLocal)}" data-bultos-origen="${encodeURIComponent(labelBultosLocal)}" data-kilos="${pesoTotal}" data-id="${rowId}">
                 </td>
                 <td>
                     <strong>${tituloPrincipal}</strong>
@@ -1695,6 +1790,84 @@
                 }
             } catch(err) {
                 Swal.fire('Error', 'No se pudo retirar el registro: ' + err.message, 'error');
+            }
+        }
+
+        // Bridging Phase 4: Envío programático individual para órdenes de tratamiento
+        function enviarInmediatoTratamientoDirecto(idMovimiento, kilos, cliente_id, descripcion_custom) {
+            window.itemsSeleccionadosTratamiento = [{
+                id_movimiento: idMovimiento,
+                kilos: parseFloat(kilos),
+                articulo_numero: null,
+                ingrediente_id: null,
+                cliente_id: cliente_id,
+                cliente_nombre: descripcion_custom.split('-')[0] || 'Logística',
+                descripcion_custom: descripcion_custom 
+            }];
+            
+            // Populate modal (equivalent to abrirModalIniciarTratamiento but using direct description)
+            let totalKilos = parseFloat(kilos);
+            document.getElementById('tto-kilos-brutos').innerText = totalKilos.toFixed(2);
+            document.getElementById('tto-items-count').innerText = 1;
+
+            const listEl = document.getElementById('tto-items-list');
+            if (listEl) {
+                listEl.innerHTML = `<li><strong>Tratamiento Logístico: ${descripcion_custom.substring(0, 30)}</strong> - Físico Ponderado: ${totalKilos.toFixed(2)}kg</li>`;
+            }
+
+            document.getElementById('tto-notas').value = 'Ingreso Automático Módulo de Logística (Retiro Certificado)';
+            const ttoBultos = document.getElementById('tto-bultos');
+            if (ttoBultos) {
+                ttoBultos.value = '';
+                ttoBultos.placeholder = 'Nº Bultos Finales Físicos';
+            }
+
+            const selectOperario = document.getElementById('tto-operario');
+            if (selectOperario) {
+                let optionsHtml = '<option value="">-- Seleccione un operario --</option>';
+                if (window.operariosActivosCache) {
+                    window.operariosActivosCache.forEach(op => {
+                        optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
+                    });
+                }
+                selectOperario.innerHTML = optionsHtml;
+            }
+
+            document.getElementById('modal-iniciar-tratamiento').style.display = 'block';
+        }
+
+        // FASE 4: Retorno a Logística
+        async function enviarALogistica(idMovimiento, idOrdenTratamiento) {
+            if(!confirm('¿Estás seguro de enviar este lote sellado a los camiones de reparto?\n\nDesaparecerá de Mantenimiento y volverá a estar "Pendiente de Entrega" para Logística.')) return;
+            
+            try {
+                Swal.fire({
+                    title: 'Enviando a Logística...',
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading()
+                });
+
+                const res = await fetch('/api/produccion/mantenimiento/retorno-a-logistica', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        movimiento_id: idMovimiento,
+                        id_orden_tratamiento: idOrdenTratamiento
+                    })
+                });
+
+                const data = await res.json();
+                
+                if (data.success) {
+                    Swal.fire('¡Despachado!', 'La orden ha vuelto a la cola de Logística para su pronta entrega.', 'success');
+                    cargarStock();
+                    cargarHistorial();
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error', 'No se ha podido enviar a logística: ' + (err.message || ''), 'error');
             }
         }
 
@@ -2684,7 +2857,10 @@
                     articulo_numero: (dataset.articulo && dataset.articulo !== 'undefined' && dataset.articulo !== 'null') ? dataset.articulo : null,
                     kilos: kilos,
                     ingrediente_id: (dataset.ingrediente && dataset.ingrediente !== 'undefined' && dataset.ingrediente !== 'null') ? dataset.ingrediente : null,
-                    cliente_origen: (dataset.cliente && dataset.cliente !== 'undefined' && dataset.cliente !== 'null') ? dataset.cliente : null
+                    cliente_origen: (dataset.cliente && dataset.cliente !== 'undefined' && dataset.cliente !== 'null') ? dataset.cliente : null,
+                    cliente_nombre: dataset.clienteNombre ? decodeURIComponent(dataset.clienteNombre) : 'Desconocido',
+                    tratamiento_logistico: dataset.tratamientoLogistico ? decodeURIComponent(dataset.tratamientoLogistico) : null,
+                    bultos_origen: dataset.bultosOrigen ? decodeURIComponent(dataset.bultosOrigen) : null
                 });
             });
 
@@ -2704,11 +2880,43 @@
             document.getElementById('tto-items-count').innerText = itemsSeleccionadosTratamiento.length;
             
             const listEl = document.getElementById('tto-items-list');
+            
+            // UI EXTENDIDA PARA TRAZABILIDAD (Fase 4 - REQUISITO 1)
+            let primerCliente = itemsSeleccionadosTratamiento[0]?.cliente_nombre || 'Desconocido';
+            
             if (listEl) {
-                listEl.innerHTML = itemsSeleccionadosTratamiento.map(item => `<li><strong>${item.articulo_numero ? 'Art. ' + item.articulo_numero : (item.ingrediente_id ? 'Ingr. I-' + item.ingrediente_id : 'Item')}</strong> - Físico: ${item.kilos.toFixed(2)}kg</li>`).join('');
+                listEl.innerHTML = itemsSeleccionadosTratamiento.map(item => {
+                    let label = item.articulo_numero ? 'Art. ' + item.articulo_numero : (item.ingrediente_id ? 'Ingr. I-' + item.ingrediente_id : 'Item físico');
+                    if (item.tratamiento_logistico && item.tratamiento_logistico !== 'undefined' && item.tratamiento_logistico.length > 0) {
+                        label = item.tratamiento_logistico;
+                    }
+                    return `<li><strong>${label}</strong> - Físico: ${item.kilos.toFixed(2)}kg</li>`;
+                }).join('');
+                
+                // Mostrar el nombre del cliente extraido (si no es interno)
+                let headerContent = '';
+                if (primerCliente !== 'Desconocido' && !primerCliente.includes('Traslado')) {
+                    headerContent += `🏢 Origen: <b>${primerCliente}</b>`;
+                }
+                
+                let primerBulto = itemsSeleccionadosTratamiento[0]?.bultos_origen || '';
+                if (primerBulto && primerBulto !== 'undefined' && primerBulto !== 'undefined bultos') {
+                    headerContent += (headerContent ? ' | ' : '') + `📦 Declarado: <b>${primerBulto}</b>`;
+                }
+
+                if (headerContent) {
+                    listEl.innerHTML = `<div style="background-color: #e8f4fd; padding: 5px 10px; border-radius: 4px; border: 1px solid #b8daff; color: #004085; font-size: 0.95em; margin-bottom: 8px;">${headerContent}</div>` + listEl.innerHTML;
+                }
             }
 
             document.getElementById('tto-notas').value = '';
+            
+            // Modificar placeholder para guiar sobre bultos (REQUISITO 1b)
+            const bultosEl = document.getElementById('tto-bultos');
+            if (bultosEl) {
+                bultosEl.value = '';
+                bultosEl.placeholder = 'Nº Bultos Finales Físicos';
+            }
             const ttoBultos = document.getElementById('tto-bultos');
             if (ttoBultos) ttoBultos.value = '';
             
@@ -2825,11 +3033,15 @@
                         actionHtml = `<button onclick="abrirModalFinalizar(${tto.id}, ${tto.kilos_brutos_totales})" class="btn-accion" style="background-color: #28a745; width: 100%; margin-top: 10px;">⚖️ Finalizar y Recuperar</button>`;
                     }
 
-                    let itemsHtml = '<ul style="font-size: 0.85em; padding-left: 20px; color: #555; max-height: 80px; overflow-y: auto;">';
+                    let itemsHtml = '<ul style="font-size: 0.85em; padding-left: 20px; color: #555; max-height: 120px; overflow-y: auto;">';
                     tto.items.forEach(i => {
                         let baseName = i.item_nombre ? ` - ${i.item_nombre}` : '';
                         let etiquetaArt = i.articulo_numero ? `Art: ${i.articulo_numero}${baseName}` : `Granel: I-${i.ingrediente_id}${baseName}`;
-                        itemsHtml += `<li>${i.kilos_ingresados}kg - ${etiquetaArt}</li>`;
+                        let btnPdf = '';
+                        if (i.hash) {
+                            btnPdf = `<button onclick="descargarPDFTratamiento('${i.hash}')" style="background:#dc2626; color:white; border:none; padding:2px 5px; border-radius:3px; cursor:pointer; font-size:0.8em; margin-left:8px;" title="Certificado de Retiro Original">📄 PDF</button>`;
+                        }
+                        itemsHtml += `<li style="margin-bottom:4px;">${i.kilos_ingresados}kg - ${etiquetaArt} ${btnPdf}</li>`;
                     });
                     itemsHtml += '</ul>';
 

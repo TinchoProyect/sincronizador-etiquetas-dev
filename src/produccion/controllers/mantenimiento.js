@@ -32,7 +32,8 @@ async function getStockMantenimiento(req, res) {
                     p.origen_facturacion,
                     mm.articulo_numero,
                     mm.ingrediente_id,
-                    p.id_cliente AS cliente_id,
+                    mm.id_orden_tratamiento,
+                    COALESCE(p.id_cliente::text, ot.id_cliente::text) AS cliente_id,
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
                     p.id_ruta AS origen_ruta_id,
                     p.comprobante_lomasoft AS presup_comprobante_lomasoft,
@@ -40,13 +41,17 @@ async function getStockMantenimiento(req, res) {
                     mm.cantidad AS stock_mantenimiento,
                     mm.fecha_movimiento as ultima_actualizacion,
                     mm.usuario AS usuario,
+                    mm.tipo_movimiento,
+                    mm.observaciones,
                     mm.historial_tratamientos::text AS historial_tratamientos,
-                    mm.estado as transaccion_estado
+                    mm.estado as transaccion_estado,
+                    ot.codigo_qr_hash as hash
                 FROM public.mantenimiento_movimientos mm
                 LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                LEFT JOIN public.clientes c ON p.id_cliente::text = c.cliente_id::text
+                LEFT JOIN public.ordenes_tratamiento ot ON mm.id_orden_tratamiento = ot.id
+                LEFT JOIN public.clientes c ON COALESCE(p.id_cliente::text, ot.id_cliente::text) = c.cliente_id::text
                 WHERE mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
-                  AND mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO')
+                  AND mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'RETIRO_TRATAMIENTO')
                   AND mm.cantidad > 0
             )
             SELECT 
@@ -55,12 +60,15 @@ async function getStockMantenimiento(req, res) {
                 sc.origen_facturacion,
                 sc.articulo_numero,
                 sc.ingrediente_id,
+                sc.id_orden_tratamiento,
+                sc.hash,
                 COALESCE(a.nombre, i.nombre, sc.articulo_numero, sc.ingrediente_id::text) AS descripcion,
                 sc.stock_mantenimiento,
                 s.stock_lomasoft,
                 s.stock_movimientos,
                 s.stock_ajustes,
                 sc.ultima_actualizacion,
+                sc.tipo_movimiento,
                 NULLIF(TRIM(sc.usuario), '') AS usuario_id,
                 COALESCE(u_resp.nombre_completo, NULLIF(TRIM(sc.usuario), ''), 'SISTEMA') AS usuario,
                 sc.historial_tratamientos,
@@ -79,7 +87,8 @@ async function getStockMantenimiento(req, res) {
                 END AS estado_nc,
                 tto.tratamiento_estado,
                 tto.tratamiento_id,
-                tto.tipo_tratamiento
+                tto.tipo_tratamiento,
+                sc.observaciones
             FROM saldos_clientes sc
             LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
             LEFT JOIN public.ingredientes i ON sc.ingrediente_id = i.id
@@ -114,7 +123,7 @@ async function getStockMantenimiento(req, res) {
                 JOIN public.mantenimiento_tratamientos tt ON tti.id_tratamiento = tt.id
                 WHERE (tti.id_movimiento_origen = sc.id_movimiento 
                        OR (tti.id_movimiento_origen IS NULL AND (tti.articulo_numero = sc.articulo_numero OR (sc.articulo_numero IS NULL AND tti.articulo_numero IS NULL AND tti.ingrediente_id = sc.ingrediente_id))
-                                                            AND (tti.id_cliente_origen = sc.cliente_id OR (sc.cliente_id IS NULL AND tti.id_cliente_origen IS NULL))
+                                                            AND (tti.id_cliente_origen::text = sc.cliente_id::text OR (sc.cliente_id IS NULL AND tti.id_cliente_origen IS NULL))
                           )
                       )
                   AND tt.estado IN ('ARMANDO', 'EN_CUARENTENA', 'EN_ACONDICIONAMIENTO')
@@ -1504,7 +1513,6 @@ async function getRetirosRuta(req, res) {
                   OR 
                   (p.id_ruta IS NULL AND p.estado_logistico = 'PENDIENTE_ASIGNAR')
               )
-            ORDER BY r.fecha_salida DESC NULLS LAST, p.fecha DESC
         `;
         const result = await pool.query(query);
 
@@ -1517,9 +1525,50 @@ async function getRetirosRuta(req, res) {
             `;
             const detResult = await pool.query(detQuery, [row.id_presupuesto_ext]);
             row.items = detResult.rows;
+            row.es_tratamiento = false;
         }
 
-        res.json({ success: true, data: result.rows });
+        // AGREGAR: Órdenes de Tratamiento In-Transit (Visibilidad Viva)
+        const queryTto = `
+            SELECT 
+                ot.id, ot.codigo_qr_hash as id_presupuesto_ext, ot.fecha_creacion as fecha, ot.estado_logistico,
+                c.cliente_id, c.nombre as cliente_nombre, c.apellido as cliente_apellido,
+                r.id as ruta_id, r.nombre_ruta, r.estado as ruta_estado,
+                u.nombre_completo as chofer_nombre
+            FROM public.ordenes_tratamiento ot
+            LEFT JOIN public.clientes c ON ot.id_cliente::text = c.cliente_id::text
+            LEFT JOIN public.rutas r ON ot.id_ruta = r.id
+            LEFT JOIN public.usuarios u ON r.id_chofer = u.id
+            WHERE ot.estado_tratamiento = 'RETIRO_PENDIENTE'
+              AND (
+                  (ot.id_ruta IS NOT NULL AND r.estado IN ('ARMANDO', 'EN_CAMINO'))
+                  OR 
+                  ot.estado_logistico IN ('PENDIENTE_ASIGNAR', 'RETIRADO')
+              )
+        `;
+        const resultTto = await pool.query(queryTto);
+
+        for (let row of resultTto.rows) {
+            const detQuery = `
+                SELECT 
+                    otd.articulo_numero as articulo, 
+                    1 as cantidad, 
+                    COALESCE(otd.descripcion_externa, a.nombre, 'Tratamiento P/D') || ' (' || otd.kilos || 'kg)' as descripcion, 
+                    otd.articulo_numero
+                FROM public.ordenes_tratamiento_detalles otd
+                LEFT JOIN public.articulos a ON otd.articulo_numero = a.numero
+                WHERE otd.id_orden_tratamiento = $1
+            `;
+            const detResult = await pool.query(detQuery, [row.id]);
+            row.items = detResult.rows;
+            row.es_tratamiento = true;
+        }
+
+        // Combinar y Ordenar por fecha cronológica inversa
+        let combined = [...result.rows, ...resultTto.rows];
+        combined.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+        res.json({ success: true, data: combined });
     } catch (error) {
         console.error('❌ Error getRetirosRuta:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2186,10 +2235,13 @@ const getTratamientosActivos = async (req, res) => {
                        'kilos_ingresados', i.kilos_ingresados,
                        'id_cliente_origen', i.id_cliente_origen,
                        'ingrediente_id', i.ingrediente_id,
-                       'item_nombre', COALESCE(a.nombre, ing.nombre)
+                       'item_nombre', COALESCE(a.nombre, ing.nombre),
+                       'hash', ot.codigo_qr_hash
                    )) FILTER (WHERE i.id IS NOT NULL), '[]') as items
             FROM public.mantenimiento_tratamientos t
             LEFT JOIN public.mantenimiento_tratamientos_items i ON t.id = i.id_tratamiento
+            LEFT JOIN public.mantenimiento_movimientos mm ON i.id_movimiento_origen = mm.id
+            LEFT JOIN public.ordenes_tratamiento ot ON mm.id_orden_tratamiento = ot.id
             LEFT JOIN public.articulos a ON i.articulo_numero = a.numero
             LEFT JOIN public.ingredientes ing ON i.ingrediente_id = ing.id
             WHERE t.estado != 'FINALIZADO'
@@ -2267,15 +2319,17 @@ const finalizarTratamiento = async (req, res) => {
 
         for (const item of itemsRes.rows) {
             // Obtener el movimiento original para heredar su JSON historial_tratamientos si existe
-            const originalMov = await client.query(`SELECT id_presupuesto_origen, observaciones, historial_tratamientos FROM public.mantenimiento_movimientos WHERE id = $1`, [item.id_movimiento_origen]);
+            const originalMov = await client.query(`SELECT id_presupuesto_origen, id_orden_tratamiento, observaciones, historial_tratamientos FROM public.mantenimiento_movimientos WHERE id = $1`, [item.id_movimiento_origen]);
             
             let historialPrevio = '[]';
             let idPresupuestoOrigen = null;
+            let idOrdenTratamiento = null;
             let obsOriginal = '';
 
             if (originalMov.rowCount > 0) {
                 const movData = originalMov.rows[0];
                 idPresupuestoOrigen = movData.id_presupuesto_origen;
+                idOrdenTratamiento = movData.id_orden_tratamiento;
                 historialPrevio = typeof movData.historial_tratamientos === 'string' ? movData.historial_tratamientos : JSON.stringify(movData.historial_tratamientos || []);
                 obsOriginal = movData.observaciones || '';
             }
@@ -2324,12 +2378,13 @@ const finalizarTratamiento = async (req, res) => {
             // 3.1 Insertar el nuevo movimiento de RETORNO en Mantenimiento (Quinto Flujo)
             await client.query(`
                 INSERT INTO public.mantenimiento_movimientos
-                (articulo_numero, ingrediente_id, id_presupuesto_origen, cantidad, usuario, tipo_movimiento, estado, observaciones, historial_tratamientos)
-                VALUES ($1, $2, $3, $4, $5, 'RETORNO_TRATAMIENTO', 'PENDIENTE', $6, $7::jsonb)
+                (articulo_numero, ingrediente_id, id_presupuesto_origen, id_orden_tratamiento, cantidad, usuario, tipo_movimiento, estado, observaciones, historial_tratamientos)
+                VALUES ($1, $2, $3, $4, $5, $6, 'RETORNO_TRATAMIENTO', 'PENDIENTE', $7, $8::jsonb)
             `, [
                 item.articulo_numero, 
                 item.ingrediente_id || null,
                 idPresupuestoOrigen, 
+                idOrdenTratamiento,
                 cantidadEnUnidades, 
                 usuario, 
                 `[RETORNO TRATAMIENTO #${id}] ` + obsOriginal,
@@ -2388,6 +2443,49 @@ const limpiarRegistroAdministrativo = async (req, res) => {
     }
 };
 
+const retornoALogistica = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { movimiento_id, id_orden_tratamiento } = req.body;
+        if (!movimiento_id || !id_orden_tratamiento) throw new Error('Parámetros incompletos. Se requiere ID de Movimiento y ID de Orden de Tratamiento.');
+
+        await client.query('BEGIN');
+
+        // 1. Cerrar el ciclo en Mantenimiento visualmente
+        await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET estado = 'FINALIZADO',
+                observaciones = COALESCE(observaciones, '') || ' -> [Devuelto a Logística]'
+            WHERE id = $1 AND estado != 'FINALIZADO'
+        `, [movimiento_id]);
+
+        // 2. Impactar atómicamente en Logística para reencolar el ruteo
+        const logisticaUpdate = await client.query(`
+            UPDATE public.ordenes_tratamiento
+            SET id_ruta = NULL,
+                estado_logistico = 'PENDIENTE_CLIENTE',
+                estado_tratamiento = 'COMPLETADO',
+                orden_entrega = 999
+            WHERE id = $1
+            RETURNING id
+        `, [id_orden_tratamiento]);
+
+        if (logisticaUpdate.rowCount === 0) {
+            throw new Error(`La Orden de Tratamiento #${id_orden_tratamiento} no se pudo restaurar en Logística. Verifica integridad.`);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'La orden ha sido enviada exitosamente a Pendientes de Logística.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error en retorno a logística:', error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -2414,5 +2512,6 @@ module.exports = {
     sellarTratamiento,
     abrirTratamiento,
     finalizarTratamiento,
-    limpiarRegistroAdministrativo
+    limpiarRegistroAdministrativo,
+    retornoALogistica
 };

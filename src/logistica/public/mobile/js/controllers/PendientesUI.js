@@ -199,48 +199,59 @@ async function ejecutarCrearRuta(event) {
         alert('Error de conexión.');
     } finally {
         if(document.getElementById('modal-dinamico-ruta')) {
-            btn.disabled = false;
-            btn.innerHTML = spanOriginal;
-        }
-    }
-}
-
-async function asignarSeleccionados() {
+            btn.disabled = falasync function asignarSeleccionados() {
     const seleccionados = Array.from(document.querySelectorAll('.chk-pedido:checked')).map(cb => String(cb.value).startsWith('RT-') ? cb.value : parseInt(cb.value));
     if(seleccionados.length === 0) return;
     
-    let rutasHtml = '<option value="">Investigando rutas activas...</option>';
+    // Crear el modal vacio inmediatamente para evitar Lag de UI
+    const modalHtml = `
+    <div id="modal-asignar-ruta" class="modal-mobile" style="display: flex;">
+        <div class="modal-content-mobile" style="padding:1.5rem;">
+            <div class="modal-header-mobile" style="padding:0; border:none; margin-bottom:1.5rem;">
+                <h2 style="font-size: 1.25rem;">📦 Asignar ${seleccionados.length} Pedidos</h2>
+                <button onclick="document.getElementById('modal-asignar-ruta').remove()" style="background:none; border:none; font-size:1.5rem;">&times;</button>
+            </div>
+            <div class="form-group">
+                <label style="font-weight:bold; margin-bottom:0.5rem; display:block;">Ruta Destino Activa</label>
+                <select id="select-ruta-destino" style="width:100%; padding:0.75rem; border:1px solid #cbd5e1; border-radius:0.5rem; margin-bottom:1.5rem; background:white; font-size:1rem;" disabled>
+                    <option value="">Investigando rutas activas...</option>
+                </select>
+            </div>
+            <button id="btn-ejecutar-asignar" onclick='ejecutarAsignarRuta(${JSON.stringify(seleccionados)}, event)' style="width:100%; padding:1rem; background:#10b981; color:white; border:none; border-radius:0.5rem; font-weight:bold; font-size:1.1rem; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);" disabled>Cargando rutas...</button>
+        </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Fetchear asíncronamente
     try {
         const resp = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas-activas`, {
             headers: { 'Authorization': `Bearer ${state.sesion.token}` }
         });
         const result = await resp.json();
+        
+        const selector = document.getElementById('select-ruta-destino');
+        const btnAsignar = document.getElementById('btn-ejecutar-asignar');
+        if(!selector || !btnAsignar) return; // Se cerró antes de cargar
+        
+        let rutasHtml = '';
         if(result.success && result.data && result.data.length > 0) {
             rutasHtml = '<option value="">Seleccione una Ruta Destino...</option>';
             result.data.forEach(r => {
                 rutasHtml += `<option value="${r.id}">${r.nombre_ruta} (Chofer: ${r.chofer_nombre})</option>`;
             });
+            selector.innerHTML = rutasHtml;
+            selector.disabled = false;
+            btnAsignar.disabled = false;
+            btnAsignar.innerText = 'Confirmar Asignación';
         } else {
-            rutasHtml = '<option value="">No hay rutas en preparación (ARMANDO)</option>';
+            selector.innerHTML = '<option value="">No hay rutas en preparación (ARMANDO)</option>';
         }
-    } catch(e) { console.error(e); }
-
-    const modalHtml = `
-    <div id="modal-asignar-ruta" class="modal-mobile" style="display: flex;">
-        <div class="modal-content-mobile" style="padding:1.5rem;">
-            <div class="modal-header-mobile" style="padding:0; border:none; margin-bottom:1.5rem;">
-                <h2 style="font-size: 1.25rem;">📌 Asignar ${seleccionados.length} Pedidos</h2>
-                <button onclick="document.getElementById('modal-asignar-ruta').remove()" style="background:none; border:none; font-size:1.5rem;">&times;</button>
-            </div>
-            <div class="form-group">
-                <label style="font-weight:bold; margin-bottom:0.5rem; display:block;">Ruta Destino Activa</label>
-                <select id="select-ruta-destino" style="width:100%; padding:0.75rem; border:1px solid #cbd5e1; border-radius:0.5rem; margin-bottom:1.5rem; background:white; font-size:1rem;">
-                    ${rutasHtml}
-                </select>
-            </div>
-            <button onclick='ejecutarAsignarRuta(${JSON.stringify(seleccionados)}, event)' style="width:100%; padding:1rem; background:#10b981; color:white; border:none; border-radius:0.5rem; font-weight:bold; font-size:1.1rem; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">Confirmar Asignación</button>
-        </div>
-    </div>`;
+    } catch(e) { 
+        console.error(e);
+        const selector = document.getElementById('select-ruta-destino');
+        if (selector) selector.innerHTML = '<option value="">Error al cargar rutas</option>';
+    }
+}div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
