@@ -256,6 +256,24 @@ const crearPresupuesto = async (req, res) => {
                 console.log(`✅ [PRESUPUESTOS-WRITE] Validación de duplicidad superada para PV: ${pVentaStr}, Factura: ${nFacturaStr}`);
             }
 
+            let resolvedOrigenFacturacion = origen_facturacion || 'PENDIENTE';
+            if (isRetiro && pVentaStr && nFacturaStr && resolvedOrigenFacturacion === 'PENDIENTE') {
+                const pVentaInt = parseInt(pVentaStr, 10);
+                const nFacturaInt = parseInt(nFacturaStr, 10);
+                if (!isNaN(pVentaInt) && !isNaN(nFacturaInt)) {
+                    const checkFacturadorQuery = `
+                        SELECT 1 
+                        FROM factura_facturas 
+                        WHERE pto_vta = $1 AND cbte_nro = $2 AND estado != 'BORRADOR'
+                        LIMIT 1
+                    `;
+                    const checkFactResult = await client.query(checkFacturadorQuery, [pVentaInt, nFacturaInt]);
+                    resolvedOrigenFacturacion = checkFactResult.rows.length > 0 ? 'LAMDA' : 'LOMASOFT';
+                    console.log(`[HERENCIA-VENTAS] Resuelto Origen Facturador en CREATE: ${resolvedOrigenFacturacion} para PV-${pVentaStr} Fact-${nFacturaStr}`);
+                }
+            }
+
+
             // Obtener configuración activa para completar campos
             const configQuery = `
                 SELECT hoja_url
@@ -297,7 +315,7 @@ const crearPresupuesto = async (req, res) => {
                 configHojaUrl,
                 1, // usuario_id
                 estado_logistico || null, // NUEVO: Se guarda lo que viene del front
-                origen_facturacion || 'PENDIENTE', // NUEVO FASE 2
+                resolvedOrigenFacturacion, // NUEVO FASE 2: Resuelto iterativamente
                 pVentaStr,
                 nFacturaStr
             ]);
@@ -748,9 +766,30 @@ const editarPresupuesto = async (req, res) => {
             }
 
             if (origen_facturacion !== undefined) {
+                let resolvedOrigenEdit = origen_facturacion;
+                const finalPuntoVenta = origen_punto_venta !== undefined ? origen_punto_venta : presupuesto.origen_punto_venta;
+                const finalNumeroFactura = origen_numero_factura !== undefined ? origen_numero_factura : presupuesto.origen_numero_factura;
+                const isRetiroEdit = (tipo_comprobante === 'Orden de Retiro' || estado === 'Orden de Retiro' || estado === 'Administrativa NC') || (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.estado === 'Orden de Retiro' || presupuesto.estado === 'Administrativa NC');
+                
+                if (isRetiroEdit && finalPuntoVenta && finalNumeroFactura && (origen_facturacion === 'PENDIENTE' || !origen_facturacion)) {
+                    const pVentaInt = parseInt(finalPuntoVenta, 10);
+                    const nFacturaInt = parseInt(finalNumeroFactura, 10);
+                    if (!isNaN(pVentaInt) && !isNaN(nFacturaInt)) {
+                        const checkFacturadorQuery = `
+                            SELECT 1 
+                            FROM factura_facturas 
+                            WHERE pto_vta = $1 AND cbte_nro = $2 AND estado != 'BORRADOR'
+                            LIMIT 1
+                        `;
+                        const checkFactResult = await client.query(checkFacturadorQuery, [pVentaInt, nFacturaInt]);
+                        resolvedOrigenEdit = checkFactResult.rows.length > 0 ? 'LAMDA' : 'LOMASOFT';
+                        console.log(`[HERENCIA-VENTAS] Resuelto Origen Facturador en EDIT: ${resolvedOrigenEdit} para PV-${pVentaInt} Fact-${nFacturaInt}`);
+                    }
+                }
+                
                 paramCount++;
                 updates.push(`origen_facturacion = $${paramCount}`);
-                params.push(origen_facturacion);
+                params.push(resolvedOrigenEdit);
             }
 
             if (origen_punto_venta !== undefined) {

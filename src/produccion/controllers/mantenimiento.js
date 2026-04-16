@@ -38,6 +38,7 @@ async function getStockMantenimiento(req, res) {
                     p.id_ruta AS origen_ruta_id,
                     p.comprobante_lomasoft AS presup_comprobante_lomasoft,
                     p.fecha AS presup_fecha,
+                    p.estado AS estado_presupuesto,
                     mm.cantidad AS stock_mantenimiento,
                     mm.fecha_movimiento as ultima_actualizacion,
                     mm.usuario AS usuario,
@@ -75,7 +76,11 @@ async function getStockMantenimiento(req, res) {
                 sc.origen_ruta_id,
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
-                sc.transaccion_estado as estado,
+                CASE 
+                    WHEN sc.estado_presupuesto = 'Conciliado' THEN 'CONCILIADO'
+                    WHEN nc.nro_comprobante_externo IS NOT NULL THEN 'CONCILIADO'
+                    ELSE sc.transaccion_estado
+                END as estado,
                 sc.cliente_nombre,
                 COALESCE(nc.nro_comprobante_externo, sc.presup_comprobante_lomasoft) as nc_nro,
                 COALESCE(nc.tipo_comprobante, 'NC ERP') as nc_tipo,
@@ -522,8 +527,8 @@ async function confirmarConciliacion(req, res) {
             JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
             WHERE mm.articulo_numero = $1
               AND p.id_cliente = $2
-              AND mm.tipo_movimiento = 'INGRESO'
-              AND (mm.estado IS NULL OR mm.estado != 'CONCILIADO')
+              AND mm.tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'RETIRO_TRATAMIENTO')
+              AND mm.estado = 'PENDIENTE'
         `;
         const queryParams = [articulo, cliente_id];
 
