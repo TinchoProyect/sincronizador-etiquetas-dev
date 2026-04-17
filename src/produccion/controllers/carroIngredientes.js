@@ -87,27 +87,29 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
         // Para externa, mirar mezcla de stock_usuarios y movimientos (fallback)
         query = `
         SELECT
-        sub.id,
+            sub.id,
             i.nombre,
             i.unidad_medida,
-            i.stock_actual as current_system_stock, --Stock REAL actual en sistema
+            COALESCE((
+                SELECT SUM(isu.cantidad) 
+                FROM ingredientes_stock_usuarios isu 
+                JOIN carros_produccion cp ON cp.id = $1 
+                WHERE isu.usuario_id = cp.usuario_id AND isu.ingrediente_id = sub.id
+            ), 0) as current_system_stock, -- Stock REAL personal del operario actual en sistema
             (SELECT descripcion FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_descripcion,
             (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre,
             i.sector_id,
-        SUM(sub.cantidad) as cantidad,
+            SUM(sub.cantidad) as cantidad,
             MAX(sub.stock_anterior) as stock_snapshot,
+            MAX(sub.capacidad_base) as capacidad_base,
             sub.origen_mix_id
-        FROM(
-            SELECT ingrediente_id as id, ABS(cantidad) as cantidad, origen_mix_id, NULL:: numeric as stock_anterior
-                FROM ingredientes_stock_usuarios 
-                WHERE origen_carro_id = $1 AND cantidad < 0
-                UNION ALL
-                SELECT ingrediente_id as id, ABS(kilos) as cantidad, NULL as origen_mix_id, stock_anterior
-                FROM ingredientes_movimientos 
-                WHERE carro_id = $1 AND kilos < 0 AND tipo = 'egreso'
+        FROM (
+            SELECT ingrediente_id as id, ABS(cantidad) as cantidad, origen_mix_id, NULL::numeric as stock_anterior, contexto_envase as capacidad_base
+            FROM ingredientes_stock_usuarios 
+            WHERE origen_carro_id = $1 AND cantidad < 0
         ) sub
             JOIN ingredientes i ON sub.id = i.id
-            GROUP BY sub.id, i.nombre, i.unidad_medida, i.stock_actual, sub.origen_mix_id, i.sector_id
+            GROUP BY sub.id, i.nombre, i.unidad_medida, sub.origen_mix_id, i.sector_id
             `;
     }
 
@@ -136,6 +138,7 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
             stock_actual: stockAnterior, // Mantener compatibilidad (Snapshot)
             stock_snapshot: stockAnterior, // Explicito para evitar dudas
             stock_live: Number(row.current_system_stock || 0), // Stock real actual del sistema
+            capacidad_base: row.capacidad_base,
             sector_letra: sectorLetra
         };
     });
@@ -548,14 +551,15 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                             console.log(`\n📦 Obteniendo stock de usuario para ingrediente ${ingrediente.id} `);
                             // Consultar stock del usuario para carros externos
                             const queryStockUsuario = `
-                                SELECT SUM(cantidad) as stock_usuario
+                                SELECT SUM(cantidad) as stock_usuario, MAX(contexto_envase) as capacidad_base
                                 FROM ingredientes_stock_usuarios
                                 WHERE usuario_id = $1 AND ingrediente_id = $2
                                 GROUP BY ingrediente_id
                             `;
                             const stockUsuarioResult = await pool.query(queryStockUsuario, [carroUsuarioId, ingrediente.id]);
                             stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
-                            console.log(`Stock usuario encontrado: ${stockActual} `);
+                            ingrediente.capacidad_base = stockUsuarioResult.rows[0]?.capacidad_base || null;
+                            console.log(`Stock usuario encontrado: ${stockActual} | Capacidad base: ${ingrediente.capacidad_base}`);
                         } else {
                             console.log(`\n📦 Obteniendo stock REAL para ingrediente ${ingrediente.id} (tabla ingredientes + sustituciones)`);
                             // 🔧 CORRECCIÓN CRÍTICA: Incluir sustituciones en el cálculo

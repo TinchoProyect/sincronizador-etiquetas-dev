@@ -764,24 +764,39 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
         let stockOriginal = 0;
         let stockRestante = 0;
         let consumo = cantidadNecesaria;
+        let suficienciaReal = 0;
 
         if (carroFinalizado) {
             // Snapshot = Stock original disponible antes de cerrar
             stockOriginal = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
             stockRestante = stockOriginal - cantidadNecesaria;
+            suficienciaReal = stockRestante;
             // No restamos el ingresoManual aquí para el flujo de la barra visual principal
         } else {
             stockOriginal = parseFloat(ing.stock_actual || 0);
-            stockRestante = stockOriginal - cantidadNecesaria;
+            stockRestante = stockOriginal; // 🎯 FIX: Anulamos el descuento visual anticipado para proteger la UX
+            suficienciaReal = stockOriginal - cantidadNecesaria; // Cálculo matemático invisible para control de seguridad
         }
 
-        const tieneStock = stockRestante >= -0.01;
-        const porcentajeRestante = stockOriginal > 0 ? Math.max(0, (stockRestante / stockOriginal) * 100) : 0;
+        const tieneStock = suficienciaReal >= -0.01;
         
+        // El porcentaje de la barra se calcula sobre la "Capacidad Base" (ej. Bidón de 15kg) para no superar gráficamente el contenedor unitario
+        let valorReferenciaParaBarra = ing.capacidad_base ? parseFloat(ing.capacidad_base) : stockOriginal;
+        // Si el valor base es anómalo, recurrir al stockTotal
+        if (isNaN(valorReferenciaParaBarra) || valorReferenciaParaBarra <= 0) {
+            valorReferenciaParaBarra = stockOriginal;
+        }
+
+        const porcentajeReal = valorReferenciaParaBarra > 0 ? Math.max(0, (stockRestante / valorReferenciaParaBarra) * 100) : 0;
+        const porcentajeVisual = Math.min(100, porcentajeReal);
+        const haySobreStock = porcentajeReal > 100;
+
         let colorBarra = '#28a745'; // Verde
-        if (!tieneStock || porcentajeRestante < 20) {
+        if (haySobreStock) {
+            colorBarra = '#19692c'; // Verde más oscuro
+        } else if (!tieneStock || porcentajeReal < 20) {
             colorBarra = '#dc3545'; // Rojo crítico
-        } else if (porcentajeRestante < 50) {
+        } else if (porcentajeReal < 50) {
             colorBarra = '#fd7e14'; // Naranja
         }
 
@@ -793,7 +808,17 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
                 ? `<button disabled title="Seleccioná un carro primero" style="padding: 4px 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa;">✎ Ajuste Rápido</button>`
                 : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockOriginal}, window.carroIdGlobal)" style="padding: 4px 8px; font-size: 11px; border: 1px solid #17a2b8; border-radius: 4px; background: #e0f7fa; color: #006064; cursor: pointer;">✎ Ajuste Rápido</button>`;
             
-            botonesAccion = `<div style="margin-top: 8px; text-align: right;">${botonAjusteRapido}</div>`;
+            const botonAbastecer = `<button onclick="window.abrirModalAbastecimientoExterno(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px; border: 1px solid #28a745; border-radius: 4px; background: #e8f5e9; color: #2e7d32; cursor: pointer; margin-left: 8px;">🚚 Abastecer</button>`;
+            
+            const botonDesactivar = `<button onclick="window.desactivarIngredienteStockPersonal(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px; border: 1px solid #dc3545; border-radius: 4px; background: #fff5f5; color: #dc3545; cursor: pointer; margin-left: 8px;">🚫 Desactivar</button>`;
+            
+            botonesAccion = `<div style="margin-top: 8px; text-align: right;">${botonAjusteRapido}${botonAbastecer}${botonDesactivar}</div>`;
+        }
+
+        let badgeSobreStock = '';
+        if (haySobreStock) {
+            const excedente = stockRestante - valorReferenciaParaBarra;
+            badgeSobreStock = `<span style="color: #19692c; font-weight: bold; background: #e8f5e9; padding: 2px 6px; border-radius: 4px; border: 1px solid #19692c; font-size: 10px; margin-left: 5px;">📦 SOBRE-STOCK (+${excedente.toFixed(2)} ${ing.unidad_medida})</span>`;
         }
 
         html += `
@@ -806,12 +831,12 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
                 </div>
                 
                 <div style="height: 12px; background-color: #e9ecef; border-radius: 6px; overflow: hidden; position: relative;">
-                    <div style="height: 100%; width: ${porcentajeRestante}%; background-color: ${colorBarra}; transition: width 0.5s ease;"></div>
+                    <div style="height: 100%; width: ${porcentajeVisual}%; background-color: ${colorBarra}; transition: width 0.5s ease;"></div>
                 </div>
                 
-                <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: #6c757d;">
-                    <span>Restante tras producción: <strong style="color: ${colorBarra};">${stockRestante.toFixed(2)} ${ing.unidad_medida} (${porcentajeRestante.toFixed(0)}%)</strong></span>
-                    ${!tieneStock ? `<span style="color: #dc3545; font-weight: bold;">⚠️ Stock Insuficiente (Faltan ${Math.abs(stockRestante).toFixed(2)})</span>` : ''}
+                <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: #6c757d; align-items: center;">
+                    <span style="display:flex; align-items:center;">${!carroFinalizado && estadoCarro === 'en_preparacion' ? 'Stock Físico / Actual:' : 'Restante tras producción:'} <strong style="color: ${colorBarra}; margin-left:4px;">${stockRestante.toFixed(2)} ${ing.unidad_medida} (${porcentajeReal.toFixed(0)}%)</strong> ${badgeSobreStock}</span>
+                    ${!tieneStock ? `<span style="color: #dc3545; font-weight: bold;">⚠️ Stock Insuficiente (Faltan ${Math.abs(suficienciaReal).toFixed(2)})</span>` : ''}
                 </div>
                 
                 ${botonesAccion}
@@ -822,6 +847,54 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
     html += `</div>`;
     return html;
 }
+
+// 🎯 TICKET: Función para desactivar (ocultar) ingredientes del stock personal
+window.desactivarIngredienteStockPersonal = async function(ingredienteId, ingredienteNombre) {
+    const colaboradorData = localStorage.getItem('colaboradorActivo');
+    if (!colaboradorData) return;
+    
+    const colaborador = JSON.parse(colaboradorData);
+    const usuarioId = colaborador.id;
+    const nombreOperario = colaborador.nombre_completo || colaborador.nombre || 'este operario';
+
+    const mensajeConfirmacion = `¿Está seguro que no desea gestionar este ingrediente ("${ingredienteNombre}") como parte del stock personal de ${nombreOperario}?`;
+    
+    if (!confirm(mensajeConfirmacion)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}/${ingredienteId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('No se pudo desactivar el ingrediente del stock personal');
+        }
+
+        console.log(`✅ Ingrediente ${ingredienteId} desactivado del stock personal.`);
+        
+        // Refrescar el componente visual
+        console.log("🔄 Actualizando resumen de ingredientes tras desactivación...");
+        try {
+            await actualizarResumenIngredientes();
+            console.log("✅ Resumen visual actualizado");
+        } catch (refreshError) {
+            console.error("⚠️ Invocación directa falló, intentando como global", refreshError);
+            if (typeof window.actualizarResumenIngredientes === 'function') {
+                await window.actualizarResumenIngredientes();
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error al desactivar el ingrediente:', error);
+        if (typeof window.mostrarError === 'function') {
+            window.mostrarError(error.message);
+        } else {
+            alert('Error: ' + error.message);
+        }
+    }
+};
 
 window.crearNuevoCarro = crearNuevoCarro;
 window.seleccionarCarro = seleccionarCarro;
@@ -1252,8 +1325,46 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
             es_de_articulo_vinculado: true
         }));
 
-        // Combinar ambos arrays
-        const ingredientesCombinados = [...ingredientesBase, ...ingredientesVinculados];
+        // Combinar ambos arrays (Omitimos los vinculados para no invadir el panel de stock personal)
+        let ingredientesCombinados = [...ingredientesBase];
+
+        // 🎯 TICKET #10 RE-OPEN: Incluir TODO el stock personal para mostrar el dashboard incluso en carros vacíos
+        if (tipoCarro === 'externa') {
+            try {
+                const responsePersonal = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
+                if (responsePersonal.ok) {
+                    const stockPersonal = await responsePersonal.json();
+                    
+                    // Crear un mapa de los ingredientes ya requeridos en el carro
+                    const ingredientesRequeridosMap = new Map();
+                    ingredientesCombinados.forEach(ing => ingredientesRequeridosMap.set(ing.id, ing));
+                    
+                    // Añadir el stock personal que no esté requerido (o vacíos)
+                    stockPersonal.forEach(ingStock => {
+                        const ingId = ingStock.ingrediente_id || ingStock.id;
+                        if (!ingredientesRequeridosMap.has(ingId)) {
+                            ingredientesCombinados.push({
+                                id: ingId,
+                                nombre: ingStock.nombre_ingrediente || ingStock.nombre,
+                                unidad_medida: ingStock.unidad_medida,
+                                cantidad: 0, // Consumo inicial nulo
+                                stock_actual: parseFloat(ingStock.stock_total || 0),
+                                stock_snapshot: parseFloat(ingStock.stock_total || 0),
+                                capacidad_base: ingStock.capacidad_base,
+                                es_de_articulo_vinculado: false,
+                                sector_letra: 'Sin Sector'
+                            });
+                        } else {
+                            const match = ingredientesRequeridosMap.get(ingId);
+                            match.capacidad_base = ingStock.capacidad_base;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn('⚠️ No se pudo obtener el stock personal completo:', err);
+            }
+        }
+
         console.log(`📦 Resumen ingredientes - Base: ${ingredientesBase.length}, Vinculados: ${ingredientesVinculados.length}, Total: ${ingredientesCombinados.length}`);
 
         return ingredientesCombinados;

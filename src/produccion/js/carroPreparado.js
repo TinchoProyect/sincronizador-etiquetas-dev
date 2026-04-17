@@ -93,7 +93,7 @@ export async function actualizarVisibilidadBotones() {
                                 <div class="input-group-produccion" style="flex: 1;">
                                     <label for="kilos-producidos" style="display: block; margin-bottom: 5px; font-weight: bold;">Kilos Producidos:</label>
                                     <div style="display: flex; align-items: center; gap: 5px;">
-                                        <input type="number" id="kilos-producidos" min="0.01" step="0.01" placeholder="0.00" style="width: 100%; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;" required>
+                                        <input type="text" inputmode="decimal" id="kilos-producidos" placeholder="0.00" style="width: 100%; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;" required>
                                         <span style="color: #6c757d; font-size: 0.9em;">kg</span>
                                     </div>
                                 </div>
@@ -148,7 +148,8 @@ export async function actualizarVisibilidadBotones() {
 
                                     // A. Escribe Unidades -> Calcula Kilos
                                     inputUnidades.addEventListener('input', function () {
-                                        const u = parseFloat(this.value);
+                                        const uStr = this.value.replace(',', '.');
+                                        const u = parseFloat(uStr);
                                         if (!isNaN(u)) {
                                             inputKilos.value = (u * factor).toFixed(2);
                                             // Disparar evento para que se actualice la merma también
@@ -160,7 +161,8 @@ export async function actualizarVisibilidadBotones() {
 
                                     // B. Escribe Kilos -> Calcula Unidades
                                     inputKilos.addEventListener('input', function () {
-                                        const k = parseFloat(this.value);
+                                        const kStr = this.value.replace(',', '.');
+                                        const k = parseFloat(kStr);
                                         if (!isNaN(k)) {
                                             inputUnidades.value = Math.round(k / factor);
                                         } else {
@@ -556,7 +558,8 @@ async function mostrarInformesIngredientesVinculados() {
                     // Remover listeners viejos para evitar duplicación
                     inputKilos.removeEventListener('input', window._recalcularVinculados);
                     window._recalcularVinculados = function() {
-                        const kilos = parseFloat(this.value) || 0;
+                        const kilosStr = this.value.replace(',', '.');
+                        const kilos = parseFloat(kilosStr) || 0;
                         const filas = document.querySelectorAll('.ingrediente-vinculado');
                         
                         filas.forEach(fila => {
@@ -766,7 +769,7 @@ export async function finalizarProduccion(carroId) {
             console.log('🚚 Carro externo: validando kilos producidos...');
 
             if (kilosProducidosInput && kilosProducidosInput.style.display !== 'none') {
-                const kilosProducidosStr = kilosProducidosInput.value;
+                const kilosProducidosStr = kilosProducidosInput.value.replace(',', '.');
                 kilosProducidos = parseFloat(kilosProducidosStr);
 
                 if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
@@ -983,7 +986,7 @@ async function calcularMermaProduccion(carroId) {
 
         // PASO 2: Obtener valor del input
         console.log('🔍 [MERMA-PASO-2] Obteniendo valor del input...');
-        const valorInput = inputKilos.value;
+        const valorInput = inputKilos.value.replace(',', '.');
         console.log('🔍 [MERMA-PASO-2] Valor raw del input:', valorInput);
 
         const kilosProducidos = parseFloat(valorInput);

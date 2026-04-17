@@ -5,7 +5,11 @@
  */
 
 class ModalDraggable {
-    constructor(modalId) {
+    constructor(modalId, persistState = false) {
+        this.modalId = modalId;
+        this.persistState = persistState;
+        this.modalStorageKey = `LAMDA_MODAL_STATE_${modalId}`;
+
         this.modal = document.getElementById(modalId);
         if (!this.modal) {
             console.warn(`Modal ${modalId} no encontrado`);
@@ -89,22 +93,18 @@ class ModalDraggable {
         document.body.style.cursor = 'grabbing';
         e.target.style.cursor = 'grabbing';
         
-        // 🎯 Si el modal está centrado con transform: translate(-50%, -50%), hornear las coordenadas relativas a posiciones absolutas antes de arrastrar
-        if (window.getComputedStyle(this.modalContent).transform !== 'none' || this.modalContent.style.transform.includes('translate')) {
-            const rect = this.modalContent.getBoundingClientRect();
-            this.modalContent.style.transform = 'none';
-            this.modalContent.style.top = `${rect.top}px`;
-            this.modalContent.style.left = `${rect.left}px`;
-        }
-        
-        // Guardar posición inicial del mouse
-        this.startX = e.clientX;
-        this.startY = e.clientY;
-        
-        // Obtener posición actual del modal (ya con top/left absolutos correctos)
         const rect = this.modalContent.getBoundingClientRect();
-        this.startTop = rect.top;
-        this.startLeft = rect.left;
+        
+        // Calcular offset interno estricto (coordenada de clic relatiivo al borde superior izquierdo del modal)
+        this.offsetX = e.clientX - rect.left;
+        this.offsetY = e.clientY - rect.top;
+
+        // Limpiar cualquier regla CSS limitante y anclar top/left a la vista gráfica absoluta actual
+        this.modalContent.style.margin = '0';
+        this.modalContent.style.transform = 'none';
+        this.modalContent.style.position = 'fixed';
+        this.modalContent.style.top = `${e.clientY - this.offsetY}px`;
+        this.modalContent.style.left = `${e.clientX - this.offsetX}px`;
         
         // Deshabilitar transiciones durante el arrastre
         this.modalContent.style.transition = 'none';
@@ -118,31 +118,23 @@ class ModalDraggable {
         
         e.preventDefault();
         
-        // Calcular desplazamiento
-        const deltaX = e.clientX - this.startX;
-        const deltaY = e.clientY - this.startY;
-        
-        // Calcular nueva posición
-        let newLeft = this.startLeft + deltaX;
-        let newTop = this.startTop + deltaY;
-        
-        // Aplicar límites para mantener el modal dentro de la ventana
-        const rect = this.modalContent.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        
-        // Límite izquierdo
-        newLeft = Math.max(0, newLeft);
-        // Límite derecho (dejar al menos 100px visibles)
-        newLeft = Math.min(viewportWidth - 100, newLeft);
-        // Límite superior
-        newTop = Math.max(0, newTop);
-        // Límite inferior (dejar al menos 50px visibles)
-        newTop = Math.min(viewportHeight - 50, newTop);
-        
-        // Aplicar nueva posición usando top y left
-        this.modalContent.style.top = `${newTop}px`;
-        this.modalContent.style.left = `${newLeft}px`;
+        if (this.dragRafId) cancelAnimationFrame(this.dragRafId);
+
+        this.dragRafId = requestAnimationFrame(() => {
+            let newLeft = e.clientX - this.offsetX;
+            let newTop = e.clientY - this.offsetY;
+            
+            // Aplicar límites para mantener el modal dentro de la ventana
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            newLeft = Math.max(0, Math.min(viewportWidth - 100, newLeft));
+            newTop = Math.max(0, Math.min(viewportHeight - 50, newTop));
+            
+            // Aplicar nueva posición usando top y left
+            this.modalContent.style.top = `${newTop}px`;
+            this.modalContent.style.left = `${newLeft}px`;
+        });
     }
 
     onMouseUp(e) {
@@ -152,81 +144,103 @@ class ModalDraggable {
         
         // Restaurar cursor
         document.body.style.cursor = '';
-        const header = this.modalContent.querySelector('h2');
+        const header = this.modalContent.querySelector('.modal-header') || this.modalContent.querySelector('h2');
         if (header) {
             header.style.cursor = 'move';
         }
         
-        // Las transiciones no deben restaurarse para evitar que reglas CSS de transform intenten interpolar las coordenadas fijadas por JS
+        if (this.persistState) {
+            this.saveState();
+        }
     }
 
     makeResizable() {
-        // Agregar handle de redimensionamiento en la esquina inferior derecha
-        const resizeHandle = document.createElement('div');
-        resizeHandle.className = 'modal-resize-handle';
-        resizeHandle.style.cssText = `
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            width: 20px;
-            height: 20px;
-            cursor: nwse-resize;
-            background: linear-gradient(135deg, transparent 50%, #007bff 50%);
-            opacity: 0.5;
-            transition: opacity 0.2s;
-            z-index: 1001;
-        `;
-
-        resizeHandle.addEventListener('mouseenter', () => {
-            resizeHandle.style.opacity = '1';
-        });
-
-        resizeHandle.addEventListener('mouseleave', () => {
-            resizeHandle.style.opacity = '0.5';
-        });
+        const bSize = 8; // Grosor de las zonas sensibles de los bordes
+        const directions = [
+            { class: 'r-n', cursor: 'ns-resize', style: `top: -${bSize/2}px; left: 0; width: 100%; height: ${bSize}px;` },
+            { class: 'r-s', cursor: 'ns-resize', style: `bottom: -${bSize/2}px; left: 0; width: 100%; height: ${bSize}px;` },
+            { class: 'r-e', cursor: 'ew-resize', style: `top: 0; right: -${bSize/2}px; width: ${bSize}px; height: 100%;` },
+            { class: 'r-w', cursor: 'ew-resize', style: `top: 0; left: -${bSize/2}px; width: ${bSize}px; height: 100%;` },
+            { class: 'r-ne', cursor: 'nesw-resize', style: `top: -${bSize/2}px; right: -${bSize/2}px; width: ${bSize*2}px; height: ${bSize*2}px;` },
+            { class: 'r-nw', cursor: 'nwse-resize', style: `top: -${bSize/2}px; left: -${bSize/2}px; width: ${bSize*2}px; height: ${bSize*2}px;` },
+            { class: 'r-se', cursor: 'nwse-resize', style: `bottom: -${bSize/2}px; right: -${bSize/2}px; width: ${bSize*2}px; height: ${bSize*2}px;` },
+            { class: 'r-sw', cursor: 'nesw-resize', style: `bottom: -${bSize/2}px; left: -${bSize/2}px; width: ${bSize*2}px; height: ${bSize*2}px;` }
+        ];
 
         let isResizing = false;
-        let startX, startY, startWidth, startHeight;
+        let currentDir = '';
+        let startX, startY, startW, startH, startTop, startLeft;
 
-        resizeHandle.addEventListener('mousedown', (e) => {
-            isResizing = true;
-            startX = e.clientX;
-            startY = e.clientY;
+        directions.forEach(dir => {
+            const handle = document.createElement('div');
+            handle.style.cssText = `position: absolute; ${dir.style} cursor: ${dir.cursor}; z-index: 1001; background: transparent;`;
             
-            const rect = this.modalContent.getBoundingClientRect();
-            startWidth = rect.width;
-            startHeight = rect.height;
-            
-            e.preventDefault();
-            e.stopPropagation();
+            handle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                currentDir = dir.class;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = this.modalContent.getBoundingClientRect();
+                startW = rect.width;
+                startH = rect.height;
+                startTop = rect.top;
+                startLeft = rect.left;
+                
+                // Asegurar modo fixed y eliminar interferencias (auto-centro o márgenes) al momento del click
+                this.modalContent.style.margin = '0';
+                this.modalContent.style.transform = 'none';
+                this.modalContent.style.top = `${startTop}px`;
+                this.modalContent.style.left = `${startLeft}px`;
+                
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            this.modalContent.appendChild(handle);
         });
+
+        let rafId = null;
 
         document.addEventListener('mousemove', (e) => {
             if (!isResizing) return;
+            // Bloquea transiciones CSS para evitar retardo/lag durante el resize
+            this.modalContent.style.transition = 'none';
 
-            const width = startWidth + (e.clientX - startX);
-            const height = startHeight + (e.clientY - startY);
+            if (rafId) cancelAnimationFrame(rafId);
 
-            // Limitar tamaño mínimo y máximo
-            const minWidth = 600;
-            const minHeight = 400;
-            const maxWidth = window.innerWidth - 40;
-            const maxHeight = window.innerHeight - 40;
+            rafId = requestAnimationFrame(() => {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
 
-            this.modalContent.style.width = `${Math.max(minWidth, Math.min(width, maxWidth))}px`;
-            this.modalContent.style.height = `${Math.max(minHeight, Math.min(height, maxHeight))}px`;
-            this.modalContent.style.maxWidth = 'none';
-            this.modalContent.style.maxHeight = 'none';
+                let finalW = startW, finalH = startH, finalT = startTop, finalL = startLeft;
+                const minW = 350, minH = 200;
+
+                if (currentDir.includes('e')) finalW = Math.max(minW, startW + dx);
+                if (currentDir.includes('s')) finalH = Math.max(minH, startH + dy);
+                
+                if (currentDir.includes('w')) {
+                    finalW = Math.max(minW, startW - dx);
+                    if (finalW > minW) finalL = startLeft + dx;
+                }
+                if (currentDir.includes('n')) {
+                    finalH = Math.max(minH, startH - dy);
+                    if (finalH > minH) finalT = startTop + dy;
+                }
+
+                this.modalContent.style.width = `${finalW}px`;
+                this.modalContent.style.height = `${finalH}px`;
+                this.modalContent.style.left = `${finalL}px`;
+                this.modalContent.style.top = `${finalT}px`;
+                this.modalContent.style.maxWidth = 'none';
+                this.modalContent.style.maxHeight = 'none';
+            });
         });
 
         document.addEventListener('mouseup', () => {
+            if (isResizing && this.persistState) this.saveState();
             isResizing = false;
         });
 
-        this.modalContent.style.position = 'fixed';
-        this.modalContent.appendChild(resizeHandle);
-
-        console.log(`✅ Modal ${this.modal.id} configurado como redimensionable`);
+        console.log(`✅ Modal ${this.modalId} re-configurado con motor Resizable Perimetral (360°)`);
     }
 
     centerModal() {
@@ -236,7 +250,40 @@ class ModalDraggable {
         this.modalContent.style.transform = 'translate(-50%, -50%)';
     }
 
+    saveState() {
+        const state = {
+            top: this.modalContent.style.top,
+            left: this.modalContent.style.left,
+            width: this.modalContent.style.width,
+            height: this.modalContent.style.height,
+            transform: this.modalContent.style.transform
+        };
+        localStorage.setItem(this.modalStorageKey, JSON.stringify(state));
+    }
+
+    loadState() {
+        if (!this.persistState) return false;
+        const stateRaw = localStorage.getItem(this.modalStorageKey);
+        if (!stateRaw) return false;
+        try {
+            const state = JSON.parse(stateRaw);
+            if (state.top) this.modalContent.style.top = state.top;
+            if (state.left) this.modalContent.style.left = state.left;
+            if (state.width) this.modalContent.style.width = state.width;
+            if (state.height) this.modalContent.style.height = state.height;
+            if (state.transform !== undefined) this.modalContent.style.transform = state.transform;
+            return true;
+        } catch (e) {
+            console.error("Fallo aplicando caché visual del modal", e);
+            return false;
+        }
+    }
+
     reset() {
+        if (this.persistState) {
+            const fueCargado = this.loadState();
+            if (fueCargado) return; // Rompe la cadena si el localStorage suplió la data
+        }
         // Resetear posición y tamaño
         this.modalContent.style.width = '';
         this.modalContent.style.height = '';
@@ -253,13 +300,14 @@ class ModalDraggable {
 // Inicializar modales arrastrables cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
     // 🪟 Modales arrastrables instanciados
-    const modalesParaArrastrar = ['modal-articulos', 'modal-editar-vinculo', 'modal-receta'];
+    const modalesParaArrastrar = ['modal-articulos', 'modal-editar-vinculo', 'modal-receta', 'modalAbastecimientoExterno'];
     const instancias = {};
 
     modalesParaArrastrar.forEach(id => {
         const elemento = document.getElementById(id);
         if (elemento) {
-            instancias[id] = new ModalDraggable(id);
+            const modalZIndexTop = (id === 'modalAbastecimientoExterno');
+            instancias[id] = new ModalDraggable(id, modalZIndexTop);
             
             // 🎯 PREVENCIÓN DE SCROLL CHAINING: Bloquear fondo, resetear offsets al abrir
             const observer = new MutationObserver((mutations) => {

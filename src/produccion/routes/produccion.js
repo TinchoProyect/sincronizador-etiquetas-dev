@@ -311,6 +311,31 @@ router.get('/ingredientes/stock-usuario/:usuarioId', async (req, res) => {
     }
 });
 
+router.delete('/ingredientes/stock-usuario/:usuarioId/:ingredienteId', async (req, res) => {
+    try {
+        const usuarioId = parseInt(req.params.usuarioId);
+        const ingredienteId = parseInt(req.params.ingredienteId);
+
+        if (isNaN(usuarioId) || isNaN(ingredienteId)) {
+            return res.status(400).json({ error: 'IDs inválidos' });
+        }
+
+        console.log(`🗑️ Procesando solicitud DELETE para desactivar control de ingrediente ${ingredienteId} del usuario ${usuarioId}`);
+
+        // Eliminar todos los registros de ese ingrediente para el usuario
+        const deleteQuery = 'DELETE FROM ingredientes_stock_usuarios WHERE usuario_id = $1 AND ingrediente_id = $2';
+        await req.db.query(deleteQuery, [usuarioId, ingredienteId]);
+
+        res.json({ message: 'Ingrediente desactivado correctamente del stock visual' });
+    } catch (error) {
+        console.error(`❌ Error al eliminar el stock del usuario ${req.params.usuarioId} para el ingrediente ${req.params.ingredienteId}:`, error);
+        res.status(500).json({
+            error: 'Error al eliminar el stock del usuario',
+            detalle: error.message
+        });
+    }
+});
+
 router.get('/ingredientes/nuevo-codigo', async (req, res) => {
     try {
         console.log('Recibida solicitud GET /ingredientes/nuevo-codigo');
@@ -3294,11 +3319,13 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
             }
 
             // Registrar movimiento de ajuste en ingredientes_stock_usuarios
-            // 🆕 MANEJO DE CARRO_ID NULL: Para ajustes desde vista de stock personal
-            const carroIdFinal = carro_id || null;
+            // 🆕 FIX CRÍTICO: Los ajustes manuales al stock personal de domicilio NO deben estar 
+            // vinculados a un origen_carro_id, de lo contrario se borrarán si el operario 
+            // cierra/elimina el carro desde donde invocó funcionalmente el ajuste.
+            const carroIdFinal = null;
             const observacionesFinal = carro_id
-                ? observaciones
-                : `${observaciones} - Ajuste Manual desde Vista de Stock Personal`;
+                ? `${observaciones} - Ajuste Manual Permanente en Stock Personal (vía carro externo)`
+                : `${observaciones} - Ajuste Manual Permanente desde Visor`;
 
             const queryAjusteUsuario = `
         INSERT INTO ingredientes_stock_usuarios (
@@ -3605,6 +3632,118 @@ router.post('/clientes/:id/perfil-impresion', async (req, res) => {
             error: 'Incapacidad de resolver la base de datos externa para perfiles',
             message: error.message
         });
+    }
+});
+
+/**
+ * Abastecimiento Atómico de Domicilio
+ * Retira un artículo de ventas y lo transfiere a ingredientes_stock_usuarios
+ * POST /api/produccion/ingredientes/abastecer-stock-personal
+ */
+router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
+    try {
+        const { articulo_numero, cantidad, ingrediente_id, usuario_id } = req.body;
+
+        if (!articulo_numero || !cantidad || !ingrediente_id || !usuario_id) {
+            return res.status(400).json({ error: 'Faltan parámetros obligatorios para el abastecimiento atómico' });
+        }
+
+        console.log(`\n🚚 [ABASTECIMIENTO EXTERNO] Solicitud de Usuario ${usuario_id}`);
+        console.log(` > Retirando ${cantidad} unidades del Articulo: ${articulo_numero}`);
+        console.log(` > Destino: Ingrediente ${ingrediente_id}`);
+
+        // 1. Obtener los kilos por unidad del artículo seleccionado
+        // 1. Obtener los kilos por unidad del artículo seleccionado
+        const checkArtQuery = `
+            SELECT src.kilos_unidad, src.descripcion 
+            FROM stock_real_consolidado src
+            WHERE src.articulo_numero = $1
+            LIMIT 1
+        `;
+        const arts = await pool.query(checkArtQuery, [articulo_numero]);
+        
+        let kilosUnidad = 1; // Default de emergencia
+        let nombreArt = 'Desconocido';
+        
+        if (arts.rows.length > 0) {
+            if (arts.rows[0].kilos_unidad) kilosUnidad = parseFloat(arts.rows[0].kilos_unidad);
+            if (arts.rows[0].descripcion) nombreArt = arts.rows[0].descripcion;
+        } else {
+            // Si el articulo no está explícitamente parametrizado, intentar sacarlo base general
+            const pureArt = await pool.query('SELECT nombre as descripcion FROM articulos WHERE numero = $1', [articulo_numero]);
+            if (pureArt.rows.length > 0) nombreArt = pureArt.rows[0].descripcion;
+        }
+
+        const kilosTotales = parseFloat(cantidad) * kilosUnidad;
+        console.log(` ⚖️ Conversión: ${cantidad} un * ${kilosUnidad} kg/un = ${kilosTotales.toFixed(2)} kg`);
+
+        // INICIO DE LA TRANSACCIÓN
+        const client = await pool.connect();
+        await client.query('BEGIN');
+
+        try {
+            // A) Declarar la BAJA de `stock_ventas_movimientos`
+            const outQuery = `
+                INSERT INTO stock_ventas_movimientos (
+                    articulo_numero, codigo_barras, kilos, carro_id, usuario_id, cantidad, tipo, origen_ingreso, fecha
+                ) VALUES ($1, NULL, $2, NULL, $3, $4, 'egreso', 'abastecimiento_domicilio', NOW())
+                RETURNING id;
+            `;
+            await client.query(outQuery, [
+                articulo_numero, 
+                kilosTotales, 
+                usuario_id, 
+                cantidad
+            ]);
+
+            // A.2) Descontar la cantidad directamente del stock_movimientos consolidado
+            const updateConsolidado = `
+                UPDATE stock_real_consolidado 
+                SET 
+                  stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
+                  ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `;
+            await client.query(updateConsolidado, [
+                cantidad,
+                articulo_numero
+            ]);
+
+            // A.3) Recalcular stock_consolidado usando la herramienta unificada
+            const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+            await recalcularStockConsolidado(client, articulo_numero);
+
+            // B) Declarar el ALTA de stock personal en el domicilio para ese operario
+            // Nota Crítica: Se usa carroIdFinal = null para desacoplarlo estrucuralmente
+            const inQuery = `
+                INSERT INTO ingredientes_stock_usuarios (
+                    usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id, contexto_envase
+                ) VALUES ($1, $2, $3, NULL, NOW(), NULL, $4)
+                RETURNING id;
+            `;
+            await client.query(inQuery, [
+                usuario_id,
+                ingrediente_id,
+                kilosTotales,
+                kilosUnidad
+            ]);
+
+            await client.query('COMMIT');
+            client.release();
+            
+            console.log(`✅ [ABASTECIMIENTO EXTERNO] Transacción Atómica Exitosa.`);
+            res.json({ success: true, kilos_acreditados: kilosTotales });
+            
+        } catch (trxError) {
+            await client.query('ROLLBACK');
+            client.release();
+            console.error('❌ [ABASTECIMIENTO EXTERNO] Falló la transacción SQL:', trxError);
+            throw trxError;
+        }
+
+    } catch (error) {
+        console.error('❌ [ABASTECIMIENTO EXTERNO] Error general:', error);
+        res.status(500).json({ error: 'Hubo un problema al procesar el mandato de abastecimiento' });
     }
 });
 

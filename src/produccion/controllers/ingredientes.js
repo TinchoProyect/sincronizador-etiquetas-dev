@@ -454,6 +454,12 @@ async function obtenerStockPorUsuario(usuarioId) {
                 i.unidad_medida,
                 i.categoria,
                 COALESCE(SUM(isu.cantidad), 0) as stock_total,
+                (
+                    SELECT contexto_envase
+                    FROM ingredientes_stock_usuarios 
+                    WHERE ingrediente_id = i.id AND usuario_id = $1 AND contexto_envase IS NOT NULL
+                    ORDER BY fecha_registro DESC LIMIT 1
+                ) as capacidad_base,
                 CASE 
                     WHEN EXISTS (
                         SELECT 1 FROM ingrediente_composicion ic 

@@ -242,7 +242,8 @@ async function
                             console.log(`🔄 DESCUENTO: ${ing.nombre} | Requerido: ${cantidadRequerida} | Stock: ${stockGeneral}`);
 
                             if (stockGeneral < cantidadRequerida) {
-                                throw new Error(`Stock general insuficiente para ingrediente vinculado "${ing.nombre}". Disponible: ${stockGeneral}, Requerido: ${cantidadRequerida}`);
+                                console.warn(`⚠️ ALERTA: Stock general insuficiente para ingrediente vinculado "${ing.nombre}". Quedará en negativo. Disponible: ${stockGeneral}, Requerido: ${cantidadRequerida}`);
+                                // 🎯 FIX: No bloqueamos la producción, permitimos stock negativo provisional para no frenar la planta.
                             }
 
                             // Registrar movimiento de egreso
