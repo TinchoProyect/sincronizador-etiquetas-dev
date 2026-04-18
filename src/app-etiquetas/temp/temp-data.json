@@ -1,6 +1,8 @@
 {
-  "numero": "BF24X50",
-  "nombre": "Barra Flor  24 x 50 g.",
-  "codigo_barras": "6842648535",
-  "cantidad": 4
+  "articulo": {
+    "nombre": "Nuez/Ma/ExtL/Ch x 5",
+    "numero": "NMELCHx5",
+    "codigo_barras": "2569478523"
+  },
+  "cantidad": 2
 }

@@ -1,142 +1,9 @@
-/**
- * Funciones para gestionar la composición de ingredientes (mixes)
- */
+const fs = require('fs');
+let js = fs.readFileSync('src/produccion/js/mix.js', 'utf8');
 
-let ingredientesLista = [];
-let ingredienteSeleccionadoId = null; // Variable para guardar el ID del ingrediente seleccionado en el modal
-let mixActual = null;
+const regexViejo = /\/\/ Funciones expuestas globalmente para onclick[\s\S]*/;
 
-// Helper para normalizar texto (ignora acentos y mayúsculas)
-function normalizar(texto) {
-    if (!texto) return '';
-    return texto
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase();
-}
-
-export function actualizarListaIngredientes(lista) {
-    ingredientesLista = lista;
-}
-
-export async function esMix(ingredienteId) {
-    try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`);
-        if (response.status === 404) return false;
-        if (!response.ok) throw new Error('Error al verificar composición');
-        const data = await response.json();
-        const ingredienteResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
-        if (!ingredienteResponse.ok) throw new Error('Error al obtener ingrediente');
-        const ingrediente = await ingredienteResponse.json();
-        return (data.composicion && data.composicion.length > 0) && !ingrediente.padre_id;
-    } catch (error) {
-        console.error('❌ Error al verificar si es mix:', error);
-        return false;
-    }
-}
-
-export async function actualizarEstadoMix(ingredienteId) {
-    const tr = document.querySelector(`tr[data-id="${ingredienteId}"]`);
-    if (!tr) return;
-
-    const esMixStatus = tr.querySelector('.es-mix-status');
-    const btnGestionar = tr.querySelector('.btn-gestionar-composicion');
-
-    try {
-        const tieneMix = await esMix(ingredienteId);
-        const ingrediente = ingredientesLista.find(i => i.id === parseInt(ingredienteId));
-
-        if (esMixStatus) esMixStatus.textContent = tieneMix ? 'Sí' : 'No (aún)';
-        if (btnGestionar && ingrediente) {
-            btnGestionar.style.display = (!ingrediente.padre_id) ? 'inline-block' : 'none';
-        }
-    } catch (error) {
-        console.error('Error al actualizar estado mix:', error);
-        if (esMixStatus) esMixStatus.textContent = 'Error';
-    }
-}
-
-/**
- * Maneja el filtrado y la visualización de resultados de búsqueda de ingredientes en el modal de edición de mix.
- */
-function manejarBusquedaMix() {
-    const input = document.getElementById('buscar-ingrediente-mix');
-    const listaResultados = document.getElementById('lista-resultados-mix');
-    const query = input.value.trim();
-
-    if (query.length < 2) {
-        listaResultados.innerHTML = '';
-        listaResultados.style.display = 'none';
-        return;
-    }
-
-    const tokens = normalizar(query).split(' ').filter(t => t.length > 0);
-
-    const resultados = ingredientesLista.filter(ing => {
-        if (ing.categoria === 'Mix' || ing.id === mixActual) return false; // Excluir mixes y el propio mix
-        const nombreNormalizado = normalizar(ing.nombre);
-        return tokens.every(token => nombreNormalizado.includes(token));
-    });
-
-    listaResultados.innerHTML = '';
-    if (resultados.length > 0) {
-        resultados.forEach(ing => {
-            const li = document.createElement('li');
-            const stock = parseFloat(ing.stock_actual || 0).toFixed(2);
-            const sectorDisplay = ing.sector_letra ? ` [Sector ${ing.sector_letra}]` : '';
-            li.textContent = `${ing.nombre} - Stock: ${stock}${sectorDisplay}`;
-            li.style.padding = '10px 15px';
-            li.style.borderBottom = '1px solid #f1f5f9';
-            li.style.cursor = 'pointer';
-            li.style.borderRadius = '6px';
-            li.style.transition = 'background 0.2s';
-            li.onmouseover = () => { li.style.background = '#f8fafc'; li.style.color = '#2563eb'; li.style.fontWeight = '600'; };
-            li.onmouseout = () => { li.style.background = 'transparent'; li.style.color = '#1e293b'; li.style.fontWeight = '400'; };
-
-            li.addEventListener('click', () => {
-                ingredienteSeleccionadoId = ing.id;
-                input.value = ing.nombre;
-                listaResultados.innerHTML = '';
-                listaResultados.style.display = 'none';
-            });
-
-            listaResultados.appendChild(li);
-        });
-        listaResultados.style.display = 'block';
-    } else {
-        listaResultados.innerHTML = '<li style="padding: 10px 15px; color: #94a3b8; font-style: italic; text-align: center;">No se encontraron ingredientes</li>';
-        listaResultados.style.display = 'block';
-    }
-}
-
-/**
- * Calcula y actualiza el total de kilos en el modal
- */
-function calcularYMostrarTotal() {
-    const tbody = document.querySelector('#tabla-mix-ingredientes-body');
-    if (!tbody) return;
-
-    let total = 0;
-    const filas = tbody.querySelectorAll('tr');
-
-    filas.forEach(fila => {
-        const celdaCantidad = fila.querySelector('td:nth-child(2)');
-        if (celdaCantidad) {
-            const textoCompleto = celdaCantidad.textContent.trim();
-            // Extraer solo el número (ej: "2.5 Kilo" -> 2.5)
-            const cantidad = parseFloat(textoCompleto.split(' ')[0]);
-            if (!isNaN(cantidad)) {
-                total += cantidad;
-            }
-        }
-    });
-
-    const elementoTotal = document.getElementById('total-kilos-mix');
-    if (elementoTotal) {
-        elementoTotal.textContent = `${total.toFixed(2)} Kilo`;
-    }
-}
-
+const newBufferingLogic = `
 // ==========================================
 // STATE MANAGEMENT Y BUFFERING (UX FIX)
 // ==========================================
@@ -148,13 +15,13 @@ function renderizarTablaMix(mixId) {
     const tbody = modal.querySelector('#tabla-mix-ingredientes-body');
     if (!tbody) return;
 
-    tbody.innerHTML = composicionVisual.map(item => `
+    tbody.innerHTML = composicionVisual.map(item => \`
         <tr>
-            <td style="padding: 12px; font-weight: 500;">${item.nombre_ingrediente}</td>
-            <td style="padding: 12px;">${item.cantidad} ${item.unidad_medida || ''}</td>
+            <td style="padding: 12px; font-weight: 500;">\${item.nombre_ingrediente}</td>
+            <td style="padding: 12px;">\${item.cantidad} \${item.unidad_medida || ''}</td>
             <td style="text-align: right; padding: 12px;">
                 <button 
-                    onclick="window.eliminarIngredienteDeMix(${mixId}, ${item.ingrediente_id})" 
+                    onclick="window.eliminarIngredienteDeMix(\${mixId}, \${item.ingrediente_id})" 
                     class="btn-eliminar-ingrediente"
                     title="Eliminar ingrediente"
                     style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; transition: transform 0.2s;"
@@ -163,7 +30,7 @@ function renderizarTablaMix(mixId) {
                 >❌</button>
             </td>
         </tr>
-    `).join('');
+    \`).join('');
 
     calcularYMostrarTotal();
     
@@ -200,13 +67,13 @@ export async function abrirEdicionMix(mixId) {
             if (response.ok) ingredientesLista = await response.json();
         }
 
-        const compResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`);
+        const compResponse = await fetch(\`http://localhost:3002/api/produccion/ingredientes/\${mixId}/composicion\`);
         if (compResponse.ok) {
             const data = await compResponse.json();
             composicionVisual = Array.isArray(data.composicion) ? data.composicion : [];
             
             const titulo = modal.querySelector('#modal-mix-titulo') || modal.querySelector('h5');
-            if (titulo) titulo.textContent = `Composición de: ${data.mix.nombre}`;
+            if (titulo) titulo.textContent = \`Composición de: \${data.mix.nombre}\`;
         }
 
         renderizarTablaMix(mixId);
@@ -232,9 +99,9 @@ export async function abrirEdicionMix(mixId) {
                             modal.style.display = 'none';
                             await window.eliminarComposicionMix(mixId);
                         } else {
-                            const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`, { method: 'DELETE' });
+                            const response = await fetch(\`http://localhost:3002/api/produccion/ingredientes/\${mixId}/composicion\`, { method: 'DELETE' });
                             if (!response.ok) throw new Error('Error eliminando formula');
-                            await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ padre_id: null }) });
+                            await fetch(\`http://localhost:3002/api/produccion/ingredientes/\${mixId}\`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ padre_id: null }) });
                             modal.style.display = 'none';
                             alert('Fórmula eliminada');
                             if (typeof window.cargarIngredientes === 'function') await window.cargarIngredientes(); else location.reload();
@@ -343,24 +210,24 @@ async function procesarGuardadoFinal(mixId) {
     try {
         for (let task of pendientesApi) {
             if (task.type === 'POST') {
-                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`, {
+                const response = await fetch(\`http://localhost:3002/api/produccion/ingredientes/\${mixId}/composicion\`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ingrediente_id: task.ingredienteId, cantidad: task.cantidad })
                 });
                 if (response.ok) {
-                    await fetch(`http://localhost:3002/api/produccion/ingredientes/${task.ingredienteId}`, {
+                    await fetch(\`http://localhost:3002/api/produccion/ingredientes/\${task.ingredienteId}\`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ padre_id: mixId })
                     });
                 }
             } else if (task.type === 'DELETE') {
-                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${task.ingredienteId}`, { 
+                const response = await fetch(\`http://localhost:3002/api/produccion/ingredientes/\${mixId}/composicion/\${task.ingredienteId}\`, { 
                     method: 'DELETE' 
                 });
                 if (response.ok) {
-                    await fetch(`http://localhost:3002/api/produccion/ingredientes/${task.ingredienteId}`, {
+                    await fetch(\`http://localhost:3002/api/produccion/ingredientes/\${task.ingredienteId}\`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ padre_id: null })
@@ -391,3 +258,15 @@ async function procesarGuardadoFinal(mixId) {
 window.abrirEdicionMix = abrirEdicionMix;
 window.actualizarEstadoMix = actualizarEstadoMix;
 window.actualizarListaIngredientes = actualizarListaIngredientes;
+`;
+
+// Note: I will replace all the old logic related to window.eliminarIngredienteDeMix, agregarIngredienteAMix, guardarRecetaMix with this buffer logic.
+// We chop everything starting from "// Funciones expuestas globalmente para onclick" to the EOF.
+if (js.match(regexViejo)) {
+    js = js.replace(regexViejo, newBufferingLogic);
+    fs.writeFileSync('src/produccion/js/mix.js', js, 'utf8');
+    console.log('Buffer mechanics injected successfully into mix.js');
+} else {
+    // If it fails to match, let's find roughly where it is
+    console.log('Fallback: failed regex match');
+}

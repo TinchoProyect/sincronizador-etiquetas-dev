@@ -181,13 +181,16 @@ router.post('/imprimir-personalizada', (req, res) => {
 
 // Endpoint para imprimir etiquetas de ingredientes
 router.post('/etiquetas/ingrediente', (req, res) => {
-  const { nombre, codigo, sector, cantidad } = req.body;
+  const { id, nombre, codigo, sector, cantidad } = req.body;
+
+  console.log(`[API Etiquetas] ID Ingrediente recibido: ${id || 'N/A'}, Cantidad solicitada: ${cantidad}`);
 
   if (!nombre || !codigo) {
     return res.status(400).json({ error: 'Faltan datos del ingrediente' });
   }
 
   const datos = {
+    id,
     nombre,
     codigo,
     sector: sector || ''

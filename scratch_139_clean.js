@@ -3,17 +3,17 @@ import { esMix } from './mix.js';
 // Variables globales
 let ingredienteEditando = null;
 let ingredientesOriginales = []; // Para mantener la lista completa
-let filtrosActivos = new Set(); // Para rastrear filtros activos por categoría
+let filtrosActivos = new Set(); // Para rastrear filtros activos por categor├¡a
 let filtrosTipoActivos = new Set(); // Para rastrear filtros activos por tipo (Simple/Mix)
 let filtrosStockActivos = new Set(); // Para rastrear filtros activos por stock (Con Stock/Sin Stock)
 let filtrosSectorActivos = new Set(); // Para rastrear filtros activos por sector
 let vistaActual = 'deposito'; // Para identificar la vista actual ('deposito' o 'usuario-X')
 let sectoresDisponibles = []; // Para almacenar la lista de sectores
 
-// ✅ NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
+// Ô£à NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
 let estadoFiltrosGuardado = null; // Para guardar temporalmente el estado de filtros
 
-// ✅ FUNCIONES PARA MANTENER ESTADO DE FILTROS
+// Ô£à FUNCIONES PARA MANTENER ESTADO DE FILTROS
 function guardarEstadoFiltros() {
     estadoFiltrosGuardado = {
         categorias: new Set(filtrosActivos),
@@ -39,7 +39,7 @@ function restaurarEstadoFiltros() {
 }
 
 function restaurarEstadoVisualFiltros() {
-    // Restaurar botones de categoría
+    // Restaurar botones de categor├¡a
     document.querySelectorAll('.categorias-botones .btn-filtro').forEach(btn => {
         if (filtrosActivos.has(btn.textContent)) {
             btn.classList.add('activo');
@@ -79,7 +79,7 @@ function restaurarEstadoVisualFiltros() {
     });
 }
 
-// ✅ NUEVA FUNCIÓN PARA RECARGAR DATOS SIN PERDER FILTROS
+// Ô£à NUEVA FUNCI├ôN PARA RECARGAR DATOS SIN PERDER FILTROS
 async function recargarDatosMantenendoFiltros() {
     try {
         // Cargar datos frescos del servidor
@@ -104,12 +104,12 @@ async function recargarDatosMantenendoFiltros() {
         await actualizarTablaFiltrada();
 
     } catch (error) {
-        console.error('❌ Error al recargar datos:', error);
+        console.error('ÔØî Error al recargar datos:', error);
         mostrarMensaje(error.message || 'No se pudieron recargar los datos');
     }
 }
 
-// Función para cargar sectores disponibles
+// Funci├│n para cargar sectores disponibles
 async function cargarSectores() {
     try {
         const response = await fetch('http://localhost:3002/api/produccion/sectores');
@@ -123,13 +123,13 @@ async function cargarSectores() {
         actualizarSelectorSectores();
 
     } catch (error) {
-        console.error('❌ Error al cargar sectores:', error);
-        // No mostrar error al usuario, el selector quedará con opción por defecto
+        console.error('ÔØî Error al cargar sectores:', error);
+        // No mostrar error al usuario, el selector quedar├í con opci├│n por defecto
         sectoresDisponibles = [];
     }
 }
 
-// Función para actualizar el selector de sectores en el modal
+// Funci├│n para actualizar el selector de sectores en el modal
 function actualizarSelectorSectores() {
     const selectorSector = document.getElementById('sector');
     if (!selectorSector) return;
@@ -153,12 +153,12 @@ async function abrirModal(titulo = 'Nuevo Ingrediente') {
     modalTitulo.textContent = titulo;
     modal.style.display = 'block';
 
-    // Cargar sectores si no están cargados
+    // Cargar sectores si no est├ín cargados
     if (sectoresDisponibles.length === 0) {
         await cargarSectores();
     }
 
-    // Si es un nuevo ingrediente, obtener el código automáticamente
+    // Si es un nuevo ingrediente, obtener el c├│digo autom├íticamente
     if (titulo === 'Nuevo Ingrediente') {
         try {
             const response = await fetch('http://localhost:3002/api/produccion/ingredientes/nuevo-codigo');
@@ -167,8 +167,8 @@ async function abrirModal(titulo = 'Nuevo Ingrediente') {
                 document.getElementById('codigo').value = data.codigo;
             }
         } catch (error) {
-            console.error('Error al obtener nuevo código:', error);
-            // No mostrar error al usuario, el código se generará al guardar
+            console.error('Error al obtener nuevo c├│digo:', error);
+            // No mostrar error al usuario, el c├│digo se generar├í al guardar
         }
     }
 }
@@ -180,7 +180,7 @@ function cerrarModal() {
     ingredienteEditando = null;
 }
 
-// Función para mostrar mensajes
+// Funci├│n para mostrar mensajes
 function mostrarMensaje(mensaje, tipo = 'error') {
     const contenedor = document.querySelector('.content-section');
     const mensajeDiv = document.createElement('div');
@@ -195,31 +195,31 @@ function mostrarMensaje(mensaje, tipo = 'error') {
 
     contenedor.insertBefore(mensajeDiv, contenedor.firstChild);
 
-    // Remover el mensaje después de 3 segundos
+    // Remover el mensaje despu├®s de 3 segundos
     setTimeout(() => {
         mensajeDiv.remove();
     }, 3000);
 }
 
-// Función para inicializar los filtros de categorías, tipo y stock
+// Funci├│n para inicializar los filtros de categor├¡as, tipo y stock
 function inicializarFiltros(ingredientes) {
-    // ✅ INICIALIZAR TODOS LOS FILTROS VACÍOS
+    // Ô£à INICIALIZAR TODOS LOS FILTROS VAC├ìOS
     filtrosActivos = new Set();
     filtrosTipoActivos = new Set();
     filtrosStockActivos = new Set();
     filtrosSectorActivos = new Set();
 
-    // ===== FILTROS POR CATEGORÍA =====
+    // ===== FILTROS POR CATEGOR├ìA =====
     const categoriasContainer = document.getElementById('filtros-categorias-container');
     if (categoriasContainer) {
         categoriasContainer.innerHTML = '';
 
-        // Obtener categorías únicas y ordenadas
+        // Obtener categor├¡as ├║nicas y ordenadas
         const categorias = [...new Set(ingredientes.map(ing => ing.categoria))]
             .filter(Boolean)
             .sort();
 
-        // Crear botones de categoría
+        // Crear botones de categor├¡a
         const botonesCategorias = categorias.map(cat => {
             const btn = document.createElement('button');
             btn.textContent = cat;
@@ -238,7 +238,7 @@ function inicializarFiltros(ingredientes) {
             return btn;
         });
 
-        // Botones globales de categorías
+        // Botones globales de categor├¡as
         const btnTodasCategorias = document.getElementById('btn-todas-categorias');
         const btnNingunaCategoria = document.getElementById('btn-ninguna-categoria');
 
@@ -322,7 +322,7 @@ function inicializarFiltros(ingredientes) {
     if (sectoresContainer) {
         sectoresContainer.innerHTML = '';
 
-        // Botón para "Sin sector asignado"
+        // Bot├│n para "Sin sector asignado"
         const btnSinSector = document.createElement('button');
         btnSinSector.textContent = 'Sin Sector';
         btnSinSector.className = 'btn-filtro';
@@ -342,8 +342,7 @@ function inicializarFiltros(ingredientes) {
         // Botones para sectores disponibles
         sectoresDisponibles.forEach(sector => {
             const btn = document.createElement('button');
-            const letraPura = window.extraerLetraPura(sector.descripcion);
-            btn.textContent = letraPura ? letraPura : sector.nombre;
+            btn.textContent = sector.nombre;
             btn.className = 'btn-filtro';
             btn.dataset.sectorId = sector.id.toString();
             btn.onclick = async () => {
@@ -362,34 +361,7 @@ function inicializarFiltros(ingredientes) {
     }
 }
 
-// ✅ FUNCIÓN AUXILIAR: Extraer Letra Pura Limpia de un Sector (Ej: 'Sector "J"' -> 'J')
-window.extraerLetraPura = function(descripcion) {
-    if (!descripcion) return '';
-    const texto = descripcion.replace(/["']/g, '').trim();
-    if (!texto) return '';
-
-    // Nivel 1: Regex permisivo que soporta errores como "Sectro G"
-    const matchSector = texto.match(/Sect[a-z]*\s+([A-Z0-9]{1,2})/i);
-    if (matchSector) {
-        return matchSector[1].toUpperCase();
-    }
-
-    // Nivel 2: Texto de longitud exacta (Ej: "G")
-    if (texto.length > 0 && texto.length <= 2) {
-        return texto.toUpperCase();
-    }
-
-    // Nivel 3: Aislado, una letra o 2 en el contexto de la oracion
-    const matchLetra = texto.match(/\b([A-Z0-9]{1,2})\b/i);
-    if (matchLetra) {
-        return matchLetra[1].toUpperCase();
-    }
-
-    // Nivel 4: Ultima instancia, primer character de "Mix Salado" -> "M"
-    return texto.charAt(0).toUpperCase();
-}
-
-// ✅ FUNCIÓN AUXILIAR: Normalizar texto (eliminar tildes y caracteres especiales)
+// Ô£à FUNCI├ôN AUXILIAR: Normalizar texto (eliminar tildes y caracteres especiales)
 function normalizarTexto(texto) {
     if (!texto) return '';
     return texto
@@ -399,23 +371,21 @@ function normalizarTexto(texto) {
         .trim();
 }
 
-// ✅ FUNCIÓN AUXILIAR: Formatear stock (máximo 3 decimales, sin ceros innecesarios)
+// Ô£à FUNCI├ôN AUXILIAR: Formatear stock (m├íximo 3 decimales, sin ceros innecesarios)
 function formatearStock(valor) {
-    // Convertir a número y limitar a 3 decimales
+    // Convertir a n├║mero y limitar a 3 decimales
     const numero = parseFloat(Number(valor).toFixed(3));
-    // Corrección del bug del "cero negativo" proveniente de SQL/Float rounding 
-    if (Object.is(numero, -0)) return "0";
     // Retornar como string, eliminando ceros innecesarios a la derecha
     return numero.toString();
 }
 
-// Función para actualizar la tabla según los filtros activos combinados
+// Funci├│n para actualizar la tabla seg├║n los filtros activos combinados
 async function actualizarTablaFiltrada() {
-    // Solo aplicar filtros en la vista de depósito
+    // Solo aplicar filtros en la vista de dep├│sito
     if (vistaActual === 'deposito') {
         const nombreFiltro = document.getElementById('filtro-nombre')?.value.trim() || '';
 
-        // Si no hay filtros activos ni búsqueda, mostrar TODOS los ingredientes
+        // Si no hay filtros activos ni b├║squeda, mostrar TODOS los ingredientes
         if (
             filtrosActivos.size === 0 &&
             filtrosTipoActivos.size === 0 &&
@@ -427,27 +397,27 @@ async function actualizarTablaFiltrada() {
             return;
         }
 
-        // Aplicar filtros combinados (AND lógico entre tipos de filtros, OR dentro de cada tipo)
+        // Aplicar filtros combinados (AND l├│gico entre tipos de filtros, OR dentro de cada tipo)
         const ingredientesFiltrados = ingredientesOriginales.filter(ing => {
-            // ✅ FILTRO POR NOMBRE: Búsqueda multi-término SOLO en nombre (sin descripción ni código)
+            // Ô£à FILTRO POR NOMBRE: B├║squeda multi-t├®rmino SOLO en nombre (sin descripci├│n ni c├│digo)
             let pasaNombre = true;
             if (nombreFiltro) {
-                // Dividir el input en términos (separados por espacios)
+                // Dividir el input en t├®rminos (separados por espacios)
                 const terminos = nombreFiltro
-                    .split(/\s+/) // Dividir por uno o más espacios
-                    .filter(t => t.length > 0) // Eliminar términos vacíos
-                    .map(t => normalizarTexto(t)); // Normalizar cada término
+                    .split(/\s+/) // Dividir por uno o m├ís espacios
+                    .filter(t => t.length > 0) // Eliminar t├®rminos vac├¡os
+                    .map(t => normalizarTexto(t)); // Normalizar cada t├®rmino
 
                 if (terminos.length > 0) {
                     // Normalizar SOLO el nombre del ingrediente
                     const nombreNormalizado = normalizarTexto(ing.nombre);
 
-                    // Verificar que TODOS los términos estén presentes en el nombre
+                    // Verificar que TODOS los t├®rminos est├®n presentes en el nombre
                     pasaNombre = terminos.every(termino => nombreNormalizado.includes(termino));
                 }
             }
 
-            // Filtro por categoría (si hay filtros de categoría activos)
+            // Filtro por categor├¡a (si hay filtros de categor├¡a activos)
             const pasaCategoria = filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria);
 
             // Filtro por tipo (si hay filtros de tipo activos)
@@ -493,7 +463,7 @@ async function actualizarTablaFiltrada() {
     }
 }
 
-// Función para cargar los ingredientes según la vista actual
+// Funci├│n para cargar los ingredientes seg├║n la vista actual
 async function cargarIngredientes(usuarioId = null) {
     try {
         let response;
@@ -501,13 +471,13 @@ async function cargarIngredientes(usuarioId = null) {
         if (usuarioId) {
             vistaActual = `usuario-${usuarioId}`;
 
-            // 🛡️ LIMPIEZA DE ESTADO: Limpiar todos los filtros al cambiar a vista usuario
+            // ­ƒøí´©Å LIMPIEZA DE ESTADO: Limpiar todos los filtros al cambiar a vista usuario
             filtrosActivos.clear();
             filtrosTipoActivos.clear();
             filtrosStockActivos.clear();
             filtrosSectorActivos.clear();
 
-            // 🛡️ LIMPIEZA DE ESTADO: Limpiar campo de búsqueda por nombre
+            // ­ƒøí´©Å LIMPIEZA DE ESTADO: Limpiar campo de b├║squeda por nombre
             const inputFiltroNombre = document.getElementById('filtro-nombre');
             if (inputFiltroNombre) {
                 inputFiltroNombre.value = '';
@@ -528,7 +498,7 @@ async function cargarIngredientes(usuarioId = null) {
 
         if (vistaActual === 'deposito') {
             // ==========================================
-            // RAMA 1: VISTA DEPÓSITO (Inventario General)
+            // RAMA 1: VISTA DEP├ôSITO (Inventario General)
             // ==========================================
 
             // Guardar lista completa y actualizar mix.js
@@ -539,7 +509,7 @@ async function cargarIngredientes(usuarioId = null) {
             inicializarFiltros(datos);
 
             // Verificar estado de mix para todos los ingredientes
-            // OPTIMIZACIÓN: Backend calc
+            // OPTIMIZACI├ôN: Backend calc
             const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
 
             ingredientesOriginales = ingredientesConEstado;
@@ -549,21 +519,21 @@ async function cargarIngredientes(usuarioId = null) {
             // RAMA 2: VISTA USUARIO (Stock Personal)
             // ==========================================
 
-            // 🛡️ NO guardar en ingredientesOriginales para evitar contaminación
-            // 🛡️ NO llamar a inicializarFiltros()
-            // 🛡️ NO llamar a actualizarTablaFiltrada()
+            // ­ƒøí´©Å NO guardar en ingredientesOriginales para evitar contaminaci├│n
+            // ­ƒøí´©Å NO llamar a inicializarFiltros()
+            // ­ƒøí´©Å NO llamar a actualizarTablaFiltrada()
 
             // Renderizar directamente la tabla con los datos del usuario
             await actualizarTablaIngredientes(datos, true);
         }
 
     } catch (error) {
-        console.error('❌ Error:', error);
+        console.error('ÔØî Error:', error);
         mostrarMensaje(error.message || 'No se pudieron cargar los datos');
     }
 }
 
-// Función para crear selector de sectores inline
+// Funci├│n para crear selector de sectores inline
 function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNombre) {
     const select = document.createElement('select');
     select.className = 'selector-sector-inline';
@@ -582,7 +552,7 @@ function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNo
         transition: all 0.2s ease;
     `;
 
-    // Opción por defecto
+    // Opci├│n por defecto
     const optionDefault = document.createElement('option');
     optionDefault.value = '';
     optionDefault.textContent = 'Sin asignar';
@@ -599,7 +569,7 @@ function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNo
     // Establecer valor actual
     select.value = sectorActualId || '';
 
-    // Evento de cambio para actualización inmediata
+    // Evento de cambio para actualizaci├│n inmediata
     select.addEventListener('change', async (e) => {
         await actualizarSectorIngrediente(ingredienteId, e.target.value, e.target);
     });
@@ -618,7 +588,7 @@ function crearSelectorSectorInline(ingredienteId, sectorActualId, sectorActualNo
     return select;
 }
 
-// Función para actualizar sector de ingrediente con feedback visual
+// Funci├│n para actualizar sector de ingrediente con feedback visual
 async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selectorElement) {
     const sectorOriginal = selectorElement.dataset.sectorOriginal;
 
@@ -630,16 +600,16 @@ async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selecto
 
         // Crear indicador de carga
         const loadingIndicator = document.createElement('span');
-        loadingIndicator.textContent = '⏳';
+        loadingIndicator.textContent = 'ÔÅ│';
         loadingIndicator.style.marginLeft = '5px';
         selectorElement.parentNode.appendChild(loadingIndicator);
 
-        // Preparar datos para actualización
+        // Preparar datos para actualizaci├│n
         const datos = {
             sector_id: nuevoSectorId || null
         };
 
-        // Realizar petición de actualización
+        // Realizar petici├│n de actualizaci├│n
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
             method: 'PUT',
             headers: {
@@ -653,18 +623,18 @@ async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selecto
             throw new Error(errorData.error || 'Error al actualizar el sector');
         }
 
-        // Éxito: actualizar estado y mostrar feedback
+        // ├ëxito: actualizar estado y mostrar feedback
         selectorElement.dataset.sectorOriginal = nuevoSectorId || '';
 
-        // Feedback visual de éxito
+        // Feedback visual de ├®xito
         selectorElement.style.borderColor = '#28a745';
         selectorElement.style.backgroundColor = '#f8fff9';
 
-        // Mostrar mensaje de éxito discreto
+        // Mostrar mensaje de ├®xito discreto
         mostrarMensajeDiscretoSector('Sector actualizado', 'exito');
 
     } catch (error) {
-        console.error('❌ Error al actualizar sector:', error);
+        console.error('ÔØî Error al actualizar sector:', error);
 
         // Revertir cambio en caso de error
         selectorElement.value = sectorOriginal;
@@ -688,7 +658,7 @@ async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selecto
             loadingIndicator.remove();
         }
 
-        // Restaurar estilos después de 2 segundos
+        // Restaurar estilos despu├®s de 2 segundos
         setTimeout(() => {
             selectorElement.style.borderColor = '#ddd';
             selectorElement.style.backgroundColor = '#fff';
@@ -696,7 +666,7 @@ async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selecto
     }
 }
 
-// Función para mostrar mensajes discretos específicos para sectores
+// Funci├│n para mostrar mensajes discretos espec├¡ficos para sectores
 function mostrarMensajeDiscretoSector(mensaje, tipo = 'info') {
     // Remover mensaje anterior si existe
     const mensajeAnterior = document.querySelector('.mensaje-sector-discreto');
@@ -707,7 +677,7 @@ function mostrarMensajeDiscretoSector(mensaje, tipo = 'info') {
     const mensajeDiv = document.createElement('div');
     mensajeDiv.className = 'mensaje-sector-discreto';
 
-    // Estilos según el tipo
+    // Estilos seg├║n el tipo
     const colores = {
         exito: { bg: '#d4edda', border: '#c3e6cb', text: '#155724' },
         error: { bg: '#f8d7da', border: '#f5c6cb', text: '#721c24' },
@@ -734,24 +704,24 @@ function mostrarMensajeDiscretoSector(mensaje, tipo = 'info') {
     mensajeDiv.textContent = mensaje;
     document.body.appendChild(mensajeDiv);
 
-    // Remover después de 3 segundos
+    // Remover despu├®s de 3 segundos
     setTimeout(() => {
         mensajeDiv.style.animation = 'slideOutRight 0.3s ease-in';
         setTimeout(() => mensajeDiv.remove(), 300);
     }, 3000);
 }
 
-// Caché de nutrientes cargados
+// Cach├® de nutrientes cargados
 const cacheNutrientes = new Map();
 
-// Función para invalidar caché de nutrientes
+// Funci├│n para invalidar cach├® de nutrientes
 function invalidarCacheNutrientes(ingredienteId) {
     cacheNutrientes.delete(ingredienteId);
 }
 
-// Función para cargar nutrientes de un ingrediente
+// Funci├│n para cargar nutrientes de un ingrediente
 async function cargarNutrientes(ingredienteId) {
-    // Verificar caché
+    // Verificar cach├®
     if (cacheNutrientes.has(ingredienteId)) {
         return cacheNutrientes.get(ingredienteId);
     }
@@ -765,26 +735,26 @@ async function cargarNutrientes(ingredienteId) {
 
     const nutrientes = await response.json();
 
-    // Guardar en caché
+    // Guardar en cach├®
     cacheNutrientes.set(ingredienteId, nutrientes);
 
     return nutrientes;
 }
 
-// Función para toggle de expandir/colapsar detalles de nutrientes
+// Funci├│n para toggle de expandir/colapsar detalles de nutrientes
 async function toggleDetallesNutrientes(ingredienteId, filaActual) {
     const filaDetalles = document.querySelector(`tr[data-detalles-id="${ingredienteId}"]`);
     const btnExpandir = filaActual.querySelector('.btn-expandir');
     const iconoExpandir = btnExpandir.querySelector('.icono-expandir');
 
     if (filaDetalles) {
-        // Ya está expandido, colapsar
+        // Ya est├í expandido, colapsar
         filaDetalles.remove();
-        iconoExpandir.textContent = '▶';
+        iconoExpandir.textContent = 'ÔûÂ';
         iconoExpandir.style.transform = 'rotate(0deg)';
     } else {
         // Expandir y cargar datos
-        iconoExpandir.textContent = '▼';
+        iconoExpandir.textContent = 'Ôû╝';
         iconoExpandir.style.transform = 'rotate(90deg)';
 
         try {
@@ -799,24 +769,24 @@ async function toggleDetallesNutrientes(ingredienteId, filaActual) {
             trDetalles.innerHTML = `
                 <td colspan="11">
                     <div class="contenedor-detalles-nutrientes">
-                        <h4>📦 Artículos que abastecen este ingrediente:</h4>
+                        <h4>­ƒôª Art├¡culos que abastecen este ingrediente:</h4>
                         ${renderizarTablaNutrientes(nutrientes, ingredienteId)}
                     </div>
                 </td>
             `;
 
-            // Insertar después de la fila actual
+            // Insertar despu├®s de la fila actual
             filaActual.after(trDetalles);
         } catch (error) {
             console.error('Error al cargar nutrientes:', error);
-            mostrarMensaje('Error al cargar los artículos nutrientes');
-            iconoExpandir.textContent = '▶';
+            mostrarMensaje('Error al cargar los art├¡culos nutrientes');
+            iconoExpandir.textContent = 'ÔûÂ';
             iconoExpandir.style.transform = 'rotate(0deg)';
         }
     }
 }
 
-// Función para renderizar tabla de nutrientes (diferencia entre SIMPLE y MIX)
+// Funci├│n para renderizar tabla de nutrientes (diferencia entre SIMPLE y MIX)
 function renderizarTablaNutrientes(respuesta, ingredienteId) {
     if (!respuesta || !respuesta.datos || respuesta.datos.length === 0) {
         return '<p class="sin-nutrientes">No hay datos disponibles para este ingrediente</p>';
@@ -828,12 +798,12 @@ function renderizarTablaNutrientes(respuesta, ingredienteId) {
         // Renderizar tabla para ingredientes MIX (componentes)
         return renderizarTablaMix(datos);
     } else {
-        // Renderizar tabla para ingredientes SIMPLE (artículos)
+        // Renderizar tabla para ingredientes SIMPLE (art├¡culos)
         return renderizarTablaSimple(datos, ingredienteId);
     }
 }
 
-// Función para renderizar tabla de ingredientes SIMPLE (artículos nutrientes)
+// Funci├│n para renderizar tabla de ingredientes SIMPLE (art├¡culos nutrientes)
 function renderizarTablaSimple(nutrientes, ingredienteId) {
     const totalPotencial = nutrientes
         .filter(n => n.activo)
@@ -843,7 +813,7 @@ function renderizarTablaSimple(nutrientes, ingredienteId) {
         <table class="tabla-nutrientes">
             <thead>
                 <tr>
-                    <th>Artículo</th>
+                    <th>Art├¡culo</th>
                     <th>Stock (Bultos)</th>
                     <th>Kg/Bulto</th>
                     <th>Kilos Potenciales</th>
@@ -885,7 +855,7 @@ function renderizarTablaSimple(nutrientes, ingredienteId) {
     `;
 }
 
-// Función para renderizar tabla de ingredientes MIX (componentes)
+// Funci├│n para renderizar tabla de ingredientes MIX (componentes)
 function renderizarTablaMix(componentes) {
     // Encontrar el componente limitante (menor kilos_mix_posibles)
     const limitante = componentes.reduce((min, comp) => {
@@ -899,7 +869,7 @@ function renderizarTablaMix(componentes) {
     return `
         <div class="info-mix-producibilidad">
             <p class="info-limitante">
-                ⚠️ <strong>Factor Limitante:</strong> ${limitante.componente_nombre} 
+                ÔÜá´©Å <strong>Factor Limitante:</strong> ${limitante.componente_nombre} 
                 (permite producir <strong>${formatearStock(stockPotencialMix)} kg</strong> de mix)
             </p>
         </div>
@@ -918,7 +888,7 @@ function renderizarTablaMix(componentes) {
         return `
                         <tr class="${esLimitante ? 'componente-limitante' : ''}">
                             <td>
-                                ${esLimitante ? '🔴 ' : ''}
+                                ${esLimitante ? '­ƒö┤ ' : ''}
                                 ${comp.componente_nombre}
                             </td>
                             <td>${formatearStock(comp.cantidad_requerida || 0)}</td>
@@ -934,7 +904,7 @@ function renderizarTablaMix(componentes) {
             </tbody>
             <tfoot>
                 <tr class="fila-total-potencial">
-                    <td colspan="3"><strong>PRODUCCIÓN MÁXIMA POSIBLE:</strong></td>
+                    <td colspan="3"><strong>PRODUCCI├ôN M├üXIMA POSIBLE:</strong></td>
                     <td><strong>${formatearStock(stockPotencialMix)}</strong></td>
                 </tr>
             </tfoot>
@@ -942,7 +912,7 @@ function renderizarTablaMix(componentes) {
     `;
 }
 
-// Función para toggle de vínculo activo/inactivo
+// Funci├│n para toggle de v├¡nculo activo/inactivo
 async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
     try {
         const response = await fetch(
@@ -955,10 +925,10 @@ async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
         );
 
         if (!response.ok) {
-            throw new Error('Error al actualizar vínculo');
+            throw new Error('Error al actualizar v├¡nculo');
         }
 
-        // Invalidar caché de nutrientes
+        // Invalidar cach├® de nutrientes
         invalidarCacheNutrientes(ingredienteId);
 
         // Recargar datos del ingrediente para actualizar stock potencial
@@ -973,175 +943,126 @@ async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
         }
 
         mostrarMensaje(
-            `Vínculo ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`,
+            `V├¡nculo ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`,
             'exito'
         );
     } catch (error) {
-        console.error('❌ [VINCULO] Error al toggle vínculo:', error);
-        mostrarMensaje('Error al actualizar el vínculo');
+        console.error('ÔØî [VINCULO] Error al toggle v├¡nculo:', error);
+        mostrarMensaje('Error al actualizar el v├¡nculo');
     }
 }
 
-// Función para actualizar la tabla con los ingredientes
+// Funci├│n para actualizar la tabla con los ingredientes
 async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false) {
-    const container = document.getElementById('tabla-ingredientes-body');
-    if (!container) return;
+    const tbody = document.getElementById('tabla-ingredientes-body');
+    if (!tbody) return;
 
-    container.innerHTML = '';
+    tbody.innerHTML = '';
 
     if (!ingredientes || ingredientes.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:2rem; color:#6c757d;">No hay ingredientes disponibles</div>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center">No hay ingredientes disponibles</td></tr>';
         return;
     }
 
+    // OPTIMIZACI├ôN DOM: Usar DocumentFragment para evitar reflows por cada fila
     const fragment = document.createDocumentFragment();
 
-    if (esVistaUsuario) {
-        const groupContent = document.createElement('div');
-        groupContent.className = 'sector-group-content';
+    ingredientes.forEach(ingrediente => {
+        const tr = document.createElement('tr');
+        tr.dataset.id = ingrediente.id;
 
-        ingredientes.forEach(ingrediente => {
+        if (esVistaUsuario) {
+            // Vista de usuario: mostrar stock personal (sin bot├│n expandir ni stock potencial)
+            // ­ƒöº FIX: Usar ingrediente_id en lugar de id para vista de usuario
             const ingredienteIdReal = ingrediente.ingrediente_id || ingrediente.id;
-            const esMix = ingrediente.esMix || ingrediente.tipo_origen === 'Mix';
-            const mixButtons = esMix
-                ? `<button class="btn-tarjeta primary" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})">📋 Fórmula</button>`
-                : `<button class="btn-tarjeta primary" style="padding: 8px 12px;" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})" title="Crear Fórmula">➕🧪</button>`;
+
+            tr.innerHTML = `
+                <td></td>
+                <td>${ingrediente.nombre_ingrediente}</td>
+                <td>${ingrediente.unidad_medida || '-'}</td>
+                <td>${ingrediente.categoria || '-'}</td>
+                <td>${parseFloat(ingrediente.stock_total).toFixed(3)}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>${ingrediente.descripcion || '-'}</td>
+                <td>${ingrediente.tipo_origen || 'Simple'}</td>
+                <td>-</td>
                 
-            const card = document.createElement('div');
-            card.className = `tarjeta-ingrediente ${(ingrediente.stock_total <= 0) ? 'con-stock-cero' : ''}`;
-            
-            card.innerHTML = `
-            <div class="tarjeta-cuerpo">
-                <div class="tarjeta-header">
-                    <span class="tarjeta-codigo">${ingrediente.codigo || '-'}</span>
-                </div>
-                <h3 class="tarjeta-titulo">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
-                ${ingrediente.descripcion ? `<p class="tarjeta-descripcion">${ingrediente.descripcion}</p>` : ''}
-                
-                <div class="tarjeta-stats">
-                    <div class="stat-item ${parseFloat(ingrediente.stock_total) <= 0 ? 'stock-cero' : ''}">
-                        <span class="stat-label">STOCK ASIGNADO</span>
-                        <span class="stat-value">${window.formatearStock ? window.formatearStock(ingrediente.stock_total) : parseFloat(ingrediente.stock_total).toFixed(3)} <small>${ingrediente.unidad_medida}</small></span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="tarjeta-footer">
-                ${mixButtons}
-                <button class="btn-tarjeta action" onclick="if(window.editarIngrediente) editarIngrediente(${ingredienteIdReal})" title="Editar Detalles y Stock Restante">✏️ Editar</button>
-                <button class="btn-tarjeta" style="background:#fef2f2; color:#b91c1c;" onclick="window.iniciarTrasladoIngrediente('${ingredienteIdReal}', '${(ingrediente.nombre_ingrediente || ingrediente.nombre).replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥 Mover</button>
-            </div>`;
-            groupContent.appendChild(card);
-        });
-        fragment.appendChild(groupContent);
-    } else {
-        // Vista de depósito: Agrupar por sector
-        const grupos = {};
-        
-        ingredientes.forEach(ingrediente => {
+                <td style="text-align: center;">
+                    <button class="btn-icon" 
+                            onclick="window.abrirModalAjusteDesdeTabla(${ingredienteIdReal}, '${ingrediente.nombre_ingrediente.replace(/'/g, "\\'")}', ${ingrediente.stock_total}, ${ingredienteIdReal})"
+                            title="Ajustar Stock Manualmente"
+                            style="cursor:pointer; background:none; border:none; font-size:1.4em; transition: transform 0.2s;">
+                          Ô£Å´©Å
+                      
+                    </button>
+<button class="btn-icon" onclick="window.iniciarTrasladoIngrediente('${ingredienteIdReal}', '${ingrediente.nombre_ingrediente.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena" style="cursor:pointer; background:none; border:none; font-size:1.4em; transform:scale(0.9); margin-left:5px;">­ƒÅÑ</button>
+                </td>
+            `;
+        } else {
+            // Vista de dep├│sito: funcionalidad completa con stock potencial
             const nombreSector = ingrediente.sector_nombre || 'Sin asignar';
-            if (!grupos[nombreSector]) {
-                grupos[nombreSector] = [];
-            }
-            grupos[nombreSector].push(ingrediente);
-        });
+            const stockPotencial = parseFloat(ingrediente.stock_potencial) || parseFloat(ingrediente.stock_actual) || 0;
+            const vinculosActivos = parseInt(ingrediente.vinculos_activos) || 0;
 
-        const gruposArray = Object.entries(grupos).map(([nombreSector, items]) => {
-            const letraBackend = items[0] && items[0].sector_letra ? items[0].sector_letra : '';
-            return { nombreSector, items, sector_letra: letraBackend };
-        });
-        
-        // Ordenar alfabéticamente priorizando la letra pura del sector (A, B, C...)
-        gruposArray.sort((a, b) => {
-            const letraA = window.extraerLetraPura(a.items[0] && a.items[0].sector_descripcion) || a.nombreSector;
-            const letraB = window.extraerLetraPura(b.items[0] && b.items[0].sector_descripcion) || b.nombreSector;
-            return letraA.localeCompare(letraB);
-        });
+            // Crear fila
+            tr.innerHTML = `
+                <td class="td-expandir">
+                    <button class="btn-expandir" data-ingrediente-id="${ingrediente.id}">
+                        <span class="icono-expandir">ÔûÂ</span>
+                    </button>
+                </td>
+                <td>${ingrediente.nombre}</td>
+                <td>${ingrediente.unidad_medida}</td>
+                <td>${ingrediente.categoria}</td>
+                <td>${formatearStock(ingrediente.stock_actual)}</td>
+                <td class="stock-potencial">
+                    ${formatearStock(stockPotencial)}
+                    ${vinculosActivos > 0
+                    ? `<span class="badge-vinculos">${vinculosActivos}</span>`
+                    : ''}
+                </td>
+                <td class="sector-cell"></td>
+                <td>${ingrediente.descripcion || '-'}</td>
+                <td class="tipo-col">${ingrediente.esMix ? 'Ingrediente Mix' : 'Ingrediente Simple'}</td>
+                <td>
+                    ${ingrediente.esMix
+                    ? `<div class="btn-group">
+                            <button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Gestionar composici├│n</button>
+                            <button class="btn-eliminar" onclick="eliminarComposicionMix(${ingrediente.id})">Eliminar composici├│n</button>
+                           </div>`
+                    : (!ingrediente.padre_id
+                        ? `<button class="btn-editar" onclick="gestionarComposicionMix(${ingrediente.id})">Crear composici├│n</button>`
+                        : '-')}
+                </td>
+                <td>
+                    <button class="btn-editar" onclick="editarIngrediente(${ingrediente.id})">Editar</button>
+                    <button class="btn-eliminar" onclick="eliminarIngrediente(${ingrediente.id})">Eliminar</button>
+<button class="btn-accion" style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px;" onclick="window.iniciarTrasladoIngrediente('${ingrediente.id}', '${ingrediente.nombre.replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">­ƒÅÑ</button>
+                </td>
+            `;
 
-        for (const {nombreSector, items, sector_letra} of gruposArray) {
-            const groupHeader = document.createElement('div');
-            groupHeader.className = 'sector-group-header';
-            
-            const nombreLimpio = nombreSector.replace(/'/g, "\\'");
-            let displayIzquierda = "";
-            let displayCentro = "";
-            let isLetter = false;
+            // Agregar selector de sector inline en la celda correspondiente
+            const sectorCell = tr.querySelector('.sector-cell');
+            const selectorSector = crearSelectorSectorInline(
+                ingrediente.id,
+                ingrediente.sector_id,
+                nombreSector
+            );
+            sectorCell.appendChild(selectorSector);
 
-            // Extraer la letra limpita si está presente en la base de datos
-            const desc = items[0] ? items[0].sector_descripcion : '';
-            const letraPura = window.extraerLetraPura(desc);
-
-            if (letraPura) {
-                displayIzquierda = letraPura;
-                displayCentro = nombreSector; // título al medio
-                isLetter = true;
-            } else {
-                displayIzquierda = "";  // vacío si no hay letra
-                displayCentro = nombreSector; 
-            }
-
-            groupHeader.innerHTML = `
-                <div class="sector-header-flex" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <div class="header-izq" style="font-size: 1.8rem; font-weight: 900; color: #0f172a; min-width: 120px; text-align: left;">
-                        ${displayIzquierda}
-                    </div>
-                    <div class="header-centro" style="font-size: 1.4rem; font-weight: 700; color: #334155; text-align: center; flex: 1; text-transform: uppercase;">
-                        ${displayCentro}
-                    </div>
-                    <div class="header-der" style="min-width: 120px; text-align: right;">
-                        <button class="btn-imprimir-cartel" onclick="if(window.imprimirCartelSector) window.imprimirCartelSector('${isLetter ? letraPura : ''}', '${nombreLimpio}')">
-                            🖨️ Cartel A4
-                        </button>
-                    </div>
-                </div>`;
-
-            fragment.appendChild(groupHeader);
-
-            const groupContent = document.createElement('div');
-            groupContent.className = 'sector-group-content';
-            
-            items.forEach(ingrediente => {
-                const ingredienteIdReal = ingrediente.ingrediente_id || ingrediente.id;
-                
-                const card = document.createElement('div');
-                card.className = `tarjeta-ingrediente ${(ingrediente.stock_actual <= 0 && ingrediente.stock_potencial <= 0) ? 'con-stock-cero' : ''}`;
-                
-                card.innerHTML = `
-                <div class="tarjeta-cuerpo">
-                    <div class="tarjeta-header">
-                        <span class="tarjeta-codigo">${ingrediente.codigo || '-'}</span>
-                    </div>
-                    <h3 class="tarjeta-titulo">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
-                    ${ingrediente.descripcion ? `<p class="tarjeta-descripcion">${ingrediente.descripcion}</p>` : ''}
-                    
-                    <div class="tarjeta-stats">
-                        <div class="stat-item ${ingrediente.stock_actual <= 0 ? 'stock-cero' : ''}">
-                            <span class="stat-label">STOCK FÍSICO</span>
-                            <span class="stat-value">${window.formatearStock ? window.formatearStock(ingrediente.stock_actual) : ingrediente.stock_actual} <small>${ingrediente.unidad_medida}</small></span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">STOCK POTENCIAL</span>
-                            <span class="stat-value">${window.formatearStock ? window.formatearStock(ingrediente.stock_potencial) : ingrediente.stock_potencial} <small>${ingrediente.unidad_medida}</small></span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="tarjeta-footer">
-                                        ${(ingrediente.esMix || ingrediente.tipo_origen === 'Mix') ? `<button class="btn-tarjeta primary" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})">📋 Fórmula</button>` : `<button class="btn-tarjeta primary" style="padding: 8px 12px;" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})" title="Crear Fórmula">➕🧪</button>`}
-                    <button class="btn-tarjeta-sector" onclick="if(window.abrirModalSector) abrirModalSector(${ingredienteIdReal}, ${ingrediente.sector_id || 'null'})" title="Cambiar Sector">📍</button>
-                    <button class="btn-tarjeta action" onclick="if(window.abrirModalImpresionGeneral) abrirModalImpresionGeneral(${ingredienteIdReal}, '${(ingrediente.nombre_ingrediente || ingrediente.nombre).replace(/'/g, "\\'")}')">🖨️ Etiquetas</button>
-                    <button class="btn-tarjeta adjust" onclick="if(window.editarIngrediente) editarIngrediente(${ingredienteIdReal})" title="Editar Detalles y Stock Restante">✏️ Editar</button>
-                </div>`;
-                groupContent.appendChild(card);
-            });
-            fragment.appendChild(groupContent);
+            // Agregar evento de expansi├│n al bot├│n
+            const btnExpandir = tr.querySelector('.btn-expandir');
+            btnExpandir.addEventListener('click', () => toggleDetallesNutrientes(ingrediente.id, tr));
         }
-    }
 
-    container.appendChild(fragment);
+        fragment.appendChild(tr);
+    });
+
+    tbody.appendChild(fragment);
 }
 
-// Función para crear un nuevo ingrediente
+// Funci├│n para crear un nuevo ingrediente
 async function crearIngrediente(datos) {
     try {
         const response = await fetch('http://localhost:3002/api/produccion/ingredientes', {
@@ -1165,7 +1086,7 @@ async function crearIngrediente(datos) {
         await cargarIngredientes();
         mostrarMensaje('Ingrediente creado exitosamente', 'exito');
 
-        // Mostrar botón de impresión después de crear
+        // Mostrar bot├│n de impresi├│n despu├®s de crear
         document.getElementById('codigo').value = nuevoIngrediente.codigo;
         actualizarBotonImpresion();
     } catch (error) {
@@ -1174,7 +1095,7 @@ async function crearIngrediente(datos) {
     }
 }
 
-// Función para actualizar un ingrediente
+// Funci├│n para actualizar un ingrediente
 async function actualizarIngrediente(id, datos) {
     try {
         guardarEstadoFiltros();
@@ -1201,9 +1122,9 @@ async function actualizarIngrediente(id, datos) {
     }
 }
 
-// Función para eliminar un ingrediente
+// Funci├│n para eliminar un ingrediente
 async function eliminarIngrediente(id) {
-    if (!confirm('¿Estás seguro de que quieres eliminar este ingrediente?')) {
+    if (!confirm('┬┐Est├ís seguro de que quieres eliminar este ingrediente?')) {
         return;
     }
 
@@ -1227,7 +1148,7 @@ async function eliminarIngrediente(id) {
     }
 }
 
-// Función para editar un ingrediente
+// Funci├│n para editar un ingrediente
 async function editarIngrediente(id) {
     try {
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`);
@@ -1262,7 +1183,7 @@ async function editarIngrediente(id) {
     }
 }
 
-// Función para imprimir etiqueta
+// Funci├│n para imprimir etiqueta
 async function imprimirEtiqueta(ingrediente) {
     try {
         // Llamar a App Etiquetas en puerto 3000
@@ -1289,7 +1210,7 @@ async function imprimirEtiqueta(ingrediente) {
     }
 }
 
-// Función para actualizar visibilidad del botón de impresión
+// Funci├│n para actualizar visibilidad del bot├│n de impresi├│n
 function actualizarBotonImpresion() {
     const btnImprimir = document.getElementById('btn-imprimir');
     const codigo = document.getElementById('codigo').value;
@@ -1302,7 +1223,7 @@ function actualizarBotonImpresion() {
 // Event Listeners
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // Configurar botón de impresión
+    // Configurar bot├│n de impresi├│n
     const btnImprimir = document.getElementById('btn-imprimir');
     if (btnImprimir) {
         btnImprimir.addEventListener('click', () => {
@@ -1310,13 +1231,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const nombre = document.getElementById('nombre').value;
             const sectorId = document.getElementById('sector').value;
 
-            // Lógica de extracción de letra (replicada de mantenimiento.js y guardadoIngredientes.js)
+            // L├│gica de extracci├│n de letra (replicada de mantenimiento.js y guardadoIngredientes.js)
             let sectorLetra = '';
 
             if (sectorId && sectoresDisponibles.length > 0) {
                 const sectorObj = sectoresDisponibles.find(s => s.id == sectorId);
                 if (sectorObj) {
-                    // 1. Intentar extrar de descripción ("Sector K") o comillas
+                    // 1. Intentar extrar de descripci├│n ("Sector K") o comillas
                     const extraerLetra = (desc, nombre) => {
                         if (desc) {
                             const match = desc.match(/["']([^"']+)["']/);
@@ -1351,7 +1272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cargar ingredientes al iniciar
     cargarIngredientes();
 
-    // Botón para abrir modal de nuevo ingrediente
+    // Bot├│n para abrir modal de nuevo ingrediente
     document.getElementById('btn-nuevo-ingrediente').addEventListener('click', () => {
         abrirModal();
     });
@@ -1368,47 +1289,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         function dragMouseDown(e) {
             e.preventDefault();
-            
-            // Si el modal está centrado via transform (nuestra config default), 
-            // cambiar eso a top/left exacto absoluto ANTES de arrastrar para que NO HAGA UN SALTO (-50% transform elimina la estetica).
-            if (modal.style.position !== 'absolute' || modal.style.transform === 'translate(-50%, -50%)') {
-                const rect = modal.getBoundingClientRect();
-                modal.style.position = 'absolute';
-                modal.style.margin = '0';
-                modal.style.transform = 'none'; // Aquí la clave: al desactivarlo, top/left asumen control total de la fisica
-                // Asignamos la ubicacion exacta que tenia en pantalla visualmente gracias a getBoundingClientRect:
-                modal.style.top = rect.top + 'px';
-                modal.style.left = rect.left + 'px';
-            }
-            
-            // Obtener la posición del cursor al inicio
+            // Obtener la posici├│n del cursor al inicio
             pos3 = e.clientX;
             pos4 = e.clientY;
             document.onmouseup = closeDragElement;
+            // Llamar a funci├│n cada vez que el cursor se mueva
             document.onmousemove = elementDrag;
         }
 
         function elementDrag(e) {
             e.preventDefault();
-            // Calcular la nueva posición via diferencia
+            // Calcular la nueva posici├│n
             pos1 = pos3 - e.clientX;
             pos2 = pos4 - e.clientY;
             pos3 = e.clientX;
             pos4 = e.clientY;
-            
-            // Establecer la nueva posición. Usamos offsetTop porque acabamos de volverlo puramente absoluto en el mousedown.
-            let nextTop = modal.offsetTop - pos2;
-            let nextLeft = modal.offsetLeft - pos1;
-            
-            // Prevenir pérdida del modal fuera de la pantalla (Left o Top negativos)
-            if (nextTop < 0) nextTop = 0;
-            if (nextLeft < 0) nextLeft = 0;
-            
-            modal.style.top = nextTop + "px";
-            modal.style.left = nextLeft + "px";
+            // Establecer la nueva posici├│n
+            modal.style.top = (modal.offsetTop - pos2) + "px";
+            modal.style.left = (modal.offsetLeft - pos1) + "px";
+            modal.style.transform = 'none'; // Remover transform para permitir el arrastre
         }
 
         function closeDragElement() {
+            // Detener el movimiento cuando se suelte el mouse
             document.onmouseup = null;
             document.onmousemove = null;
         }
@@ -1416,15 +1319,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Configurar cerrado de modales
     const modalesConfig = [
-        { id: 'modal-ingrediente', closeHandler: cerrarModal }
-        // modal-mix purgado de aquí, su ciclo de vida y eventos de cierre los maneja exclusivamente mix.js
+        { id: 'modal-ingrediente', closeHandler: cerrarModal },
+        { id: 'modal-mix', closeHandler: (modal) => modal.style.display = 'none' }
     ];
 
     modalesConfig.forEach(({ id, closeHandler }) => {
         const modal = document.getElementById(id);
         const closeBtn = modal.querySelector('.close-modal');
 
-        // Botón de cerrar
+        // Bot├│n de cerrar
         closeBtn.addEventListener('click', () => closeHandler(modal));
 
         // Cerrar al hacer clic fuera
@@ -1435,7 +1338,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // Manejar envío del formulario
+    // Manejar env├¡o del formulario
     document.getElementById('form-ingrediente').addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -1450,7 +1353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             stock_actual: Number(document.getElementById('stock').value.replace(',', '.')),
             descripcion: document.getElementById('descripcion').value,
             padre_id: ingredienteEditando ? ingredienteEditando.padre_id : null,
-            sector_id: sectorValue || null // Incluir sector_id, null si no hay selección
+            sector_id: sectorValue || null // Incluir sector_id, null si no hay selecci├│n
         };
 
         if (ingredienteEditando) {
@@ -1461,32 +1364,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 });
 
-// Función para eliminar la composición de un mix
+// Funci├│n para eliminar la composici├│n de un mix
 async function eliminarComposicionMix(id) {
-    if (!confirm('¿Está seguro de eliminar la composición de este mix? Esta acción no se puede deshacer.')) {
+    if (!confirm('┬┐Est├í seguro de eliminar la composici├│n de este mix? Esta acci├│n no se puede deshacer.')) {
         return;
     }
 
     try {
         guardarEstadoFiltros();
 
-        // Usar el nuevo endpoint que elimina toda la composición y actualiza receta_base_kg
+        // Usar el nuevo endpoint que elimina toda la composici├│n y actualiza receta_base_kg
         const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/composicion`, {
             method: 'DELETE'
         });
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.error || 'Error al eliminar la composición');
+            throw new Error(error.error || 'Error al eliminar la composici├│n');
         }
 
         // Recargar la tabla manteniendo filtros
         await recargarDatosMantenendoFiltros();
-        mostrarMensaje('Composición eliminada exitosamente', 'exito');
+        mostrarMensaje('Composici├│n eliminada exitosamente', 'exito');
         restaurarEstadoFiltros();
     } catch (error) {
         console.error('Error:', error);
-        mostrarMensaje(error.message || 'No se pudo eliminar la composición');
+        mostrarMensaje(error.message || 'No se pudo eliminar la composici├│n');
     }
 }
 
@@ -1503,7 +1406,7 @@ function gestionarComposicionMix(id) {
     const modalMix = document.getElementById('modal-mix');
     modalMix.style.display = 'block';
 
-    // Llamar a la función de mix.js para cargar la composición
+    // Llamar a la funci├│n de mix.js para cargar la composici├│n
     window.abrirEdicionMix(id);
 }
 
@@ -1514,10 +1417,10 @@ const ventanasAbiertas = {};
 
 
 
-// Función general para abrir o reutilizar ventanas
+// Funci├│n general para abrir o reutilizar ventanas
 function abrirVentana(url, nombreVentana) {
     if (ventanasAbiertas[nombreVentana] && !ventanasAbiertas[nombreVentana].closed) {
-        // Si ya está abierta y no fue cerrada, simplemente la enfocamos
+        // Si ya est├í abierta y no fue cerrada, simplemente la enfocamos
         ventanasAbiertas[nombreVentana].focus();
     } else {
         // Si no existe o fue cerrada, la abrimos y guardamos la referencia
@@ -1528,7 +1431,7 @@ function abrirVentana(url, nombreVentana) {
 window.abrirVentana = abrirVentana;
 
 // ==========================================
-// FUNCIÓN GLOBAL: ABRIR MODAL DE AJUSTE (INYECTADA)
+// FUNCI├ôN GLOBAL: ABRIR MODAL DE AJUSTE (INYECTADA)
 // ==========================================
 window.abrirModalAjusteDesdeTabla = async function (dummy, nombreIngrediente, stockActual, ingredienteIdReal) {
 
@@ -1544,18 +1447,18 @@ window.abrirModalAjusteDesdeTabla = async function (dummy, nombreIngrediente, st
     }
 
     if (!usuarioId) {
-        alert('❌ Error: No se pudo detectar el usuario activo.');
+        alert('ÔØî Error: No se pudo detectar el usuario activo.');
         return;
     }
 
-    // 🔧 NUEVO ENFOQUE: Usar data-attributes en el modal en lugar de selector global
+    // ­ƒöº NUEVO ENFOQUE: Usar data-attributes en el modal en lugar de selector global
     const modalAjuste = document.getElementById('modalAjusteKilos');
     if (modalAjuste) {
         modalAjuste.dataset.usuarioActivo = usuarioId;
         modalAjuste.dataset.origenContexto = 'vista_stock_personal';
     }
 
-    // 🔧 MANTENER COMPATIBILIDAD: Crear selector solo si no existe (para no romper código existente)
+    // ­ƒöº MANTENER COMPATIBILIDAD: Crear selector solo si no existe (para no romper c├│digo existente)
     let selectorFiltro = document.getElementById('filtro-usuario');
     if (!selectorFiltro) {
         selectorFiltro = document.createElement('select');
@@ -1591,13 +1494,13 @@ window.abrirModalAjusteDesdeTabla = async function (dummy, nombreIngrediente, st
             window.actualizarResumenIngredientes = actualizarOriginal;
         };
     } else {
-        console.error('❌ window.abrirModalAjusteRapido no está definida.');
-        alert('❌ Error: El módulo de ajustes no está cargado correctamente. Recarga la página con Ctrl+F5.');
+        console.error('ÔØî window.abrirModalAjusteRapido no est├í definida.');
+        alert('ÔØî Error: El m├│dulo de ajustes no est├í cargado correctamente. Recarga la p├ígina con Ctrl+F5.');
     }
 };
 
 // ==========================================
-// FUNCIÓN GLOBAL: TRASLADO MANTENIMIENTO
+// FUNCI├ôN GLOBAL: TRASLADO MANTENIMIENTO
 // ==========================================
 window.iniciarTrasladoIngrediente = async function(ingredienteId, nombreIngredienteRaw) {
     const nombre = nombreIngredienteRaw.replace(/\'/g, "'").replace(/'/g, "\'");
@@ -1617,7 +1520,7 @@ window.iniciarTrasladoIngrediente = async function(ingredienteId, nombreIngredie
         title: 'Mover Kilos a Cuarentena',
         icon: 'warning',
         html:
-            '<p style="margin-bottom: 15px;">¿Cuántos <b>KILOS (⚖️)</b> de <span style="color: #d33;">['+nombre+']</span> declarará en cuarentena?</p>' +
+            '<p style="margin-bottom: 15px;">┬┐Cu├íntos <b>KILOS (ÔÜû´©Å)</b> de <span style="color: #d33;">['+nombre+']</span> declarar├í en cuarentena?</p>' +
             '<input id="swal-ing-cantidad" type="number" step="0.001" min="0.001" class="swal2-input" placeholder="Cantidad (Kg)" value="">' +
             '<select id="swal-ing-responsable" class="swal2-select" style="display: flex;">' +
             '    <option value="" disabled selected>Seleccione el Responsable...</option>' +
@@ -1638,7 +1541,7 @@ window.iniciarTrasladoIngrediente = async function(ingredienteId, nombreIngredie
             const motivo = document.getElementById('swal-ing-motivo').value;
 
             if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) {
-                Swal.showValidationMessage('Debe ingresar una cantidad válida mayor a 0');
+                Swal.showValidationMessage('Debe ingresar una cantidad v├ílida mayor a 0');
                 return false;
             }
             if (!responsable) {
@@ -1664,84 +1567,16 @@ window.iniciarTrasladoIngrediente = async function(ingredienteId, nombreIngredie
             });
             const data = await res.json();
             if (data.success) {
-                Swal.fire('¡Éxito!', 'Traslado del granel exitoso.', 'success');
+                Swal.fire('┬í├ëxito!', 'Traslado del granel exitoso.', 'success');
                 if (window.cargarIngredientes) {
                     window.cargarIngredientes();
                 }
             } else {
-                Swal.fire('Error', data.error || 'Falló el traslado', 'error');
+                Swal.fire('Error', data.error || 'Fall├│ el traslado', 'error');
             }
         } catch (error) {
             console.error(error);
-            Swal.fire('Error', 'Error técnico al comunicar con el servidor', 'error');
-        }
-    }
-};
-
-// ============================================
-// FUNCIONES UI DE SECTOR
-// ============================================
-window.abrirModalSector = async function(ingredienteId, sectorActualId) {
-    if (typeof sectoresDisponibles === 'undefined' || sectoresDisponibles.length === 0) {
-        Swal.fire('Error', 'No hay sectores cargados. Por favor refresque la página.', 'error');
-        return;
-    }
-
-    let sectorActualNombre = "Sin asignar";
-    if (sectorActualId) {
-        const sectorObj = sectoresDisponibles.find(s => s.id == sectorActualId);
-        if (sectorObj) sectorActualNombre = sectorObj.nombre;
-    }
-
-    let html = `<div style="margin-bottom: 15px; font-weight: bold; color: #555;">Sector actual: <span style="color: #333;">${sectorActualNombre}</span></div>`;
-    html += '<select id="swal-sectores" class="swal2-select" style="max-width: 100%;">';
-    html += '<option value="">Sin asignar</option>';
-    sectoresDisponibles.forEach(s => {
-        let sel = s.id == sectorActualId ? 'selected' : '';
-        html += `<option value="${s.id}" ${sel}>${s.nombre}${s.descripcion ? ' (' + s.descripcion + ')' : ''}</option>`;
-    });
-    html += '</select>';
-
-    const res = await Swal.fire({
-        title: 'Reasignar Sector',
-        html: html,
-        showCancelButton: true,
-        confirmButtonText: 'Guardar',
-        cancelButtonText: 'Cancelar',
-        preConfirm: async () => {
-            const val = document.getElementById('swal-sectores').value;
-            Swal.showLoading();
-            try {
-                let r = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sector_id: val || null })
-                });
-                
-                if (!r.ok) {
-                    const data = await r.json();
-                    throw new Error(data.error || 'Error al guardar sector');
-                }
-                return true;
-            } catch (err) {
-                Swal.showValidationMessage(err.message);
-                return false;
-            }
-        }
-    });
-
-    if (res.isConfirmed) {
-        Swal.fire({
-            icon: 'success',
-            title: 'Sector actualizado',
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 2000
-        });
-        if (window.actualizarTablaFiltrada) {
-            await window.cargarSectores(); // Reload sectors just in case
-            await window.cargarIngredientes(); // Need full reload to catch sector_id and object relations mapping
+            Swal.fire('Error', 'Error t├®cnico al comunicar con el servidor', 'error');
         }
     }
 };
