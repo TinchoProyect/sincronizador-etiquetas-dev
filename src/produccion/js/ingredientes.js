@@ -1049,7 +1049,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                     <span class="tarjeta-codigo">${ingrediente.codigo || '-'}</span>
                 </div>
                 <h3 class="tarjeta-titulo">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
-                ${ingrediente.descripcion ? `<p class="tarjeta-descripcion">${ingrediente.descripcion}</p>` : ''}
+                ${ingrediente.descripcion ? `<p class="tarjeta-descripcion" title="${ingrediente.descripcion}">${ingrediente.descripcion}</p>` : `<p class="tarjeta-descripcion" style="visibility: hidden; user-select: none;">-</p>`}
                 
                 <div class="tarjeta-stats">
                     <div class="stat-item ${parseFloat(ingrediente.stock_total) <= 0 ? 'stock-cero' : ''}">
@@ -1145,13 +1145,13 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                         <span class="tarjeta-codigo">${ingrediente.codigo || '-'}</span>
                     </div>
                     <h3 class="tarjeta-titulo">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
-                    ${ingrediente.descripcion ? `<p class="tarjeta-descripcion">${ingrediente.descripcion}</p>` : ''}
+                    ${ingrediente.descripcion ? `<p class="tarjeta-descripcion" title="${ingrediente.descripcion}">${ingrediente.descripcion}</p>` : `<p class="tarjeta-descripcion" style="visibility: hidden; user-select: none;">-</p>`}
                     
                     <div class="tarjeta-stats" style="display: flex; flex-direction: column; gap: 0;">
                         <!-- STOCK FÍSICO: Colorimetría Semántica según Signo Numérico -->
                         <div class="stat-item ${ingrediente.stock_actual < 0 ? 'stock-cero' : ''}" style="margin-bottom: 2px;">
                             <span class="stat-label" style="font-size: 0.75rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">STOCK FÍSICO</span>
-                            <span class="stat-value" style="display: block; font-size: 2rem; font-weight: 900; color: ${parseFloat(ingrediente.stock_actual) > 0 ? '#16a34a' : (parseFloat(ingrediente.stock_actual) == 0 ? '#3b82f6' : '#dc2626')}; line-height: 1.1; margin-top: 2px;">
+                            <span class="stat-value" style="display: block; font-size: 2rem; font-weight: 900; color: ${window.obtenerColorStock ? window.obtenerColorStock(ingrediente.stock_actual) : '#3b82f6'}; line-height: 1.1; margin-top: 2px;">
                                 ${window.formatearStock ? window.formatearStock(ingrediente.stock_actual) : ingrediente.stock_actual} 
                                 <small style="font-size: 1rem; font-weight: 600; color: #64748b;">${ingrediente.unidad_medida}</small>
                             </span>
