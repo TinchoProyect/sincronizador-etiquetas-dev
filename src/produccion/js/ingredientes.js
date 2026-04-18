@@ -322,23 +322,28 @@ function inicializarFiltros(ingredientes) {
     const sectoresContainer = document.getElementById('filtros-sectores-container');
     if (sectoresContainer) {
         sectoresContainer.innerHTML = '';
+        // Revisar dinámicamente si existe algún ingrediente huérfano antes de ofrecer el botón
+        const hayIngredientesRotos = ingredientesOriginales.some(ing => !ing.sector_id);
 
-        // Botón para "Sin sector asignado"
-        const btnSinSector = document.createElement('button');
-        btnSinSector.textContent = 'Sin Sector';
-        btnSinSector.className = 'btn-filtro';
-        btnSinSector.dataset.sectorId = 'sin-sector';
-        btnSinSector.onclick = async () => {
-            if (btnSinSector.classList.contains('activo')) {
-                btnSinSector.classList.remove('activo');
-                filtrosSectorActivos.delete('sin-sector');
-            } else {
-                btnSinSector.classList.add('activo');
-                filtrosSectorActivos.add('sin-sector');
-            }
-            await actualizarTablaFiltrada();
-        };
-        sectoresContainer.appendChild(btnSinSector);
+        if (hayIngredientesRotos) {
+            // Botón para "Sin sector asignado"
+            const btnSinSector = document.createElement('button');
+            btnSinSector.textContent = 'Sin Sector';
+            btnSinSector.className = 'btn-filtro';
+            btnSinSector.dataset.sectorId = 'sin-sector';
+            btnSinSector.onclick = async () => {
+                if (btnSinSector.classList.contains('activo')) {
+                    btnSinSector.classList.remove('activo');
+                    filtrosSectorActivos.delete('sin-sector');
+                } else {
+                    btnSinSector.classList.add('activo');
+                    filtrosSectorActivos.add('sin-sector');
+                }
+                await actualizarTablaFiltrada();
+            };
+            sectoresContainer.appendChild(btnSinSector);
+        }
+
 
         // Botones para sectores disponibles
         sectoresDisponibles.forEach(sector => {
