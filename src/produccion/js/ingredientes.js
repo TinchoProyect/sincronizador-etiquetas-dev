@@ -399,15 +399,18 @@ function normalizarTexto(texto) {
         .trim();
 }
 
-// ✅ FUNCIÓN AUXILIAR: Formatear stock (máximo 3 decimales, sin ceros innecesarios)
+// ✅ FUNCIÓN AUXILIAR: Formatear stock (máximo 3 decimales, coma estructurada)
 function formatearStock(valor) {
+    if (valor === null || valor === undefined || valor === '') return "0";
     // Convertir a número y limitar a 3 decimales
-    const numero = parseFloat(Number(valor).toFixed(3));
-    // Corrección del bug del "cero negativo" proveniente de SQL/Float rounding 
-    if (Object.is(numero, -0)) return "0";
-    // Retornar como string, eliminando ceros innecesarios a la derecha
-    return numero.toString();
+    let numero = parseFloat(Number(valor).toFixed(3));
+    // Corrección del bug del "cero negativo" proveniente de matemáticas de coma flotante
+    if (Object.is(numero, -0)) numero = 0;
+    // Retornar en string con coma como separador decimal
+    return numero.toString().replace('.', ',');
 }
+// Exportamos para que los template literals de HTML inyectado puedan usarlo
+window.formatearStock = formatearStock;
 
 // Función para actualizar la tabla según los filtros activos combinados
 async function actualizarTablaFiltrada() {
@@ -1115,21 +1118,18 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                     ${ingrediente.descripcion ? `<p class="tarjeta-descripcion">${ingrediente.descripcion}</p>` : ''}
                     
                     <div class="tarjeta-stats" style="display: flex; flex-direction: column; gap: 0;">
-                        <!-- STOCK FÍSICO: Mayor jerarquía, tamaño prominente, fuente gruesa y color principal (azul) -->
-                        <div class="stat-item ${ingrediente.stock_actual <= 0 ? 'stock-cero' : ''}" style="margin-bottom: 2px;">
+                        <!-- STOCK FÍSICO: Colorimetría Semántica según Signo Numérico -->
+                        <div class="stat-item ${ingrediente.stock_actual < 0 ? 'stock-cero' : ''}" style="margin-bottom: 2px;">
                             <span class="stat-label" style="font-size: 0.75rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">STOCK FÍSICO</span>
-                            <span class="stat-value" style="display: block; font-size: 2rem; font-weight: 900; color: ${ingrediente.stock_actual <= 0 ? '#ef4444' : '#2563eb'}; line-height: 1.1; margin-top: 2px;">
+                            <span class="stat-value" style="display: block; font-size: 2rem; font-weight: 900; color: ${parseFloat(ingrediente.stock_actual) > 0 ? '#16a34a' : (parseFloat(ingrediente.stock_actual) == 0 ? '#3b82f6' : '#dc2626')}; line-height: 1.1; margin-top: 2px;">
                                 ${window.formatearStock ? window.formatearStock(ingrediente.stock_actual) : ingrediente.stock_actual} 
                                 <small style="font-size: 1rem; font-weight: 600; color: #64748b;">${ingrediente.unidad_medida}</small>
                             </span>
                         </div>
-                        <!-- STOCK POTENCIAL: Marginal, tamaño miniatura, layout horizontal tenue, borde divisor sutil -->
-                        <div class="stat-item" style="display: flex; align-items: center; justify-content: space-between; padding-top: 6px; margin-top: 8px; border-top: 1px dashed #cbd5e1;">
-                            <span class="stat-label" style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">STOCK POTENCIAL</span>
-                            <span class="stat-value" style="font-size: 0.8rem; font-weight: 500; color: #94a3b8;">
-                                ${window.formatearStock ? window.formatearStock(ingrediente.stock_potencial) : ingrediente.stock_potencial} 
-                                <small style="font-size: 0.65rem;">${ingrediente.unidad_medida}</small>
-                            </span>
+                        <!-- STOCK POTENCIAL: Texto descriptivo y numérico forzados en una única línea block -->
+                        <div style="display: block; text-align: right; padding-top: 4px; margin-top: 6px; border-top: 1px dashed #cbd5e1;">
+                            <span style="font-size: 0.70rem; color: #94a3b8; font-weight: 600;">Potencial: ${window.formatearStock ? window.formatearStock(ingrediente.stock_potencial) : ingrediente.stock_potencial}</span>
+                            <span style="font-size: 0.65rem; font-weight: 600; color: #94a3b8;">${ingrediente.unidad_medida}</span>
                         </div>
                     </div>
                 </div>
