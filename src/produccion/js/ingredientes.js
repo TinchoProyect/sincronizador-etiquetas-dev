@@ -345,8 +345,14 @@ function inicializarFiltros(ingredientes) {
         }
 
 
-        // Botones para sectores disponibles
-        sectoresDisponibles.forEach(sector => {
+        // Botones para sectores disponibles ordenados alfabéticamente
+        const sectoresOrdenados = [...sectoresDisponibles].sort((a, b) => {
+            const labelA = (window.extraerLetraPura(a.descripcion) || a.nombre).toUpperCase();
+            const labelB = (window.extraerLetraPura(b.descripcion) || b.nombre).toUpperCase();
+            return labelA.localeCompare(labelB);
+        });
+
+        sectoresOrdenados.forEach(sector => {
             const btn = document.createElement('button');
             const letraPura = window.extraerLetraPura(sector.descripcion);
             btn.textContent = letraPura ? letraPura : sector.nombre;
