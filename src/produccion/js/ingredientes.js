@@ -295,7 +295,8 @@ function inicializarFiltros(ingredientes) {
 
         const stocks = [
             { id: 'con-stock', label: 'Con Stock' },
-            { id: 'sin-stock', label: 'Sin Stock' }
+            { id: 'sin-stock', label: 'Sin Stock' },
+            { id: 'stock-negativo', label: 'Con Stock Negativo' }
         ];
 
         stocks.forEach(stock => {
@@ -399,6 +400,32 @@ function normalizarTexto(texto) {
         .trim();
 }
 
+// ✅ FUNCIÓN AUXILIAR: Determinar color semántico posterior a redondeo matemático
+window.obtenerColorStock = function(valor) {
+    if (valor === null || valor === undefined || valor === '') return '#3b82f6';
+    
+    let strVal = String(valor).replace(',', '.');
+    let num = parseFloat(strVal);
+    
+    // Neutralidad por defecto
+    if (isNaN(num)) return '#3b82f6';
+
+    // Sincronía estricta con el renderizado visual (Si la pantalla muestra un Cero visual, forzar el Azul)
+    let textoRenderizado = window.formatearStock ? window.formatearStock(valor) : num.toFixed(3);
+    if (textoRenderizado === "0" || textoRenderizado === "0,000" || textoRenderizado === "-0" || 
+        textoRenderizado === "-0,000" || textoRenderizado === "0.000" || textoRenderizado === "-0.000") {
+        return '#3b82f6';
+    }
+    
+    // Eliminación del "cero fantasmal": Todo número infinitesimal menor al rango visual de 3 decimales se trata como cero
+    if (Math.abs(num) < 0.0005) {
+        return '#3b82f6'; // Azul = Neutral / Cero
+    }
+    
+    if (num > 0) return '#16a34a';   // Verde = Positivo
+    return '#dc2626';                // Rojo = Negativo / Alerta
+};
+
 // ✅ FUNCIÓN AUXILIAR: Formatear stock (máximo 3 decimales, coma estructurada)
 function formatearStock(valor) {
     if (valor === null || valor === undefined || valor === '') return "0";
@@ -468,13 +495,16 @@ async function actualizarTablaFiltrada() {
             // Filtro por stock (si hay filtros de stock activos)
             let pasaStock = filtrosStockActivos.size === 0;
             if (filtrosStockActivos.size > 0) {
-                const stockActual = parseFloat(ing.stock_actual) || 0;
-                const tolerancia = 0.001;
+                // Alineación simétrica ABSOLUTA con window.obtenerColorStock para consistencia visual
+                let colorAsignado = window.obtenerColorStock ? window.obtenerColorStock(ing.stock_actual) : '';
 
-                if (filtrosStockActivos.has('con-stock') && stockActual > tolerancia) {
+                if (filtrosStockActivos.has('con-stock') && colorAsignado === '#16a34a') {
                     pasaStock = true;
                 }
-                if (filtrosStockActivos.has('sin-stock') && stockActual <= tolerancia) {
+                if (filtrosStockActivos.has('sin-stock') && colorAsignado === '#3b82f6') {
+                    pasaStock = true;
+                }
+                if (filtrosStockActivos.has('stock-negativo') && colorAsignado === '#dc2626') {
                     pasaStock = true;
                 }
             }
