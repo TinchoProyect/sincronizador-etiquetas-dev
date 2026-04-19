@@ -1959,17 +1959,21 @@ window.confirmarSeleccionAjuste = () => {
 };
 
 window.calcularDiferencialAjuste = (input) => {
-    // Reemplazar comas por puntos para parsing matemático
-    let valStr = input.value.replace(',', '.');
-    // Para limpiar entrada, solo dejamos numeros y puntos
-    valStr = valStr.replace(/[^0-9.]/g, '');
+    // 1. Sanear visual e intelectualmente la entrada (Prohibir símbolos negativos o caracteres extraños)
+    let sanitized = input.value.replace(/[^0-9.,]/g, '');
+    if (input.value !== sanitized) {
+        input.value = sanitized;
+    }
+    
+    // 2. Reemplazar comas por puntos para parsing matemático
+    let valStr = sanitized.replace(',', '.');
     
     const id = input.dataset.id;
     const actual = parseFloat(input.dataset.stockActual);
     const nuevo = parseFloat(valStr);
     const diffCell = document.getElementById('diff-' + id);
     
-    if (isNaN(nuevo)) {
+    if (isNaN(nuevo) || nuevo < 0) {
         diffCell.textContent = '-';
         diffCell.style.color = 'black';
         return;
