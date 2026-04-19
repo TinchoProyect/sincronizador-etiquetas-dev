@@ -1052,12 +1052,13 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 : `<button class="btn-tarjeta primary" style="padding: 8px 12px;" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})" title="Crear Fórmula">➕🧪</button>`;
                 
             const card = document.createElement('div');
-            card.className = `tarjeta-ingrediente ${(ingrediente.stock_total <= 0) ? 'con-stock-cero' : ''}`;
+            const isChecked = window.ingredientesAjusteSeleccionados && window.ingredientesAjusteSeleccionados.has(ingredienteIdReal);
+            card.className = `tarjeta-ingrediente ${ingrediente.stock_total <= 0 ? 'con-stock-cero' : ''} ${isChecked ? 'tarjeta-seleccionada' : ''}`;
             
             card.innerHTML = `
             <div class="tarjeta-cuerpo" style="position: relative;">
                 <div class="tarjeta-header">
-                    <input type="checkbox" class="checkbox-ajuste" data-id="${ingredienteIdReal}" onchange="window.toggleSeleccionAjuste(this)">
+                    <input type="checkbox" class="checkbox-ajuste" data-id="${ingredienteIdReal}" onchange="window.toggleSeleccionAjuste(this)" ${isChecked ? "checked" : ""}>
                     <span class="tarjeta-codigo">${ingrediente.codigo || '-'}</span>
                 </div>
                 <h3 class="tarjeta-titulo">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
@@ -1149,12 +1150,13 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 const ingredienteIdReal = ingrediente.ingrediente_id || ingrediente.id;
                 
                 const card = document.createElement('div');
-                card.className = `tarjeta-ingrediente ${(ingrediente.stock_actual <= 0 && ingrediente.stock_potencial <= 0) ? 'con-stock-cero' : ''}`;
+                const isChecked = window.ingredientesAjusteSeleccionados && window.ingredientesAjusteSeleccionados.has(ingredienteIdReal);
+                card.className = `tarjeta-ingrediente ${(ingrediente.stock_actual <= 0 && ingrediente.stock_potencial <= 0) ? 'con-stock-cero' : ''} ${isChecked ? 'tarjeta-seleccionada' : ''}`;
                 
                 card.innerHTML = `
                 <div class="tarjeta-cuerpo" style="position: relative;">
                     <div class="tarjeta-header">
-                        <input type="checkbox" class="checkbox-ajuste" data-id="${ingredienteIdReal}" onchange="window.toggleSeleccionAjuste(this)">
+                        <input type="checkbox" class="checkbox-ajuste" data-id="${ingredienteIdReal}" onchange="window.toggleSeleccionAjuste(this)" ${isChecked ? "checked" : ""}>
                         <span class="tarjeta-codigo">${ingrediente.codigo || '-'}</span>
                     </div>
                     <h3 class="tarjeta-titulo">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
@@ -1849,9 +1851,15 @@ window.confirmarUsuarioYPasarAFase2 = () => {
         btn.textContent = '✅ Finalizar Selección (0)';
         btn.style.backgroundColor = '#10b981'; // Verde
         
+        // HACK: El css ".modo-ajuste-general .btn-agregar { display: none !important; }" ocultaba permanentemente a btn-iniciar-ajuste. 
+        // Le sacamos la clase temporalmente.
+        btn.classList.remove('btn-agregar');
+        btn.classList.add('btn-sticky-flotante');
+        
         // Agregar botón de cancelar si no existe
         if (!document.getElementById('btn-cancelar-ajuste')) {
-            btn.insertAdjacentHTML('afterend', '<button id="btn-cancelar-ajuste" class="btn-secundario" style="margin-left: 10px; background-color: white; color: #ef4444; border: 1px solid #ef4444;" onclick="window.cancelarModoAjuste()">❌ Descartar</button>');
+            // Se inyecta como fixed body-child superior derecho
+            document.body.insertAdjacentHTML('beforeend', '<button id="btn-cancelar-ajuste" class="btn-secundario" style="position: fixed; top: 20px; right: 20px; z-index: 2147483647; padding: 12px 20px; border-radius: 8px; font-weight: bold; background-color: white; color: #ef4444; border: 2px solid #ef4444; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" onclick="window.cancelarModoAjuste()">❌ Cancelar Modo Ajuste</button>');
         }
         
         btn.onclick = window.confirmarSeleccionAjuste;
@@ -1873,6 +1881,8 @@ window.cancelarModoAjuste = () => {
     if (btn) {
         btn.innerHTML = '⚖️ Ajuste Puntual';
         btn.style.backgroundColor = '#6366f1';
+        btn.classList.add('btn-agregar'); // Volvemos a colocar su clase natural
+        btn.classList.remove('btn-sticky-flotante');
         btn.onclick = window.iniciarFlujoAjuste;
         
         const btnCancel = document.getElementById('btn-cancelar-ajuste');
@@ -1935,9 +1945,9 @@ window.confirmarSeleccionAjuste = () => {
         tr.style.borderBottom = '1px solid #e2e8f0';
         tr.innerHTML = `
             <td style="padding: 12px; font-weight: 500;">${ing.nombre}</td>
-            <td style="padding: 12px; color: #64748b;">${ing.stock_actual.toFixed(3)}</td>
+            <td style="padding: 12px; color: #64748b;">${ing.stock_actual.toFixed(3).replace('.', ',')}</td>
             <td style="padding: 12px;">
-                <input type="number" step="0.001" class="ajuste-input-nuevo-stock" data-id="${ing.id}" data-stock-actual="${ing.stock_actual}" placeholder="Escriba..." style="width: 100%; padding: 8px; border: 1px solid #94a3b8; border-radius: 4px;" oninput="window.calcularDiferencialAjuste(this)">
+                <input type="text" class="ajuste-input-nuevo-stock" data-id="${ing.id}" data-stock-actual="${ing.stock_actual}" placeholder="Ej: 5,500" style="width: 100%; padding: 8px; border: 1px solid #94a3b8; border-radius: 4px;" oninput="window.calcularDiferencialAjuste(this)">
             </td>
             <td style="padding: 12px; font-weight: bold;" class="ajuste-diff-cell" id="diff-${ing.id}">-</td>
         `;
@@ -1949,9 +1959,14 @@ window.confirmarSeleccionAjuste = () => {
 };
 
 window.calcularDiferencialAjuste = (input) => {
+    // Reemplazar comas por puntos para parsing matemático
+    let valStr = input.value.replace(',', '.');
+    // Para limpiar entrada, solo dejamos numeros y puntos
+    valStr = valStr.replace(/[^0-9.]/g, '');
+    
     const id = input.dataset.id;
     const actual = parseFloat(input.dataset.stockActual);
-    const nuevo = parseFloat(input.value);
+    const nuevo = parseFloat(valStr);
     const diffCell = document.getElementById('diff-' + id);
     
     if (isNaN(nuevo)) {
@@ -1962,13 +1977,13 @@ window.calcularDiferencialAjuste = (input) => {
     
     const diff = nuevo - actual;
     if (diff > 0) {
-        diffCell.textContent = '+' + diff.toFixed(3);
+        diffCell.textContent = '+' + diff.toFixed(3).replace('.', ',');
         diffCell.style.color = '#10b981'; // Verde
     } else if (diff < 0) {
-        diffCell.textContent = diff.toFixed(3);
+        diffCell.textContent = diff.toFixed(3).replace('.', ',');
         diffCell.style.color = '#ef4444'; // Rojo
     } else {
-        diffCell.textContent = '0.000';
+        diffCell.textContent = '0,000';
         diffCell.style.color = '#3b82f6'; // Azul
     }
 };
@@ -1977,17 +1992,16 @@ window.procesarAjustes = async () => {
     const inputs = document.querySelectorAll('.ajuste-input-nuevo-stock');
     const observacion = document.getElementById('ajuste-observacion').value.trim();
     
-    if (!observacion) {
-        Swal.fire('Inválido', 'Debe escribir una observación de ajuste obligatoria.', 'warning');
-        return;
-    }
+    // Observacion es OPCIONAL ahora
+    // if (!observacion) { ... }
     
     let ajustesValidar = [];
     let errores = false;
     
     inputs.forEach(input => {
         const id = parseInt(input.dataset.id);
-        const nuevo = parseFloat(input.value);
+        const valStr = input.value.replace(',', '.').replace(/[^0-9.]/g, '');
+        const nuevo = parseFloat(valStr);
         if (isNaN(nuevo)) {
             errores = true;
         } else {

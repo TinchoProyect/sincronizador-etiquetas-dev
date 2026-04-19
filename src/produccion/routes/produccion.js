@@ -3774,23 +3774,23 @@ router.post('/ingredientes/ajustar-stock', async (req, res) => {
             const stockAnterior = parseFloat(resultActual.rows[0].stock_actual);
             const diferencia = parseFloat(nuevo_stock) - stockAnterior;
             
-            // 2. Actualizar stock físico general
-            await client.query('UPDATE ingredientes SET stock_actual = $1 WHERE id = $2', [nuevo_stock, ingrediente_id]);
+            // 2. Configurar el vector de movimiento (el Trigger hará el update)
+            const tipoMovimiento = diferencia >= 0 ? 'ingreso' : 'egreso';
             
-            // 3. Registrar auditoría innegociable en ingredientes_ajustes
+            // 3. Registrar auditoría innegociable en ingredientes_ajustes (excluyendo "diferencia" que es GENERATED ALWAYS)
             await client.query(
                 `INSERT INTO ingredientes_ajustes 
-                (fecha, ingrediente_id, usuario_id, stock_anterior, stock_nuevo, diferencia, tipo_ajuste, observacion) 
-                VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7)`,
-                [ingrediente_id, usuario_id, stockAnterior, nuevo_stock, diferencia, 'MANUAL_DEPOSITO', observacion]
+                (fecha, ingrediente_id, usuario_id, stock_anterior, stock_nuevo, tipo_ajuste, observacion) 
+                VALUES (NOW(), $1, $2, $3, $4, $5, $6)`,
+                [ingrediente_id, usuario_id, stockAnterior, nuevo_stock, 'MANUAL_DEPOSITO', observacion || 'Ajuste Manual']
             );
             
-            // 4. Registrar en movimientos para consistencia del ABM
+            // 4. Registrar en movimientos (dispara Trigger de actualización de stock físico)
             await client.query(
                 `INSERT INTO ingredientes_movimientos 
                 (fecha, ingrediente_id, kilos, tipo, observaciones, stock_anterior) 
                 VALUES (NOW(), $1, $2, $3, $4, $5)`,
-                [ingrediente_id, diferencia, 'AJUSTE', observacion, stockAnterior]
+                [ingrediente_id, diferencia, tipoMovimiento, observacion || 'Ajuste Manual', stockAnterior]
             );
         }
         

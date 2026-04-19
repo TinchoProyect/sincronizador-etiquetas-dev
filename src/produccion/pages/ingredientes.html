@@ -223,28 +223,88 @@
             box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
             margin-top: 0;
         }
-        /* Ajuste Puntual Modo */
+        /* Ajuste Puntual Modo Compacto */
         .checkbox-ajuste {
             display: none;
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 22px;
-            height: 22px;
+            width: 28px;
+            height: 28px;
             cursor: pointer;
-            z-index: 10;
+            flex-shrink: 0;
+            margin-right: 15px;
         }
         .modo-ajuste-general .checkbox-ajuste {
             display: block;
         }
-        .modo-ajuste-general .tarjeta-footer button,
-        .modo-ajuste-general .btn-imprimir-cartel {
-            pointer-events: none;
-            opacity: 0.3;
+        .modo-ajuste-general .tarjeta-footer,
+        .modo-ajuste-general .tarjeta-descripcion,
+        .modo-ajuste-general .tarjeta-header span,
+        .modo-ajuste-general .btn-imprimir-cartel,
+        .modo-ajuste-general .stat-label,
+        .modo-ajuste-general .btn-agregar {
+            display: none !important;
+        }
+        .modo-ajuste-general .tarjeta-header {
+            min-height: unset; padding: 0; margin: 0;
+        }
+        .modo-ajuste-general .tarjeta-ingrediente {
+            height: auto !important;
+            min-height: unset !important;
+            padding: 12px 40px 12px 12px !important; /* space for checkbox */
+            cursor: pointer;
+        }
+        .modo-ajuste-general .tarjeta-cuerpo {
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            width: 100%;
+        }
+        .modo-ajuste-general .tarjeta-titulo {
+            font-size: 1rem !important;
+            margin: 0 !important;
+            max-width: 65%;
+        }
+        .modo-ajuste-general .stat-item span.stat-value {
+            font-size: 1.2rem !important;
+            margin: 0 !important;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .modo-ajuste-general .tarjeta-stats {
+            padding: 0 !important;
+            border-top: none !important;
+            margin: 0 0 0 auto !important; /* EMPUJA EL STOCK A LA DECHA */
+        }
+        .modo-ajuste-general .tarjeta-stats > div:last-child {
+            display: none !important; /* Esconde el stock potencial (el div con padding text-right) */
         }
         .tarjeta-seleccionada {
             border: 2px solid #6366f1 !important;
             background-color: #eef2ff !important;
+        }
+        
+        /* Botón Sticky Flotante en Modo Ajuste */
+        .btn-sticky-flotante {
+            position: fixed !important;
+            top: 20px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            z-index: 2147483647 !important; /* Max z-index para evitar que se oculte */
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5) !important;
+            font-size: 1.2rem !important;
+            padding: 15px 40px !important;
+            border: 2px solid white !important;
+            border-radius: 50px !important;
+            color: white !important;
+        }
+        
+        /* Contraste a modales */
+        #modal-seleccion-usuario .modal-content,
+        #modal-ejecucion-ajuste .modal-content {
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+            border: 1px solid #94a3b8;
+            border-radius: 12px;
         }
     </style>
 
