@@ -3782,7 +3782,7 @@ router.post('/ingredientes/ajustar-stock', async (req, res) => {
                 `INSERT INTO ingredientes_ajustes 
                 (fecha, ingrediente_id, usuario_id, stock_anterior, stock_nuevo, tipo_ajuste, observacion) 
                 VALUES (NOW(), $1, $2, $3, $4, $5, $6)`,
-                [ingrediente_id, usuario_id, stockAnterior, nuevo_stock, 'MANUAL_DEPOSITO', observacion || 'Ajuste Manual']
+                [ingrediente_id, usuario_id, stockAnterior, nuevo_stock, 'ajuste_puntual', observacion || 'Ajuste Manual']
             );
             
             // 4. Registrar en movimientos (dispara Trigger de actualización de stock físico)

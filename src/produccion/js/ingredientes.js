@@ -2019,7 +2019,7 @@ window.procesarAjustes = async () => {
     boton.textContent = '⏱️ Procesando...';
     
     try {
-        const res = await fetch('http://localhost:3002/api/produccion/ingredientes/ajustar-stock', {
+        const res = await fetch('/api/produccion/ingredientes/ajustar-stock', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2030,20 +2030,25 @@ window.procesarAjustes = async () => {
         
         if (!res.ok) throw new Error((await res.json()).error || 'Error en servidor');
         
+        // 1. Ocultar modal de ejecución de inmediato
+        document.getElementById('modal-ejecucion-ajuste').style.display = 'none';
+        
+        // 2. Dar alerta de éxito
         Swal.fire('Éxito', 'Ajustes de inventario impactados correctamente.', 'success');
         
-        // Cerrar modales y cancelar modo
-        document.getElementById('modal-ejecucion-ajuste').style.display = 'none';
+        // 3. Salir del modo y aniquilar memoria
         window.cancelarModoAjuste();
         
-        // Recargar grilla simulando click en deposito
+        // 4. Refrescar la base local
         document.getElementById('filtro-nombre').value = '';
         await window.cargarIngredientes();
         
     } catch(e) {
-        Swal.fire('Error Fatal', e.message, 'error');
+        // En caso de error, el modal se debe cerrar y el estado (Fase 2) se resguarda por detrás.
+        document.getElementById('modal-ejecucion-ajuste').style.display = 'none';
+        Swal.fire('Error Transaccional', e.message, 'error');
     } finally {
         boton.disabled = false;
-        boton.textContent = '⚠️ Impactar Ajuste';
+        boton.textContent = '💾 Impactar Ajuste';
     }
 };
