@@ -2695,36 +2695,89 @@ const getPresupuestosEntregados = async (req, res) => {
 const vincularPresupuesto = async (req, res) => {
     const client = await pool.connect();
     try {
-        const { movimiento_id, id_presupuesto_origen } = req.body;
+        const { movimiento_id, id_presupuesto_origen, precio_unitario, descuento_aplicar, comprobante_lomasoft } = req.body;
         if (!movimiento_id || !id_presupuesto_origen) {
             throw new Error('Faltan parámetros requeridos (movimiento_id, id_presupuesto_origen).');
         }
 
         await client.query('BEGIN');
 
-        // Actualizamos mantenimiento_movimientos
-        const updateMov = await client.query(`
-            UPDATE public.mantenimiento_movimientos
-            SET id_presupuesto_origen = $1
-            WHERE id = $2
-            RETURNING *
-        `, [id_presupuesto_origen, movimiento_id]);
+        // 1. Obtener datos del movimiento
+        const movRes = await client.query(`
+            SELECT cliente_id, articulo_numero, cantidad, articulo_nombre 
+            FROM public.mantenimiento_movimientos 
+            WHERE id = $1
+        `, [movimiento_id]);
 
-        if (updateMov.rowCount === 0) {
+        if (movRes.rows.length === 0) {
             throw new Error('Movimiento no encontrado.');
         }
 
-        // Obtener el origen_facturacion del presupuesto
+        const movimiento = movRes.rows[0];
+
+        // 2. Obtener el origen_facturacion del presupuesto origen
         const presRes = await client.query(`
-            SELECT origen_facturacion
+            SELECT origen_facturacion, id_presupuesto_ext
             FROM public.presupuestos
             WHERE id = $1
         `, [id_presupuesto_origen]);
         
         const origen_facturacion = presRes.rows.length > 0 ? presRes.rows[0].origen_facturacion : 'PENDIENTE';
+        const id_ext_origen = presRes.rows.length > 0 ? presRes.rows[0].id_presupuesto_ext : id_presupuesto_origen;
+
+        // 3. Crear cabecera "Orden de Retiro" en presupuestos
+        const presupuestoIdExt = `RET-MANT-${Date.now().toString(36)}`;
+        const insertHeaderQuery = `
+            INSERT INTO public.presupuestos 
+            (id_presupuesto_ext, id_cliente, fecha, tipo_comprobante, estado, descuento, activo, hoja_nombre, origen_facturacion, origen_numero_factura, nota)
+            VALUES ($1, $2, CURRENT_TIMESTAMP, 'Orden de Retiro', 'Recibido', $3, true, 'Presupuestos', $4, $5, 'Generado automáticamente desde Mantenimiento')
+            RETURNING id, id_presupuesto_ext
+        `;
+        
+        const descuentoParsed = parseFloat(descuento_aplicar) || 0;
+        
+        const headerResult = await client.query(insertHeaderQuery, [
+            presupuestoIdExt,
+            movimiento.cliente_id,
+            descuentoParsed,
+            origen_facturacion,
+            id_presupuesto_origen // Usamos el ID de la BD original como referencia
+        ]);
+        
+        const nuevoPresupuesto = headerResult.rows[0];
+
+        // 4. Crear detalle para la Orden de Retiro
+        const cantidadParsed = parseFloat(movimiento.cantidad) || 0;
+        const precioUnitarioParsed = parseFloat(precio_unitario) || 0;
+        const totalNeto = cantidadParsed * precioUnitarioParsed;
+        
+        const insertDetalleQuery = `
+            INSERT INTO public.presupuestos_detalles
+            (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, camp1, camp2, camp3, camp4, camp5, fecha_actualizacion)
+            VALUES ($1, $2, $3, $4, $5, $6, 0, $7, 0, $8, $9, 0, CURRENT_TIMESTAMP)
+        `;
+        
+        await client.query(insertDetalleQuery, [
+            nuevoPresupuesto.id,
+            nuevoPresupuesto.id_presupuesto_ext,
+            movimiento.articulo_numero,
+            cantidadParsed,
+            precioUnitarioParsed,
+            precioUnitarioParsed,
+            precioUnitarioParsed, // camp1 = precio
+            totalNeto, // camp3 = netoTotal
+            totalNeto  // camp4 = brutoTotal
+        ]);
+
+        // 5. Actualizamos mantenimiento_movimientos
+        await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET id_presupuesto_origen = $1
+            WHERE id = $2
+        `, [id_presupuesto_origen, movimiento_id]);
 
         await client.query('COMMIT');
-        res.json({ success: true, origen_facturacion, message: 'Presupuesto vinculado exitosamente.' });
+        res.json({ success: true, origen_facturacion, id_nuevo_presupuesto: nuevoPresupuesto.id, message: 'Presupuesto vinculado y Orden de Retiro generada exitosamente.' });
     } catch (e) {
         await client.query('ROLLBACK');
         console.error('❌ [MANTENIMIENTO] Error al vincular presupuesto:', e);
