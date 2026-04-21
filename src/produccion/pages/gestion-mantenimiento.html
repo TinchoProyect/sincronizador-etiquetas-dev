@@ -345,8 +345,7 @@
                     <!-- TABS HEADER -->
                     <div class="tabs-container">
                         <div class="tabs-header">
-                            <button class="tab-btn active" onclick="switchTab('taller')">🛠️ Stock Cuarentena
-                                (Mesa)</button>
+                            <button class="tab-btn active" onclick="switchTab('taller')">🛠️ Stock Mantenimiento</button>
                             <button class="tab-btn" onclick="switchTab('mostrador')">🧍‍♂️ Esperando Cliente
                                 (Mostrador)</button>
                             <button class="tab-btn" onclick="switchTab('reparto')">🚚 Esperando Reparto (Ruta)</button>
@@ -1633,26 +1632,28 @@
                     // Si pidió impresión
                     if (payload.imprimirZPL) {
                         try {
-                            // Construir objeto Zebra completo de destino buscando en la cache
+                            // Construir objeto Zebra completo de destino (Resolución auditada 100% determinista vía API)
                             let artZebra = { nombre: '' + payload.articuloDestino, numero: '' + payload.articuloDestino, codigo_barras: '0000000000000' };
-                            if (window.articulosCache) {
-                                const articuloDbg = window.articulosCache.find(a => a.numero.toString() === payload.articuloDestino.toString());
-                                if (articuloDbg) {
-                                    artZebra.nombre = articuloDbg.nombre;
-                                    artZebra.numero = articuloDbg.numero;
-                                    artZebra.codigo_barras = articuloDbg.codigo_barras;
+                            try {
+                                const reqArt = await fetch('/api/produccion/buscar-articulos?exact=true&q=' + encodeURIComponent(payload.articuloDestino));
+                                const resArt = await reqArt.json();
+                                if (resArt.success && resArt.articulos && resArt.articulos.length > 0) {
+                                    const artValido = resArt.articulos[0];
+                                    artZebra.nombre = artValido.descripcion;
+                                    artZebra.numero = artValido.codigo;
+                                    artZebra.codigo_barras = artValido.codigo_barras || artValido.codigo;
                                 }
+                            } catch (e) {
+                                console.error('Error resolviendo exactitud del artículo para Zebra:', e);
                             }
                             
                             const resImp = await fetch('http://localhost:3000/api/imprimir', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    articulo: {
-                                        numero: artZebra.numero,
-                                        nombre: artZebra.nombre,
-                                        codigo_barras: artZebra.codigo_barras
-                                    },
+                                    numero: artZebra.numero,
+                                    nombre: artZebra.nombre,
+                                    codigo_barras: artZebra.codigo_barras,
                                     cantidad: payload.copiasZPL || 1
                                 })
                             });
