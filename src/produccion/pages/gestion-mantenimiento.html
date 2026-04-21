@@ -1081,6 +1081,327 @@
             }
         }
         
+        let articuloAsignarSeleccionado = null;
+        let busquedaAsignarTimeout = null;
+
+        async function abrirModalAsignarArticulo(idMovimiento) {
+            articuloAsignarSeleccionado = null;
+            
+            Swal.fire({
+                title: 'Asignar Artículo Oficial',
+                width: '600px',
+                html: `
+                    <div style="text-align: left;">
+                        <p style="margin-bottom: 15px; color: #555;">Seleccione el artículo maestro y la cantidad real para vincular a este bulto logístico.</p>
+                        
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                            <button type="button" id="btn-asignar-modo-codigo" class="btn btn-sm btn-info active" style="flex: 1; padding: 5px; font-weight: bold;" onclick="setModoBusquedaAsignar('codigo')">Búsqueda por Código</button>
+                            <button type="button" id="btn-asignar-modo-desc" class="btn btn-sm btn-secondary" style="flex: 1; padding: 5px; font-weight: bold;" onclick="setModoBusquedaAsignar('descripcion')">Búsqueda por Descripción</button>
+                        </div>
+                        
+                        <div id="asignar-container-codigo">
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Código de Barras:</label>
+                            <input type="text" id="asignar-input-codigo" class="form-control" placeholder="Escanee o ingrese código y presione Enter..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        
+                        <div id="asignar-container-desc" style="display: none;">
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Descripción:</label>
+                            <input type="text" id="asignar-input-desc" class="form-control" placeholder="Ej: datil medjool (escriba para buscar...)" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        
+                        <div id="asignar-resultados" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px; display: none; background: #fff;"></div>
+                        
+                        <div id="asignar-articulo-seleccionado" style="margin-top: 15px; padding: 10px; background-color: #e8f4f8; border-left: 4px solid #17a2b8; display: none;">
+                            <span style="font-size: 12px; color: #666; display: block;">Artículo Seleccionado:</span>
+                            <strong id="asignar-texto-seleccionado"></strong>
+                        </div>
+                        
+                        <div style="margin-top: 20px;">
+                            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Cantidad Real / Unidades:</label>
+                            <input type="number" id="asignar-input-cantidad" class="form-control" placeholder="Ej: 15.5" min="0.01" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Vincular y Guardar',
+                cancelButtonText: 'Cancelar',
+                didOpen: () => {
+                    const inputCodigo = document.getElementById('asignar-input-codigo');
+                    const inputDesc = document.getElementById('asignar-input-desc');
+                    
+                    if (inputCodigo) setTimeout(() => inputCodigo.focus(), 100);
+                    
+                    // Buscar por código con Enter
+                    inputCodigo.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            ejecutarBusquedaAsignar(this.value.trim(), true);
+                        }
+                    });
+                    
+                    // Búsqueda incremental por descripción
+                    inputDesc.addEventListener('input', function(e) {
+                        const termino = e.target.value.trim();
+                        if (busquedaAsignarTimeout) clearTimeout(busquedaAsignarTimeout);
+                        busquedaAsignarTimeout = setTimeout(() => {
+                            ejecutarBusquedaAsignar(termino, false);
+                        }, 400);
+                    });
+                },
+                preConfirm: () => {
+                    const cantInput = document.getElementById('asignar-input-cantidad');
+                    if (!articuloAsignarSeleccionado) {
+                        Swal.showValidationMessage('Debe buscar y seleccionar un artículo oficial de la lista.');
+                        return false;
+                    }
+                    if (!cantInput.value || parseFloat(cantInput.value) <= 0) {
+                        Swal.showValidationMessage('Debe ingresar una Cantidad válida mayor a 0.');
+                        return false;
+                    }
+                    return {
+                        articulo_numero: articuloAsignarSeleccionado.codigo,
+                        cantidad: parseFloat(cantInput.value)
+                    };
+                }
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    const payload = {
+                        movimiento_id: idMovimiento,
+                        articulo_numero: result.value.articulo_numero,
+                        cantidad: result.value.cantidad
+                    };
+                    
+                    Swal.fire({
+                        title: 'Vinculando Entidad',
+                        text: 'Actualizando registros y propagando cantidad...',
+                        allowOutsideClick: false,
+                        didOpen: () => Swal.showLoading()
+                    });
+
+                    try {
+                        const urlBase = window.location.origin;
+                        const res = await fetch(`${urlBase}/api/produccion/mantenimiento/asignar-articulo`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const resData = await res.json();
+                        if (resData.success) {
+                            Swal.fire('Integridad Actualizada', 'El bulto ha heredado las propiedades del artículo oficial y la cantidad ha sido fijada exitosamente.', 'success');
+                            cargarStock();
+                        } else {
+                            throw new Error(resData.error || 'Falla estructural al vincular artículo');
+                        }
+                    } catch (e) {
+                        Swal.fire('Error de Sistema', e.message, 'error');
+                    }
+                }
+            });
+        }
+        
+        window.setModoBusquedaAsignar = function(modo) {
+            const btnCodigo = document.getElementById('btn-asignar-modo-codigo');
+            const btnDesc = document.getElementById('btn-asignar-modo-desc');
+            const contCodigo = document.getElementById('asignar-container-codigo');
+            const contDesc = document.getElementById('asignar-container-desc');
+            const res = document.getElementById('asignar-resultados');
+            
+            if (modo === 'codigo') {
+                btnCodigo.className = 'btn btn-sm btn-info active';
+                btnDesc.className = 'btn btn-sm btn-secondary';
+                contCodigo.style.display = 'block';
+                contDesc.style.display = 'none';
+                document.getElementById('asignar-input-codigo').focus();
+            } else {
+                btnCodigo.className = 'btn btn-sm btn-secondary';
+                btnDesc.className = 'btn btn-sm btn-info active';
+                contCodigo.style.display = 'none';
+                contDesc.style.display = 'block';
+                document.getElementById('asignar-input-desc').focus();
+            }
+            if(res) res.style.display = 'none';
+        };
+
+        async function ejecutarBusquedaAsignar(termino, exacto) {
+            const resDiv = document.getElementById('asignar-resultados');
+            if (!termino) {
+                resDiv.style.display = 'none';
+                return;
+            }
+            
+            resDiv.innerHTML = '<div style="padding: 10px; color: #666; font-style: italic;">Buscando...</div>';
+            resDiv.style.display = 'block';
+            
+            try {
+                const urlBase = window.location.origin;
+                let tokens = [termino];
+                if (!exacto) {
+                    tokens = termino.split(/\\s+/).filter(t => t.length > 0);
+                    if (tokens.length === 0) return;
+                }
+                
+                const primerToken = tokens[0];
+                const response = await fetch(`${urlBase}/api/produccion/buscar-articulos?q=${encodeURIComponent(primerToken)}${exacto ? '&exact=true' : ''}`);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.articulos) {
+                        let articulosFiltrados = result.articulos;
+                        
+                        if (!exacto && tokens.length > 1) {
+                            articulosFiltrados = result.articulos.filter(art => {
+                                if (!art.descripcion && !art.nombre) return false;
+                                const texto = (art.descripcion || art.nombre).toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+                                return tokens.every(t => {
+                                    const tNorm = t.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+                                    return texto.includes(tNorm);
+                                });
+                            });
+                        }
+                        
+                        if (articulosFiltrados.length > 0) {
+                            renderizarResultadosAsignar(articulosFiltrados);
+                        } else {
+                            resDiv.innerHTML = '<div style="padding: 10px; color: #666; font-style: italic;">No se encontraron artículos que coincidan.</div>';
+                        }
+                    } else {
+                        resDiv.innerHTML = '<div style="padding: 10px; color: #666; font-style: italic;">Error o sin resultados.</div>';
+                    }
+                }
+            } catch (error) {
+                resDiv.innerHTML = '<div style="padding: 10px; color: #dc3545;">Error de conexión al buscar.</div>';
+            }
+        }
+        
+        window.seleccionarArticuloAsignar = function(codigo, descripcion) {
+            articuloAsignarSeleccionado = { codigo, descripcion };
+            
+            const divSelect = document.getElementById('asignar-articulo-seleccionado');
+            const textSelect = document.getElementById('asignar-texto-seleccionado');
+            const resDiv = document.getElementById('asignar-resultados');
+            const inputCant = document.getElementById('asignar-input-cantidad');
+            
+            if (divSelect) divSelect.style.display = 'block';
+            if (textSelect) textSelect.innerHTML = `${descripcion} <span style="color: #666; font-family: monospace;">(${codigo})</span>`;
+            if (resDiv) resDiv.style.display = 'none';
+            if (inputCant) inputCant.focus();
+        };
+        
+        function renderizarResultadosAsignar(articulos) {
+            const resDiv = document.getElementById('asignar-resultados');
+            const html = articulos.map((art) => {
+                const cod = art.codigo_barras || art.codigo || art.numero;
+                const desc = art.descripcion || art.nombre;
+                // Escapamos comillas simples para evitar inyección en el onclick
+                const descEscapada = desc.replace(/'/g, "\\'");
+                return `
+                    <div style="padding: 10px; border-bottom: 1px solid #eee; cursor: pointer;" onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'" onclick="seleccionarArticuloAsignar('${cod}', '${descEscapada}')">
+                        <div style="font-weight: 600; color: #333;">${desc}</div>
+                        <div style="font-size: 12px; color: #6c757d; font-family: monospace;">Código: ${cod}</div>
+                    </div>
+                `;
+            }).join('');
+            resDiv.innerHTML = html;
+        }
+
+        async function abrirModalVincularPresupuesto(idMovimiento, clienteId, articuloNumero, cantidad, fechaRef) {
+            Swal.fire({
+                title: 'Vincular Documento de Origen',
+                html: `
+                    <div style="text-align: left;">
+                        <p style="margin-bottom: 15px; color: #555;">Seleccione el presupuesto / factura origen para vincular a este artículo.</p>
+                        <div id="vinculacion-resultados" style="max-height: 250px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 5px; background: #fff;">
+                            <div style="padding: 10px; color: #666; font-style: italic;">⏳ Consultando historial...</div>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                showConfirmButton: false,
+                cancelButtonText: 'Cancelar',
+                didOpen: async () => {
+                    const resDiv = document.getElementById('vinculacion-resultados');
+                    try {
+                        const urlBase = window.location.origin;
+                        const params = new URLSearchParams({ cliente_id: clienteId, articulo_numero: articuloNumero });
+                        const res = await fetch(`${urlBase}/api/produccion/mantenimiento/presupuestos-entregados?${params}`);
+                        const data = await res.json();
+                        
+                        if (data.success && data.presupuestos.length > 0) {
+                            let html = '';
+                            data.presupuestos.forEach(p => {
+                                const f = new Date(p.fecha).toLocaleDateString();
+                                const origen = p.origen_facturacion || 'PENDIENTE';
+                                let badgeColor = origen === 'LOMASOFT' ? '#17a2b8' : (origen === 'LAMDA' ? '#28a745' : '#6c757d');
+                                
+                                html += `
+                                    <div style="padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" 
+                                         onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                                         onmouseout="this.style.backgroundColor='white'" 
+                                         onclick="ejecutarVinculacionPresupuesto(${idMovimiento}, ${p.id}, '${clienteId}', '${articuloNumero}', ${cantidad}, '${fechaRef}')">
+                                        <div>
+                                            <div style="font-weight: 600; color: #333;">Doc #${p.numero}</div>
+                                            <div style="font-size: 12px; color: #6c757d;">Fecha: ${f} | Total: $${p.importe_total}</div>
+                                        </div>
+                                        <div>
+                                            <span style="background-color: ${badgeColor}; color: white; padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">${origen}</span>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            resDiv.innerHTML = html;
+                        } else {
+                            resDiv.innerHTML = '<div style="padding: 10px; color: #666; font-style: italic;">No se encontraron presupuestos entregados para este cliente y artículo.</div>';
+                        }
+                    } catch (error) {
+                        resDiv.innerHTML = '<div style="padding: 10px; color: #dc3545;">Error al buscar historial.</div>';
+                    }
+                }
+            });
+        }
+
+        window.ejecutarVinculacionPresupuesto = async function(idMovimiento, idPresupuesto, clienteId, articuloNumero, cantidad, fechaRef) {
+            Swal.fire({
+                title: 'Vinculando...',
+                text: 'Procesando derivación de puesto de venta...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            try {
+                const urlBase = window.location.origin;
+                const res = await fetch(`${urlBase}/api/produccion/mantenimiento/vincular-presupuesto`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ movimiento_id: idMovimiento, id_presupuesto_origen: idPresupuesto })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    if (data.origen_facturacion === 'LOMASOFT') {
+                        Swal.fire({
+                            title: 'Derivación Lomasoft',
+                            text: 'El documento origen es Lomasoft. Activando circuito de Conciliación...',
+                            icon: 'info',
+                            timer: 2000,
+                            showConfirmButton: false
+                        }).then(() => {
+                            // Llamar directamente al circuito de conciliación de lomasoft
+                            conciliar(clienteId, articuloNumero, cantidad, fechaRef, idPresupuesto);
+                            cargarStock();
+                        });
+                    } else {
+                        Swal.fire('Vínculo Exitoso', 'Presupuesto Local (LAMDA) vinculado. Entidad preparada para futura Nota de Crédito.', 'success').then(() => {
+                            cargarStock();
+                        });
+                    }
+                } else {
+                    throw new Error(data.error || 'Falla al vincular');
+                }
+            } catch (err) {
+                Swal.fire('Error', err.message, 'error');
+            }
+        };
+
         async function cargarStock() {
             const tbody = document.getElementById('tbody-stock');
             tbody.innerHTML = '<tr><td colspan="6" class="text-center">⏳ Cargando datos...</td></tr>';
@@ -1292,6 +1613,11 @@
                              <button onclick="descargarReporteArribo(${item.id})" style="color: #6610f2; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  📄 Comprobante de Arribo
                              </button>
+                             ${!item.articulo_numero ? `
+                             <button onclick="abrirModalAsignarArticulo(${item.id})" style="color: #fd7e14; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 🔗 Asignar Artículo Oficial
+                             </button>
+                             ` : ''}
                              <button onclick="enviarInmediatoTratamientoDirecto(${item.id}, ${cantidad}, '${item.cliente_id || ''}', decodeURIComponent('${encodeURIComponent(nombreMapeado)}'))" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  ⛺ Enviar a Tratamiento
                              </button>
@@ -1345,6 +1671,12 @@
                     if (esArcaBorrador) {
                         ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA</span>`;
                         eliminarDisabled = 'disabled';
+                    } else if (item.articulo_numero && !item.id_presupuesto_origen && item.cliente_id) {
+                        // Caso "Bulto" enriquecido: Tiene Artículo y Cliente, pero AÚN no tiene un Documento Origen Vinculado.
+                        lomasoftBtnHtml = `
+                        <button class="btn-accion" style="background-color: #6f42c1; color: white; border: none; font-weight: bold;" onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}')">
+                            🔗 Vincular Documento
+                        </button>`;
                     } else {
                         // Botón Lomasoft
                         if (item.origen_facturacion !== 'LAMDA') {

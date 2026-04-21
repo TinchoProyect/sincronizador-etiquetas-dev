@@ -2614,6 +2614,126 @@ async function imprimirComprobanteArribo(req, res) {
     }
 }
 
+/**
+ * Asignar Artículo Oficial a un ingreso genérico (Bulto)
+ */
+const asignarArticuloOficial = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { movimiento_id, articulo_numero, cantidad } = req.body;
+        if (!movimiento_id || !articulo_numero || !cantidad) {
+            throw new Error('Parámetros incompletos. Se requiere ID de Movimiento, Número de Artículo y Cantidad.');
+        }
+
+        await client.query('BEGIN');
+
+        // Actualizamos mantenimiento_movimientos
+        const updateMov = await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET articulo_numero = $1, cantidad = $3
+            WHERE id = $2 AND articulo_numero IS NULL
+            RETURNING id_orden_tratamiento
+        `, [articulo_numero, movimiento_id, cantidad]);
+
+        if (updateMov.rowCount === 0) {
+            throw new Error('Movimiento no encontrado o ya posee un artículo oficial asignado.');
+        }
+
+        const id_orden_tratamiento = updateMov.rows[0].id_orden_tratamiento;
+
+        // Propagación Lógica a la orden original (para trazabilidad y PDF de Arribo)
+        if (id_orden_tratamiento) {
+            await client.query(`
+                UPDATE public.ordenes_tratamiento_detalles
+                SET articulo_numero = $1
+                WHERE id_orden_tratamiento = $2 AND articulo_numero IS NULL
+            `, [articulo_numero, id_orden_tratamiento]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Artículo vinculado exitosamente' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error al vincular articulo oficial:', e);
+        res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
+};
+
+/**
+ * Obtener presupuestos entregados para vincular a un artículo
+ */
+const getPresupuestosEntregados = async (req, res) => {
+    try {
+        const { cliente_id, articulo_numero } = req.query;
+        if (!cliente_id || !articulo_numero) {
+            return res.status(400).json({ success: false, error: 'Faltan parámetros requeridos (cliente_id, articulo_numero).' });
+        }
+
+        const query = `
+            SELECT p.id, p.fecha, p.numero, p.estado, p.origen_facturacion, p.importe_total
+            FROM public.presupuestos p
+            JOIN public.presupuestos_detalles pd ON p.id = pd.id_presupuesto
+            WHERE p.id_cliente = $1
+              AND pd.articulo = $2
+              AND p.estado IN ('Entregado', 'Entregados')
+            ORDER BY p.fecha DESC
+        `;
+        const result = await pool.query(query, [cliente_id, articulo_numero]);
+        
+        res.json({ success: true, presupuestos: result.rows });
+    } catch (e) {
+        console.error('❌ [MANTENIMIENTO] Error al buscar presupuestos entregados:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+};
+
+/**
+ * Vincular un presupuesto a un bulto
+ */
+const vincularPresupuesto = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { movimiento_id, id_presupuesto_origen } = req.body;
+        if (!movimiento_id || !id_presupuesto_origen) {
+            throw new Error('Faltan parámetros requeridos (movimiento_id, id_presupuesto_origen).');
+        }
+
+        await client.query('BEGIN');
+
+        // Actualizamos mantenimiento_movimientos
+        const updateMov = await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET id_presupuesto_origen = $1
+            WHERE id = $2
+            RETURNING *
+        `, [id_presupuesto_origen, movimiento_id]);
+
+        if (updateMov.rowCount === 0) {
+            throw new Error('Movimiento no encontrado.');
+        }
+
+        // Obtener el origen_facturacion del presupuesto
+        const presRes = await client.query(`
+            SELECT origen_facturacion
+            FROM public.presupuestos
+            WHERE id = $1
+        `, [id_presupuesto_origen]);
+        
+        const origen_facturacion = presRes.rows.length > 0 ? presRes.rows[0].origen_facturacion : 'PENDIENTE';
+
+        await client.query('COMMIT');
+        res.json({ success: true, origen_facturacion, message: 'Presupuesto vinculado exitosamente.' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error al vincular presupuesto:', e);
+        res.status(500).json({ success: false, error: e.message });
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -2642,5 +2762,8 @@ module.exports = {
     finalizarTratamiento,
     limpiarRegistroAdministrativo,
     retornoALogistica,
-    imprimirComprobanteArribo
+    imprimirComprobanteArribo,
+    asignarArticuloOficial,
+    getPresupuestosEntregados,
+    vincularPresupuesto
 };

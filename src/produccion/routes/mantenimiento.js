@@ -45,5 +45,8 @@ router.post('/tratamientos/:id/abrir', mantenimientoCtrl.abrirTratamiento);
 router.post('/tratamientos/:id/finalizar', mantenimientoCtrl.finalizarTratamiento);
 router.post('/retorno-a-logistica', mantenimientoCtrl.retornoALogistica);
 router.get('/reporte-arribo/:id', mantenimientoCtrl.imprimirComprobanteArribo);
+router.post('/asignar-articulo', mantenimientoCtrl.asignarArticuloOficial);
+router.get('/presupuestos-entregados', mantenimientoCtrl.getPresupuestosEntregados);
+router.post('/vincular-presupuesto', mantenimientoCtrl.vincularPresupuesto);
 
 module.exports = router;
