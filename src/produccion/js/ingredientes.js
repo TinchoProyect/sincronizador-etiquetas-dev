@@ -1355,6 +1355,46 @@ async function imprimirEtiqueta(ingrediente) {
     }
 }
 
+// ✅ IMPLEMENTACIÓN DE ACCESO DIRECTO PARA IMPRESIÓN (UI PRINCIPAL)
+window.abrirModalImpresionGeneral = async function(ingredienteId) {
+    try {
+        const idBuscado = Number(ingredienteId);
+        const ingrediente = ingredientesOriginales.find(ing => Number(ing.id) === idBuscado || Number(ing.id_ingrediente) === idBuscado);
+        
+        if (!ingrediente) throw new Error('No se encontraron los datos del ingrediente localmente.');
+
+        const codigo = ingrediente.codigo || 'S/C';
+        const nombre = ingrediente.nombre_ingrediente || ingrediente.nombre;
+        const sectorId = ingrediente.sector_id;
+
+        // Replicación estricta de la lógica de extracción de Letra-Sector conectando modal y ui externa.
+        let sectorLetra = '';
+        if (sectorId && sectoresDisponibles.length > 0) {
+            const sectorObj = sectoresDisponibles.find(s => s.id == sectorId);
+            if (sectorObj) {
+                const extraerLetra = (desc, nombreSect) => {
+                    if (desc) {
+                        const match = desc.match(/["']([^"']+)["']/);
+                        if (match && match[1]) return match[1].toUpperCase();
+                    }
+                    if (nombreSect) {
+                        const matchNombre = nombreSect.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
+                        if (matchNombre && matchNombre[1]) return matchNombre[1].toUpperCase();
+                    }
+                    return null;
+                };
+                sectorLetra = extraerLetra(sectorObj.descripcion, sectorObj.nombre) || sectorObj.nombre;
+            }
+        }
+
+        await imprimirEtiqueta({ codigo, nombre, sector: sectorLetra });
+
+    } catch (error) {
+        console.error('Error al intentar imprimir directo:', error);
+        mostrarMensaje(error.message || 'Error en la orden de impresión rápida.', 'error');
+    }
+};
+
 // Función para actualizar visibilidad del botón de impresión
 function actualizarBotonImpresion() {
     const btnImprimir = document.getElementById('btn-imprimir');
