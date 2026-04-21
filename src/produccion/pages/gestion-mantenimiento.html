@@ -1603,28 +1603,78 @@
                     
                     tituloPrincipal = `<b style="font-size:1.05em; color:#0e6cc4;">${nombreMapeado}</b><br>${detalles}`;
                     
-                    actionCell = `
-                    <div class="dropdown">
-                         <button class="btn-accion" style="background-color: #28a745;">⚡ Acciones ▼</button>
-                         <div class="dropdown-content">
+                    let innerActions = `
                              <button style="color: #6c757d; font-weight: normal; text-align: left; padding: 10px; width: 100%; border:none; background:none; cursor:default;">
                                  [Ingresado vía App Chofer]
                              </button>
                              <button onclick="descargarReporteArribo(${item.id})" style="color: #6610f2; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  📄 Comprobante de Arribo
-                             </button>
-                             ${!item.articulo_numero ? `
+                             </button>`;
+
+                    let statusTags = '';
+
+                    if (!item.articulo_numero) {
+                        innerActions += `
                              <button onclick="abrirModalAsignarArticulo(${item.id})" style="color: #fd7e14; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  🔗 Asignar Artículo Oficial
-                             </button>
-                             ` : ''}
+                             </button>`;
+                        statusTags += `<span style="color: #dc3545; font-weight: bold; font-size: 0.8em; border: 1px solid #f5c6cb; background: #f8d7da; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[FALTA ARTÍCULO]</span>`;
+                    } else if (!item.id_presupuesto_origen) {
+                        innerActions += `
+                             <button onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}')" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 🔗 Vincular Documento Origen
+                             </button>`;
+                        statusTags += `<span style="color: #dc3545; font-weight: bold; font-size: 0.8em; border: 1px solid #f5c6cb; background: #f8d7da; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[FALTA DOCUMENTO]</span>`;
+                    } else {
+                        // Registro completamente enriquecido y vinculado
+                        if (item.origen_facturacion === 'LAMDA' && !esArcaOK) {
+                            let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
+                            innerActions += `
+                             <button onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}')" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${arcaBtnDisabled}>
+                                 🧾 Emitir NC ARCA
+                             </button>`;
+                            statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE NC]</span>`;
+                        } else if (item.origen_facturacion === 'LAMDA' && esArcaOK) {
+                            statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ NC EMITIDA]</span>`;
+                        } else if (esLomasoftOK) {
+                            statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ CONCILIADO LOMASOFT]</span>`;
+                            // Opción para deshacer vínculo Lomasoft
+                            innerActions += `
+                             <button onclick="deshacerConciliacion('${item.articulo_numero}', '${item.id_presupuesto_origen || ''}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 🔗 Deshacer Vínculo Lomasoft
+                             </button>`;
+                        }
+
+                        // Acciones de salida logísticas desbloqueadas
+                        innerActions += `
                              <button onclick="enviarInmediatoTratamientoDirecto(${item.id}, ${cantidad}, '${item.cliente_id || ''}', decodeURIComponent('${encodeURIComponent(nombreMapeado)}'))" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  ⛺ Enviar a Tratamiento
+                             </button>
+                             <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}', ${item.id})" style="color: #28a745; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 📦 Enviar a Ventas (Devolución)
+                             </button>
+                             <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 🧪 Convertir a Ingredientes
+                             </button>`;
+                    }
+                    
+                    statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[🏕️ AGUARDA CARPA]</span>`;
+
+                    actionCell = `
+                    <div class="dropdown">
+                         <button class="btn-accion" style="background-color: #28a745;">⚡ Acciones ▼</button>
+                         <div class="dropdown-content">
+                             ${innerActions}
+                             <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${btnDisabled}>
+                                 🗑️ Eliminar Recepción
+                             </button>
+                             <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || ''}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 🧹 Limpiar Registro (Visual)
                              </button>
                          </div>
                     </div>
                     <div style="margin-top: 5px;">
-                        <span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[🏕️ AGUARDA CARPA]</span>
+                        ${statusTags}
                     </div>
                     `;
                 } else if (esLomasoftOK || esArcaOK) {
