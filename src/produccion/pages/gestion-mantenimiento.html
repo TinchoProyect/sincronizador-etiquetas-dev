@@ -1039,6 +1039,48 @@
             }
         }
         
+        async function descargarReporteArribo(idMovimiento) {
+            Swal.fire({
+                title: 'Generando Comprobante',
+                text: 'Consultando historial de traslado...',
+                allowEscapeKey: false,
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            try {
+                const urlBase = window.location.origin;
+                const response = await fetch(`${urlBase}/api/produccion/mantenimiento/reporte-arribo/${idMovimiento}`);
+                
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || 'Error al generar comprobante de arribo');
+                }
+                
+                const disposition = response.headers.get('Content-Disposition');
+                let filename = 'comprobante_arribo_deposito.pdf';
+                if (disposition && disposition.includes('filename=')) {
+                    const match = disposition.match(/filename="?([^";\n]+)"?/);
+                    if (match && match[1]) filename = match[1];
+                }
+                
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = blobUrl;
+                anchor.download = filename;
+                document.body.appendChild(anchor);
+                anchor.click();
+                document.body.removeChild(anchor);
+                window.URL.revokeObjectURL(blobUrl);
+                
+                Swal.close();
+            } catch (err) {
+                console.error('Error generando comprobante de arribo:', err);
+                Swal.fire('Atención', err.message, 'warning');
+            }
+        }
+        
         async function cargarStock() {
             const tbody = document.getElementById('tbody-stock');
             tbody.innerHTML = '<tr><td colspan="6" class="text-center">⏳ Cargando datos...</td></tr>';
@@ -1246,6 +1288,9 @@
                          <div class="dropdown-content">
                              <button style="color: #6c757d; font-weight: normal; text-align: left; padding: 10px; width: 100%; border:none; background:none; cursor:default;">
                                  [Ingresado vía App Chofer]
+                             </button>
+                             <button onclick="descargarReporteArribo(${item.id})" style="color: #6610f2; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 📄 Comprobante de Arribo
                              </button>
                              <button onclick="enviarInmediatoTratamientoDirecto(${item.id}, ${cantidad}, '${item.cliente_id || ''}', decodeURIComponent('${encodeURIComponent(nombreMapeado)}'))" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  ⛺ Enviar a Tratamiento

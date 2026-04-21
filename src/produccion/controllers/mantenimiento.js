@@ -2491,6 +2491,129 @@ const retornoALogistica = async (req, res) => {
     }
 };
 
+/**
+ * Generar PDF de Comprobante de Arribo a Depósito
+ */
+async function imprimirComprobanteArribo(req, res) {
+    try {
+        const { id } = req.params;
+        const PDFDocument = require('pdfkit');
+
+        // Consultamos la historia del traslado
+        const query = `
+            SELECT 
+                m.id as id_movimiento,
+                m.fecha_movimiento as timestamp_arribo,
+                o.id as id_orden_tratamiento,
+                o.id_ruta,
+                c.nombre, c.apellido, c.cliente_id,
+                o.fecha_validacion_chofer as timestamp_retiro,
+                o.responsable_nombre,
+                o.responsable_apellido,
+                o.chofer_nombre,
+                d.articulo_numero,
+                d.descripcion_externa,
+                d.kilos,
+                d.bultos
+            FROM public.mantenimiento_movimientos m
+            JOIN public.ordenes_tratamiento o ON m.id_orden_tratamiento = o.id
+            LEFT JOIN public.ordenes_tratamiento_detalles d ON o.id = d.id_orden_tratamiento
+            LEFT JOIN public.clientes c ON o.id_cliente = c.cliente_id
+            WHERE m.id = $1
+        `;
+        
+        const result = await pool.query(query, [id]);
+        if (result.rowCount === 0) {
+            return res.status(404).send('Movimiento no encontrado o no proviene de una orden de tratamiento.');
+        }
+
+        const data = result.rows[0];
+        
+        const numCliente = data.cliente_id || 'SF';
+        const strNombre = `${data.nombre || ''} ${data.apellido || ''}`.trim() || 'Sin_Nombre';
+        const sanitizeNombre = strNombre.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+        const hoyFmt = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+        const dynamicFilename = `${numCliente}_${sanitizeNombre}_arribo_deposito_${hoyFmt}.pdf`;
+
+        const doc = new PDFDocument({ margin: 50, size: 'A4', info: { Title: dynamicFilename } });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${dynamicFilename}"`);
+
+        doc.pipe(res);
+
+        // Header: Logo / Title
+        const headerY = doc.y;
+        doc.fontSize(22).font('Helvetica-Bold').fillColor('#1e40af').text('LAMDA', 50, headerY);
+        const hoy = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+        doc.fontSize(10).fillColor('#94a3b8').text(`Fecha de Emisión: ${hoy}`, 390, headerY + 8, { width: 150, align: 'right' });
+        
+        doc.moveDown(1.5);
+        doc.fontSize(12).fillColor('#64748b').text('COMPROBANTE DE RETIRO / ARRIBO A DEPÓSITO', 50, doc.y, { align: 'left' });
+        doc.moveDown(2);
+
+        doc.moveTo(50, doc.y).lineTo(540, doc.y).strokeColor('#e2e8f0').stroke();
+        doc.moveDown(1.5);
+
+        // Datos de Origen
+        doc.fontSize(16).fillColor('#0f172a').text('Datos de Origen', { underline: true });
+        doc.moveDown(0.5);
+
+        doc.fontSize(12).fillColor('#000000');
+        doc.font('Helvetica-Bold').text(`ID de Registro: `, { continued: true }).font('Helvetica').text(`RT-${data.id_orden_tratamiento || 'S/N'}`);
+        const clientText = `${data.nombre || ''} ${data.apellido || ''}`.trim() + (data.cliente_id ? ` (#${data.cliente_id})` : '');
+        doc.font('Helvetica-Bold').text(`Cliente: `, { continued: true }).font('Helvetica').text(clientText || 'Sin Nombre');
+        
+        const responsableTxt = `${data.responsable_nombre || ''} ${data.responsable_apellido || ''}`.trim();
+        if (responsableTxt) {
+            doc.font('Helvetica-Bold').text(`Responsable (Check-in): `, { continued: true }).font('Helvetica').text(responsableTxt);
+        }
+
+        doc.font('Helvetica-Bold').text(`Artículo: `, { continued: true }).font('Helvetica').text(`${data.articulo_numero || ''} ${data.descripcion_externa ? '- ' + data.descripcion_externa : ''}`);
+        doc.font('Helvetica-Bold').text(`Kilos Reportados: `, { continued: true }).font('Helvetica').text(`${data.kilos || 0} Kg`);
+        doc.font('Helvetica-Bold').text(`Cantidad de Bultos: `, { continued: true }).font('Helvetica').text(`${data.bultos || 0}`);
+        
+        doc.moveDown(1.5);
+
+        // Datos de Logística
+        doc.fontSize(16).font('Helvetica-Bold').text('Datos de Logística', { underline: true });
+        doc.moveDown(0.5);
+
+        doc.fontSize(12).font('Helvetica');
+        doc.font('Helvetica-Bold').text('Hoja de Ruta Asignada: ', { continued: true }).font('Helvetica').text(`${data.id_ruta ? 'Ruta #' + data.id_ruta : 'Sin Ruta Asignada'}`);
+        doc.font('Helvetica-Bold').text('Chofer Asignado: ', { continued: true }).font('Helvetica').text(data.chofer_nombre || 'No registrado');
+        
+        const fRetiro = data.timestamp_retiro ? new Date(data.timestamp_retiro).toLocaleString('es-AR') : 'No registrada';
+        doc.font('Helvetica-Bold').text('Timestamp Retiro Efectivo (Chofer): ', { continued: true }).font('Helvetica').text(fRetiro);
+        
+        const fArribo = data.timestamp_arribo ? new Date(data.timestamp_arribo).toLocaleString('es-AR') : 'No registrada';
+        doc.font('Helvetica-Bold').text('Timestamp Arribo a Depósito: ', { continued: true }).font('Helvetica').text(fArribo);
+
+        doc.moveDown(1.5);
+        doc.moveTo(50, doc.y).lineTo(540, doc.y).strokeColor('#e2e8f0').stroke();
+        doc.moveDown(1.5);
+
+        // Declaración
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#166534').text('DECLARACIÓN DE RECEPCIÓN');
+        doc.moveDown(0.5);
+        doc.fontSize(11).font('Helvetica').fillColor('#000000').text('Por medio del presente documento, el establecimiento LAMDA certifica la recepción formal de la mercadería detallada, la cual queda bajo custodia en nuestras instalaciones.', { align: 'justify' });
+        
+        // Footer
+        doc.fontSize(9).fillColor('#94a3b8').text(
+            'El presente documento certifica la recepción y custodia de mercadería según el protocolo del sistema de trazabilidad de LAMDA. Su generación garantiza la integridad de los registros de arribo a depósito.', 
+            50, 
+            doc.page.height - 100, 
+            { align: 'justify', width: 500 }
+        );
+
+        doc.end();
+
+    } catch (error) {
+        console.error('❌ [MANTENIMIENTO] Error generando reporte de arribo:', error);
+        res.status(500).send('Error interno al generar el PDF de arribo.');
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -2518,5 +2641,6 @@ module.exports = {
     abrirTratamiento,
     finalizarTratamiento,
     limpiarRegistroAdministrativo,
-    retornoALogistica
+    retornoALogistica,
+    imprimirComprobanteArribo
 };
