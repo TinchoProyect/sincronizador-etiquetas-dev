@@ -68,7 +68,7 @@ async function imprimirPDF(req, res) {
         const fRetiro = data.fecha_validacion_chofer ? new Date(data.fecha_validacion_chofer).toLocaleString('es-AR') : 'No ingresada';
         
         doc.fontSize(12).font('Helvetica');
-        doc.font('Helvetica-Bold').text('Fecha de Retiro (Check-in):', { continued: true }).font('Helvetica').text(` ${fRetiro}`);
+        doc.font('Helvetica-Bold').text('Fecha de Check-in:', { continued: true }).font('Helvetica').text(` ${fRetiro}`);
         doc.font('Helvetica-Bold').text('Kilos Reportados:', { continued: true }).font('Helvetica').text(` ${det.kilos} Kg`);
         doc.font('Helvetica-Bold').text('Cantidad de Bultos:', { continued: true }).font('Helvetica').text(` ${det.bultos}`);
         doc.font('Helvetica-Bold').text('Art. Número:', { continued: true }).font('Helvetica').text(` ${det.articulo_numero || 'S/N'}`);
@@ -108,7 +108,7 @@ async function imprimirPDF(req, res) {
         doc.font('Helvetica').text(`Contacto: ${data.responsable_celular || 'No provisto'}`);
 
         // Chofer (Derecha)
-        doc.fontSize(11).font('Helvetica-Bold').text('AGENTE LOGÍSTICO (LAMDA)', 300, finalY);
+        doc.fontSize(11).font('Helvetica-Bold').text('ASISTENCIA DE RECEPCIÓN (LAMDA)', 300, finalY);
         doc.font('Helvetica').text(`Nombre Chofer: ${data.chofer_nombre || 'No provisto'}`);
 
         doc.moveDown(4);
