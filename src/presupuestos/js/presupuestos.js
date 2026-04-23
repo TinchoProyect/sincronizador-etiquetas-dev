@@ -1138,12 +1138,12 @@ function updatePresupuestosTable(data) {
 
         // BLINDAJE VISUAL: Órdenes de Retiro Procesadas
         const esRetiro = item.categoria === 'Orden de Retiro';
-        // Se considera bloqueada si ya entró a Mantenimiento (ej: Recibido, En Auditoría, Conciliado) 
-        // o si ya generó una NC (esta_facturado = true)
+        // [TICKET 19] Modificación: Las órdenes de retiro SÍ deben exponer herramientas operativas si no están conciliadas/facturadas.
+        // Solo bloqueamos si ya se facturó (NC emitida) o ya tiene comprobante Lomasoft.
         const retiroProcesado = esRetiro && (
             item.esta_facturado ||
-            (item.estado_logistico && item.estado_logistico !== 'ESPERANDO_MOSTRADOR' && item.estado_logistico !== 'PENDIENTE_ASIGNAR') ||
-            (item.estado && ['Recibido', 'En Auditoría', 'Conciliado'].includes(item.estado))
+            item.estado === 'Conciliado' ||
+            item.comprobante_lomasoft != null
         );
 
         if (retiroProcesado) {
@@ -1182,20 +1182,13 @@ function updatePresupuestosTable(data) {
                 `;
             } else {
                 // Caso A: No hay factura de ningún tipo
-                // Prevenir generación directa de facturas para Órdenes de Retiro desde esta grilla (deben pasar por Mantenimiento)
-                if (esRetiro) {
-                    syncButtonHTML = `
-                        <button class="btn-action btn-disabled" title="Las devoluciones deben emitirse desde Gestión de Mantenimiento" disabled style="cursor: not-allowed; opacity: 0.5; filter: grayscale(100%); border: 1px solid #ccc; background: transparent; padding: 4px; min-width: 32px; height: 32px; border-radius: 4px;">
-                            <span style="font-size: 1.2em;">🚚</span>
-                        </button>
-                     `;
-                } else {
-                    syncButtonHTML = `
-                        <button class="btn-action btn-sync-create" onclick="crearFacturaBorrador(${item.id})" title="Enviar a Factura" style="background-color: transparent; border: 1px solid #3498db; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
-                            <span style="font-size: 1.2em;">🛒</span>
-                        </button>
-                    `;
-                }
+                // [TICKET 19] Se remueve el bloqueo de Enviar a Factura para órdenes de retiro, 
+                // permitiendo su uso como segundo vector de prueba.
+                syncButtonHTML = `
+                    <button class="btn-action btn-sync-create" onclick="crearFacturaBorrador(${item.id})" title="Enviar a Factura" style="background-color: transparent; border: 1px solid #3498db; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
+                        <span style="font-size: 1.2em;">🛒</span>
+                    </button>
+                `;
             }
         } else if (!retiroProcesado) { // Si ya fue procesado como retiro, este Else if se ignora porque el candado está arriba.
             // Tiene CAE (Bloqueo Fiscal) para presupuestos normales
@@ -1253,7 +1246,7 @@ function updatePresupuestosTable(data) {
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
                         🖨️
                     </button>
-                    ${(!esRetiro || item.estado_logistico === 'INGRESADO_LOCAL') && !item.comprobante_lomasoft ? `
+                    ${!item.comprobante_lomasoft ? `
                     <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
                         <span style="font-size: 1.2rem;">🔗</span>
                     </button>` : ''}

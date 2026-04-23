@@ -19,6 +19,7 @@ router.post('/revertir', mantenimientoCtrl.revertirMovimiento);
 router.post('/conciliar/deshacer', mantenimientoCtrl.deshacerConciliacion);
 router.get('/trazar-factura', mantenimientoCtrl.trazarFacturaOriginal);
 router.post('/limpiar-registro', mantenimientoCtrl.limpiarRegistroAdministrativo);
+router.get('/buscar-orden-retiro/:idFactura/:articulo', mantenimientoCtrl.buscarOrdenRetiro);
 
 // Rutas Logística Inversa
 router.get('/retiros/local', mantenimientoCtrl.getRetirosLocal);
@@ -48,5 +49,6 @@ router.get('/reporte-arribo/:id', mantenimientoCtrl.imprimirComprobanteArribo);
 router.post('/asignar-articulo', mantenimientoCtrl.asignarArticuloOficial);
 router.get('/presupuestos-entregados', mantenimientoCtrl.getPresupuestosEntregados);
 router.post('/vincular-presupuesto', mantenimientoCtrl.vincularPresupuesto);
+router.post('/desvincular-presupuesto', mantenimientoCtrl.desvincularPresupuesto);
 
 module.exports = router;

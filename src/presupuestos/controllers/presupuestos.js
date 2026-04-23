@@ -3145,6 +3145,16 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                 p.id as id_presupuesto,
                 p.fecha,
                 p.comprobante_lomasoft,
+                -- Determinación robusta de Origen priorizando Lomas Soft (Ticket 14)
+                CASE 
+                    WHEN p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '' THEN 
+                        'LOMASOFT (Puesto ' || SPLIT_PART(p.comprobante_lomasoft, '-', 2) || ')'
+                    WHEN f.pto_vta = 32 THEN 'LAMDA (Puesto 32)'
+                    WHEN f.pto_vta IS NOT NULL THEN 'LOMASOFT (Puesto ' || f.pto_vta || ')'
+                    WHEN p.origen_facturacion != 'PENDIENTE' THEN p.origen_facturacion
+                    ELSE 'NO FACTURADO'
+                END as origen_facturacion,
+                f.pto_vta,
                 d.cantidad,
                 d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
                 d.valor1 as precio_neto_historico,      -- Precio NETO guardado (para comparativas)
@@ -3153,13 +3163,20 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                 COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
             FROM presupuestos p
             JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
+            LEFT JOIN (
+                -- Subquery para traer la última factura aprobada por si hay múltiples
+                SELECT presupuesto_id, pto_vta, cbte_nro, estado,
+                       ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
+                FROM factura_facturas 
+                WHERE estado = 'APROBADA'
+            ) f ON f.presupuesto_id = p.id AND f.rn = 1
             WHERE p.id_cliente = $1::text 
               AND (d.articulo ILIKE $2 OR d.articulo ILIKE $3)
-              -- QA Bugfix 2: Permitir devoluciones de historial FACTURADO (usando comprobación real de tabla facturas)
+              -- QA Bugfix 2: Permitir devoluciones de historial FACTURADO
               AND (
                   p.estado_logistico IN ('RETIRADO', 'ENTREGADO') 
                   OR p.estado IN ('Entregado', 'Confirmado')
-                  OR EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA')
+                  OR f.pto_vta IS NOT NULL
                   OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '')
               )
               -- QA Modification: Excluir explícitamente Órdenes de Retiro

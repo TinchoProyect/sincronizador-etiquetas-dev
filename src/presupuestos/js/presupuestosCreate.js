@@ -3167,12 +3167,16 @@ function presentarOpcionesDeOrigen(historial, itemData, precioActual) {
                 }
 
                 const descuentoPct = parseFloat(h.descuento_porcentaje || 0);
+                const tituloPresupuesto = h.comprobante_lomasoft ? `Presupuesto #${h.id_presupuesto} <span style="margin-left: 8px; color: #00796b;">📄 Fac: ${h.comprobante_lomasoft}</span>` : `Presupuesto #${h.id_presupuesto}`;
 
                 itemDiv.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                         <div>
-                            <div style="font-weight: bold; color: #2c3e50;">Presupuesto #${h.id_presupuesto} <span style="font-weight: normal; color: #888; font-size: 0.9em;">(${fecha})</span></div>
-                            <div style="font-size: 0.85em; color: #28a745; margin-top: 2px;">🕒 ${tiempoRel}</div>
+                            <div style="font-weight: bold; color: #2c3e50;">${tituloPresupuesto} <span style="font-weight: normal; color: #888; font-size: 0.9em;">(${fecha})</span></div>
+                            <div style="font-size: 0.85em; margin-top: 4px; padding: 2px 6px; border-radius: 4px; display: inline-block; background-color: ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#e0f7fa' : ((h.origen_facturacion||'').includes('LAMDA') ? '#e8f5e9' : '#f8f9fa')}; border: 1px solid ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#4dd0e1' : ((h.origen_facturacion||'').includes('LAMDA') ? '#81c784' : '#ddd')}; color: ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#006064' : ((h.origen_facturacion||'').includes('LAMDA') ? '#1b5e20' : '#666')};">
+                                🏢 <strong>${h.origen_facturacion || 'NO FACTURADO'}</strong>
+                            </div>
+                            <div style="font-size: 0.85em; color: #28a745; margin-top: 4px;">🕒 ${tiempoRel}</div>
                             ${descuentoPct > 0 ? `<div style="font-size: 0.85em; color: #d9534f; margin-top: 4px; font-weight: bold; background: #f8dbdb; display: inline-block; padding: 2px 6px; border-radius: 4px;">🏷️ Tiene ${descuentoPct.toFixed(2)}% de Descuento Global</div>` : ''}
                         </div>
                         <div style="text-align: right;">

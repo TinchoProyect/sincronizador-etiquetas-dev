@@ -29,7 +29,10 @@ async function getStockMantenimiento(req, res) {
                 SELECT 
                     mm.id as id_movimiento,
                     mm.id_presupuesto_origen,
-                    p.origen_facturacion,
+                    CASE 
+                        WHEN p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '' THEN 'LOMASOFT'
+                        ELSE p.origen_facturacion
+                    END as origen_facturacion,
                     mm.articulo_numero,
                     mm.ingrediente_id,
                     mm.id_orden_tratamiento,
@@ -93,7 +96,8 @@ async function getStockMantenimiento(req, res) {
                 tto.tratamiento_estado,
                 tto.tratamiento_id,
                 tto.tipo_tratamiento,
-                sc.observaciones
+                sc.observaciones,
+                or_retiro.id_orden_retiro
             FROM saldos_clientes sc
             LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
             LEFT JOIN public.ingredientes i ON sc.ingrediente_id = i.id
@@ -134,6 +138,14 @@ async function getStockMantenimiento(req, res) {
                   AND tt.estado IN ('ARMANDO', 'EN_CUARENTENA', 'EN_ACONDICIONAMIENTO')
                 LIMIT 1
             ) tto ON true
+            LEFT JOIN LATERAL (
+                SELECT id AS id_orden_retiro
+                FROM public.presupuestos p_retiro
+                WHERE p_retiro.origen_numero_factura = sc.id_presupuesto_origen::text
+                  AND p_retiro.tipo_comprobante = 'Orden de Retiro'
+                ORDER BY p_retiro.id DESC
+                LIMIT 1
+            ) or_retiro ON true
             ORDER BY sc.ultima_actualizacion DESC
         `;
 
@@ -284,8 +296,13 @@ async function diagnosticoVigiaAuditor(req, res) {
         const url = new URL(baseUrl);
         url.searchParams.append('cliente', cliente);
         url.searchParams.append('articulo', articulo);
-        // NOTA: Se omiten intencionalmente 'cantidad' y 'fecha'
-        // Dejamos que Lomasoft devuelva todo el historial del artículo para este cliente.
+        
+        // [VIGÍA DEPURADOR TICKET 18] - Forzamos envío de cantidad en negativo para Lomas Soft
+        const cantidadNegativa = -Math.abs(cantidadLocal);
+        url.searchParams.append('cantidad', cantidadNegativa);
+        
+        console.log(`[VIGÍA TICKET 18] Enviando a Lomas Soft -> URL: ${url.toString()} | Cantidad con Signo Enviada: ${cantidadNegativa}`);
+        debugLog.push(`Enviando URL: ${url.toString()} | Cantidad con Signo: ${cantidadNegativa}`);
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
@@ -302,6 +319,12 @@ async function diagnosticoVigiaAuditor(req, res) {
 
         const data = await response.json();
         let resultados = Array.isArray(data) ? data : (data.data || []);
+
+        console.log(`[VIGÍA TICKET 18] Resultados crudos obtenidos de Lomas Soft: ${resultados.length}`);
+        resultados.forEach((r, idx) => {
+            const montoCrudo = r.cantidad || r.item_cantidad || r.importe_total || r.imp_neto || 0;
+            console.log(`[VIGÍA TICKET 18] Crudo #${idx + 1} -> Comprobante: ${r.punto_venta}-${r.numero_comprobante} | Desc: ${r.articulo || r.item_descripcion} | Monto Crudo (Signo): ${montoCrudo}`);
+        });
 
         debugLog.push(`Resultados crudos de Lomasoft: ${resultados.length}`);
 
@@ -349,10 +372,15 @@ async function diagnosticoVigiaAuditor(req, res) {
 
         // Remover comprobantes ocupados y filtrar por relevancia de producto
         resultados = resultados.filter(r => {
-            const numeroCompleto = `${r.punto_venta || 0}-${r.numero_comprobante || 0}`;
+            // Homologación de Padding para firmas
+            const ptoStrFirma = String(r.punto_venta || 0).padStart(4, '0');
+            const numStrFirma = String(r.numero_comprobante || 0).padStart(8, '0');
+            const numeroCompleto = `${ptoStrFirma}-${numStrFirma}`;
             const firmaSearch = `${numeroCompleto}|${articulo.toUpperCase()}`;
 
             if (itemsYaConciliados.has(firmaSearch)) {
+                console.log(`[VIGÍA TICKET 18] Descartado por YA CONCILIADO: ${firmaSearch}`);
+                debugLog.push(`Descartado por ocupado: ${firmaSearch}`);
                 return false;
             }
 
@@ -361,14 +389,14 @@ async function diagnosticoVigiaAuditor(req, res) {
             const descLomasoft = (r.articulo || r.item_descripcion || '').toUpperCase();
             const palabrasLomasoft = normalizar(descLomasoft);
             
-            // Chequear si alguna palabra clave de más de 2 letras coincide
-            const interseccion = palabrasLocal.filter(p => palabrasLomasoft.includes(p));
-            
             // Si no hay ninguna palabra en común (ej: 'AVENA' vs 'NUEZ'), significa que Lomasoft nos dio la basura del cliente
             if (interseccion.length === 0 && palabrasLocal.length > 0 && palabrasLomasoft.length > 0) {
-                return false; // Descartar candidata
+                console.log(`[VIGÍA TICKET 19] Mismatch de artículo: Lomasoft=[${descLomasoft}] vs Local=[${descripcionLocal}]. (Antes descartado, ahora permitido para visibilidad de auditoría)`);
+                // [TICKET 19] Removido el "return false" estricto. Las NCs genéricas de Lomasoft 
+                // suelen no tener el nombre del artículo. Dejamos que pasen a la UI con advertencia visual.
             }
 
+            console.log(`[VIGÍA TICKET 19] CANDIDATO APROBADO FILTROS: ${numeroCompleto} | Lomasoft=[${descLomasoft}] | Monto Total: ${r.importe_total || r.imp_neto}`);
             return true;
         });
 
@@ -394,11 +422,30 @@ async function diagnosticoVigiaAuditor(req, res) {
             let alertaFecha = null;
             let difDias = 0;
             if (candidatoFecha && fechaRef) {
+                // Parse local
                 const f1 = new Date(fechaRef);
-                const f2 = new Date(candidatoFecha);
-                difDias = Math.round((f2 - f1) / (1000 * 60 * 60 * 24));
-                if (difDias !== 0) {
-                    alertaFecha = difDias > 0 ? `Emitida ${difDias} días después` : `Emitida ${Math.abs(difDias)} días antes`;
+                
+                // Parse Lomasoft (podría venir en DD/MM/YYYY)
+                let f2;
+                if (candidatoFecha.includes('/')) {
+                    const parts = candidatoFecha.split('/');
+                    if (parts.length === 3) {
+                        // Asumimos DD/MM/YYYY
+                        f2 = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                    } else {
+                        f2 = new Date(candidatoFecha);
+                    }
+                } else {
+                    f2 = new Date(candidatoFecha);
+                }
+
+                if (!isNaN(f1) && !isNaN(f2)) {
+                    difDias = Math.round((f2 - f1) / (1000 * 60 * 60 * 24));
+                    if (difDias !== 0) {
+                        alertaFecha = difDias > 0 ? `Emitida ${difDias} días después` : `Emitida ${Math.abs(difDias)} días antes`;
+                    }
+                } else {
+                    console.log(`[VIGÍA TICKET 18] Error parseando fechas - f1: ${f1}, f2: ${f2} (Originales: ${fechaRef}, ${candidatoFecha})`);
                 }
             }
 
@@ -452,7 +499,7 @@ async function diagnosticoVigiaAuditor(req, res) {
 
         // FILTRADO DE SEGURIDAD (Ignorar devoluciones con más de 45 días de antigüedad respecto al retiro)
         const candidatosConDiagnostico = candidatosBrutos
-            .filter(c => c.diagnostico._score_dias <= 45)
+            .filter(c => !isNaN(c.diagnostico._score_dias) && c.diagnostico._score_dias <= 45)
             // ORDENAR: Los matches más cercanos en cantidad primero, luego en fecha
             .sort((a, b) => {
                 if (a.diagnostico._score_diferencia !== b.diagnostico._score_diferencia) {
@@ -2695,27 +2742,24 @@ const getPresupuestosEntregados = async (req, res) => {
 const vincularPresupuesto = async (req, res) => {
     const client = await pool.connect();
     try {
-        const { movimiento_id, id_presupuesto_origen, precio_unitario, descuento_aplicar, comprobante_lomasoft } = req.body;
-        if (!movimiento_id || !id_presupuesto_origen) {
-            throw new Error('Faltan parámetros requeridos (movimiento_id, id_presupuesto_origen).');
+        const { 
+            movimiento_id, 
+            id_presupuesto_origen, 
+            precio_unitario, 
+            descuento_aplicar, 
+            comprobante_lomasoft,
+            cliente_id,
+            articulo_numero,
+            cantidad
+        } = req.body;
+        
+        if (!movimiento_id || !id_presupuesto_origen || !cliente_id) {
+            throw new Error('Faltan parámetros requeridos (movimiento_id, id_presupuesto_origen, cliente_id).');
         }
 
         await client.query('BEGIN');
 
-        // 1. Obtener datos del movimiento
-        const movRes = await client.query(`
-            SELECT cliente_id, articulo_numero, cantidad, articulo_nombre 
-            FROM public.mantenimiento_movimientos 
-            WHERE id = $1
-        `, [movimiento_id]);
-
-        if (movRes.rows.length === 0) {
-            throw new Error('Movimiento no encontrado.');
-        }
-
-        const movimiento = movRes.rows[0];
-
-        // 2. Obtener el origen_facturacion del presupuesto origen
+        // 1. Obtener el origen_facturacion del presupuesto origen
         const presRes = await client.query(`
             SELECT origen_facturacion, id_presupuesto_ext
             FROM public.presupuestos
@@ -2725,7 +2769,7 @@ const vincularPresupuesto = async (req, res) => {
         const origen_facturacion = presRes.rows.length > 0 ? presRes.rows[0].origen_facturacion : 'PENDIENTE';
         const id_ext_origen = presRes.rows.length > 0 ? presRes.rows[0].id_presupuesto_ext : id_presupuesto_origen;
 
-        // 3. Crear cabecera "Orden de Retiro" en presupuestos
+        // 2. Crear cabecera "Orden de Retiro" en presupuestos
         const presupuestoIdExt = `RET-MANT-${Date.now().toString(36)}`;
         const insertHeaderQuery = `
             INSERT INTO public.presupuestos 
@@ -2734,42 +2778,52 @@ const vincularPresupuesto = async (req, res) => {
             RETURNING id, id_presupuesto_ext
         `;
         
-        const descuentoParsed = parseFloat(descuento_aplicar) || 0;
+        // Se divide por 100 para corregir el bug aritmético (ej. "5" -> 0.05) y se blinda con Math.abs
+        const descuentoDecimal = Math.abs(parseFloat(descuento_aplicar) || 0) / 100;
         
         const headerResult = await client.query(insertHeaderQuery, [
             presupuestoIdExt,
-            movimiento.cliente_id,
-            descuentoParsed,
+            cliente_id,
+            descuentoDecimal,
             origen_facturacion,
-            id_presupuesto_origen // Usamos el ID de la BD original como referencia
+            id_presupuesto_origen
         ]);
         
         const nuevoPresupuesto = headerResult.rows[0];
 
-        // 4. Crear detalle para la Orden de Retiro
-        const cantidadParsed = parseFloat(movimiento.cantidad) || 0;
-        const precioUnitarioParsed = parseFloat(precio_unitario) || 0;
-        const totalNeto = cantidadParsed * precioUnitarioParsed;
+        // 3. Crear detalle para la Orden de Retiro
+        // Aislamiento absoluto exigido (Ticket 15)
+        const cantidadAbs = Math.abs(parseFloat(cantidad) || 0);
+        const precioUnitarioAbs = Math.abs(parseFloat(precio_unitario) || 0); // Viene Neto desde UI
         
+        // Fórmula determinista exigida: (Precio) * (Cantidad) * (1 - Descuento decimal)
+        const valorTotalAbsolutoNeto = Math.abs(cantidadAbs * precioUnitarioAbs * (1 - descuentoDecimal));
+        
+        // Reconstrucción del Bruto para paridad en Devoluciones (IVA 21%)
+        const ivaMultiplicador = 1.21;
+        const precioUnitarioBruto = Math.abs(precioUnitarioAbs * ivaMultiplicador);
+        const valorTotalAbsolutoBruto = Math.abs(valorTotalAbsolutoNeto * ivaMultiplicador);
+
         const insertDetalleQuery = `
             INSERT INTO public.presupuestos_detalles
             (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1, camp1, camp2, camp3, camp4, camp5, fecha_actualizacion)
-            VALUES ($1, $2, $3, $4, $5, $6, 0, $7, 0, $8, $9, 0, CURRENT_TIMESTAMP)
+            VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, 0, CURRENT_TIMESTAMP)
         `;
         
         await client.query(insertDetalleQuery, [
             nuevoPresupuesto.id,
             nuevoPresupuesto.id_presupuesto_ext,
-            movimiento.articulo_numero,
-            cantidadParsed,
-            precioUnitarioParsed,
-            precioUnitarioParsed,
-            precioUnitarioParsed, // camp1 = precio
-            totalNeto, // camp3 = netoTotal
-            totalNeto  // camp4 = brutoTotal
+            articulo_numero,
+            cantidadAbs,
+            precioUnitarioAbs,       // valor1 (Neto)
+            precioUnitarioBruto,     // precio1 (Bruto)
+            precioUnitarioAbs,       // camp1 (Precio base)
+            0.21,                    // camp2 (Tasa IVA 21%)
+            valorTotalAbsolutoNeto,  // camp3 (Total Neto)
+            valorTotalAbsolutoBruto  // camp4 (Total Bruto)
         ]);
 
-        // 5. Actualizamos mantenimiento_movimientos
+        // 4. Actualizamos mantenimiento_movimientos
         await client.query(`
             UPDATE public.mantenimiento_movimientos
             SET id_presupuesto_origen = $1
@@ -2784,6 +2838,105 @@ const vincularPresupuesto = async (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     } finally {
         client.release();
+    }
+};
+
+/**
+ * Desvincular Presupuesto (Revertir Orden de Retiro)
+ */
+const desvincularPresupuesto = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { movimiento_id } = req.body;
+        if (!movimiento_id) throw new Error('Se requiere el ID del movimiento.');
+
+        await client.query('BEGIN');
+
+        // 1. Obtener el movimiento y su presupuesto de origen
+        const movRes = await client.query('SELECT id_presupuesto_origen FROM public.mantenimiento_movimientos WHERE id = $1', [movimiento_id]);
+        if (movRes.rows.length === 0) throw new Error('Movimiento no encontrado.');
+        
+        const id_presupuesto_origen = movRes.rows[0].id_presupuesto_origen;
+        if (!id_presupuesto_origen) throw new Error('El movimiento no posee un presupuesto vinculado.');
+
+        // 2. Buscar y eliminar la "Orden de Retiro" generada
+        const presRes = await client.query(`
+            SELECT id FROM public.presupuestos 
+            WHERE origen_numero_factura = $1 
+            AND tipo_comprobante = 'Orden de Retiro' 
+            AND estado = 'Recibido'
+            ORDER BY fecha DESC LIMIT 1
+        `, [id_presupuesto_origen]);
+
+        if (presRes.rows.length > 0) {
+            const idOrdenRetiro = presRes.rows[0].id;
+            // Eliminar detalles
+            await client.query('DELETE FROM public.presupuestos_detalles WHERE id_presupuesto = $1', [idOrdenRetiro]);
+            // Eliminar cabecera
+            await client.query('DELETE FROM public.presupuestos WHERE id = $1', [idOrdenRetiro]);
+        }
+
+        // 3. Desvincular en mantenimiento_movimientos
+        await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET id_presupuesto_origen = NULL
+            WHERE id = $1
+        `, [movimiento_id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'La vinculación ha sido revertida y la Orden de Retiro fue eliminada.' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error al desvincular presupuesto:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+};
+
+/**
+ * Salto Relacional para Mantenimiento: Busca la Orden de Retiro generada a partir de una Venta Original
+ * @param {object} req 
+ * @param {object} res 
+ */
+const buscarOrdenRetiro = async (req, res) => {
+    try {
+        const { idFactura, articulo } = req.params;
+        
+        const result = await pool.query(`
+            SELECT p.id as id_orden_retiro
+            FROM public.presupuestos p
+            JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = p.id
+            WHERE p.origen_numero_factura = $1
+              AND p.tipo_comprobante = 'Orden de Retiro'
+              AND pd.articulo = $2
+            ORDER BY p.id DESC
+            LIMIT 1
+        `, [String(idFactura), articulo]);
+
+        if (result.rows.length > 0) {
+            return res.json({ success: true, id_orden_retiro: result.rows[0].id_orden_retiro });
+        }
+
+        // Fallback: buscar solo por ID sin restringir el artículo si no coincide
+        const fallback = await pool.query(`
+            SELECT id as id_orden_retiro
+            FROM public.presupuestos
+            WHERE origen_numero_factura = $1
+              AND tipo_comprobante = 'Orden de Retiro'
+            ORDER BY id DESC
+            LIMIT 1
+        `, [String(idFactura)]);
+
+        if (fallback.rows.length > 0) {
+            return res.json({ success: true, id_orden_retiro: fallback.rows[0].id_orden_retiro });
+        }
+
+        return res.json({ success: false, message: 'No se encontró Orden de Retiro asociada a la factura original.' });
+
+    } catch (error) {
+        console.error('❌ [MANTENIMIENTO] Error al buscar Orden de Retiro:', error.message);
+        return res.status(500).json({ success: false, error: error.message });
     }
 };
 
@@ -2818,5 +2971,7 @@ module.exports = {
     imprimirComprobanteArribo,
     asignarArticuloOficial,
     getPresupuestosEntregados,
-    vincularPresupuesto
+    vincularPresupuesto,
+    desvincularPresupuesto,
+    buscarOrdenRetiro
 };

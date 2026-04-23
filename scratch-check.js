@@ -557,11 +557,10 @@
                     const resDiv = document.getElementById('vinculacion-resultados');
                     try {
                         // 1. Fetch Historial
-                        const params = new URLSearchParams({ cliente_id: clienteId, articulo_codigo: articuloNumero });
                         const urlBase = window.location.origin;
                         const [resHistorial, resPrecios] = await Promise.all([
-                            fetch(`${urlBase}/api/presupuestos/historial-articulo?${params}`),
-                            fetch(`${urlBase}/api/presupuestos/precios?${params}`)
+                            fetch(`${urlBase}/api/presupuestos/historial-articulo?cliente_id=${clienteId}&articulo_codigo=${articuloNumero}`),
+                            fetch(`${urlBase}/api/presupuestos/precios?cliente_id=${clienteId}&codigo_barras=${articuloNumero}`)
                         ]);
 
                         if (!resHistorial.ok) throw new Error('Error al buscar historial');
@@ -671,7 +670,7 @@
                                                     <div style="margin-top: 4px;">${badgeDiff}</div>
                                                 </div>
                                                 <div style="display: flex; gap: 8px;">
-                                                    <button class="btn-historico" style="background: #2c3e50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">
+                                                    <button class="btn-historico" style="background: #2c3e50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" onclick="confirmarUsoHistorico('${idMovimiento}', '${h.id_presupuesto}', '${clienteId}', '${articuloNumero}', '${cantidad}', '${fechaRef}', '${precioHist}', '${descuentoPct}', '${h.comprobante_lomasoft || ''}', '${h.id_presupuesto}')">
                                                         ↩️ Usar Histórico ($${precioHist.toFixed(0)})
                                                     </button>
                                                     ${Math.abs(diff) > 0.01 ? `
@@ -706,6 +705,23 @@
             });
         }
 
+        window.confirmarUsoHistorico = function(idMov, idPresup, clienteId, artNum, cant, fechaRef, precHist, descPct, lomasoft, numeroComprobante) {
+            Swal.fire({
+                title: '¿Vincular este comprobante?',
+                html: `Está a punto de vincular el bulto con el comprobante histórico <strong>#${numeroComprobante}</strong>.<br><br>¿Desea continuar?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Sí, vincular',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    ejecutarVinculacionPresupuesto(idMov, idPresup, clienteId, artNum, cant, fechaRef, precHist, descPct, lomasoft);
+                }
+            });
+        }
+
         window.ejecutarVinculacionPresupuesto = async function(idMovimiento, idPresupuesto, clienteId, articuloNumero, cantidad, fechaRef, precioHistorico, descuentoPorcentaje, comprobanteLomasoft) {
             Swal.fire({
                 title: 'Generando Documento de Retiro...',
@@ -724,14 +740,21 @@
                         id_presupuesto_origen: idPresupuesto,
                         precio_unitario: precioHistorico,
                         descuento_aplicar: descuentoPorcentaje,
-                        comprobante_lomasoft: comprobanteLomasoft
+                        comprobante_lomasoft: comprobanteLomasoft,
+                        cliente_id: clienteId,
+                        articulo_numero: articuloNumero,
+                        cantidad: cantidad
                     })
                 });
                 const data = await res.json();
                 
                 if (data.success) {
                     Swal.fire('Vínculo Exitoso', 'Se ha generado la Orden de Retiro en el módulo de Presupuestos y se vinculó correctamente al registro.', 'success').then(() => {
-                        cargarStock();
+                        if (data.origen_facturacion === 'LOMASOFT') {
+                            conciliar(clienteId, articuloNumero, cantidad, fechaRef, data.id_nuevo_presupuesto);
+                        } else {
+                            cargarStock();
+                        }
                     });
                 } else {
                     throw new Error(data.error || 'Falla al vincular');
@@ -739,6 +762,39 @@
             } catch (err) {
                 Swal.fire('Error', err.message, 'error');
             }
+        };
+
+        window.desvincularPresupuesto = function(idMovimiento) {
+            Swal.fire({
+                title: '¿Desvincular Documento?',
+                text: "Esto eliminará la Orden de Retiro generada y devolverá el registro a estado pendiente.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Sí, desvincular'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    try {
+                        const urlBase = window.location.origin;
+                        const res = await fetch(`${urlBase}/api/produccion/mantenimiento/desvincular-presupuesto`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ movimiento_id: idMovimiento })
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            Swal.fire('Desvinculado', data.message, 'success');
+                            cargarStock();
+                        } else {
+                            throw new Error(data.error || 'Error al desvincular');
+                        }
+                    } catch (e) {
+                        Swal.fire('Error', e.message, 'error');
+                    }
+                }
+            });
         };
 
         async function cargarStock() {
@@ -973,7 +1029,14 @@
                                  🧾 Emitir NC ARCA
                              </button>`;
                             statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE NC]</span>`;
-                        } else if (item.origen_facturacion === 'LAMDA' && esArcaOK) {
+                        }
+                        
+                        innerActions += `
+                             <button onclick="desvincularPresupuesto(${item.id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                 🔗 Desvincular Documento / Revertir
+                             </button>`;
+                        
+                        if (item.origen_facturacion === 'LAMDA' && esArcaOK) {
                             statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ NC EMITIDA]</span>`;
                         } else if (esLomasoftOK) {
                             statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ CONCILIADO LOMASOFT]</span>`;

@@ -9,6 +9,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
                 p.id_cliente, 
                 p.fecha, 
                 p.estado,
+                p.tipo_comprobante,
                 SUM(pd.cantidad * COALESCE(pd.precio1, pd.valor1, 0)) * (1 - COALESCE(p.descuento, 0)) AS monto_total,
                 json_agg(
                     COALESCE(a.numero, pd.articulo)
@@ -27,14 +28,14 @@ const buscarCandidatasLomasoft = async (req, res) => {
         }
 
         const localData = dbResult.rows[0];
-        const isAdministrativaNC = localData.estado === 'Administrativa NC';
+        const esDevolucion = localData.estado === 'Administrativa NC' || localData.tipo_comprobante === 'Orden de Retiro';
         const baseUrl = process.env.CLOUDFLARE_URL || "https://api.lamdaser.com";
 
         let candidatasArray = [];
         let totalCandidatas = 0;
 
-        if (isAdministrativaNC) {
-            console.log(`🚀 [LOMASOFT] Presupuesto es 'Administrativa NC'. Buscando Notas de Crédito en /devoluciones`);
+        if (esDevolucion) {
+            console.log(`🚀 [LOMASOFT] Presupuesto es Devolución (NC / Retiro). Buscando Notas de Crédito en /devoluciones`);
             const articulos = localData.codigos_articulos ? localData.codigos_articulos.filter(a => a && a.toString().trim() !== '') : [];
             
             // Si no hay artículos específicos (ej. es un texto genérico de devolución), forzamos una búsqueda general para el cliente
@@ -49,6 +50,13 @@ const buscarCandidatasLomasoft = async (req, res) => {
                 }
 
                 try {
+                    console.log('\n================ VIGÍA DEPURADOR TICKET 26: REQUEST (DEVOLUCIÓN) ================');
+                    console.log(`URL y Endpoint exacto: GET ${urlLomasoft.toString()}`);
+                    console.log(`Headers: { 'Accept': 'application/json' }`);
+                    console.log(`Datos Locales de Contexto: ID=${id}, Cliente=${localData.id_cliente}, Articulo=${articulo}`);
+                    console.log(`Monto Esperado (monto_total del Presupuesto): ${localData.monto_total}`);
+                    console.log('=================================================================================\n');
+
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 10000);
 
@@ -60,6 +68,13 @@ const buscarCandidatasLomasoft = async (req, res) => {
 
                     if (lomaRes.ok) {
                         const jsonText = await lomaRes.text();
+                        
+                        console.log('\n================ VIGÍA DEPURADOR TICKET 26: RESPONSE (DEVOLUCIÓN) ================');
+                        console.log(`Status HTTP de Lomasoft: ${lomaRes.status}`);
+                        console.log(`Body JSON literal:`);
+                        console.log(jsonText);
+                        console.log('==================================================================================\n');
+
                         let lomaData = [];
                         try {
                             lomaData = JSON.parse(jsonText);

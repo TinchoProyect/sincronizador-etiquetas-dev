@@ -1,6 +1,8 @@
 {
-  "numero": "PJx2",
-  "nombre": "Pasa/Jumbo x 2",
-  "codigo_barras": "7744440032",
-  "cantidad": "1"
+  "articulo": {
+    "numero": "MFSSPx2",
+    "nombre": "Mix/F/Secas/SPasas x 2",
+    "codigo_barras": "2589631452"
+  },
+  "cantidad": "1.00"
 }
