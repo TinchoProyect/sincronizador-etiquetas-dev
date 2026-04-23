@@ -115,7 +115,7 @@ function renderizarListaCompacta() {
         const pE = parada.entregas[0];
         return `
             <div class="acomodar-item" data-key="${parada.key}" style="display: flex; align-items: center; padding: 14px; border-bottom: 1px solid #cbd5e1; background: white;">
-                <div style="cursor: grab; padding-right: 16px; color: #94a3b8; font-size: 1.5rem;">☰</div>
+                <div class="drag-handle" style="cursor: grab; padding-right: 16px; color: #94a3b8; font-size: 1.5rem;">☰</div>
                 <div style="flex: 1; overflow: hidden;">
                     <div style="font-weight: 800; color: #1e293b; font-size: 1rem; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
                         <span style="background: #2563eb; color: white; padding: 3px 8px; border-radius: 6px; font-size: 0.85rem; margin-right: 8px; display: inline-block; width: 28px; text-align: center;">${index + 1}</span>
@@ -135,7 +135,7 @@ function iniciarSortable() {
     if (sortableInstance) sortableInstance.destroy();
     if (typeof Sortable !== 'undefined') {
         sortableInstance = Sortable.create(list, {
-            animation: 150, handle: '.acomodar-item', ghostClass: 'sortable-ghost',
+            animation: 150, handle: '.drag-handle', ghostClass: 'sortable-ghost',
             onEnd: function (evt) {
                 const item = paradasTemporales.splice(evt.oldIndex, 1)[0];
                 paradasTemporales.splice(evt.newIndex, 0, item);

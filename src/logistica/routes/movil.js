@@ -434,6 +434,7 @@ router.get('/ruta-activa', async (req, res) => {
         const queryRetiros = `
             SELECT 
                 o.id as id_orden,
+                o.orden_entrega,
                 o.estado_logistico,
                 o.estado_tratamiento,
                 o.codigo_qr_hash,
@@ -470,6 +471,7 @@ router.get('/ruta-activa', async (req, res) => {
         const retirosMantenimiento = resultRetiros.rows.map(r => ({
             id_orden: r.id_orden,
             es_retiro_tratamiento: true,
+            orden_entrega: r.orden_entrega,
             estado_logistico: r.estado_logistico,
             estado_tratamiento: r.estado_tratamiento,
             hash: r.codigo_qr_hash,

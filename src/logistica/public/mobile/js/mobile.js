@@ -261,6 +261,7 @@ async function cargarRutaActiva(rutaIdForzada = null) {
                 const retirosAdaptados = result.data.retiros.map(r => ({
                     id_presupuesto: `RT-${r.id_orden}`,
                     es_retiro_tratamiento: true,
+                    orden_entrega: r.orden_entrega,
                     hash: r.hash,
                     id_orden_real: r.id_orden,
                     estado: 'Orden de Tratamiento',
@@ -272,6 +273,9 @@ async function cargarRutaActiva(rutaIdForzada = null) {
                 }));
                 state.entregas = [...state.entregas, ...retirosAdaptados];
             }
+
+            // Consolidar y garantizar ordenamiento estricto
+            state.entregas.sort((a, b) => (a.orden_entrega ?? 999) - (b.orden_entrega ?? 999));
 
             // Persistir la ruta seleccionada para sobrevivir F5
             sessionStorage.setItem('activeRouteId', state.ruta.id);
