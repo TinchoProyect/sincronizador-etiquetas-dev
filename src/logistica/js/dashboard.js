@@ -875,6 +875,41 @@ function renderizarTarjetaRuta(ruta) {
         `;
     }
 
+    // Lógica de Tramos de Navegación (Batching) replicada de Móvil
+    const puntosValidos = [];
+    if (ruta.presupuestos && ruta.presupuestos.length > 0) {
+        const paradas = agruparPresupuestosEnParadas(ruta.presupuestos);
+        paradas.forEach((parada, idx) => {
+            const p = parada.presupuestos[0];
+            if (p && p.latitud && p.latitud !== 'null' && p.longitud !== 'null') {
+                puntosValidos.push({ lat: parseFloat(p.latitud), lng: parseFloat(p.longitud), numero: idx + 1 });
+            }
+        });
+    }
+
+    let tramos = [];
+    let i = 0;
+    while (i < puntosValidos.length) {
+        let chunk = puntosValidos.slice(i, i + 10);
+        tramos.push(chunk);
+        if (i + 10 >= puntosValidos.length) break;
+        i += 9;
+    }
+
+    let tramosHTML = '';
+    if (tramos.length > 0) {
+        tramosHTML = `<div style="margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.25rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1;">`;
+        tramos.forEach((tramo, tIdx) => {
+            if(tramo.length === 0) return;
+            const encodedTramo = encodeURIComponent(JSON.stringify(tramo));
+            let label = tIdx === 0 ? `🗺️ Tramo 1 [1-${tramo[tramo.length-1].numero}]` : `🗺️ Tramo ${tIdx+1} [${tramo[0].numero}-${tramo[tramo.length-1].numero}]`;
+            tramosHTML += `<button onclick="event.stopPropagation(); window.abrirTramoGoogleMaps(${tIdx}, '${encodedTramo}')" class="btn-sm" style="background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 4px; font-weight: bold; padding: 2px 6px; font-size: 0.7rem; cursor: pointer;" title="Abrir en Google Maps">
+                ${label}
+            </button>`;
+        });
+        tramosHTML += `</div>`;
+    }
+
     return `
         <div class="ruta-card ${ruta.estado?.toLowerCase() || 'armando'}" 
              data-id="${ruta.id}"
@@ -903,7 +938,9 @@ function renderizarTarjetaRuta(ruta) {
                     <div class="ruta-stat-label">Estado</div>
                 </div>
             </div>
+
             ${pedidosHTML}
+            ${tramosHTML}
             <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
                 <button class="btn-secondary" style="flex: 1; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
                         onclick="event.stopPropagation(); verDetallesRuta(${ruta.id})">
@@ -1407,6 +1444,44 @@ async function verDetallesRuta(rutaId) {
 
                 // Generar HTML con lista de pedidos (NUEVA JERARQUÍA: Cliente primero)
                 let pedidosHTML = '';
+                
+                // Lógica de Tramos de Navegación (Batching) replicada de Móvil
+                let tramosHTML = '';
+                const puntosValidos = [];
+                if (ruta.presupuestos && ruta.presupuestos.length > 0) {
+                    const paradas = agruparPresupuestosEnParadas(ruta.presupuestos);
+                    paradas.forEach((parada, idx) => {
+                        const p = parada.presupuestos[0];
+                        if (p && p.latitud && p.latitud !== 'null' && p.longitud !== 'null') {
+                            puntosValidos.push({ lat: parseFloat(p.latitud), lng: parseFloat(p.longitud), numero: idx + 1 });
+                        }
+                    });
+                }
+            
+                let tramos = [];
+                let i = 0;
+                while (i < puntosValidos.length) {
+                    let chunk = puntosValidos.slice(i, i + 10);
+                    tramos.push(chunk);
+                    if (i + 10 >= puntosValidos.length) break;
+                    i += 9;
+                }
+            
+                if (tramos.length > 0) {
+                    tramosHTML = `<div style="margin-top: 1rem; padding: 0.75rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem;">
+                                    <strong style="display: block; margin-bottom: 0.5rem; color: #1e3a8a;">🗺️ Navegación por Tramos (Google Maps)</strong>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">`;
+                    tramos.forEach((tramo, tIdx) => {
+                        if(tramo.length === 0) return;
+                        const encodedTramo = encodeURIComponent(JSON.stringify(tramo));
+                        let label = tIdx === 0 ? `Tramo 1 [1-${tramo[tramo.length-1].numero}]` : `Tramo ${tIdx+1} [${tramo[0].numero}-${tramo[tramo.length-1].numero}]`;
+                        tramosHTML += `<button onclick="window.abrirTramoGoogleMaps(${tIdx}, '${encodedTramo}')" style="background-color: #2563eb; color: white; border: none; border-radius: 4px; font-weight: bold; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.backgroundColor='#1d4ed8'" onmouseout="this.style.backgroundColor='#2563eb'">
+                            📍 ${label}
+                        </button>`;
+                    });
+                    tramosHTML += `</div></div>`;
+                }
+
                 if (ruta.presupuestos && ruta.presupuestos.length > 0) {
                     pedidosHTML = '<div style="margin-top: 1rem;"><strong>Pedidos en ruta:</strong><ol style="margin: 0.5rem 0; padding-left: 1.5rem;">';
                     ruta.presupuestos.forEach((p, index) => {
@@ -1432,6 +1507,7 @@ async function verDetallesRuta(rutaId) {
                     <p><strong>Estado:</strong> ${ruta.estado}</p>
                     <p><strong>Pedidos:</strong> ${ruta.presupuestos?.length || 0}</p>
                     <p><strong>Fecha Salida:</strong> ${new Date(ruta.fecha_salida).toLocaleString()}</p>
+                    ${tramosHTML}
                     ${pedidosHTML}
                 `;
             }
@@ -2713,3 +2789,42 @@ window.imprimirEtiquetaLamda = async function() {
         }
     }
 }
+
+/**
+ * Lógica de Tramos de Navegación Dinámicos (Batching)
+ * Réplica de la funcionalidad de la PWA para el PC
+ */
+window.abrirTramoGoogleMaps = function(index, destinosJson) {
+    const tramo = JSON.parse(decodeURIComponent(destinosJson));
+    if (tramo.length === 0) return;
+    
+    if (index === 0) {
+        const abrirConOrigen = (origenStr) => {
+            let destino = `${tramo[tramo.length - 1].lat},${tramo[tramo.length - 1].lng}`;
+            let waypointsArr = tramo.slice(0, tramo.length - 1);
+            let url = `https://www.google.com/maps/dir/?api=1&destination=${destino}`;
+            if (origenStr) url += `&origin=${origenStr}`;
+            if (waypointsArr.length > 0) url += `&waypoints=${waypointsArr.map(p => `${p.lat},${p.lng}`).join('|')}`;
+            window.open(url, '_blank');
+        };
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => abrirConOrigen(`${pos.coords.latitude},${pos.coords.longitude}`),
+                (err) => abrirConOrigen(''),
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        } else {
+            abrirConOrigen('');
+        }
+    } else {
+        let origen = `${tramo[0].lat},${tramo[0].lng}`;
+        let destino = `${tramo[tramo.length - 1].lat},${tramo[tramo.length - 1].lng}`;
+        let waypointsArr = tramo.slice(1, tramo.length - 1);
+        let url = `https://www.google.com/maps/dir/?api=1&destination=${destino}&origin=${origen}`;
+        if (waypointsArr.length > 0) {
+            url += `&waypoints=${waypointsArr.map(p => `${p.lat},${p.lng}`).join('|')}`;
+        }
+        window.open(url, '_blank');
+    }
+};
