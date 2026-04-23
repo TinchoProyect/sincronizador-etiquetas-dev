@@ -14,6 +14,7 @@ window.abrirModalAcomodar = async () => {
     renderizarListaCompacta();
     inicializarMapaAcomodar();
     iniciarSortable();
+    renderizarBotonesGoogleMaps();
 };
 
 window.cerrarModalAcomodar = () => {
@@ -139,8 +140,101 @@ function iniciarSortable() {
             onEnd: function (evt) {
                 const item = paradasTemporales.splice(evt.oldIndex, 1)[0];
                 paradasTemporales.splice(evt.newIndex, 0, item);
-                dibujarMapa(); renderizarListaCompacta();
+                dibujarMapa(); renderizarListaCompacta(); renderizarBotonesGoogleMaps();
             }
         });
     }
+}
+
+let currentGPS = null;
+
+async function obtenerGPS() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve(null);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+    });
+}
+
+async function renderizarBotonesGoogleMaps() {
+    const contenedor = document.getElementById('contenedor-tramos-mapa');
+    if (!contenedor) return;
+    
+    // Obtener GPS si es la primera vez (silenciosamente)
+    if (!currentGPS) {
+        currentGPS = await obtenerGPS();
+    }
+
+    // Extraer coordenadas válidas
+    const puntosValidos = [];
+    paradasTemporales.forEach((parada, index) => {
+        const dom = parada.entregas[0]?.domicilio;
+        if (dom && dom.latitud && dom.latitud !== 'null' && dom.longitud !== 'null') {
+            puntosValidos.push({ 
+                lat: parseFloat(dom.latitud), 
+                lng: parseFloat(dom.longitud), 
+                numero: index + 1 
+            });
+        }
+    });
+
+    if (puntosValidos.length === 0) {
+        contenedor.style.display = 'none';
+        return;
+    }
+
+    contenedor.style.display = 'block';
+    
+    // Batching de hasta 10 paradas por tramo
+    let tramos = [];
+    let i = 0;
+    while (i < puntosValidos.length) {
+        let chunk = puntosValidos.slice(i, i + 10);
+        tramos.push(chunk);
+        if (i + 10 >= puntosValidos.length) break;
+        i += 9; // El último elemento de este chunk es el primero del siguiente
+    }
+
+    // Generar HTML
+    const htmlBotones = tramos.map((tramo, index) => {
+        if (tramo.length === 0) return '';
+        
+        let origen, destino, waypointsArr;
+        
+        if (index === 0) {
+            // Primer tramo: Origen = Ubicación Actual, Waypoints = [0..N-2], Destino = N-1
+            origen = currentGPS ? `${currentGPS.lat},${currentGPS.lng}` : ''; // Si está vacío, Google asume Current Location
+            destino = `${tramo[tramo.length - 1].lat},${tramo[tramo.length - 1].lng}`;
+            waypointsArr = tramo.slice(0, tramo.length - 1);
+        } else {
+            // Tramos siguientes: Origen = tramo[0], Waypoints = [1..N-2], Destino = N-1
+            origen = `${tramo[0].lat},${tramo[0].lng}`;
+            destino = `${tramo[tramo.length - 1].lat},${tramo[tramo.length - 1].lng}`;
+            waypointsArr = tramo.slice(1, tramo.length - 1);
+        }
+
+        let url = `https://www.google.com/maps/dir/?api=1&destination=${destino}`;
+        if (origen) {
+            url += `&origin=${origen}`;
+        }
+        if (waypointsArr.length > 0) {
+            const wpStr = waypointsArr.map(p => `${p.lat},${p.lng}`).join('|');
+            url += `&waypoints=${wpStr}`;
+        }
+        
+        let label = `🗺️ Tramo ${index + 1} [${tramo[0].numero}-${tramo[tramo.length-1].numero}]`;
+        if (index === 0) {
+            label = `🗺️ Iniciar Recorrido [1-${tramo[tramo.length-1].numero}]`;
+        }
+        
+        return `<button onclick="window.open('${url}', '_blank')" style="background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-right: 8px; cursor: pointer; font-size: 0.9rem;">${label}</button>`;
+    }).join('');
+
+    contenedor.innerHTML = htmlBotones || '<span style="color: #64748b; font-size: 0.9rem;">No hay coordenadas suficientes</span>';
 }

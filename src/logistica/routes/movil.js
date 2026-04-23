@@ -463,7 +463,7 @@ router.get('/ruta-activa', async (req, res) => {
                 LIMIT 1
             ) cd ON true
             WHERE o.id_ruta = $1
-            AND o.estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION', 'EN_CAMINO')
+            AND o.estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION', 'EN_CAMINO', 'PENDIENTE_DEVOLUCION_CLIENTE')
             ORDER BY o.id ASC
         `;
         const resultRetiros = await req.db.query(queryRetiros, [ruta.id]);

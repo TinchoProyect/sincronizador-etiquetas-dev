@@ -242,7 +242,12 @@ router.delete('/:id/presupuestos/:presupuestoId', async (req, res) => {
                 const idOrden = presupuestoId.replace('RT-', '');
                 await client.query(
                     `UPDATE ordenes_tratamiento
-                     SET id_ruta = NULL
+                     SET id_ruta = NULL,
+                         estado_logistico = CASE 
+                             WHEN estado_logistico = 'PENDIENTE_DEVOLUCION_CLIENTE' THEN 'INGRESADO_LOCAL'
+                             WHEN estado_logistico IN ('EN_CAMINO', 'PENDIENTE_VALIDACION') THEN 'PENDIENTE_CLIENTE'
+                             ELSE estado_logistico
+                         END
                      WHERE id = $1 AND id_ruta = $2`,
                     [idOrden, id]
                 );

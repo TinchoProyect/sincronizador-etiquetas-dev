@@ -48,10 +48,10 @@ function renderizarEntregas() {
                 ${isArmando ? `
                 <button onclick="window.abrirModalAgregarPedidos()" style="background: #8b5cf6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
                     ➕ Agregar Pedidos
-                </button>
+                </button>` : ''}
                 <button onclick="window.abrirModalAcomodar()" style="background: #3b82f6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
                     🗺️ Acomodar Ruta
-                </button>` : ''}
+                </button>
             `;
         }
 
@@ -80,7 +80,9 @@ function renderizarEntregas() {
     container.innerHTML = routeHeaderHTML + paradas.map((parada, index) => {
         const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO');
         const primerEntrega = parada.entregas[0];
-        const esRetiro = primerEntrega.estado === 'Orden de Tratamiento';
+        const esOrdenTratamiento = primerEntrega.estado === 'Orden de Tratamiento';
+        const esEntregaTratamientoParada = esOrdenTratamiento && primerEntrega.estado_tratamiento === 'COMPLETADO';
+        const esRetiro = esOrdenTratamiento && !esEntregaTratamientoParada;
 
         const claseCard = esCompletadaTotal ? 'entrega-card completada' : 'entrega-card';
         const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO' && e.estado_logistico !== 'RETIRADO').length;
@@ -195,7 +197,7 @@ function renderizarEntregas() {
         return `
             <div class="${claseCard}" data-parada-key="${parada.key}" style="${estiloBorde} box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; transition: all 0.2s ease;">
                 <div class="entrega-header" style="margin-top: 8px;">
-                    <div class="entrega-numero" style="background: ${esRetiro ? '#d35400' : '#1e3a8a'}; opacity: 0.9;">
+                    <div class="entrega-numero" style="background: ${esRetiro ? '#d35400' : (esEntregaTratamientoParada ? '#2563eb' : '#1e3a8a')}; opacity: 0.9;">
                         ${index + 1}
                     </div>
                     <div style="flex: 1;">${headerBadgeHTML}</div>
@@ -210,6 +212,7 @@ function renderizarEntregas() {
                         [#${primerEntrega.cliente.id || 'S/N'}] ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
                     </div>
                     ${esRetiro ? '<div style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">RETIRAR</div>' : ''}
+                    ${esEntregaTratamientoParada ? '<div style="background: #2563eb; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">ENTREGA MANTENIMIENTO</div>' : ''}
                 </div>
                 
                 <div class="entrega-direccion" style="margin-top: 0.5rem; padding-bottom: 0.75rem; border-bottom: 2px dashed #e2e8f0; font-size: 0.9rem;">

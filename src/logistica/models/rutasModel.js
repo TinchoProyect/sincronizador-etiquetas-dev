@@ -346,7 +346,11 @@ class RutasModel {
             if (idsRetiros.length > 0) {
                 await client.query(
                     `UPDATE ordenes_tratamiento 
-                     SET id_ruta = $1
+                     SET id_ruta = $1,
+                         estado_logistico = CASE 
+                             WHEN estado_tratamiento = 'COMPLETADO' THEN 'PENDIENTE_DEVOLUCION_CLIENTE'
+                             ELSE estado_logistico
+                         END
                      WHERE id = ANY($2::int[])`,
                     [id_ruta, idsRetiros]
                 );
@@ -525,6 +529,7 @@ class RutasModel {
                      SET id_ruta = NULL,
                          estado_logistico = CASE 
                              WHEN estado_logistico IN ('EN_CAMINO', 'PENDIENTE_VALIDACION') THEN 'PENDIENTE_CLIENTE'
+                             WHEN estado_logistico = 'PENDIENTE_DEVOLUCION_CLIENTE' THEN 'INGRESADO_LOCAL'
                              ELSE estado_logistico
                          END,
                          orden_entrega = 999
