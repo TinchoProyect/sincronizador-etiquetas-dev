@@ -266,6 +266,7 @@ async function cargarRutaActiva(rutaIdForzada = null) {
                     id_orden_real: r.id_orden,
                     estado: 'Orden de Tratamiento',
                     estado_logistico: r.estado_logistico === 'EN_CAMINO' ? 'RETIRADO' : r.estado_logistico, // EN_CAMINO en el server es que ya viaja en camión, ergo RETIRADO visualmente.
+                    estado_tratamiento: r.estado_tratamiento,
                     total: 0,
                     cliente: r.cliente,
                     domicilio: r.domicilio,

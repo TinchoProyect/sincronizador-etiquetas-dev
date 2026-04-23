@@ -325,14 +325,16 @@ function renderizarPedidos() {
     container.innerHTML = pedidosOrdenados.map(pedido => {
         const tieneDomicilio = pedido.id_domicilio_entrega && pedido.domicilio_direccion;
         const pedidoJson = JSON.stringify(pedido).replace(/'/g, "\\'");
-        const esRetiro = pedido.estado === 'Orden de Tratamiento';
+        const esTratamiento = pedido.estado === 'Orden de Tratamiento';
+        const esDevolucion = esTratamiento && pedido.estado_tratamiento === 'COMPLETADO';
+        const esRetiro = esTratamiento && !esDevolucion;
 
-        // Estilos específicos para Retiro
-        const estiloCard = esRetiro
-            ? 'border-left: 5px solid #d35400; background-color: #fdf2e9;'
-            : '';
+        // Estilos específicos para Tratamientos
+        let estiloCard = '';
+        if (esRetiro) estiloCard = 'border-left: 5px solid #d35400; background-color: #fdf2e9;';
+        if (esDevolucion) estiloCard = 'border-left: 5px solid #2563eb; background-color: #eff6ff;';
 
-        const iconoCliente = esRetiro ? '🔙' : '👤'; // Icono distintivo
+        const iconoCliente = esRetiro ? '🔙' : (esDevolucion ? '🚚' : '👤'); // Icono distintivo
 
         // Fallbacks para edge cases (QA requirement)
         const clienteId = pedido.cliente_id || 'S/N';
@@ -361,11 +363,11 @@ function renderizarPedidos() {
                 
                 <!-- NUEVA JERARQUÍA: Cliente primero -->
                 <div class="pedido-header">
-                    <span class="pedido-cliente-id" style="font-size: 1.1rem; font-weight: 600; color: ${esRetiro ? '#d35400' : '#1e40af'};">
-                        ${iconoCliente} ${esRetiro ? 'RETIRO' : 'Cliente'} #${clienteId}
+                    <span class="pedido-cliente-id" style="font-size: 1.1rem; font-weight: 600; color: ${esRetiro ? '#d35400' : (esDevolucion ? '#2563eb' : '#1e40af')};">
+                        ${iconoCliente} ${esRetiro ? 'RETIRO' : (esDevolucion ? 'ENTREGA MANT.' : 'Cliente')} #${clienteId}
                     </span>
                     <div style="display:flex; gap:0.25rem; align-items:center;">
-                        ${!esRetiro ? (pedido.comprobante_lomasoft ? `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Lomasoft</span>` : `<span title="Pendiente de Facturación" class="pedido-badge" style="background-color:#475569; color:white;">⏳ Pte. Facturación</span>`) : (pedido.tiene_checkin ? `<span title="Check-in Completado" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Check-in Listo</span>` : `<span title="Check-in Pendiente" class="pedido-badge" style="background-color:#f59e0b; color:white;">⏳ Check-in Pte.</span>`)}
+                        ${!esTratamiento ? (pedido.comprobante_lomasoft ? `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Lomasoft</span>` : `<span title="Pendiente de Facturación" class="pedido-badge" style="background-color:#475569; color:white;">⏳ Pte. Facturación</span>`) : (pedido.tiene_checkin ? `<span title="Check-in Completado" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Check-in Listo</span>` : `<span title="Check-in Pendiente" class="pedido-badge" style="background-color:#f59e0b; color:white;">⏳ Check-in Pte.</span>`)}
                         <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
                             ${pedido.estado_logistico || 'PENDIENTE'}
                         </span>
@@ -373,12 +375,13 @@ function renderizarPedidos() {
                 </div>
 
                 ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 Orden de Tratamiento</div>` : ''}
+                ${esDevolucion ? `<div class="badge-retiro-visual" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🚚 Entrega Mantenimiento</div>` : ''}
 
                 <div class="pedido-cliente-nombre" style="font-weight: 600; margin-top: 0.25rem; color: #1e293b;">
                     ${clienteNombre}
                 </div>
                 <div class="pedido-numero-secundario" style="font-size: 0.875rem; color: #64748b; margin-top: 0.25rem;">
-                    Pedido #${pedido.id} ${esRetiro ? '(Retiro)' : ''}
+                    Pedido #${pedido.id} ${esRetiro ? '(Retiro)' : (esDevolucion ? '(Entrega Mant.)' : '')}
                 </div>
                 <div class="pedido-direccion">
                     📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}
@@ -386,7 +389,7 @@ function renderizarPedidos() {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
                     ${pedido.total ? `<div class="pedido-monto" style="font-weight:bold; color:#059669;">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : '<div></div>'}
                     <div style="display:flex; gap:0.25rem;">
-                        ${!pedido.comprobante_lomasoft && !esRetiro ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
+                        ${!pedido.comprobante_lomasoft && !esTratamiento ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
                         ${esRetiro ? `<button onclick="event.stopPropagation(); window.abrirModalContingencia('${pedido.hash}', ${pedido.tiene_checkin})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #f59e0b; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Consultar o Completar Datos del Tratamiento">✏️ ${pedido.tiene_checkin ? 'Modificar' : 'Check-in'}</button>` : ''}
                         ${esRetiro && pedido.tiene_checkin ? `<button onclick="event.stopPropagation(); window.open(\`/api/logistica/tratamientos/print/${pedido.hash}\`, '_blank')" class="btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background-color: #2563eb; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Ver Reporte PDF">🖨️ PDF</button>` : ''}
                         ${esRetiro ? `<button onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-sm btn-danger" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ef4444; color:white; border:none; border-radius:3px; cursor:pointer;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
@@ -758,13 +761,16 @@ function renderizarTarjetaRuta(ruta) {
 
             // DETECTAR SI ES RETIRO (O SI EL GRUPO CONTIENE UN RETIRO)
             // Asumimos que si agrupa por parada, todos son del mismo tipo o al menos mostramos estilo si el primero lo es.
-            const esRetiro = primerPedido.estado === 'Orden de Tratamiento';
+            const esTratamiento = primerPedido.estado === 'Orden de Tratamiento';
+            const esDevolucion = esTratamiento && primerPedido.estado_tratamiento === 'COMPLETADO';
+            const esRetiro = esTratamiento && !esDevolucion;
 
-            // Estilos Austeros para Retiro en Ruta
-            const estiloItem = esRetiro
-                ? 'background-color: #fdf2e9; border-left: 4px solid #d35400;'
-                : 'background-color: white;';
-            const iconoCliente = esRetiro ? '🔙' : '👤';
+            // Estilos Austeros para Retiro/Devolucion en Ruta
+            let estiloItem = 'background-color: white;';
+            if (esRetiro) estiloItem = 'background-color: #fdf2e9; border-left: 4px solid #d35400;';
+            if (esDevolucion) estiloItem = 'background-color: #eff6ff; border-left: 4px solid #2563eb;';
+            
+            const iconoCliente = esRetiro ? '🔙' : (esDevolucion ? '🚚' : '👤');
 
             // Totales agrupados
             const totalMonto = parada.presupuestos.reduce((sum, p) => sum + parseFloat(p.total || 0), 0);
@@ -774,10 +780,10 @@ function renderizarTarjetaRuta(ruta) {
             const listaIds = parada.presupuestos.map(p => `#${p.id}`).join(', ');
 
             return `
-                    <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''} ${esRetiro ? 'item-retiro' : ''}" 
+                    <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''} ${esRetiro ? 'item-retiro' : ''} ${esDevolucion ? 'item-entrega-mant' : ''}" 
                          data-presupuesto-ids='${idsPresupuestos}'
                          data-cliente-id="${clienteId}"
-                         data-tipo="${esRetiro ? 'retiro' : 'venta'}"
+                         data-tipo="${esRetiro ? 'retiro' : (esDevolucion ? 'entrega_mantenimiento' : 'venta')}"
                          draggable="${esArmando}"
                          ondragstart="${esArmando ? 'handlePedidoDragStart(event)' : ''}"
                          ondragover="${esArmando ? 'handlePedidoDragOver(event)' : ''}"
@@ -796,12 +802,13 @@ function renderizarTarjetaRuta(ruta) {
                                 <div style="font-weight: 700; color: #0f172a; font-size: 0.85rem;">
                                     ${iconoCliente} ${clienteNombre}
                                 </div>
-                                <div style="font-weight: 600; color: ${esRetiro ? '#d35400' : '#1e40af'}; font-size: 0.8rem; background: ${esRetiro ? '#fae5d3' : '#dbeafe'}; padding: 0 0.25rem; border-radius: 0.25rem;">
+                                <div style="font-weight: 600; color: ${esRetiro ? '#d35400' : (esDevolucion ? '#2563eb' : '#1e40af')}; font-size: 0.8rem; background: ${esRetiro ? '#fae5d3' : (esDevolucion ? '#dbeafe' : '#dbeafe')}; padding: 0 0.25rem; border-radius: 0.25rem;">
                                     Cli #${clienteId}
                                 </div>
                             </div>
                             
-                            ${esRetiro ? '<div style="font-size: 0.7rem; font-weight: bold; color: #d35400; margin-top: 0.1rem;">🔙 RETIRO</div>' : ''}
+                            ${esRetiro ? `<div style="font-size: 0.7rem; font-weight: bold; color: #d35400; margin-top: 0.1rem;">🔙 RETIRO</div>` : ''}
+                            ${esDevolucion ? `<div style="font-size: 0.7rem; font-weight: bold; color: #2563eb; margin-top: 0.1rem;">🚚 ENTREGA MANTENIMIENTO</div>` : ''}
 
                             <div style="color: #475569; font-size: 0.75rem; margin-top: 0.1rem;">
                                 📍 ${primerPedido.domicilio_direccion || 'Sin dirección'}
@@ -809,8 +816,8 @@ function renderizarTarjetaRuta(ruta) {
                             
                             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; align-items: center;">
                                 <div style="color: #64748b; font-weight: 500;">
-                                    ${esRetiro ? '↩️' : '📦'} ${cantidadPedidos > 1 ? 'Pedidos:' : 'Pedido:'} 
-                                    <span style="color: #334155; font-weight: 600;">${listaIds} ${esRetiro ? '(Retiro)' : ''}</span>
+                                    ${esRetiro ? '↩️' : (esDevolucion ? '🚚' : '📦')} ${cantidadPedidos > 1 ? 'Pedidos:' : 'Pedido:'} 
+                                    <span style="color: #334155; font-weight: 600;">${listaIds} ${esRetiro ? '(Retiro)' : (esDevolucion ? '(Entrega Mant.)' : '')}</span>
                                 </div>
                                 ${totalMonto > 0 ? `
                                     <div style="color: #059669; font-weight: 600; font-size: 0.7rem;">

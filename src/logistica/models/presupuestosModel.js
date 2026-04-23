@@ -126,7 +126,8 @@ async function obtenerPresupuestosDisponibles(pool) {
                 0
             ) * (1 - COALESCE(p.descuento, 0))) as total,
             p.comprobante_lomasoft,
-            p.id_factura_lomasoft
+            p.id_factura_lomasoft,
+            NULL as estado_tratamiento
             
         FROM presupuestos p
         
@@ -173,6 +174,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             p.id_cliente,
             NULL as agente,
             'Retiro de Mantenimiento' as nota,
+            p.estado_tratamiento,
             c.cliente_id,
             COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
             c.telefono as cliente_telefono,
@@ -221,6 +223,7 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             p.orden_entrega,
             p.comprobante_lomasoft,
             p.id_factura_lomasoft,
+            NULL as estado_tratamiento,
             
             -- Datos del cliente (cliente_id es el código visual, no el PK)
             c.cliente_id,
@@ -262,6 +265,7 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             p.orden_entrega,
             NULL as comprobante_lomasoft,
             NULL as id_factura_lomasoft,
+            p.estado_tratamiento,
             c.cliente_id,
             COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
             c.telefono as cliente_telefono,

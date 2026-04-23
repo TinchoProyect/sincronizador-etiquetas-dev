@@ -178,6 +178,7 @@ class RutasModel {
                 cd.longitud,
                 p.orden_entrega,
                 p.estado_logistico,
+                p.estado_tratamiento,
                 false as bloqueo_entrega,
                 p.fecha_creacion as fecha_asignacion_ruta,
                 NULL as comprobante_lomasoft,
