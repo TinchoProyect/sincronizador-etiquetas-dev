@@ -381,6 +381,40 @@ async function refrescarRuta() {
  */
 
 /**
+ * Alternar modo Pausa
+ */
+window.togglePausaRuta = async function(pausar) {
+    if (!state.ruta) return;
+
+    if (pausar && !confirm('¿Desea pausar la ruta? No podrá realizar entregas ni retiros mientras esté pausada.')) return;
+    if (!pausar && !confirm('¿Desea reanudar la ruta?')) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/pausa`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${sesion.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ en_pausa: pausar })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            mostrarExito(result.message);
+            // Refrescar para obtener el nuevo estado e impedir confirmaciones en UI
+            refrescarRuta();
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error) {
+        console.error('[PAUSA] Error:', error);
+        mostrarError('No se pudo modificar el estado de pausa: ' + error.message);
+    }
+};
+
+/**
  * Cerrar modal de entrega
  */
 function cerrarModalEntrega() {

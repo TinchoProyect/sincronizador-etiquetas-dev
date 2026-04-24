@@ -303,6 +303,9 @@ router.get('/ruta-activa', async (req, res) => {
                     r.fecha_salida,
                     r.estado,
                     r.id_vehiculo,
+                    r.en_pausa,
+                    r.inicio_ultima_pausa,
+                    r.tiempo_pausado_minutos,
                     u.nombre_completo as chofer_nombre
                 FROM rutas r
                 INNER JOIN usuarios u ON r.id_chofer = u.id
@@ -321,6 +324,9 @@ router.get('/ruta-activa', async (req, res) => {
                     r.fecha_salida,
                     r.estado,
                     r.id_vehiculo,
+                    r.en_pausa,
+                    r.inicio_ultima_pausa,
+                    r.tiempo_pausado_minutos,
                     u.nombre_completo as chofer_nombre
                 FROM rutas r
                 INNER JOIN usuarios u ON r.id_chofer = u.id
@@ -926,11 +932,12 @@ router.post('/rutas/finalizar', async (req, res) => {
             }
 
 
-            // 3. Actualizar estado de ruta
+            // 3. Actualizar estado de ruta y calcular duración neta
             await client.query(
                 `UPDATE rutas 
                  SET estado = 'FINALIZADA',
-                     fecha_finalizacion = NOW()
+                     fecha_finalizacion = NOW(),
+                     duracion_neta_minutos = FLOOR(EXTRACT(EPOCH FROM (NOW() - fecha_salida))/60) - COALESCE(tiempo_pausado_minutos, 0)
                  WHERE id = $1`,
                 [ruta.id]
             );
@@ -1048,7 +1055,7 @@ router.get('/rutas-historial', async (req, res) => {
         }
 
         const query = `
-            SELECT id, nombre_ruta, fecha_salida, fecha_finalizacion 
+            SELECT id, nombre_ruta, fecha_salida, fecha_finalizacion, duracion_neta_minutos 
             FROM rutas
             WHERE id_chofer = $1 AND estado = 'FINALIZADA'
             ORDER BY fecha_finalizacion DESC NULLS LAST, id DESC
@@ -1259,6 +1266,36 @@ router.put('/rutas/:id/estado', validarTokenMovil, async (req, res) => {
         }
         res.json({ success: true, message: `Ruta movida a ${estado}` });
     } catch(err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/**
+ * @route PUT /api/logistica/movil/rutas/:id/pausa
+ * @desc Alternar estado de pausa y calcular telemetría
+ */
+router.put('/rutas/:id/pausa', validarTokenMovil, async (req, res) => {
+    const { id } = req.params;
+    const { en_pausa } = req.body;
+    try {
+        if (en_pausa) {
+            await req.db.query(
+                `UPDATE rutas SET en_pausa = true, inicio_ultima_pausa = NOW() WHERE id = $1`,
+                [id]
+            );
+            res.json({ success: true, message: 'Ruta en pausa' });
+        } else {
+            await req.db.query(
+                `UPDATE rutas 
+                 SET en_pausa = false, 
+                     tiempo_pausado_minutos = COALESCE(tiempo_pausado_minutos, 0) + FLOOR(EXTRACT(EPOCH FROM (NOW() - inicio_ultima_pausa))/60),
+                     inicio_ultima_pausa = NULL
+                 WHERE id = $1 AND en_pausa = true`,
+                [id]
+            );
+            res.json({ success: true, message: 'Ruta reanudada' });
+        }
+    } catch(err) { 
+        res.status(500).json({ success: false, error: err.message }); 
+    }
 });
 
 /**

@@ -29,6 +29,9 @@ class RutasModel {
                 r.fecha_creacion,
                 r.fecha_finalizacion,
                 r.usuario_creador_id,
+                r.en_pausa,
+                r.tiempo_pausado_minutos,
+                r.duracion_neta_minutos,
                 (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) + 
                 (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id) as cantidad_presupuestos,
                 (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id AND p.estado_logistico IN ('ENTREGADO', 'RETIRADO')) +
@@ -109,7 +112,10 @@ class RutasModel {
                 r.tiempo_estimado_min,
                 r.fecha_creacion,
                 r.fecha_finalizacion,
-                r.usuario_creador_id
+                r.usuario_creador_id,
+                r.en_pausa,
+                r.tiempo_pausado_minutos,
+                r.duracion_neta_minutos
             FROM rutas r
             LEFT JOIN usuarios u ON r.id_chofer = u.id
             WHERE r.id = $1
@@ -465,7 +471,8 @@ class RutasModel {
         const query = `
             UPDATE rutas 
             SET estado = $1,
-                fecha_finalizacion = CASE WHEN $1 = 'FINALIZADA' THEN NOW() ELSE fecha_finalizacion END
+                fecha_finalizacion = CASE WHEN $1 = 'FINALIZADA' THEN NOW() ELSE fecha_finalizacion END,
+                duracion_neta_minutos = CASE WHEN $1 = 'FINALIZADA' THEN FLOOR(EXTRACT(EPOCH FROM (NOW() - fecha_salida))/60) - COALESCE(tiempo_pausado_minutos, 0) ELSE duracion_neta_minutos END
             WHERE id = $2
             RETURNING *
         `;

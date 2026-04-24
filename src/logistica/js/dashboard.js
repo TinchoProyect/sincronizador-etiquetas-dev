@@ -934,9 +934,19 @@ function renderizarTarjetaRuta(ruta) {
                     <div class="ruta-stat-label">Pedidos</div>
                 </div>
                 <div class="ruta-stat">
-                    <div class="ruta-stat-value">${ruta.estado || 'ARMANDO'}</div>
+                    <div class="ruta-stat-value">
+                        ${ruta.en_pausa ? '<span style="color:#ea580c;">⏸️ EN PAUSA</span>' : (ruta.estado || 'ARMANDO')}
+                    </div>
                     <div class="ruta-stat-label">Estado</div>
                 </div>
+                ${ruta.estado === 'FINALIZADA' && ruta.duracion_neta_minutos !== null && ruta.duracion_neta_minutos !== undefined ? `
+                <div class="ruta-stat" style="background-color: #f0fdf4; border-radius: 4px; padding: 2px 4px;">
+                    <div class="ruta-stat-value" style="color: #166534; font-size: 0.8rem;">
+                        ⏱️ ${Math.floor(ruta.duracion_neta_minutos / 60)}h ${ruta.duracion_neta_minutos % 60}m
+                    </div>
+                    <div class="ruta-stat-label" style="color: #166534;">Duración Neta</div>
+                </div>
+                ` : ''}
             </div>
 
             ${pedidosHTML}
@@ -1504,9 +1514,10 @@ async function verDetallesRuta(rutaId) {
                 detallesDiv.innerHTML = `
                     <p><strong>Nombre:</strong> ${ruta.nombre_ruta}</p>
                     <p><strong>Chofer:</strong> ${ruta.chofer_nombre || 'Sin asignar'}</p>
-                    <p><strong>Estado:</strong> ${ruta.estado}</p>
+                    <p><strong>Estado:</strong> ${ruta.en_pausa ? '<span style="color:#ea580c; font-weight:bold;">⏸️ EN PAUSA</span>' : ruta.estado}</p>
                     <p><strong>Pedidos:</strong> ${ruta.presupuestos?.length || 0}</p>
-                    <p><strong>Fecha Salida:</strong> ${new Date(ruta.fecha_salida).toLocaleString()}</p>
+                    <p><strong>Fecha Salida:</strong> ${ruta.fecha_salida ? new Date(ruta.fecha_salida).toLocaleString() : 'N/A'}</p>
+                    ${ruta.estado === 'FINALIZADA' && ruta.duracion_neta_minutos !== null && ruta.duracion_neta_minutos !== undefined ? `<p><strong>Duración Neta:</strong> ⏱️ ${Math.floor(ruta.duracion_neta_minutos / 60)}h ${ruta.duracion_neta_minutos % 60}m</p>` : ''}
                     ${tramosHTML}
                     ${pedidosHTML}
                 `;

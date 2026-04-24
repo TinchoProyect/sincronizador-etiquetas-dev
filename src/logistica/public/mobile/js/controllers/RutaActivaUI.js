@@ -43,8 +43,13 @@ function renderizarEntregas() {
         } else {
             headerActionsHTML = `
                 <button onclick="window.toggleEstadoRuta('${isArmando ? 'EN_CAMINO' : 'ARMANDO'}')" style="background: ${isArmando ? '#059669' : '#f59e0b'}; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
-                    ${isArmando ? '🚀 Iniciar Ruta' : '⏸ Detener Ruta'}
+                    ${isArmando ? '🚀 Iniciar Ruta' : '⏹ Detener Ruta'}
                 </button>
+                ${!isArmando ? `
+                <button onclick="window.togglePausaRuta(${!state.ruta.en_pausa})" style="background: ${state.ruta.en_pausa ? '#059669' : '#ea580c'}; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
+                    ${state.ruta.en_pausa ? '▶️ Reanudar Ruta' : '⏸ Pausar Ruta'}
+                </button>
+                ` : ''}
                 ${isArmando ? `
                 <button onclick="window.abrirModalAgregarPedidos()" style="background: #8b5cf6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
                     ➕ Agregar Pedidos
@@ -55,6 +60,11 @@ function renderizarEntregas() {
             `;
         }
 
+        const bgColor = state.ruta.en_pausa ? '#fffbeb' : 'white';
+        const borderColor = state.ruta.en_pausa ? '#ea580c' : (ruta100Porciento ? '#dc2626' : (isArmando ? '#d97706' : '#059669'));
+        const textColor = state.ruta.en_pausa ? '#ea580c' : (ruta100Porciento ? '#dc2626' : (isArmando ? '#d97706' : '#059669'));
+        const estadoTexto = state.ruta.en_pausa ? '⏸ RUTA EN PAUSA' : (ruta100Porciento ? '100% Completado' : (isArmando ? 'Modo Armado' : '▶ Ruta Iniciada'));
+
         routeHeaderHTML = `
             <style>
                 @keyframes pulse {
@@ -63,11 +73,11 @@ function renderizarEntregas() {
                     100% { transform: scale(1); }
                 }
             </style>
-            <div style="margin-bottom: 1.5rem; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: ${ruta100Porciento ? 'column' : 'row'}; justify-content: space-between; align-items: ${ruta100Porciento ? 'stretch' : 'center'}; gap: 12px; border-left: 4px solid ${ruta100Porciento ? '#dc2626' : (isArmando ? '#d97706' : '#059669')};">
+            <div style="margin-bottom: 1.5rem; padding: 12px; background: ${bgColor}; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: ${ruta100Porciento ? 'column' : 'row'}; justify-content: space-between; align-items: ${ruta100Porciento ? 'stretch' : 'center'}; gap: 12px; border-left: 4px solid ${borderColor};">
                 <div style="display: flex; flex-direction: column;">
                     <span style="font-size: 0.8rem; color: #64748b; font-weight: bold; text-transform: uppercase;">Estado Actual</span>
-                    <span style="font-weight: 800; color: ${ruta100Porciento ? '#dc2626' : (isArmando ? '#d97706' : '#059669')}; font-size: 1.1rem;">
-                        ${ruta100Porciento ? '100% Completado' : (isArmando ? 'Modo Armado' : '▶ Ruta Iniciada')}
+                    <span style="font-weight: 800; color: ${textColor}; font-size: 1.1rem;">
+                        ${estadoTexto}
                     </span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -125,6 +135,14 @@ function renderizarEntregas() {
             let detalleRetiroHTML = '';
             let btnCompletarCargaHTML = '';
             let disableMainBtn = completado;
+
+            // Bloqueo táctil por Pausa de Telemetría (Regla de Negocio)
+            if (state.ruta && state.ruta.en_pausa) {
+                disableMainBtn = true;
+                backgroundBoton = '#cbd5e1';
+                colorTextoBoton = '#94a3b8';
+                textoBoton = 'Pausado';
+            }
 
             if (esOrdenTratamiento) {
                 const tieneCheckin = entrega.detalles && entrega.detalles.length > 0;
