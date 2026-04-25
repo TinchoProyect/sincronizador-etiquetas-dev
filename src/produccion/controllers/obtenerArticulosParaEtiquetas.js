@@ -56,7 +56,11 @@ async function obtenerPadresParaImpresion(req, res) {
                 src.codigo_barras as padre_articulo_numero,
                 COALESCE(a_padre.nombre, src.descripcion, src.codigo_barras) as padre_descripcion,
                 src.codigo_barras as padre_codigo_barras,
-                ca.articulo_numero as hijo_articulo_numero
+                ca.articulo_numero as hijo_articulo_numero,
+                COALESCE(
+                    SUBSTRING(COALESCE(a_padre.nombre, src.descripcion) FROM '[0-9]+\\s*[xX]\\s*[0-9]+(?:\\s*(?:g|G|kg|Kg|KG))?'),
+                    (src.pack_unidades || ' x ' || ROUND((src.kilos_unidad * 1000) / src.pack_unidades))
+                ) as presentacion_padre
             FROM carros_articulos ca
             LEFT JOIN articulos a_hijo ON a_hijo.numero = ca.articulo_numero
             INNER JOIN stock_real_consolidado src 

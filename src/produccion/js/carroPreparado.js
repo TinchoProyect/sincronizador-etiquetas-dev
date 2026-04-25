@@ -274,10 +274,13 @@ export async function actualizarVisibilidadBotones() {
                                         
                                         const btnPadre = document.createElement('button');
                                         btnPadre.className = 'btn btn-info btn-imprimir-padre';
-                                        btnPadre.style.padding = '4px 8px';
-                                        btnPadre.style.fontSize = '0.85em';
-                                        // Texto abreviado para no deformar la tabla
-                                        btnPadre.innerHTML = `🏷️ Pack: ${padre.padre_articulo_numero}`;
+                                        btnPadre.style.padding = '6px 12px';
+                                        btnPadre.style.fontSize = '0.9em';
+                                        btnPadre.style.fontWeight = 'bold';
+                                        btnPadre.style.minWidth = '120px';
+                                        // Texto de presentación para lectura rápida
+                                        const textoBoton = padre.presentacion_padre || padre.padre_articulo_numero;
+                                        btnPadre.innerHTML = `🏷️ Pack: ${textoBoton}`;
                                         // Tooltip con la descripción completa
                                         btnPadre.title = `Imprimir etiquetas de Pack para:\n${padre.padre_descripcion}`;
                                         
@@ -321,7 +324,7 @@ export async function actualizarVisibilidadBotones() {
                                                 alert('Error al imprimir: ' + e.message);
                                             } finally {
                                                 btnPadre.disabled = false;
-                                                btnPadre.innerHTML = `🏷️ Pack: ${padre.padre_articulo_numero}`;
+                                                btnPadre.innerHTML = `🏷️ Pack: ${textoBoton}`;
                                             }
                                         };
                                         // Insertar el botón en el contenedor secundario inferior
