@@ -2015,7 +2015,9 @@ router.get('/carro/:id/articulos-resumen', async (req, res) => {
 
 // Ruta para obtener el estado de un carro
 // Ruta para obtener artículos para impresión de etiquetas
+const { obtenerPadresParaImpresion } = require('../controllers/obtenerArticulosParaEtiquetas');
 router.get('/carro/:id/articulos-etiquetas', obtenerArticulosParaEtiquetas);
+router.get('/carro/:id/padres-impresion', obtenerPadresParaImpresion);
 
 // Ruta para obtener artículos de recetas de un carro (solo para carros externos)
 router.get('/carro/:id/articulos-recetas', async (req, res) => {

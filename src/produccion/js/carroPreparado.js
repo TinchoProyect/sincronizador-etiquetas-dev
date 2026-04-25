@@ -236,9 +236,105 @@ export async function actualizarVisibilidadBotones() {
                     if (data.tipo_carro === 'interna') {
                         btnImprimirEtiquetas.style.display = 'inline-block';
                         console.log('✅ Botón "Imprimir Etiquetas" mostrado para carro interno confirmado');
+
+                        // LIMPIAR BOTONES ANTERIORES DE PADRES para evitar duplicados
+                        document.querySelectorAll('.btn-imprimir-padre').forEach(btn => btn.remove());
+
+                        // FETCH PADRES PARA IMPRESIÓN DINÁMICA DE PACKS EN FILA
+                        fetch(`/api/produccion/carro/${carroId}/padres-impresion`)
+                            .then(res => res.json())
+                            .then(padres => {
+                                if (padres && padres.length > 0) {
+                                    console.log(`🔗 Se encontraron ${padres.length} padres vinculados para impresión opcional por fila.`);
+                                    padres.forEach(padre => {
+                                        // Buscar la fila del artículo "Hijo" en el DOM
+                                        const filaHijo = document.querySelector(`.articulo-container[data-numero="${padre.hijo_articulo_numero}"]`);
+                                        if (!filaHijo) return;
+                                        
+                                        // Buscar o crear el contenedor secundario para packs
+                                        let packsContainer = filaHijo.querySelector('.articulo-packs-container');
+                                        if (!packsContainer) {
+                                            // Permitir que el contenedor se expanda en múltiples líneas
+                                            filaHijo.style.flexWrap = 'wrap';
+                                            
+                                            packsContainer = document.createElement('div');
+                                            packsContainer.className = 'articulo-packs-container';
+                                            packsContainer.style.flexBasis = '100%';
+                                            packsContainer.style.width = '100%';
+                                            packsContainer.style.marginTop = '10px';
+                                            packsContainer.style.paddingTop = '8px';
+                                            packsContainer.style.borderTop = '1px dashed #dee2e6';
+                                            packsContainer.style.display = 'flex';
+                                            packsContainer.style.gap = '8px';
+                                            packsContainer.style.justifyContent = 'flex-end';
+                                            packsContainer.style.alignItems = 'center';
+                                            
+                                            filaHijo.appendChild(packsContainer);
+                                        }
+                                        
+                                        const btnPadre = document.createElement('button');
+                                        btnPadre.className = 'btn btn-info btn-imprimir-padre';
+                                        btnPadre.style.padding = '4px 8px';
+                                        btnPadre.style.fontSize = '0.85em';
+                                        // Texto abreviado para no deformar la tabla
+                                        btnPadre.innerHTML = `🏷️ Pack: ${padre.padre_articulo_numero}`;
+                                        // Tooltip con la descripción completa
+                                        btnPadre.title = `Imprimir etiquetas de Pack para:\n${padre.padre_descripcion}`;
+                                        
+                                        btnPadre.onclick = async () => {
+                                            const qtyStr = prompt(`Ingrese la cantidad de etiquetas a imprimir para el pack:\n${padre.padre_descripcion}`, '1');
+                                            if (!qtyStr) return; // Se canceló el prompt
+                                            
+                                            const qty = parseInt(qtyStr, 10);
+                                            if (isNaN(qty) || qty <= 0) {
+                                                alert('⚠️ Cantidad inválida ingresada. Operación cancelada.');
+                                                return;
+                                            }
+                                            
+                                            try {
+                                                btnPadre.disabled = true;
+                                                btnPadre.textContent = 'Imprimiendo...';
+                                                
+                                                const resPrint = await fetch('http://localhost:3000/api/imprimir', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        articulo: {
+                                                            numero: padre.padre_articulo_numero,
+                                                            nombre: padre.padre_descripcion,
+                                                            codigo_barras: padre.padre_codigo_barras
+                                                        },
+                                                        cantidad: qty
+                                                    })
+                                                });
+                                                
+                                                if (!resPrint.ok) throw new Error('Error de comunicación con el motor de impresión');
+                                                
+                                                if (typeof mostrarNotificacion === 'function') {
+                                                    mostrarNotificacion(`✅ ${qty} etiquetas enviadas a imprimir para ${padre.padre_descripcion}`);
+                                                } else {
+                                                    alert(`✅ ${qty} etiquetas enviadas a imprimir para ${padre.padre_descripcion}`);
+                                                }
+                                                
+                                            } catch (e) {
+                                                console.error('❌ Error al imprimir pack:', e);
+                                                alert('Error al imprimir: ' + e.message);
+                                            } finally {
+                                                btnPadre.disabled = false;
+                                                btnPadre.innerHTML = `🏷️ Pack: ${padre.padre_articulo_numero}`;
+                                            }
+                                        };
+                                        // Insertar el botón en el contenedor secundario inferior
+                                        packsContainer.appendChild(btnPadre);
+                                    });
+                                }
+                            })
+                            .catch(err => console.error('Error al obtener padres para impresión:', err));
                     } else {
                         btnImprimirEtiquetas.style.display = 'none';
                         console.log('🚚 Botón "Imprimir Etiquetas" ocultado para carro externo');
+                        // LIMPIAR BOTONES ANTERIORES DE PADRES si el carro cambió de tipo (higiene)
+                        document.querySelectorAll('.btn-imprimir-padre').forEach(btn => btn.remove());
                     }
                 }
 
