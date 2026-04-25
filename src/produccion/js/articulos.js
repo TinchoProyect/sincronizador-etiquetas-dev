@@ -1179,7 +1179,12 @@ function manejarBusquedaIngredienteReceta(e) {
         resultados.slice(0, 50).forEach(ing => {
             const li = document.createElement('li');
             const sectorDisplay = ing.sector_letra ? ` [Sector ${ing.sector_letra}]` : '';
-            li.textContent = `${ing.nombre} (${ing.unidad_medida})${sectorDisplay}`;
+            
+            const stockActual = parseFloat(ing.stock_actual || 0);
+            const colorStock = stockActual <= 0 ? '#dc3545' : '#6c757d';
+            const stockDisplay = `<span style="float: right; color: ${colorStock}; font-weight: bold;">[Stock: ${stockActual}]</span>`;
+            
+            li.innerHTML = `<span>${ing.nombre} (${ing.unidad_medida})${sectorDisplay}</span> ${stockDisplay}`;
 
             li.addEventListener('click', () => {
                 hiddenInput.value = ing.id;
