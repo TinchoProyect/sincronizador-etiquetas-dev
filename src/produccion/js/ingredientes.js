@@ -1,4 +1,5 @@
 import { esMix } from './mix.js';
+import { modalIngredienteHTML, inicializarModalIngrediente, abrirModalNuevoIngrediente, cargarCategorias, getCategoriasCatalogo, abrirSubFormularioCategoria } from './components/modalIngrediente.js';
 
 // Variables globales
 let ingredienteEditando = null;
@@ -101,6 +102,98 @@ async function recargarDatosMantenendoFiltros() {
 
         ingredientesOriginales = ingredientesConEstado;
 
+let categoriasCatalogo = []; // Para almacenar las categorias del combobox
+
+// ✅ NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
+let estadoFiltrosGuardado = null; // Para guardar temporalmente el estado de filtros
+
+// ✅ FUNCIONES PARA MANTENER ESTADO DE FILTROS
+function guardarEstadoFiltros() {
+    estadoFiltrosGuardado = {
+        categorias: new Set(filtrosActivos),
+        tipos: new Set(filtrosTipoActivos),
+        stocks: new Set(filtrosStockActivos),
+        sectores: new Set(filtrosSectorActivos)
+    };
+}
+
+function restaurarEstadoFiltros() {
+    if (!estadoFiltrosGuardado) {
+        return;
+    }
+
+    // Restaurar los Sets de filtros
+    filtrosActivos = new Set(estadoFiltrosGuardado.categorias);
+    filtrosTipoActivos = new Set(estadoFiltrosGuardado.tipos);
+    filtrosStockActivos = new Set(estadoFiltrosGuardado.stocks);
+    filtrosSectorActivos = new Set(estadoFiltrosGuardado.sectores);
+
+    // Restaurar estado visual de los botones
+    restaurarEstadoVisualFiltros();
+}
+
+function restaurarEstadoVisualFiltros() {
+    // Restaurar botones de categoría
+    document.querySelectorAll('.categorias-botones .btn-filtro').forEach(btn => {
+        if (filtrosActivos.has(btn.textContent)) {
+            btn.classList.add('activo');
+        } else {
+            btn.classList.remove('activo');
+        }
+    });
+
+    // Restaurar botones de tipo
+    document.querySelectorAll('.tipos-botones .btn-filtro').forEach(btn => {
+        const tipo = btn.dataset.tipo;
+        if (filtrosTipoActivos.has(tipo)) {
+            btn.classList.add('activo');
+        } else {
+            btn.classList.remove('activo');
+        }
+    });
+
+    // Restaurar botones de stock
+    document.querySelectorAll('.stock-botones .btn-filtro').forEach(btn => {
+        const stock = btn.dataset.stock;
+        if (filtrosStockActivos.has(stock)) {
+            btn.classList.add('activo');
+        } else {
+            btn.classList.remove('activo');
+        }
+    });
+
+    // Restaurar botones de sector
+    document.querySelectorAll('.sectores-botones .btn-filtro').forEach(btn => {
+        const sectorId = btn.dataset.sectorId;
+        if (filtrosSectorActivos.has(sectorId)) {
+            btn.classList.add('activo');
+        } else {
+            btn.classList.remove('activo');
+        }
+    });
+}
+
+// ✅ NUEVA FUNCIÓN PARA RECARGAR DATOS SIN PERDER FILTROS
+async function recargarDatosMantenendoFiltros() {
+    try {
+        // Cargar datos frescos del servidor
+        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al obtener los datos');
+        }
+
+        const datos = await response.json();
+
+        // Actualizar lista completa y mix.js
+        ingredientesOriginales = datos;
+        window.actualizarListaIngredientes(datos);
+
+        // Mapear es_mix a esMix para consistencia
+        const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
+
+        ingredientesOriginales = ingredientesConEstado;
+
         // Aplicar filtros existentes sin reinicializar
         await actualizarTablaFiltrada();
 
@@ -110,68 +203,23 @@ async function recargarDatosMantenendoFiltros() {
     }
 }
 
-// Función para cargar sectores disponibles
-async function cargarSectores() {
-    try {
-        const response = await fetch('http://localhost:3002/api/produccion/sectores');
-        if (!response.ok) {
-            throw new Error('Error al cargar sectores');
-        }
-
-        sectoresDisponibles = await response.json();
-
-        // Actualizar selector de sectores en el modal
-        actualizarSelectorSectores();
-
-    } catch (error) {
-        console.error('❌ Error al cargar sectores:', error);
-        // No mostrar error al usuario, el selector quedará con opción por defecto
-        sectoresDisponibles = [];
-    }
-}
-
-// Función para actualizar el selector de sectores en el modal
-function actualizarSelectorSectores() {
-    const selectorSector = document.getElementById('sector');
-    if (!selectorSector) return;
-
-    // Limpiar opciones existentes
-    selectorSector.innerHTML = '<option value="">Sin sector asignado</option>';
-
-    // Agregar sectores disponibles
-    sectoresDisponibles.forEach(sector => {
-        const option = document.createElement('option');
-        option.value = sector.id;
-        option.textContent = sector.nombre;
-        selectorSector.appendChild(option);
-    });
-}
-
 // Funciones para gestionar el modal
 async function abrirModal(titulo = 'Nuevo Ingrediente') {
-    const modal = document.getElementById('modal-ingrediente');
-    const modalTitulo = document.getElementById('modal-titulo');
-    modalTitulo.textContent = titulo;
-    modal.style.display = 'block';
-
-    // Cargar sectores si no están cargados
-    if (sectoresDisponibles.length === 0) {
-        await cargarCategorias();
-        await cargarSectores();
-        inicializarComboboxCategorias();
-    }
-
-    // Si es un nuevo ingrediente, obtener el código automáticamente
     if (titulo === 'Nuevo Ingrediente') {
-        try {
-            const response = await fetch('http://localhost:3002/api/produccion/ingredientes/nuevo-codigo');
-            if (response.ok) {
-                const data = await response.json();
-                document.getElementById('codigo').value = data.codigo;
-            }
-        } catch (error) {
-            console.error('Error al obtener nuevo código:', error);
-            // No mostrar error al usuario, el código se generará al guardar
+        abrirModalNuevoIngrediente();
+    } else {
+        const modal = document.getElementById('modal-ingrediente');
+        const modalTitulo = document.getElementById('modal-titulo');
+        if (modalTitulo) modalTitulo.textContent = titulo;
+        if (modal) {
+            modal.style.display = 'flex';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            modal.style.zIndex = '10050';
+            modal.style.opacity = '1';
+            modal.style.visibility = 'visible';
+            modal.style.pointerEvents = 'auto';
+            modal.style.backgroundColor = 'rgba(0,0,0,0.6)';
         }
     }
 }
@@ -1422,231 +1470,7 @@ function actualizarBotonImpresion() {
 
 // Event Listeners
 
-// ==========================================
-// LÓGICA DEL COMBOBOX DE CATEGORÍAS (INYECTADO)
-// ==========================================
-
-async function cargarCategorias() {
-    try {
-        const response = await fetch('/api/produccion/categorias');
-        if (!response.ok) throw new Error('Error al cargar categorías');
-        categoriasCatalogo = await response.json();
-    } catch (error) {
-        console.error('Error cargando categorías:', error);
-        mostrarMensaje('Error al cargar el catálogo de categorías', 'error');
-    }
-}
-
-function inicializarComboboxCategorias() {
-    const input = document.getElementById('categoria-input');
-    const hiddenId = document.getElementById('categoria-id');
-    const list = document.getElementById('categoria-list');
-    const btnEdit = document.getElementById('btn-edit-categoria');
-
-    if (!input || !list || !hiddenId) return;
-
-    if (btnEdit) {
-        // Remover listeners anteriores por las dudas
-        const newBtnEdit = btnEdit.cloneNode(true);
-        btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit);
-        newBtnEdit.addEventListener('click', () => {
-            abrirSubFormularioCategoria(input.value);
-        });
-    }
-
-    // Precargar valor si estamos editando
-    if (ingredienteEditando) {
-        hiddenId.value = ingredienteEditando.categoria_id || '';
-        input.value = ingredienteEditando.categoria_nombre || ingredienteEditando.categoria || '';
-        if (hiddenId.value) btnEdit.style.display = 'block';
-    }
-
-    input.addEventListener('focus', () => {
-        renderizarComboboxCategorias(categoriasCatalogo);
-        list.style.display = 'block';
-    });
-
-    input.addEventListener('input', (e) => {
-        const val = e.target.value.toLowerCase();
-        // Si el usuario borra o cambia el texto, limpiar el ID oculto
-        hiddenId.value = '';
-        btnEdit.style.display = 'none';
-        
-        const filtradas = categoriasCatalogo.filter(c => c.nombre.toLowerCase().includes(val));
-        renderizarComboboxCategorias(filtradas, val);
-        list.style.display = 'block';
-    });
-
-    // Cerrar lista al hacer click fuera
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.combobox-wrapper')) {
-            list.style.display = 'none';
-        }
-    });
-}
-
-function renderizarComboboxCategorias(categorias, filtroBusqueda = '') {
-    const list = document.getElementById('categoria-list');
-    list.innerHTML = '';
-
-    categorias.forEach(cat => {
-        const li = document.createElement('li');
-        li.textContent = cat.nombre;
-        li.style.padding = '8px 12px';
-        li.style.cursor = 'pointer';
-        li.style.borderBottom = '1px solid #f1f5f9';
-        
-        li.addEventListener('mouseover', () => li.style.backgroundColor = '#f8fafc');
-        li.addEventListener('mouseout', () => li.style.backgroundColor = 'white');
-        
-        li.addEventListener('click', () => {
-            document.getElementById('categoria-input').value = cat.nombre;
-            document.getElementById('categoria-id').value = cat.id;
-            document.getElementById('btn-edit-categoria').style.display = 'block';
-            list.style.display = 'none';
-        });
-        list.appendChild(li);
-    });
-
-    // Always show a fixed "Create Category" option at the bottom
-    const li = document.createElement('li');
-    li.style.padding = '8px 12px';
-    li.style.color = '#0275d8';
-    li.style.cursor = 'pointer';
-    li.style.fontWeight = 'bold';
-    li.style.backgroundColor = '#f0f9ff';
-    li.style.borderTop = '1px solid #bae6fd';
-    
-    if (filtroBusqueda.trim() !== '') {
-        li.innerHTML = `➕ Crear nueva categoría: "${filtroBusqueda}"`;
-    } else {
-        li.innerHTML = `➕ Crear nueva categoría...`;
-    }
-    
-    li.addEventListener('click', () => abrirSubFormularioCategoria(filtroBusqueda.trim()));
-    list.appendChild(li);
-}
-
-function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false) {
-    // Si viene desde el modal "Gestionar Categorías", guardaremos un estado
-    window.isEditingCategoryModal = isModal;
-    
-    const wrapper = document.querySelector('.combobox-wrapper');
-    let container = document.getElementById('categoria-form-container');
-    const list = document.getElementById('categoria-list');
-    
-    // Crear contenedor si no existe
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'categoria-form-container';
-        container.style.background = '#f8fafc';
-        container.style.padding = '15px';
-        container.style.border = '1px solid #cbd5e1';
-        container.style.borderRadius = '6px';
-        container.style.marginTop = '10px';
-        container.style.display = 'none';
-        container.style.width = '100%';
-        container.innerHTML = `
-            <div style="margin-bottom: 8px; font-weight: bold; color: #334155; font-size: 0.9em;">Nueva/Editar Categoría</div>
-            <input type="text" id="cat-form-nombre" placeholder="Nombre exacto" required style="width: 100%; margin-bottom: 8px; padding: 6px; border: 1px solid #ccc; border-radius:4px;">
-            <input type="text" id="cat-form-desc" placeholder="Descripción (Opcional)" style="width: 100%; margin-bottom: 12px; padding: 6px; border: 1px solid #ccc; border-radius:4px;">
-            <div style="display: flex; gap: 8px;">
-                <button type="button" id="btn-guardar-categoria" style="background: #22c55e; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; flex: 1;">Guardar</button>
-                <button type="button" id="btn-cancelar-categoria" style="background: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">Cancelar</button>
-            </div>
-        `;
-        document.body.appendChild(container); // Anclarlo temporalmente
-    }
-
-    // Mover el contenedor visualmente al lugar correcto
-    if (isModal) {
-        const modalBody = document.querySelector('#modal-gestionar-categorias .modal-body');
-        modalBody.insertBefore(container, modalBody.firstChild);
-    } else {
-        if (wrapper) wrapper.parentNode.insertBefore(container, wrapper.nextSibling);
-    }
-
-    if (list) list.style.display = 'none';
-    if (wrapper && !isModal) wrapper.style.display = 'none';
-    
-    // Configurar el formulario
-    document.getElementById('cat-form-nombre').value = nombreSugerido;
-    document.getElementById('cat-form-desc').value = '';
-    
-    const editId = isModal ? window.currentEditCategoryId : document.getElementById('categoria-id').value;
-    
-    // Si estamos editando y hay ID, cargar descripción
-    if (editId) {
-        const catObj = categoriasCatalogo.find(c => c.id == editId);
-        if (catObj) document.getElementById('cat-form-desc').value = catObj.descripcion || '';
-    }
-    
-    container.style.display = 'block';
-    
-    // Asegurar limpiar event listeners anteriores usando cloneNode
-    const btnSave = document.getElementById('btn-guardar-categoria');
-    const newBtnSave = btnSave.cloneNode(true);
-    btnSave.parentNode.replaceChild(newBtnSave, btnSave);
-    
-    const btnCancel = document.getElementById('btn-cancelar-categoria');
-    const newBtnCancel = btnCancel.cloneNode(true);
-    btnCancel.parentNode.replaceChild(newBtnCancel, btnCancel);
-    
-    newBtnCancel.addEventListener('click', () => {
-        container.style.display = 'none';
-        if (!isModal && wrapper) wrapper.style.display = 'block';
-        window.currentEditCategoryId = null; // Limpiar
-    });
-        
-        newBtnSave.addEventListener('click', async () => {
-            const nombre = document.getElementById('cat-form-nombre').value.trim();
-            const descripcion = document.getElementById('cat-form-desc').value.trim();
-            if (!nombre) {
-                mostrarMensaje('El nombre de la categoría es obligatorio', 'error');
-                return;
-            }
-            
-            try {
-                const isEdit = !isModal && editId;
-                const url = isEdit ? `/api/produccion/categorias/${editId}` : '/api/produccion/categorias';
-                const method = isEdit ? 'PUT' : 'POST';
-                
-                const resp = await fetch(url, {
-                    method: method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nombre, descripcion })
-                });
-                
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    throw new Error(err.error || 'Error al guardar categoría');
-                }
-                const savedCat = await resp.json();
-                
-                // Recargar catálogo
-                await cargarCategorias();
-                
-                // Restaurar vista
-                container.style.display = 'none';
-                
-                if (!isModal && wrapper) {
-                    wrapper.style.display = 'block';
-                    document.getElementById('categoria-input').value = savedCat.nombre;
-                    document.getElementById('categoria-id').value = savedCat.id;
-                    const btnEdit = document.getElementById('btn-edit-categoria');
-                    if (btnEdit) btnEdit.style.display = 'block';
-                }
-                
-                if (isModal) {
-                    renderizarTablaCategorias();
-                }
-                
-                mostrarMensaje('Categoría guardada exitosamente', 'exito');
-            } catch (error) {
-                mostrarMensaje(error.message, 'error');
-            }
-        });
-}
+// Lógica del Combobox extraída a modalIngrediente.js
 // ==========================================
 // GESTIÓN CENTRALIZADA DE CATEGORÍAS
 // ==========================================
@@ -1670,7 +1494,7 @@ function renderizarTablaCategorias(filtro = '') {
     if (!tbody) return;
     tbody.innerHTML = '';
     
-    let categoriasAMostrar = categoriasCatalogo;
+    let categoriasAMostrar = getCategoriasCatalogo();
     if (filtro) {
         categoriasAMostrar = categoriasAMostrar.filter(c => c.nombre.toLowerCase().includes(filtro));
     }
@@ -1697,7 +1521,7 @@ function renderizarTablaCategorias(filtro = '') {
 }
 
 function editarCategoriaDesdeModal(id) {
-    const cat = categoriasCatalogo.find(c => c.id == id);
+    const cat = getCategoriasCatalogo().find(c => c.id == id);
     if (!cat) return;
     
     window.currentEditCategoryId = id;
@@ -1725,9 +1549,16 @@ async function borrarCategoria(id) {
     }
 }
 document.addEventListener('DOMContentLoaded', async () => {
-    // Inicializar combobox de categorías globalmente
-    await cargarCategorias();
-    inicializarComboboxCategorias();
+    // Inyectar modal dinámicamente
+    const contenedor = document.getElementById('contenedor-modal-ingrediente');
+    if (contenedor) {
+        contenedor.innerHTML = modalIngredienteHTML;
+        await inicializarModalIngrediente(async () => {
+            // Callback exitoso
+            mostrarMensaje('Ingrediente guardado exitosamente', 'exito');
+            await recargarDatosMantenendoFiltros();
+        });
+    }
 
 
     // Configurar botón de impresión

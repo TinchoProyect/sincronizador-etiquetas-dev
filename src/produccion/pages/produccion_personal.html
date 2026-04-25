@@ -548,37 +548,8 @@
         </div>
     </div>
 
-    <!-- Modal para crear nuevo ingrediente -->
-    <div id="modal-nuevo-ingrediente" class="modal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2>Nuevo Ingrediente</h2>
-            <form id="form-nuevo-ingrediente">
-                <div class="form-group">
-                    <label for="nombre-ingrediente">Nombre del ingrediente:</label>
-                    <input type="text" id="nombre-ingrediente" required>
-                </div>
-                <div class="form-group">
-                    <label for="unidad-medida-ingrediente">Unidad de medida:</label>
-                    <input type="text" id="unidad-medida-ingrediente" placeholder="Ej: kilo, unidad, ml..." required>
-                </div>
-                <div class="form-group">
-                    <label for="categoria-ingrediente">Categoría:</label>
-                    <input type="text" id="categoria-ingrediente" placeholder="Ej: semillas, harinas, frutos secos..."
-                        required>
-                </div>
-                <div class="form-group">
-                    <label for="stock-ingrediente">Stock actual:</label>
-                    <input type="number" id="stock-ingrediente" step="0.01" min="0">
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" id="btn-cancelar-ingrediente">Cancelar</button>
-                    <button type="button" class="btn btn-success" id="btn-guardar-ingrediente">Guardar
-                        ingrediente</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <!-- Contenedor dinámico para el modal de ingrediente (Dry Refactor Ticket #020) -->
+    <div id="contenedor-modal-ingrediente"></div>
     <!-- Modal para ingreso manual de stock -->
     <div id="modalIngresoManual" class="modal">
         <div class="modal-content">
