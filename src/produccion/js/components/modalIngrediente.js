@@ -9,42 +9,21 @@ export const modalIngredienteHTML = `
         <form id="form-ingrediente" style="display: flex; flex-direction: column; gap: 20px;">
             <input type="hidden" id="ingrediente-id">
             
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px;">
-                <!-- Columna 1: Identificación -->
-                <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <div class="form-group" style="margin: 0;">
-                        <label for="codigo" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Código</label>
-                        <input type="text" id="codigo" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; color: #64748b;">
-                    </div>
-                    
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <!-- Bloque 1: Identidad Principal -->
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start;">
                     <div class="form-group" style="margin: 0;">
                         <label for="nombre" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Nombre <span style="color: #ef4444;">*</span></label>
                         <input type="text" id="nombre" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; transition: border-color 0.2s;">
                     </div>
-                </div>
-
-                <!-- Columna 2: Cuantitativo -->
-                <div style="display: flex; flex-direction: column; gap: 15px;">
                     <div class="form-group" style="margin: 0;">
-                        <label for="stock" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Stock <span style="color: #ef4444;">*</span></label>
-                        <input type="number" id="stock" step="0.01" min="0" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
-                    </div>
-
-                    <div class="form-group" style="margin: 0;">
-                        <label for="unidad-medida" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Unidad <span style="color: #ef4444;">*</span></label>
-                        <input type="text" id="unidad-medida" placeholder="Ej: kilo" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <label for="codigo" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Código</label>
+                        <input type="text" id="codigo" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; color: #64748b;">
                     </div>
                 </div>
 
-                <!-- Columna 3: Clasificación -->
-                <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <div class="form-group" style="margin: 0;">
-                        <label for="sector" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Sector</label>
-                        <select id="sector" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: white;">
-                            <option value="">Sin sector asignado</option>
-                        </select>
-                    </div>
-
+                <!-- Bloque 2: Clasificación -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
                     <div class="form-group" style="margin: 0; position: relative;">
                         <label for="categoria-input" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Categoría <span style="color: #ef4444;">*</span></label>
                         <div class="combobox-wrapper" style="position: relative; display: flex; gap: 10px; align-items: stretch; height: 42px;">
@@ -70,13 +49,31 @@ export const modalIngredienteHTML = `
                             </div>
                         </div>
                     </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label for="sector" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Sector</label>
+                        <select id="sector" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: white;">
+                            <option value="">Sin sector asignado</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Fila 4: Descripción (Ancho completo) -->
-            <div class="form-group" style="margin: 0; width: 100%;">
-                <label for="descripcion" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Descripción General</label>
-                <textarea id="descripcion" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; resize: vertical;"></textarea>
+                <!-- Bloque 3: Métricas -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
+                    <div class="form-group" style="margin: 0;">
+                        <label for="stock" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Stock <span style="color: #ef4444;">*</span></label>
+                        <input type="number" id="stock" step="0.01" min="0" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label for="unidad-medida" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Unidad <span style="color: #ef4444;">*</span></label>
+                        <input type="text" id="unidad-medida" placeholder="Ej: kilo" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    </div>
+                </div>
+
+                <!-- Bloque 4: Detalles (Ancho completo) -->
+                <div class="form-group" style="margin: 0; width: 100%;">
+                    <label for="descripcion" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Descripción General</label>
+                    <textarea id="descripcion" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; resize: vertical;"></textarea>
+                </div>
             </div>
 
             <!-- Botones de Acción (Formulario Principal) -->
@@ -423,8 +420,10 @@ export async function abrirModalNuevoIngrediente() {
 }
 
 // Exportar funciones globales para el auditor
-window.abrirModalNuevoIngrediente = abrirModalNuevoIngrediente;
-window.inicializarModalIngrediente = inicializarModalIngrediente;
+// ===== GLOBAL EXPORTS PARA ONCLICK EVENTS =====
+// Exponer funcion en window para que el botón onclick="+ Nueva" pueda invocarla en produccion_personal
+window.abrirSubFormularioCategoria = abrirSubFormularioCategoria;
+window.abrirModalNuevoIngrediente = abrirModalNuevoIngrediente;window.inicializarModalIngrediente = inicializarModalIngrediente;
 
 /*
 =============================================================================
