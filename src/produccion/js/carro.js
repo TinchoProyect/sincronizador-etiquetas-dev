@@ -2021,6 +2021,15 @@ export async function mostrarArticulosDelCarro() {
             return;
         }
 
+        // 🔍 UX: Preservar estado de los colapsables abiertos (Ticket #014)
+        const listaArticulosContainer = document.getElementById('lista-articulos');
+        let collapsiblesAbiertos = [];
+        if (listaArticulosContainer) {
+            collapsiblesAbiertos = Array.from(listaArticulosContainer.querySelectorAll('.ingredientes-expandidos:not(.hidden)'))
+                .map(el => el.closest('.articulo-container')?.dataset.numero)
+                .filter(Boolean);
+        }
+
         const colaboradorData = localStorage.getItem('colaboradorActivo');
         if (!colaboradorData) {
             throw new Error('No hay colaborador seleccionado');
@@ -2043,6 +2052,25 @@ export async function mostrarArticulosDelCarro() {
         }
 
         const articulos = await response.json();
+
+        // 🔍 BULK CHECK PARA RECETAS (Ticket #014)
+        // Consultamos de antemano el estado de todos los artículos presentes en el carro
+        let estadoRecetas = {};
+        try {
+            const articulosNumeros = articulos.map(art => art.numero);
+            if (articulosNumeros.length > 0) {
+                const estadoResponse = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ articulos: articulosNumeros })
+                });
+                if (estadoResponse.ok) {
+                    estadoRecetas = await estadoResponse.json();
+                }
+            }
+        } catch (error) {
+            console.error('Error al realizar bulk check de estado de recetas:', error);
+        }
 
         // Obtener relaciones existentes para carros externos
         let relacionesExistentes = {};
@@ -2076,6 +2104,10 @@ export async function mostrarArticulosDelCarro() {
             const tieneRelacion = !!relacion;
 
             // Artículo original (siempre se muestra)
+            const tieneReceta = estadoRecetas[art.numero];
+            const btnClass = tieneReceta ? 'toggle-ingredientes' : 'toggle-ingredientes sin-receta';
+            const btnStyle = tieneReceta ? '' : 'background-color: #dc3545; color: white; border-color: #dc3545;';
+
             html += `
                 <div class="articulo-container" data-numero="${art.numero}">
                     <div class="articulo-info">
@@ -2094,7 +2126,7 @@ export async function mostrarArticulosDelCarro() {
                         </button>
                     </div>
                     <div class="articulo-controls">
-                        <button class="toggle-ingredientes">Ver</button>
+                        <button class="${btnClass}" style="${btnStyle}">Ver</button>
                     </div>
 
                 </div>
@@ -2143,17 +2175,31 @@ export async function mostrarArticulosDelCarro() {
                 html += `
                                 </tbody>
                             </table>
+                            <div style="margin-top: 10px; text-align: right;">
+                                <button class="btn btn-secondary btn-editar-receta" data-numero="${art.numero}" data-nombre="${art.descripcion.replace(/'/g, "\\'")}" data-modo="editar">Editar Receta</button>
+                            </div>
                         </div>
                     </div>
                 `;
             } else {
-                html += `
-                    <div class="ingredientes-expandidos hidden">
-                        <div class="ingredientes-error">
-                            No se pudieron cargar los ingredientes para este artículo.
+                if (!tieneReceta) {
+                    html += `
+                        <div class="ingredientes-expandidos hidden">
+                            <div style="text-align: center; padding: 15px; background-color: #f8f9fa; border-radius: 4px; margin-top: 10px;">
+                                <p style="margin-bottom: 10px; color: #6c757d; font-weight: bold;">Este artículo no tiene una receta configurada.</p>
+                                <button class="btn btn-primary btn-editar-receta" data-numero="${art.numero}" data-nombre="${art.descripcion.replace(/'/g, "\\'")}" data-modo="crear">Crear Receta</button>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                } else {
+                    html += `
+                        <div class="ingredientes-expandidos hidden">
+                            <div class="ingredientes-error">
+                                No se pudieron cargar los ingredientes para este artículo.
+                            </div>
+                        </div>
+                    `;
+                }
             }
 
         }
@@ -2164,6 +2210,12 @@ export async function mostrarArticulosDelCarro() {
         const contenedor = document.getElementById('lista-articulos');
         if (contenedor) {
             contenedor.innerHTML = html;
+
+            // 🔍 UX: Restaurar colapsables abiertos
+            collapsiblesAbiertos.forEach(numero => {
+                const expandido = contenedor.querySelector(`.articulo-container[data-numero="${numero}"] .ingredientes-expandidos`);
+                if (expandido) expandido.classList.remove('hidden');
+            });
         } else {
             console.error('No se encontró el contenedor lista-articulos');
         }
@@ -3583,4 +3635,40 @@ export {
     procesarGuardadoVinculo
 };
 
-
+// ==========================================
+// AUTO-REFRESH DEL CARRO AL ACTUALIZAR RECETAS (Ticket #014)
+// ==========================================
+document.addEventListener('recetaActualizada', async (event) => {
+    try {
+        console.log('🔄 [CARRO] Evento recetaActualizada capturado. Refrescando carro para artículo:', event.detail?.articulo_numero);
+        
+        // Refrescar el DOM del carro manteniendo los colapsables (gracias a la lógica en mostrarArticulosDelCarro)
+        await mostrarArticulosDelCarro();
+        
+        // Refrescar los resúmenes consolidados de la derecha (Ingredientes, Mixes, Faltantes)
+        const carroIdActual = localStorage.getItem('carroActivo');
+        const colaboradorDataActual = localStorage.getItem('colaboradorActivo');
+        
+        if (carroIdActual && colaboradorDataActual) {
+            const colaboradorActual = JSON.parse(colaboradorDataActual);
+            
+            const ingredientes = await obtenerResumenIngredientesCarro(carroIdActual, colaboradorActual.id);
+            await mostrarResumenIngredientes(ingredientes);
+            
+            const mixes = await obtenerResumenMixesCarro(carroIdActual, colaboradorActual.id);
+            mostrarResumenMixes(mixes);
+            
+            const articulos = await obtenerResumenArticulosCarro(carroIdActual, colaboradorActual.id);
+            if (articulos && articulos.length > 0) {
+                mostrarResumenArticulos(articulos);
+                const seccionArticulos = document.getElementById('resumen-articulos');
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'block';
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('⚠️ [CARRO] Error durante el auto-refresh tras actualización de receta:', error);
+    }
+});
