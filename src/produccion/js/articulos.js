@@ -411,15 +411,7 @@ export async function actualizarTablaArticulos(articulos) {
                                         title="Quitar receta">
                                     Quitar
                                 </button>
-<button type="button" 
-        class="icon-mantenimiento" 
-        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
-        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
-        title="Enviar a Mantenimiento">
-    🏥
-</button>
-
-                            ` : `
+` : `
                                 <button class="btn-editar-receta"
                                         style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
                                         data-numero="${articulo.numero}"
@@ -427,15 +419,7 @@ export async function actualizarTablaArticulos(articulos) {
                                         data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                                     Vincular receta
                                 </button>
-<button type="button" 
-        class="icon-mantenimiento" 
-        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
-        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
-        title="Enviar a Mantenimiento">
-    🏥
-</button>
-
-                            `}
+`}
                         </td>
                     `;
                 } else {
@@ -470,14 +454,7 @@ export async function actualizarTablaArticulos(articulos) {
                                         title="Quitar receta">
                                     Quitar
                                 </button>
-<button type="button" 
-        class="icon-mantenimiento" 
-        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
-        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
-        title="Enviar a Mantenimiento">
-    🏥
-</button>
-                            ` : `
+` : `
                                 <button class="btn-editar-receta"
                                         style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
                                         data-numero="${articulo.numero}"
@@ -485,14 +462,7 @@ export async function actualizarTablaArticulos(articulos) {
                                         data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
                                     Vincular receta
                                 </button>
-<button type="button" 
-        class="icon-mantenimiento" 
-        style="background-color: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; margin-left: 6px; cursor: pointer;" 
-        onclick="window.iniciarTrasladoVentas('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}')" 
-        title="Enviar a Mantenimiento">
-    🏥
-</button>
-                            `}
+`}
                         </td>
                     `;
                 }
@@ -2031,17 +2001,27 @@ function restaurarSeleccionesPreservadas() {
 /**
  * Actualiza el resumen visual de artículos seleccionados en el encabezado del modal
  */
+// Delegación Global de Eventos para Badges (LAMDA Policy) - Fase de Captura Activa
+document.addEventListener('click', function(event) {
+    const btnQuitar = event.target.closest('.btn-quitar-badge');
+    if (btnQuitar) {
+        event.preventDefault(); // Prevenir cualquier comportamiento por defecto
+        const idArticulo = btnQuitar.getAttribute('data-numero'); 
+        if (idArticulo && typeof eliminarSeleccion === 'function') {
+            eliminarSeleccion(idArticulo);
+        }
+    }
+}, true);
+
 function actualizarResumenSeleccionados() {
     try {
-        // Buscar o crear contenedor del resumen
         let contenedorResumen = document.getElementById('resumen-seleccionados');
         if (!contenedorResumen) {
-            // Crear contenedor si no existe
             contenedorResumen = document.createElement('div');
             contenedorResumen.id = 'resumen-seleccionados';
             contenedorResumen.className = 'resumen-seleccionados-container';
-
-            // Insertar después del título del modal
+            // 80% ancho sin estrangular la X. Flex:1 empuja el contenedor a ocupar el centro inteligentemente.
+            contenedorResumen.style.cssText = 'flex: 1; margin: 0 20px; min-width: 0;';
             const modalContent = document.querySelector('#modal-articulos .modal-content');
             const titulo = modalContent.querySelector('h2');
             if (titulo && modalContent) {
@@ -2049,107 +2029,76 @@ function actualizarResumenSeleccionados() {
             }
         }
 
-        // Limpiar contenido anterior
+        // Limpiar el contenido (seguro, ya que usamos Event Delegation en el padre)
         contenedorResumen.innerHTML = '';
-
         if (state.selectedArticles.size === 0) {
             contenedorResumen.style.display = 'none';
             return;
         }
+        
+        contenedorResumen.style.display = 'flex';
+        contenedorResumen.style.flexDirection = 'column';
+        contenedorResumen.style.justifyContent = 'center';
 
-        // Mostrar resumen
-        contenedorResumen.style.display = 'block';
-
-        const titulo = document.createElement('h4');
+        const titulo = document.createElement('span');
         titulo.textContent = `📋 Artículos Seleccionados (${state.selectedArticles.size})`;
-        titulo.style.cssText = `
-            margin: 10px 0 5px 0;
-            color: #007bff;
-            font-size: 14px;
-            font-weight: bold;
-        `;
+        titulo.style.cssText = 'color: #3b82f6; font-size: 12px; font-weight: bold; margin-bottom: 4px;';
         contenedorResumen.appendChild(titulo);
 
         const lista = document.createElement('div');
         lista.className = 'lista-seleccionados';
-        lista.style.cssText = `
-            max-height: 120px;
-            overflow-y: auto;
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            padding: 8px;
-            margin-bottom: 10px;
-        `;
+        // Diseño de Cinta Horizontal en lugar de Cajas Verticales Pesadas
+        lista.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-height: 80px; overflow-y: auto; padding: 2px;';
 
         state.selectedArticles.forEach((datos, numeroArticulo) => {
             const item = document.createElement('div');
             item.className = 'item-seleccionado';
+            // Estilo "Pill" (Insignia) Lineal de Alto Contraste (#f1f5f9 con borde)
             item.style.cssText = `
-                display: flex;
-                justify-content: space-between;
+                display: inline-flex;
                 align-items: center;
-                padding: 4px 8px;
-                margin: 2px 0;
-                background-color: white;
-                border-radius: 3px;
+                background-color: #f1f5f9;
+                border: 1px solid #cbd5e1;
                 border-left: 3px solid ${datos.esIntegra ? '#28a745' : '#ffc107'};
+                border-radius: 16px;
+                padding: 4px 10px;
                 font-size: 12px;
+                gap: 6px;
             `;
 
+            // Contraste Absoluto forzado en la descripción
             const info = document.createElement('span');
-            info.textContent = `${datos.nombre}`;
-            info.style.cssText = `
-                flex: 1;
-                margin-right: 8px;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            `;
+            info.textContent = datos.nombre;
+            info.style.cssText = 'color: #0f172a !important; font-weight: 600; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis;';
+            info.title = datos.nombre;
 
+            // Insignia de Cantidad blanca sobre la pastilla gris
             const cantidad = document.createElement('span');
             cantidad.textContent = `Cant: ${datos.cantidad}`;
-            cantidad.style.cssText = `
-                font-weight: bold;
-                color: #007bff;
-                margin-right: 8px;
-            `;
+            cantidad.style.cssText = 'color: #2563eb; font-weight: bold; background: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; margin-left: 4px;';
 
+            // Botón sutil de eliminar con dataset para Event Delegation
             const btnEliminar = document.createElement('button');
+            btnEliminar.className = 'btn-quitar-badge';
+            btnEliminar.dataset.numero = numeroArticulo;
             btnEliminar.textContent = '✕';
-            btnEliminar.style.cssText = `
-                background: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 50%;
-                width: 20px;
-                height: 20px;
-                font-size: 10px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            `;
+            btnEliminar.style.cssText = 'background: transparent; color: #ef4444; border: none; font-size: 12px; cursor: pointer; padding: 0 4px; font-weight: bold; margin-left: 4px;';
             btnEliminar.title = 'Quitar de selección';
-            btnEliminar.onclick = () => eliminarSeleccion(numeroArticulo);
+            // SIN ONCLICK DIRECTO AQUÍ. Event Delegation en el contenedorResumen lo maneja.
 
             item.appendChild(info);
             item.appendChild(cantidad);
             item.appendChild(btnEliminar);
             lista.appendChild(item);
         });
-
         contenedorResumen.appendChild(lista);
-
-        console.log(`🔍 [SELECCIÓN PERSISTENTE] Resumen actualizado: ${state.selectedArticles.size} artículos`);
-
     } catch (error) {
-        console.error('🔍 [SELECCIÓN PERSISTENTE] Error al actualizar resumen:', error);
+        console.error('Error al actualizar resumen:', error);
     }
 }
 
 /**
- * Elimina un artículo específico de la selección persistente
+ * Elimina un artículo de la selección persistente
  */
 function eliminarSeleccion(numeroArticulo) {
     try {

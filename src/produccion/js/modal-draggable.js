@@ -214,6 +214,9 @@ class ModalDraggable {
                 let finalW = startW, finalH = startH, finalT = startTop, finalL = startLeft;
                 const minW = 350, minH = 200;
 
+                const isVertical = currentDir.includes('n') || currentDir.includes('s');
+                const isHorizontal = currentDir.includes('e') || currentDir.includes('w');
+
                 if (currentDir.includes('e')) finalW = Math.max(minW, startW + dx);
                 if (currentDir.includes('s')) finalH = Math.max(minH, startH + dy);
                 
@@ -226,12 +229,16 @@ class ModalDraggable {
                     if (finalH > minH) finalT = startTop + dy;
                 }
 
-                this.modalContent.style.width = `${finalW}px`;
-                this.modalContent.style.height = `${finalH}px`;
-                this.modalContent.style.left = `${finalL}px`;
-                this.modalContent.style.top = `${finalT}px`;
-                this.modalContent.style.maxWidth = 'none';
-                this.modalContent.style.maxHeight = 'none';
+                if (isHorizontal) {
+                    this.modalContent.style.width = `${finalW}px`;
+                    this.modalContent.style.left = `${finalL}px`;
+                    this.modalContent.style.maxWidth = 'none';
+                }
+                if (isVertical) {
+                    this.modalContent.style.height = `${finalH}px`;
+                    this.modalContent.style.top = `${finalT}px`;
+                    this.modalContent.style.maxHeight = 'none';
+                }
             });
         });
 
@@ -306,8 +313,8 @@ document.addEventListener('DOMContentLoaded', () => {
     modalesParaArrastrar.forEach(id => {
         const elemento = document.getElementById(id);
         if (elemento) {
-            const modalZIndexTop = (id === 'modalAbastecimientoExterno');
-            instancias[id] = new ModalDraggable(id, modalZIndexTop);
+            // Se habilita la persistencia dimensional y de posición para todos
+            instancias[id] = new ModalDraggable(id, true);
             
             // 🎯 PREVENCIÓN DE SCROLL CHAINING: Bloquear fondo, resetear offsets al abrir
             const observer = new MutationObserver((mutations) => {

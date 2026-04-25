@@ -195,11 +195,16 @@ async function eliminarArticuloDeCarro(carroId, articuloId, usuarioId) {
         const articuloHijo = relacionResult.rows.length > 0 ? relacionResult.rows[0].articulo_kilo_codigo : null;
 
         // Eliminar artículo padre
+        const articuloIdLimpio = articuloId.trim();
         const eliminarPadreQuery = `
             DELETE FROM carros_articulos
             WHERE carro_id = $1 AND articulo_numero = $2
         `;
-        await client.query(eliminarPadreQuery, [carroId, articuloId]);
+        const resultDelete = await client.query(eliminarPadreQuery, [carroId, articuloIdLimpio]);
+        
+        if (resultDelete.rowCount === 0) {
+            throw new Error(`Inconsistencia: El artículo ${articuloIdLimpio} no existía en el carro o falló el borrado interno.`);
+        }
 
         // Si hay artículo hijo vinculado, eliminarlo también
         if (articuloHijo) {

@@ -1675,15 +1675,14 @@ export async function mostrarResumenIngredientes(ingredientes) {
                 mostrarBotones = (estadoCarro !== 'preparado' && estadoCarro !== 'confirmado');
             }
 
+            const deshabilitado = (window.carroIdGlobal == null);
+            const botonIngresoManual = deshabilitado
+                ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+                : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+
             let botonesAccion = '';
 
             if (mostrarBotones) {
-                const deshabilitado = (window.carroIdGlobal == null);
-
-                const botonIngresoManual = deshabilitado
-                    ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-                    : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
-
                 const botonAjusteRapido = deshabilitado
                     ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
                     : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockFinal}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
@@ -1704,7 +1703,12 @@ export async function mostrarResumenIngredientes(ingredientes) {
                     `;
                 }
             } else {
-                botonesAccion = `<span style="color: #6c757d; font-style: italic; font-size: 0.9em;">Solo lectura</span>`;
+                botonesAccion = `
+                    <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
+                        ${botonIngresoManual}
+                        <span style="color: #6c757d; font-style: italic; font-size: 0.9em;">Solo lectura</span>
+                    </div>
+                `;
             }
 
             // Aplicar clases CSS
