@@ -2696,3 +2696,122 @@ window.iniciarTrasladoVentas = async function(articuloNumero, nombre) {
         }
     }
 };
+
+// ==========================================
+// TICKET #017 / #018: ALTA IN-PLACE DE NUEVO INGREDIENTE DESDE RECETAS (HOTFIX)
+// ==========================================
+document.addEventListener('click', async (e) => {
+    // 1. Botón "Nuevo" (Abrir modal)
+    const btnNuevoIngrediente = e.target.closest('#btn-nuevo-ingrediente');
+    // Verificamos que estamos en el contexto del modal de recetas, no en ingredientes.js
+    if (btnNuevoIngrediente && btnNuevoIngrediente.closest('#modal-receta')) {
+        const modalNuevoIngrediente = document.getElementById('modal-nuevo-ingrediente');
+        if (modalNuevoIngrediente) {
+            modalNuevoIngrediente.style.display = 'flex';
+            modalNuevoIngrediente.style.alignItems = 'center';
+            modalNuevoIngrediente.style.justifyContent = 'center';
+            modalNuevoIngrediente.style.zIndex = '10050'; // Altísimo para vencer cualquier otro
+            modalNuevoIngrediente.style.opacity = '1';
+            modalNuevoIngrediente.style.visibility = 'visible';
+            modalNuevoIngrediente.style.pointerEvents = 'auto';
+            modalNuevoIngrediente.style.backgroundColor = 'rgba(0,0,0,0.6)';
+            const inputNombre = document.getElementById('nombre-ingrediente');
+            if (inputNombre) inputNombre.focus();
+        }
+        return;
+    }
+
+    // 2. Cerrar Modal (Cancelar o 'X')
+    const btnCancelarIngrediente = e.target.closest('#btn-cancelar-ingrediente');
+    const esCloseModalNuevo = e.target.matches('#modal-nuevo-ingrediente .close-modal');
+    if ((btnCancelarIngrediente || esCloseModalNuevo) && document.getElementById('modal-nuevo-ingrediente')) {
+        const modalNuevoIngrediente = document.getElementById('modal-nuevo-ingrediente');
+        if (modalNuevoIngrediente && modalNuevoIngrediente.style.display !== 'none') {
+            modalNuevoIngrediente.style.display = 'none';
+            const formNuevoIngrediente = document.getElementById('form-nuevo-ingrediente');
+            if (formNuevoIngrediente) formNuevoIngrediente.reset();
+            return;
+        }
+    }
+
+    // 3. Botón "Guardar ingrediente"
+    const btnGuardarIngrediente = e.target.closest('#btn-guardar-ingrediente');
+    // Verificamos que estamos dentro de modal-nuevo-ingrediente
+    if (btnGuardarIngrediente && btnGuardarIngrediente.closest('#modal-nuevo-ingrediente')) {
+        e.preventDefault(); // Prevenir cualquier submit de form
+        
+        const formNuevoIngrediente = document.getElementById('form-nuevo-ingrediente');
+        if (!formNuevoIngrediente) return;
+        
+        const nombre = document.getElementById('nombre-ingrediente').value.trim();
+        const unidad_medida = document.getElementById('unidad-medida-ingrediente').value.trim();
+        const stock_actual = parseFloat(document.getElementById('stock-ingrediente').value) || 0;
+        
+        const categoria_texto = document.getElementById('categoria-ingrediente').value.trim();
+
+        if (!nombre || !unidad_medida) {
+            alert('El nombre y la unidad de medida son obligatorios.');
+            return;
+        }
+
+        try {
+            btnGuardarIngrediente.disabled = true;
+            btnGuardarIngrediente.textContent = 'Guardando...';
+
+            const response = await fetch('/api/produccion/ingredientes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nombre,
+                    unidad_medida,
+                    stock_actual,
+                    descripcion: categoria_texto ? `Categoría provisoria: ${categoria_texto}` : ''
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Error al guardar el ingrediente');
+            }
+
+            const nuevoIngrediente = await response.json();
+
+            // Recargar ingredientes en memoria global para el buscador
+            if (typeof cargarIngredientesDisponibles === 'function') {
+                await cargarIngredientesDisponibles();
+            }
+
+            // Auto-seleccionar en el buscador del modal de receta subyacente
+            const inputBuscar = document.getElementById('buscar-ingrediente-receta');
+            const hiddenInput = document.getElementById('selector-ingrediente');
+            const cantidadContainer = document.getElementById('cantidad-container');
+
+            if (inputBuscar && hiddenInput) {
+                hiddenInput.value = nuevoIngrediente.id;
+                inputBuscar.value = nuevoIngrediente.nombre;
+                const listaResultados = document.getElementById('lista-resultados-ingrediente-receta');
+                if (listaResultados) listaResultados.style.display = 'none';
+
+                if (cantidadContainer) {
+                    cantidadContainer.style.display = 'block';
+                    const inputCant = document.getElementById('input-cantidad-ingrediente');
+                    if (inputCant) inputCant.focus();
+                }
+            }
+
+            // Cerrar el modal
+            const modalNuevoIngrediente = document.getElementById('modal-nuevo-ingrediente');
+            if (modalNuevoIngrediente) {
+                modalNuevoIngrediente.style.display = 'none';
+                formNuevoIngrediente.reset();
+            }
+
+        } catch (error) {
+            console.error('Error al guardar ingrediente in-place:', error);
+            alert(error.message);
+        } finally {
+            btnGuardarIngrediente.disabled = false;
+            btnGuardarIngrediente.textContent = 'Guardar ingrediente';
+        }
+    }
+});
