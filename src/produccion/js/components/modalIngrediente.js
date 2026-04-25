@@ -1,70 +1,84 @@
 export const modalIngredienteHTML = `
 <!-- Modal para agregar/editar ingrediente -->
 <div id="modal-ingrediente" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span class="close-modal">&times;</span>
-            <h2 id="modal-titulo">Nuevo Ingrediente</h2>
+    <div class="modal-content card" style="max-width: 650px; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+        <div class="modal-header" style="border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h2 id="modal-titulo" style="margin: 0; color: #1e293b; font-size: 1.5rem; font-weight: 600;">Nuevo Ingrediente</h2>
+            <span class="close-modal" style="font-size: 1.5rem; cursor: pointer; color: #64748b; transition: color 0.2s;">&times;</span>
         </div>
-        <form id="form-ingrediente">
+        <form id="form-ingrediente" style="display: flex; flex-direction: column; gap: 15px;">
             <input type="hidden" id="ingrediente-id">
-            <div class="form-group">
-                <label for="codigo">Código:</label>
-                <input type="text" id="codigo" readonly>
-                <small class="form-text text-muted">Código único generado automáticamente</small>
-            </div>
-            <div class="form-group">
-                <label for="nombre">Nombre:</label>
-                <input type="text" id="nombre" required>
-            </div>
-            <div class="form-group">
-                <label for="unidad-medida">Unidad de Medida:</label>
-                <input type="text" id="unidad-medida" placeholder="Ej: kilo, unidad, ml..." required>
-            </div>
-            <div class="form-group">
-                <label for="categoria-input">Categoría:</label>
-                <div class="combobox-wrapper" style="position: relative;">
-                    <input type="text" id="categoria-input" placeholder="Buscar o crear categoría..." autocomplete="off" required>
-                    <input type="hidden" id="categoria-id">
-                    <button type="button" id="btn-edit-categoria" style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: none; cursor: pointer; color: #64748b;" title="Editar categoría">✏️</button>
-                    <ul id="categoria-list" class="combobox-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid #cbd5e1; border-top: none; z-index: 1000; list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);"></ul>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Columna Izquierda -->
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="form-group" style="margin: 0;">
+                        <label for="codigo" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Código</label>
+                        <input type="text" id="codigo" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; color: #64748b;">
+                        <small style="color: #94a3b8; font-size: 0.75rem; margin-top: 4px; display: block;">Autogenerado</small>
+                    </div>
+                    
+                    <div class="form-group" style="margin: 0;">
+                        <label for="nombre" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Nombre <span style="color: #ef4444;">*</span></label>
+                        <input type="text" id="nombre" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; transition: border-color 0.2s;">
+                    </div>
+
+                    <div class="form-group" style="margin: 0; position: relative;">
+                        <label for="categoria-input" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Categoría <span style="color: #ef4444;">*</span></label>
+                        <div class="combobox-wrapper" style="position: relative;">
+                            <input type="text" id="categoria-input" placeholder="Buscar o crear..." autocomplete="off" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            <input type="hidden" id="categoria-id">
+                            <button type="button" id="btn-edit-categoria" style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: none; cursor: pointer; color: #64748b;" title="Editar categoría">✏️</button>
+                            <ul id="categoria-list" class="combobox-list" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; width: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 6px; z-index: 10000; list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"></ul>
+                        </div>
+                        <div id="categoria-form-container" style="display: none; background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #e2e8f0; position: absolute; z-index: 10001; width: calc(100% - 30px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Nombre de categoría</label>
+                                <input type="text" id="cat-form-nombre" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;" required>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Descripción (opcional)</label>
+                                <input type="text" id="cat-form-desc" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                            </div>
+                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" id="btn-cancelar-categoria" style="padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">Cancelar</button>
+                                <button type="button" id="btn-guardar-categoria" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Guardar</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div id="categoria-form-container" style="display: none; background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #e2e8f0;">
-                    <div style="margin-bottom: 10px;">
-                        <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Nombre de categoría</label>
-                        <input type="text" id="cat-form-nombre" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;" required>
+
+                <!-- Columna Derecha -->
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="form-group" style="margin: 0;">
+                        <label for="sector" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Sector</label>
+                        <select id="sector" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: white;">
+                            <option value="">Sin sector asignado</option>
+                        </select>
                     </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Descripción (opcional)</label>
-                        <input type="text" id="cat-form-desc" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group" style="margin: 0;">
+                            <label for="stock" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Stock <span style="color: #ef4444;">*</span></label>
+                            <input type="number" id="stock" step="0.01" min="0" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label for="unidad-medida" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Unidad <span style="color: #ef4444;">*</span></label>
+                            <input type="text" id="unidad-medida" placeholder="Ej: kilo" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        </div>
                     </div>
-                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                        <button type="button" id="btn-cancelar-categoria" style="padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">Cancelar</button>
-                        <button type="button" id="btn-guardar-categoria" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Guardar</button>
+
+                    <div class="form-group" style="margin: 0; flex-grow: 1; display: flex; flex-direction: column;">
+                        <label for="descripcion" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Descripción General</label>
+                        <textarea id="descripcion" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; resize: none; flex-grow: 1;"></textarea>
                     </div>
                 </div>
             </div>
-            <div class="form-group">
-                <label for="stock">Stock Actual:</label>
-                <input type="number" id="stock" step="0.01" min="0" required>
-            </div>
-            <div class="form-group">
-                <label for="sector">Sector:</label>
-                <select id="sector">
-                    <option value="">Sin sector asignado</option>
-                    <!-- Los sectores se cargarán dinámicamente aquí -->
-                </select>
-                <small class="form-text text-muted">Seleccione un sector para organizar el ingrediente</small>
-            </div>
-            <div class="form-group">
-                <label for="descripcion">Descripción:</label>
-                <textarea id="descripcion" rows="3"></textarea>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="btn-agregar">Guardar</button>
-                <button type="button" id="btn-imprimir" class="btn-imprimir" style="display:none;">
-                    Imprimir Etiqueta
-                </button>
+
+            <div class="form-actions" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px;">
+                <button type="button" class="close-modal close-modal-btn" style="padding: 10px 20px; background: white; border: 1px solid #cbd5e1; border-radius: 6px; color: #475569; cursor: pointer; font-weight: 500; transition: all 0.2s;">Cancelar</button>
+                <button type="button" id="btn-imprimir" class="btn-imprimir" style="display:none; padding: 10px 20px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; color: #475569; cursor: pointer; font-weight: 500;">🖨️ Imprimir</button>
+                <button type="submit" class="btn btn-success" style="padding: 10px 24px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.2); transition: all 0.2s;">💾 Guardar Ingrediente</button>
             </div>
         </form>
     </div>
@@ -129,7 +143,18 @@ function inicializarComboboxCategorias() {
     const list = document.getElementById('categoria-list');
     const btnEdit = document.getElementById('btn-edit-categoria');
 
-    if (!input || !list || !hiddenId) return;
+    if (!input || !list || !hiddenId) {
+        console.error('❌ [modalIngrediente] No se encontraron elementos del combobox de categorías en el DOM.');
+        return;
+    }
+
+    if (input.dataset.inicializado === 'true') {
+        console.log('✅ [modalIngrediente] Combobox de categorías ya estaba inicializado.');
+        return;
+    }
+    input.dataset.inicializado = 'true';
+
+    console.log('🔧 [modalIngrediente] Inicializando listeners para combobox de categorías...');
 
     if (btnEdit) {
         const newBtnEdit = btnEdit.cloneNode(true);
@@ -140,6 +165,7 @@ function inicializarComboboxCategorias() {
     }
 
     input.addEventListener('focus', () => {
+        console.log('🔍 [modalIngrediente] Focus en categoría. Mostrando lista...');
         renderizarComboboxCategorias(categoriasCatalogo);
         list.style.display = 'block';
     });
@@ -155,9 +181,14 @@ function inicializarComboboxCategorias() {
         list.style.display = 'block';
     });
 
+    // Delegación de eventos para el click fuera del combobox
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.combobox-wrapper') && !e.target.closest('#categoria-form-container')) {
-            if(list) list.style.display = 'none';
+        const isClickInsideCombobox = e.target.closest('.combobox-wrapper');
+        const isClickInsideForm = e.target.closest('#categoria-form-container');
+        
+        if (!isClickInsideCombobox && !isClickInsideForm) {
+            const currentList = document.getElementById('categoria-list');
+            if(currentList) currentList.style.display = 'none';
         }
     });
 }
