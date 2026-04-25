@@ -9,6 +9,7 @@ let filtrosStockActivos = new Set(); // Para rastrear filtros activos por stock 
 let filtrosSectorActivos = new Set(); // Para rastrear filtros activos por sector
 let vistaActual = 'deposito'; // Para identificar la vista actual ('deposito' o 'usuario-X')
 let sectoresDisponibles = []; // Para almacenar la lista de sectores
+let categoriasCatalogo = []; // Para almacenar las categorias del combobox
 
 // ✅ NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
 let estadoFiltrosGuardado = null; // Para guardar temporalmente el estado de filtros
@@ -155,7 +156,9 @@ async function abrirModal(titulo = 'Nuevo Ingrediente') {
 
     // Cargar sectores si no están cargados
     if (sectoresDisponibles.length === 0) {
+        await cargarCategorias();
         await cargarSectores();
+        inicializarComboboxCategorias();
     }
 
     // Si es un nuevo ingrediente, obtener el código automáticamente
@@ -177,6 +180,10 @@ function cerrarModal() {
     const modal = document.getElementById('modal-ingrediente');
     modal.style.display = 'none';
     document.getElementById('form-ingrediente').reset();
+    const hiddenId = document.getElementById('categoria-id');
+    const btnEdit = document.getElementById('btn-edit-categoria');
+    if (hiddenId) hiddenId.value = '';
+    if (btnEdit) btnEdit.style.display = 'none';
     ingredienteEditando = null;
 }
 
@@ -1310,7 +1317,15 @@ async function editarIngrediente(id) {
         document.getElementById('codigo').value = ingrediente.codigo || '';
         document.getElementById('nombre').value = ingrediente.nombre;
         document.getElementById('unidad-medida').value = ingrediente.unidad_medida;
-        document.getElementById('categoria').value = ingrediente.categoria;
+        // Soporte para Combobox de categorías
+        const catInput = document.getElementById('categoria-input');
+        const catId = document.getElementById('categoria-id');
+        if (catInput && catId) {
+            catInput.value = ingrediente.categoria_nombre || ingrediente.categoria || '';
+            catId.value = ingrediente.categoria_id || '';
+            const btnEdit = document.getElementById('btn-edit-categoria');
+            if (btnEdit && catId.value) btnEdit.style.display = 'block';
+        }
         document.getElementById('stock').value = ingrediente.stock_actual;
         document.getElementById('descripcion').value = ingrediente.descripcion || '';
 
@@ -1406,7 +1421,314 @@ function actualizarBotonImpresion() {
 }
 
 // Event Listeners
+
+// ==========================================
+// LÓGICA DEL COMBOBOX DE CATEGORÍAS (INYECTADO)
+// ==========================================
+
+async function cargarCategorias() {
+    try {
+        const response = await fetch('/api/produccion/categorias');
+        if (!response.ok) throw new Error('Error al cargar categorías');
+        categoriasCatalogo = await response.json();
+    } catch (error) {
+        console.error('Error cargando categorías:', error);
+        mostrarMensaje('Error al cargar el catálogo de categorías', 'error');
+    }
+}
+
+function inicializarComboboxCategorias() {
+    const input = document.getElementById('categoria-input');
+    const hiddenId = document.getElementById('categoria-id');
+    const list = document.getElementById('categoria-list');
+    const btnEdit = document.getElementById('btn-edit-categoria');
+
+    if (!input || !list || !hiddenId) return;
+
+    if (btnEdit) {
+        // Remover listeners anteriores por las dudas
+        const newBtnEdit = btnEdit.cloneNode(true);
+        btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit);
+        newBtnEdit.addEventListener('click', () => {
+            abrirSubFormularioCategoria(input.value);
+        });
+    }
+
+    // Precargar valor si estamos editando
+    if (ingredienteEditando) {
+        hiddenId.value = ingredienteEditando.categoria_id || '';
+        input.value = ingredienteEditando.categoria_nombre || ingredienteEditando.categoria || '';
+        if (hiddenId.value) btnEdit.style.display = 'block';
+    }
+
+    input.addEventListener('focus', () => {
+        renderizarComboboxCategorias(categoriasCatalogo);
+        list.style.display = 'block';
+    });
+
+    input.addEventListener('input', (e) => {
+        const val = e.target.value.toLowerCase();
+        // Si el usuario borra o cambia el texto, limpiar el ID oculto
+        hiddenId.value = '';
+        btnEdit.style.display = 'none';
+        
+        const filtradas = categoriasCatalogo.filter(c => c.nombre.toLowerCase().includes(val));
+        renderizarComboboxCategorias(filtradas, val);
+        list.style.display = 'block';
+    });
+
+    // Cerrar lista al hacer click fuera
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.combobox-wrapper')) {
+            list.style.display = 'none';
+        }
+    });
+}
+
+function renderizarComboboxCategorias(categorias, filtroBusqueda = '') {
+    const list = document.getElementById('categoria-list');
+    list.innerHTML = '';
+
+    categorias.forEach(cat => {
+        const li = document.createElement('li');
+        li.textContent = cat.nombre;
+        li.style.padding = '8px 12px';
+        li.style.cursor = 'pointer';
+        li.style.borderBottom = '1px solid #f1f5f9';
+        
+        li.addEventListener('mouseover', () => li.style.backgroundColor = '#f8fafc');
+        li.addEventListener('mouseout', () => li.style.backgroundColor = 'white');
+        
+        li.addEventListener('click', () => {
+            document.getElementById('categoria-input').value = cat.nombre;
+            document.getElementById('categoria-id').value = cat.id;
+            document.getElementById('btn-edit-categoria').style.display = 'block';
+            list.style.display = 'none';
+        });
+        list.appendChild(li);
+    });
+
+    // Always show a fixed "Create Category" option at the bottom
+    const li = document.createElement('li');
+    li.style.padding = '8px 12px';
+    li.style.color = '#0275d8';
+    li.style.cursor = 'pointer';
+    li.style.fontWeight = 'bold';
+    li.style.backgroundColor = '#f0f9ff';
+    li.style.borderTop = '1px solid #bae6fd';
+    
+    if (filtroBusqueda.trim() !== '') {
+        li.innerHTML = `➕ Crear nueva categoría: "${filtroBusqueda}"`;
+    } else {
+        li.innerHTML = `➕ Crear nueva categoría...`;
+    }
+    
+    li.addEventListener('click', () => abrirSubFormularioCategoria(filtroBusqueda.trim()));
+    list.appendChild(li);
+}
+
+function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false) {
+    // Si viene desde el modal "Gestionar Categorías", guardaremos un estado
+    window.isEditingCategoryModal = isModal;
+    
+    const wrapper = document.querySelector('.combobox-wrapper');
+    let container = document.getElementById('categoria-form-container');
+    const list = document.getElementById('categoria-list');
+    
+    // Crear contenedor si no existe
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'categoria-form-container';
+        container.style.background = '#f8fafc';
+        container.style.padding = '15px';
+        container.style.border = '1px solid #cbd5e1';
+        container.style.borderRadius = '6px';
+        container.style.marginTop = '10px';
+        container.style.display = 'none';
+        container.style.width = '100%';
+        container.innerHTML = `
+            <div style="margin-bottom: 8px; font-weight: bold; color: #334155; font-size: 0.9em;">Nueva/Editar Categoría</div>
+            <input type="text" id="cat-form-nombre" placeholder="Nombre exacto" required style="width: 100%; margin-bottom: 8px; padding: 6px; border: 1px solid #ccc; border-radius:4px;">
+            <input type="text" id="cat-form-desc" placeholder="Descripción (Opcional)" style="width: 100%; margin-bottom: 12px; padding: 6px; border: 1px solid #ccc; border-radius:4px;">
+            <div style="display: flex; gap: 8px;">
+                <button type="button" id="btn-guardar-categoria" style="background: #22c55e; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; flex: 1;">Guardar</button>
+                <button type="button" id="btn-cancelar-categoria" style="background: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">Cancelar</button>
+            </div>
+        `;
+        document.body.appendChild(container); // Anclarlo temporalmente
+    }
+
+    // Mover el contenedor visualmente al lugar correcto
+    if (isModal) {
+        const modalBody = document.querySelector('#modal-gestionar-categorias .modal-body');
+        modalBody.insertBefore(container, modalBody.firstChild);
+    } else {
+        if (wrapper) wrapper.parentNode.insertBefore(container, wrapper.nextSibling);
+    }
+
+    if (list) list.style.display = 'none';
+    if (wrapper && !isModal) wrapper.style.display = 'none';
+    
+    // Configurar el formulario
+    document.getElementById('cat-form-nombre').value = nombreSugerido;
+    document.getElementById('cat-form-desc').value = '';
+    
+    const editId = isModal ? window.currentEditCategoryId : document.getElementById('categoria-id').value;
+    
+    // Si estamos editando y hay ID, cargar descripción
+    if (editId) {
+        const catObj = categoriasCatalogo.find(c => c.id == editId);
+        if (catObj) document.getElementById('cat-form-desc').value = catObj.descripcion || '';
+    }
+    
+    container.style.display = 'block';
+    
+    // Asegurar limpiar event listeners anteriores usando cloneNode
+    const btnSave = document.getElementById('btn-guardar-categoria');
+    const newBtnSave = btnSave.cloneNode(true);
+    btnSave.parentNode.replaceChild(newBtnSave, btnSave);
+    
+    const btnCancel = document.getElementById('btn-cancelar-categoria');
+    const newBtnCancel = btnCancel.cloneNode(true);
+    btnCancel.parentNode.replaceChild(newBtnCancel, btnCancel);
+    
+    newBtnCancel.addEventListener('click', () => {
+        container.style.display = 'none';
+        if (!isModal && wrapper) wrapper.style.display = 'block';
+        window.currentEditCategoryId = null; // Limpiar
+    });
+        
+        newBtnSave.addEventListener('click', async () => {
+            const nombre = document.getElementById('cat-form-nombre').value.trim();
+            const descripcion = document.getElementById('cat-form-desc').value.trim();
+            if (!nombre) {
+                mostrarMensaje('El nombre de la categoría es obligatorio', 'error');
+                return;
+            }
+            
+            try {
+                const isEdit = !isModal && editId;
+                const url = isEdit ? `/api/produccion/categorias/${editId}` : '/api/produccion/categorias';
+                const method = isEdit ? 'PUT' : 'POST';
+                
+                const resp = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, descripcion })
+                });
+                
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Error al guardar categoría');
+                }
+                const savedCat = await resp.json();
+                
+                // Recargar catálogo
+                await cargarCategorias();
+                
+                // Restaurar vista
+                container.style.display = 'none';
+                
+                if (!isModal && wrapper) {
+                    wrapper.style.display = 'block';
+                    document.getElementById('categoria-input').value = savedCat.nombre;
+                    document.getElementById('categoria-id').value = savedCat.id;
+                    const btnEdit = document.getElementById('btn-edit-categoria');
+                    if (btnEdit) btnEdit.style.display = 'block';
+                }
+                
+                if (isModal) {
+                    renderizarTablaCategorias();
+                }
+                
+                mostrarMensaje('Categoría guardada exitosamente', 'exito');
+            } catch (error) {
+                mostrarMensaje(error.message, 'error');
+            }
+        });
+}
+// ==========================================
+// GESTIÓN CENTRALIZADA DE CATEGORÍAS
+// ==========================================
+
+function abrirModalCategorias() {
+    document.getElementById('modal-gestionar-categorias').style.display = 'block';
+    renderizarTablaCategorias();
+    
+    // Buscador
+    const buscador = document.getElementById('buscador-categorias-modal');
+    if (buscador) {
+        buscador.value = '';
+        buscador.addEventListener('input', (e) => {
+            renderizarTablaCategorias(e.target.value.toLowerCase());
+        });
+    }
+}
+
+function renderizarTablaCategorias(filtro = '') {
+    const tbody = document.getElementById('tabla-categorias-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    let categoriasAMostrar = categoriasCatalogo;
+    if (filtro) {
+        categoriasAMostrar = categoriasAMostrar.filter(c => c.nombre.toLowerCase().includes(filtro));
+    }
+    
+    if (categoriasAMostrar.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No se encontraron categorías</td></tr>';
+        return;
+    }
+    
+    categoriasAMostrar.forEach(cat => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #e2e8f0';
+        tr.innerHTML = `
+            <td style="padding: 10px; color: #64748b; font-size: 0.9em;">#${cat.id}</td>
+            <td style="padding: 10px; font-weight: bold; color: #334155;">${cat.nombre}</td>
+            <td style="padding: 10px; color: #475569; font-size: 0.9em;">${cat.descripcion || '-'}</td>
+            <td style="padding: 10px; text-align: center;">
+                <button onclick="editarCategoriaDesdeModal(${cat.id})" style="background: none; border: none; cursor: pointer; color: #3b82f6; margin-right: 10px;" title="Editar">✏️</button>
+                <button onclick="borrarCategoria(${cat.id})" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Eliminar">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function editarCategoriaDesdeModal(id) {
+    const cat = categoriasCatalogo.find(c => c.id == id);
+    if (!cat) return;
+    
+    window.currentEditCategoryId = id;
+    abrirSubFormularioCategoria(cat.nombre, true);
+}
+
+async function borrarCategoria(id) {
+    // Usamos el SweetAlert o un confirm
+    const confirmacion = confirm('¿Estás seguro de eliminar esta categoría? Si está en uso por ingredientes, la operación será rechazada.');
+    if (!confirmacion) return;
+    
+    try {
+        const response = await fetch(`/api/produccion/categorias/${id}`, { method: 'DELETE' });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al eliminar la categoría');
+        }
+        
+        mostrarMensaje('Categoría eliminada exitosamente', 'exito');
+        await cargarCategorias();
+        renderizarTablaCategorias();
+        
+    } catch (error) {
+        mostrarMensaje(error.message, 'error');
+    }
+}
 document.addEventListener('DOMContentLoaded', async () => {
+    // Inicializar combobox de categorías globalmente
+    await cargarCategorias();
+    inicializarComboboxCategorias();
+
 
     // Configurar botón de impresión
     const btnImprimir = document.getElementById('btn-imprimir');
@@ -1548,11 +1870,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Obtener valor del sector
         const sectorValue = document.getElementById('sector').value;
 
+        const catIdValue = document.getElementById('categoria-id').value;
+        if (!catIdValue) {
+            alert('Por favor, seleccione o guarde la nueva categoría en el formulario antes de continuar.');
+            return;
+        }
+
         const datos = {
             codigo: document.getElementById('codigo').value,
             nombre: document.getElementById('nombre').value,
             unidad_medida: document.getElementById('unidad-medida').value,
-            categoria: document.getElementById('categoria').value,
+            categoria_id: document.getElementById('categoria-id').value ? parseInt(document.getElementById('categoria-id').value) : null,
             stock_actual: Number(document.getElementById('stock').value.replace(',', '.')),
             descripcion: document.getElementById('descripcion').value,
             padre_id: ingredienteEditando ? ingredienteEditando.padre_id : null,
@@ -1603,6 +1931,12 @@ window.gestionarComposicionMix = gestionarComposicionMix;
 window.eliminarComposicionMix = eliminarComposicionMix;
 window.cargarIngredientes = cargarIngredientes;
 window.toggleVinculo = toggleVinculo;
+
+// Exponer funciones de Categorías al scope global
+window.abrirModalCategorias = abrirModalCategorias;
+window.abrirSubFormularioCategoria = abrirSubFormularioCategoria;
+window.editarCategoriaDesdeModal = editarCategoriaDesdeModal;
+window.borrarCategoria = borrarCategoria;
 
 // Funciones para gestionar el modal de mix
 function gestionarComposicionMix(id) {

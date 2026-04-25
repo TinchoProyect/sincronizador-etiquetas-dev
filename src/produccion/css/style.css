@@ -533,3 +533,7 @@ tr.ingrediente-vinculado td {
 }
 
 
+
+/* Combobox Categorías Fix */
+.combobox-list { z-index: 99999 !important; box-shadow: 0 10px 25px rgba(0,0,0,0.2) !important; }
+

@@ -422,6 +422,11 @@
                                     style="background-color: #28a745;">
                                     🏢 Gestionar Sectores
                                 </button>
+                                <button id="btn-gestionar-categorias" class="btn-inventario"
+                                    onclick="abrirModalCategorias()"
+                                    style="background-color: #0284c7; margin-left: 10px;">
+                                    📂 Gestionar Categorías
+                                </button>
                                 <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
                                 <button id="btn-iniciar-ajuste" class="btn-agregar" style="background-color: #6366f1;" onclick="window.iniciarFlujoAjuste()">⚖️ Ajuste Puntual</button>
                             </div>
@@ -514,7 +519,39 @@
 
         </main>
 
-        <!-- Modal para agregar/editar ingrediente -->
+        
+        <!-- Modal para gestionar categorías -->
+        <div id="modal-gestionar-categorias" class="modal">
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <span class="close-modal" onclick="document.getElementById('modal-gestionar-categorias').style.display='none'">&times;</span>
+                    <h2>Gestión de Categorías</h2>
+                </div>
+                <div class="modal-body" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                        <input type="text" id="buscador-categorias-modal" placeholder="Buscar categoría..." style="padding: 8px; width: 60%; border: 1px solid #cbd5e1; border-radius: 4px;">
+                        <button class="btn-agregar" onclick="abrirSubFormularioCategoria('', true)" style="width: 35%;">+ Nueva Categoría</button>
+                    </div>
+                    
+                    <div class="tabla-container" style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <table class="articulos-tabla" style="width: 100%; border-collapse: collapse;">
+                            <thead style="position: sticky; top: 0; background: #f8fafc;">
+                                <tr>
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">ID</th>
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">Nombre</th>
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">Descripción</th>
+                                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #e2e8f0;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-categorias-body">
+                                <!-- Contenido dinámico -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+\n        <!-- Modal para agregar/editar ingrediente -->
         <div id="modal-ingrediente" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
@@ -537,8 +574,27 @@
                         <input type="text" id="unidad-medida" placeholder="Ej: kilo, unidad, ml..." required>
                     </div>
                     <div class="form-group">
-                        <label for="categoria">Categoría:</label>
-                        <input type="text" id="categoria" placeholder="Ej: semillas, harinas, frutos secos..." required>
+                        <label for="categoria-input">Categoría:</label>
+                        <div class="combobox-wrapper" style="position: relative;">
+                            <input type="text" id="categoria-input" placeholder="Buscar o crear categoría..." autocomplete="off" required>
+                            <input type="hidden" id="categoria-id">
+                            <button type="button" id="btn-edit-categoria" style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: none; cursor: pointer; color: #64748b;" title="Editar categoría">✏️</button>
+                            <ul id="categoria-list" class="combobox-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid #cbd5e1; border-top: none; z-index: 1000; list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);"></ul>
+                        </div>
+                        <div id="categoria-form-container" style="display: none; background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #e2e8f0;">
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Nombre de categoría</label>
+                                <input type="text" id="cat-form-nombre" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;" required>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Descripción (opcional)</label>
+                                <input type="text" id="cat-form-desc" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                            </div>
+                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" id="btn-cancelar-categoria" style="padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">Cancelar</button>
+                                <button type="button" id="btn-guardar-categoria" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Guardar</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="stock">Stock Actual:</label>

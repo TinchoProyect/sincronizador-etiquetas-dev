@@ -82,7 +82,8 @@ async function obtenerIngredientes() {
                 i.nombre,
                 i.descripcion,
                 i.unidad_medida,
-                i.categoria,
+                c.nombre as categoria,
+                i.categoria_id,
                 i.stock_actual,
                 i.sector_id,
                 s.nombre as sector_nombre,
@@ -113,6 +114,7 @@ async function obtenerIngredientes() {
                 ) as es_mix
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
             ORDER BY i.nombre ASC;
         `;
 
@@ -243,7 +245,8 @@ async function obtenerIngrediente(id) {
                 i.nombre,
                 i.descripcion,
                 i.unidad_medida,
-                i.categoria,
+                c.nombre as categoria,
+                i.categoria_id,
                 i.stock_actual,
                 i.receta_base_kg,
                 i.sector_id,
@@ -251,6 +254,7 @@ async function obtenerIngrediente(id) {
                 s.descripcion as sector_descripcion
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
             WHERE i.id = $1;
         `;
 
@@ -277,7 +281,7 @@ async function obtenerIngrediente(id) {
  */
 async function crearIngrediente(datos) {
     try {
-        const { nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, sector_id } = datos;
+        const { nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, sector_id } = datos;
 
         // Verificar si ya existe un ingrediente con el mismo nombre (sin distinguir mayúsculas/minúsculas)
         const checkQuery = 'SELECT id FROM ingredientes WHERE LOWER(TRIM(nombre)) = LOWER(TRIM($1))';
@@ -304,7 +308,7 @@ async function crearIngrediente(datos) {
                 nombre,
                 descripcion,
                 unidad_medida,
-                categoria,
+                categoria_id,
                 stock_actual,
                 padre_id,
                 sector_id
@@ -314,7 +318,7 @@ async function crearIngrediente(datos) {
 
         // Convertir sector_id vacío a null
         const sectorIdFinal = (sector_id === '' || sector_id === undefined) ? null : sector_id;
-        const values = [codigo, nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, sectorIdFinal];
+        const values = [codigo, nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, sectorIdFinal];
         const result = await pool.query(query, values);
 
         return result.rows[0];
@@ -336,7 +340,7 @@ async function actualizarIngrediente(id, datos) {
         const nombre = (datos.nombre === undefined) ? existing.nombre : datos.nombre;
         const descripcion = (datos.descripcion === undefined) ? existing.descripcion : datos.descripcion;
         const unidad_medida = (datos.unidad_medida === undefined) ? existing.unidad_medida : datos.unidad_medida;
-        const categoria = (datos.categoria === undefined) ? existing.categoria : datos.categoria;
+        const categoria_id = (datos.categoria_id === undefined) ? existing.categoria_id : datos.categoria_id;
         const stock_actual = (datos.stock_actual === undefined) ? existing.stock_actual : datos.stock_actual;
         const padre_id = (datos.padre_id === undefined) ? existing.padre_id : datos.padre_id;
         const receta_base_kg = (datos.receta_base_kg === undefined) ? existing.receta_base_kg : datos.receta_base_kg;
@@ -366,7 +370,7 @@ async function actualizarIngrediente(id, datos) {
             SET nombre = $1,
             descripcion = $2,
             unidad_medida = $3,
-            categoria = $4,
+            categoria_id = $4,
             stock_actual = $5,
             padre_id = $6,
             receta_base_kg = $7,
@@ -375,7 +379,7 @@ async function actualizarIngrediente(id, datos) {
             RETURNING *;
         `;
 
-        const values = [nombre, descripcion, unidad_medida, categoria, stock_actual, padre_id, receta_base_kg, sector_id, id];
+        const values = [nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, receta_base_kg, sector_id, id];
         const result = await pool.query(query, values);
 
         if (result.rows.length === 0) {
@@ -452,7 +456,8 @@ async function obtenerStockPorUsuario(usuarioId) {
                 i.nombre as nombre_ingrediente,
                 i.descripcion,
                 i.unidad_medida,
-                i.categoria,
+                c.nombre as categoria,
+                i.categoria_id,
                 COALESCE(SUM(isu.cantidad), 0) as stock_total,
                 (
                     SELECT contexto_envase
@@ -468,9 +473,10 @@ async function obtenerStockPorUsuario(usuarioId) {
                     ELSE 'Simple'
                 END as tipo
             FROM public.ingredientes i
+            LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
             WHERE isu.usuario_id = $1
-            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria
+            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria_id, c.nombre
             ORDER BY i.nombre ASC;
         `;
 
@@ -641,14 +647,15 @@ async function buscarIngredientePorCodigo(codigo) {
                 i.nombre,
                 i.descripcion,
                 i.unidad_medida,
-                i.categoria,
-                i.stock_actual,
+                c.nombre as categoria,
+                i.categoria_id,
                 i.stock_actual,
                 i.sector_id,
                 s.nombre as sector_nombre,
                 s.descripcion as sector_descripcion
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
             WHERE i.codigo = $1;
         `;
 
@@ -686,14 +693,15 @@ async function obtenerIngredientesPorSectores(sectores) {
                     i.nombre,
                     i.descripcion,
                     i.unidad_medida,
-                    i.categoria,
-                    i.stock_actual,
+                    c.nombre as categoria,
+                    i.categoria_id,
                     i.stock_actual,
                     i.sector_id,
                     s.nombre as sector_nombre,
                     s.descripcion as sector_descripcion
                 FROM ingredientes i
                 LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+                LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
                 ORDER BY i.nombre ASC;
             `;
         } else if (Array.isArray(sectores) && sectores.length > 0) {
@@ -707,13 +715,15 @@ async function obtenerIngredientesPorSectores(sectores) {
                     i.nombre,
                     i.descripcion,
                     i.unidad_medida,
-                    i.categoria,
+                    c.nombre as categoria,
+                    i.categoria_id,
                     i.stock_actual,
                     i.sector_id,
                     s.nombre as sector_nombre,
                     s.descripcion as sector_descripcion
                 FROM ingredientes i
                 LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+                LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
                 WHERE i.sector_id IN (${placeholders})
                 ORDER BY i.nombre ASC;
             `;
@@ -737,6 +747,125 @@ async function obtenerIngredientesPorSectores(sectores) {
     }
 }
 
+/**
+ * Obtiene todas las categorías disponibles
+ * @returns {Promise<Array>} Lista de categorías
+ */
+async function obtenerCategorias() {
+    try {
+        const query = `
+            SELECT 
+                id,
+                nombre,
+                descripcion
+            FROM categorias_ingredientes
+            ORDER BY nombre ASC;
+        `;
+        const result = await pool.query(query);
+        return result.rows;
+    } catch (error) {
+        console.error('❌ [CATEGORIAS] Error en obtenerCategorias:', error);
+        throw new Error('No se pudo obtener la lista de categorías');
+    }
+}
+
+/**
+ * Crea una nueva categoría
+ * @param {Object} datos - Datos de la categoría (nombre, descripcion)
+ * @returns {Promise<Object>} Categoría creada
+ */
+async function crearCategoria(datos) {
+    try {
+        const { nombre, descripcion } = datos;
+
+        if (!nombre || nombre.trim() === '') {
+            throw new Error('El nombre de la categoría es requerido');
+        }
+
+        const existeQuery = 'SELECT id FROM categorias_ingredientes WHERE LOWER(nombre) = LOWER($1)';
+        const existeResult = await pool.query(existeQuery, [nombre.trim()]);
+
+        if (existeResult.rows.length > 0) {
+            throw new Error('Ya existe una categoría con ese nombre');
+        }
+
+        const insertQuery = `
+            INSERT INTO categorias_ingredientes (nombre, descripcion) 
+            VALUES ($1, $2) 
+            RETURNING id, nombre, descripcion
+        `;
+        const result = await pool.query(insertQuery, [nombre.trim(), descripcion?.trim() || null]);
+        return result.rows[0];
+    } catch (error) {
+        console.error('❌ [CATEGORIAS] Error en crearCategoria:', error);
+        throw new Error(error.message || 'No se pudo crear la categoría');
+    }
+}
+
+/**
+ * Actualiza una categoría existente
+ * @param {number} id - ID de la categoría
+ * @param {Object} datos - Nuevos datos de la categoría
+ * @returns {Promise<Object>} Categoría actualizada
+ */
+async function actualizarCategoria(id, datos) {
+    try {
+        const { nombre, descripcion } = datos;
+
+        if (!nombre || nombre.trim() === '') {
+            throw new Error('El nombre de la categoría es requerido');
+        }
+
+        const existeQuery = 'SELECT id FROM categorias_ingredientes WHERE LOWER(nombre) = LOWER($1) AND id != $2';
+        const existeResult = await pool.query(existeQuery, [nombre.trim(), id]);
+
+        if (existeResult.rows.length > 0) {
+            throw new Error('Ya existe otra categoría con ese nombre');
+        }
+
+        const updateQuery = `
+            UPDATE categorias_ingredientes 
+            SET nombre = $1, descripcion = $2 
+            WHERE id = $3 
+            RETURNING id, nombre, descripcion
+        `;
+        const result = await pool.query(updateQuery, [nombre.trim(), descripcion?.trim() || null, id]);
+
+        if (result.rows.length === 0) {
+            throw new Error('Categoría no encontrada');
+        }
+
+        return result.rows[0];
+    } catch (error) {
+        console.error('❌ [CATEGORIAS] Error en actualizarCategoria:', error);
+        throw new Error(error.message || 'No se pudo actualizar la categoría');
+    }
+}
+
+
+async function eliminarCategoria(id) {
+    try {
+        // Verificar dependencias
+        const checkQuery = 'SELECT COUNT(*) FROM ingredientes WHERE categoria_id = $1';
+        const checkResult = await pool.query(checkQuery, [id]);
+        
+        if (parseInt(checkResult.rows[0].count) > 0) {
+            throw new Error('No se puede eliminar la categoría porque hay ingredientes activos que la están usando');
+        }
+
+        const deleteQuery = 'DELETE FROM categorias_ingredientes WHERE id = $1 RETURNING *';
+        const result = await pool.query(deleteQuery, [id]);
+
+        if (result.rows.length === 0) {
+            throw new Error('Categoría no encontrada');
+        }
+
+        return { mensaje: 'Categoría eliminada exitosamente' };
+    } catch (error) {
+        console.error('Error al eliminar categoría:', error);
+        throw error;
+    }
+}
 module.exports = {
     obtenerIngredientes,
     obtenerIngrediente,
@@ -750,6 +879,10 @@ module.exports = {
     crearSector,
     actualizarSector,
     eliminarSector,
+    obtenerCategorias,
+    crearCategoria,
+    actualizarCategoria,
+    eliminarCategoria,
     buscarIngredientePorCodigo,
     obtenerIngredientesPorSectores,
     obtenerNutrientes,

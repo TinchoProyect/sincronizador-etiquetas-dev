@@ -1,67 +1,69 @@
 const fs = require('fs');
+const path = require('path');
 
-function patchHTML(filePath) {
-    let html = fs.readFileSync(filePath, 'utf8');
+const htmlPath = path.join(__dirname, 'src/produccion/pages/ingredientes.html');
+let content = fs.readFileSync(htmlPath, 'utf8');
 
-    // Remove old modal form content
-    const match = html.match(/(<div class="form-group"[^>]*>\s*<label>Descripción del artículo|<div style="margin-bottom: 15px;">\s*<label style="display: block; font-weight: bold)[^]*?(<div class="modal-footer"|<div style="margin-top: 20px; display: flex)/);
-    
-    if (match) {
-        const replacement = `
-                    <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
-                        <div class="form-group" style="flex: 1; margin-bottom: 15px;">
-                            <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Nombre Responsable <span class="required" style="color:red">*</span></label>
-                            <input type="text" id="checkin-responsable-nombre" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" required placeholder="Quien entrega">
-                        </div>
-                        <div class="form-group" style="flex: 1; margin-bottom: 15px;">
-                            <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Apellido Responsable</label>
-                            <input type="text" id="checkin-responsable-apellido" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" placeholder="Opcional">
-                        </div>
+// 1. Add the "Gestionar Categorías" button
+const btnSectores = `<button id="btn-gestionar-sectores" class="btn-inventario"
+                                    onclick="abrirVentana('sectores.html', 'gestionSectores')"
+                                    style="background-color: #28a745;">
+                                    🏢 Gestionar Sectores
+                                </button>`;
+const btnCategorias = `
+                                <button id="btn-gestionar-categorias" class="btn-inventario"
+                                    onclick="abrirModalCategorias()"
+                                    style="background-color: #0284c7; margin-left: 10px;">
+                                    📂 Gestionar Categorías
+                                </button>`;
+
+if (content.includes(btnSectores) && !content.includes('id="btn-gestionar-categorias"')) {
+    content = content.replace(btnSectores, btnSectores + btnCategorias);
+    console.log('✅ Button added');
+}
+
+// 2. Add the Modal for "Gestionar Categorías"
+const modalHTML = `
+        <!-- Modal para gestionar categorías -->
+        <div id="modal-gestionar-categorias" class="modal">
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <span class="close-modal" onclick="document.getElementById('modal-gestionar-categorias').style.display='none'">&times;</span>
+                    <h2>Gestión de Categorías</h2>
+                </div>
+                <div class="modal-body" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                        <input type="text" id="buscador-categorias-modal" placeholder="Buscar categoría..." style="padding: 8px; width: 60%; border: 1px solid #cbd5e1; border-radius: 4px;">
+                        <button class="btn-agregar" onclick="abrirSubFormularioCategoria('', true)" style="width: 35%;">+ Nueva Categoría</button>
                     </div>
                     
-                    <div class="form-group" style="margin-bottom: 1rem;">
-                        <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Celular Contacto Responsable</label>
-                        <input type="tel" id="checkin-responsable-celular" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" placeholder="Opcional">
+                    <div class="tabla-container" style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <table class="articulos-tabla" style="width: 100%; border-collapse: collapse;">
+                            <thead style="position: sticky; top: 0; background: #f8fafc;">
+                                <tr>
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">ID</th>
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">Nombre</th>
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e2e8f0;">Descripción</th>
+                                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #e2e8f0;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-categorias-body">
+                                <!-- Contenido dinámico -->
+                            </tbody>
+                        </table>
                     </div>
+                </div>
+            </div>
+        </div>
+`;
 
-                    <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
-                        <div class="form-group" style="flex: 1;">
-                            <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Kilos Brutos <span class="required" style="color:red">*</span></label>
-                            <input type="text" inputmode="decimal" id="checkin-kilos" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" required placeholder="0.00">
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Bultos <span class="required" style="color:red">*</span></label>
-                            <input type="number" id="checkin-bultos" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" required placeholder="0" min="1">
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 1rem;">
-                        <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Descripción del artículo <span class="required" style="color:red">*</span></label>
-                        <input type="text" id="checkin-descripcion" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" required placeholder="Ej: semilla, dátil, harina">
-                    </div>
-                    
-                    <div class="form-group" style="margin-bottom: 1.5rem;">
-                        <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Motivo a Tratar <span class="required" style="color:red">*</span></label>
-                        <textarea id="checkin-motivo" rows="3" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" required placeholder="Describa el servicio requerido..."></textarea>
-                    </div>
-
-                    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
-                        <div class="form-group" style="flex: 1;">
-                            <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Nombre Chofer LAMDA <span class="required" style="color:red">*</span></label>
-                            <input type="text" id="checkin-chofer-nombre" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" required placeholder="Nombre Chofer">
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label style="display: block; font-weight: bold; color: #475569; margin-bottom: 5px;">Fecha y Hora <span class="required" style="color:red">*</span></label>
-                            <input type="datetime-local" id="checkin-fecha" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" required>
-                        </div>
-                    </div>
-                    
-                    ${match[2]}`;
-        
-        fs.writeFileSync(filePath, html.substring(0, match.index) + replacement + html.substring(match.index + match[0].length));
-        console.log('Patched modal in:', filePath);
+if (!content.includes('id="modal-gestionar-categorias"')) {
+    // Insert before the closing </main> or after the modal-ingrediente
+    const insertPoint = '<!-- Modal para agregar/editar ingrediente -->';
+    if (content.includes(insertPoint)) {
+        content = content.replace(insertPoint, modalHTML + '\\n        ' + insertPoint);
+        console.log('✅ Modal added');
     }
 }
 
-patchHTML('src/logistica/pages/dashboard.html');
-patchHTML('src/logistica/public/mobile/ruta.html');
+fs.writeFileSync(htmlPath, content, 'utf8');
