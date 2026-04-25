@@ -1,6 +1,8 @@
 {
-  "numero": "MFST10x300",
-  "nombre": "Mix/F/Secas/Tropical 10 x 300",
-  "codigo_barras": "2582563254",
+  "articulo": {
+    "numero": "5996862117",
+    "nombre": "Nuez/Ma/ExtL 10 x 200 g",
+    "codigo_barras": "5996862117"
+  },
   "cantidad": 2
 }

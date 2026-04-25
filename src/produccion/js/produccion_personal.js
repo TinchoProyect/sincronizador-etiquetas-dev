@@ -42,9 +42,7 @@ window.agregarAlCarro = agregarAlCarro;
 window.cerrarModalReceta = cerrarModalReceta;
 window.abrirModalIngresoManual = abrirModalIngresoManual;
 window.imprimirOrdenProduccion = imprimirOrdenProduccion;
-// 🚀 [DIAGNÓSTICO] Agregar log para verificar que la función está disponible globalmente
-console.log('🔍 [DIAGNÓSTICO] Función abrirModalGuardadoIngredientes disponible globalmente:', typeof window.abrirModalGuardadoIngredientes);
-
+// Exportar funciones unificadas de guardado de ingredientes
 window.abrirModalGuardadoIngredientes = abrirModalGuardadoIngredientes;
 window.abrirModalSalvavidas = abrirModalSalvavidas;
 

@@ -84,122 +84,16 @@ function restaurarEstadoVisualFiltros() {
 // ✅ NUEVA FUNCIÓN PARA RECARGAR DATOS SIN PERDER FILTROS
 async function recargarDatosMantenendoFiltros() {
     try {
-        // Cargar datos frescos del servidor
         const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al obtener los datos');
-        }
-
+        if (!response.ok) throw new Error('Error al obtener los datos');
         const datos = await response.json();
-
-        // Actualizar lista completa y mix.js
         ingredientesOriginales = datos;
-        window.actualizarListaIngredientes(datos);
-
-        // Mapear es_mix a esMix para consistencia
+        if (typeof window.actualizarListaIngredientes === 'function') window.actualizarListaIngredientes(datos);
         const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
-
         ingredientesOriginales = ingredientesConEstado;
-
-let categoriasCatalogo = []; // Para almacenar las categorias del combobox
-
-// ✅ NUEVAS VARIABLES PARA MANTENER ESTADO DE FILTROS
-let estadoFiltrosGuardado = null; // Para guardar temporalmente el estado de filtros
-
-// ✅ FUNCIONES PARA MANTENER ESTADO DE FILTROS
-function guardarEstadoFiltros() {
-    estadoFiltrosGuardado = {
-        categorias: new Set(filtrosActivos),
-        tipos: new Set(filtrosTipoActivos),
-        stocks: new Set(filtrosStockActivos),
-        sectores: new Set(filtrosSectorActivos)
-    };
-}
-
-function restaurarEstadoFiltros() {
-    if (!estadoFiltrosGuardado) {
-        return;
-    }
-
-    // Restaurar los Sets de filtros
-    filtrosActivos = new Set(estadoFiltrosGuardado.categorias);
-    filtrosTipoActivos = new Set(estadoFiltrosGuardado.tipos);
-    filtrosStockActivos = new Set(estadoFiltrosGuardado.stocks);
-    filtrosSectorActivos = new Set(estadoFiltrosGuardado.sectores);
-
-    // Restaurar estado visual de los botones
-    restaurarEstadoVisualFiltros();
-}
-
-function restaurarEstadoVisualFiltros() {
-    // Restaurar botones de categoría
-    document.querySelectorAll('.categorias-botones .btn-filtro').forEach(btn => {
-        if (filtrosActivos.has(btn.textContent)) {
-            btn.classList.add('activo');
-        } else {
-            btn.classList.remove('activo');
-        }
-    });
-
-    // Restaurar botones de tipo
-    document.querySelectorAll('.tipos-botones .btn-filtro').forEach(btn => {
-        const tipo = btn.dataset.tipo;
-        if (filtrosTipoActivos.has(tipo)) {
-            btn.classList.add('activo');
-        } else {
-            btn.classList.remove('activo');
-        }
-    });
-
-    // Restaurar botones de stock
-    document.querySelectorAll('.stock-botones .btn-filtro').forEach(btn => {
-        const stock = btn.dataset.stock;
-        if (filtrosStockActivos.has(stock)) {
-            btn.classList.add('activo');
-        } else {
-            btn.classList.remove('activo');
-        }
-    });
-
-    // Restaurar botones de sector
-    document.querySelectorAll('.sectores-botones .btn-filtro').forEach(btn => {
-        const sectorId = btn.dataset.sectorId;
-        if (filtrosSectorActivos.has(sectorId)) {
-            btn.classList.add('activo');
-        } else {
-            btn.classList.remove('activo');
-        }
-    });
-}
-
-// ✅ NUEVA FUNCIÓN PARA RECARGAR DATOS SIN PERDER FILTROS
-async function recargarDatosMantenendoFiltros() {
-    try {
-        // Cargar datos frescos del servidor
-        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al obtener los datos');
-        }
-
-        const datos = await response.json();
-
-        // Actualizar lista completa y mix.js
-        ingredientesOriginales = datos;
-        window.actualizarListaIngredientes(datos);
-
-        // Mapear es_mix a esMix para consistencia
-        const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
-
-        ingredientesOriginales = ingredientesConEstado;
-
-        // Aplicar filtros existentes sin reinicializar
-        await actualizarTablaFiltrada();
-
+        restaurarEstadoFiltros();
     } catch (error) {
-        console.error('❌ Error al recargar datos:', error);
-        mostrarMensaje(error.message || 'No se pudieron recargar los datos');
+        console.error('Error al recargar datos:', error);
     }
 }
 

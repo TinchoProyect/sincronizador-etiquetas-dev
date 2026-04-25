@@ -1,35 +1,59 @@
 export const modalIngredienteHTML = `
 <!-- Modal para agregar/editar ingrediente -->
 <div id="modal-ingrediente" class="modal">
-    <div class="modal-content card" style="max-width: 650px; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+    <div class="modal-content card" style="width: 800px; max-width: 90vw; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); background-color: #ffffff;">
         <div class="modal-header" style="border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
             <h2 id="modal-titulo" style="margin: 0; color: #1e293b; font-size: 1.5rem; font-weight: 600;">Nuevo Ingrediente</h2>
             <span class="close-modal" style="font-size: 1.5rem; cursor: pointer; color: #64748b; transition: color 0.2s;">&times;</span>
         </div>
-        <form id="form-ingrediente" style="display: flex; flex-direction: column; gap: 15px;">
+        <form id="form-ingrediente" style="display: flex; flex-direction: column; gap: 20px;">
             <input type="hidden" id="ingrediente-id">
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                <!-- Columna Izquierda -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px;">
+                <!-- Columna 1: Identificación -->
                 <div style="display: flex; flex-direction: column; gap: 15px;">
                     <div class="form-group" style="margin: 0;">
                         <label for="codigo" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Código</label>
                         <input type="text" id="codigo" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; color: #64748b;">
-                        <small style="color: #94a3b8; font-size: 0.75rem; margin-top: 4px; display: block;">Autogenerado</small>
                     </div>
                     
                     <div class="form-group" style="margin: 0;">
                         <label for="nombre" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Nombre <span style="color: #ef4444;">*</span></label>
                         <input type="text" id="nombre" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; transition: border-color 0.2s;">
                     </div>
+                </div>
+
+                <!-- Columna 2: Cuantitativo -->
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="form-group" style="margin: 0;">
+                        <label for="stock" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Stock <span style="color: #ef4444;">*</span></label>
+                        <input type="number" id="stock" step="0.01" min="0" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    </div>
+
+                    <div class="form-group" style="margin: 0;">
+                        <label for="unidad-medida" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Unidad <span style="color: #ef4444;">*</span></label>
+                        <input type="text" id="unidad-medida" placeholder="Ej: kilo" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    </div>
+                </div>
+
+                <!-- Columna 3: Clasificación -->
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="form-group" style="margin: 0;">
+                        <label for="sector" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Sector</label>
+                        <select id="sector" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: white;">
+                            <option value="">Sin sector asignado</option>
+                        </select>
+                    </div>
 
                     <div class="form-group" style="margin: 0; position: relative;">
                         <label for="categoria-input" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Categoría <span style="color: #ef4444;">*</span></label>
-                        <div class="combobox-wrapper" style="position: relative;">
-                            <input type="text" id="categoria-input" placeholder="Buscar o crear..." autocomplete="off" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
-                            <input type="hidden" id="categoria-id">
-                            <button type="button" id="btn-edit-categoria" style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: none; cursor: pointer; color: #64748b;" title="Editar categoría">✏️</button>
-                            <ul id="categoria-list" class="combobox-list" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; width: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 6px; z-index: 10000; list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"></ul>
+                        <div class="combobox-wrapper" style="position: relative; display: flex; gap: 10px; align-items: stretch; height: 42px;">
+                            <select id="categoria-input" name="categoria" class="categoria-input" required style="flex: 1; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: white; color: #1e293b; font-size: 1rem; appearance: auto;">
+                                <option value="">Seleccione una categoría...</option>
+                            </select>
+                            <input type="hidden" id="categoria-id" name="categoria_id">
+                            <button type="button" class="btn-agregar-categoria" onclick="window.abrirSubFormularioCategoria('', false)" style="padding: 0 15px; background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; border-radius: 6px; cursor: pointer; white-space: nowrap; font-weight: 500; height: 100%; transition: background-color 0.2s;" title="Nueva Categoría">+ Nueva</button>
+                            <button type="button" id="btn-edit-categoria" style="display: none; padding: 0 10px; background: none; border: none; cursor: pointer; color: #64748b; font-size: 1.1em; transition: color 0.2s;" title="Editar categoría">✏️</button>
                         </div>
                         <div id="categoria-form-container" style="display: none; background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #e2e8f0; position: absolute; z-index: 10001; width: calc(100% - 30px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
                             <div style="margin-bottom: 10px;">
@@ -40,45 +64,24 @@ export const modalIngredienteHTML = `
                                 <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Descripción (opcional)</label>
                                 <input type="text" id="cat-form-desc" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
                             </div>
-                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                                <button type="button" id="btn-cancelar-categoria" style="padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">Cancelar</button>
-                                <button type="button" id="btn-guardar-categoria" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">Guardar</button>
+                            <div style="display: flex; gap: 10px; justify-content: flex-end; position: relative; z-index: 10002;">
+                                <button type="button" id="btn-cancelar-categoria" style="padding: 6px 12px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer; font-size: 0.85rem; pointer-events: auto;">Cancelar</button>
+                                <button type="button" id="btn-guardar-categoria" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; pointer-events: auto;">Guardar</button>
                             </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Columna Derecha -->
-                <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <div class="form-group" style="margin: 0;">
-                        <label for="sector" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Sector</label>
-                        <select id="sector" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: white;">
-                            <option value="">Sin sector asignado</option>
-                        </select>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group" style="margin: 0;">
-                            <label for="stock" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Stock <span style="color: #ef4444;">*</span></label>
-                            <input type="number" id="stock" step="0.01" min="0" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label for="unidad-medida" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Unidad <span style="color: #ef4444;">*</span></label>
-                            <input type="text" id="unidad-medida" placeholder="Ej: kilo" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="margin: 0; flex-grow: 1; display: flex; flex-direction: column;">
-                        <label for="descripcion" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Descripción General</label>
-                        <textarea id="descripcion" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; resize: none; flex-grow: 1;"></textarea>
-                    </div>
-                </div>
             </div>
 
-            <div class="form-actions" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px;">
-                <button type="button" class="close-modal close-modal-btn" style="padding: 10px 20px; background: white; border: 1px solid #cbd5e1; border-radius: 6px; color: #475569; cursor: pointer; font-weight: 500; transition: all 0.2s;">Cancelar</button>
-                <button type="button" id="btn-imprimir" class="btn-imprimir" style="display:none; padding: 10px 20px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; color: #475569; cursor: pointer; font-weight: 500;">🖨️ Imprimir</button>
-                <button type="submit" class="btn btn-success" style="padding: 10px 24px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.2); transition: all 0.2s;">💾 Guardar Ingrediente</button>
+            <!-- Fila 4: Descripción (Ancho completo) -->
+            <div class="form-group" style="margin: 0; width: 100%;">
+                <label for="descripcion" style="font-weight: 500; color: #475569; margin-bottom: 5px; display: block;">Descripción General</label>
+                <textarea id="descripcion" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; resize: vertical;"></textarea>
+            </div>
+
+            <!-- Botones de Acción (Formulario Principal) -->
+            <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; position: relative; z-index: 100;">
+                <button type="submit" class="btn btn-success" style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2); transition: all 0.2s; pointer-events: auto;">Guardar Ingrediente</button>
             </div>
         </form>
     </div>
@@ -138,108 +141,59 @@ export async function cargarSectores() {
 }
 
 function inicializarComboboxCategorias() {
-    const input = document.getElementById('categoria-input');
+    const select = document.getElementById('categoria-input');
     const hiddenId = document.getElementById('categoria-id');
-    const list = document.getElementById('categoria-list');
     const btnEdit = document.getElementById('btn-edit-categoria');
 
-    if (!input || !list || !hiddenId) {
-        console.error('❌ [modalIngrediente] No se encontraron elementos del combobox de categorías en el DOM.');
+    if (!select || !hiddenId) {
+        console.error('❌ [modalIngrediente] No se encontraron elementos del select de categorías en el DOM.');
         return;
     }
 
-    if (input.dataset.inicializado === 'true') {
-        console.log('✅ [modalIngrediente] Combobox de categorías ya estaba inicializado.');
+    if (select.dataset.inicializado === 'true') {
+        console.log('✅ [modalIngrediente] Select de categorías ya estaba inicializado.');
         return;
     }
-    input.dataset.inicializado = 'true';
+    select.dataset.inicializado = 'true';
 
-    console.log('🔧 [modalIngrediente] Inicializando listeners para combobox de categorías...');
+    console.log('🔧 [modalIngrediente] Inicializando select de categorías (Opción A Nativa)...');
+    
+    // Poblar select con categoríasCatalogo
+    select.innerHTML = '<option value="">Seleccione una categoría...</option>';
+    categoriasCatalogo.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat.nombre; // El value es el nombre por compatibilidad legacy
+        option.dataset.id = cat.id; // Guardamos el ID en un dataset
+        option.textContent = cat.nombre;
+        select.appendChild(option);
+    });
+
+    // Evento change para reflejar el ID y mostrar el botón editar
+    select.addEventListener('change', () => {
+        const selectedOption = select.options[select.selectedIndex];
+        if (selectedOption && selectedOption.value !== "") {
+            hiddenId.value = selectedOption.dataset.id;
+            if (btnEdit) btnEdit.style.display = 'block';
+        } else {
+            hiddenId.value = '';
+            if (btnEdit) btnEdit.style.display = 'none';
+        }
+    });
 
     if (btnEdit) {
         const newBtnEdit = btnEdit.cloneNode(true);
         btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit);
         newBtnEdit.addEventListener('click', () => {
-            abrirSubFormularioCategoria(input.value);
+            abrirSubFormularioCategoria(select.value);
         });
     }
-
-    input.addEventListener('focus', () => {
-        console.log('🔍 [modalIngrediente] Focus en categoría. Mostrando lista...');
-        renderizarComboboxCategorias(categoriasCatalogo);
-        list.style.display = 'block';
-    });
-
-    input.addEventListener('input', (e) => {
-        const val = e.target.value.toLowerCase();
-        hiddenId.value = '';
-        const currentBtnEdit = document.getElementById('btn-edit-categoria');
-        if(currentBtnEdit) currentBtnEdit.style.display = 'none';
-        
-        const filtradas = categoriasCatalogo.filter(c => c.nombre.toLowerCase().includes(val));
-        renderizarComboboxCategorias(filtradas, val);
-        list.style.display = 'block';
-    });
-
-    // Delegación de eventos para el click fuera del combobox
-    document.addEventListener('click', (e) => {
-        const isClickInsideCombobox = e.target.closest('.combobox-wrapper');
-        const isClickInsideForm = e.target.closest('#categoria-form-container');
-        
-        if (!isClickInsideCombobox && !isClickInsideForm) {
-            const currentList = document.getElementById('categoria-list');
-            if(currentList) currentList.style.display = 'none';
-        }
-    });
-}
-
-function renderizarComboboxCategorias(categorias, filtroBusqueda = '') {
-    const list = document.getElementById('categoria-list');
-    list.innerHTML = '';
-
-    categorias.forEach(cat => {
-        const li = document.createElement('li');
-        li.textContent = cat.nombre;
-        li.style.padding = '8px 12px';
-        li.style.cursor = 'pointer';
-        li.style.borderBottom = '1px solid #f1f5f9';
-        
-        li.addEventListener('mouseover', () => li.style.backgroundColor = '#f8fafc');
-        li.addEventListener('mouseout', () => li.style.backgroundColor = 'white');
-        
-        li.addEventListener('click', () => {
-            document.getElementById('categoria-input').value = cat.nombre;
-            document.getElementById('categoria-id').value = cat.id;
-            const btnEdit = document.getElementById('btn-edit-categoria');
-            if(btnEdit) btnEdit.style.display = 'block';
-            list.style.display = 'none';
-        });
-        list.appendChild(li);
-    });
-
-    const li = document.createElement('li');
-    li.style.padding = '8px 12px';
-    li.style.color = '#0275d8';
-    li.style.cursor = 'pointer';
-    li.style.fontWeight = 'bold';
-    li.style.backgroundColor = '#f0f9ff';
-    li.style.borderTop = '1px solid #bae6fd';
-    
-    if (filtroBusqueda.trim() !== '') {
-        li.innerHTML = `➕ Crear nueva categoría: "${filtroBusqueda}"`;
-    } else {
-        li.innerHTML = `➕ Crear nueva categoría...`;
-    }
-    
-    li.addEventListener('click', () => abrirSubFormularioCategoria(filtroBusqueda.trim()));
-    list.appendChild(li);
 }
 
 export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false) {
     window.isEditingCategoryModal = isModal;
     const wrapper = document.querySelector('.combobox-wrapper');
     let container = document.getElementById('categoria-form-container');
-    const list = document.getElementById('categoria-list');
+    const list = document.getElementById('lista-categorias-resultados');
     
     // Crear contenedor si no existe (ya no debería ser necesario porque viene en el HTML, pero por si acaso para el modal de gestión)
     if (!container) {
@@ -271,7 +225,7 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
         if (wrapper) wrapper.parentNode.insertBefore(container, wrapper.nextSibling);
     }
 
-    if (list) list.style.display = 'none';
+    // El contenedor dropdown custom ya no existe (Option A Nativa)
     if (wrapper && !isModal) wrapper.style.display = 'none';
     
     document.getElementById('cat-form-nombre').value = nombreSugerido;
@@ -296,7 +250,7 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
     
     newBtnCancel.addEventListener('click', () => {
         if(container) container.style.display = 'none';
-        if (!isModal && wrapper) wrapper.style.display = 'block';
+        if (!isModal && wrapper) wrapper.style.display = 'flex';
         if (isModal) window.currentEditCategoryId = null;
     });
         
@@ -330,8 +284,17 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
             if(container) container.style.display = 'none';
             
             if (!isModal && wrapper) {
-                wrapper.style.display = 'block';
-                document.getElementById('categoria-input').value = savedCat.nombre;
+                wrapper.style.display = 'flex';
+                const select = document.getElementById('categoria-input');
+                // Agregar la nueva categoría al select si no existe
+                if (!Array.from(select.options).some(opt => opt.value === savedCat.nombre)) {
+                    const newOpt = document.createElement('option');
+                    newOpt.value = savedCat.nombre;
+                    newOpt.dataset.id = savedCat.id;
+                    newOpt.textContent = savedCat.nombre;
+                    select.appendChild(newOpt);
+                }
+                select.value = savedCat.nombre;
                 document.getElementById('categoria-id').value = savedCat.id;
                 const btnEdit = document.getElementById('btn-edit-categoria');
                 if (btnEdit) btnEdit.style.display = 'block';
@@ -348,10 +311,15 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
 
 function configurarCierreModal() {
     const modal = document.getElementById('modal-ingrediente');
-    const closeBtn = modal.querySelector('.close-modal');
+    const closeBtns = modal.querySelectorAll('.close-modal');
     
     const closeHandler = () => {
         modal.style.display = 'none';
+        modal.style.opacity = '0';
+        modal.style.visibility = 'hidden';
+        modal.style.pointerEvents = 'none';
+        modal.style.zIndex = '-1';
+        
         document.getElementById('form-ingrediente').reset();
         document.getElementById('categoria-id').value = '';
         const btnEdit = document.getElementById('btn-edit-categoria');
@@ -360,10 +328,12 @@ function configurarCierreModal() {
         window.dispatchEvent(new Event('modal-ingrediente-cerrado'));
     };
 
-    if (closeBtn) {
-        closeBtn.replaceWith(closeBtn.cloneNode(true));
-        modal.querySelector('.close-modal').addEventListener('click', closeHandler);
-    }
+    closeBtns.forEach(btn => {
+        // Remover listeners anteriores reemplazando el nodo
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        newBtn.addEventListener('click', closeHandler);
+    });
 }
 
 function configurarSubmitFormulario() {
@@ -431,7 +401,7 @@ export async function abrirModalNuevoIngrediente() {
     if (btnEdit) btnEdit.style.display = 'none';
 
     try {
-        const response = await fetch('http://localhost:3002/api/produccion/ingredientes/nuevo-codigo');
+        const response = await fetch('/api/produccion/ingredientes/nuevo-codigo');
         if (response.ok) {
             const data = await response.json();
             document.getElementById('codigo').value = data.codigo;
@@ -451,3 +421,56 @@ export async function abrirModalNuevoIngrediente() {
         modal.style.backgroundColor = 'rgba(0,0,0,0.6)';
     }
 }
+
+// Exportar funciones globales para el auditor
+window.abrirModalNuevoIngrediente = abrirModalNuevoIngrediente;
+window.inicializarModalIngrediente = inicializarModalIngrediente;
+
+/*
+=============================================================================
+SCRIPT VIGÍA DEPURADOR - TICKET #028
+=============================================================================
+Ejecutar este script en la consola del navegador para auditar empíricamente
+el estado de inyección, binding y conectividad del Combobox de Categorías.
+
+(async function auditarComboboxCategorias() {
+    console.log('%c[VIGÍA] Iniciando Auditoría de Categorías...', 'color: #3b82f6; font-weight: bold;');
+    
+    // 1. Validar DOM
+    const input = document.getElementById('categoria-input');
+    if (!input) {
+        console.error('❌ DOM FAIL: El input de categoría no existe. ¿El modal fue inyectado?');
+        return;
+    }
+    console.log('✅ DOM OK: Input de categoría encontrado.');
+
+    // 2. Verificar Event Listener (Binding)
+    const inicializado = input.dataset.inicializado === 'true';
+    if (!inicializado) {
+        console.warn('⚠️ BINDING WARN: El dataset.inicializado no es true. Los eventos de búsqueda podrían no estar atachados.');
+    } else {
+        console.log('✅ BINDING OK: El input reporta estar inicializado.');
+    }
+
+    // 3. Simular Petición a la API (Conectividad)
+    console.log('%c[VIGÍA] Solicitando categorías a /api/produccion/categorias...', 'color: #8b5cf6;');
+    try {
+        const t0 = performance.now();
+        const resp = await fetch('/api/produccion/categorias');
+        const t1 = performance.now();
+        
+        if (!resp.ok) {
+            console.error(\`❌ API FAIL: HTTP \${resp.status} \${resp.statusText}\`);
+            return;
+        }
+        
+        const data = await resp.json();
+        console.log(\`✅ API OK: \${data.length} categorías recibidas en \${Math.round(t1 - t0)}ms.\`);
+        console.table(data.slice(0, 5)); // Mostrar muestra
+        if(data.length > 5) console.log('... (solo mostrando las primeras 5)');
+    } catch (error) {
+        console.error('❌ API FATAL: Excepción de red o CORS.', error);
+    }
+})();
+=============================================================================
+*/
