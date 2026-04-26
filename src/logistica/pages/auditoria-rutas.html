@@ -287,26 +287,68 @@
         html += `<p style="color:var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;"><i class="fa-solid fa-user"></i> ${r.chofer_nombre || 'S/N'}</p>`;
         
         html += '<ul class="timeline">';
+
+        // Intentar cruzar datos empíricos
+        let empInicio = null;
+        let empFin = null;
+        let empParadas = {};
+        let empTraslados = [];
+
+        if (currentAuditoriaData && currentAuditoriaData.tramos) {
+            currentAuditoriaData.tramos.forEach(t => {
+                if (t.tipo_tramo === 'NODO_CERO') {
+                    if (!empInicio) empInicio = t;
+                    else empFin = t;
+                } else if (t.tipo_tramo === 'GESTION_CLIENTE') {
+                    empParadas[t.id_presupuesto] = t;
+                } else if (t.tipo_tramo === 'TRASLADO') {
+                    empTraslados.push(t);
+                }
+            });
+        }
         
         // Nodo Inicio Inyectado
         const selInicio = document.getElementById('nodoInicioSelect');
         if (selInicio && selInicio.value) {
             const txt = selInicio.options[selInicio.selectedIndex].text;
+            let infoExtra = '';
+            if (empInicio) infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold;">⏳ ${empInicio.tiempo_duracion_minutos} min</span>`;
+            
             html += `
             <li class="timeline-item node-cero">
                 <div class="timeline-card" style="background:#f0fdf4; border-color:#bbf7d0;">
-                    <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Inicio: ${txt}</div>
+                    <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Inicio: ${txt} ${infoExtra}</div>
                     <div class="timeline-details">Extremo Forzado Manualmente</div>
                 </div>
             </li>`;
         }
 
+        let currentTrasladoIndex = 0;
+
         if(r.presupuestos && r.presupuestos.length > 0) {
             r.presupuestos.forEach((p, idx) => {
+                
+                // Tránsito Empírico
+                if (currentAuditoriaData) {
+                    const traslado = empTraslados[currentTrasladoIndex++];
+                    if (traslado) {
+                        html += `
+                        <div style="margin-left: 20px; padding: 0.5rem 0; border-left: 2px dashed #93c5fd; padding-left: 1rem; color: #3b82f6; font-size: 0.8rem;">
+                            <i class="fa-solid fa-truck-fast"></i> Tránsito: <strong>${traslado.tiempo_duracion_minutos} min</strong> (${traslado.distancia_geocerca_metros ? (traslado.distancia_geocerca_metros/1000).toFixed(1) + ' km' : 'N/A'})
+                        </div>`;
+                    }
+                }
+
+                const empP = empParadas[p.id];
+                let infoExtra = '';
+                if (empP) {
+                    infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold; color:#ef4444;">⏳ ${empP.tiempo_duracion_minutos} min en geocerca</span>`;
+                }
+
                 html += `
                 <li class="timeline-item node-gestion">
                     <div class="timeline-card">
-                        <div class="timeline-title"><i class="fa-solid fa-box"></i> Parada ${idx+1}: ${p.cliente_nombre || 'Cliente'}</div>
+                        <div class="timeline-title"><i class="fa-solid fa-box"></i> Parada ${idx+1}: ${p.cliente_nombre || 'Cliente'} ${infoExtra}</div>
                         <div class="timeline-details">📍 ${p.domicilio_direccion || 'Sin dirección'}</div>
                     </div>
                 </li>`;
@@ -315,14 +357,28 @@
             html += '<li class="timeline-item"><div class="timeline-card"><p style="color: var(--text-muted); text-align:center;">Sin pedidos planificados en la ruta.</p></div></li>';
         }
 
+        // Tránsito Empírico Retorno
+        if (currentAuditoriaData) {
+            const traslado = empTraslados[currentTrasladoIndex];
+            if (traslado) {
+                html += `
+                <div style="margin-left: 20px; padding: 0.5rem 0; border-left: 2px dashed #93c5fd; padding-left: 1rem; color: #3b82f6; font-size: 0.8rem;">
+                    <i class="fa-solid fa-truck-fast"></i> Tránsito Retorno: <strong>${traslado.tiempo_duracion_minutos} min</strong> (${traslado.distancia_geocerca_metros ? (traslado.distancia_geocerca_metros/1000).toFixed(1) + ' km' : 'N/A'})
+                </div>`;
+            }
+        }
+
         // Nodo Fin Inyectado
         const selFin = document.getElementById('nodoFinSelect');
         if (selFin && selFin.value) {
             const txt = selFin.options[selFin.selectedIndex].text;
+            let infoExtra = '';
+            if (empFin) infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold;">⏳ ${empFin.tiempo_duracion_minutos} min</span>`;
+
             html += `
             <li class="timeline-item node-cero">
                 <div class="timeline-card" style="background:#f0fdf4; border-color:#bbf7d0;">
-                    <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Fin: ${txt}</div>
+                    <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Fin: ${txt} ${infoExtra}</div>
                     <div class="timeline-details">Extremo Forzado Manualmente</div>
                 </div>
             </li>`;
@@ -387,6 +443,7 @@
 
             if (payload.success) {
                 currentAuditoriaData = payload.data;
+                renderTeoricoVisual(); // Consolidar vista empírica en el panel teórico
                 renderizarGoogle(payload.data);
                 renderEstadisticas(payload.data);
                 document.getElementById('btnGuardar').disabled = false;

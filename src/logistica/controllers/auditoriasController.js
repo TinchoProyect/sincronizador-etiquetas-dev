@@ -50,8 +50,20 @@ class AuditoriasController {
             if (idNodoInicio) nodoInicio = puntosBase.find(p => p.id == idNodoInicio);
             if (idNodoFin) nodoFin = puntosBase.find(p => p.id == idNodoFin);
 
+            // Definir ventana de tiempo de la ruta para acotar la Realidad Satelital
+            const msInicio = ruta.fecha_salida ? new Date(ruta.fecha_salida).getTime() : new Date(ruta.fecha_creacion).getTime();
+            let msFin = new Date().getTime(); // Si no terminó, hasta el presente
+            if (ruta.fecha_finalizacion) {
+                msFin = new Date(ruta.fecha_finalizacion).getTime();
+            }
+
+            const ventanaTemporal = {
+                inicio: msInicio,
+                fin: msFin
+            };
+
             // 3. Procesar mediante el Motor Analítico
-            const resultado = GoogleTimelineParser.procesar(timelineJson, puntosBase, paradas, { toleranciaMetros: 50, toleranciaTiempoMin: 3 }, nodoInicio, nodoFin);
+            const resultado = GoogleTimelineParser.procesar(timelineJson, puntosBase, paradas, { toleranciaMetros: 50, toleranciaTiempoMin: 3 }, nodoInicio, nodoFin, ventanaTemporal);
 
             // 4. Calcular desviación teórica
             const duracionDeclarada = ruta.duracion_neta_minutos || 0;

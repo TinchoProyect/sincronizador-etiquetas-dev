@@ -140,7 +140,7 @@ class GoogleTimelineParser {
     /**
      * Procesar un archivo JSON crudo de Google Timeline
      */
-    static procesar(timelineJson, puntosBase = [], rutaLamdaEntregas = [], config = { toleranciaMetros: 50, toleranciaTiempoMin: 3 }, nodoInicio = null, nodoFin = null) {
+    static procesar(timelineJson, puntosBase = [], rutaLamdaEntregas = [], config = { toleranciaMetros: 50, toleranciaTiempoMin: 3 }, nodoInicio = null, nodoFin = null, ventanaTemporal = null) {
         console.log('[PARSER] Iniciando procesamiento de Timeline JSON');
         
         // Detección de Topología (Antigua vs Nueva E2EE)
@@ -153,6 +153,34 @@ class GoogleTimelineParser {
             segmentos = timelineJson.timelineObjects;
         } else {
             throw new Error('El archivo JSON no tiene un formato válido (No se encontró semanticSegments ni timelineObjects).');
+        }
+
+        // Filtro de Contexto (Ticket #021): Aislar estrictamente los segmentos correspondientes a la ruta
+        if (ventanaTemporal && ventanaTemporal.inicio && ventanaTemporal.fin) {
+            const msVentanaInicio = ventanaTemporal.inicio;
+            const msVentanaFin = ventanaTemporal.fin;
+
+            segmentos = segmentos.filter(obj => {
+                const paradaInfo = obj.placeVisit || obj.visit;
+                const movimientoInfo = obj.activitySegment || obj.activity;
+                
+                const rawStart = (paradaInfo && paradaInfo.duration && paradaInfo.duration.startTimestamp) || 
+                                 (movimientoInfo && movimientoInfo.duration && movimientoInfo.duration.startTimestamp) || 
+                                 obj.startTime;
+                
+                const rawEnd = (paradaInfo && paradaInfo.duration && paradaInfo.duration.endTimestamp) || 
+                               (movimientoInfo && movimientoInfo.duration && movimientoInfo.duration.endTimestamp) || 
+                               obj.endTime;
+                
+                if (!rawStart) return false;
+                
+                const msObjInicio = new Date(rawStart).getTime();
+                const msObjFin = rawEnd ? new Date(rawEnd).getTime() : msObjInicio;
+                
+                // Si el segmento completo ocurrió antes de la ruta o después de la ruta, se descarta.
+                // Permitimos solapamiento parcial (overlap).
+                return (msObjInicio <= msVentanaFin && msObjFin >= msVentanaInicio);
+            });
         }
 
         const tramosExtraidos = [];
