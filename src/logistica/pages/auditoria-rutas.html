@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conciliación de Rutas | LAMDA</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --info: #3b82f6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* HEADER */
+        .header { background: #1e293b; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .header h1 { font-size: 1.25rem; font-weight: 600; }
+        .header-actions { display: flex; gap: 1rem; }
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; font-weight: 500; cursor: pointer; transition: 0.2s; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:disabled { background: var(--border); cursor: not-allowed; color: var(--text-muted); }
+        
+        /* MAIN WORKSPACE */
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        
+        /* SIDEBAR / UPLOAD */
+        .sidebar { width: 350px; background: var(--bg-card); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 1.5rem; flex-shrink: 0; overflow-y: auto; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem; }
+        .form-control { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; }
+        
+        .upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 2rem 1rem; text-align: center; cursor: pointer; transition: 0.2s; background: #f8fafc; }
+        .upload-zone:hover, .upload-zone.dragover { border-color: var(--primary); background: #eff6ff; }
+        .upload-zone i { font-size: 2rem; color: var(--primary); margin-bottom: 1rem; }
+        
+        /* DOUBLE PANEL DASHBOARD */
+        .dashboard { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); overflow: hidden; }
+        .panel { background: var(--bg-body); display: flex; flex-direction: column; overflow: hidden; }
+        .panel-header { padding: 1rem; background: var(--bg-card); border-bottom: 1px solid var(--border); font-weight: 600; text-align: center; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+        .panel-content { flex: 1; overflow-y: auto; padding: 2rem; position: relative; }
+        
+        /* TIMELINE CSS */
+        .timeline { position: relative; margin: 0; padding: 0; list-style: none; }
+        .timeline::before { content: ''; position: absolute; top: 0; bottom: 0; left: 1rem; width: 2px; background: var(--border); }
+        .timeline-item { position: relative; padding-left: 3rem; margin-bottom: 2rem; }
+        .timeline-item::before {
+            content: ''; position: absolute; left: 0.5rem; top: 0.25rem; width: 1.25rem; height: 1.25rem; 
+            border-radius: 50%; background: var(--bg-card); border: 2px solid var(--primary); z-index: 1;
+        }
+        
+        /* Node Colors */
+        .node-cero::before { border-color: var(--info); background: #eff6ff; }
+        .node-gestion::before { border-color: var(--success); background: #d1fae5; }
+        .node-pausa::before { border-color: var(--warning); background: #fef3c7; }
+        .node-anomalia::before { border-color: var(--danger); background: #fee2e2; }
+        .node-traslado::before { display: none; } /* Traslado is a line, not a dot */
+        
+        .timeline-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .timeline-time { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.25rem; }
+        .timeline-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.25rem; }
+        .timeline-details { font-size: 0.85rem; color: var(--text-muted); }
+        
+        .traslado-card { background: transparent; border: none; box-shadow: none; padding: 0; padding-left: 1rem; border-left: 2px dashed var(--border); margin-left: 1.1rem; margin-bottom: 2rem; color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
+
+        .loader { display: none; text-align: center; margin-top: 2rem; color: var(--primary); }
+    </style>
+</head>
+<body>
+
+    <header class="header">
+        <h1><i class="fa-solid fa-satellite"></i> Auditoría Satelital de Rutas (Google Timeline)</h1>
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="window.location.href='/pages/config-puntos.html'"><i class="fa-solid fa-gear"></i> Nodos Cero</button>
+            <button class="btn btn-success" id="btnGuardar" disabled onclick="guardarAuditoria()"><i class="fa-solid fa-check-double"></i> Guardar Auditoría</button>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="form-group">
+                <label>Seleccionar Hoja de Ruta</label>
+                <select id="rutaSelect" class="form-control">
+                    <option value="">Cargando rutas finalizadas...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Cargar Archivo Google (Rutas.json)</label>
+                <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                    <i class="fa-solid fa-file-arrow-up"></i>
+                    <p><strong>Arrastra el JSON aquí</strong> o haz clic para buscar</p>
+                    <input type="file" id="fileInput" style="display: none" accept=".json">
+                </div>
+            </div>
+
+            <div class="loader" id="loader">
+                <i class="fa-solid fa-circle-notch fa-spin fa-2x"></i>
+                <p style="margin-top: 0.5rem; font-size: 0.875rem;">Cruzando Haversine...</p>
+            </div>
+
+            <div id="estadisticasResumen" style="display: none; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+                <h3 style="font-size: 1rem; margin-bottom: 1rem;">Estadísticas Empíricas</h3>
+                <p><strong>Distancia:</strong> <span id="lblDistancia"></span> km</p>
+                <p><strong>Tiempo Neto:</strong> <span id="lblTiempo"></span> min</p>
+                <p><strong>Desviación:</strong> <span id="lblDesviacion"></span>%</p>
+            </div>
+        </aside>
+
+        <!-- DASHBOARD -->
+        <main class="dashboard">
+            <!-- LAMDA TEÓRICO -->
+            <section class="panel">
+                <div class="panel-header">
+                    <i class="fa-solid fa-clipboard-list"></i> Reporte Chofer (Teórico)
+                </div>
+                <div class="panel-content" id="panelLamda">
+                    <p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Seleccione una ruta para ver el plan original.</p>
+                </div>
+            </section>
+
+            <!-- GOOGLE REAL -->
+            <section class="panel">
+                <div class="panel-header" style="background: #eff6ff; border-bottom-color: #bfdbfe;">
+                    <i class="fa-brands fa-google text-primary"></i> Realidad Satelital
+                </div>
+                <div class="panel-content" id="panelGoogle">
+                    <p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Cargue el archivo Rutas.json para procesar la realidad.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+<script>
+    let currentAuditoriaData = null;
+
+    // TODO: Connect this to actual /api/logistica/rutas?estado=FINALIZADA
+    async function cargarRutasDisponibles() {
+        // Mocked for UI purposes until hooked
+        const select = document.getElementById('rutaSelect');
+        select.innerHTML = '<option value="">Seleccione Ruta Finalizada...</option><option value="1">Ruta #1 - Zona Sur (Ayer)</option>';
+    }
+
+    // Drag & Drop Handlers
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            handleFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+        const idRuta = document.getElementById('rutaSelect').value;
+        if (!idRuta) { alert('Seleccione una Ruta primero.'); return; }
+        
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const jsonStr = e.target.result;
+            procesarArchivo(idRuta, jsonStr);
+        };
+        reader.readAsText(file);
+    }
+
+    async function procesarArchivo(idRuta, jsonString) {
+        document.getElementById('loader').style.display = 'block';
+        document.getElementById('panelGoogle').innerHTML = '';
+        
+        try {
+            const res = await fetch('/api/logistica/auditorias/procesar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id_ruta: idRuta, timelineJson: jsonString })
+            });
+            const payload = await res.json();
+            document.getElementById('loader').style.display = 'none';
+
+            if (payload.success) {
+                currentAuditoriaData = payload.data;
+                renderizarGoogle(payload.data);
+                renderEstadisticas(payload.data);
+                document.getElementById('btnGuardar').disabled = false;
+            } else {
+                alert('Error al procesar: ' + payload.error);
+            }
+        } catch (e) {
+            document.getElementById('loader').style.display = 'none';
+            alert('Error de red al intentar procesar el archivo.');
+        }
+    }
+
+    function renderizarGoogle(data) {
+        let html = '<ul class="timeline">';
+        data.tramos.forEach(tramo => {
+            if (tramo.tipo_tramo === 'TRASLADO') {
+                html += `
+                    <div class="traslado-card">
+                        <i class="fa-solid fa-car-side"></i> Traslado: ${tramo.tiempo_duracion_minutos} min (${(tramo.distancia_geocerca_metros / 1000).toFixed(1)} km)
+                    </div>
+                `;
+            } else {
+                let nodeClass = '';
+                let icon = '';
+                if (tramo.tipo_tramo === 'NODO_CERO') { nodeClass = 'node-cero'; icon = 'fa-warehouse'; }
+                if (tramo.tipo_tramo === 'GESTION_CLIENTE') { nodeClass = 'node-gestion'; icon = 'fa-check'; }
+                if (tramo.tipo_tramo === 'PAUSA_NO_DECLARADA') { nodeClass = 'node-anomalia'; icon = 'fa-triangle-exclamation'; }
+
+                const timeStr = new Date(tramo.hora_inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                html += `
+                    <li class="timeline-item ${nodeClass}">
+                        <div class="timeline-card">
+                            <div class="timeline-time">${timeStr} (${tramo.tiempo_duracion_minutos} min detención)</div>
+                            <div class="timeline-title"><i class="fa-solid ${icon}"></i> ${tramo.nombre_ref}</div>
+                            <div class="timeline-details">${tramo.distancia_geocerca_metros ? 'A ' + tramo.distancia_geocerca_metros + 'm del objetivo.' : 'Detención sin objetivo asociado.'}</div>
+                        </div>
+                    </li>
+                `;
+            }
+        });
+        html += '</ul>';
+        document.getElementById('panelGoogle').innerHTML = html;
+    }
+
+    function renderEstadisticas(data) {
+        document.getElementById('estadisticasResumen').style.display = 'block';
+        document.getElementById('lblDistancia').innerText = data.distancia_real_km;
+        document.getElementById('lblTiempo').innerText = data.tiempo_real_minutos;
+        
+        const badgeColor = data.desviacion_global_porcentaje > 15 ? 'red' : 'green';
+        document.getElementById('lblDesviacion').innerHTML = `<span style="color:${badgeColor}; font-weight:bold;">${data.desviacion_global_porcentaje}%</span>`;
+    }
+
+    async function guardarAuditoria() {
+        if (!currentAuditoriaData) return;
+        try {
+            const res = await fetch('/api/logistica/auditorias/guardar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentAuditoriaData)
+            });
+            const payload = await res.json();
+            if (payload.success) {
+                alert('Auditoría estadística consolidada en base de datos. ID: ' + payload.id_auditoria);
+                window.location.reload();
+            } else {
+                alert('Error al guardar: ' + payload.error);
+            }
+        } catch(e) {
+            alert('Error de red.');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', cargarRutasDisponibles);
+</script>
+</body>
+</html>

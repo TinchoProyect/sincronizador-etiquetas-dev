@@ -133,8 +133,8 @@ app.use('/api/presupuestos', createProxyMiddleware({
 
 // Middleware básico (Parseo de Body para RUTAS NATIVAS de Logística)
 // Se inyecta aquí para no interferir con el parseo en crudo del Proxy.
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
 // Ruta raíz - redirigir al dashboard
 app.get('/', (req, res) => {
@@ -200,6 +200,10 @@ console.log('[LOGISTICA] ✅ Rutas de Diagnóstico montadas en /api/logistica/di
 // Rutas de Tratamientos e Inmunización (Retiros Fase 1 y 2)
 app.use('/api/logistica/tratamientos', require('./routes/tratamientos'));
 console.log('[LOGISTICA] ✅ Rutas de Tratamientos montadas en /api/logistica/tratamientos');
+
+// Rutas de Auditorías de Rutas (Conciliación)
+app.use('/api/logistica/auditorias', require('./routes/auditorias'));
+console.log('[LOGISTICA] ✅ Rutas de Auditorías montadas en /api/logistica/auditorias');
 
 
 // Ruta de health check

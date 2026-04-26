@@ -1518,6 +1518,7 @@ async function verDetallesRuta(rutaId) {
                     <p><strong>Pedidos:</strong> ${ruta.presupuestos?.length || 0}</p>
                     <p><strong>Fecha Salida:</strong> ${ruta.fecha_salida ? new Date(ruta.fecha_salida).toLocaleString() : 'N/A'}</p>
                     ${ruta.estado === 'FINALIZADA' && ruta.duracion_neta_minutos !== null && ruta.duracion_neta_minutos !== undefined ? `<p><strong>Duración Neta:</strong> ⏱️ ${Math.floor(ruta.duracion_neta_minutos / 60)}h ${ruta.duracion_neta_minutos % 60}m</p>` : ''}
+                    ${ruta.estado === 'FINALIZADA' ? `<div style="margin-top: 1rem;"><button onclick="window.location.href='/pages/auditoria-rutas.html?id_ruta=${ruta.id}'" style="background-color: #1e293b; color: white; border: none; border-radius: 6px; font-weight: bold; padding: 10px; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">🛰️ Auditar con Google Timeline</button></div>` : ''}
                     ${tramosHTML}
                     ${pedidosHTML}
                 `;
