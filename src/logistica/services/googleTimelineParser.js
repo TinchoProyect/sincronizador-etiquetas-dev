@@ -37,40 +37,105 @@ class GoogleTimelineParser {
     }
 
     /**
+     * Extractor recursivo de coordenadas para soportar topologías mixtas (E7 o Decimales)
+     */
+    static extraerCoordenadas(nodo) {
+        if (!nodo) return null;
+        let lat = null, lng = null;
+        
+        const buscar = (obj) => {
+            if (lat !== null && lng !== null) return;
+            if (typeof obj !== 'object' || obj === null) return;
+            
+            // Formato E7 Clásico
+            if (obj.latitudeE7 !== undefined && obj.longitudeE7 !== undefined) {
+                lat = parseFloat((obj.latitudeE7 / 10000000).toFixed(7));
+                lng = parseFloat((obj.longitudeE7 / 10000000).toFixed(7));
+                return;
+            }
+            // Formato Decimal Nuevo
+            if (obj.latitude !== undefined && obj.longitude !== undefined) {
+                lat = parseFloat(obj.latitude);
+                lng = parseFloat(obj.longitude);
+                return;
+            }
+            // Formato String (lat, lng) o LatLng objeto
+            if (obj.latLng) {
+                if (typeof obj.latLng === 'string') {
+                    const partes = obj.latLng.split(',');
+                    if (partes.length === 2) {
+                        lat = parseFloat(partes[0].trim());
+                        lng = parseFloat(partes[1].trim());
+                        return;
+                    }
+                } else if (obj.latLng.latitude !== undefined) {
+                    lat = parseFloat(obj.latLng.latitude);
+                    lng = parseFloat(obj.latLng.longitude);
+                    return;
+                }
+            }
+            
+            for (const key in obj) {
+                if (typeof obj[key] === 'object') buscar(obj[key]);
+            }
+        };
+
+        buscar(nodo);
+        if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+            return { lat, lng };
+        }
+        return null;
+    }
+
+    /**
      * Procesar un archivo JSON crudo de Google Timeline
-     * @param {Object} timelineJson - Objeto JSON de Google
-     * @param {Array} puntosBase - Lista de Nodos Cero (depósitos/casas)
-     * @param {Array} rutaLamdaEntregas - Lista de paradas de la Ruta según base de datos LAMDA
-     * @param {Object} config - Tolerancias paramétricas (geocerca en metros)
      */
     static procesar(timelineJson, puntosBase = [], rutaLamdaEntregas = [], config = { toleranciaMetros: 50, toleranciaTiempoMin: 3 }) {
         console.log('[PARSER] Iniciando procesamiento de Timeline JSON');
         
-        if (!timelineJson.timelineObjects || !Array.isArray(timelineJson.timelineObjects)) {
-            throw new Error('El archivo JSON no tiene el formato esperado de Google Timeline (falta timelineObjects).');
+        // Detección de Topología (Antigua vs Nueva E2EE)
+        let segmentos = [];
+        if (timelineJson.semanticSegments && Array.isArray(timelineJson.semanticSegments)) {
+            console.log('[PARSER] Topología detectada: semanticSegments (E2EE Nuevo Formato)');
+            segmentos = timelineJson.semanticSegments;
+        } else if (timelineJson.timelineObjects && Array.isArray(timelineJson.timelineObjects)) {
+            console.log('[PARSER] Topología detectada: timelineObjects (Formato Clásico)');
+            segmentos = timelineJson.timelineObjects;
+        } else {
+            throw new Error('El archivo JSON no tiene un formato válido (No se encontró semanticSegments ni timelineObjects).');
         }
 
         const tramosExtraidos = [];
         let distanciaTotalRecorridaMts = 0;
 
-        // 1. Aplanar los objetos del timeline
-        timelineJson.timelineObjects.forEach(obj => {
-            if (obj.placeVisit) {
-                // Nodo de Detención (Posible Parada o Nodo Cero)
-                const loc = obj.placeVisit.location;
-                const dur = obj.placeVisit.duration;
-                
-                if (loc && dur) {
-                    const lat = this.parseE7(loc.latitudeE7);
-                    const lng = this.parseE7(loc.longitudeE7);
-                    const horaInicio = new Date(dur.startTimestamp);
-                    const horaFin = new Date(dur.endTimestamp);
+        segmentos.forEach(obj => {
+            // Unificar interfaces de parada: obj.placeVisit (Clásico) o obj.visit (E2EE Nuevo)
+            const paradaInfo = obj.placeVisit || obj.visit;
+            // Unificar interfaces de movimiento: obj.activitySegment (Clásico) o obj.activity (E2EE Nuevo)
+            const movimientoInfo = obj.activitySegment || obj.activity;
+            
+            // Tiempos unificados
+            // En E2EE, el startTime/endTime están directamente en el obj raíz (semanticSegment) o dentro de duration.
+            const rawStart = (paradaInfo && paradaInfo.duration && paradaInfo.duration.startTimestamp) || 
+                             (movimientoInfo && movimientoInfo.duration && movimientoInfo.duration.startTimestamp) || 
+                             obj.startTime;
+                             
+            const rawEnd = (paradaInfo && paradaInfo.duration && paradaInfo.duration.endTimestamp) || 
+                           (movimientoInfo && movimientoInfo.duration && movimientoInfo.duration.endTimestamp) || 
+                           obj.endTime;
+
+            if (paradaInfo) {
+                // Nodo de Detención
+                const coords = this.extraerCoordenadas(paradaInfo);
+                if (coords && rawStart && rawEnd) {
+                    const horaInicio = new Date(rawStart);
+                    const horaFin = new Date(rawEnd);
                     const duracionMinutos = Math.round((horaFin - horaInicio) / 60000);
 
                     // A. Evaluar si es Nodo Cero (Inicio/Fin)
                     let esNodoCero = false;
                     for (const pb of puntosBase) {
-                        const distNodo = this.calcularDistanciaMetros(lat, lng, pb.latitud, pb.longitud);
+                        const distNodo = this.calcularDistanciaMetros(coords.lat, coords.lng, pb.latitud, pb.longitud);
                         if (distNodo <= (pb.radio_tolerancia_metros || config.toleranciaMetros)) {
                             esNodoCero = true;
                             tramosExtraidos.push({
@@ -78,8 +143,8 @@ class GoogleTimelineParser {
                                 nombre_ref: pb.nombre,
                                 id_presupuesto: null,
                                 tiempo_duracion_minutos: duracionMinutos,
-                                coordenada_real_lat: lat,
-                                coordenada_real_lng: lng,
+                                coordenada_real_lat: coords.lat,
+                                coordenada_real_lng: coords.lng,
                                 distancia_geocerca_metros: distNodo,
                                 hora_inicio: horaInicio,
                                 hora_fin: horaFin
@@ -88,14 +153,14 @@ class GoogleTimelineParser {
                         }
                     }
 
-                    // B. Si no es Nodo Cero, cruzamos con las entregas de LAMDA
+                    // B. Si no es Nodo Cero, cruzamos con entregas LAMDA
                     if (!esNodoCero && duracionMinutos >= config.toleranciaTiempoMin) {
                         let entregaMatcheada = null;
                         let menorDistancia = Infinity;
 
                         for (const entrega of rutaLamdaEntregas) {
                             if (entrega.latitud && entrega.longitud) {
-                                const dist = this.calcularDistanciaMetros(lat, lng, entrega.latitud, entrega.longitud);
+                                const dist = this.calcularDistanciaMetros(coords.lat, coords.lng, entrega.latitud, entrega.longitud);
                                 if (dist <= config.toleranciaMetros && dist < menorDistancia) {
                                     menorDistancia = dist;
                                     entregaMatcheada = entrega;
@@ -104,27 +169,25 @@ class GoogleTimelineParser {
                         }
 
                         if (entregaMatcheada) {
-                            // Coincide con entrega planificada
                             tramosExtraidos.push({
                                 tipo_tramo: 'GESTION_CLIENTE',
                                 nombre_ref: entregaMatcheada.cliente_nombre,
                                 id_presupuesto: entregaMatcheada.id,
                                 tiempo_duracion_minutos: duracionMinutos,
-                                coordenada_real_lat: lat,
-                                coordenada_real_lng: lng,
+                                coordenada_real_lat: coords.lat,
+                                coordenada_real_lng: coords.lng,
                                 distancia_geocerca_metros: menorDistancia,
                                 hora_inicio: horaInicio,
                                 hora_fin: horaFin
                             });
                         } else {
-                            // Parada prolongada no declarada comercialmente
                             tramosExtraidos.push({
                                 tipo_tramo: 'PAUSA_NO_DECLARADA',
                                 nombre_ref: 'Desconocido',
                                 id_presupuesto: null,
                                 tiempo_duracion_minutos: duracionMinutos,
-                                coordenada_real_lat: lat,
-                                coordenada_real_lng: lng,
+                                coordenada_real_lat: coords.lat,
+                                coordenada_real_lng: coords.lng,
                                 distancia_geocerca_metros: null,
                                 hora_inicio: horaInicio,
                                 hora_fin: horaFin
@@ -132,15 +195,14 @@ class GoogleTimelineParser {
                         }
                     }
                 }
-            } else if (obj.activitySegment) {
-                // Segmento en Movimiento (Traslado)
-                const act = obj.activitySegment;
-                if (act.distance) {
-                    distanciaTotalRecorridaMts += act.distance;
-                }
-                if (act.duration) {
-                    const horaInicio = new Date(act.duration.startTimestamp);
-                    const horaFin = new Date(act.duration.endTimestamp);
+            } else if (movimientoInfo) {
+                // Segmento de Movimiento
+                let distanceMeters = movimientoInfo.distance || movimientoInfo.distanceMeters || 0;
+                if (distanceMeters) distanciaTotalRecorridaMts += distanceMeters;
+                
+                if (rawStart && rawEnd) {
+                    const horaInicio = new Date(rawStart);
+                    const horaFin = new Date(rawEnd);
                     const duracionMinutos = Math.round((horaFin - horaInicio) / 60000);
                     
                     tramosExtraidos.push({
@@ -150,7 +212,7 @@ class GoogleTimelineParser {
                         tiempo_duracion_minutos: duracionMinutos,
                         coordenada_real_lat: null,
                         coordenada_real_lng: null,
-                        distancia_geocerca_metros: act.distance || 0, // En Traslado guardamos metros recorridos aquí temporalmente
+                        distancia_geocerca_metros: distanceMeters,
                         hora_inicio: horaInicio,
                         hora_fin: horaFin
                     });

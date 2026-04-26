@@ -82,6 +82,7 @@
     <header class="header">
         <h1><i class="fa-solid fa-satellite"></i> Auditoría Satelital de Rutas (Google Timeline)</h1>
         <div class="header-actions">
+            <button class="btn btn-secondary" onclick="window.location.href='/pages/dashboard.html'" style="background: transparent; color: white; border: 1px solid #475569;"><i class="fa-solid fa-arrow-left"></i> Volver a Logística</button>
             <button class="btn btn-primary" onclick="window.location.href='/pages/config-puntos.html'"><i class="fa-solid fa-gear"></i> Nodos Cero</button>
             <button class="btn btn-success" id="btnGuardar" disabled onclick="guardarAuditoria()"><i class="fa-solid fa-check-double"></i> Guardar Auditoría</button>
         </div>
@@ -146,11 +147,93 @@
 <script>
     let currentAuditoriaData = null;
 
-    // TODO: Connect this to actual /api/logistica/rutas?estado=FINALIZADA
     async function cargarRutasDisponibles() {
-        // Mocked for UI purposes until hooked
-        const select = document.getElementById('rutaSelect');
-        select.innerHTML = '<option value="">Seleccione Ruta Finalizada...</option><option value="1">Ruta #1 - Zona Sur (Ayer)</option>';
+        try {
+            const res = await fetch('/api/logistica/rutas');
+            const data = await res.json();
+            const select = document.getElementById('rutaSelect');
+            select.innerHTML = '<option value="">Seleccione Ruta Finalizada...</option>';
+            
+            if (data.success && data.data) {
+                const rutasFinalizadas = data.data.filter(r => r.estado === 'FINALIZADA').sort((a,b) => new Date(b.fecha_salida) - new Date(a.fecha_salida));
+                
+                const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                const grupos = {};
+                
+                rutasFinalizadas.forEach(r => {
+                    const d = new Date(r.fecha_salida);
+                    const key = `${meses[d.getMonth()]} ${d.getFullYear()}`;
+                    if(!grupos[key]) grupos[key] = [];
+                    grupos[key].push(r);
+                });
+                
+                for(const mes in grupos) {
+                    let optgroup = document.createElement('optgroup');
+                    optgroup.label = mes;
+                    grupos[mes].forEach(r => {
+                        let opt = document.createElement('option');
+                        opt.value = r.id;
+                        opt.text = `#${r.id} - ${r.nombre_ruta} (${r.chofer_nombre || 'Sin chofer'})`;
+                        optgroup.appendChild(opt);
+                    });
+                    select.appendChild(optgroup);
+                }
+
+                // Auto-seleccionar si viene por URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const idRutaUrl = urlParams.get('id_ruta');
+                if(idRutaUrl) {
+                    select.value = idRutaUrl;
+                    cargarTeoricoLamda(idRutaUrl);
+                }
+            }
+        } catch (e) {
+            console.error('Error cargando rutas', e);
+        }
+    }
+
+    document.getElementById('rutaSelect').addEventListener('change', (e) => {
+        const idRuta = e.target.value;
+        if(idRuta) {
+            cargarTeoricoLamda(idRuta);
+            // Update URL params
+            const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?id_ruta=' + idRuta;
+            window.history.pushState({path:newurl},'',newurl);
+        } else {
+            document.getElementById('panelLamda').innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Seleccione una ruta para ver el plan original.</p>';
+        }
+    });
+
+    async function cargarTeoricoLamda(idRuta) {
+        document.getElementById('panelLamda').innerHTML = '<div class="loader" style="display:block;"><i class="fa-solid fa-circle-notch fa-spin fa-2x"></i></div>';
+        try {
+            const res = await fetch(`/api/logistica/rutas/${idRuta}`);
+            const payload = await res.json();
+            if(payload.success && payload.data) {
+                const r = payload.data;
+                let html = `<h3 style="margin-bottom: 0.25rem;">${r.nombre_ruta}</h3>`;
+                html += `<p style="color:var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;"><i class="fa-solid fa-user"></i> ${r.chofer_nombre || 'S/N'}</p>`;
+                
+                if(r.presupuestos && r.presupuestos.length > 0) {
+                    html += '<ul class="timeline">';
+                    r.presupuestos.forEach((p, idx) => {
+                        html += `
+                        <li class="timeline-item node-gestion">
+                            <div class="timeline-card">
+                                <div class="timeline-title"><i class="fa-solid fa-box"></i> Parada ${idx+1}: ${p.cliente_nombre || 'Cliente'}</div>
+                                <div class="timeline-details">📍 ${p.domicilio_direccion || 'Sin dirección'}</div>
+                            </div>
+                        </li>`;
+                    });
+                    html += '</ul>';
+                } else {
+                    html += '<p style="color: var(--text-muted); text-align:center;">Sin pedidos planificados en la ruta.</p>';
+                }
+                document.getElementById('panelLamda').innerHTML = html;
+            }
+        } catch (e) {
+             document.getElementById('panelLamda').innerHTML = '<p style="color:red; text-align:center;">Error cargando teórico.</p>';
+        }
     }
 
     // Drag & Drop Handlers

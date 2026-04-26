@@ -51,7 +51,10 @@
 <div class="container">
     <div class="header">
         <h1><i class="fa-solid fa-map-location-dot"></i> Gestión de Puntos Base (Nodos Cero)</h1>
-        <button class="btn btn-primary" onclick="toggleForm()"><i class="fa-solid fa-plus"></i> Nuevo Nodo</button>
+        <div style="display: flex; gap: 1rem;">
+            <button class="btn btn-secondary" onclick="window.location.href='/pages/dashboard.html'" style="background: white; color: var(--text-main); border: 1px solid var(--border);"><i class="fa-solid fa-arrow-left"></i> Volver</button>
+            <button class="btn btn-primary" onclick="toggleForm()"><i class="fa-solid fa-plus"></i> Nuevo Nodo</button>
+        </div>
     </div>
 
     <div class="card" id="formCard" style="display: none;">
