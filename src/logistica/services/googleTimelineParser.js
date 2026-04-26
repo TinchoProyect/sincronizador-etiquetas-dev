@@ -88,9 +88,59 @@ class GoogleTimelineParser {
     }
 
     /**
+     * Extrae de forma recursiva TODAS las coordenadas de un objeto/array en orden.
+     * Ideal para extraer el waypointPath o trace completo de los segmentos.
+     */
+    static extraerTodasLasCoordenadas(nodo) {
+        if (!nodo) return [];
+        let puntos = [];
+        
+        const buscar = (obj) => {
+            if (typeof obj !== 'object' || obj === null) return;
+            
+            if (Array.isArray(obj)) {
+                obj.forEach(buscar);
+                return;
+            }
+
+            let lat = null, lng = null;
+            if (obj.latitudeE7 !== undefined && obj.longitudeE7 !== undefined) {
+                lat = parseFloat((obj.latitudeE7 / 10000000).toFixed(7));
+                lng = parseFloat((obj.longitudeE7 / 10000000).toFixed(7));
+            } else if (obj.latitude !== undefined && obj.longitude !== undefined) {
+                lat = parseFloat(obj.latitude);
+                lng = parseFloat(obj.longitude);
+            } else if (obj.latLng) {
+                if (typeof obj.latLng === 'string') {
+                    const partes = obj.latLng.split(',');
+                    if (partes.length === 2) {
+                        lat = parseFloat(partes[0].trim());
+                        lng = parseFloat(partes[1].trim());
+                    }
+                } else if (obj.latLng.latitude !== undefined) {
+                    lat = parseFloat(obj.latLng.latitude);
+                    lng = parseFloat(obj.latLng.longitude);
+                }
+            }
+
+            if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+                puntos.push({ lat, lng });
+            }
+
+            for (const key in obj) {
+                // Evitamos recursión en strings/números para optimizar
+                if (typeof obj[key] === 'object') buscar(obj[key]);
+            }
+        };
+
+        buscar(nodo);
+        return puntos;
+    }
+
+    /**
      * Procesar un archivo JSON crudo de Google Timeline
      */
-    static procesar(timelineJson, puntosBase = [], rutaLamdaEntregas = [], config = { toleranciaMetros: 50, toleranciaTiempoMin: 3 }) {
+    static procesar(timelineJson, puntosBase = [], rutaLamdaEntregas = [], config = { toleranciaMetros: 50, toleranciaTiempoMin: 3 }, nodoInicio = null, nodoFin = null) {
         console.log('[PARSER] Iniciando procesamiento de Timeline JSON');
         
         // Detección de Topología (Antigua vs Nueva E2EE)
@@ -223,12 +273,90 @@ class GoogleTimelineParser {
         // Ordenar tramos cronológicamente
         tramosExtraidos.sort((a, b) => a.hora_inicio - b.hora_inicio);
 
+        // Inyección Manual de Nodos Extremos
+        if (nodoInicio || nodoFin) {
+            const paradasValidas = tramosExtraidos.filter(t => t.coordenada_real_lat && t.coordenada_real_lng);
+            
+            if (paradasValidas.length > 0) {
+                const primeraParada = paradasValidas[0];
+                const ultimaParada = paradasValidas[paradasValidas.length - 1];
+
+                if (nodoInicio && tramosExtraidos[0].tipo_tramo !== 'NODO_CERO') {
+                    const distAInicio = this.calcularDistanciaMetros(nodoInicio.latitud, nodoInicio.longitud, primeraParada.coordenada_real_lat, primeraParada.coordenada_real_lng);
+                    distanciaTotalRecorridaMts += distAInicio;
+                    
+                    tramosExtraidos.unshift({
+                        tipo_tramo: 'TRASLADO',
+                        nombre_ref: `Traslado (Inyectado desde ${nodoInicio.alias || nodoInicio.nombre})`,
+                        id_presupuesto: null,
+                        tiempo_duracion_minutos: 0,
+                        coordenada_real_lat: null,
+                        coordenada_real_lng: null,
+                        distancia_geocerca_metros: distAInicio,
+                        hora_inicio: primeraParada.hora_inicio,
+                        hora_fin: primeraParada.hora_inicio
+                    });
+                    
+                    tramosExtraidos.unshift({
+                        tipo_tramo: 'NODO_CERO',
+                        nombre_ref: `${nodoInicio.nombre} (Forzado)`,
+                        id_presupuesto: null,
+                        tiempo_duracion_minutos: 0,
+                        coordenada_real_lat: nodoInicio.latitud,
+                        coordenada_real_lng: nodoInicio.longitud,
+                        distancia_geocerca_metros: 0,
+                        hora_inicio: primeraParada.hora_inicio,
+                        hora_fin: primeraParada.hora_inicio
+                    });
+                }
+
+                if (nodoFin && tramosExtraidos[tramosExtraidos.length - 1].tipo_tramo !== 'NODO_CERO') {
+                    const distAFin = this.calcularDistanciaMetros(ultimaParada.coordenada_real_lat, ultimaParada.coordenada_real_lng, nodoFin.latitud, nodoFin.longitud);
+                    distanciaTotalRecorridaMts += distAFin;
+                    
+                    tramosExtraidos.push({
+                        tipo_tramo: 'TRASLADO',
+                        nombre_ref: `Traslado (Inyectado hacia ${nodoFin.alias || nodoFin.nombre})`,
+                        id_presupuesto: null,
+                        tiempo_duracion_minutos: 0,
+                        coordenada_real_lat: null,
+                        coordenada_real_lng: null,
+                        distancia_geocerca_metros: distAFin,
+                        hora_inicio: ultimaParada.hora_fin,
+                        hora_fin: ultimaParada.hora_fin
+                    });
+
+                    tramosExtraidos.push({
+                        tipo_tramo: 'NODO_CERO',
+                        nombre_ref: `${nodoFin.nombre} (Forzado)`,
+                        id_presupuesto: null,
+                        tiempo_duracion_minutos: 0,
+                        coordenada_real_lat: nodoFin.latitud,
+                        coordenada_real_lng: nodoFin.longitud,
+                        distancia_geocerca_metros: 0,
+                        hora_inicio: ultimaParada.hora_fin,
+                        hora_fin: ultimaParada.hora_fin
+                    });
+                }
+            }
+        }
+
         const tiempoTotalOperativoMinutos = tramosExtraidos.reduce((acc, curr) => acc + curr.tiempo_duracion_minutos, 0);
+
+        // Extraer la traza visual completa
+        const traceCompleto = this.extraerTodasLasCoordenadas(segmentos);
+        if (nodoInicio && traceCompleto.length > 0) {
+            traceCompleto.unshift({ lat: nodoInicio.latitud, lng: nodoInicio.longitud });
+        }
+        if (nodoFin && traceCompleto.length > 0) {
+            traceCompleto.push({ lat: nodoFin.latitud, lng: nodoFin.longitud });
+        }
 
         return {
             distancia_real_km: parseFloat((distanciaTotalRecorridaMts / 1000).toFixed(2)),
             tiempo_real_minutos: tiempoTotalOperativoMinutos,
-            tramos: tramosExtraidos
+            tramos: tramosExtraidos,
+            trace: traceCompleto
         };
     }
 }

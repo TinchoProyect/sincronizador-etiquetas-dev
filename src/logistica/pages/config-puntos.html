@@ -52,7 +52,7 @@
     <div class="header">
         <h1><i class="fa-solid fa-map-location-dot"></i> Gestión de Puntos Base (Nodos Cero)</h1>
         <div style="display: flex; gap: 1rem;">
-            <button class="btn btn-secondary" onclick="window.location.href='/pages/dashboard.html'" style="background: white; color: var(--text-main); border: 1px solid var(--border);"><i class="fa-solid fa-arrow-left"></i> Volver</button>
+            <button class="btn btn-secondary" onclick="volverAtras()" style="background: white; color: var(--text-main); border: 1px solid var(--border);"><i class="fa-solid fa-arrow-left"></i> Volver</button>
             <button class="btn btn-primary" onclick="toggleForm()"><i class="fa-solid fa-plus"></i> Nuevo Nodo</button>
         </div>
     </div>
@@ -72,13 +72,23 @@
                 </div>
             </div>
             <div class="form-row">
+                <div class="form-group" style="grid-column: span 2;">
+                    <label>Ubicación en el Mapa</label>
+                    <input type="text" id="mapSearch" class="form-control" placeholder="Buscar dirección (ej: Av. Corrientes 1234)..." style="margin-bottom: 0.5rem;">
+                    <div id="mapaNodo" style="width: 100%; height: 350px; border: 1px solid var(--border); border-radius: 4px; background: #e2e8f0; display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
+                        Cargando Mapa...
+                    </div>
+                    <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">Haz clic en el mapa, arrastra el pin, o busca una dirección para capturar las coordenadas automáticamente.</small>
+                </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
-                    <label>Latitud</label>
-                    <input type="number" step="any" id="latitud" class="form-control" required placeholder="-34.6037">
+                    <label>Latitud (Generada)</label>
+                    <input type="number" step="any" id="latitud" class="form-control" required placeholder="-34.6037" oninput="updatePinFromInputs()">
                 </div>
                 <div class="form-group">
-                    <label>Longitud</label>
-                    <input type="number" step="any" id="longitud" class="form-control" required placeholder="-58.3816">
+                    <label>Longitud (Generada)</label>
+                    <input type="number" step="any" id="longitud" class="form-control" required placeholder="-58.3816" oninput="updatePinFromInputs()">
                 </div>
             </div>
             <div class="form-group">
@@ -135,9 +145,104 @@
         }
     }
 
+    let map = null;
+    let marker = null;
+
+    async function cargarAPIKeyGoogle() {
+        try {
+            const res = await fetch('/api/logistica/config');
+            const payload = await res.json();
+            if (payload.success && payload.data.googleMapsApiKey) {
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${payload.data.googleMapsApiKey}&libraries=places&callback=initMap`;
+                script.async = true;
+                script.defer = true;
+                window.initMap = inicializarMapaLogica;
+                document.head.appendChild(script);
+            } else {
+                document.getElementById('mapaNodo').innerHTML = '⚠️ API Key de Google Maps no configurada.';
+            }
+        } catch (e) { console.error('Error cargando API Key', e); }
+    }
+
+    function inicializarMapaLogica() {
+        const bsAs = { lat: -34.6037, lng: -58.3816 };
+        map = new google.maps.Map(document.getElementById('mapaNodo'), {
+            center: bsAs,
+            zoom: 12,
+            mapTypeControl: false,
+            streetViewControl: false
+        });
+
+        marker = new google.maps.Marker({
+            position: bsAs,
+            map: map,
+            draggable: true,
+            animation: google.maps.Animation.DROP
+        });
+
+        // Evento arrastrar
+        google.maps.event.addListener(marker, 'dragend', function() {
+            document.getElementById('latitud').value = marker.getPosition().lat().toFixed(7);
+            document.getElementById('longitud').value = marker.getPosition().lng().toFixed(7);
+        });
+
+        // Evento clic en el mapa
+        google.maps.event.addListener(map, 'click', function(event) {
+            marker.setPosition(event.latLng);
+            document.getElementById('latitud').value = event.latLng.lat().toFixed(7);
+            document.getElementById('longitud').value = event.latLng.lng().toFixed(7);
+        });
+
+        // Autocomplete
+        const inputSearch = document.getElementById('mapSearch');
+        const autocomplete = new google.maps.places.Autocomplete(inputSearch);
+        autocomplete.bindTo('bounds', map);
+        
+        autocomplete.addListener('place_changed', () => {
+            const place = autocomplete.getPlace();
+            if (!place.geometry || !place.geometry.location) return;
+            
+            map.setCenter(place.geometry.location);
+            map.setZoom(17);
+            marker.setPosition(place.geometry.location);
+            
+            document.getElementById('latitud').value = place.geometry.location.lat().toFixed(7);
+            document.getElementById('longitud').value = place.geometry.location.lng().toFixed(7);
+        });
+    }
+
+    function updatePinFromInputs() {
+        if(!map || !marker) return;
+        const lat = parseFloat(document.getElementById('latitud').value);
+        const lng = parseFloat(document.getElementById('longitud').value);
+        if(!isNaN(lat) && !isNaN(lng)) {
+            const pos = { lat, lng };
+            marker.setPosition(pos);
+            map.setCenter(pos);
+        }
+    }
+
+    function volverAtras() {
+        const ref = document.referrer;
+        if(ref && ref.includes('auditoria-rutas.html')) {
+            window.location.href = '/pages/auditoria-rutas.html';
+        } else {
+            window.location.href = '/pages/dashboard.html';
+        }
+    }
+
     function toggleForm() {
         const form = document.getElementById('formCard');
         form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        
+        if (form.style.display === 'block' && map) {
+            // Forzar resize para evitar que el canvas gris se quede pegado al revelar div display:none
+            setTimeout(() => { 
+                google.maps.event.trigger(map, 'resize'); 
+                map.setCenter(marker.getPosition()); 
+            }, 100);
+        }
     }
 
     async function guardarNodo(e) {
@@ -170,7 +275,10 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', cargarNodos);
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarNodos();
+        cargarAPIKeyGoogle();
+    });
 </script>
 </body>
 </html>

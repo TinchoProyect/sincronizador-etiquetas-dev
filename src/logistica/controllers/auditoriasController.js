@@ -42,8 +42,16 @@ class AuditoriasController {
             // 2. Obtener Puntos Base
             const puntosBase = await PuntosBaseModel.obtenerTodos();
 
+            const idNodoInicio = req.body.id_nodo_inicio;
+            const idNodoFin = req.body.id_nodo_fin;
+            
+            let nodoInicio = null;
+            let nodoFin = null;
+            if (idNodoInicio) nodoInicio = puntosBase.find(p => p.id == idNodoInicio);
+            if (idNodoFin) nodoFin = puntosBase.find(p => p.id == idNodoFin);
+
             // 3. Procesar mediante el Motor Analítico
-            const resultado = GoogleTimelineParser.procesar(timelineJson, puntosBase, paradas);
+            const resultado = GoogleTimelineParser.procesar(timelineJson, puntosBase, paradas, { toleranciaMetros: 50, toleranciaTiempoMin: 3 }, nodoInicio, nodoFin);
 
             // 4. Calcular desviación teórica
             const duracionDeclarada = ruta.duracion_neta_minutos || 0;

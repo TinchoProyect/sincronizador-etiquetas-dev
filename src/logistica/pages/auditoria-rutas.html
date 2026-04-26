@@ -98,6 +98,21 @@
                 </select>
             </div>
             
+            <div class="form-group" style="background: #f8fafc; padding: 1rem; border-radius: 6px; border: 1px dashed var(--border); margin-bottom: 1.5rem;">
+                <label style="color: var(--text-main); font-size: 0.85rem;"><i class="fa-solid fa-map-pin"></i> Inyección Manual de Nodos (Opcional)</label>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem;">Fuerza el cálculo desde/hacia un nodo si el chofer no lo registró.</p>
+                
+                <label style="font-size: 0.8rem;">Nodo de Inicio</label>
+                <select id="nodoInicioSelect" class="form-control" style="margin-bottom: 0.5rem; font-size: 0.8rem; padding: 0.25rem;">
+                    <option value="">-- Sin inyección --</option>
+                </select>
+
+                <label style="font-size: 0.8rem;">Nodo de Fin</label>
+                <select id="nodoFinSelect" class="form-control" style="font-size: 0.8rem; padding: 0.25rem;">
+                    <option value="">-- Sin inyección --</option>
+                </select>
+            </div>
+            
             <div class="form-group">
                 <label>Cargar Archivo Google (Rutas.json)</label>
                 <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
@@ -133,12 +148,17 @@
             </section>
 
             <!-- GOOGLE REAL -->
-            <section class="panel">
+            <section class="panel" style="flex: 1.5; display: flex; flex-direction: column;">
                 <div class="panel-header" style="background: #eff6ff; border-bottom-color: #bfdbfe;">
                     <i class="fa-brands fa-google text-primary"></i> Realidad Satelital
                 </div>
-                <div class="panel-content" id="panelGoogle">
-                    <p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Cargue el archivo Rutas.json para procesar la realidad.</p>
+                <div class="panel-content" id="panelGoogle" style="display: flex; flex-direction: column; padding: 0; flex: 1; overflow: hidden;">
+                    <div id="mapaGoogle" style="width: 100%; height: 350px; background: #e2e8f0; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
+                        Esperando datos para graficar...
+                    </div>
+                    <div id="listaGoogle" style="flex: 1; overflow-y: auto; padding: 1.5rem;">
+                        <p style="text-align: center; color: var(--text-muted); margin-top: 2rem;">Cargue el archivo Rutas.json para procesar la realidad.</p>
+                    </div>
                 </div>
             </section>
         </main>
@@ -146,6 +166,44 @@
 
 <script>
     let currentAuditoriaData = null;
+    let currentRutaTeorica = null;
+    let map = null;
+    let mapPath = null;
+    let markers = [];
+
+    async function cargarAPIKeyGoogle() {
+        try {
+            const res = await fetch('/api/logistica/config');
+            const payload = await res.json();
+            if (payload.success && payload.data.googleMapsApiKey) {
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${payload.data.googleMapsApiKey}`;
+                script.async = true;
+                script.defer = true;
+                document.head.appendChild(script);
+            }
+        } catch (e) { console.error('Error cargando API Key', e); }
+    }
+
+    async function cargarNodosDisponibles() {
+        try {
+            const res = await fetch('/api/logistica/auditorias/puntos-base/listar');
+            const data = await res.json();
+            const selInicio = document.getElementById('nodoInicioSelect');
+            const selFin = document.getElementById('nodoFinSelect');
+            
+            if (data.success && data.data) {
+                let options = '<option value="">-- Sin inyección --</option>';
+                data.data.forEach(n => {
+                    options += `<option value="${n.id}">${n.nombre} ${n.alias ? '('+n.alias+')' : ''}</option>`;
+                });
+                if(selInicio) selInicio.innerHTML = options;
+                if(selFin) selFin.innerHTML = options;
+            }
+        } catch(e) {
+            console.error('Error nodos:', e);
+        }
+    }
 
     async function cargarRutasDisponibles() {
         try {
@@ -192,6 +250,9 @@
         }
     }
 
+    document.getElementById('nodoInicioSelect').addEventListener('change', renderTeoricoVisual);
+    document.getElementById('nodoFinSelect').addEventListener('change', renderTeoricoVisual);
+
     document.getElementById('rutaSelect').addEventListener('change', (e) => {
         const idRuta = e.target.value;
         if(idRuta) {
@@ -200,6 +261,7 @@
             const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?id_ruta=' + idRuta;
             window.history.pushState({path:newurl},'',newurl);
         } else {
+            currentRutaTeorica = null;
             document.getElementById('panelLamda').innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Seleccione una ruta para ver el plan original.</p>';
         }
     });
@@ -210,30 +272,64 @@
             const res = await fetch(`/api/logistica/rutas/${idRuta}`);
             const payload = await res.json();
             if(payload.success && payload.data) {
-                const r = payload.data;
-                let html = `<h3 style="margin-bottom: 0.25rem;">${r.nombre_ruta}</h3>`;
-                html += `<p style="color:var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;"><i class="fa-solid fa-user"></i> ${r.chofer_nombre || 'S/N'}</p>`;
-                
-                if(r.presupuestos && r.presupuestos.length > 0) {
-                    html += '<ul class="timeline">';
-                    r.presupuestos.forEach((p, idx) => {
-                        html += `
-                        <li class="timeline-item node-gestion">
-                            <div class="timeline-card">
-                                <div class="timeline-title"><i class="fa-solid fa-box"></i> Parada ${idx+1}: ${p.cliente_nombre || 'Cliente'}</div>
-                                <div class="timeline-details">📍 ${p.domicilio_direccion || 'Sin dirección'}</div>
-                            </div>
-                        </li>`;
-                    });
-                    html += '</ul>';
-                } else {
-                    html += '<p style="color: var(--text-muted); text-align:center;">Sin pedidos planificados en la ruta.</p>';
-                }
-                document.getElementById('panelLamda').innerHTML = html;
+                currentRutaTeorica = payload.data;
+                renderTeoricoVisual();
             }
         } catch (e) {
              document.getElementById('panelLamda').innerHTML = '<p style="color:red; text-align:center;">Error cargando teórico.</p>';
         }
+    }
+
+    function renderTeoricoVisual() {
+        if (!currentRutaTeorica) return;
+        const r = currentRutaTeorica;
+        let html = `<h3 style="margin-bottom: 0.25rem;">${r.nombre_ruta}</h3>`;
+        html += `<p style="color:var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;"><i class="fa-solid fa-user"></i> ${r.chofer_nombre || 'S/N'}</p>`;
+        
+        html += '<ul class="timeline">';
+        
+        // Nodo Inicio Inyectado
+        const selInicio = document.getElementById('nodoInicioSelect');
+        if (selInicio && selInicio.value) {
+            const txt = selInicio.options[selInicio.selectedIndex].text;
+            html += `
+            <li class="timeline-item node-cero">
+                <div class="timeline-card" style="background:#f0fdf4; border-color:#bbf7d0;">
+                    <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Inicio: ${txt}</div>
+                    <div class="timeline-details">Extremo Forzado Manualmente</div>
+                </div>
+            </li>`;
+        }
+
+        if(r.presupuestos && r.presupuestos.length > 0) {
+            r.presupuestos.forEach((p, idx) => {
+                html += `
+                <li class="timeline-item node-gestion">
+                    <div class="timeline-card">
+                        <div class="timeline-title"><i class="fa-solid fa-box"></i> Parada ${idx+1}: ${p.cliente_nombre || 'Cliente'}</div>
+                        <div class="timeline-details">📍 ${p.domicilio_direccion || 'Sin dirección'}</div>
+                    </div>
+                </li>`;
+            });
+        } else {
+            html += '<li class="timeline-item"><div class="timeline-card"><p style="color: var(--text-muted); text-align:center;">Sin pedidos planificados en la ruta.</p></div></li>';
+        }
+
+        // Nodo Fin Inyectado
+        const selFin = document.getElementById('nodoFinSelect');
+        if (selFin && selFin.value) {
+            const txt = selFin.options[selFin.selectedIndex].text;
+            html += `
+            <li class="timeline-item node-cero">
+                <div class="timeline-card" style="background:#f0fdf4; border-color:#bbf7d0;">
+                    <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Fin: ${txt}</div>
+                    <div class="timeline-details">Extremo Forzado Manualmente</div>
+                </div>
+            </li>`;
+        }
+        
+        html += '</ul>';
+        document.getElementById('panelLamda').innerHTML = html;
     }
 
     // Drag & Drop Handlers
@@ -258,23 +354,33 @@
         const idRuta = document.getElementById('rutaSelect').value;
         if (!idRuta) { alert('Seleccione una Ruta primero.'); return; }
         
+        const idNodoInicio = document.getElementById('nodoInicioSelect').value || null;
+        const idNodoFin = document.getElementById('nodoFinSelect').value || null;
+        
         const reader = new FileReader();
         reader.onload = async (e) => {
             const jsonStr = e.target.result;
-            procesarArchivo(idRuta, jsonStr);
+            procesarArchivo(idRuta, jsonStr, idNodoInicio, idNodoFin);
         };
         reader.readAsText(file);
     }
 
-    async function procesarArchivo(idRuta, jsonString) {
+    async function procesarArchivo(idRuta, jsonString, idNodoInicio, idNodoFin) {
         document.getElementById('loader').style.display = 'block';
-        document.getElementById('panelGoogle').innerHTML = '';
+        document.getElementById('listaGoogle').innerHTML = '';
+        const mapContainer = document.getElementById('mapaGoogle');
+        if(mapContainer) mapContainer.innerHTML = 'Calculando trayectorias...';
         
         try {
             const res = await fetch('/api/logistica/auditorias/procesar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id_ruta: idRuta, timelineJson: jsonString })
+                body: JSON.stringify({ 
+                    id_ruta: idRuta, 
+                    timelineJson: jsonString,
+                    id_nodo_inicio: idNodoInicio,
+                    id_nodo_fin: idNodoFin
+                })
             });
             const payload = await res.json();
             document.getElementById('loader').style.display = 'none';
@@ -323,7 +429,103 @@
             }
         });
         html += '</ul>';
-        document.getElementById('panelGoogle').innerHTML = html;
+        document.getElementById('listaGoogle').innerHTML = html;
+        
+        renderizarMapaSatelital(data);
+    }
+
+    function renderizarMapaSatelital(data) {
+        if (!window.google || !window.google.maps) {
+            document.getElementById('mapaGoogle').innerHTML = 'Google Maps no está disponible.';
+            return;
+        }
+
+        const mapContainer = document.getElementById('mapaGoogle');
+        mapContainer.innerHTML = '';
+
+        const bounds = new google.maps.LatLngBounds();
+        
+        // Coordenada por defecto
+        let center = { lat: -34.6037, lng: -58.3816 };
+        if(data.tramos.length > 0 && data.tramos[0].coordenada_real_lat) {
+            center = { lat: data.tramos[0].coordenada_real_lat, lng: data.tramos[0].coordenada_real_lng };
+        }
+
+        map = new google.maps.Map(mapContainer, {
+            center: center,
+            zoom: 12,
+            mapTypeControl: true,
+            streetViewControl: false
+        });
+
+        // Limpiar
+        if (mapPath) mapPath.setMap(null);
+        markers.forEach(m => m.setMap(null));
+        markers = [];
+
+        // Trazar Polyline (Traza Satelital)
+        if (data.trace && data.trace.length > 0) {
+            mapPath = new google.maps.Polyline({
+                path: data.trace,
+                geodesic: true,
+                strokeColor: '#3b82f6',
+                strokeOpacity: 0.8,
+                strokeWeight: 4
+            });
+            mapPath.setMap(map);
+            
+            data.trace.forEach(p => bounds.extend(p));
+        }
+
+        // Trazar Marcadores (Nodos y Gestión)
+        data.tramos.forEach(tramo => {
+            if (tramo.coordenada_real_lat && tramo.coordenada_real_lng) {
+                const pos = { lat: tramo.coordenada_real_lat, lng: tramo.coordenada_real_lng };
+                let iconColor = '#ef4444'; // Rojo (Cliente/Parada)
+                let scale = 6;
+                let zIndex = 1;
+
+                if (tramo.tipo_tramo === 'NODO_CERO') {
+                    iconColor = '#10b981'; // Verde (Depósito)
+                    scale = 8;
+                    zIndex = 3;
+                } else if (tramo.tipo_tramo === 'PAUSA_NO_DECLARADA') {
+                    iconColor = '#f59e0b'; // Naranja
+                    zIndex = 2;
+                }
+
+                const marker = new google.maps.Marker({
+                    position: pos,
+                    map: map,
+                    title: tramo.nombre_ref,
+                    zIndex: zIndex,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: scale,
+                        fillColor: iconColor,
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2
+                    }
+                });
+                
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `<div style="padding: 0.5rem;"><h4 style="margin:0 0 0.5rem 0; font-size:14px; color:#1e293b;">${tramo.nombre_ref}</h4>
+                              <p style="margin:0; font-size:12px; color:#475569;">${tramo.tipo_tramo}</p></div>`
+                });
+                
+                marker.addListener('click', () => {
+                    infoWindow.open(map, marker);
+                });
+
+                markers.push(marker);
+                bounds.extend(pos);
+            }
+        });
+
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds);
+        }
     }
 
     function renderEstadisticas(data) {
@@ -355,7 +557,11 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', cargarRutasDisponibles);
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarAPIKeyGoogle();
+        cargarRutasDisponibles();
+        cargarNodosDisponibles();
+    });
 </script>
 </body>
 </html>
