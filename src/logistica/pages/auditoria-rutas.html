@@ -84,6 +84,8 @@
         <div class="header-actions">
             <button class="btn btn-secondary" onclick="window.location.href='/pages/dashboard.html'" style="background: transparent; color: white; border: 1px solid #475569;"><i class="fa-solid fa-arrow-left"></i> Volver a Logística</button>
             <button class="btn btn-primary" onclick="window.location.href='/pages/config-puntos.html'"><i class="fa-solid fa-gear"></i> Nodos Cero</button>
+            <button class="btn btn-secondary" onclick="window.location.href='/pages/ingesta-satelital.html'" style="background-color: #2563eb; color: white; border-color: #2563eb;"><i class="fa-solid fa-satellite-dish"></i> Ingesta Satelital</button>
+            <button class="btn btn-info" onclick="window.location.href='/pages/historial-auditorias.html'" style="background-color: var(--info); color: white; border: none;"><i class="fa-solid fa-clock-rotate-left"></i> Archivo Forense</button>
             <button class="btn btn-success" id="btnGuardar" disabled onclick="guardarAuditoria()"><i class="fa-solid fa-check-double"></i> Guardar Auditoría</button>
         </div>
     </header>
@@ -113,18 +115,14 @@
                 </select>
             </div>
             
-            <div class="form-group">
-                <label>Cargar Archivo Google (Rutas.json)</label>
-                <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-                    <i class="fa-solid fa-file-arrow-up"></i>
-                    <p><strong>Arrastra el JSON aquí</strong> o haz clic para buscar</p>
-                    <input type="file" id="fileInput" style="display: none" accept=".json">
-                </div>
+            <div class="form-group" style="text-align: center; margin-top: 1.5rem;">
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;"><i class="fa-solid fa-database"></i> Los datos se extraen automáticamente del Reservorio Satelital.</p>
+                <button class="btn btn-primary" id="btnConsultarReservorio" onclick="consultarReservorio()" style="width: 100%;"><i class="fa-solid fa-satellite-dish"></i> Procesar Auditoría</button>
             </div>
 
             <div class="loader" id="loader">
                 <i class="fa-solid fa-circle-notch fa-spin fa-2x"></i>
-                <p style="margin-top: 0.5rem; font-size: 0.875rem;">Cruzando Haversine...</p>
+                <p style="margin-top: 0.5rem; font-size: 0.875rem;">Consultando base satelital...</p>
             </div>
 
             <div id="estadisticasResumen" style="display: none; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
@@ -177,7 +175,7 @@
             const payload = await res.json();
             if (payload.success && payload.data.googleMapsApiKey) {
                 const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${payload.data.googleMapsApiKey}`;
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${payload.data.googleMapsApiKey}&loading=async&libraries=marker`;
                 script.async = true;
                 script.defer = true;
                 document.head.appendChild(script);
@@ -213,7 +211,7 @@
             select.innerHTML = '<option value="">Seleccione Ruta Finalizada...</option>';
             
             if (data.success && data.data) {
-                const rutasFinalizadas = data.data.filter(r => r.estado === 'FINALIZADA').sort((a,b) => new Date(b.fecha_salida) - new Date(a.fecha_salida));
+                const rutasFinalizadas = data.data.filter(r => r.estado === 'FINALIZADA' && !r.auditada).sort((a,b) => new Date(b.fecha_salida) - new Date(a.fecha_salida));
                 
                 const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
                 const grupos = {};
@@ -248,6 +246,15 @@
         } catch (e) {
             console.error('Error cargando rutas', e);
         }
+    }
+
+    function formatearDuracion(minutos) {
+        if (!minutos && minutos !== 0) return 'N/A';
+        if (minutos < 60) return `${minutos} min`;
+        const h = Math.floor(minutos / 60);
+        const m = minutos % 60;
+        if (m === 0) return `${h}h`;
+        return `${h}h ${m}m`;
     }
 
     document.getElementById('nodoInicioSelect').addEventListener('change', renderTeoricoVisual);
@@ -297,8 +304,9 @@
         if (currentAuditoriaData && currentAuditoriaData.tramos) {
             currentAuditoriaData.tramos.forEach(t => {
                 if (t.tipo_tramo === 'NODO_CERO') {
-                    if (!empInicio) empInicio = t;
-                    else empFin = t;
+                    empInicio = t;
+                } else if (t.tipo_tramo === 'NODO_FIN') {
+                    empFin = t;
                 } else if (t.tipo_tramo === 'GESTION_CLIENTE') {
                     empParadas[t.id_presupuesto] = t;
                 } else if (t.tipo_tramo === 'TRASLADO') {
@@ -312,13 +320,22 @@
         if (selInicio && selInicio.value) {
             const txt = selInicio.options[selInicio.selectedIndex].text;
             let infoExtra = '';
-            if (empInicio) infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold;">⏳ ${empInicio.tiempo_duracion_minutos} min</span>`;
+            let labelMetodo = `<div style="font-size: 0.75rem; color: #991b1b; margin-top: 4px;"><i class="fa-solid fa-triangle-exclamation"></i> Sin datos satelitales (No procesado)</div>`;
+            
+            if (empInicio) {
+                infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold;">⏳ ${formatearDuracion(empInicio.tiempo_duracion_minutos)}</span>`;
+                const isFallback = empInicio.metodo_conciliacion && empInicio.metodo_conciliacion.includes('Fallback');
+                const colorMetodo = isFallback ? '#b91c1c' : '#166534';
+                const iconMetodo = isFallback ? 'fa-triangle-exclamation' : 'fa-microchip';
+                labelMetodo = `<div style="font-size: 0.75rem; color: ${colorMetodo}; margin-top: 4px;"><i class="fa-solid ${iconMetodo}"></i> ${empInicio.metodo_conciliacion || 'Origen Desconocido'}</div>`;
+            }
             
             html += `
             <li class="timeline-item node-cero">
                 <div class="timeline-card" style="background:#f0fdf4; border-color:#bbf7d0;">
                     <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Inicio: ${txt} ${infoExtra}</div>
                     <div class="timeline-details">Extremo Forzado Manualmente</div>
+                    ${labelMetodo}
                 </div>
             </li>`;
         }
@@ -332,17 +349,29 @@
                 if (currentAuditoriaData) {
                     const traslado = empTraslados[currentTrasladoIndex++];
                     if (traslado) {
+                        const isFallback = traslado.metodo_conciliacion && traslado.metodo_conciliacion.includes('Fallback');
+                        const colorMetodo = isFallback ? '#b91c1c' : '#3b82f6';
+                        const iconMetodo = isFallback ? 'fa-triangle-exclamation' : 'fa-microchip';
+                        const labelTraslado = traslado.metodo_conciliacion ? `<div style="font-size: 0.7rem; color: ${colorMetodo}; margin-top: 2px;"><i class="fa-solid ${iconMetodo}"></i> ${traslado.metodo_conciliacion}</div>` : '';
+                        
                         html += `
                         <div style="margin-left: 20px; padding: 0.5rem 0; border-left: 2px dashed #93c5fd; padding-left: 1rem; color: #3b82f6; font-size: 0.8rem;">
-                            <i class="fa-solid fa-truck-fast"></i> Tránsito: <strong>${traslado.tiempo_duracion_minutos} min</strong> (${traslado.distancia_geocerca_metros ? (traslado.distancia_geocerca_metros/1000).toFixed(1) + ' km' : 'N/A'})
+                            <i class="fa-solid fa-truck-fast"></i> Tránsito: <strong>${formatearDuracion(traslado.tiempo_duracion_minutos)}</strong> (${traslado.distancia_geocerca_metros ? (traslado.distancia_geocerca_metros/1000).toFixed(1) + ' km' : 'N/A'})
+                            ${labelTraslado}
                         </div>`;
                     }
                 }
 
                 const empP = empParadas[p.id];
                 let infoExtra = '';
+                let labelMetodo = `<div style="font-size: 0.75rem; color: #991b1b; margin-top: 4px;"><i class="fa-solid fa-triangle-exclamation"></i> No encontrado en Google JSON</div>`;
+                
                 if (empP) {
-                    infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold; color:#ef4444;">⏳ ${empP.tiempo_duracion_minutos} min en geocerca</span>`;
+                    infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold; color:#ef4444;">⏳ ${formatearDuracion(empP.tiempo_duracion_minutos)} en geocerca</span>`;
+                    const isFallback = empP.metodo_conciliacion && empP.metodo_conciliacion.includes('Fallback');
+                    const colorMetodo = isFallback ? '#b91c1c' : '#166534';
+                    const iconMetodo = isFallback ? 'fa-triangle-exclamation' : 'fa-microchip';
+                    labelMetodo = `<div style="font-size: 0.75rem; color: ${colorMetodo}; margin-top: 4px;"><i class="fa-solid ${iconMetodo}"></i> ${empP.metodo_conciliacion || 'Origen Desconocido'}</div>`;
                 }
 
                 html += `
@@ -350,6 +379,7 @@
                     <div class="timeline-card">
                         <div class="timeline-title"><i class="fa-solid fa-box"></i> Parada ${idx+1}: ${p.cliente_nombre || 'Cliente'} ${infoExtra}</div>
                         <div class="timeline-details">📍 ${p.domicilio_direccion || 'Sin dirección'}</div>
+                        ${labelMetodo}
                     </div>
                 </li>`;
             });
@@ -361,9 +391,15 @@
         if (currentAuditoriaData) {
             const traslado = empTraslados[currentTrasladoIndex];
             if (traslado) {
+                const isFallback = traslado.metodo_conciliacion && traslado.metodo_conciliacion.includes('Fallback');
+                const colorMetodo = isFallback ? '#b91c1c' : '#3b82f6';
+                const iconMetodo = isFallback ? 'fa-triangle-exclamation' : 'fa-microchip';
+                const labelTraslado = traslado.metodo_conciliacion ? `<div style="font-size: 0.7rem; color: ${colorMetodo}; margin-top: 2px;"><i class="fa-solid ${iconMetodo}"></i> ${traslado.metodo_conciliacion}</div>` : '';
+                        
                 html += `
                 <div style="margin-left: 20px; padding: 0.5rem 0; border-left: 2px dashed #93c5fd; padding-left: 1rem; color: #3b82f6; font-size: 0.8rem;">
-                    <i class="fa-solid fa-truck-fast"></i> Tránsito Retorno: <strong>${traslado.tiempo_duracion_minutos} min</strong> (${traslado.distancia_geocerca_metros ? (traslado.distancia_geocerca_metros/1000).toFixed(1) + ' km' : 'N/A'})
+                    <i class="fa-solid fa-truck-fast"></i> Tránsito Retorno: <strong>${formatearDuracion(traslado.tiempo_duracion_minutos)}</strong> (${traslado.distancia_geocerca_metros ? (traslado.distancia_geocerca_metros/1000).toFixed(1) + ' km' : 'N/A'})
+                    ${labelTraslado}
                 </div>`;
             }
         }
@@ -373,13 +409,22 @@
         if (selFin && selFin.value) {
             const txt = selFin.options[selFin.selectedIndex].text;
             let infoExtra = '';
-            if (empFin) infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold;">⏳ ${empFin.tiempo_duracion_minutos} min</span>`;
+            let labelMetodo = `<div style="font-size: 0.75rem; color: #991b1b; margin-top: 4px;"><i class="fa-solid fa-triangle-exclamation"></i> Sin datos satelitales (No procesado)</div>`;
+            
+            if (empFin) {
+                infoExtra = `<span style="float:right; font-size:0.8rem; font-weight:bold;">⏳ ${formatearDuracion(empFin.tiempo_duracion_minutos)}</span>`;
+                const isFallback = empFin.metodo_conciliacion && empFin.metodo_conciliacion.includes('Fallback');
+                const colorMetodo = isFallback ? '#b91c1c' : '#166534';
+                const iconMetodo = isFallback ? 'fa-triangle-exclamation' : 'fa-microchip';
+                labelMetodo = `<div style="font-size: 0.75rem; color: ${colorMetodo}; margin-top: 4px;"><i class="fa-solid ${iconMetodo}"></i> ${empFin.metodo_conciliacion || 'Origen Desconocido'}</div>`;
+            }
 
             html += `
             <li class="timeline-item node-cero">
                 <div class="timeline-card" style="background:#f0fdf4; border-color:#bbf7d0;">
                     <div class="timeline-title" style="color:#166534;"><i class="fa-solid fa-warehouse"></i> Nodo Fin: ${txt} ${infoExtra}</div>
                     <div class="timeline-details">Extremo Forzado Manualmente</div>
+                    ${labelMetodo}
                 </div>
             </li>`;
         }
@@ -388,44 +433,19 @@
         document.getElementById('panelLamda').innerHTML = html;
     }
 
-    // Drag & Drop Handlers
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        if (e.dataTransfer.files.length) {
-            handleFile(e.dataTransfer.files[0]);
-        }
-    });
-
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length) handleFile(e.target.files[0]);
-    });
-
-    function handleFile(file) {
+    // Eliminado Drag & Drop (Reservorio Satelital Activo)
+    
+    async function consultarReservorio() {
         const idRuta = document.getElementById('rutaSelect').value;
         if (!idRuta) { alert('Seleccione una Ruta primero.'); return; }
         
         const idNodoInicio = document.getElementById('nodoInicioSelect').value || null;
         const idNodoFin = document.getElementById('nodoFinSelect').value || null;
         
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const jsonStr = e.target.result;
-            procesarArchivo(idRuta, jsonStr, idNodoInicio, idNodoFin);
-        };
-        reader.readAsText(file);
-    }
-
-    async function procesarArchivo(idRuta, jsonString, idNodoInicio, idNodoFin) {
         document.getElementById('loader').style.display = 'block';
         document.getElementById('listaGoogle').innerHTML = '';
         const mapContainer = document.getElementById('mapaGoogle');
-        if(mapContainer) mapContainer.innerHTML = 'Calculando trayectorias...';
+        if(mapContainer) mapContainer.innerHTML = 'Consultando reservorio satelital...';
         
         try {
             const res = await fetch('/api/logistica/auditorias/procesar', {
@@ -433,7 +453,6 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     id_ruta: idRuta, 
-                    timelineJson: jsonString,
                     id_nodo_inicio: idNodoInicio,
                     id_nodo_fin: idNodoFin
                 })
@@ -442,6 +461,27 @@
             document.getElementById('loader').style.display = 'none';
 
             if (payload.success) {
+                // VIGÍA DEPURADOR FRONTEND
+                if (payload.data.vigia_depurador) {
+                    const vigia = payload.data.vigia_depurador;
+                    console.group('%c 🕵️ VIGÍA DEPURADOR: Cruce de Datos', 'color: white; background: #eab308; padding: 2px 4px; font-weight: bold;');
+                    console.log('%c Paso 1: Parámetros de Búsqueda', 'color: #3b82f6; font-weight: bold;');
+                    console.table(vigia.paso1_parametros);
+                    
+                    console.log('%c Paso 2: Detección de Nodos Principales', 'color: #3b82f6; font-weight: bold;');
+                    if(vigia.paso2_nodos.length > 0) console.table(vigia.paso2_nodos);
+                    else console.log('Ningún nodo detectado.');
+                    
+                    console.log('%c Paso 3: Trazabilidad de Puntos Intermedios', 'color: #3b82f6; font-weight: bold;');
+                    console.log(`Total Puntos: ${vigia.paso3_trazabilidad.puntos_encontrados_en_reservorio} | Eventos: ${vigia.paso3_trazabilidad.eventos_encontrados_en_reservorio}`);
+                    if(vigia.paso3_trazabilidad.segmentos.length > 0) console.table(vigia.paso3_trazabilidad.segmentos);
+                    
+                    console.log('%c Paso 4: Exposición de Fallos (Miss)', 'color: #ef4444; font-weight: bold;');
+                    if(vigia.paso4_misses.length > 0) console.table(vigia.paso4_misses);
+                    else console.log('Todos los nodos fueron detectados.');
+                    console.groupEnd();
+                }
+
                 currentAuditoriaData = payload.data;
                 renderTeoricoVisual(); // Consolidar vista empírica en el panel teórico
                 renderizarGoogle(payload.data);
@@ -451,48 +491,115 @@
                 alert('Error al procesar: ' + payload.error);
             }
         } catch (e) {
+            console.error('[FRONTEND CRASH]', e);
             document.getElementById('loader').style.display = 'none';
-            alert('Error de red al intentar procesar el archivo.');
+            alert('Fallo crítico en el procesamiento visual (Frontend): ' + e.message);
         }
     }
 
     function renderizarGoogle(data) {
-        let html = '<ul class="timeline">';
+        let eventos = [];
+        
+        // 1. Aplanar los datos empíricos en una sola línea de tiempo
         data.tramos.forEach(tramo => {
             if (tramo.tipo_tramo === 'TRASLADO') {
-                html += `
-                    <div class="traslado-card">
-                        <i class="fa-solid fa-car-side"></i> Traslado: ${tramo.tiempo_duracion_minutos} min (${(tramo.distancia_geocerca_metros / 1000).toFixed(1)} km)
-                    </div>
-                `;
+                if (tramo.trace_empirico && tramo.trace_empirico.length > 0) {
+                    tramo.trace_empirico.forEach(punto => {
+                        eventos.push({
+                            // Si el punto no tiene timestamp propio, usamos el inicio del traslado como fallback
+                            ms: punto.timestamp ? new Date(punto.timestamp).getTime() : new Date(tramo.hora_inicio).getTime(),
+                            hora_str: punto.timestamp ? new Date(punto.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : new Date(tramo.hora_inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ' (Aprox)',
+                            lat: punto.lat,
+                            lng: punto.lng,
+                            origen: 'timelinePath / point (Coordenada Empírica)',
+                            icono: 'fa-location-dot',
+                            color: '#3b82f6', // Azul
+                            detalles: `Lat: ${punto.lat.toFixed(5)}, Lng: ${punto.lng.toFixed(5)}`
+                        });
+                    });
+                } else {
+                    // Traslado sin puntos (ej. Inyectado o fallback)
+                    eventos.push({
+                        ms: new Date(tramo.hora_inicio).getTime(),
+                        hora_str: new Date(tramo.hora_inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                        lat: null,
+                        lng: null,
+                        origen: 'Traslado (Sin traza satelital)',
+                        icono: 'fa-car-side',
+                        color: '#94a3b8',
+                        detalles: `${formatearDuracion(tramo.tiempo_duracion_minutos)} | ${(tramo.distancia_geocerca_metros / 1000).toFixed(1)} km | ${tramo.metodo_conciliacion || ''}`
+                    });
+                }
             } else {
                 let nodeClass = '';
-                let icon = '';
-                if (tramo.tipo_tramo === 'NODO_CERO') { nodeClass = 'node-cero'; icon = 'fa-warehouse'; }
-                if (tramo.tipo_tramo === 'GESTION_CLIENTE') { nodeClass = 'node-gestion'; icon = 'fa-check'; }
-                if (tramo.tipo_tramo === 'PAUSA_NO_DECLARADA') { nodeClass = 'node-anomalia'; icon = 'fa-triangle-exclamation'; }
+                let icon = 'fa-flag';
+                let iconColor = '#ef4444'; // Rojo (Cliente/Parada)
+                
+                if (tramo.tipo_tramo === 'NODO_CERO') { nodeClass = 'node-cero'; icon = 'fa-warehouse'; iconColor = '#10b981'; }
+                if (tramo.tipo_tramo === 'NODO_FIN') { nodeClass = 'node-cero'; icon = 'fa-house-flag'; iconColor = '#10b981'; }
+                if (tramo.tipo_tramo === 'GESTION_CLIENTE') { nodeClass = 'node-gestion'; icon = 'fa-check'; iconColor = '#f59e0b'; }
+                if (tramo.tipo_tramo === 'PAUSA_NO_DECLARADA') { nodeClass = 'node-anomalia'; icon = 'fa-triangle-exclamation'; iconColor = '#64748b'; }
 
-                const timeStr = new Date(tramo.hora_inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-                html += `
-                    <li class="timeline-item ${nodeClass}">
-                        <div class="timeline-card">
-                            <div class="timeline-time">${timeStr} (${tramo.tiempo_duracion_minutos} min detención)</div>
-                            <div class="timeline-title"><i class="fa-solid ${icon}"></i> ${tramo.nombre_ref}</div>
-                            <div class="timeline-details">${tramo.distancia_geocerca_metros ? 'A ' + tramo.distancia_geocerca_metros + 'm del objetivo.' : 'Detención sin objetivo asociado.'}</div>
-                        </div>
-                    </li>
-                `;
+                eventos.push({
+                    ms: new Date(tramo.hora_inicio).getTime(),
+                    hora_str: new Date(tramo.hora_inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                    lat: tramo.coordenada_real_lat,
+                    lng: tramo.coordenada_real_lng,
+                    origen: `${tramo.nombre_ref} (${tramo.tipo_tramo})`,
+                    icono: icon,
+                    color: iconColor,
+                    cssClass: nodeClass,
+                    detalles: tramo.coordenada_real_lat ? `Lat: ${Number(tramo.coordenada_real_lat).toFixed(5)}, Lng: ${Number(tramo.coordenada_real_lng).toFixed(5)} | ${tramo.metodo_conciliacion || ''}` : `Sin coordenadas | ${tramo.metodo_conciliacion || ''}`
+                });
             }
         });
+
+        // 2. Ordenar cronológicamente estricto
+        eventos.sort((a, b) => a.ms - b.ms);
+
+        // 3. Renderizar la línea de tiempo cruda
+        let html = '<ul class="timeline" style="padding-left: 10px;">';
+        
+        eventos.forEach(evt => {
+            html += `
+                <li class="timeline-item ${evt.cssClass || ''}" style="margin-bottom: 0.5rem;">
+                    <div class="timeline-card" style="padding: 0.75rem; display: flex; align-items: flex-start; gap: 10px; border-left: 3px solid ${evt.color};">
+                        <div style="min-width: 70px; font-weight: bold; color: #475569; font-size: 0.85rem; padding-top: 2px;">
+                            ${evt.hora_str}
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; color: #1e293b; font-size: 0.9rem;">
+                                <i class="fa-solid ${evt.icono}" style="color: ${evt.color}; width: 16px;"></i> ${evt.origen}
+                            </div>
+                            <div style="font-size: 0.75rem; color: #64748b; font-family: monospace; margin-top: 3px; background: #f1f5f9; padding: 2px 4px; border-radius: 4px; display: inline-block;">
+                                ${evt.detalles}
+                            </div>
+                        </div>
+                    </div>
+                </li>
+            `;
+        });
+        
+        if (eventos.length === 0) {
+            html += '<p style="text-align: center; color: var(--text-muted); margin-top: 2rem;">No se extrajeron puntos para esta ruta.</p>';
+        }
+
         html += '</ul>';
         document.getElementById('listaGoogle').innerHTML = html;
         
         renderizarMapaSatelital(data);
     }
 
+    let polylines = []; // Almacenar polilíneas
+
     function renderizarMapaSatelital(data) {
+        console.group('%c🕵️ VIGÍA DEPURADOR EXTENDIDO: Renderizado de Mapa', 'color: #8b5cf6; font-weight: bold; font-size: 1.1em;');
+        console.log('%cPASO A: El Payload Crudo (Lo que llega del Backend)', 'color: #3b82f6; font-weight: bold;');
+        console.log('Objeto data completo recibido en el Frontend:', JSON.parse(JSON.stringify(data)));
+        
         if (!window.google || !window.google.maps) {
+            console.error('❌ Google Maps API no está disponible.');
+            console.groupEnd();
             document.getElementById('mapaGoogle').innerHTML = 'Google Maps no está disponible.';
             return;
         }
@@ -511,59 +618,47 @@
         map = new google.maps.Map(mapContainer, {
             center: center,
             zoom: 12,
+            mapId: 'LAMDA_AUDIT_MAP',
             mapTypeControl: true,
             streetViewControl: false
         });
 
-        // Limpiar
-        if (mapPath) mapPath.setMap(null);
+        // Limpiar capas previas
+        if (mapPath) mapPath.setMap(null); // Compatibilidad backward
+        if (polylines) polylines.forEach(p => p.setMap(null));
+        polylines = [];
         markers.forEach(m => m.setMap(null));
         markers = [];
 
-        // Trazar Polyline (Traza Satelital)
-        if (data.trace && data.trace.length > 0) {
-            mapPath = new google.maps.Polyline({
-                path: data.trace,
-                geodesic: true,
-                strokeColor: '#3b82f6',
-                strokeOpacity: 0.8,
-                strokeWeight: 4
-            });
-            mapPath.setMap(map);
-            
-            data.trace.forEach(p => bounds.extend(p));
-        }
-
-        // Trazar Marcadores (Nodos y Gestión)
+        // Trazar Nodos y Polilíneas por Segmento
         data.tramos.forEach(tramo => {
             if (tramo.coordenada_real_lat && tramo.coordenada_real_lng) {
+                // Dibujar Nodo (Parada/Depósito)
                 const pos = { lat: tramo.coordenada_real_lat, lng: tramo.coordenada_real_lng };
                 let iconColor = '#ef4444'; // Rojo (Cliente/Parada)
                 let scale = 6;
                 let zIndex = 1;
 
-                if (tramo.tipo_tramo === 'NODO_CERO') {
+                if (tramo.tipo_tramo === 'NODO_CERO' || tramo.tipo_tramo === 'NODO_FIN') {
                     iconColor = '#10b981'; // Verde (Depósito)
-                    scale = 8;
                     zIndex = 3;
                 } else if (tramo.tipo_tramo === 'PAUSA_NO_DECLARADA') {
                     iconColor = '#f59e0b'; // Naranja
                     zIndex = 2;
                 }
 
-                const marker = new google.maps.Marker({
+                const pinView = new google.maps.marker.PinElement({
+                    background: iconColor,
+                    borderColor: '#ffffff',
+                    glyphColor: '#ffffff'
+                });
+
+                const marker = new google.maps.marker.AdvancedMarkerElement({
                     position: pos,
                     map: map,
                     title: tramo.nombre_ref,
-                    zIndex: zIndex,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: scale,
-                        fillColor: iconColor,
-                        fillOpacity: 1,
-                        strokeColor: '#ffffff',
-                        strokeWeight: 2
-                    }
+                    content: pinView, // Corregido warning: pasamos el PinElement directamente en vez de pinView.element
+                    zIndex: zIndex
                 });
                 
                 const infoWindow = new google.maps.InfoWindow({
@@ -571,18 +666,110 @@
                               <p style="margin:0; font-size:12px; color:#475569;">${tramo.tipo_tramo}</p></div>`
                 });
                 
-                marker.addListener('click', () => {
+                marker.addListener('gmp-click', () => { // Corregido warning: gmp-click en lugar de click
                     infoWindow.open(map, marker);
                 });
 
                 markers.push(marker);
                 bounds.extend(pos);
+
+            } else if (tramo.tipo_tramo === 'TRASLADO') {
+                // Función sanitizadora requerida por Ticket #038
+                const sanearPath = (pathArray, label) => {
+                    if (!Array.isArray(pathArray)) return [];
+                    console.log(`%cPASO B: Transformación de Coordenadas (${label})`, 'color: #f59e0b; font-weight: bold;');
+                    console.log(`Array Original (antes de parseo estricto Float):`, pathArray);
+                    
+                    const saneado = pathArray.map(p => {
+                        let lat = p.lat !== undefined ? p.lat : (p.latitudeE7 ? p.latitudeE7 / 1e7 : null);
+                        let lng = p.lng !== undefined ? p.lng : (p.longitudeE7 ? p.longitudeE7 / 1e7 : null);
+                        return { lat: parseFloat(lat), lng: parseFloat(lng) };
+                    }).filter(p => {
+                        const esValido = !isNaN(p.lat) && !isNaN(p.lng);
+                        if (!esValido) console.warn(`⚠️ Vértice inválido descartado:`, p);
+                        return esValido;
+                    });
+
+                    console.log(`Resultado de saneamiento: ${saneado.length} vértices válidos extraídos.`, saneado);
+                    return saneado;
+                };
+
+                // Lógica de Renderizado Mutuamente Excluyente
+                if (tramo.trace_empirico && tramo.trace_empirico.length > 0) {
+                    console.log(`%cPASO C: Construcción de Polilínea Empírica`, 'color: #10b981; font-weight: bold;');
+                    const safePath = sanearPath(tramo.trace_empirico, 'trace_empirico');
+                    console.log(`Inyectando Polyline con un array de tamaño (length): ${safePath.length}`);
+                    if (safePath.length > 0) {
+                        const empPath = new google.maps.Polyline({
+                            path: safePath,
+                            geodesic: true,
+                            strokeColor: '#3b82f6', // Azul
+                            strokeOpacity: 0.8,
+                            strokeWeight: 4,
+                            zIndex: 2
+                        });
+                        empPath.setMap(map);
+                        polylines.push(empPath);
+                        safePath.forEach(p => bounds.extend(p));
+
+                        // TICKET #062: Renderizar Nodos Empíricos Intermedios (Vértices)
+                        tramo.trace_empirico.forEach(punto => {
+                            if (punto.lat !== undefined && punto.lng !== undefined) {
+                                const lat = parseFloat(punto.lat);
+                                const lng = parseFloat(punto.lng);
+                                if (!isNaN(lat) && !isNaN(lng)) {
+                                    const dotView = document.createElement('div');
+                                    dotView.style.width = '8px';
+                                    dotView.style.height = '8px';
+                                    dotView.style.backgroundColor = '#38bdf8'; // Celeste empírico
+                                    dotView.style.borderRadius = '50%';
+                                    dotView.style.border = '1px solid white';
+                                    dotView.style.boxShadow = '0 0 2px rgba(0,0,0,0.3)';
+
+                                    const timeStr = punto.timestamp ? new Date(punto.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : 'Empírico';
+                                    
+                                    const ptMarker = new google.maps.marker.AdvancedMarkerElement({
+                                        position: { lat, lng },
+                                        map: map,
+                                        title: `Punto Satelital - ${timeStr}`,
+                                        content: dotView,
+                                        zIndex: 3 // Por encima de la línea, debajo de los nodos principales
+                                    });
+                                    
+                                    markers.push(ptMarker);
+                                }
+                            }
+                        });
+                    }
+                } else if (tramo.trace_fallback && tramo.trace_fallback.length > 0) {
+                    console.log(`%cPASO C: Construcción de Polilínea Fallback`, 'color: #94a3b8; font-weight: bold;');
+                    const safeFallback = sanearPath(tramo.trace_fallback, 'trace_fallback');
+                    console.log(`Inyectando Polyline (Fallback) con un array de tamaño (length): ${safeFallback.length}`);
+                    if (safeFallback.length > 0) {
+                        const fallPath = new google.maps.Polyline({
+                            path: safeFallback,
+                            geodesic: true,
+                            strokeColor: '#94a3b8', // Gris oscuro
+                            strokeOpacity: 0.8,
+                            strokeWeight: 2,
+                            zIndex: 1,
+                            icons: [{
+                                icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW },
+                                offset: '50%'
+                            }]
+                        });
+                        fallPath.setMap(map);
+                        polylines.push(fallPath);
+                    }
+                }
             }
         });
 
         if (!bounds.isEmpty()) {
             map.fitBounds(bounds);
         }
+        
+        console.groupEnd();
     }
 
     function renderEstadisticas(data) {
@@ -592,6 +779,27 @@
         
         const badgeColor = data.desviacion_global_porcentaje > 15 ? 'red' : 'green';
         document.getElementById('lblDesviacion').innerHTML = `<span style="color:${badgeColor}; font-weight:bold;">${data.desviacion_global_porcentaje}%</span>`;
+    }
+
+    function limpiarEstadoAuditoria() {
+        // Limpiar Mapa
+        if (polylines) polylines.forEach(p => p.setMap(null));
+        if (markers) markers.forEach(m => m.setMap(null));
+        polylines = [];
+        markers = [];
+        
+        // Limpiar Panel Izquierdo
+        document.getElementById('rutaSelect').value = '';
+        if(document.getElementById('panelLamda')) document.getElementById('panelLamda').innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Seleccione una ruta para ver el plan original.</p>';
+        if(document.getElementById('listaGoogle')) document.getElementById('listaGoogle').innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 2rem;">Cargue el archivo Rutas.json para procesar la realidad.</p>';
+        document.getElementById('lblDistancia').innerText = '--';
+        document.getElementById('lblTiempo').innerText = '--';
+        document.getElementById('lblDesviacion').innerText = '--';
+        if(document.getElementById('estadisticasResumen')) document.getElementById('estadisticasResumen').style.display = 'none';
+        if(document.getElementById('resultadosAuditoria')) document.getElementById('resultadosAuditoria').style.display = 'none';
+        
+        // Reiniciar variables
+        currentAuditoriaData = null;
     }
 
     async function guardarAuditoria() {
@@ -605,12 +813,14 @@
             const payload = await res.json();
             if (payload.success) {
                 alert('Auditoría estadística consolidada en base de datos. ID: ' + payload.id_auditoria);
-                window.location.reload();
+                limpiarEstadoAuditoria();
+                cargarRutasDisponibles(); // Recargar el combo para que desaparezca
             } else {
                 alert('Error al guardar: ' + payload.error);
             }
         } catch(e) {
-            alert('Error de red.');
+            console.error('Error durante el guardado:', e);
+            alert('Error al procesar la respuesta o fallo de red. Revise la consola.');
         }
     }
 

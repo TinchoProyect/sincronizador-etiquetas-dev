@@ -205,6 +205,10 @@ console.log('[LOGISTICA] ✅ Rutas de Tratamientos montadas en /api/logistica/tr
 app.use('/api/logistica/auditorias', require('./routes/auditorias'));
 console.log('[LOGISTICA] ✅ Rutas de Auditorías montadas en /api/logistica/auditorias');
 
+// Rutas del Reservorio Cronológico Satelital
+app.use('/api/logistica/reservorio', require('./routes/reservorioRoutes'));
+console.log('[LOGISTICA] ✅ Rutas del Reservorio Satelital montadas en /api/logistica/reservorio');
+
 
 // Ruta de health check
 app.get('/health', (req, res) => {

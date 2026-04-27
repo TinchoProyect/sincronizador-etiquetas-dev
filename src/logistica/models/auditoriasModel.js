@@ -71,9 +71,6 @@ class AuditoriasModel {
         try {
             await client.query('BEGIN');
 
-            // 1. Insertar o Actualizar Cabecera
-            // Si ya hay una auditoría borrador para esta ruta, podríamos sobrescribirla o crear una nueva.
-            // Para simplificar, creamos una nueva o actualizamos si envían el ID.
             const cabeceraQuery = `
                 INSERT INTO rutas_auditorias 
                 (id_ruta, distancia_real_km, tiempo_real_minutos, desviacion_global_porcentaje, usuario_auditor, estado, fecha_auditoria)
@@ -92,14 +89,14 @@ class AuditoriasModel {
             
             const id_auditoria = cabeceraResult.rows[0].id;
 
-            // 2. Insertar Tramos
             for (const tramo of tramos) {
+                const traceJson = tramo.trace_empirico ? JSON.stringify(tramo.trace_empirico) : null;
                 const tramoQuery = `
                     INSERT INTO rutas_auditorias_tramos
                     (id_auditoria, id_presupuesto, tipo_tramo, tiempo_duracion_minutos, 
                      coordenada_real_lat, coordenada_real_lng, distancia_geocerca_metros, 
-                     hora_inicio, hora_fin)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     hora_inicio, hora_fin, metodo_conciliacion, trace_empirico)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 `;
                 await client.query(tramoQuery, [
                     id_auditoria,
@@ -109,14 +106,42 @@ class AuditoriasModel {
                     tramo.coordenada_real_lat || null,
                     tramo.coordenada_real_lng || null,
                     tramo.distancia_geocerca_metros || null,
-                    tramo.hora_inicio || null,
-                    tramo.hora_fin || null
+                    tramo.hora_inicio ? new Date(tramo.hora_inicio) : null,
+                    tramo.hora_fin ? new Date(tramo.hora_fin) : null,
+                    tramo.metodo_conciliacion || null,
+                    traceJson
                 ]);
             }
 
             await client.query('COMMIT');
             return { success: true, id_auditoria };
 
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Eliminar una auditoría y sus tramos de forma atómica.
+     * @param {number} id - ID de la auditoría a eliminar
+     * @returns {Promise<boolean>}
+     */
+    static async eliminar(id) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // Eliminar tramos (si no hay CASCADE)
+            await client.query('DELETE FROM rutas_auditorias_tramos WHERE id_auditoria = $1', [id]);
+            
+            // Eliminar cabecera
+            const res = await client.query('DELETE FROM rutas_auditorias WHERE id = $1 RETURNING id', [id]);
+            
+            await client.query('COMMIT');
+            return res.rowCount > 0;
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;

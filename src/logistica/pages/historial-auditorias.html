@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conciliación de Rutas | LAMDA</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --info: #3b82f6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* HEADER */
+        .header { background: #1e293b; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .header h1 { font-size: 1.25rem; font-weight: 600; }
+        .header-actions { display: flex; gap: 1rem; }
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; font-weight: 500; cursor: pointer; transition: 0.2s; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:disabled { background: var(--border); cursor: not-allowed; color: var(--text-muted); }
+        
+        /* MAIN WORKSPACE */
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+        
+        /* SIDEBAR / UPLOAD */
+        .sidebar { width: 350px; background: var(--bg-card); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 1.5rem; flex-shrink: 0; overflow-y: auto; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.875rem; }
+        .form-control { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; }
+        
+        .upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 2rem 1rem; text-align: center; cursor: pointer; transition: 0.2s; background: #f8fafc; }
+        .upload-zone:hover, .upload-zone.dragover { border-color: var(--primary); background: #eff6ff; }
+        .upload-zone i { font-size: 2rem; color: var(--primary); margin-bottom: 1rem; }
+        
+        /* DOUBLE PANEL DASHBOARD */
+        .dashboard { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); overflow: hidden; }
+        .panel { background: var(--bg-body); display: flex; flex-direction: column; overflow: hidden; }
+        .panel-header { padding: 1rem; background: var(--bg-card); border-bottom: 1px solid var(--border); font-weight: 600; text-align: center; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+        .panel-content { flex: 1; overflow-y: auto; padding: 2rem; position: relative; }
+        
+        /* TIMELINE CSS */
+        .timeline { position: relative; margin: 0; padding: 0; list-style: none; }
+        .timeline::before { content: ''; position: absolute; top: 0; bottom: 0; left: 1rem; width: 2px; background: var(--border); }
+        .timeline-item { position: relative; padding-left: 3rem; margin-bottom: 2rem; }
+        .timeline-item::before {
+            content: ''; position: absolute; left: 0.5rem; top: 0.25rem; width: 1.25rem; height: 1.25rem; 
+            border-radius: 50%; background: var(--bg-card); border: 2px solid var(--primary); z-index: 1;
+        }
+        
+        /* Node Colors */
+        .node-cero::before { border-color: var(--info); background: #eff6ff; }
+        .node-gestion::before { border-color: var(--success); background: #d1fae5; }
+        .node-pausa::before { border-color: var(--warning); background: #fef3c7; }
+        .node-anomalia::before { border-color: var(--danger); background: #fee2e2; }
+        .node-traslado::before { display: none; } /* Traslado is a line, not a dot */
+        
+        .timeline-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .timeline-time { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.25rem; }
+        .timeline-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.25rem; }
+        .timeline-details { font-size: 0.85rem; color: var(--text-muted); }
+        
+        .traslado-card { background: transparent; border: none; box-shadow: none; padding: 0; padding-left: 1rem; border-left: 2px dashed var(--border); margin-left: 1.1rem; margin-bottom: 2rem; color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
+
+        .loader { display: none; text-align: center; margin-top: 2rem; color: var(--primary); }
+    </style>
+</head>
+<body>
+
+<body>
+    <header class="header" style="background-color: #1e293b;">
+        <h1><i class="fa-solid fa-history"></i> Historial Forense de Auditorías</h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="window.location.href='/pages/dashboard.html'" style="background: transparent; color: white; border: 1px solid #475569;"><i class="fa-solid fa-arrow-left"></i> Volver a Logística</button>
+            <button class="btn btn-primary" onclick="window.location.href='/pages/auditoria-rutas.html'"><i class="fa-solid fa-map-marked-alt"></i> Nueva Auditoría</button>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <aside class="sidebar">
+            <h3 style="margin-top:0; margin-bottom: 15px; font-size:15px; color:#1e293b;"><i class="fas fa-list"></i> Registros Consolidados</h3>
+            <div class="form-group">
+                <select id="auditoriaSelect" class="form-control" onchange="cargarDetalleAuditoria(this.value)" size="15" style="padding: 10px; border-radius: 4px;">
+                    <option value="">Cargando historial...</option>
+                </select>
+                <div style="margin-top: 10px; text-align: center;">
+                    <button id="btnEliminar" class="btn btn-danger" style="display: none; width: 100%;" onclick="eliminarAuditoria()">
+                        <i class="fa-solid fa-trash-can"></i> Eliminar Registro
+                    </button>
+                </div>
+            </div>
+
+            <div id="estadisticasResumen" style="display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                <h3 style="font-size: 1rem; margin-bottom: 1rem;"><i class="fas fa-chart-pie"></i> Estadísticas Empíricas</h3>
+                <p><strong>Distancia:</strong> <span id="lblDistancia"></span> km</p>
+                <p><strong>Tiempo Neto:</strong> <span id="lblTiempo"></span> min</p>
+                <p><strong>Desviación:</strong> <span id="lblDesviacion"></span>%</p>
+            </div>
+        </aside>
+
+        <main class="dashboard">
+            <section class="panel">
+                <div class="panel-header">
+                    <i class="fa-solid fa-route"></i> Secuencia Guardada
+                </div>
+                <div class="panel-content" id="panelLamda">
+                    <ul class="timeline" id="nodosTeoricos">
+                        <p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Seleccione un registro del historial.</p>
+                    </ul>
+                </div>
+            </section>
+
+            <section class="panel" style="flex: 1.5; display: flex; flex-direction: column;">
+                <div class="panel-header" style="background: #eff6ff; border-bottom-color: #bfdbfe;">
+                    <i class="fa-brands fa-google text-primary"></i> Snapshot Satelital
+                </div>
+                <div class="panel-content" id="panelGoogle" style="display: flex; flex-direction: column; padding: 0; flex: 1; overflow: hidden;">
+                    <div id="map" style="width: 100%; height: 100%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
+                        Esperando datos para graficar...
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+<script>
+    let map = null;
+    let markers = [];
+    let polylines = [];
+
+    async function cargarAPIKeyGoogle() {
+        try {
+            const res = await fetch('/api/logistica/config');
+            const payload = await res.json();
+            if (payload.success && payload.data.googleMapsApiKey) {
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${payload.data.googleMapsApiKey}&loading=async&libraries=marker`;
+                script.async = true;
+                script.defer = true;
+                document.head.appendChild(script);
+            }
+        } catch (e) { console.error('Error cargando API Key', e); }
+    }
+
+    async function cargarHistorial() {
+        try {
+            const res = await fetch('/api/logistica/auditorias');
+            const data = await res.json();
+            const select = document.getElementById('auditoriaSelect');
+            select.innerHTML = '';
+            
+            if (data.success && data.data) {
+                data.data.forEach(a => {
+                    let opt = document.createElement('option');
+                    opt.value = a.id;
+                    const fechaStr = new Date(a.fecha_auditoria).toLocaleDateString();
+                    opt.text = `[${fechaStr}] Ruta #${a.id_ruta} - ${a.nombre_ruta}`;
+                    select.appendChild(opt);
+                });
+            } else {
+                select.innerHTML = '<option value="">No hay historial disponible</option>';
+            }
+        } catch (e) {
+            console.error('Error cargando historial', e);
+        }
+    }
+
+    function formatearDuracion(minutos) {
+        if (!minutos && minutos !== 0) return 'N/A';
+        if (minutos < 60) return `${minutos} min`;
+        const h = Math.floor(minutos / 60);
+        const m = minutos % 60;
+        if (m === 0) return `${h}h`;
+        return `${h}h ${m}m`;
+    }
+
+    function renderTimelineGuardado(tramos) {
+        const contenedor = document.getElementById('nodosTeoricos');
+        let html = '';
+        
+        tramos.forEach(tramo => {
+            let colorBorder = '#94a3b8';
+            let icon = 'fa-map-pin';
+            let title = tramo.tipo_tramo;
+            let nodeClass = 'timeline-item';
+            
+            if(tramo.tipo_tramo === 'NODO_CERO' || tramo.tipo_tramo === 'NODO_FIN') {
+                colorBorder = '#10b981';
+                icon = tramo.tipo_tramo === 'NODO_CERO' ? 'fa-warehouse' : 'fa-home';
+                title = tramo.tipo_tramo === 'NODO_CERO' ? 'Inicio' : 'Fin';
+                nodeClass = 'timeline-item node-cero';
+            } else if (tramo.tipo_tramo === 'GESTION_CLIENTE') {
+                colorBorder = '#f59e0b';
+                icon = 'fa-store';
+                title = 'Parada';
+                nodeClass = 'timeline-item node-gestion';
+            } else if (tramo.tipo_tramo === 'TRASLADO') {
+                colorBorder = '#3b82f6';
+                icon = 'fa-truck-fast';
+                title = 'Tránsito';
+                nodeClass = 'timeline-item node-traslado';
+            }
+
+            const timeStr = formatearDuracion(tramo.tiempo_duracion_minutos);
+            const refName = tramo.cliente_nombre || tramo.nombre_ref || (tramo.tipo_tramo === 'NODO_CERO' ? 'Depósito Base' : 'Fin / Casa');
+
+            if (tramo.tipo_tramo === 'TRASLADO') {
+                html += `
+                <div style="margin-left: 20px; padding: 0.5rem 0; border-left: 2px dashed #93c5fd; padding-left: 1rem; color: #3b82f6; font-size: 0.8rem;">
+                    <i class="fa-solid fa-truck-fast"></i> Tránsito: <strong>${timeStr}</strong> (${tramo.distancia_geocerca_metros ? (tramo.distancia_geocerca_metros/1000).toFixed(1) + ' km' : 'N/A'})
+                    <div style="font-size: 0.7rem; color: #3b82f6; margin-top: 2px;"><i class="fa-solid fa-fingerprint"></i> ${tramo.metodo_conciliacion || 'Desconocido'}</div>
+                </div>`;
+            } else {
+                html += `
+                <li class="${nodeClass}">
+                    <div class="timeline-card">
+                        <div class="timeline-title" style="display:flex; justify-content:space-between;">
+                            <span><i class="fas ${icon}" style="color:${colorBorder}"></i> ${title}: ${refName}</span>
+                            <span style="font-size:12px; color:#f59e0b; font-weight:bold;"><i class="fas fa-hourglass-half"></i> ${timeStr}</span>
+                        </div>
+                        <div style="font-size:11px; color:#64748b; margin-top:5px;"><i class="fas fa-fingerprint"></i> Sello: ${tramo.metodo_conciliacion || 'Desconocido'}</div>
+                    </div>
+                </li>`;
+            }
+        });
+
+        contenedor.innerHTML = html;
+    }
+
+    function limpiarMapa() {
+        if (polylines) polylines.forEach(p => p.setMap(null));
+        if (markers) markers.forEach(m => m.setMap(null));
+        polylines = [];
+        markers = [];
+    }
+
+    async function cargarDetalleAuditoria(idAuditoria) {
+        const btnEliminar = document.getElementById('btnEliminar');
+        if(!idAuditoria) {
+            btnEliminar.style.display = 'none';
+            return limpiarMapa();
+        }
+        btnEliminar.style.display = 'inline-block';
+
+        try {
+            const res = await fetch(`/api/logistica/auditorias/${idAuditoria}`);
+            const payload = await res.json();
+            
+            if(!payload.success) return alert('Error al cargar: ' + payload.error);
+
+            const data = payload.data;
+            
+            // 1. Estadísticas
+            document.getElementById('estadisticasResumen').style.display = 'block';
+            document.getElementById('lblDistancia').innerText = data.distancia_real_km;
+            document.getElementById('lblTiempo').innerText = data.tiempo_real_minutos;
+            
+            const badgeColor = data.desviacion_global_porcentaje > 15 ? 'red' : 'green';
+            document.getElementById('lblDesviacion').innerHTML = `<span style="color:${badgeColor}; font-weight:bold;">${data.desviacion_global_porcentaje}%</span>`;
+
+            // 2. Timeline
+            renderTimelineGuardado(data.tramos);
+
+            // 3. Renderizar Mapa
+            if (!window.google || !window.google.maps) return;
+            const mapContainer = document.getElementById('map');
+            
+            // Inicializar mapa la primera vez
+            if(!map) {
+                let center = { lat: -34.6037, lng: -58.3816 };
+                if(data.tramos.length > 0 && data.tramos[0].coordenada_real_lat) {
+                    center = { lat: data.tramos[0].coordenada_real_lat, lng: data.tramos[0].coordenada_real_lng };
+                }
+                map = new google.maps.Map(mapContainer, {
+                    center: center,
+                    zoom: 12,
+                    mapId: 'LAMDA_AUDIT_HISTORY_MAP',
+                    mapTypeControl: true,
+                    streetViewControl: false
+                });
+            }
+
+            limpiarMapa();
+            const bounds = new google.maps.LatLngBounds();
+
+            data.tramos.forEach(tramo => {
+                if(tramo.tipo_tramo !== 'TRASLADO' && tramo.coordenada_real_lat && tramo.coordenada_real_lng) {
+                    const lat = parseFloat(tramo.coordenada_real_lat);
+                    const lng = parseFloat(tramo.coordenada_real_lng);
+                    
+                    if(!isNaN(lat) && !isNaN(lng)) {
+                        const pos = { lat, lng };
+                        
+                        let bgColor = '#ef4444';
+                        let zIndex = 10;
+                        if(tramo.tipo_tramo === 'NODO_CERO' || tramo.tipo_tramo === 'NODO_FIN') { bgColor = '#10b981'; zIndex = 30; }
+                        else if(tramo.tipo_tramo === 'GESTION_CLIENTE') { bgColor = '#f59e0b'; zIndex = 20; }
+                        
+                        const pinView = new google.maps.marker.PinElement({
+                            background: bgColor,
+                            borderColor: '#ffffff',
+                            glyphColor: '#ffffff'
+                        });
+
+                        const marker = new google.maps.marker.AdvancedMarkerElement({
+                            position: pos,
+                            map: map,
+                            title: tramo.tipo_tramo,
+                            content: pinView.element,
+                            zIndex: zIndex
+                        });
+                        
+                        markers.push(marker);
+                        bounds.extend(pos);
+                    }
+                }
+
+                if(tramo.tipo_tramo === 'TRASLADO' && tramo.trace_empirico) {
+                    const safePath = tramo.trace_empirico.filter(p => p && typeof p.lat === 'number' && typeof p.lng === 'number');
+                    if(safePath.length > 0) {
+                        const empPath = new google.maps.Polyline({
+                            path: safePath,
+                            geodesic: true,
+                            strokeColor: '#3b82f6',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 4,
+                            zIndex: 2
+                        });
+                        empPath.setMap(map);
+                        polylines.push(empPath);
+                        safePath.forEach(p => bounds.extend(p));
+                    }
+                }
+            });
+
+            if(!bounds.isEmpty()) map.fitBounds(bounds);
+
+        } catch (e) {
+            console.error('Error de red', e);
+        }
+    }
+
+    async function eliminarAuditoria() {
+        const select = document.getElementById('auditoriaSelect');
+        const idAuditoria = select.value;
+        if (!idAuditoria) return;
+
+        const confirmar = confirm("¿Está seguro de que desea eliminar permanentemente esta auditoría?\nLa hoja de ruta volverá a estar disponible para ser auditada.");
+        if (!confirmar) return;
+
+        try {
+            const res = await fetch(`/api/logistica/auditorias/${idAuditoria}`, { method: 'DELETE' });
+            const payload = await res.json();
+            
+            if (payload.success) {
+                alert("Auditoría eliminada con éxito.");
+                // Limpiar la vista actual
+                document.getElementById('estadisticasResumen').style.display = 'none';
+                document.getElementById('nodosTeoricos').innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 3rem;">Seleccione un registro del historial.</p>';
+                document.getElementById('btnEliminar').style.display = 'none';
+                limpiarMapa();
+                // Refrescar el selector sin recargar la página
+                cargarHistorial();
+            } else {
+                alert("Error al eliminar: " + payload.error);
+            }
+        } catch (e) {
+            alert("Error de red al intentar eliminar.");
+            console.error(e);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarAPIKeyGoogle();
+        cargarHistorial();
+    });
+</script>
+</body>
+</html>

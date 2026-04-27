@@ -154,7 +154,7 @@
             const payload = await res.json();
             if (payload.success && payload.data.googleMapsApiKey) {
                 const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${payload.data.googleMapsApiKey}&libraries=places&callback=initMap`;
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${payload.data.googleMapsApiKey}&loading=async&libraries=places,marker&callback=initMap`;
                 script.async = true;
                 script.defer = true;
                 window.initMap = inicializarMapaLogica;
@@ -170,26 +170,30 @@
         map = new google.maps.Map(document.getElementById('mapaNodo'), {
             center: bsAs,
             zoom: 12,
+            mapId: 'LAMDA_CONFIG_MAP',
             mapTypeControl: false,
             streetViewControl: false
         });
 
-        marker = new google.maps.Marker({
+        marker = new google.maps.marker.AdvancedMarkerElement({
             position: bsAs,
             map: map,
-            draggable: true,
-            animation: google.maps.Animation.DROP
+            gmpDraggable: true,
+            title: 'Nodo Cero'
         });
 
         // Evento arrastrar
-        google.maps.event.addListener(marker, 'dragend', function() {
-            document.getElementById('latitud').value = marker.getPosition().lat().toFixed(7);
-            document.getElementById('longitud').value = marker.getPosition().lng().toFixed(7);
+        marker.addListener('dragend', function() {
+            const pos = marker.position;
+            const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+            const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+            document.getElementById('latitud').value = lat.toFixed(7);
+            document.getElementById('longitud').value = lng.toFixed(7);
         });
 
         // Evento clic en el mapa
         google.maps.event.addListener(map, 'click', function(event) {
-            marker.setPosition(event.latLng);
+            marker.position = event.latLng;
             document.getElementById('latitud').value = event.latLng.lat().toFixed(7);
             document.getElementById('longitud').value = event.latLng.lng().toFixed(7);
         });

@@ -18,6 +18,7 @@ router.post('/guardar', AuditoriasController.guardarAuditoria);
 // Historial
 router.get('/', AuditoriasController.listarAuditorias);
 router.get('/:id', AuditoriasController.detalleAuditoria);
+router.delete('/:id', AuditoriasController.eliminarAuditoria);
 
 // Configuración Nodos Cero (Puntos Base)
 router.get('/puntos-base/listar', AuditoriasController.listarPuntosBase);

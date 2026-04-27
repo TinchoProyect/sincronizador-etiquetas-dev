@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ingesta Satelital - LAMDA Logística</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success: #10b981;
+            --bg-body: #f1f5f9;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+        body { background: var(--bg-body); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        
+        .card { background: var(--bg-card); border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 100%; max-width: 600px; padding: 2rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text-main); }
+        p { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; line-height: 1.5; }
+        
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; }
+        select { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; outline: none; }
+        select:focus { border-color: var(--primary); }
+        
+        .upload-zone { border: 2px dashed var(--primary); border-radius: 8px; padding: 3rem 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #eff6ff; }
+        .upload-zone:hover, .upload-zone.dragover { background: #dbeafe; border-color: var(--primary-hover); }
+        .upload-zone i { font-size: 3rem; color: var(--primary); margin-bottom: 1rem; }
+        
+        .btn { display: inline-block; width: 100%; padding: 0.75rem; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: background 0.2s; text-align: center; text-decoration: none; }
+        .btn:hover { background: var(--primary-hover); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: #64748b; margin-top: 1rem; }
+        .btn-secondary:hover { background: #475569; }
+        
+        .loader { display: none; text-align: center; margin-top: 1rem; color: var(--primary); }
+        .result-box { display: none; margin-top: 1.5rem; padding: 1rem; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; color: #065f46; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1><i class="fa-solid fa-satellite-dish"></i> Reservorio Cronológico Satelital</h1>
+        <p>Sube el archivo <strong>Rutas.json</strong> exportado desde Google Takeout. El sistema inyectará automáticamente los datos nuevos al reservorio histórico cronológico, vinculándolos exclusivamente por fechas y horas.</p>
+
+        <div class="form-group">
+            <label><i class="fa-solid fa-file-code"></i> 1. Archivo JSON (Google Timeline)</label>
+            <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <p><strong>Arrastra el JSON aquí</strong> o haz clic para buscar</p>
+                <p style="font-size: 0.75rem; color: var(--primary); margin-top: 0.5rem; margin-bottom: 0;">(Solo archivos extraídos de Google Takeout Location History)</p>
+                <input type="file" id="fileInput" style="display: none" accept=".json">
+            </div>
+        </div>
+
+        <div class="loader" id="loader" style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 2rem; border-radius: 8px; margin-bottom: 1.5rem;">
+            <i class="fa-solid fa-microchip fa-spin fa-3x"></i>
+            <h3 style="margin-top: 1rem; color: var(--primary);">Motor Satelital Trabajando...</h3>
+            <p style="margin-top: 0.5rem; font-size: 0.875rem; margin-bottom: 0;">Por favor, no cierres esta ventana. El servidor está analizando miles de coordenadas y geocercas en tiempo real.</p>
+        </div>
+
+        <div class="result-box" id="resultBox">
+            <h4 style="margin-bottom: 0.5rem;"><i class="fa-solid fa-check-circle"></i> Ingesta Exitosa</h4>
+            <p style="margin-bottom: 0;" id="resultText"></p>
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <button class="btn btn-secondary" onclick="window.location.href='/pages/dashboard.html'" style="flex: 1;"><i class="fa-solid fa-arrow-left"></i> Volver al Dashboard</button>
+            <button class="btn btn-secondary" onclick="vaciarReservorio()" style="flex: 1; background: #ef4444;"><i class="fa-solid fa-trash-can"></i> Vaciar Reservorio</button>
+        </div>
+    </div>
+
+    <script>
+        // Drag & Drop Handlers
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                subirArchivo(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) subirArchivo(e.target.files[0]);
+        });
+
+        async function subirArchivo(file) {
+            const formData = new FormData();
+            formData.append('archivo_timeline', file);
+
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('resultBox').style.display = 'none';
+
+            try {
+                const res = await fetch('/api/logistica/reservorio/ingestar', {
+                    method: 'POST',
+                    body: formData
+                });
+                const payload = await res.json();
+                document.getElementById('loader').style.display = 'none';
+
+                if (payload.success) {
+                    document.getElementById('resultBox').style.display = 'block';
+                    document.getElementById('resultText').innerHTML = `
+                        <strong>Puntos Empíricos Insertados:</strong> ${payload.data.puntos_insertados}<br>
+                        <strong>Eventos Semánticos Insertados:</strong> ${payload.data.eventos_insertados}
+                    `;
+                } else {
+                    const errMsg = payload.error || payload.message || 'Error desconocido';
+                    alert('❌ FALLO EN LA INGESTA:\n\n' + errMsg + '\n\nPor favor, verifica el archivo o consulta con el equipo técnico.');
+                }
+            } catch (e) {
+                document.getElementById('loader').style.display = 'none';
+                alert('❌ ERROR CRÍTICO DE RED O SERVIDOR CAÍDO:\n\n' + e.message);
+            }
+        }
+
+        async function vaciarReservorio() {
+            const confirmacion = confirm("⚠️ ATENCIÓN: Esta acción purgará TODOS los registros satelitales (Trazas y Paradas) de la base de datos de Logística.\n\nEl resto del sistema (Rutas Teóricas, Pedidos, Usuarios) NO se verá afectado.\n\n¿Estás absolutamente seguro de querer VACIAR la pizarra satelital?");
+            
+            if (!confirmacion) return;
+
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('resultBox').style.display = 'none';
+
+            try {
+                const res = await fetch('/api/logistica/reservorio/vaciar', {
+                    method: 'DELETE'
+                });
+                const payload = await res.json();
+                document.getElementById('loader').style.display = 'none';
+
+                if (payload.success) {
+                    alert('✅ ' + payload.message);
+                } else {
+                    alert('Error en la purga: ' + payload.error);
+                }
+            } catch (e) {
+                document.getElementById('loader').style.display = 'none';
+                alert('Error crítico de red: ' + e.message);
+            }
+        }
+    </script>
+</body>
+</html>

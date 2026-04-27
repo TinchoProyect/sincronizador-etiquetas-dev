@@ -32,6 +32,7 @@ class RutasModel {
                 r.en_pausa,
                 r.tiempo_pausado_minutos,
                 r.duracion_neta_minutos,
+                EXISTS (SELECT 1 FROM rutas_auditorias a WHERE a.id_ruta = r.id) as auditada,
                 (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) + 
                 (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id) as cantidad_presupuestos,
                 (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id AND p.estado_logistico IN ('ENTREGADO', 'RETIRADO')) +
